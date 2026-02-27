@@ -902,9 +902,23 @@ class DataExportImportViewModel(
                                     
                                     // ✅ 比较更新时间，如果备份的更新，则覆盖现有数据
                                     if (entry.updatedAt.after(existingEntry.updatedAt)) {
+                                        val shouldPreserveExistingPassword =
+                                            entry.loginType.equals("PASSWORD", ignoreCase = true) &&
+                                                entry.password.isBlank() &&
+                                                existingEntry.password.isNotBlank()
+
                                         // 备份的版本更新，覆盖现有条目（保留现有ID）
                                         val updatedEntry = entry.copy(
                                             id = existingEntry.id,
+                                            password = if (shouldPreserveExistingPassword) {
+                                                android.util.Log.w(
+                                                    "DataImport",
+                                                    "Skip blank-password overwrite during restore for ${entry.title} (id=${existingEntry.id})"
+                                                )
+                                                existingEntry.password
+                                            } else {
+                                                entry.password
+                                            },
                                             categoryId = entry.categoryId ?: existingEntry.categoryId,
                                             isFavorite = existingEntry.isFavorite, // 保留收藏状态
                                             sortOrder = existingEntry.sortOrder,    // 保留排序

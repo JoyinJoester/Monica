@@ -607,7 +607,20 @@ class PasswordViewModel(
                 )
             }
             val normalizedPassword = normalizeIncomingKeePassPassword(item.password)
-            val encryptedPassword = securityManager.encryptData(normalizedPassword)
+            val encryptedPassword = if (existing != null && normalizedPassword.isBlank()) {
+                val existingPassword = decryptForDisplay(existing.password)
+                if (existingPassword.isNotBlank()) {
+                    Log.w(
+                        "PasswordViewModel",
+                        "Skip KeePass blank-password overwrite for entryId=${existing.id}, title=${existing.title}"
+                    )
+                    existing.password
+                } else {
+                    securityManager.encryptData(normalizedPassword)
+                }
+            } else {
+                securityManager.encryptData(normalizedPassword)
+            }
             if (existing != null) {
                 val updated = existing.copy(
                     title = item.title,

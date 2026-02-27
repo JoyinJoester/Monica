@@ -63,6 +63,9 @@ import takagi.ru.monica.ui.icons.SimpleIconCatalog
 import takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon
 import takagi.ru.monica.ui.icons.rememberSimpleIconBitmap
 import takagi.ru.monica.ui.icons.rememberUploadedPasswordIcon
+import takagi.ru.monica.util.TotpParseResult
+import takagi.ru.monica.util.TotpScanParseResult
+import takagi.ru.monica.util.TotpUriParser
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.utils.RememberedStorageTarget
@@ -238,6 +241,8 @@ fun AddEditTotpScreen(
     var showAssociation by remember { mutableStateOf(false) }
     var expandedOtpType by remember { mutableStateOf(false) }
     var showPasswordSelectionDialog by remember { mutableStateOf(false) }
+    var showImportUriDialog by remember { mutableStateOf(false) }
+    var otpUriInput by rememberSaveable { mutableStateOf("") }
     var hasAppliedInitialStorage by rememberSaveable { mutableStateOf(false) }
     
     // 防止重复点击保存按钮
@@ -270,6 +275,70 @@ fun AddEditTotpScreen(
         bitwardenVaultId = initialBitwardenVaultId ?: remembered.bitwardenVaultId
         bitwardenFolderId = initialBitwardenFolderId ?: remembered.bitwardenFolderId
         hasAppliedInitialStorage = true
+    }
+
+    fun resolveImportedTitle(item: TotpParseResult): String {
+        return item.label.takeIf { it.isNotBlank() }
+            ?: item.totpData.issuer.takeIf { it.isNotBlank() }
+            ?: item.totpData.accountName.takeIf { it.isNotBlank() }
+            ?: ""
+    }
+
+    fun applyImportedTotp(item: TotpParseResult) {
+        val imported = item.totpData
+        secret = imported.secret.trim().uppercase()
+        issuer = imported.issuer
+        accountName = imported.accountName
+        period = imported.period.toString()
+        digits = imported.digits.toString()
+        selectedOtpType = imported.otpType
+        counter = imported.counter.toString()
+        pin = imported.pin
+
+        val importedTitle = resolveImportedTitle(item)
+        if (title.isBlank() && importedTitle.isNotBlank()) {
+            title = importedTitle
+        }
+    }
+
+    fun importTotpFromUri(raw: String) {
+        val value = raw.trim()
+        if (value.isBlank()) {
+            Toast.makeText(context, context.getString(R.string.totp_import_uri_empty), Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        when (val scanResult = TotpUriParser.parseScannedContent(value)) {
+            is TotpScanParseResult.Single -> {
+                applyImportedTotp(scanResult.item)
+                otpUriInput = ""
+                showImportUriDialog = false
+            }
+            is TotpScanParseResult.Multiple -> {
+                scanResult.items.firstOrNull()?.let(::applyImportedTotp)
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.qr_migration_multiple_fill_first, scanResult.items.size),
+                    Toast.LENGTH_SHORT
+                ).show()
+                otpUriInput = ""
+                showImportUriDialog = false
+            }
+            TotpScanParseResult.UnsupportedPhoneFactor -> {
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.qr_phonefactor_not_supported),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            TotpScanParseResult.InvalidFormat -> {
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.qr_invalid_authenticator),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
     }
 
     val canSave = title.isNotBlank() && secret.isNotBlank()
@@ -509,37 +578,16 @@ fun AddEditTotpScreen(
 
                         // Secret Key + Scan
                         Column {
-                            Row(
+                            OutlinedTextField(
+                                value = secret,
+                                onValueChange = { secret = it.uppercase() },
+                                label = { Text(stringResource(R.string.secret_key_required)) },
+                                placeholder = { Text(stringResource(R.string.secret_key_example)) },
+                                leadingIcon = { Icon(Icons.Default.VpnKey, contentDescription = null) },
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalAlignment = Alignment.Top
-                            ) {
-                                OutlinedTextField(
-                                    value = secret,
-                                    onValueChange = { secret = it.uppercase() },
-                                    label = { Text(stringResource(R.string.secret_key_required)) },
-                                    placeholder = { Text(stringResource(R.string.secret_key_example)) },
-                                    leadingIcon = { Icon(Icons.Default.VpnKey, contentDescription = null) },
-                                    modifier = Modifier.weight(1f),
-                                    isError = secret.isBlank(),
-                                    shape = RoundedCornerShape(12.dp)
-                                )
-                                
-                                if (!isEditing) {
-                                    FilledIconButton(
-                                        onClick = onScanQrCode,
-                                        modifier = Modifier
-                                            .padding(top = 8.dp) // Account for label space
-                                            .size(56.dp),
-                                        shape = RoundedCornerShape(12.dp)
-                                    ) {
-                                        Icon(
-                                            Icons.Default.QrCodeScanner,
-                                            contentDescription = stringResource(R.string.scan_qr_code)
-                                        )
-                                    }
-                                }
-                            }
+                                isError = secret.isBlank(),
+                                shape = RoundedCornerShape(12.dp)
+                            )
                             
                             Text(
                                 text = stringResource(R.string.secret_key_hint),
@@ -547,6 +595,40 @@ fun AddEditTotpScreen(
                                 color = if (secret.isBlank()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(start = 16.dp, top = 4.dp)
                             )
+
+                            if (!isEditing) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    FilledTonalButton(
+                                        onClick = onScanQrCode,
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.QrCodeScanner,
+                                            contentDescription = null
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(text = stringResource(R.string.scan_qr_code))
+                                    }
+                                    OutlinedButton(
+                                        onClick = { showImportUriDialog = true },
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(12.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Link,
+                                            contentDescription = null
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(text = stringResource(R.string.totp_import_uri_action))
+                                    }
+                                }
+                            }
                         }
                         
                         // Issuer
@@ -793,6 +875,54 @@ fun AddEditTotpScreen(
                 }
             }
         }
+    }
+
+    if (showImportUriDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportUriDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Link,
+                    contentDescription = null
+                )
+            },
+            title = {
+                Text(text = stringResource(R.string.totp_import_uri_dialog_title))
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = stringResource(R.string.totp_import_uri_dialog_supporting),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    OutlinedTextField(
+                        value = otpUriInput,
+                        onValueChange = { otpUriInput = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(stringResource(R.string.totp_import_uri_dialog_label)) },
+                        placeholder = { Text(stringResource(R.string.totp_import_uri_dialog_hint)) },
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Uri,
+                            imeAction = ImeAction.Done
+                        ),
+                        minLines = 2,
+                        maxLines = 4,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { importTotpFromUri(otpUriInput) }) {
+                    Text(stringResource(R.string.confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showImportUriDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
     }
 
     if (showCustomIconDialog) {

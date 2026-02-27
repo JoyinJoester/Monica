@@ -199,6 +199,12 @@
     <string name="secret_key_hint">Base32编码的密钥，通常在二维码下方显示</string>
     <string name="enter_secret_key">请输入密钥</string>
     <string name="scan_qr_code">扫描二维码</string>
+    <string name="totp_import_uri_action">导入链接</string>
+    <string name="totp_import_uri_dialog_title">导入验证器链接</string>
+    <string name="totp_import_uri_dialog_label">验证器链接</string>
+    <string name="totp_import_uri_dialog_hint">otpauth://totp/...</string>
+    <string name="totp_import_uri_dialog_supporting">粘贴 otpauth://、otpauth-migration:// 或 motp:// 链接</string>
+    <string name="totp_import_uri_empty">请粘贴验证器链接</string>
     <string name="issuer">发行者</string>
     <string name="issuer_example">例如：Google</string>
     <string name="account_name">账户名</string>
@@ -954,6 +960,8 @@
     <string name="webdav_backup">WebDAV 备份</string>
     <string name="webdav_backup_description">备份到 WebDAV 服务器</string>
     <string name="webdav_config">WebDAV 配置</string>
+    <string name="webdav_fill_from_password">从密码库填充</string>
+    <string name="webdav_fill_from_password_applied">已从所选密码填充 WebDAV 配置</string>
     <string name="webdav_server_url">服务器地址</string>
     <string name="webdav_test_connection">测试连接</string>
     <string name="webdav_reconfigure">重新配置</string>
@@ -2245,6 +2253,7 @@
     <string name="import_type_steam_guard_json_hint">粘贴包含 shared_secret 与 serial_number 的完整 JSON</string>
     <string name="import_type_steam_custom_name_label">显示名称（可选）</string>
     <string name="import_type_steam_custom_name_hint">留空则使用 JSON 中的 account_name</string>
+    <string name="steam_login_fill_from_password_applied">已从所选密码填充 Steam 登录信息</string>
     <string name="import_type_csv_monica_title">Monica CSV</string>
     <string name="import_type_csv_monica_desc">导入 Monica 应用导出的 CSV 文件</string>
     <string name="import_type_csv_monica_file_hint">选择 Monica .csv 文件</string>
@@ -2434,6 +2443,8 @@
     <string name="password_list_quick_folders_style_title">快捷文件夹展示样式</string>
     <string name="password_list_quick_folders_style_classic">经典样式</string>
     <string name="password_list_quick_folders_style_m3">卡片+路径横幅</string>
+    <string name="password_list_quick_access_switch_title">最近打开与常用按钮</string>
+    <string name="password_list_quick_access_switch_desc">开启后会在添加按钮上方显示快捷入口，可快速打开最近使用和高频使用的密码。</string>
     <string name="password_list_quick_filter_favorite">收藏</string>
     <string name="password_list_quick_filter_2fa">2FA</string>
     <string name="password_list_quick_filter_notes">备注</string>
@@ -2497,4 +2508,12 @@
     <string name="authenticator_card_display_content_title">卡片显示内容</string>
     <string name="authenticator_card_display_field_desc">标题固定显示，可自定义附加信息并排序，最多展示 2 行。</string>
     <string name="authenticator_card_field_limit_hint">卡片上只会显示已选字段中的前 2 项。</string>
+    <string name="password_quick_access_title">最近打开与常用</string>
+    <string name="password_quick_access_desc">无需搜索，快速打开最近使用和高频使用的密码。</string>
+    <string name="password_quick_access_recent">最近打开</string>
+    <string name="password_quick_access_frequent">经常打开</string>
+    <string name="password_quick_access_empty_recent">还没有最近打开记录</string>
+    <string name="password_quick_access_empty_frequent">还没有经常打开记录</string>
+    <string name="password_quick_access_last_opened">最近打开：%1$s</string>
+    <string name="password_quick_access_open_count">%1$d 次</string>
 </resources>

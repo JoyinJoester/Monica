@@ -24,6 +24,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
+import takagi.ru.monica.data.PasswordDatabase
+import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -109,6 +111,12 @@ fun KeePassWebDavScreen(
     var showImportDialog by remember { mutableStateOf(false) }
     var showCreateDialog by remember { mutableStateOf(false) }
     var createFileName by remember { mutableStateOf("") }
+    var showPasswordPicker by remember { mutableStateOf(false) }
+    val pickerSecurityManager = remember { takagi.ru.monica.security.SecurityManager(context) }
+    val passwordDatabase = remember(context) { PasswordDatabase.getDatabase(context) }
+    val passwordEntriesForPicker by passwordDatabase.passwordEntryDao()
+        .getAllPasswordEntries()
+        .collectAsState(initial = emptyList())
 
     suspend fun refreshRemoteFiles() {
         isLoadingFiles = true
@@ -199,6 +207,7 @@ fun KeePassWebDavScreen(
                 onUsernameChange = { username = it },
                 onPasswordChange = { password = it },
                 onPasswordVisibilityChange = { passwordVisible = it },
+                onFillFromPassword = { showPasswordPicker = true },
                 onTestConnection = {
                     if (serverUrl.isBlank() || username.isBlank() || password.isBlank()) {
                         errorMessage = context.getString(R.string.webdav_fill_all_fields)
@@ -611,6 +620,43 @@ fun KeePassWebDavScreen(
             }
         )
     }
+
+    if (showPasswordPicker) {
+        PasswordEntryPickerBottomSheet(
+            visible = true,
+            title = stringResource(R.string.webdav_fill_from_password),
+            passwords = passwordEntriesForPicker.filter { !it.isDeleted },
+            onDismiss = { showPasswordPicker = false },
+            onSelect = { entry ->
+                val resolvedServerUrl = entry.website.trim()
+                val resolvedUsername = runCatching { pickerSecurityManager.decryptData(entry.username) }
+                    .getOrNull()
+                    ?.trim()
+                    .takeUnless { it.isNullOrBlank() }
+                    ?: entry.username.trim()
+                val resolvedPassword = runCatching { pickerSecurityManager.decryptData(entry.password) }
+                    .getOrNull()
+                    ?.trim()
+                    .takeUnless { it.isNullOrBlank() }
+                    ?: entry.password.trim()
+
+                if (resolvedServerUrl.isNotBlank()) {
+                    serverUrl = resolvedServerUrl
+                }
+                username = resolvedUsername
+                password = resolvedPassword
+                isConfigured = false
+                connectionStatus = ConnectionStatus.NotConnected
+                errorMessage = ""
+                showPasswordPicker = false
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.webdav_fill_from_password_applied),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        )
+    }
 }
 
 // ==================== 子组件 ====================
@@ -632,6 +678,7 @@ private fun WebDavConfigCard(
     onUsernameChange: (String) -> Unit,
     onPasswordChange: (String) -> Unit,
     onPasswordVisibilityChange: (Boolean) -> Unit,
+    onFillFromPassword: () -> Unit,
     onTestConnection: () -> Unit,
     onClearConfig: () -> Unit
 ) {
@@ -657,6 +704,16 @@ private fun WebDavConfigCard(
             }
             
             if (!isConfigured) {
+                FilledTonalButton(
+                    onClick = onFillFromPassword,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isConnecting
+                ) {
+                    Icon(Icons.Default.Key, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.webdav_fill_from_password))
+                }
+
                 // 服务器地址
                 OutlinedTextField(
                     value = serverUrl,

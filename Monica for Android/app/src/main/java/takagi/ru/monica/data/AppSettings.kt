@@ -404,6 +404,7 @@ data class AppSettings(
     val passwordListQuickFilterItems: List<PasswordListQuickFilterItem> = PasswordListQuickFilterItem.DEFAULT_ORDER, // 密码列表快捷筛选显示内容
     val passwordListQuickFoldersEnabled: Boolean = false, // 密码列表快捷文件夹开关
     val passwordListQuickFolderStyle: PasswordListQuickFolderStyle = PasswordListQuickFolderStyle.CLASSIC, // 密码列表快捷文件夹展示样式
+    val passwordListQuickAccessEnabled: Boolean = true, // 密码列表“最近打开/经常打开”快捷入口开关
     val passwordListTopModulesOrder: List<PasswordListTopModule> = PasswordListTopModule.DEFAULT_ORDER, // 密码列表顶部模块顺序
     val noteGridLayout: Boolean = true, // 笔记列表使用网格布局 (true = 网格, false = 列表)
     val autofillAuthRequired: Boolean = true, // 自动填充验证 - 默认开启

@@ -34,6 +34,7 @@ import takagi.ru.monica.utils.AutoBackupManager
 import takagi.ru.monica.utils.CustomFieldBackupEntry
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.CustomField
+import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import takagi.ru.monica.util.DataExportImportManager
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -105,10 +106,13 @@ fun WebDavBackupScreen(
     var showCompressDialog by remember { mutableStateOf(false) }
     var compressionProgress by remember { mutableStateOf(0f) }
     var compressionMessage by remember { mutableStateOf("") }
+    var showPasswordPicker by remember { mutableStateOf(false) }
     
     val webDavHelper = remember { WebDavHelper(context) }
     val autoBackupManager = remember { AutoBackupManager(context) }
     val imageCompressor = remember { ImageCompressor(context) }
+    val pickerSecurityManager = remember { takagi.ru.monica.security.SecurityManager(context) }
+    val passwordEntriesForPicker by passwordRepository.getAllPasswordEntries().collectAsState(initial = emptyList())
     
     // 启动时检查是否已有配置
     LaunchedEffect(Unit) {
@@ -303,6 +307,16 @@ fun WebDavBackupScreen(
                         text = stringResource(R.string.webdav_config),
                         style = MaterialTheme.typography.titleMedium
                     )
+
+                    FilledTonalButton(
+                        onClick = { showPasswordPicker = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        enabled = !isTesting && !isConfigured
+                    ) {
+                        Icon(Icons.Default.Key, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(R.string.webdav_fill_from_password))
+                    }
                     
                     // 服务器地址
                     OutlinedTextField(
@@ -1010,6 +1024,42 @@ fun WebDavBackupScreen(
                 }
             }
         }
+    }
+
+    if (showPasswordPicker) {
+        PasswordEntryPickerBottomSheet(
+            visible = true,
+            title = stringResource(R.string.webdav_fill_from_password),
+            passwords = passwordEntriesForPicker.filter { !it.isDeleted },
+            onDismiss = { showPasswordPicker = false },
+            onSelect = { entry ->
+                val resolvedServerUrl = entry.website.trim()
+                val resolvedUsername = runCatching { pickerSecurityManager.decryptData(entry.username) }
+                    .getOrNull()
+                    ?.trim()
+                    .takeUnless { it.isNullOrBlank() }
+                    ?: entry.username.trim()
+                val resolvedPassword = runCatching { pickerSecurityManager.decryptData(entry.password) }
+                    .getOrNull()
+                    ?.trim()
+                    .takeUnless { it.isNullOrBlank() }
+                    ?: entry.password.trim()
+
+                if (resolvedServerUrl.isNotBlank()) {
+                    serverUrl = resolvedServerUrl
+                }
+                username = resolvedUsername
+                password = resolvedPassword
+                isConfigured = false
+                errorMessage = ""
+                showPasswordPicker = false
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.webdav_fill_from_password_applied),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        )
     }
 }
 

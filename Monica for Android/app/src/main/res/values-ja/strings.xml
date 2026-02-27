@@ -152,6 +152,12 @@
     <string name="secret_key_hint">Base32エンコードされたキー、通常はQRコードの下に表示されます</string>
     <string name="enter_secret_key">シークレットキーを入力してください</string>
     <string name="scan_qr_code">QRコードをスキャン</string>
+    <string name="totp_import_uri_action">URLを取り込む</string>
+    <string name="totp_import_uri_dialog_title">認証URLを取り込む</string>
+    <string name="totp_import_uri_dialog_label">認証URL</string>
+    <string name="totp_import_uri_dialog_hint">otpauth://totp/...</string>
+    <string name="totp_import_uri_dialog_supporting">otpauth://、otpauth-migration://、motp:// リンクを貼り付け</string>
+    <string name="totp_import_uri_empty">認証URLを貼り付けてください</string>
     <string name="issuer">発行者</string>
     <string name="issuer_example">例：Google</string>
     <string name="account_name">アカウント名</string>
@@ -735,6 +741,8 @@
     <string name="webdav_backup">WebDAVバックアップ</string>
     <string name="webdav_backup_description">WebDAVサーバーにバックアップ</string>
     <string name="webdav_config">WebDAV設定</string>
+    <string name="webdav_fill_from_password">パスワード保管庫から入力</string>
+    <string name="webdav_fill_from_password_applied">選択したパスワードから WebDAV 設定を入力しました</string>
     <string name="webdav_server_url">サーバーアドレス</string>
     <string name="webdav_test_connection">接続テスト</string>
     <string name="webdav_reconfigure">再設定</string>
@@ -1626,6 +1634,7 @@
     <string name="import_type_steam_title">Steam Guard</string>
     <string name="import_type_steam_desc">maFile から Steam トークンをインポート</string>
     <string name="import_type_steam_file_hint">.maFile ファイルを選択</string>
+    <string name="steam_login_fill_from_password_applied">選択したパスワードから Steam ログイン情報を入力しました</string>
     <string name="import_type_csv_monica_title">Monica CSV</string>
     <string name="import_type_csv_monica_desc">Monica から出力した CSV をインポート</string>
     <string name="import_type_csv_monica_file_hint">Monica .csv ファイルを選択</string>

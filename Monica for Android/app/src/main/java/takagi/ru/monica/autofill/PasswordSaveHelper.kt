@@ -427,9 +427,22 @@ object PasswordSaveHelper {
         encryptedPassword: String
     ): PasswordEntry {
         AutofillLogger.i("SAVE", "更新密码条目: id=${existing.id}, title=${existing.title}")
-        
+
+        val shouldPreserveExistingPassword =
+            saveData.password.isBlank() &&
+                existing.loginType.equals("PASSWORD", ignoreCase = true) &&
+                existing.password.isNotBlank()
+
         return existing.copy(
-            password = encryptedPassword,
+            password = if (shouldPreserveExistingPassword) {
+                AutofillLogger.w(
+                    "SAVE",
+                    "检测到空密码更新请求，保留原密码: id=${existing.id}, title=${existing.title}"
+                )
+                existing.password
+            } else {
+                encryptedPassword
+            },
             updatedAt = Date(),
             keepassDatabaseId = saveData.keepassDatabaseId ?: existing.keepassDatabaseId, // Update if new ID provided, else keep existing? Or should SaveData always have it? If UI selects it, SaveData has it.
             notes = existing.notes + "\n[${Date()}] 通过自动填充更新密码"

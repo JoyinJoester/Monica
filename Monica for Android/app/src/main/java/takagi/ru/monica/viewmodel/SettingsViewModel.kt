@@ -309,6 +309,12 @@ class SettingsViewModel(
         }
     }
 
+    fun updatePasswordListQuickAccessEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updatePasswordListQuickAccessEnabled(enabled)
+        }
+    }
+
     fun updatePasswordListTopModulesOrder(order: List<takagi.ru.monica.data.PasswordListTopModule>) {
         viewModelScope.launch {
             settingsManager.updatePasswordListTopModulesOrder(order)

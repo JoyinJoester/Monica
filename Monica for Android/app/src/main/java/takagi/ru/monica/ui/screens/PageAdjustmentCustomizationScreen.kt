@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LinearScale
@@ -604,8 +605,37 @@ fun PasswordListCustomizationScreen(
                             }
                         }
 
+                        if (settings.passwordListQuickAccessEnabled) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.7f)
+                                )
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.History,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onTertiaryContainer
+                                    )
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        text = stringResource(R.string.password_list_quick_access_switch_title),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                                    )
+                                }
+                            }
+                        }
+
                         if ((!settings.passwordListQuickFiltersEnabled || selectedQuickFilterItems.isEmpty()) &&
-                            !settings.passwordListQuickFoldersEnabled
+                            !settings.passwordListQuickFoldersEnabled &&
+                            !settings.passwordListQuickAccessEnabled
                         ) {
                             Text(
                                 text = stringResource(R.string.password_list_preview_empty),
@@ -796,6 +826,35 @@ fun PasswordListCustomizationScreen(
                             }
                         }
                     }
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(imageVector = Icons.Default.History, contentDescription = null)
+                        Spacer(modifier = Modifier.size(10.dp))
+                        Text(
+                            text = stringResource(R.string.password_list_quick_access_switch_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Switch(
+                            checked = settings.passwordListQuickAccessEnabled,
+                            onCheckedChange = viewModel::updatePasswordListQuickAccessEnabled
+                        )
+                    }
+                    Text(
+                        text = stringResource(R.string.password_list_quick_access_switch_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }

@@ -146,6 +146,12 @@
     <string name="secret_key_hint">Khóa bí mật được mã hóa Base32, thường hiển thị dưới mã QR</string>
     <string name="enter_secret_key">Vui lòng nhập khóa bí mật</string>
     <string name="scan_qr_code">Quét mã QR</string>
+    <string name="totp_import_uri_action">Nhập URL</string>
+    <string name="totp_import_uri_dialog_title">Nhập URL xác thực</string>
+    <string name="totp_import_uri_dialog_label">URL xác thực</string>
+    <string name="totp_import_uri_dialog_hint">otpauth://totp/...</string>
+    <string name="totp_import_uri_dialog_supporting">Dán liên kết otpauth://, otpauth-migration:// hoặc motp://</string>
+    <string name="totp_import_uri_empty">Vui lòng dán URL xác thực</string>
     <string name="issuer">Nhà phát hành</string>
     <string name="issuer_example">Ví dụ: Google</string>
     <string name="account_name">Tên tài khoản</string>
@@ -705,6 +711,8 @@
     <string name="webdav_backup">Sao lưu WebDAV</string>
     <string name="webdav_backup_description">Sao lưu lên máy chủ WebDAV</string>
     <string name="webdav_config">Cấu hình WebDAV</string>
+    <string name="webdav_fill_from_password">Điền từ kho mật khẩu</string>
+    <string name="webdav_fill_from_password_applied">Đã điền cấu hình WebDAV từ mật khẩu đã chọn</string>
     <string name="webdav_server_url">URL máy chủ</string>
     <string name="webdav_test_connection">Kiểm tra kết nối</string>
     <string name="webdav_reconfigure">Cấu hình lại</string>
@@ -1632,6 +1640,7 @@
     <string name="import_type_steam_title">Steam Guard</string>
     <string name="import_type_steam_desc">Nhap token Steam tu tep maFile</string>
     <string name="import_type_steam_file_hint">Chon tep .maFile</string>
+    <string name="steam_login_fill_from_password_applied">Da dien thong tin dang nhap Steam tu mat khau da chon</string>
     <string name="import_type_csv_monica_title">Monica CSV</string>
     <string name="import_type_csv_monica_desc">Nhap CSV duoc xuat boi Monica</string>
     <string name="import_type_csv_monica_file_hint">Chon tep Monica .csv</string>

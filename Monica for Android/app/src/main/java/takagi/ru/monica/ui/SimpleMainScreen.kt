@@ -105,6 +105,7 @@ import kotlinx.coroutines.delay
 import takagi.ru.monica.R
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.PasskeyEntry
+import takagi.ru.monica.data.PasswordQuickAccessManager
 import takagi.ru.monica.data.model.PasskeyBindingCodec
 import takagi.ru.monica.data.model.TimelineEvent
 import takagi.ru.monica.utils.BiometricHelper
@@ -148,6 +149,8 @@ import takagi.ru.monica.ui.components.QuickActionItem
 import takagi.ru.monica.ui.components.QuickAddCallback
 import takagi.ru.monica.ui.components.SyncStatusIcon
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
+import takagi.ru.monica.ui.components.PasswordQuickAccessItem
+import takagi.ru.monica.ui.components.PasswordQuickAccessSheet
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
@@ -595,6 +598,7 @@ fun SimpleMainScreen(
     var onDeleteSelectedPasswords by remember { mutableStateOf({}) }
     var passwordListShowBackToTop by remember { mutableStateOf(false) }
     var passwordScrollToTopRequestKey by remember { mutableIntStateOf(0) }
+    var showPasswordQuickAccessSheet by rememberSaveable { mutableStateOf(false) }
     
     val appSettings by settingsViewModel.settings.collectAsState()
     
@@ -798,6 +802,31 @@ fun SimpleMainScreen(
     val categories by passwordViewModel.categories.collectAsState()
     val currentFilter by passwordViewModel.categoryFilter.collectAsState()
     val allPasswords by passwordViewModel.allPasswords.collectAsState(initial = emptyList())
+    val passwordQuickAccessManager = remember(context) { PasswordQuickAccessManager(context) }
+    val passwordQuickAccessStats by passwordQuickAccessManager.statsFlow.collectAsState(initial = emptyMap())
+    val passwordQuickAccessItems = remember(allPasswords, passwordQuickAccessStats) {
+        allPasswords.mapNotNull { entry ->
+            val stat = passwordQuickAccessStats[entry.id] ?: return@mapNotNull null
+            PasswordQuickAccessItem(
+                entry = entry,
+                openCount = stat.openCount,
+                lastOpenedAt = stat.lastOpenedAt
+            )
+        }
+    }
+    val recentOpenedPasswords = remember(passwordQuickAccessItems) {
+        passwordQuickAccessItems
+            .sortedByDescending { it.lastOpenedAt }
+            .take(80)
+    }
+    val frequentOpenedPasswords = remember(passwordQuickAccessItems) {
+        passwordQuickAccessItems
+            .sortedWith(
+                compareByDescending<PasswordQuickAccessItem> { it.openCount }
+                    .thenByDescending { it.lastOpenedAt }
+            )
+            .take(80)
+    }
     val localPasskeys by passkeyViewModel.allPasskeys.collectAsState(initial = emptyList())
     val passkeyTotalCount = localPasskeys.size
     val passkeyBoundCount = localPasskeys.count { it.boundPasswordId != null }
@@ -1020,6 +1049,11 @@ fun SimpleMainScreen(
     }
 
     val handlePasswordDetailOpen: (Long) -> Unit = { passwordId ->
+        if (appSettings.passwordListQuickAccessEnabled) {
+            scope.launch {
+                passwordQuickAccessManager.recordOpen(passwordId)
+            }
+        }
         if (isCompactWidth) {
             onNavigateToPasswordDetail(passwordId)
         } else {
@@ -2116,6 +2150,13 @@ fun SimpleMainScreen(
             currentTab == BottomNavItem.Passwords &&
             !isAnySelectionMode &&
             passwordListShowBackToTop
+    val shouldShowQuickAccessFab =
+        showFab &&
+            isFabVisible &&
+            !isFabExpanded &&
+            currentTab == BottomNavItem.Passwords &&
+            appSettings.passwordListQuickAccessEnabled &&
+            !isAnySelectionMode
     
     AnimatedVisibility(
         visible = showFab && isFabVisible,
@@ -2124,6 +2165,41 @@ fun SimpleMainScreen(
         modifier = fabOverlayModifier
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
+            AnimatedVisibility(
+                visible = shouldShowQuickAccessFab,
+                enter = scaleIn(
+                    initialScale = 0.25f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessLow
+                    )
+                ) + fadeIn(animationSpec = tween(durationMillis = 120)),
+                exit = scaleOut(
+                    targetScale = 0.25f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioLowBouncy,
+                        stiffness = Spring.StiffnessMedium
+                    )
+                ) + fadeOut(animationSpec = tween(durationMillis = 90)),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(
+                        end = 16.dp,
+                        bottom = fabBottomOffset + 88.dp
+                    )
+            ) {
+                SmallFloatingActionButton(
+                    onClick = { showPasswordQuickAccessSheet = true },
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.History,
+                        contentDescription = stringResource(R.string.password_quick_access_title)
+                    )
+                }
+            }
+
             AnimatedVisibility(
                 visible = shouldShowBackToTopFab,
                 enter = scaleIn(
@@ -2299,6 +2375,22 @@ fun SimpleMainScreen(
         )
         }
     } // End if (showFab)
+
+    LaunchedEffect(currentTab, appSettings.passwordListQuickAccessEnabled) {
+        if ((currentTab != BottomNavItem.Passwords || !appSettings.passwordListQuickAccessEnabled) &&
+            showPasswordQuickAccessSheet
+        ) {
+            showPasswordQuickAccessSheet = false
+        }
+    }
+
+    PasswordQuickAccessSheet(
+        visible = showPasswordQuickAccessSheet,
+        recentItems = recentOpenedPasswords,
+        frequentItems = frequentOpenedPasswords,
+        onOpenPassword = { passwordId -> handlePasswordDetailOpen(passwordId) },
+        onDismiss = { showPasswordQuickAccessSheet = false }
+    )
 
     val navBarInsetBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val compactBottomOffset = if (useDraggableNav) {

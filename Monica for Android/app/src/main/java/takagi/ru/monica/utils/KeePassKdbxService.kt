@@ -211,6 +211,7 @@ class KeePassKdbxService(
             val count = entries.count { (entry, groupPath) -> entryToData(entry, groupPath) != null }
             Result.success(count)
         } catch (e: Exception) {
+            Log.e(TAG, "verifyDatabase failed (databaseId=$databaseId)", e)
             Result.failure(e)
         }
     }
@@ -230,6 +231,11 @@ class KeePassKdbxService(
             val count = entries.count { (entry, groupPath) -> entryToData(entry, groupPath) != null }
             Result.success(count)
         } catch (e: Exception) {
+            Log.e(
+                TAG,
+                "verifyExternalDatabase failed (uri=$fileUri, keyFile=${keyFileUri != null})",
+                e
+            )
             Result.failure(e)
         }
     }
@@ -1346,8 +1352,28 @@ class KeePassKdbxService(
 
     private suspend fun decodeDatabase(bytes: ByteArray, credentials: Credentials): KeePassDatabase {
         return withGlobalDecodeLock {
-            KeePassDatabase.decode(ByteArrayInputStream(bytes), credentials)
+            try {
+                KeePassDatabase.decode(ByteArrayInputStream(bytes), credentials)
+            } catch (t: Throwable) {
+                Log.e(
+                    TAG,
+                    "KDBX decode failed. ${databaseHeaderSummary(bytes)}",
+                    t
+                )
+                throw t
+            }
         }
+    }
+
+    private fun databaseHeaderSummary(bytes: ByteArray): String {
+        val headerLength = bytes.size.coerceAtMost(16)
+        val headerHex = buildString {
+            for (index in 0 until headerLength) {
+                if (index > 0) append(' ')
+                append(String.format(Locale.US, "%02X", bytes[index].toInt() and 0xFF))
+            }
+        }
+        return "bytes=${bytes.size}, header[$headerLength]=$headerHex"
     }
 
     private fun buildCredentials(

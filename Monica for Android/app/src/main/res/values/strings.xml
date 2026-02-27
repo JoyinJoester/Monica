@@ -214,6 +214,12 @@
     <string name="secret_key_hint">Base32-encoded secret key, usually shown below QR code</string>
     <string name="enter_secret_key">Please enter secret key</string>
     <string name="scan_qr_code">Scan QR code</string>
+    <string name="totp_import_uri_action">Import URL</string>
+    <string name="totp_import_uri_dialog_title">Import authenticator URL</string>
+    <string name="totp_import_uri_dialog_label">Authenticator URL</string>
+    <string name="totp_import_uri_dialog_hint">otpauth://totp/...</string>
+    <string name="totp_import_uri_dialog_supporting">Paste an otpauth://, otpauth-migration://, or motp:// link</string>
+    <string name="totp_import_uri_empty">Please paste an authenticator URL</string>
     <string name="issuer">Issuer</string>
     <string name="issuer_example">Example: Google</string>
     <string name="account_name">Account Name</string>
@@ -1010,6 +1016,8 @@
     <string name="webdav_backup">WebDAV Backup</string>
     <string name="webdav_backup_description">Backup to WebDAV server</string>
     <string name="webdav_config">WebDAV Configuration</string>
+    <string name="webdav_fill_from_password">Fill from password vault</string>
+    <string name="webdav_fill_from_password_applied">WebDAV fields filled from selected password</string>
     <string name="webdav_server_url">Server URL</string>
     <string name="webdav_test_connection">Test Connection</string>
     <string name="webdav_reconfigure">Reconfigure</string>
@@ -2421,6 +2429,7 @@
     <string name="import_type_steam_guard_json_hint">Paste full JSON containing shared_secret and serial_number</string>
     <string name="import_type_steam_custom_name_label">Display name (optional)</string>
     <string name="import_type_steam_custom_name_hint">Leave empty to use account_name from JSON</string>
+    <string name="steam_login_fill_from_password_applied">Steam login fields filled from selected password</string>
     <string name="import_type_csv_monica_title">Monica CSV</string>
     <string name="import_type_csv_monica_desc">Import CSV exported by Monica</string>
     <string name="import_type_csv_monica_file_hint">Select Monica .csv file</string>
@@ -2593,6 +2602,8 @@
     <string name="password_list_quick_folders_style_title">Quick Folder Style</string>
     <string name="password_list_quick_folders_style_classic">Classic</string>
     <string name="password_list_quick_folders_style_m3">Card + Path banner</string>
+    <string name="password_list_quick_access_switch_title">Recent &amp; Frequent Button</string>
+    <string name="password_list_quick_access_switch_desc">Show a quick-entry button above Add FAB for recently opened and frequently opened passwords.</string>
     <string name="password_list_quick_filter_favorite">Favorites</string>
     <string name="password_list_quick_filter_2fa">2FA</string>
     <string name="password_list_quick_filter_notes">Notes</string>
@@ -2656,5 +2667,13 @@
     <string name="authenticator_card_display_content_title">Card display content</string>
     <string name="authenticator_card_display_field_desc">Title is always displayed. You can customize and reorder up to 2 extra lines.</string>
     <string name="authenticator_card_field_limit_hint">Only the first 2 selected fields are shown on cards.</string>
+    <string name="password_quick_access_title">Recent &amp; frequent</string>
+    <string name="password_quick_access_desc">Open passwords you use most without searching.</string>
+    <string name="password_quick_access_recent">Recent</string>
+    <string name="password_quick_access_frequent">Frequent</string>
+    <string name="password_quick_access_empty_recent">No recent password records yet</string>
+    <string name="password_quick_access_empty_frequent">No frequent password records yet</string>
+    <string name="password_quick_access_last_opened">Last opened: %1$s</string>
+    <string name="password_quick_access_open_count">%1$d times</string>
     <string name="version_code_max" translatable="false">9223372036854775807</string>
 </resources>

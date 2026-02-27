@@ -95,6 +95,7 @@ class SettingsManager(private val context: Context) {
         private val PASSWORD_LIST_QUICK_FILTER_ITEMS_KEY = stringPreferencesKey("password_list_quick_filter_items") // 密码列表快捷筛选显示内容
         private val PASSWORD_LIST_QUICK_FOLDERS_ENABLED_KEY = booleanPreferencesKey("password_list_quick_folders_enabled") // 密码列表快捷文件夹开关
         private val PASSWORD_LIST_QUICK_FOLDER_STYLE_KEY = stringPreferencesKey("password_list_quick_folder_style") // 密码列表快捷文件夹展示样式
+        private val PASSWORD_LIST_QUICK_ACCESS_ENABLED_KEY = booleanPreferencesKey("password_list_quick_access_enabled") // 密码列表“最近/常用”快捷入口开关
         private val PASSWORD_LIST_TOP_MODULES_ORDER_KEY = stringPreferencesKey("password_list_top_modules_order") // 密码列表顶部模块顺序
         private val HIDE_FAB_ON_SCROLL_KEY = booleanPreferencesKey("hide_fab_on_scroll") // 滚动隐藏 FAB
         private val SECURITY_ANALYSIS_AUTO_ENABLED_KEY = booleanPreferencesKey("security_analysis_auto_enabled") // 安全分析自动分析
@@ -350,6 +351,7 @@ class SettingsManager(private val context: Context) {
                         ?: PasswordListQuickFolderStyle.CLASSIC.name
                 )
             }.getOrDefault(PasswordListQuickFolderStyle.CLASSIC),
+            passwordListQuickAccessEnabled = preferences[PASSWORD_LIST_QUICK_ACCESS_ENABLED_KEY] ?: true,
             passwordListTopModulesOrder = parsedTopModulesOrder,
             noteGridLayout = preferences[NOTE_GRID_LAYOUT_KEY] ?: true,
             autofillAuthRequired = preferences[AUTOFILL_AUTH_REQUIRED_KEY] ?: true, // 默认开启
@@ -677,6 +679,12 @@ class SettingsManager(private val context: Context) {
     suspend fun updatePasswordListQuickFolderStyle(style: PasswordListQuickFolderStyle) {
         dataStore.edit { preferences ->
             preferences[PASSWORD_LIST_QUICK_FOLDER_STYLE_KEY] = style.name
+        }
+    }
+
+    suspend fun updatePasswordListQuickAccessEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PASSWORD_LIST_QUICK_ACCESS_ENABLED_KEY] = enabled
         }
     }
 

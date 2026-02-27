@@ -2,6 +2,7 @@ package takagi.ru.monica.ui.screens
 
 import android.app.Activity
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.BorderStroke
@@ -25,6 +26,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
+import takagi.ru.monica.data.PasswordDatabase
+import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import takagi.ru.monica.util.DataExportImportManager
 import takagi.ru.monica.util.FileOperationHelper
 import takagi.ru.monica.viewmodel.DataExportImportViewModel
@@ -187,6 +190,13 @@ fun ImportDataScreen(
     var steamLoginPendingSessionId by remember { mutableStateOf<String?>(null) }
     var steamLoginChallengeType by remember { mutableStateOf(0) }
     var steamLoginChallengeHint by remember { mutableStateOf("") }
+    var showSteamPasswordPicker by remember { mutableStateOf(false) }
+
+    val pickerSecurityManager = remember { takagi.ru.monica.security.SecurityManager(context) }
+    val passwordDatabase = remember(context) { PasswordDatabase.getDatabase(context) }
+    val passwordEntriesForPicker by passwordDatabase.passwordEntryDao()
+        .getAllPasswordEntries()
+        .collectAsState(initial = emptyList())
     
     // 导入类型信息列表
     val importTypes = listOf(
@@ -687,6 +697,15 @@ fun ImportDataScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            OutlinedButton(
+                                onClick = { showSteamPasswordPicker = true },
+                                modifier = Modifier.fillMaxWidth(),
+                                enabled = steamLoginPendingSessionId.isNullOrBlank()
+                            ) {
+                                Icon(Icons.Default.Key, contentDescription = null)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(stringResource(R.string.autofill_select_password))
+                            }
                             OutlinedTextField(
                                 value = steamLoginUserNameInput,
                                 onValueChange = { steamLoginUserNameInput = it },
@@ -869,6 +888,36 @@ fun ImportDataScreen(
             // 底部留白，避免被底部栏遮挡
             Spacer(modifier = Modifier.height(80.dp))
         }
+    }
+
+    if (showSteamPasswordPicker) {
+        PasswordEntryPickerBottomSheet(
+            visible = true,
+            title = stringResource(R.string.select_password_to_bind),
+            passwords = passwordEntriesForPicker.filter { !it.isDeleted },
+            onDismiss = { showSteamPasswordPicker = false },
+            onSelect = { entry ->
+                val resolvedUsername = runCatching { pickerSecurityManager.decryptData(entry.username) }
+                    .getOrNull()
+                    ?.trim()
+                    .takeUnless { it.isNullOrBlank() }
+                    ?: entry.username.trim()
+                val resolvedPassword = runCatching { pickerSecurityManager.decryptData(entry.password) }
+                    .getOrNull()
+                    ?.trim()
+                    .takeUnless { it.isNullOrBlank() }
+                    ?: entry.password.trim()
+
+                steamLoginUserNameInput = resolvedUsername
+                steamLoginPasswordInput = resolvedPassword
+                showSteamPasswordPicker = false
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.steam_login_fill_from_password_applied),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        )
     }
     
     // 密码输入对话框
