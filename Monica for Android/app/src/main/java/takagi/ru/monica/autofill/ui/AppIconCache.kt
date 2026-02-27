@@ -3,11 +3,17 @@ package takagi.ru.monica.autofill.ui
 import android.content.pm.PackageManager
 import android.util.LruCache
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.graphics.drawable.toBitmap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * 应用图标LRU缓存
@@ -29,30 +35,24 @@ object AppIconCache {
      * @return ImageBitmap或null
      */
     fun getIcon(packageName: String, packageManager: PackageManager): ImageBitmap? {
-        android.util.Log.d("AppIconCache", "getIcon: packageName = $packageName")
-        
         // 先从内存缓存获取
         val cached = cache.get(packageName)
         if (cached != null) {
-            android.util.Log.d("AppIconCache", "getIcon: returning cached icon for $packageName")
             return cached
         }
         
         // 检查是否在"缺失"缓存中
         if (packageName in missingIcons) {
-            android.util.Log.d("AppIconCache", "getIcon: returning cached null (missing) for $packageName")
             return null
         }
         
         // 缓存未命中,加载图标
         val icon = try {
             val drawable = packageManager.getApplicationIcon(packageName)
-            android.util.Log.d("AppIconCache", "getIcon: successfully loaded icon for $packageName")
             // 使用固定尺寸转换，避免某些 Drawable (如 AdaptiveIconDrawable) 崩溃
             val size = 96 // 合适的图标尺寸
             drawable.toBitmap(size, size).asImageBitmap()
         } catch (e: PackageManager.NameNotFoundException) {
-            android.util.Log.w("AppIconCache", "getIcon: app not found: $packageName", e)
             null
         } catch (e: OutOfMemoryError) {
             android.util.Log.e("AppIconCache", "getIcon: OOM loading icon for $packageName", e)
@@ -65,10 +65,8 @@ object AppIconCache {
         // 存入对应的缓存
         if (icon != null) {
             cache.put(packageName, icon)
-            android.util.Log.d("AppIconCache", "getIcon: cached icon for $packageName")
         } else {
             missingIcons.add(packageName)
-            android.util.Log.d("AppIconCache", "getIcon: marked $packageName as missing")
         }
         return icon
     }
@@ -133,8 +131,16 @@ object AppIconCache {
 fun rememberAppIcon(packageName: String): ImageBitmap? {
     val context = LocalContext.current
     val packageManager = context.packageManager
-    
-    return remember(packageName) {
-        AppIconCache.getIcon(packageName, packageManager)
+
+    var icon by remember(packageName) { mutableStateOf<ImageBitmap?>(null) }
+    LaunchedEffect(packageName) {
+        if (packageName.isBlank()) {
+            icon = null
+            return@LaunchedEffect
+        }
+        icon = withContext(Dispatchers.IO) {
+            AppIconCache.getIcon(packageName, packageManager)
+        }
     }
+    return icon
 }

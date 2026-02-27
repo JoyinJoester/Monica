@@ -47,61 +47,69 @@ object FaviconCache {
             return it
         }
 
-        // 2. Check disk cache
-        val cacheDir = File(context.cacheDir, CACHE_DIR_NAME)
-        if (!cacheDir.exists()) {
-            cacheDir.mkdirs()
-        }
-        val cacheFile = File(cacheDir, "$cacheKey.png")
-        if (cacheFile.exists()) {
-            try {
-                val bitmap = BitmapFactory.decodeFile(cacheFile.absolutePath)
-                if (bitmap != null) {
-                    val imageBitmap = bitmap.asImageBitmap()
-                    memoryCache.put(cacheKey, imageBitmap)
-                    return imageBitmap
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error reading from disk cache", e)
-            }
-        }
-
-        // 3. Fetch from network
         try {
             // Using Google S2 service for favicons
             // sz=64 requests 64x64 icon
             val faviconUrl = "https://www.google.com/s2/favicons?domain=$domain&sz=64"
-            
+
             return withContext(Dispatchers.IO) {
+                memoryCache.get(cacheKey)?.let { cached ->
+                    return@withContext cached
+                }
+
+                // 2. Check disk cache (IO thread)
+                val cacheDir = File(context.cacheDir, CACHE_DIR_NAME)
+                if (!cacheDir.exists()) {
+                    cacheDir.mkdirs()
+                }
+                val cacheFile = File(cacheDir, "$cacheKey.png")
+                if (cacheFile.exists()) {
+                    try {
+                        val bitmap = BitmapFactory.decodeFile(cacheFile.absolutePath)
+                        if (bitmap != null) {
+                            val imageBitmap = bitmap.asImageBitmap()
+                            memoryCache.put(cacheKey, imageBitmap)
+                            return@withContext imageBitmap
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error reading from disk cache", e)
+                    }
+                }
+
+                // 3. Fetch from network
                 val connection = URL(faviconUrl).openConnection() as HttpURLConnection
                 connection.connectTimeout = 5000
                 connection.readTimeout = 5000
-                
-                if (connection.responseCode == HttpURLConnection.HTTP_OK) {
-                    val inputStream = connection.inputStream
-                    val bitmap = BitmapFactory.decodeStream(inputStream)
-                    inputStream.close()
-                    
-                    if (bitmap != null) {
-                        // Save to disk
-                        try {
-                            val out = FileOutputStream(cacheFile)
-                            bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
-                            out.flush()
-                            out.close()
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error saving to disk cache", e)
-                        }
 
-                        // Save to memory
-                        val imageBitmap = bitmap.asImageBitmap()
-                        memoryCache.put(cacheKey, imageBitmap)
-                        imageBitmap
+                try {
+                    if (connection.responseCode == HttpURLConnection.HTTP_OK) {
+                        val inputStream = connection.inputStream
+                        val bitmap = BitmapFactory.decodeStream(inputStream)
+                        inputStream.close()
+
+                        if (bitmap != null) {
+                            // Save to disk
+                            try {
+                                val out = FileOutputStream(cacheFile)
+                                bitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                                out.flush()
+                                out.close()
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error saving to disk cache", e)
+                            }
+
+                            // Save to memory
+                            val imageBitmap = bitmap.asImageBitmap()
+                            memoryCache.put(cacheKey, imageBitmap)
+                            imageBitmap
+                        } else {
+                            null
+                        }
                     } else {
                         null
                     }
-                } else {
-                    null
+                } finally {
+                    connection.disconnect()
                 }
             }
         } catch (e: CancellationException) {

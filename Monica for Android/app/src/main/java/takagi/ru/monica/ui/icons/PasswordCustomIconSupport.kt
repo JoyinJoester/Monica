@@ -371,15 +371,16 @@ private object SimpleIconCache {
 
         val diskDir = File(context.cacheDir, DISK_DIR).also { if (!it.exists()) it.mkdirs() }
         val diskFile = File(diskDir, "$key.png")
-        if (diskFile.exists()) {
-            BitmapFactory.decodeFile(diskFile.absolutePath)?.let { bitmap ->
-                val image = bitmap.asImageBitmap()
-                memory.put(key, image)
-                return image
-            }
-        }
 
         return withContext(Dispatchers.IO) {
+            if (diskFile.exists()) {
+                BitmapFactory.decodeFile(diskFile.absolutePath)?.let { bitmap ->
+                    val image = bitmap.asImageBitmap()
+                    memory.put(key, image)
+                    return@withContext image
+                }
+            }
+
             runCatching {
                 val bitmap = fetchSimpleIconBitmap(context, normalizedSlug, darkTheme) ?: return@runCatching null
                 FileOutputStream(diskFile).use { out ->

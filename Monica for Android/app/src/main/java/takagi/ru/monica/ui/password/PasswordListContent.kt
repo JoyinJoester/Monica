@@ -101,6 +101,8 @@ import androidx.activity.compose.BackHandler
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import takagi.ru.monica.R
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.PasskeyEntry
@@ -222,7 +224,7 @@ fun PasswordListContent(
 ) {
     val coroutineScope = rememberCoroutineScope()
     val passwordEntries by viewModel.passwordEntries.collectAsState()
-    val allPasswords by viewModel.allPasswords.collectAsState()
+    val allPasswords by viewModel.allPasswordsForUi.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val categories by viewModel.categories.collectAsState()
     val currentFilter by viewModel.categoryFilter.collectAsState()
@@ -339,6 +341,7 @@ fun PasswordListContent(
     var quickFilterUnstacked by rememberSaveable { mutableStateOf(false) }
     var manualStackGroupByEntryId by remember { mutableStateOf<Map<Long, String>>(emptyMap()) }
     var noStackEntryIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var lastCustomFieldEntryIds by remember { mutableStateOf<List<Long>>(emptyList()) }
     val configuredQuickFilterItems = appSettings.passwordListQuickFilterItems
     val quickFolderStyle = appSettings.passwordListQuickFolderStyle
     var quickFolderRootKey by rememberSaveable { mutableStateOf(QUICK_FOLDER_ROOT_ALL) }
@@ -457,14 +460,22 @@ fun PasswordListContent(
     val quickFolderRootFilter = remember(quickFolderRootKey) {
         quickFolderRootKey.toQuickFolderRootFilter()
     }
-    val quickFolderPasswordCountByCategoryId = remember(allPasswords) {
-        allPasswords
-            .asSequence()
-            .mapNotNull { entry ->
-                entry.categoryId?.let { categoryId -> categoryId to entry }
-            }
-            .groupingBy { (categoryId, _) -> categoryId }
-            .eachCount()
+    val quickFolderPasswordCountByCategoryId = remember(
+        allPasswords,
+        appSettings.passwordListQuickFoldersEnabled,
+        currentFilter
+    ) {
+        if (!appSettings.passwordListQuickFoldersEnabled || !currentFilter.supportsQuickFolders()) {
+            emptyMap()
+        } else {
+            allPasswords
+                .asSequence()
+                .mapNotNull { entry ->
+                    entry.categoryId?.let { categoryId -> categoryId to entry }
+                }
+                .groupingBy { (categoryId, _) -> categoryId }
+                .eachCount()
+        }
     }
     val quickFolderShortcuts = remember(
         appSettings.passwordListQuickFoldersEnabled,
@@ -675,9 +686,7 @@ fun PasswordListContent(
         quickFilterManualStackOnly,
         quickFilterNeverStack,
         quickFilterUnstacked,
-        effectiveGroupMode,
         effectiveStackCardMode,
-        isLocalOnlyView,
         manualStackGroupByEntryId,
         noStackEntryIds
     ) {
@@ -706,7 +715,10 @@ fun PasswordListContent(
             if (quickFilterNeverStack && takagi.ru.monica.data.PasswordListQuickFilterItem.NEVER_STACK in configuredQuickFilterItems) {
                 filtered = filtered.filter { it.id in noStackEntryIds }
             }
-            if (quickFilterUnstacked && takagi.ru.monica.data.PasswordListQuickFilterItem.UNSTACKED in configuredQuickFilterItems) {
+            if (quickFilterUnstacked &&
+                takagi.ru.monica.data.PasswordListQuickFilterItem.UNSTACKED in configuredQuickFilterItems &&
+                effectiveStackCardMode != StackCardMode.ALWAYS_EXPANDED
+            ) {
                 val singleCardEntryIds = buildGroupedPasswordsForEntries(filtered)
                     .values
                     .asSequence()
@@ -735,8 +747,13 @@ fun PasswordListContent(
         if (allIds.isEmpty()) {
             manualStackGroupByEntryId = emptyMap()
             noStackEntryIds = emptySet()
+            lastCustomFieldEntryIds = emptyList()
             return@LaunchedEffect
         }
+        if (allIds == lastCustomFieldEntryIds) {
+            return@LaunchedEffect
+        }
+        lastCustomFieldEntryIds = allIds
         val fieldMap = viewModel.getCustomFieldsByEntryIds(allIds)
         manualStackGroupByEntryId = fieldMap.mapNotNull { (entryId, fields) ->
             val groupId = fields.firstOrNull {
@@ -752,15 +769,25 @@ fun PasswordListContent(
         }.toSet()
     }
     
-    // 根据分组模式对密码进行分组
-    val groupedPasswords = remember(
+    // 根据分组模式对密码进行分组（后台线程计算，避免阻塞首滑）
+    var groupedPasswords by remember {
+        mutableStateOf<Map<String, List<takagi.ru.monica.data.PasswordEntry>>>(emptyMap())
+    }
+    LaunchedEffect(
         visiblePasswordEntries,
         effectiveGroupMode,
         effectiveStackCardMode,
         manualStackGroupByEntryId,
         noStackEntryIds
     ) {
-        buildGroupedPasswordsForEntries(visiblePasswordEntries)
+        val sourceEntries = visiblePasswordEntries
+        if (sourceEntries.isEmpty()) {
+            groupedPasswords = emptyMap()
+            return@LaunchedEffect
+        }
+        groupedPasswords = withContext(Dispatchers.Default) {
+            buildGroupedPasswordsForEntries(sourceEntries)
+        }
     }
     
     // 定义回调函数

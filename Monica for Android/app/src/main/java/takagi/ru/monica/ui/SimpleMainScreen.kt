@@ -91,6 +91,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.runtime.collectAsState
@@ -102,6 +103,7 @@ import androidx.activity.compose.BackHandler
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import takagi.ru.monica.R
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.PasskeyEntry
@@ -716,13 +718,6 @@ fun SimpleMainScreen(
     val bitwardenSyncStatusByVault by bitwardenViewModel.syncStatusByVault.collectAsState()
     val totpFilter by totpViewModel.categoryFilter.collectAsState()
     val totpNewItemDefaults = remember(totpFilter) { defaultsFromTotpFilter(totpFilter) }
-    val nowMs by produceState(initialValue = System.currentTimeMillis()) {
-        while (true) {
-            delay(1000)
-            value = System.currentTimeMillis()
-        }
-    }
-
     val selectedGeneratorType by generatorViewModel.selectedGenerator.collectAsState()
     val symbolGeneratorResult by generatorViewModel.symbolResult.collectAsState()
     val passwordGeneratorResult by generatorViewModel.passwordResult.collectAsState()
@@ -801,17 +796,25 @@ fun SimpleMainScreen(
 
     val categories by passwordViewModel.categories.collectAsState()
     val currentFilter by passwordViewModel.categoryFilter.collectAsState()
-    val allPasswords by passwordViewModel.allPasswords.collectAsState(initial = emptyList())
+    val allPasswords by passwordViewModel.allPasswordsForUi.collectAsState(initial = emptyList())
     val passwordQuickAccessManager = remember(context) { PasswordQuickAccessManager(context) }
     val passwordQuickAccessStats by passwordQuickAccessManager.statsFlow.collectAsState(initial = emptyMap())
-    val passwordQuickAccessItems = remember(allPasswords, passwordQuickAccessStats) {
-        allPasswords.mapNotNull { entry ->
-            val stat = passwordQuickAccessStats[entry.id] ?: return@mapNotNull null
-            PasswordQuickAccessItem(
-                entry = entry,
-                openCount = stat.openCount,
-                lastOpenedAt = stat.lastOpenedAt
-            )
+    val passwordQuickAccessItems = remember(
+        allPasswords,
+        passwordQuickAccessStats,
+        appSettings.passwordListQuickAccessEnabled
+    ) {
+        if (!appSettings.passwordListQuickAccessEnabled) {
+            emptyList()
+        } else {
+            allPasswords.mapNotNull { entry ->
+                val stat = passwordQuickAccessStats[entry.id] ?: return@mapNotNull null
+                PasswordQuickAccessItem(
+                    entry = entry,
+                    openCount = stat.openCount,
+                    lastOpenedAt = stat.lastOpenedAt
+                )
+            }
         }
     }
     val recentOpenedPasswords = remember(passwordQuickAccessItems) {
@@ -1299,6 +1302,21 @@ fun SimpleMainScreen(
         else -> false
     }
     val activeVaultSyncState = activeBitwardenVault?.id?.let(bitwardenSyncStatusByVault::get)
+    val nowMs by produceState(
+        initialValue = System.currentTimeMillis(),
+        key1 = activeVaultSyncState?.lastSuccessAt
+    ) {
+        val lastSuccessAt = activeVaultSyncState?.lastSuccessAt ?: run {
+            value = System.currentTimeMillis()
+            return@produceState
+        }
+        while (isActive) {
+            val current = System.currentTimeMillis()
+            value = current
+            if (current - lastSuccessAt > 3000L) break
+            delay(250)
+        }
+    }
     val bottomStatusUiState = resolveBitwardenBottomStatusUiState(
         status = activeVaultSyncState,
         nowMs = nowMs
@@ -1350,196 +1368,102 @@ fun SimpleMainScreen(
             ),
             floatingActionButton = {}, // FAB 移至外层 Overlay
             content = { paddingValues ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(paddingValues)
-                ) {
-                    when (currentTab) {
-                        BottomNavItem.Passwords -> {
-                            PasswordListContent(
-                                viewModel = passwordViewModel,
-                                settingsViewModel = settingsViewModel,
-                                securityManager = securityManager,
-                                keepassDatabases = keepassDatabases,
-                                bitwardenVaults = bitwardenVaults,
-                                localKeePassViewModel = localKeePassViewModel,
-                                groupMode = passwordGroupMode,
-                                stackCardMode = stackCardMode,
-                                onRenameCategory = { category ->
-                                    passwordViewModel.updateCategory(category)
-                                },
-                                onDeleteCategory = { category ->
-                                    passwordViewModel.deleteCategory(category)
-                                },
-                                onPasswordClick = { password ->
-                                    handlePasswordDetailOpen(password.id)
-                                },
-                                onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onMoveToCategory, onStack, onDelete ->
-                                    isPasswordSelectionMode = isSelectionMode
-                                    selectedPasswordCount = count
-                                    onExitPasswordSelection = onExit
-                                    onSelectAllPasswords = onSelectAll
-                                    onFavoriteSelectedPasswords = onFavorite
-                                    onMoveToCategoryPasswords = onMoveToCategory
-                                    onManualStackPasswords = onStack
-                                    onDeleteSelectedPasswords = onDelete
-                                },
-                                onBackToTopVisibilityChange = { visible ->
-                                    passwordListShowBackToTop = visible
-                                },
-                                scrollToTopRequestKey = passwordScrollToTopRequestKey
-                            )
-                        }
-                        BottomNavItem.Authenticator -> {
-                            TotpListContent(
-                                viewModel = totpViewModel,
-                                passwordViewModel = passwordViewModel,
-                                onTotpClick = { totpId ->
-                                    handleTotpOpen(totpId)
-                                },
-                                onDeleteTotp = { totp ->
-                                    totpViewModel.deleteTotpItem(totp)
-                                },
-                                onQuickScanTotp = onNavigateToQuickTotpScan,
-                                onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onMoveToCategory, onDelete ->
-                                    isTotpSelectionMode = isSelectionMode
-                                    selectedTotpCount = count
-                                    onExitTotpSelection = onExit
-                                    onSelectAllTotp = onSelectAll
-                                    onMoveToCategoryTotp = onMoveToCategory
-                                    onDeleteSelectedTotp = onDelete
-                                }
-                            )
-                        }
-                        BottomNavItem.CardWallet -> {
-                            CardWalletContent(
-                                saveableStateHolder = cardWalletSaveableStateHolder,
-                                bankCardViewModel = bankCardViewModel,
-                                documentViewModel = documentViewModel,
-                                state = cardWalletContentState
-                            )
-                        }
-                        BottomNavItem.Generator -> {
-                            GeneratorScreen(
-                                onNavigateBack = {},
-                                viewModel = generatorViewModel,
-                                passwordViewModel = passwordViewModel,
-                                externalRefreshRequestKey = generatorRefreshRequestKey,
-                                onRefreshRequestConsumed = { generatorRefreshRequestKey = 0 },
-                                useExternalRefreshFab = true
-                            )
-                        }
-                        BottomNavItem.Notes -> {
-                            NoteListScreen(
-                                viewModel = noteViewModel,
-                                settingsViewModel = settingsViewModel,
-                                onNavigateToAddNote = handleNoteOpen,
-                                securityManager = securityManager,
-                                onSelectionModeChange = { isSelectionMode ->
-                                    isNoteSelectionMode = isSelectionMode
-                                }
-                            )
-                        }
-                        BottomNavItem.Timeline -> {
-                            TimelineScreen(
-                                viewModel = timelineViewModel,
-                                splitPaneMode = false
-                            )
-                        }
-                        BottomNavItem.Passkey -> {
-                            PasskeyListScreen(
-                                viewModel = passkeyViewModel,
-                                passwordViewModel = passwordViewModel,
-                                onNavigateToPasswordDetail = onNavigateToPasswordDetail,
-                                onPasskeyClick = {}
-                            )
-                        }
-                        BottomNavItem.Send -> {
-                            SendScreen(
-                                bitwardenViewModel = bitwardenViewModel
-                            )
-                        }
-                        BottomNavItem.Settings -> {
-                            SettingsTabContent(
-                                viewModel = settingsViewModel,
-                                onResetPassword = onNavigateToChangePassword,
-                                onSecurityQuestions = onNavigateToSecurityQuestion,
-                                onNavigateToSyncBackup = onNavigateToSyncBackup,
-                                onNavigateToAutofill = onNavigateToAutofill,
-                                onNavigateToPasskeySettings = onNavigateToPasskeySettings,
-                                onNavigateToBottomNavSettings = onNavigateToBottomNavSettings,
-                                onNavigateToColorScheme = onNavigateToColorScheme,
-                                onSecurityAnalysis = onSecurityAnalysis,
-                                onNavigateToDeveloperSettings = onNavigateToDeveloperSettings,
-                                onNavigateToPermissionManagement = onNavigateToPermissionManagement,
-                                onNavigateToMonicaPlus = onNavigateToMonicaPlus,
-                                onNavigateToExtensions = onNavigateToExtensions,
-                                onNavigateToPageCustomization = onNavigateToPageCustomization,
-                                onClearAllData = onClearAllData
-                            )
-                        }
-                    }
-
-                    // Selection Action Bars
-                    when {
-                        currentTab == BottomNavItem.Passwords && isPasswordSelectionMode -> {
-                            SelectionActionBar(
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(start = 16.dp, end = 16.dp, bottom = 20.dp),
-                                selectedCount = selectedPasswordCount,
-                                onExit = onExitPasswordSelection,
-                                onSelectAll = onSelectAllPasswords,
-                                onFavorite = onFavoriteSelectedPasswords,
-                                onMoveToCategory = onMoveToCategoryPasswords,
-                                onStack = onManualStackPasswords,
-                                onDelete = onDeleteSelectedPasswords
-                            )
-                        }
-                        currentTab == BottomNavItem.Authenticator && isTotpSelectionMode -> {
-                            SelectionActionBar(
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(start = 16.dp, end = 16.dp, bottom = 20.dp),
-                                selectedCount = selectedTotpCount,
-                                onExit = onExitTotpSelection,
-                                onSelectAll = onSelectAllTotp,
-                                onMoveToCategory = onMoveToCategoryTotp,
-                                onDelete = onDeleteSelectedTotp
-                            )
-                        }
-                        currentTab == BottomNavItem.CardWallet &&
-                            (cardWalletSubTab == CardWalletTab.BANK_CARDS || cardWalletSubTab == CardWalletTab.ALL) &&
-                            isBankCardSelectionMode -> {
-                            SelectionActionBar(
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(start = 16.dp, end = 16.dp, bottom = 20.dp),
-                                selectedCount = selectedBankCardCount,
-                                onExit = onExitBankCardSelection,
-                                onSelectAll = onSelectAllBankCards,
-                                onFavorite = onFavoriteBankCards,
-                                onMoveToCategory = onMoveToCategoryBankCards,
-                                onDelete = onDeleteSelectedBankCards
-                            )
-                        }
-                        currentTab == BottomNavItem.CardWallet &&
-                            cardWalletSubTab == CardWalletTab.DOCUMENTS &&
-                            isDocumentSelectionMode -> {
-                            SelectionActionBar(
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .padding(start = 16.dp, end = 16.dp, bottom = 20.dp),
-                                selectedCount = selectedDocumentCount,
-                                onExit = onExitDocumentSelection,
-                                onSelectAll = onSelectAllDocuments,
-                                onMoveToCategory = onMoveToCategoryDocuments,
-                                onDelete = onDeleteSelectedDocuments
-                            )
-                        }
-                    }
-                }
+                CompactDraggableTabContent(
+                    paddingValues = paddingValues,
+                    currentTab = currentTab,
+                    passwordViewModel = passwordViewModel,
+                    settingsViewModel = settingsViewModel,
+                    securityManager = securityManager,
+                    keepassDatabases = keepassDatabases,
+                    bitwardenVaults = bitwardenVaults,
+                    localKeePassViewModel = localKeePassViewModel,
+                    passwordGroupMode = passwordGroupMode,
+                    stackCardMode = stackCardMode,
+                    onPasswordOpen = handlePasswordDetailOpen,
+                    onPasswordSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onMoveToCategory, onStack, onDelete ->
+                        isPasswordSelectionMode = isSelectionMode
+                        selectedPasswordCount = count
+                        onExitPasswordSelection = onExit
+                        onSelectAllPasswords = onSelectAll
+                        onFavoriteSelectedPasswords = onFavorite
+                        onMoveToCategoryPasswords = onMoveToCategory
+                        onManualStackPasswords = onStack
+                        onDeleteSelectedPasswords = onDelete
+                    },
+                    onBackToTopVisibilityChange = { visible ->
+                        passwordListShowBackToTop = visible
+                    },
+                    passwordScrollToTopRequestKey = passwordScrollToTopRequestKey,
+                    totpViewModel = totpViewModel,
+                    onTotpOpen = handleTotpOpen,
+                    onNavigateToQuickTotpScan = onNavigateToQuickTotpScan,
+                    onTotpSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onMoveToCategory, onDelete ->
+                        isTotpSelectionMode = isSelectionMode
+                        selectedTotpCount = count
+                        onExitTotpSelection = onExit
+                        onSelectAllTotp = onSelectAll
+                        onMoveToCategoryTotp = onMoveToCategory
+                        onDeleteSelectedTotp = onDelete
+                    },
+                    cardWalletSaveableStateHolder = cardWalletSaveableStateHolder,
+                    bankCardViewModel = bankCardViewModel,
+                    documentViewModel = documentViewModel,
+                    cardWalletContentState = cardWalletContentState,
+                    generatorViewModel = generatorViewModel,
+                    generatorRefreshRequestKey = generatorRefreshRequestKey,
+                    onGeneratorRefreshRequestConsumed = { generatorRefreshRequestKey = 0 },
+                    noteViewModel = noteViewModel,
+                    onNavigateToAddNote = handleNoteOpen,
+                    onNoteSelectionModeChange = { isSelectionMode ->
+                        isNoteSelectionMode = isSelectionMode
+                    },
+                    timelineViewModel = timelineViewModel,
+                    passkeyViewModel = passkeyViewModel,
+                    onNavigateToPasswordDetail = onNavigateToPasswordDetail,
+                    bitwardenViewModel = bitwardenViewModel,
+                    onNavigateToChangePassword = onNavigateToChangePassword,
+                    onNavigateToSecurityQuestion = onNavigateToSecurityQuestion,
+                    onNavigateToSyncBackup = onNavigateToSyncBackup,
+                    onNavigateToAutofill = onNavigateToAutofill,
+                    onNavigateToPasskeySettings = onNavigateToPasskeySettings,
+                    onNavigateToBottomNavSettings = onNavigateToBottomNavSettings,
+                    onNavigateToColorScheme = onNavigateToColorScheme,
+                    onSecurityAnalysis = onSecurityAnalysis,
+                    onNavigateToDeveloperSettings = onNavigateToDeveloperSettings,
+                    onNavigateToPermissionManagement = onNavigateToPermissionManagement,
+                    onNavigateToMonicaPlus = onNavigateToMonicaPlus,
+                    onNavigateToExtensions = onNavigateToExtensions,
+                    onNavigateToPageCustomization = onNavigateToPageCustomization,
+                    onClearAllData = onClearAllData,
+                    cardWalletSubTab = cardWalletSubTab,
+                    isPasswordSelectionMode = isPasswordSelectionMode,
+                    selectedPasswordCount = selectedPasswordCount,
+                    onExitPasswordSelection = onExitPasswordSelection,
+                    onSelectAllPasswords = onSelectAllPasswords,
+                    onFavoriteSelectedPasswords = onFavoriteSelectedPasswords,
+                    onMoveToCategoryPasswords = onMoveToCategoryPasswords,
+                    onManualStackPasswords = onManualStackPasswords,
+                    onDeleteSelectedPasswords = onDeleteSelectedPasswords,
+                    isTotpSelectionMode = isTotpSelectionMode,
+                    selectedTotpCount = selectedTotpCount,
+                    onExitTotpSelection = onExitTotpSelection,
+                    onSelectAllTotp = onSelectAllTotp,
+                    onMoveToCategoryTotp = onMoveToCategoryTotp,
+                    onDeleteSelectedTotp = onDeleteSelectedTotp,
+                    isBankCardSelectionMode = isBankCardSelectionMode,
+                    selectedBankCardCount = selectedBankCardCount,
+                    onExitBankCardSelection = onExitBankCardSelection,
+                    onSelectAllBankCards = onSelectAllBankCards,
+                    onFavoriteBankCards = onFavoriteBankCards,
+                    onMoveToCategoryBankCards = onMoveToCategoryBankCards,
+                    onDeleteSelectedBankCards = onDeleteSelectedBankCards,
+                    isDocumentSelectionMode = isDocumentSelectionMode,
+                    selectedDocumentCount = selectedDocumentCount,
+                    onExitDocumentSelection = onExitDocumentSelection,
+                    onSelectAllDocuments = onSelectAllDocuments,
+                    onMoveToCategoryDocuments = onMoveToCategoryDocuments,
+                    onDeleteSelectedDocuments = onDeleteSelectedDocuments
+                )
             }
         )
     } else {
@@ -1976,66 +1900,40 @@ fun SimpleMainScreen(
                 }
             }
 
-            when {
-                currentTab == BottomNavItem.Passwords && isPasswordSelectionMode -> {
-                    SelectionActionBar(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(start = 16.dp, bottom = 20.dp),
-                        selectedCount = selectedPasswordCount,
-                        onExit = onExitPasswordSelection,
-                        onSelectAll = onSelectAllPasswords,
-                        onFavorite = onFavoriteSelectedPasswords,
-                        onMoveToCategory = onMoveToCategoryPasswords,
-                        onStack = onManualStackPasswords,
-                        onDelete = onDeleteSelectedPasswords
-                    )
-                }
-
-                currentTab == BottomNavItem.Authenticator && isTotpSelectionMode -> {
-                    SelectionActionBar(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(start = 16.dp, bottom = 20.dp),
-                        selectedCount = selectedTotpCount,
-                        onExit = onExitTotpSelection,
-                        onSelectAll = onSelectAllTotp,
-                        onMoveToCategory = onMoveToCategoryTotp,
-                        onDelete = onDeleteSelectedTotp
-                    )
-                }
-
-                currentTab == BottomNavItem.CardWallet &&
-                    (cardWalletSubTab == CardWalletTab.BANK_CARDS || cardWalletSubTab == CardWalletTab.ALL) &&
-                    isBankCardSelectionMode -> {
-                    SelectionActionBar(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(start = 16.dp, bottom = 20.dp),
-                        selectedCount = selectedBankCardCount,
-                        onExit = onExitBankCardSelection,
-                        onSelectAll = onSelectAllBankCards,
-                        onFavorite = onFavoriteBankCards,
-                        onMoveToCategory = onMoveToCategoryBankCards,
-                        onDelete = onDeleteSelectedBankCards
-                    )
-                }
-
-                currentTab == BottomNavItem.CardWallet &&
-                    cardWalletSubTab == CardWalletTab.DOCUMENTS &&
-                    isDocumentSelectionMode -> {
-                    SelectionActionBar(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(start = 16.dp, bottom = 20.dp),
-                        selectedCount = selectedDocumentCount,
-                        onExit = onExitDocumentSelection,
-                        onSelectAll = onSelectAllDocuments,
-                        onMoveToCategory = onMoveToCategoryDocuments,
-                        onDelete = onDeleteSelectedDocuments
-                    )
-                }
-            }
+            MainScreenSelectionBars(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(start = 16.dp, bottom = 20.dp),
+                currentTab = currentTab,
+                cardWalletSubTab = cardWalletSubTab,
+                isPasswordSelectionMode = isPasswordSelectionMode,
+                selectedPasswordCount = selectedPasswordCount,
+                onExitPasswordSelection = onExitPasswordSelection,
+                onSelectAllPasswords = onSelectAllPasswords,
+                onFavoriteSelectedPasswords = onFavoriteSelectedPasswords,
+                onMoveToCategoryPasswords = onMoveToCategoryPasswords,
+                onManualStackPasswords = onManualStackPasswords,
+                onDeleteSelectedPasswords = onDeleteSelectedPasswords,
+                isTotpSelectionMode = isTotpSelectionMode,
+                selectedTotpCount = selectedTotpCount,
+                onExitTotpSelection = onExitTotpSelection,
+                onSelectAllTotp = onSelectAllTotp,
+                onMoveToCategoryTotp = onMoveToCategoryTotp,
+                onDeleteSelectedTotp = onDeleteSelectedTotp,
+                isBankCardSelectionMode = isBankCardSelectionMode,
+                selectedBankCardCount = selectedBankCardCount,
+                onExitBankCardSelection = onExitBankCardSelection,
+                onSelectAllBankCards = onSelectAllBankCards,
+                onFavoriteBankCards = onFavoriteBankCards,
+                onMoveToCategoryBankCards = onMoveToCategoryBankCards,
+                onDeleteSelectedBankCards = onDeleteSelectedBankCards,
+                isDocumentSelectionMode = isDocumentSelectionMode,
+                selectedDocumentCount = selectedDocumentCount,
+                onExitDocumentSelection = onExitDocumentSelection,
+                onSelectAllDocuments = onSelectAllDocuments,
+                onMoveToCategoryDocuments = onMoveToCategoryDocuments,
+                onDeleteSelectedDocuments = onDeleteSelectedDocuments
+            )
         }
 
         if (isCompactWidth) {
@@ -2235,144 +2133,34 @@ fun SimpleMainScreen(
                 }
             }
 
-            SwipeableAddFab(
-                // 通过内部参数控制 FAB 位置，确保容器本身是全屏的
-                // NavigationBar 高度约 80dp + 系统导航条高度 + 边距
+            MainScreenAddFab(
                 fabBottomOffset = fabBottomOffset,
                 fabContainerColor = fabContainerColor,
-                modifier = Modifier,
-                onFabClickOverride = when (currentTab) {
-                    BottomNavItem.Passwords -> if (isCompactWidth) null else ({ handlePasswordAddOpen() })
-                    BottomNavItem.Authenticator -> if (isCompactWidth) null else ({ handleTotpAddOpen() })
-                    BottomNavItem.CardWallet -> if (isCompactWidth || cardWalletSubTab == CardWalletTab.ALL) {
-                        null
-                    } else {
-                        ({ handleWalletAddOpen() })
-                    }
-                    BottomNavItem.Notes -> if (isCompactWidth) null else ({ handleNoteOpen(null) })
-                    BottomNavItem.Send -> if (isCompactWidth) null else ({ handleSendAddOpen() })
-                    BottomNavItem.Generator -> ({ generatorRefreshRequestKey++ })
-                    else -> null
-                },
+                fabIconTint = fabIconTint,
+                currentTab = currentTab,
+                isCompactWidth = isCompactWidth,
+                cardWalletSubTab = cardWalletSubTab,
+                onPasswordAddOpen = handlePasswordAddOpen,
+                onTotpAddOpen = handleTotpAddOpen,
+                onWalletAddOpen = handleWalletAddOpen,
+                onNoteAddOpen = { handleNoteOpen(null) },
+                onSendAddOpen = handleSendAddOpen,
+                onGeneratorRefresh = { generatorRefreshRequestKey++ },
                 onExpandStateChanged = { expanded -> isFabExpanded = expanded },
-                fabContent = { expand ->
-                when (currentTab) {
-                    BottomNavItem.Passwords,
-                    BottomNavItem.Authenticator,
-                    BottomNavItem.CardWallet,
-                    BottomNavItem.Notes,
-                    BottomNavItem.Send -> {
-                         Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = stringResource(R.string.add),
-                            tint = fabIconTint
-                        )
-                    }
-                    BottomNavItem.Generator -> {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = stringResource(R.string.regenerate),
-                            tint = fabIconTint
-                        )
-                    }
-                    else -> { /* 不显示 */ }
-                }
-            },
-            expandedContent = { collapse ->
-                 Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.surface)
-                ) {
-                   when (currentTab) {
-                        BottomNavItem.Passwords -> {
-                            AddEditPasswordScreen(
-                                viewModel = passwordViewModel,
-                                totpViewModel = totpViewModel,
-                                bankCardViewModel = bankCardViewModel,
-                                localKeePassViewModel = localKeePassViewModel,
-                                passwordId = null,
-                                onNavigateBack = collapse
-                            )
-                        }
-                        BottomNavItem.Authenticator -> {
-                            val totpCategories by totpViewModel.categories.collectAsState()
-                            AddEditTotpScreen(
-                                totpId = null,
-                                initialData = null,
-                                initialTitle = "",
-                                initialNotes = "",
-                                initialCategoryId = totpNewItemDefaults.categoryId,
-                                initialKeePassDatabaseId = totpNewItemDefaults.keepassDatabaseId,
-                                initialBitwardenVaultId = totpNewItemDefaults.bitwardenVaultId,
-                                initialBitwardenFolderId = totpNewItemDefaults.bitwardenFolderId,
-                                categories = totpCategories,
-                                passwordViewModel = passwordViewModel,
-                                localKeePassViewModel = localKeePassViewModel,
-                                onSave = { title, notes, totpData, categoryId, keepassDatabaseId, bitwardenVaultId, bitwardenFolderId ->
-                                    totpViewModel.saveTotpItem(
-                                        id = null,
-                                        title = title,
-                                        notes = notes,
-                                        totpData = totpData,
-                                        categoryId = categoryId,
-                                        keepassDatabaseId = keepassDatabaseId,
-                                        bitwardenVaultId = bitwardenVaultId,
-                                        bitwardenFolderId = bitwardenFolderId
-                                    )
-                                    collapse()
-                                },
-                                onNavigateBack = collapse,
-                                onScanQrCode = {
-                                    collapse()
-                                    onNavigateToQuickTotpScan()
-                                }
-                            )
-                        }
-                        BottomNavItem.CardWallet -> {
-                            UnifiedWalletAddScreen(
-                                selectedType = walletUnifiedAddType,
-                                onTypeSelected = { walletUnifiedAddType = it },
-                                onNavigateBack = collapse,
-                                bankCardViewModel = bankCardViewModel,
-                                documentViewModel = documentViewModel,
-                                stateHolder = walletAddSaveableStateHolder
-                            )
-                        }
-                        BottomNavItem.Notes -> {
-                            AddEditNoteScreen(
-                                noteId = -1L,
-                                onNavigateBack = collapse,
-                                viewModel = noteViewModel
-                            )
-                        }
-                        BottomNavItem.Send -> {
-                            AddEditSendScreen(
-                                sendState = sendState,
-                                onNavigateBack = collapse,
-                                onCreate = { title, text, notes, password, maxAccessCount, hideEmail, hiddenText, expireInDays ->
-                                    bitwardenViewModel.createTextSend(
-                                        title = title,
-                                        text = text,
-                                        notes = notes,
-                                        password = password,
-                                        maxAccessCount = maxAccessCount,
-                                        hideEmail = hideEmail,
-                                        hiddenText = hiddenText,
-                                        expireInDays = expireInDays
-                                    )
-                                    collapse()
-                                }
-                            )
-                        }
-                        BottomNavItem.Generator -> {
-                            // Generator 使用全局 FAB 点击回调触发刷新，不走展开页面。
-                        }
-                        else -> { /* Should not happen */ }
-                    }
-                }
-            }
-        )
+                passwordViewModel = passwordViewModel,
+                totpViewModel = totpViewModel,
+                bankCardViewModel = bankCardViewModel,
+                localKeePassViewModel = localKeePassViewModel,
+                totpNewItemDefaults = totpNewItemDefaults,
+                onNavigateToQuickTotpScan = onNavigateToQuickTotpScan,
+                walletUnifiedAddType = walletUnifiedAddType,
+                onWalletUnifiedAddTypeChange = { walletUnifiedAddType = it },
+                documentViewModel = documentViewModel,
+                walletAddSaveableStateHolder = walletAddSaveableStateHolder,
+                noteViewModel = noteViewModel,
+                sendState = sendState,
+                bitwardenViewModel = bitwardenViewModel
+            )
         }
     } // End if (showFab)
 
@@ -2469,6 +2257,498 @@ fun SimpleMainScreen(
         )
     }
 
+}
+
+@Composable
+private fun CompactDraggableTabContent(
+    paddingValues: PaddingValues,
+    currentTab: BottomNavItem,
+    passwordViewModel: PasswordViewModel,
+    settingsViewModel: SettingsViewModel,
+    securityManager: SecurityManager,
+    keepassDatabases: List<takagi.ru.monica.data.LocalKeePassDatabase>,
+    bitwardenVaults: List<takagi.ru.monica.data.bitwarden.BitwardenVault>,
+    localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
+    passwordGroupMode: String,
+    stackCardMode: StackCardMode,
+    onPasswordOpen: (Long) -> Unit,
+    onPasswordSelectionModeChange: (
+        Boolean,
+        Int,
+        () -> Unit,
+        () -> Unit,
+        () -> Unit,
+        () -> Unit,
+        () -> Unit,
+        () -> Unit
+    ) -> Unit,
+    onBackToTopVisibilityChange: (Boolean) -> Unit,
+    passwordScrollToTopRequestKey: Int,
+    totpViewModel: takagi.ru.monica.viewmodel.TotpViewModel,
+    onTotpOpen: (Long) -> Unit,
+    onNavigateToQuickTotpScan: () -> Unit,
+    onTotpSelectionModeChange: (
+        Boolean,
+        Int,
+        () -> Unit,
+        () -> Unit,
+        () -> Unit,
+        () -> Unit
+    ) -> Unit,
+    cardWalletSaveableStateHolder: androidx.compose.runtime.saveable.SaveableStateHolder,
+    bankCardViewModel: BankCardViewModel,
+    documentViewModel: DocumentViewModel,
+    cardWalletContentState: CardWalletContentState,
+    generatorViewModel: GeneratorViewModel,
+    generatorRefreshRequestKey: Int,
+    onGeneratorRefreshRequestConsumed: () -> Unit,
+    noteViewModel: NoteViewModel,
+    onNavigateToAddNote: (Long?) -> Unit,
+    onNoteSelectionModeChange: (Boolean) -> Unit,
+    timelineViewModel: TimelineViewModel,
+    passkeyViewModel: PasskeyViewModel,
+    onNavigateToPasswordDetail: (Long) -> Unit,
+    bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel,
+    onNavigateToChangePassword: () -> Unit,
+    onNavigateToSecurityQuestion: () -> Unit,
+    onNavigateToSyncBackup: () -> Unit,
+    onNavigateToAutofill: () -> Unit,
+    onNavigateToPasskeySettings: () -> Unit,
+    onNavigateToBottomNavSettings: () -> Unit,
+    onNavigateToColorScheme: () -> Unit,
+    onSecurityAnalysis: () -> Unit,
+    onNavigateToDeveloperSettings: () -> Unit,
+    onNavigateToPermissionManagement: () -> Unit,
+    onNavigateToMonicaPlus: () -> Unit,
+    onNavigateToExtensions: () -> Unit,
+    onNavigateToPageCustomization: () -> Unit,
+    onClearAllData: (Boolean, Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit,
+    cardWalletSubTab: CardWalletTab,
+    isPasswordSelectionMode: Boolean,
+    selectedPasswordCount: Int,
+    onExitPasswordSelection: () -> Unit,
+    onSelectAllPasswords: () -> Unit,
+    onFavoriteSelectedPasswords: () -> Unit,
+    onMoveToCategoryPasswords: () -> Unit,
+    onManualStackPasswords: () -> Unit,
+    onDeleteSelectedPasswords: () -> Unit,
+    isTotpSelectionMode: Boolean,
+    selectedTotpCount: Int,
+    onExitTotpSelection: () -> Unit,
+    onSelectAllTotp: () -> Unit,
+    onMoveToCategoryTotp: () -> Unit,
+    onDeleteSelectedTotp: () -> Unit,
+    isBankCardSelectionMode: Boolean,
+    selectedBankCardCount: Int,
+    onExitBankCardSelection: () -> Unit,
+    onSelectAllBankCards: () -> Unit,
+    onFavoriteBankCards: () -> Unit,
+    onMoveToCategoryBankCards: () -> Unit,
+    onDeleteSelectedBankCards: () -> Unit,
+    isDocumentSelectionMode: Boolean,
+    selectedDocumentCount: Int,
+    onExitDocumentSelection: () -> Unit,
+    onSelectAllDocuments: () -> Unit,
+    onMoveToCategoryDocuments: () -> Unit,
+    onDeleteSelectedDocuments: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(paddingValues)
+    ) {
+        when (currentTab) {
+            BottomNavItem.Passwords -> {
+                PasswordListContent(
+                    viewModel = passwordViewModel,
+                    settingsViewModel = settingsViewModel,
+                    securityManager = securityManager,
+                    keepassDatabases = keepassDatabases,
+                    bitwardenVaults = bitwardenVaults,
+                    localKeePassViewModel = localKeePassViewModel,
+                    groupMode = passwordGroupMode,
+                    stackCardMode = stackCardMode,
+                    onRenameCategory = { category ->
+                        passwordViewModel.updateCategory(category)
+                    },
+                    onDeleteCategory = { category ->
+                        passwordViewModel.deleteCategory(category)
+                    },
+                    onPasswordClick = { password ->
+                        onPasswordOpen(password.id)
+                    },
+                    onSelectionModeChange = onPasswordSelectionModeChange,
+                    onBackToTopVisibilityChange = onBackToTopVisibilityChange,
+                    scrollToTopRequestKey = passwordScrollToTopRequestKey
+                )
+            }
+            BottomNavItem.Authenticator -> {
+                TotpListContent(
+                    viewModel = totpViewModel,
+                    passwordViewModel = passwordViewModel,
+                    onTotpClick = onTotpOpen,
+                    onDeleteTotp = { totp ->
+                        totpViewModel.deleteTotpItem(totp)
+                    },
+                    onQuickScanTotp = onNavigateToQuickTotpScan,
+                    onSelectionModeChange = onTotpSelectionModeChange
+                )
+            }
+            BottomNavItem.CardWallet -> {
+                CardWalletContent(
+                    saveableStateHolder = cardWalletSaveableStateHolder,
+                    bankCardViewModel = bankCardViewModel,
+                    documentViewModel = documentViewModel,
+                    state = cardWalletContentState
+                )
+            }
+            BottomNavItem.Generator -> {
+                GeneratorScreen(
+                    onNavigateBack = {},
+                    viewModel = generatorViewModel,
+                    passwordViewModel = passwordViewModel,
+                    externalRefreshRequestKey = generatorRefreshRequestKey,
+                    onRefreshRequestConsumed = onGeneratorRefreshRequestConsumed,
+                    useExternalRefreshFab = true
+                )
+            }
+            BottomNavItem.Notes -> {
+                NoteListScreen(
+                    viewModel = noteViewModel,
+                    settingsViewModel = settingsViewModel,
+                    onNavigateToAddNote = onNavigateToAddNote,
+                    securityManager = securityManager,
+                    onSelectionModeChange = onNoteSelectionModeChange
+                )
+            }
+            BottomNavItem.Timeline -> {
+                TimelineScreen(
+                    viewModel = timelineViewModel,
+                    splitPaneMode = false
+                )
+            }
+            BottomNavItem.Passkey -> {
+                PasskeyListScreen(
+                    viewModel = passkeyViewModel,
+                    passwordViewModel = passwordViewModel,
+                    onNavigateToPasswordDetail = onNavigateToPasswordDetail,
+                    onPasskeyClick = {}
+                )
+            }
+            BottomNavItem.Send -> {
+                SendScreen(
+                    bitwardenViewModel = bitwardenViewModel
+                )
+            }
+            BottomNavItem.Settings -> {
+                SettingsTabContent(
+                    viewModel = settingsViewModel,
+                    onResetPassword = onNavigateToChangePassword,
+                    onSecurityQuestions = onNavigateToSecurityQuestion,
+                    onNavigateToSyncBackup = onNavigateToSyncBackup,
+                    onNavigateToAutofill = onNavigateToAutofill,
+                    onNavigateToPasskeySettings = onNavigateToPasskeySettings,
+                    onNavigateToBottomNavSettings = onNavigateToBottomNavSettings,
+                    onNavigateToColorScheme = onNavigateToColorScheme,
+                    onSecurityAnalysis = onSecurityAnalysis,
+                    onNavigateToDeveloperSettings = onNavigateToDeveloperSettings,
+                    onNavigateToPermissionManagement = onNavigateToPermissionManagement,
+                    onNavigateToMonicaPlus = onNavigateToMonicaPlus,
+                    onNavigateToExtensions = onNavigateToExtensions,
+                    onNavigateToPageCustomization = onNavigateToPageCustomization,
+                    onClearAllData = onClearAllData
+                )
+            }
+        }
+
+        MainScreenSelectionBars(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(start = 16.dp, end = 16.dp, bottom = 20.dp),
+            currentTab = currentTab,
+            cardWalletSubTab = cardWalletSubTab,
+            isPasswordSelectionMode = isPasswordSelectionMode,
+            selectedPasswordCount = selectedPasswordCount,
+            onExitPasswordSelection = onExitPasswordSelection,
+            onSelectAllPasswords = onSelectAllPasswords,
+            onFavoriteSelectedPasswords = onFavoriteSelectedPasswords,
+            onMoveToCategoryPasswords = onMoveToCategoryPasswords,
+            onManualStackPasswords = onManualStackPasswords,
+            onDeleteSelectedPasswords = onDeleteSelectedPasswords,
+            isTotpSelectionMode = isTotpSelectionMode,
+            selectedTotpCount = selectedTotpCount,
+            onExitTotpSelection = onExitTotpSelection,
+            onSelectAllTotp = onSelectAllTotp,
+            onMoveToCategoryTotp = onMoveToCategoryTotp,
+            onDeleteSelectedTotp = onDeleteSelectedTotp,
+            isBankCardSelectionMode = isBankCardSelectionMode,
+            selectedBankCardCount = selectedBankCardCount,
+            onExitBankCardSelection = onExitBankCardSelection,
+            onSelectAllBankCards = onSelectAllBankCards,
+            onFavoriteBankCards = onFavoriteBankCards,
+            onMoveToCategoryBankCards = onMoveToCategoryBankCards,
+            onDeleteSelectedBankCards = onDeleteSelectedBankCards,
+            isDocumentSelectionMode = isDocumentSelectionMode,
+            selectedDocumentCount = selectedDocumentCount,
+            onExitDocumentSelection = onExitDocumentSelection,
+            onSelectAllDocuments = onSelectAllDocuments,
+            onMoveToCategoryDocuments = onMoveToCategoryDocuments,
+            onDeleteSelectedDocuments = onDeleteSelectedDocuments
+        )
+    }
+}
+
+@Composable
+private fun MainScreenSelectionBars(
+    modifier: Modifier,
+    currentTab: BottomNavItem,
+    cardWalletSubTab: CardWalletTab,
+    isPasswordSelectionMode: Boolean,
+    selectedPasswordCount: Int,
+    onExitPasswordSelection: () -> Unit,
+    onSelectAllPasswords: () -> Unit,
+    onFavoriteSelectedPasswords: () -> Unit,
+    onMoveToCategoryPasswords: () -> Unit,
+    onManualStackPasswords: () -> Unit,
+    onDeleteSelectedPasswords: () -> Unit,
+    isTotpSelectionMode: Boolean,
+    selectedTotpCount: Int,
+    onExitTotpSelection: () -> Unit,
+    onSelectAllTotp: () -> Unit,
+    onMoveToCategoryTotp: () -> Unit,
+    onDeleteSelectedTotp: () -> Unit,
+    isBankCardSelectionMode: Boolean,
+    selectedBankCardCount: Int,
+    onExitBankCardSelection: () -> Unit,
+    onSelectAllBankCards: () -> Unit,
+    onFavoriteBankCards: () -> Unit,
+    onMoveToCategoryBankCards: () -> Unit,
+    onDeleteSelectedBankCards: () -> Unit,
+    isDocumentSelectionMode: Boolean,
+    selectedDocumentCount: Int,
+    onExitDocumentSelection: () -> Unit,
+    onSelectAllDocuments: () -> Unit,
+    onMoveToCategoryDocuments: () -> Unit,
+    onDeleteSelectedDocuments: () -> Unit
+) {
+    when {
+        currentTab == BottomNavItem.Passwords && isPasswordSelectionMode -> {
+            SelectionActionBar(
+                modifier = modifier,
+                selectedCount = selectedPasswordCount,
+                onExit = onExitPasswordSelection,
+                onSelectAll = onSelectAllPasswords,
+                onFavorite = onFavoriteSelectedPasswords,
+                onMoveToCategory = onMoveToCategoryPasswords,
+                onStack = onManualStackPasswords,
+                onDelete = onDeleteSelectedPasswords
+            )
+        }
+        currentTab == BottomNavItem.Authenticator && isTotpSelectionMode -> {
+            SelectionActionBar(
+                modifier = modifier,
+                selectedCount = selectedTotpCount,
+                onExit = onExitTotpSelection,
+                onSelectAll = onSelectAllTotp,
+                onMoveToCategory = onMoveToCategoryTotp,
+                onDelete = onDeleteSelectedTotp
+            )
+        }
+        currentTab == BottomNavItem.CardWallet &&
+            (cardWalletSubTab == CardWalletTab.BANK_CARDS || cardWalletSubTab == CardWalletTab.ALL) &&
+            isBankCardSelectionMode -> {
+            SelectionActionBar(
+                modifier = modifier,
+                selectedCount = selectedBankCardCount,
+                onExit = onExitBankCardSelection,
+                onSelectAll = onSelectAllBankCards,
+                onFavorite = onFavoriteBankCards,
+                onMoveToCategory = onMoveToCategoryBankCards,
+                onDelete = onDeleteSelectedBankCards
+            )
+        }
+        currentTab == BottomNavItem.CardWallet &&
+            cardWalletSubTab == CardWalletTab.DOCUMENTS &&
+            isDocumentSelectionMode -> {
+            SelectionActionBar(
+                modifier = modifier,
+                selectedCount = selectedDocumentCount,
+                onExit = onExitDocumentSelection,
+                onSelectAll = onSelectAllDocuments,
+                onMoveToCategory = onMoveToCategoryDocuments,
+                onDelete = onDeleteSelectedDocuments
+            )
+        }
+    }
+}
+
+@Composable
+private fun MainScreenAddFab(
+    fabBottomOffset: Dp,
+    fabContainerColor: Color,
+    fabIconTint: Color,
+    currentTab: BottomNavItem,
+    isCompactWidth: Boolean,
+    cardWalletSubTab: CardWalletTab,
+    onPasswordAddOpen: () -> Unit,
+    onTotpAddOpen: () -> Unit,
+    onWalletAddOpen: () -> Unit,
+    onNoteAddOpen: () -> Unit,
+    onSendAddOpen: () -> Unit,
+    onGeneratorRefresh: () -> Unit,
+    onExpandStateChanged: (Boolean) -> Unit,
+    passwordViewModel: PasswordViewModel,
+    totpViewModel: TotpViewModel,
+    bankCardViewModel: BankCardViewModel,
+    localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
+    totpNewItemDefaults: NewItemStorageDefaults,
+    onNavigateToQuickTotpScan: () -> Unit,
+    walletUnifiedAddType: CardWalletTab,
+    onWalletUnifiedAddTypeChange: (CardWalletTab) -> Unit,
+    documentViewModel: DocumentViewModel,
+    walletAddSaveableStateHolder: androidx.compose.runtime.saveable.SaveableStateHolder,
+    noteViewModel: NoteViewModel,
+    sendState: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel.SendState,
+    bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel
+) {
+    SwipeableAddFab(
+        // 通过内部参数控制 FAB 位置，确保容器本身是全屏的
+        // NavigationBar 高度约 80dp + 系统导航条高度 + 边距
+        fabBottomOffset = fabBottomOffset,
+        fabContainerColor = fabContainerColor,
+        modifier = Modifier,
+        onFabClickOverride = when (currentTab) {
+            BottomNavItem.Passwords -> if (isCompactWidth) null else ({ onPasswordAddOpen() })
+            BottomNavItem.Authenticator -> if (isCompactWidth) null else ({ onTotpAddOpen() })
+            BottomNavItem.CardWallet -> if (isCompactWidth || cardWalletSubTab == CardWalletTab.ALL) {
+                null
+            } else {
+                ({ onWalletAddOpen() })
+            }
+            BottomNavItem.Notes -> if (isCompactWidth) null else ({ onNoteAddOpen() })
+            BottomNavItem.Send -> if (isCompactWidth) null else ({ onSendAddOpen() })
+            BottomNavItem.Generator -> ({ onGeneratorRefresh() })
+            else -> null
+        },
+        onExpandStateChanged = onExpandStateChanged,
+        fabContent = {
+            when (currentTab) {
+                BottomNavItem.Passwords,
+                BottomNavItem.Authenticator,
+                BottomNavItem.CardWallet,
+                BottomNavItem.Notes,
+                BottomNavItem.Send -> {
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = stringResource(R.string.add),
+                        tint = fabIconTint
+                    )
+                }
+                BottomNavItem.Generator -> {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = stringResource(R.string.regenerate),
+                        tint = fabIconTint
+                    )
+                }
+                else -> { /* 不显示 */ }
+            }
+        },
+        expandedContent = { collapse ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.surface)
+            ) {
+                when (currentTab) {
+                    BottomNavItem.Passwords -> {
+                        AddEditPasswordScreen(
+                            viewModel = passwordViewModel,
+                            totpViewModel = totpViewModel,
+                            bankCardViewModel = bankCardViewModel,
+                            localKeePassViewModel = localKeePassViewModel,
+                            passwordId = null,
+                            onNavigateBack = collapse
+                        )
+                    }
+                    BottomNavItem.Authenticator -> {
+                        val totpCategories by totpViewModel.categories.collectAsState()
+                        AddEditTotpScreen(
+                            totpId = null,
+                            initialData = null,
+                            initialTitle = "",
+                            initialNotes = "",
+                            initialCategoryId = totpNewItemDefaults.categoryId,
+                            initialKeePassDatabaseId = totpNewItemDefaults.keepassDatabaseId,
+                            initialBitwardenVaultId = totpNewItemDefaults.bitwardenVaultId,
+                            initialBitwardenFolderId = totpNewItemDefaults.bitwardenFolderId,
+                            categories = totpCategories,
+                            passwordViewModel = passwordViewModel,
+                            localKeePassViewModel = localKeePassViewModel,
+                            onSave = { title, notes, totpData, categoryId, keepassDatabaseId, bitwardenVaultId, bitwardenFolderId ->
+                                totpViewModel.saveTotpItem(
+                                    id = null,
+                                    title = title,
+                                    notes = notes,
+                                    totpData = totpData,
+                                    categoryId = categoryId,
+                                    keepassDatabaseId = keepassDatabaseId,
+                                    bitwardenVaultId = bitwardenVaultId,
+                                    bitwardenFolderId = bitwardenFolderId
+                                )
+                                collapse()
+                            },
+                            onNavigateBack = collapse,
+                            onScanQrCode = {
+                                collapse()
+                                onNavigateToQuickTotpScan()
+                            }
+                        )
+                    }
+                    BottomNavItem.CardWallet -> {
+                        UnifiedWalletAddScreen(
+                            selectedType = walletUnifiedAddType,
+                            onTypeSelected = onWalletUnifiedAddTypeChange,
+                            onNavigateBack = collapse,
+                            bankCardViewModel = bankCardViewModel,
+                            documentViewModel = documentViewModel,
+                            stateHolder = walletAddSaveableStateHolder
+                        )
+                    }
+                    BottomNavItem.Notes -> {
+                        AddEditNoteScreen(
+                            noteId = -1L,
+                            onNavigateBack = collapse,
+                            viewModel = noteViewModel
+                        )
+                    }
+                    BottomNavItem.Send -> {
+                        AddEditSendScreen(
+                            sendState = sendState,
+                            onNavigateBack = collapse,
+                            onCreate = { title, text, notes, password, maxAccessCount, hideEmail, hiddenText, expireInDays ->
+                                bitwardenViewModel.createTextSend(
+                                    title = title,
+                                    text = text,
+                                    notes = notes,
+                                    password = password,
+                                    maxAccessCount = maxAccessCount,
+                                    hideEmail = hideEmail,
+                                    hiddenText = hiddenText,
+                                    expireInDays = expireInDays
+                                )
+                                collapse()
+                            }
+                        )
+                    }
+                    BottomNavItem.Generator -> {
+                        // Generator 使用全局 FAB 点击回调触发刷新，不走展开页面。
+                    }
+                    else -> { /* Should not happen */ }
+                }
+            }
+        }
+    )
 }
 
 private val adaptivePreviewTabs = listOf(

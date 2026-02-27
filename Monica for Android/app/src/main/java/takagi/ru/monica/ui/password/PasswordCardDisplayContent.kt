@@ -37,7 +37,7 @@ fun resolvePasswordCardDisplayLines(
     entry: PasswordEntry,
     fields: List<PasswordCardDisplayField>
 ): List<PasswordCardDisplayLine> {
-    val formatter = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    var formatter: SimpleDateFormat? = null
     return fields.mapNotNull { field ->
         when (field) {
             PasswordCardDisplayField.USERNAME -> entry.username
@@ -58,11 +58,16 @@ fun resolvePasswordCardDisplayLines(
                 ?.trim()
                 ?.let { PasswordCardDisplayLine(field, Icons.Default.Description, it) }
 
-            PasswordCardDisplayField.UPDATED_AT -> PasswordCardDisplayLine(
-                field = field,
-                icon = Icons.Default.Update,
-                text = formatter.format(entry.updatedAt)
-            )
+            PasswordCardDisplayField.UPDATED_AT -> {
+                val dateFormatter = formatter ?: SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).also {
+                    formatter = it
+                }
+                PasswordCardDisplayLine(
+                    field = field,
+                    icon = Icons.Default.Update,
+                    text = dateFormatter.format(entry.updatedAt)
+                )
+            }
         }
     }
 }

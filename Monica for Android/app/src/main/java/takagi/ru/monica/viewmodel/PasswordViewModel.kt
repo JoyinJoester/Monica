@@ -285,6 +285,21 @@ class PasswordViewModel(
             initialValue = emptyList()
         )
 
+    // Lightweight stream for list metadata/lookup use-cases.
+    // Keep password blank to avoid redundant decrypt work and avoid exposing ciphertext to UI consumers.
+    val allPasswordsForUi: StateFlow<List<PasswordEntry>> = repository.getAllPasswordEntries()
+        .map { entries ->
+            entries.map { entry ->
+                if (entry.password.isEmpty()) entry else entry.copy(password = "")
+            }
+        }
+        .flowOn(kotlinx.coroutines.Dispatchers.Default)
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
     /**
      * Smart Deduplication Logic
      * Display-layer dedupe for "All" view:
