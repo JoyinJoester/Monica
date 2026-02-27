@@ -1,6 +1,11 @@
 package takagi.ru.monica.autofill
 
 import android.app.Activity
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.ClipData
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -68,10 +73,13 @@ import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.theme.MonicaTheme
 import androidx.compose.foundation.isSystemInDarkTheme
+import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.ui.components.PasswordVerificationContent
 import takagi.ru.monica.ui.base.BaseMonicaActivity
 import takagi.ru.monica.security.SessionManager
+import takagi.ru.monica.util.TotpGenerator
+import takagi.ru.monica.util.TotpUriParser
 
 /**
  * Keyguard 风格的全屏自动填充选择器
@@ -463,6 +471,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
 
         rememberLastFilledCredential(password.id)
         rememberLearnedFieldSignature()
+        processSelectedOtpActions(password)
         
         android.util.Log.i(
             "AutofillPickerV2",
@@ -474,6 +483,107 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         )
         setResult(Activity.RESULT_OK, resultIntent)
         finish()
+    }
+
+    private fun processSelectedOtpActions(password: PasswordEntry) {
+        val authenticatorKey = password.authenticatorKey.trim()
+        if (authenticatorKey.isBlank()) return
+
+        val isOtpTarget = args.autofillHints
+            ?.contains(EnhancedAutofillStructureParserV2.FieldHint.OTP_CODE.name) == true
+        if (isOtpTarget) {
+            AutofillLogger.d("OTP", "Skip OTP auto action for OTP-target fill request")
+            return
+        }
+
+        runCatching {
+            val preferences = AutofillPreferences(applicationContext)
+            val showNotification = runBlocking(Dispatchers.IO) {
+                preferences.isOtpNotificationEnabled.first()
+            }
+            val autoCopy = runBlocking(Dispatchers.IO) {
+                preferences.isAutoCopyOtpEnabled.first()
+            }
+            if (!showNotification && !autoCopy) return
+
+            val totpData = parsePasswordAuthenticatorTotpData(authenticatorKey) ?: return
+            val code = TotpGenerator.generateOtp(totpData)
+            if (autoCopy) {
+                val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                clipboard.setPrimaryClip(ClipData.newPlainText("OTP Code", code))
+                AutofillLogger.d("OTP", "Auto-copied selected credential OTP")
+            }
+            if (showNotification) {
+                val durationSeconds = runBlocking(Dispatchers.IO) {
+                    preferences.otpNotificationDuration.first()
+                }
+                showSelectedOtpNotification(code = code, label = password.title, durationSeconds = durationSeconds)
+            }
+        }.onFailure { e ->
+            AutofillLogger.e("OTP", "Failed selected OTP action", e)
+        }
+    }
+
+    private fun showSelectedOtpNotification(code: String, label: String, durationSeconds: Int) {
+        val channelId = "autofill_otp"
+        val notificationManager = getSystemService(NotificationManager::class.java) ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                channelId,
+                getString(R.string.autofill_otp_notification_channel),
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Shows 2FA codes during autofill"
+                enableVibration(true)
+            }
+            notificationManager.createNotificationChannel(channel)
+        }
+
+        val copyIntent = Intent(this, AutofillNotificationReceiver::class.java).apply {
+            action = AutofillNotificationReceiver.ACTION_COPY_OTP
+            putExtra(AutofillNotificationReceiver.EXTRA_OTP_CODE, code)
+            putExtra("notification_id", 1001)
+        }
+        val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        } else {
+            PendingIntent.FLAG_UPDATE_CURRENT
+        }
+        val copyPendingIntent = PendingIntent.getBroadcast(this, 0, copyIntent, pendingIntentFlags)
+
+        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            Notification.Builder(this, channelId)
+        } else {
+            @Suppress("DEPRECATION")
+            Notification.Builder(this)
+        }
+        val timeoutMs = durationSeconds.coerceAtLeast(1) * 1000L
+        val notification = builder
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setContentTitle("Code: $code")
+            .setContentText(label)
+            .setAutoCancel(true)
+            .setTimeoutAfter(timeoutMs)
+            .addAction(
+                Notification.Action.Builder(
+                    null,
+                    getString(R.string.autofill_otp_copy_action, code),
+                    copyPendingIntent
+                ).build()
+            )
+            .build()
+
+        notificationManager.notify(1001, notification)
+    }
+
+    private fun parsePasswordAuthenticatorTotpData(authenticatorKey: String): TotpData? {
+        val normalized = authenticatorKey.trim()
+        if (normalized.isBlank()) return null
+        return if (normalized.contains("://")) {
+            TotpUriParser.parseUri(normalized)?.totpData
+        } else {
+            TotpData(secret = normalized)
+        }
     }
 
     private fun rememberLastFilledCredential(passwordId: Long) {

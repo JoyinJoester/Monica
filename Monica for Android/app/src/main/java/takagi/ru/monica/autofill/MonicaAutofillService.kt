@@ -728,8 +728,6 @@ class MonicaAutofillService : AutofillService() {
         // 🎨 统一构建填充响应 - 整合密码建议和自动填充
         // 始终显示填充选项,即使没有匹配的密码也会显示"生成强密码"
         
-        // 🔔 处理验证器通知和自动复制
-        processOtpActions(matchedPasswords)
         autofillPreferences.touchAutofillInteraction(identifier)
         
         return buildFillResponseEnhanced(
@@ -745,106 +743,6 @@ class MonicaAutofillService : AutofillService() {
             requestOrdinal = requestOrdinal,
             requestContextCount = requestContextCount
         )
-    }
-    
-    /**
-     * 处理 OTP 相关动作 (通知, 自动复制)
-     */
-    private suspend fun processOtpActions(passwords: List<PasswordEntry>) {
-        if (passwords.isEmpty()) return
-        
-        val showNotification = autofillPreferences.isOtpNotificationEnabled.first()
-        val autoCopy = autofillPreferences.isAutoCopyOtpEnabled.first()
-        
-        if (!showNotification && !autoCopy) return
-        
-        // 查找有 TOTP 密钥的条目
-        val otpEntry = passwords.firstOrNull { it.authenticatorKey.isNotEmpty() } ?: return
-        
-        try {
-            // 生成验证码
-            val code = takagi.ru.monica.util.TotpGenerator.generateTotp(otpEntry.authenticatorKey)
-            
-            if (showNotification) {
-                showOtpNotification(code, otpEntry.title)
-            }
-            
-            if (autoCopy) {
-                // 尝试复制到剪贴板
-                try {
-                     val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                     val clip = android.content.ClipData.newPlainText("OTP Code", code)
-                     clipboard.setPrimaryClip(clip)
-                     AutofillLogger.d("OTP", "Auto-copied OTP code to clipboard")
-                } catch (e: Exception) {
-                     AutofillLogger.e("OTP", "Failed to auto-copy OTP: ${e.message}", e)
-                }
-            }
-        } catch (e: Exception) {
-            AutofillLogger.e("OTP", "Error processing OTP actions", e)
-        }
-    }
-
-    private fun showOtpNotification(code: String, label: String) {
-        val channelId = "autofill_otp"
-        val notificationManager = getSystemService(android.app.NotificationManager::class.java)
-        
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            val channel = android.app.NotificationChannel(
-                channelId,
-                getString(R.string.autofill_otp_notification_channel),
-                android.app.NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Shows 2FA codes during autofill"
-                enableVibration(true)
-            }
-            notificationManager.createNotificationChannel(channel)
-        }
-        
-        // Copy Intent
-        val copyIntent = Intent(this, AutofillNotificationReceiver::class.java).apply {
-            action = AutofillNotificationReceiver.ACTION_COPY_OTP
-            putExtra(AutofillNotificationReceiver.EXTRA_OTP_CODE, code)
-            putExtra("notification_id", 1001)
-        }
-        val copyPendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
-        } else {
-            android.app.PendingIntent.FLAG_UPDATE_CURRENT
-        }
-        val copyPendingIntent = android.app.PendingIntent.getBroadcast(
-            this, 0, copyIntent, copyPendingIntentFlags
-        )
-        
-        val builder = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            android.app.Notification.Builder(this, channelId)
-        } else {
-            @Suppress("DEPRECATION")
-            android.app.Notification.Builder(this)
-        }
-
-        val notification = builder
-            .setSmallIcon(R.drawable.ic_launcher_foreground) // Ensure this icon exists or use generic
-            .setContentTitle("Code: $code")
-            .setContentText(label)
-            .setAutoCancel(true)
-            .addAction(
-                android.app.Notification.Action.Builder(
-                    null, 
-                    getString(R.string.autofill_otp_copy_action, code), 
-                    copyPendingIntent
-                ).build()
-            )
-            .build()
-            
-        notificationManager.notify(1001, notification)
-        
-        // Auto cancel logic - Using coroutine
-        serviceScope.launch {
-            val duration = autofillPreferences.otpNotificationDuration.first()
-            kotlinx.coroutines.delay(duration * 1000L)
-            notificationManager.cancel(1001)
-        }
     }
     
     /**
