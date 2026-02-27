@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
+import android.util.Log
 import android.widget.Toast
 import android.text.SpannableString
 import android.text.Spanned
@@ -29,6 +30,7 @@ import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.repository.SecureItemRepository
+import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.util.TotpGenerator
 import takagi.ru.monica.utils.SettingsManager
 
@@ -37,6 +39,7 @@ class NotificationValidatorService : Service() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var settingsManager: SettingsManager
     private lateinit var secureItemRepository: SecureItemRepository
+    private lateinit var securityManager: SecurityManager
     private var updateJob: Job? = null
     private var currentState: ValidatorState = ValidatorState.Idle
     private var hasStartedForeground = false
@@ -44,6 +47,7 @@ class NotificationValidatorService : Service() {
     @Volatile private var latestSettings: AppSettings? = null
 
     companion object {
+        private const val TAG = "NotificationValidator"
         private const val CHANNEL_ID = "notification_validator_channel"
         private const val NOTIFICATION_ID = 1001
         private const val ACTION_COPY = "takagi.ru.monica.service.ACTION_COPY"
@@ -56,6 +60,7 @@ class NotificationValidatorService : Service() {
         settingsManager = SettingsManager(this)
         val database = PasswordDatabase.getDatabase(this)
         secureItemRepository = SecureItemRepository(database.secureItemDao())
+        securityManager = SecurityManager(this)
         createNotificationChannel()
         startPlaceholderNotification()
         startObserving()
@@ -171,14 +176,43 @@ class NotificationValidatorService : Service() {
             currentState = ValidatorState.Idle
             return
         }
+        Log.d(
+            TAG,
+            "startUpdatingNotification: id=${entry.id}, title=${entry.title}, otpType=${entry.data.otpType}, rawSecretLen=${entry.data.secret.length}, boundPasswordId=${entry.data.boundPasswordId}"
+        )
 
         updateJob = serviceScope.launch {
+            val resolvedEntryData = resolveTotpDataForGeneration(entry.data)
+            Log.d(
+                TAG,
+                "resolvedEntryData: id=${entry.id}, otpType=${resolvedEntryData.otpType}, secretLen=${resolvedEntryData.secret.length}"
+            )
             while (isActive) {
-                val code = TotpGenerator.generateOtp(entry.data)
-                val remaining = TotpGenerator.getRemainingSeconds(entry.data.period)
+                val code = TotpGenerator.generateOtp(resolvedEntryData)
+                val remaining = TotpGenerator.getRemainingSeconds(resolvedEntryData.period)
+                Log.v(
+                    TAG,
+                    "tick: id=${entry.id}, otpType=${resolvedEntryData.otpType}, codeLen=${code.length}, remaining=$remaining"
+                )
                 updateNotification(entry.title, code, remaining)
                 delay(1000)
             }
+        }
+    }
+
+    private fun resolveTotpDataForGeneration(data: TotpData): TotpData {
+        val decryptResult = runCatching { securityManager.decryptData(data.secret) }
+        val decryptedSecret = decryptResult.getOrNull()
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+        Log.d(
+            TAG,
+            "resolveTotpDataForGeneration: otpType=${data.otpType}, rawLen=${data.secret.length}, decryptSuccess=${decryptResult.isSuccess && !decryptedSecret.isNullOrEmpty()}, resolvedLen=${decryptedSecret?.length ?: data.secret.length}"
+        )
+        return if (!decryptedSecret.isNullOrEmpty()) {
+            data.copy(secret = decryptedSecret)
+        } else {
+            data
         }
     }
 

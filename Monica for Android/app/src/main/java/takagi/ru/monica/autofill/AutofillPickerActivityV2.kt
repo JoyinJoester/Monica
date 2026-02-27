@@ -57,6 +57,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
 import androidx.compose.ui.unit.dp
 import kotlinx.parcelize.Parcelize
 import takagi.ru.monica.R
@@ -65,6 +66,7 @@ import takagi.ru.monica.autofill.ui.*
 import takagi.ru.monica.autofill.utils.SmartCopyNotificationHelper
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
@@ -96,6 +98,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
     companion object {
         private const val EXTRA_ARGS = "extra_args"
         private const val DUPLICATE_LAUNCH_WINDOW_MS = 1500L
+        private const val AUTOFILL_OTP_NOTIFICATION_ID = 12001
         @Volatile
         private var lastLaunchSignature: String? = null
         @Volatile
@@ -506,8 +509,25 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             }
             if (!showNotification && !autoCopy) return
 
-            val totpData = parsePasswordAuthenticatorTotpData(authenticatorKey) ?: return
-            val code = TotpGenerator.generateOtp(totpData)
+            val passwordTotpData = parsePasswordAuthenticatorTotpData(authenticatorKey)
+            val totpData = resolveOtpFromExistingValidators(password, passwordTotpData)
+            if (totpData == null) {
+                AutofillLogger.w(
+                    "OTP",
+                    "Skip OTP notify/copy: no matching validator entry found for passwordId=${password.id}"
+                )
+                return
+            }
+            AutofillLogger.i(
+                "OTP",
+                "Resolved OTP source: passwordId=${password.id}, otpType=${totpData.otpType}, secretLen=${totpData.secret.length}, boundPasswordId=${totpData.boundPasswordId}"
+            )
+            val resolvedTotpData = resolveTotpDataForGeneration(totpData)
+            val code = TotpGenerator.generateOtp(resolvedTotpData)
+            AutofillLogger.i(
+                "OTP",
+                "Selected OTP generated: passwordId=${password.id}, type=${resolvedTotpData.otpType}, codeLen=${code.length}"
+            )
             if (autoCopy) {
                 val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                 clipboard.setPrimaryClip(ClipData.newPlainText("OTP Code", code))
@@ -542,7 +562,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         val copyIntent = Intent(this, AutofillNotificationReceiver::class.java).apply {
             action = AutofillNotificationReceiver.ACTION_COPY_OTP
             putExtra(AutofillNotificationReceiver.EXTRA_OTP_CODE, code)
-            putExtra("notification_id", 1001)
+            putExtra("notification_id", AUTOFILL_OTP_NOTIFICATION_ID)
         }
         val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -573,7 +593,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             )
             .build()
 
-        notificationManager.notify(1001, notification)
+        notificationManager.notify(AUTOFILL_OTP_NOTIFICATION_ID, notification)
     }
 
     private fun parsePasswordAuthenticatorTotpData(authenticatorKey: String): TotpData? {
@@ -583,6 +603,58 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             TotpUriParser.parseUri(normalized)?.totpData
         } else {
             TotpData(secret = normalized)
+        }
+    }
+
+    private fun resolveOtpFromExistingValidators(
+        password: PasswordEntry,
+        passwordTotpData: TotpData?
+    ): TotpData? {
+        val validatorTotpList = runBlocking(Dispatchers.IO) {
+            val dao = PasswordDatabase.getDatabase(applicationContext).secureItemDao()
+            dao.getActiveItemsByTypeSync(ItemType.TOTP)
+                .mapNotNull { item ->
+                    runCatching {
+                        Json { ignoreUnknownKeys = true }.decodeFromString(TotpData.serializer(), item.itemData)
+                    }.getOrNull()
+                }
+        }
+
+        if (validatorTotpList.isEmpty()) return null
+
+        validatorTotpList.firstOrNull { it.boundPasswordId == password.id }?.let { return it }
+
+        val normalizedSecret = normalizeOtpSecret(passwordTotpData?.secret)
+        if (normalizedSecret.isNotEmpty()) {
+            validatorTotpList.firstOrNull { normalizeOtpSecret(it.secret) == normalizedSecret }?.let { return it }
+        }
+
+        return null
+    }
+
+    private fun normalizeOtpSecret(secret: String?): String {
+        return secret
+            ?.trim()
+            ?.replace(" ", "")
+            ?.replace("-", "")
+            ?.uppercase()
+            .orEmpty()
+    }
+
+    private fun resolveTotpDataForGeneration(totpData: TotpData): TotpData {
+        val securityManager = SecurityManager(applicationContext)
+        val decryptResult = runCatching { securityManager.decryptData(totpData.secret) }
+        val decryptedSecret = decryptResult.getOrNull()
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+        AutofillLogger.i(
+            "OTP",
+            "OTP secret resolve: otpType=${totpData.otpType}, rawLen=${totpData.secret.length}, decryptSuccess=${decryptResult.isSuccess && !decryptedSecret.isNullOrEmpty()}, resolvedLen=${decryptedSecret?.length ?: totpData.secret.length}"
+        )
+        return if (!decryptedSecret.isNullOrEmpty()) {
+            totpData.copy(secret = decryptedSecret)
+        } else {
+            totpData
         }
     }
 
