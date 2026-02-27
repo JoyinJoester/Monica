@@ -175,6 +175,11 @@ class KeePassKdbxService(
         val afterWrite: (suspend (LocalKeePassDatabase, KeePassDatabase) -> Unit)? = null
     )
 
+    private data class CredentialsResolution(
+        val primary: Credentials,
+        val legacyEmptyPasswordWithKeyFallback: Credentials? = null
+    )
+
     private class WebDavHttpException(
         val statusCode: Int,
         message: String
@@ -205,7 +210,11 @@ class KeePassKdbxService(
                 keyFileUriOverride = keyFileUriOverride
             )
             val bytes = readDatabaseBytes(database)
-            val keePassDatabase = decodeDatabase(bytes, credentials)
+            val (keePassDatabase, _) = decodeDatabaseWithFallback(
+                bytes = bytes,
+                credentialsResolution = credentials,
+                sourceLabel = "databaseId=$databaseId"
+            )
             val entries = mutableListOf<Pair<Entry, String?>>()
             collectEntriesWithGroupPath(keePassDatabase.content.group, null, entries)
             val count = entries.count { (entry, groupPath) -> entryToData(entry, groupPath) != null }
@@ -225,7 +234,11 @@ class KeePassKdbxService(
             val credentials = buildCredentialsFromRaw(password = password, keyFileUri = keyFileUri)
             val bytes = context.contentResolver.openInputStream(fileUri)?.use { it.readBytes() }
                 ?: throw Exception("无法打开数据库文件")
-            val keePassDatabase = decodeDatabase(bytes, credentials)
+            val (keePassDatabase, _) = decodeDatabaseWithFallback(
+                bytes = bytes,
+                credentialsResolution = credentials,
+                sourceLabel = "uri=$fileUri"
+            )
             val entries = mutableListOf<Pair<Entry, String?>>()
             collectEntriesWithGroupPath(keePassDatabase.content.group, null, entries)
             val count = entries.count { (entry, groupPath) -> entryToData(entry, groupPath) != null }
@@ -570,7 +583,7 @@ class KeePassKdbxService(
                     throw Exception("仅支持 WebDAV 数据库")
                 }
 
-                val credentials = buildCredentials(database)
+                val credentials = buildCredentials(database).primary
                 val rootName = database.name.ifBlank { "Monica" }
                 var rebuilt: KeePassDatabase = KeePassDatabase.Ver4x.create(
                     rootName = rootName,
@@ -1337,10 +1350,14 @@ class KeePassKdbxService(
         val database = dao.getDatabaseById(databaseId) ?: throw Exception("数据库不存在")
         val credentials = buildCredentials(database)
         val snapshot = readDatabaseSnapshot(database)
-        val keePassDatabase = decodeDatabase(snapshot.bytes, credentials)
+        val (keePassDatabase, resolvedCredentials) = decodeDatabaseWithFallback(
+            bytes = snapshot.bytes,
+            credentialsResolution = credentials,
+            sourceLabel = "databaseId=$databaseId"
+        )
         val loaded = LoadedDatabase(
             database = database,
-            credentials = credentials,
+            credentials = resolvedCredentials,
             keePassDatabase = keePassDatabase,
             sourceEtag = snapshot.etag,
             sourceLastModified = snapshot.lastModified,
@@ -1350,17 +1367,54 @@ class KeePassKdbxService(
         return loaded
     }
 
-    private suspend fun decodeDatabase(bytes: ByteArray, credentials: Credentials): KeePassDatabase {
+    private suspend fun decodeDatabase(
+        bytes: ByteArray,
+        credentials: Credentials,
+        logFailure: Boolean = true
+    ): KeePassDatabase {
         return withGlobalDecodeLock {
             try {
                 KeePassDatabase.decode(ByteArrayInputStream(bytes), credentials)
             } catch (t: Throwable) {
-                Log.e(
-                    TAG,
-                    "KDBX decode failed. ${databaseHeaderSummary(bytes)}",
-                    t
-                )
+                if (logFailure) {
+                    Log.e(
+                        TAG,
+                        "KDBX decode failed. ${databaseHeaderSummary(bytes)}",
+                        t
+                    )
+                }
                 throw t
+            }
+        }
+    }
+
+    private suspend fun decodeDatabaseWithFallback(
+        bytes: ByteArray,
+        credentialsResolution: CredentialsResolution,
+        sourceLabel: String
+    ): Pair<KeePassDatabase, Credentials> {
+        val fallback = credentialsResolution.legacyEmptyPasswordWithKeyFallback
+        if (fallback == null) {
+            return decodeDatabase(bytes, credentialsResolution.primary) to credentialsResolution.primary
+        }
+
+        return try {
+            decodeDatabase(
+                bytes = bytes,
+                credentials = credentialsResolution.primary,
+                logFailure = false
+            ) to credentialsResolution.primary
+        } catch (primaryError: Throwable) {
+            try {
+                val database = decodeDatabase(bytes, fallback)
+                Log.w(
+                    TAG,
+                    "KDBX decoded using legacy empty-password+keyfile fallback ($sourceLabel)"
+                )
+                database to fallback
+            } catch (fallbackError: Throwable) {
+                fallbackError.addSuppressed(primaryError)
+                throw fallbackError
             }
         }
     }
@@ -1380,33 +1434,51 @@ class KeePassKdbxService(
         database: LocalKeePassDatabase,
         passwordOverride: String? = null,
         keyFileUriOverride: Uri? = null
-    ): Credentials {
+    ): CredentialsResolution {
         val encryptedDbPassword = database.encryptedPassword
         val kdbxPassword = passwordOverride ?: (encryptedDbPassword?.let { securityManager.decryptData(it) } ?: "")
         val keyFileBytes = keyFileUriOverride?.let { uri ->
-            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                ?: throw Exception("无法读取密钥文件")
+            readKeyFileBytes(uri)
         } ?: database.keyFileUri?.takeIf { it.isNotBlank() }?.let { uriString ->
-            val uri = Uri.parse(uriString)
-            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                ?: throw Exception("无法读取密钥文件")
+            readKeyFileBytes(Uri.parse(uriString))
         }
-        return if (keyFileBytes != null) {
-            Credentials.from(EncryptedValue.fromString(kdbxPassword), keyFileBytes)
-        } else {
-            Credentials.from(EncryptedValue.fromString(kdbxPassword))
-        }
+        return resolveCredentials(kdbxPassword, keyFileBytes)
     }
 
-    private fun buildCredentialsFromRaw(password: String, keyFileUri: Uri? = null): Credentials {
+    private fun buildCredentialsFromRaw(password: String, keyFileUri: Uri? = null): CredentialsResolution {
         val keyFileBytes = keyFileUri?.let { uri ->
-            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                ?: throw Exception("无法读取密钥文件")
+            readKeyFileBytes(uri)
         }
-        return if (keyFileBytes != null) {
-            Credentials.from(EncryptedValue.fromString(password), keyFileBytes)
+        return resolveCredentials(password, keyFileBytes)
+    }
+
+    private fun readKeyFileBytes(uri: Uri): ByteArray {
+        return context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            ?: throw Exception("无法读取密钥文件")
+    }
+
+    private fun resolveCredentials(password: String, keyFileBytes: ByteArray?): CredentialsResolution {
+        if (keyFileBytes == null) {
+            return CredentialsResolution(
+                primary = Credentials.from(EncryptedValue.fromString(password))
+            )
+        }
+
+        return if (password.isBlank()) {
+            CredentialsResolution(
+                primary = Credentials.from(keyFileBytes),
+                legacyEmptyPasswordWithKeyFallback = Credentials.from(
+                    EncryptedValue.fromString(""),
+                    keyFileBytes
+                )
+            )
         } else {
-            Credentials.from(EncryptedValue.fromString(password))
+            CredentialsResolution(
+                primary = Credentials.from(
+                    EncryptedValue.fromString(password),
+                    keyFileBytes
+                )
+            )
         }
     }
 

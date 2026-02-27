@@ -738,12 +738,8 @@ class LocalKeePassViewModel(
      * 使用 kotpass 库创建真正的 KDBX 格式数据库文件
      */
     private fun createEmptyKdbxFile(file: File, password: String, keyFileBytes: ByteArray? = null) {
-        // 创建凭据
-        val credentials = if (keyFileBytes != null) {
-            Credentials.from(EncryptedValue.fromString(password), keyFileBytes)
-        } else {
-            Credentials.from(EncryptedValue.fromString(password))
-        }
+        // 创建凭据：空密码 + 密钥文件时优先使用 key-only，兼容 KeePassXC 习惯
+        val credentials = buildKdbxCredentials(password, keyFileBytes)
         
         // 创建元数据
         val meta = Meta(
@@ -768,12 +764,8 @@ class LocalKeePassViewModel(
      * 使用 kotpass 库创建真正的 KDBX 格式数据库内容
      */
     private fun createEmptyKdbxContent(password: String, keyFileBytes: ByteArray? = null): ByteArray {
-        // 创建凭据
-        val credentials = if (keyFileBytes != null) {
-            Credentials.from(EncryptedValue.fromString(password), keyFileBytes)
-        } else {
-            Credentials.from(EncryptedValue.fromString(password))
-        }
+        // 创建凭据：空密码 + 密钥文件时优先使用 key-only，兼容 KeePassXC 习惯
+        val credentials = buildKdbxCredentials(password, keyFileBytes)
         
         // 创建元数据
         val meta = Meta(
@@ -792,6 +784,17 @@ class LocalKeePassViewModel(
         return java.io.ByteArrayOutputStream().use { output ->
             database.encode(output)
             output.toByteArray()
+        }
+    }
+
+    private fun buildKdbxCredentials(password: String, keyFileBytes: ByteArray?): Credentials {
+        if (keyFileBytes == null) {
+            return Credentials.from(EncryptedValue.fromString(password))
+        }
+        return if (password.isBlank()) {
+            Credentials.from(keyFileBytes)
+        } else {
+            Credentials.from(EncryptedValue.fromString(password), keyFileBytes)
         }
     }
     

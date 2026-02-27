@@ -48,6 +48,11 @@ function ImportPageWrapper() {
 function AppContent() {
   const { isLocked, isFirstTime } = useMasterPassword();
   const [currentUrl, setCurrentUrl] = useState('');
+  const isManagerMode = new URLSearchParams(window.location.search).get('manager') === '1';
+
+  useEffect(() => {
+    document.body.dataset.mode = isManagerMode ? 'manager' : 'popup';
+  }, [isManagerMode]);
 
   useEffect(() => {
     // Get current URL for unlock screen autofill
@@ -70,7 +75,7 @@ function AppContent() {
 
   // When unlocked, always show the main Layout with routes
   return (
-    <Layout>
+    <Layout isManagerMode={isManagerMode}>
       <Routes>
         <Route path="/" element={<PasswordList />} />
         <Route path="/notes" element={<NoteList />} />

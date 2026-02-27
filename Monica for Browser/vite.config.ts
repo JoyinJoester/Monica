@@ -2,7 +2,6 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
 import fs from 'fs'
-import { execSync } from 'child_process'
 
 // Check if building for Firefox
 const isFirefox = process.env.BROWSER === 'firefox' || process.env.FIREFOX === 'true'
@@ -35,7 +34,7 @@ export default defineConfig({
       buildStart() {
         // Clean dist directory before build
         if (fs.existsSync('dist')) {
-          execSync('rm -rf dist', { cwd: resolve(__dirname) })
+          fs.rmSync(resolve(__dirname, 'dist'), { recursive: true, force: true })
           console.log('[Build] Cleaned dist directory')
         }
       }

@@ -1,7 +1,9 @@
 {
     "app": {
         "title": "Monica",
-        "searchPlaceholder": "搜索..."
+        "searchPlaceholder": "搜索...",
+        "openManager": "在管理标签页打开",
+        "openManagerShort": "管理页"
     },
     "nav": {
         "passwords": "密码",

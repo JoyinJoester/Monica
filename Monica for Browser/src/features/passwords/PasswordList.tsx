@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import styled from 'styled-components';
 import { useTranslation } from 'react-i18next';
 import { Card, CardTitle, CardSubtitle } from '../../components/common/Card';
@@ -14,9 +14,22 @@ import type { Category } from '../../utils/storage';
 import { ItemType } from '../../types/models';
 
 // ========== Styled Components ==========
-const Container = styled.div`
+const Container = styled.div<{ $manager: boolean }>`
   padding: 16px;
   padding-bottom: 100px;
+
+  ${({ $manager }) => $manager && `
+    max-width: 1040px;
+    margin: 0 auto;
+    padding: 20px 24px 120px;
+  `}
+
+  @media (max-width: 900px) {
+    max-width: none;
+    margin: 0;
+    padding: 16px;
+    padding-bottom: 100px;
+  }
 `;
 
 const SearchContainer = styled.div`
@@ -25,10 +38,15 @@ const SearchContainer = styled.div`
   svg { position: absolute; right: 16px; top: 50%; transform: translateY(-50%); color: ${({ theme }) => theme.colors.onSurfaceVariant}; width: 20px; height: 20px; }
 `;
 
-const FAB = styled(Button)`
+const FAB = styled(Button)<{ $manager: boolean }>`
   position: fixed; bottom: 90px; right: 20px; width: 56px; height: 56px;
   border-radius: 16px; padding: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
   svg { width: 24px; height: 24px; }
+
+  ${({ $manager }) => $manager && `
+    right: 24px;
+    bottom: 24px;
+  `}
 `;
 
 const CardActions = styled.div`
@@ -231,6 +249,11 @@ const generatePassword = (length = 16, options = { upper: true, lower: true, num
 export const PasswordList = () => {
   const { t, i18n } = useTranslation();
   const isZh = i18n.language?.startsWith('zh');
+  const isManagerMode = useMemo(() => new URLSearchParams(window.location.search).get('manager') === '1', []);
+  const prefersReducedMotion = useMemo(
+    () => window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    []
+  );
 
   const [passwords, setPasswords] = useState<SecureItem[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
@@ -372,7 +395,7 @@ export const PasswordList = () => {
   };
 
   return (
-    <Container>
+    <Container $manager={isManagerMode}>
       <SearchContainer>
         <Input placeholder={t('app.searchPlaceholder')} value={search} onChange={(e) => setSearch(e.target.value)} />
         <Search />
@@ -409,7 +432,14 @@ export const PasswordList = () => {
       {filteredPasswords.map((item) => {
         const data = (item.itemData || {}) as PasswordEntry;
         return (
-          <Card key={item.id} onClick={() => handleEdit(item)} style={{ cursor: 'pointer' }}>
+          <Card
+            key={item.id}
+            onClick={() => handleEdit(item)}
+            style={{ cursor: 'pointer' }}
+            initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+            animate={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
+            transition={prefersReducedMotion ? undefined : { duration: 0.2, ease: 'easeOut' }}
+          >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
               <div>
                 <CardTitle>{item.title}</CardTitle>
@@ -435,7 +465,7 @@ export const PasswordList = () => {
         );
       })}
 
-      <FAB onClick={() => { resetForm(); setShowModal(true); }}>
+      <FAB $manager={isManagerMode} onClick={() => { resetForm(); setShowModal(true); }}>
         <Plus />
       </FAB>
 

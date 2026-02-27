@@ -1,7 +1,9 @@
 {
     "app": {
         "title": "Monica",
-        "searchPlaceholder": "Search..."
+        "searchPlaceholder": "Search...",
+        "openManager": "Open in Manager Tab",
+        "openManagerShort": "Manage Tab"
     },
     "nav": {
         "passwords": "Passwords",
