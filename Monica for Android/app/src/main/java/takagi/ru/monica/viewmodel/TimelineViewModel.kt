@@ -7,14 +7,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.data.OperationLog
-import takagi.ru.monica.data.OperationLogItemType
-import takagi.ru.monica.data.OperationType
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.model.DiffChange
+import takagi.ru.monica.data.model.TIMELINE_FIELD_BATCH_COPY_PAYLOAD
+import takagi.ru.monica.data.model.TIMELINE_FIELD_BATCH_MOVE_PAYLOAD
+import takagi.ru.monica.data.model.TimelineBatchCopyPayload
+import takagi.ru.monica.data.model.TimelineBatchMovePayload
 import takagi.ru.monica.data.model.TimelineBranch
 import takagi.ru.monica.data.model.TimelineEvent
 import takagi.ru.monica.repository.OperationLogRepository
@@ -22,6 +23,7 @@ import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.FieldChange
+import java.util.Date
 
 /**
  * Timeline ViewModel - 管理时间线事件的状态
@@ -88,7 +90,7 @@ class TimelineViewModel(application: Application) : AndroidViewModel(application
         if (changesJson.isEmpty()) return emptyList()
         
         return try {
-            val fieldChanges = json.decodeFromString<List<FieldChange>>(changesJson)
+            val fieldChanges = parseRawChanges(changesJson)
             fieldChanges.map { fc ->
                 DiffChange(
                     fieldName = fc.fieldName,
@@ -97,6 +99,25 @@ class TimelineViewModel(application: Application) : AndroidViewModel(application
                 )
             }
         } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun parseRawChanges(changesJson: String): List<FieldChange> {
+        if (changesJson.isBlank()) return emptyList()
+        return try {
+            json.decodeFromString<List<FieldChange>>(changesJson)
+                .filterNot { it.fieldName.startsWith("__") }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    private fun parseRawChangesIncludingTechnical(changesJson: String): List<FieldChange> {
+        if (changesJson.isBlank()) return emptyList()
+        return try {
+            json.decodeFromString(changesJson)
+        } catch (_: Exception) {
             emptyList()
         }
     }
@@ -140,7 +161,31 @@ class TimelineViewModel(application: Application) : AndroidViewModel(application
             try {
                 val logId = log.id.toLongOrNull() ?: return@launch onResult(false)
                 val itemId = log.itemId
-                val isCurrentlyReverted = log.isReverted
+                val rawLog = database.operationLogDao().getLogById(logId) ?: return@launch onResult(false)
+                val isCurrentlyReverted = rawLog.isReverted
+                val rawChanges = parseRawChangesIncludingTechnical(rawLog.changesJson)
+                val batchMovePayload = rawChanges.firstOrNull {
+                    it.fieldName == TIMELINE_FIELD_BATCH_MOVE_PAYLOAD
+                }?.newValue
+                val batchCopyPayload = rawChanges.firstOrNull {
+                    it.fieldName == TIMELINE_FIELD_BATCH_COPY_PAYLOAD
+                }?.newValue
+
+                if (!batchMovePayload.isNullOrBlank()) {
+                    if (isCurrentlyReverted) return@launch onResult(false)
+                    val restored = restoreBatchMove(payloadJson = batchMovePayload)
+                    if (!restored) return@launch onResult(false)
+                    database.operationLogDao().updateRevertedStatus(logId, !isCurrentlyReverted)
+                    return@launch onResult(true)
+                }
+
+                if (!batchCopyPayload.isNullOrBlank()) {
+                    if (isCurrentlyReverted) return@launch onResult(false)
+                    val restored = restoreBatchCopy(payloadJson = batchCopyPayload)
+                    if (!restored) return@launch onResult(false)
+                    database.operationLogDao().updateRevertedStatus(logId, !isCurrentlyReverted)
+                    return@launch onResult(true)
+                }
                 
                 when (log.itemType) {
                     "PASSWORD" -> {
@@ -148,7 +193,7 @@ class TimelineViewModel(application: Application) : AndroidViewModel(application
                         
                         // 应用变更（恢复或重做）
                         var updatedEntry = entry
-                        log.changes.forEach { change ->
+                        rawChanges.forEach { change ->
                             // 确定要使用的目标值
                             val targetValue = if (isCurrentlyReverted) {
                                 // 当前是已恢复状态，要重做（恢复到编辑后）-> 使用 newValue
@@ -176,7 +221,7 @@ class TimelineViewModel(application: Application) : AndroidViewModel(application
                         val item = secureItemRepository.getItemById(itemId) ?: return@launch onResult(false)
                         
                         var updatedItem = item
-                        log.changes.forEach { change ->
+                        rawChanges.forEach { change ->
                             val targetVal = if (isCurrentlyReverted) change.newValue else change.oldValue
                             
                             updatedItem = when (change.fieldName) {
@@ -201,6 +246,58 @@ class TimelineViewModel(application: Application) : AndroidViewModel(application
                 onResult(false)
             }
         }
+    }
+
+    private suspend fun restoreBatchMove(payloadJson: String): Boolean {
+        val payload = try {
+            json.decodeFromString<TimelineBatchMovePayload>(payloadJson)
+        } catch (_: Exception) {
+            return false
+        }
+
+        val targetStates = payload.oldStates
+        if (targetStates.isEmpty()) return false
+
+        var changed = false
+        targetStates.forEach { state ->
+            val entry = passwordRepository.getPasswordEntryById(state.id) ?: return@forEach
+            val updatedEntry = entry.copy(
+                categoryId = state.categoryId,
+                keepassDatabaseId = state.keepassDatabaseId,
+                keepassGroupPath = state.keepassGroupPath,
+                bitwardenVaultId = state.bitwardenVaultId,
+                bitwardenFolderId = state.bitwardenFolderId,
+                bitwardenLocalModified = state.bitwardenLocalModified,
+                isArchived = state.isArchived,
+                archivedAt = state.archivedAtMillis?.let { Date(it) },
+                updatedAt = Date()
+            )
+            passwordRepository.updatePasswordEntry(updatedEntry)
+            changed = true
+        }
+        return changed
+    }
+
+    private suspend fun restoreBatchCopy(payloadJson: String): Boolean {
+        val payload = try {
+            json.decodeFromString<TimelineBatchCopyPayload>(payloadJson)
+        } catch (_: Exception) {
+            return false
+        }
+        if (payload.copiedEntryIds.isEmpty()) return false
+
+        var changed = false
+        payload.copiedEntryIds.forEach { id ->
+            val entry = passwordRepository.getPasswordEntryById(id) ?: return@forEach
+            val updatedEntry = entry.copy(
+                isDeleted = true,
+                deletedAt = Date(),
+                updatedAt = Date()
+            )
+            passwordRepository.updatePasswordEntry(updatedEntry)
+            changed = true
+        }
+        return changed
     }
     
     /**

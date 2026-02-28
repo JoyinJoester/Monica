@@ -363,86 +363,169 @@ fun DocumentListContent(
             )
         }
     } else {
+        val lazyListState = rememberLazyListState()
+        var localDocuments by remember(filteredDocuments) { mutableStateOf(filteredDocuments) }
+
+        LaunchedEffect(filteredDocuments) {
+            localDocuments = filteredDocuments
+        }
+
+        val reorderableLazyListState = rememberReorderableLazyListState(lazyListState) { from, to ->
+            if (isSelectionMode) {
+                localDocuments = localDocuments.toMutableList().apply {
+                    add(to.index, removeAt(from.index))
+                }
+            }
+        }
+
+        LaunchedEffect(reorderableLazyListState.isAnyItemDragging) {
+            if (!reorderableLazyListState.isAnyItemDragging && isSelectionMode) {
+                val newOrders = localDocuments.mapIndexed { index, item -> item.id to index }
+                if (newOrders.isNotEmpty()) {
+                    viewModel.updateSortOrders(newOrders)
+                }
+            }
+        }
+
         LazyColumn(
+            state = lazyListState,
             modifier = Modifier.fillMaxSize(),
+            userScrollEnabled = !isSelectionMode,
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(
-                items = filteredDocuments,
+                items = localDocuments,
                 key = { it.id }
             ) { document ->
-                val index = filteredDocuments.indexOf(document)
-                
-                // 用 SwipeActions 包裹文档卡片
-                takagi.ru.monica.ui.gestures.SwipeActions(
-                    onSwipeLeft = {
-                        // 左滑删除
-                        haptic.performWarning()
-                        itemToDelete = document
-                        deletedItemIds = deletedItemIds + document.id
-                    },
-                    onSwipeRight = {
-                        // 右滑选择
-                        haptic.performSuccess()
-                        if (!isSelectionMode) {
-                            isSelectionMode = true
-                        }
-                        selectedItems = if (selectedItems.contains(document.id)) {
-                            selectedItems - document.id
-                        } else {
-                            selectedItems + document.id
-                        }
-                    },
-                    isSwiped = itemToDelete?.id == document.id,
-                    enabled = true // 多选模式下也可以滑动
-                ) {
-                    DocumentItemCard(
-                        item = document,
-                        onClick = {
-                            if (isSelectionMode) {
-                                selectedItems = if (selectedItems.contains(document.id)) {
-                                    selectedItems - document.id
-                                } else {
-                                    selectedItems + document.id
-                                }
-                            } else {
-                                onDocumentClick(document.id)
-                            }
-                        },
-                        onDelete = {
-                            haptic.performWarning()
-                            itemToDelete = document
-                            deletedItemIds = deletedItemIds + document.id
-                        },
-                        onToggleFavorite = { id, _ -> // isFavorite 参数未使用，因为直接调用 toggleFavorite
-                            viewModel.toggleFavorite(id)
-                        },
-                        onMoveUp = if (index > 0) {
-                            {
-                                // 交换当前项和上一项的sortOrder
-                                val currentItem = filteredDocuments[index]
-                                val previousItem = filteredDocuments[index - 1]
-                                viewModel.updateSortOrders(listOf(
-                                    currentItem.id to (index - 1),
-                                    previousItem.id to index
-                                ))
-                            }
-                        } else null,
-                        onMoveDown = if (index < filteredDocuments.size - 1) {
-                            {
-                                // 交换当前项和下一项的sortOrder
-                                val currentItem = filteredDocuments[index]
-                                val nextItem = filteredDocuments[index + 1]
-                                viewModel.updateSortOrders(listOf(
-                                    currentItem.id to (index + 1),
-                                    nextItem.id to index
-                                ))
-                            }
-                        } else null,
-                        isSelectionMode = isSelectionMode,
-                        isSelected = selectedItems.contains(document.id)
+                val index = localDocuments.indexOf(document)
+                ReorderableItem(
+                    reorderableLazyListState,
+                    key = document.id,
+                    enabled = isSelectionMode
+                ) { isDragging ->
+                    val elevation by animateDpAsState(
+                        if (isDragging) 8.dp else 0.dp,
+                        label = "drag_elevation"
                     )
+                    val dragModifier = if (isSelectionMode) {
+                        Modifier.longPressDraggableHandle(
+                            onDragStarted = { haptic.performLongPress() },
+                            onDragStopped = { haptic.performSuccess() }
+                        )
+                    } else {
+                        Modifier
+                    }
+
+                    if (isSelectionMode) {
+                        Box(
+                            modifier = Modifier
+                                .graphicsLayer { shadowElevation = elevation.toPx() }
+                                .then(dragModifier)
+                        ) {
+                            DocumentItemCard(
+                                item = document,
+                                onClick = {
+                                    if (isSelectionMode) {
+                                        selectedItems = if (selectedItems.contains(document.id)) {
+                                            selectedItems - document.id
+                                        } else {
+                                            selectedItems + document.id
+                                        }
+                                    } else {
+                                        onDocumentClick(document.id)
+                                    }
+                                },
+                                onDelete = {
+                                    haptic.performWarning()
+                                    itemToDelete = document
+                                    deletedItemIds = deletedItemIds + document.id
+                                },
+                                onToggleFavorite = { id, _ -> // isFavorite 参数未使用，因为直接调用 toggleFavorite
+                                    viewModel.toggleFavorite(id)
+                                },
+                                onMoveUp = if (index > 0 && !isSelectionMode) {
+                                    {
+                                        // 交换当前项和上一项的sortOrder
+                                        val currentItem = localDocuments[index]
+                                        val previousItem = localDocuments[index - 1]
+                                        viewModel.updateSortOrders(listOf(
+                                            currentItem.id to (index - 1),
+                                            previousItem.id to index
+                                        ))
+                                    }
+                                } else null,
+                                onMoveDown = if (index < localDocuments.size - 1 && !isSelectionMode) {
+                                    {
+                                        // 交换当前项和下一项的sortOrder
+                                        val currentItem = localDocuments[index]
+                                        val nextItem = localDocuments[index + 1]
+                                        viewModel.updateSortOrders(listOf(
+                                            currentItem.id to (index + 1),
+                                            nextItem.id to index
+                                        ))
+                                    }
+                                } else null,
+                                isSelectionMode = isSelectionMode,
+                                isSelected = selectedItems.contains(document.id)
+                            )
+                        }
+                    } else {
+                        // 非多选模式下保留滑动手势
+                        takagi.ru.monica.ui.gestures.SwipeActions(
+                            onSwipeLeft = {
+                                haptic.performWarning()
+                                itemToDelete = document
+                                deletedItemIds = deletedItemIds + document.id
+                            },
+                            onSwipeRight = {
+                                haptic.performSuccess()
+                                isSelectionMode = true
+                                selectedItems = setOf(document.id)
+                            },
+                            isSwiped = itemToDelete?.id == document.id,
+                            enabled = !isDragging
+                        ) {
+                            Box(
+                                modifier = Modifier.graphicsLayer { shadowElevation = elevation.toPx() }
+                            ) {
+                                DocumentItemCard(
+                                    item = document,
+                                    onClick = { onDocumentClick(document.id) },
+                                    onDelete = {
+                                        haptic.performWarning()
+                                        itemToDelete = document
+                                        deletedItemIds = deletedItemIds + document.id
+                                    },
+                                    onToggleFavorite = { id, _ ->
+                                        viewModel.toggleFavorite(id)
+                                    },
+                                    onMoveUp = if (index > 0) {
+                                        {
+                                            val currentItem = localDocuments[index]
+                                            val previousItem = localDocuments[index - 1]
+                                            viewModel.updateSortOrders(listOf(
+                                                currentItem.id to (index - 1),
+                                                previousItem.id to index
+                                            ))
+                                        }
+                                    } else null,
+                                    onMoveDown = if (index < localDocuments.size - 1) {
+                                        {
+                                            val currentItem = localDocuments[index]
+                                            val nextItem = localDocuments[index + 1]
+                                            viewModel.updateSortOrders(listOf(
+                                                currentItem.id to (index + 1),
+                                                nextItem.id to index
+                                            ))
+                                        }
+                                    } else null,
+                                    isSelectionMode = false,
+                                    isSelected = false
+                                )
+                            }
+                        }
+                    }
                 }
             }
             

@@ -1962,7 +1962,7 @@ private fun LoginTypeSelector(
     PasswordEntryPickerBottomSheet(
         visible = showRefEntryPicker,
         title = stringResource(R.string.sso_ref_entry_picker_title),
-        passwords = allPasswords.filter { it.loginType == "PASSWORD" && it.id != ssoRefEntryId && !it.isDeleted },
+        passwords = allPasswords.filter { it.loginType == "PASSWORD" && it.id != ssoRefEntryId && !it.isDeleted && !it.isArchived },
         selectedEntryId = ssoRefEntryId,
         onSelect = { entry ->
             onSsoRefEntryIdChange(entry.id)

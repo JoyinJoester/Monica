@@ -25,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
@@ -74,6 +75,9 @@ sealed interface UnifiedMoveCategoryTarget {
     data class KeePassGroupTarget(val databaseId: Long, val groupPath: String) : UnifiedMoveCategoryTarget
 }
 
+// Sentinel target id for "Archive" in move sheet without introducing a new persisted category.
+const val UNIFIED_MOVE_ARCHIVE_SENTINEL_CATEGORY_ID: Long = -9_223_372_036_854_775_000L
+
 enum class UnifiedMoveAction {
     MOVE,
     COPY
@@ -90,6 +94,7 @@ fun UnifiedMoveToCategoryBottomSheet(
     getBitwardenFolders: (Long) -> Flow<List<BitwardenFolder>>,
     getKeePassGroups: (Long) -> Flow<List<KeePassGroupInfo>>,
     allowCopy: Boolean = false,
+    allowArchiveTarget: Boolean = false,
     onTargetSelected: (UnifiedMoveCategoryTarget, UnifiedMoveAction) -> Unit
 ) {
     if (!visible) return
@@ -180,6 +185,22 @@ fun UnifiedMoveToCategoryBottomSheet(
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 Spacer(modifier = Modifier.height(8.dp))
+                                if (allowArchiveTarget) {
+                                    Box(modifier = Modifier.padding(start = 16.dp)) {
+                                        MoveTargetItem(
+                                            title = stringResource(R.string.archive_page_title),
+                                            icon = Icons.Default.Archive,
+                                            onClick = {
+                                                onTargetSelected(
+                                                    UnifiedMoveCategoryTarget.MonicaCategory(
+                                                        UNIFIED_MOVE_ARCHIVE_SENTINEL_CATEGORY_ID
+                                                    ),
+                                                    selectedAction.value
+                                                )
+                                            }
+                                        )
+                                    }
+                                }
                                 Box(modifier = Modifier.padding(start = 16.dp)) {
                                     MoveTargetItem(
                                         title = stringResource(R.string.category_none),
@@ -226,10 +247,9 @@ fun UnifiedMoveToCategoryBottomSheet(
                                         title = vault.email,
                                         icon = Icons.Default.CloudSync,
                                         onClick = {
-                                            onTargetSelected(
-                                                UnifiedMoveCategoryTarget.BitwardenVaultTarget(vault.id),
-                                                selectedAction.value
-                                            )
+                                            bitwardenExpanded.value = bitwardenExpanded.value.toMutableMap().apply {
+                                                this[vault.id] = !expanded
+                                            }
                                         },
                                         supportingText = if (vault.isDefault) {
                                             stringResource(R.string.default_label)
@@ -258,6 +278,18 @@ fun UnifiedMoveToCategoryBottomSheet(
                                             verticalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
                                             Spacer(modifier = Modifier.height(8.dp))
+                                            Box(modifier = Modifier.padding(start = 16.dp)) {
+                                                MoveTargetItem(
+                                                    title = stringResource(R.string.category_none),
+                                                    icon = Icons.Default.FolderOff,
+                                                    onClick = {
+                                                        onTargetSelected(
+                                                            UnifiedMoveCategoryTarget.BitwardenVaultTarget(vault.id),
+                                                            selectedAction.value
+                                                        )
+                                                    }
+                                                )
+                                            }
                                             folders.forEach { folder ->
                                                 Box(modifier = Modifier.padding(start = 16.dp)) {
                                                     MoveTargetItem(
@@ -297,10 +329,9 @@ fun UnifiedMoveToCategoryBottomSheet(
                                         title = database.name,
                                         icon = Icons.Default.Key,
                                         onClick = {
-                                            onTargetSelected(
-                                                UnifiedMoveCategoryTarget.KeePassDatabaseTarget(database.id),
-                                                selectedAction.value
-                                            )
+                                            keepassExpanded.value = keepassExpanded.value.toMutableMap().apply {
+                                                this[database.id] = !expanded
+                                            }
                                         },
                                         supportingText = when {
                                             database.storageLocation == KeePassStorageLocation.EXTERNAL ->
@@ -331,6 +362,18 @@ fun UnifiedMoveToCategoryBottomSheet(
                                             verticalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
                                             Spacer(modifier = Modifier.height(8.dp))
+                                            Box(modifier = Modifier.padding(start = 16.dp)) {
+                                                MoveTargetItem(
+                                                    title = stringResource(R.string.category_none),
+                                                    icon = Icons.Default.FolderOff,
+                                                    onClick = {
+                                                        onTargetSelected(
+                                                            UnifiedMoveCategoryTarget.KeePassDatabaseTarget(database.id),
+                                                            selectedAction.value
+                                                        )
+                                                    }
+                                                )
+                                            }
                                             groupNodes.forEach { groupNode ->
                                                 val indentation = (16 + groupNode.depth * 14).coerceAtMost(72)
                                                 Box(modifier = Modifier.padding(start = indentation.dp)) {

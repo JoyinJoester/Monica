@@ -1,7 +1,6 @@
 package takagi.ru.monica.ui.main.navigation
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
@@ -28,7 +27,6 @@ sealed class BottomNavItem(
     object Generator : BottomNavItem(BottomNavContentTab.GENERATOR, Icons.Default.AutoAwesome)
     object Notes : BottomNavItem(BottomNavContentTab.NOTES, Icons.Default.Note)
     object Send : BottomNavItem(BottomNavContentTab.SEND, Icons.Default.Send)
-    object Timeline : BottomNavItem(BottomNavContentTab.TIMELINE, Icons.Default.AccountTree)
     object Passkey : BottomNavItem(BottomNavContentTab.PASSKEY, Icons.Default.Key)
     object Settings : BottomNavItem(null, Icons.Default.Settings)
 }
@@ -40,7 +38,6 @@ fun BottomNavContentTab.toBottomNavItem(): BottomNavItem = when (this) {
     BottomNavContentTab.GENERATOR -> BottomNavItem.Generator
     BottomNavContentTab.NOTES -> BottomNavItem.Notes
     BottomNavContentTab.SEND -> BottomNavItem.Send
-    BottomNavContentTab.TIMELINE -> BottomNavItem.Timeline
     BottomNavContentTab.PASSKEY -> BottomNavItem.Passkey
 }
 
@@ -51,7 +48,6 @@ fun BottomNavItem.fullLabelRes(): Int = when (this) {
     BottomNavItem.Generator -> R.string.nav_generator
     BottomNavItem.Notes -> R.string.nav_notes
     BottomNavItem.Send -> R.string.nav_v2_send
-    BottomNavItem.Timeline -> R.string.nav_timeline
     BottomNavItem.Passkey -> R.string.nav_passkey
     BottomNavItem.Settings -> R.string.nav_settings
 }
@@ -63,7 +59,6 @@ fun BottomNavItem.shortLabelRes(): Int = when (this) {
     BottomNavItem.Generator -> R.string.nav_generator_short
     BottomNavItem.Notes -> R.string.nav_notes_short
     BottomNavItem.Send -> R.string.nav_v2_send_short
-    BottomNavItem.Timeline -> R.string.nav_timeline_short
     BottomNavItem.Passkey -> R.string.nav_passkey_short
     BottomNavItem.Settings -> R.string.nav_settings_short
 }

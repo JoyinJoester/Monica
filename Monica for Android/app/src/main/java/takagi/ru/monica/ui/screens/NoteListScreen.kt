@@ -7,6 +7,7 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -36,6 +37,7 @@ import androidx.compose.material.icons.filled.FolderOff
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Note
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shield
@@ -48,6 +50,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -119,6 +122,7 @@ fun NoteListScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showBatchMoveCategoryDialog by remember { mutableStateOf(false) }
     var showPasswordDialog by remember { mutableStateOf(false) }
+    var showTopActionsMenu by remember { mutableStateOf(false) }
     var masterPassword by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf(false) }
     
@@ -378,34 +382,6 @@ fun NoteListScreen(
                             tint = MaterialTheme.colorScheme.onSurface
                         )
                     }
-                    // 布局切换按钮
-                    IconButton(onClick = { settingsViewModel.updateNoteGridLayout(!isGridLayout) }) {
-                        Icon(
-                            imageVector = if (isGridLayout) Icons.Default.ViewList else Icons.Default.GridView,
-                            contentDescription = if (isGridLayout) {
-                                stringResource(R.string.switch_to_list)
-                            } else {
-                                stringResource(R.string.switch_to_grid)
-                            },
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                    if (selectedBitwardenVaultId != null) {
-                        IconButton(
-                            onClick = {
-                                if (isTopBarSyncing) return@IconButton
-                                val vaultId = selectedBitwardenVaultId ?: return@IconButton
-                                bitwardenViewModel.requestManualSync(vaultId)
-                            },
-                            enabled = !isTopBarSyncing
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Sync,
-                                contentDescription = stringResource(R.string.refresh),
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                    }
                     // 搜索按钮
                     IconButton(onClick = { isSearchExpanded = true }) {
                         Icon(
@@ -413,6 +389,72 @@ fun NoteListScreen(
                             contentDescription = stringResource(R.string.search),
                             tint = MaterialTheme.colorScheme.onSurface
                         )
+                    }
+                    Box {
+                        IconButton(onClick = { showTopActionsMenu = true }) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = stringResource(R.string.more_options),
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        MaterialTheme(
+                            shapes = MaterialTheme.shapes.copy(
+                                extraSmall = RoundedCornerShape(20.dp),
+                                small = RoundedCornerShape(20.dp)
+                            )
+                        ) {
+                            DropdownMenu(
+                                expanded = showTopActionsMenu,
+                                onDismissRequest = { showTopActionsMenu = false },
+                                offset = androidx.compose.ui.unit.DpOffset(x = 48.dp, y = 6.dp),
+                                modifier = Modifier
+                                    .widthIn(min = 220.dp, max = 260.dp)
+                                    .shadow(10.dp, RoundedCornerShape(20.dp))
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                    .border(
+                                        width = 1.dp,
+                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
+                                        shape = RoundedCornerShape(20.dp)
+                                    )
+                            ) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Text(
+                                            if (isGridLayout) {
+                                                stringResource(R.string.switch_to_list)
+                                            } else {
+                                                stringResource(R.string.switch_to_grid)
+                                            }
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = if (isGridLayout) Icons.Default.ViewList else Icons.Default.GridView,
+                                            contentDescription = null
+                                        )
+                                    },
+                                    onClick = {
+                                        showTopActionsMenu = false
+                                        settingsViewModel.updateNoteGridLayout(!isGridLayout)
+                                    }
+                                )
+                                if (selectedBitwardenVaultId != null) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.sync_bitwarden_database_menu)) },
+                                        leadingIcon = { Icon(Icons.Default.Sync, contentDescription = null) },
+                                        enabled = !isTopBarSyncing,
+                                        onClick = {
+                                            if (isTopBarSyncing) return@DropdownMenuItem
+                                            val vaultId = selectedBitwardenVaultId ?: return@DropdownMenuItem
+                                            showTopActionsMenu = false
+                                            bitwardenViewModel.requestManualSync(vaultId)
+                                        }
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             )

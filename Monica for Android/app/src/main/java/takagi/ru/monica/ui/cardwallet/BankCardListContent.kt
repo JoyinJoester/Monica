@@ -383,90 +383,180 @@ fun BankCardListContent(
             )
         }
     } else {
+        val lazyListState = rememberLazyListState()
+        var localCards by remember(visibleCards) { mutableStateOf(visibleCards) }
+
+        LaunchedEffect(visibleCards) {
+            localCards = visibleCards
+        }
+
+        val reorderableLazyListState = rememberReorderableLazyListState(lazyListState) { from, to ->
+            if (isSelectionMode) {
+                localCards = localCards.toMutableList().apply {
+                    add(to.index, removeAt(from.index))
+                }
+            }
+        }
+
+        LaunchedEffect(reorderableLazyListState.isAnyItemDragging) {
+            if (!reorderableLazyListState.isAnyItemDragging && isSelectionMode) {
+                val newOrders = localCards.mapIndexed { index, item -> item.id to index }
+                if (newOrders.isNotEmpty()) {
+                    viewModel.updateSortOrders(newOrders)
+                }
+            }
+        }
+
         LazyColumn(
+            state = lazyListState,
             modifier = Modifier.fillMaxSize(),
+            userScrollEnabled = !isSelectionMode,
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             items(
-                items = visibleCards,  // 使用过滤后的列表
+                items = localCards,  // 使用过滤后的列表
                 key = { it.id }
             ) { card ->
-                val index = visibleCards.indexOf(card)
-                
-                takagi.ru.monica.ui.gestures.SwipeActions(
-                    onSwipeLeft = {
-                        // 左滑删除
-                        haptic.performWarning()
-                        itemToDelete = card
-                        deletedItemIds = deletedItemIds + card.id
-                    },
-                    onSwipeRight = {
-                        // 右滑选择
-                        haptic.performSuccess()
-                        if (!isSelectionMode) {
-                            isSelectionMode = true
+                val index = localCards.indexOf(card)
+                ReorderableItem(
+                    reorderableLazyListState,
+                    key = card.id,
+                    enabled = isSelectionMode
+                ) { isDragging ->
+                    val elevation by animateDpAsState(
+                        if (isDragging) 8.dp else 0.dp,
+                        label = "drag_elevation"
+                    )
+                    val dragModifier = if (isSelectionMode) {
+                        Modifier.longPressDraggableHandle(
+                            onDragStarted = { haptic.performLongPress() },
+                            onDragStopped = { haptic.performSuccess() }
+                        )
+                    } else {
+                        Modifier
+                    }
+
+                    if (isSelectionMode) {
+                        Box(
+                            modifier = Modifier
+                                .graphicsLayer { shadowElevation = elevation.toPx() }
+                                .then(dragModifier)
+                        ) {
+                            BankCardItemCard(
+                                item = card,
+                                onClick = {
+                                    if (isSelectionMode) {
+                                        // 选择模式下点击切换选择状态
+                                        selectedItems = if (selectedItems.contains(card.id)) {
+                                            selectedItems - card.id
+                                        } else {
+                                            selectedItems + card.id
+                                        }
+                                    } else {
+                                        // 普通模式下打开详情
+                                        onCardClick(card.id)
+                                    }
+                                },
+                                onDelete = {
+                                    itemToDelete = card
+                                },
+                                onToggleFavorite = { id, _ ->
+                                    viewModel.toggleFavorite(id)
+                                },
+                                onMoveUp = if (index > 0 && !isSelectionMode) {
+                                    {
+                                        val currentItem = localCards[index]
+                                        val previousItem = localCards[index - 1]
+                                        viewModel.updateSortOrders(listOf(
+                                            currentItem.id to (index - 1),
+                                            previousItem.id to index
+                                        ))
+                                    }
+                                } else null,
+                                onMoveDown = if (index < localCards.size - 1 && !isSelectionMode) {
+                                    {
+                                        val currentItem = localCards[index]
+                                        val nextItem = localCards[index + 1]
+                                        viewModel.updateSortOrders(listOf(
+                                            currentItem.id to (index + 1),
+                                            nextItem.id to index
+                                        ))
+                                    }
+                                } else null,
+                                onLongClick = {
+                                    haptic.performLongPress()
+                                    if (!isSelectionMode) {
+                                        isSelectionMode = true
+                                        selectedItems = setOf(card.id)
+                                    }
+                                },
+                                isSelectionMode = isSelectionMode,
+                                isSelected = selectedItems.contains(card.id)
+                            )
                         }
-                        selectedItems = if (selectedItems.contains(card.id)) {
-                            selectedItems - card.id
-                        } else {
-                            selectedItems + card.id
-                        }
-                    },
-                    isSwiped = itemToDelete?.id == card.id,
-                    enabled = true
-                ) {
-                    BankCardItemCard(
-                        item = card,
-                        onClick = { 
-                            if (isSelectionMode) {
-                                // 选择模式下点击切换选择状态
+                    } else {
+                        takagi.ru.monica.ui.gestures.SwipeActions(
+                            onSwipeLeft = {
+                                // 左滑删除
+                                haptic.performWarning()
+                                itemToDelete = card
+                                deletedItemIds = deletedItemIds + card.id
+                            },
+                            onSwipeRight = {
+                                // 右滑选择
+                                haptic.performSuccess()
+                                if (!isSelectionMode) {
+                                    isSelectionMode = true
+                                }
                                 selectedItems = if (selectedItems.contains(card.id)) {
                                     selectedItems - card.id
                                 } else {
                                     selectedItems + card.id
                                 }
-                            } else {
-                                // 普通模式下打开详情
-                                onCardClick(card.id)
+                            },
+                            isSwiped = itemToDelete?.id == card.id,
+                            enabled = !isDragging
+                        ) {
+                            Box(
+                                modifier = Modifier.graphicsLayer { shadowElevation = elevation.toPx() }
+                            ) {
+                                BankCardItemCard(
+                                    item = card,
+                                    onClick = { onCardClick(card.id) },
+                                    onDelete = { itemToDelete = card },
+                                    onToggleFavorite = { id, _ -> viewModel.toggleFavorite(id) },
+                                    onMoveUp = if (index > 0) {
+                                        {
+                                            val currentItem = localCards[index]
+                                            val previousItem = localCards[index - 1]
+                                            viewModel.updateSortOrders(listOf(
+                                                currentItem.id to (index - 1),
+                                                previousItem.id to index
+                                            ))
+                                        }
+                                    } else null,
+                                    onMoveDown = if (index < localCards.size - 1) {
+                                        {
+                                            val currentItem = localCards[index]
+                                            val nextItem = localCards[index + 1]
+                                            viewModel.updateSortOrders(listOf(
+                                                currentItem.id to (index + 1),
+                                                nextItem.id to index
+                                            ))
+                                        }
+                                    } else null,
+                                    onLongClick = {
+                                        haptic.performLongPress()
+                                        isSelectionMode = true
+                                        selectedItems = setOf(card.id)
+                                    },
+                                    isSelectionMode = false,
+                                    isSelected = false
+                                )
                             }
-                        },
-                        onDelete = {
-                            itemToDelete = card
-                        },
-                        onToggleFavorite = { id, _ ->
-                            viewModel.toggleFavorite(id)
-                        },
-                        onMoveUp = if (index > 0 && !isSelectionMode) {
-                            {
-                                val currentItem = visibleCards[index]
-                                val previousItem = visibleCards[index - 1]
-                                viewModel.updateSortOrders(listOf(
-                                    currentItem.id to (index - 1),
-                                    previousItem.id to index
-                                ))
-                            }
-                        } else null,
-                        onMoveDown = if (index < visibleCards.size - 1 && !isSelectionMode) {
-                            {
-                                val currentItem = visibleCards[index]
-                                val nextItem = visibleCards[index + 1]
-                                viewModel.updateSortOrders(listOf(
-                                    currentItem.id to (index + 1),
-                                    nextItem.id to index
-                                ))
-                            }
-                        } else null,
-                        onLongClick = {
-                            haptic.performLongPress()
-                            if (!isSelectionMode) {
-                                isSelectionMode = true
-                                selectedItems = setOf(card.id)
-                            }
-                        },
-                        isSelectionMode = isSelectionMode,
-                        isSelected = selectedItems.contains(card.id)
-                    )
+                        }
+                    }
                 }
             }
             

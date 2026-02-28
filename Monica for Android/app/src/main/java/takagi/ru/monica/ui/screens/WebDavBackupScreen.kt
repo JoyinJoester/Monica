@@ -1030,7 +1030,7 @@ fun WebDavBackupScreen(
         PasswordEntryPickerBottomSheet(
             visible = true,
             title = stringResource(R.string.webdav_fill_from_password),
-            passwords = passwordEntriesForPicker.filter { !it.isDeleted },
+            passwords = passwordEntriesForPicker.filter { !it.isDeleted && !it.isArchived },
             onDismiss = { showPasswordPicker = false },
             onSelect = { entry ->
                 val resolvedServerUrl = entry.website.trim()

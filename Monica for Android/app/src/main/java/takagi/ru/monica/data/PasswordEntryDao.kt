@@ -9,34 +9,34 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface PasswordEntryDao {
     
-    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
+    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND isArchived = 0 ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun getAllPasswordEntries(): Flow<List<PasswordEntry>>
     
-    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND categoryId = :categoryId ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
+    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND isArchived = 0 AND categoryId = :categoryId ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun getPasswordEntriesByCategory(categoryId: Long): Flow<List<PasswordEntry>>
 
-    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND categoryId IS NULL ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
+    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND isArchived = 0 AND categoryId IS NULL ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun getUncategorizedPasswordEntries(): Flow<List<PasswordEntry>>
 
-    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND keepassDatabaseId = :databaseId ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
+    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND isArchived = 0 AND keepassDatabaseId = :databaseId ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun getPasswordEntriesByKeePassDatabase(databaseId: Long): Flow<List<PasswordEntry>>
 
-    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND keepassDatabaseId = :databaseId AND keepassGroupPath = :groupPath ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
+    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND isArchived = 0 AND keepassDatabaseId = :databaseId AND keepassGroupPath = :groupPath ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun getPasswordEntriesByKeePassGroup(databaseId: Long, groupPath: String): Flow<List<PasswordEntry>>
 
-    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND keepassDatabaseId IS NULL ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
+    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND isArchived = 0 AND keepassDatabaseId IS NULL ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun getPasswordEntriesWithoutKeePassDatabase(): Flow<List<PasswordEntry>>
 
-    @Query("SELECT COUNT(*) FROM password_entries WHERE isDeleted = 0 AND keepassDatabaseId = :databaseId")
+    @Query("SELECT COUNT(*) FROM password_entries WHERE isDeleted = 0 AND isArchived = 0 AND keepassDatabaseId = :databaseId")
     fun getPasswordCountByKeePassDatabase(databaseId: Long): Flow<Int>
 
-    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND isFavorite = 1 ORDER BY sortOrder ASC, updatedAt DESC")
+    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND isArchived = 0 AND isFavorite = 1 ORDER BY sortOrder ASC, updatedAt DESC")
     fun getFavoritePasswordEntries(): Flow<List<PasswordEntry>>
     
     @Query("UPDATE password_entries SET categoryId = NULL WHERE categoryId = :categoryId")
     suspend fun removeCategoryFromPasswords(categoryId: Long)
     
-    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND (title LIKE '%' || :query || '%' OR website LIKE '%' || :query || '%' OR username LIKE '%' || :query || '%' OR appName LIKE '%' || :query || '%' OR appPackageName LIKE '%' || :query || '%') ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
+    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND isArchived = 0 AND (title LIKE '%' || :query || '%' OR website LIKE '%' || :query || '%' OR username LIKE '%' || :query || '%' OR appName LIKE '%' || :query || '%' OR appPackageName LIKE '%' || :query || '%') ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun searchPasswordEntries(query: String): Flow<List<PasswordEntry>>
     
     @Query("SELECT * FROM password_entries WHERE id = :id")
@@ -93,6 +93,7 @@ interface PasswordEntryDao {
         WHERE id IN (:ids)
           AND keepassDatabaseId IS NULL
           AND isDeleted = 0
+          AND isArchived = 0
     """)
     suspend fun bindPasswordsToBitwardenFolder(ids: List<Long>, vaultId: Long, folderId: String)
 
@@ -108,6 +109,7 @@ interface PasswordEntryDao {
         WHERE id IN (:ids)
           AND bitwarden_cipher_id IS NULL
           AND isDeleted = 0
+          AND isArchived = 0
     """)
     suspend fun clearPendingBitwardenBinding(ids: List<Long>)
 
@@ -125,6 +127,7 @@ interface PasswordEntryDao {
         WHERE categoryId = :categoryId
           AND keepassDatabaseId IS NULL
           AND isDeleted = 0
+          AND isArchived = 0
     """)
     suspend fun bindCategoryToBitwarden(categoryId: Long, vaultId: Long, folderId: String)
     
@@ -142,6 +145,7 @@ interface PasswordEntryDao {
             bitwarden_local_modified = 0
         WHERE id IN (:ids)
           AND isDeleted = 0
+          AND isArchived = 0
         """
     )
     suspend fun clearBitwardenBindingForPasswords(ids: List<Long>)
@@ -229,35 +233,35 @@ interface PasswordEntryDao {
      * 按包名和用户名查询密码
      * 用于自动填充保存时检测重复
      */
-    @Query("SELECT * FROM password_entries WHERE appPackageName = :packageName AND LOWER(username) = LOWER(:username) LIMIT 1")
+    @Query("SELECT * FROM password_entries WHERE appPackageName = :packageName AND LOWER(username) = LOWER(:username) AND isDeleted = 0 AND isArchived = 0 LIMIT 1")
     suspend fun findByPackageAndUsername(packageName: String, username: String): PasswordEntry?
     
     /**
      * 按网站和用户名查询密码
      * 用于自动填充保存时检测重复
      */
-    @Query("SELECT * FROM password_entries WHERE LOWER(website) LIKE '%' || LOWER(:domain) || '%' AND LOWER(username) = LOWER(:username) LIMIT 1")
+    @Query("SELECT * FROM password_entries WHERE LOWER(website) LIKE '%' || LOWER(:domain) || '%' AND LOWER(username) = LOWER(:username) AND isDeleted = 0 AND isArchived = 0 LIMIT 1")
     suspend fun findByDomainAndUsername(domain: String, username: String): PasswordEntry?
     
     /**
      * 按包名查询所有密码
      * 用于检测同一应用的多个账号
      */
-    @Query("SELECT * FROM password_entries WHERE appPackageName = :packageName ORDER BY updatedAt DESC")
+    @Query("SELECT * FROM password_entries WHERE appPackageName = :packageName AND isDeleted = 0 AND isArchived = 0 ORDER BY updatedAt DESC")
     suspend fun findByPackageName(packageName: String): List<PasswordEntry>
     
     /**
      * 按网站域名查询所有密码
      * 用于检测同一网站的多个账号
      */
-    @Query("SELECT * FROM password_entries WHERE LOWER(website) LIKE '%' || LOWER(:domain) || '%' ORDER BY updatedAt DESC")
+    @Query("SELECT * FROM password_entries WHERE LOWER(website) LIKE '%' || LOWER(:domain) || '%' AND isDeleted = 0 AND isArchived = 0 ORDER BY updatedAt DESC")
     suspend fun findByDomain(domain: String): List<PasswordEntry>
     
     /**
      * 检查是否存在完全相同的密码(包名+用户名+密码)
      * 用于避免重复保存
      */
-    @Query("SELECT * FROM password_entries WHERE appPackageName = :packageName AND LOWER(username) = LOWER(:username) AND password = :encryptedPassword LIMIT 1")
+    @Query("SELECT * FROM password_entries WHERE appPackageName = :packageName AND LOWER(username) = LOWER(:username) AND password = :encryptedPassword AND isDeleted = 0 AND isArchived = 0 LIMIT 1")
     suspend fun findExactMatch(packageName: String, username: String, encryptedPassword: String): PasswordEntry?
     
     // =============== 回收站相关方法 ===============
@@ -277,7 +281,7 @@ interface PasswordEntryDao {
     /**
      * 获取所有未删除的密码条目（同步版本，用于KeePass导出）
      */
-    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
+    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND isArchived = 0 ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     suspend fun getAllPasswordEntriesSync(): List<PasswordEntry>
     
     /**
@@ -289,19 +293,49 @@ interface PasswordEntryDao {
     /**
      * 获取所有未删除的条目（正常条目）
      */
-    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
+    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND isArchived = 0 ORDER BY isFavorite DESC, sortOrder ASC, updatedAt DESC")
     fun getActiveEntries(): Flow<List<PasswordEntry>>
+
+    /**
+     * 获取归档中的密码条目
+     */
+    @Query("SELECT * FROM password_entries WHERE isDeleted = 0 AND isArchived = 1 ORDER BY archivedAt DESC, updatedAt DESC")
+    fun getArchivedEntries(): Flow<List<PasswordEntry>>
+
+    /**
+     * 归档单个密码条目
+     */
+    @Query("UPDATE password_entries SET isArchived = 1, archivedAt = :archivedAt, updatedAt = :updatedAt WHERE id = :id AND isDeleted = 0")
+    suspend fun archiveById(id: Long, archivedAt: java.util.Date = java.util.Date(), updatedAt: java.util.Date = java.util.Date())
+
+    /**
+     * 批量归档密码条目
+     */
+    @Query("UPDATE password_entries SET isArchived = 1, archivedAt = :archivedAt, updatedAt = :updatedAt WHERE id IN (:ids) AND isDeleted = 0")
+    suspend fun archiveByIds(ids: List<Long>, archivedAt: java.util.Date = java.util.Date(), updatedAt: java.util.Date = java.util.Date())
+
+    /**
+     * 取消归档单个密码条目
+     */
+    @Query("UPDATE password_entries SET isArchived = 0, archivedAt = NULL, updatedAt = :updatedAt WHERE id = :id AND isDeleted = 0")
+    suspend fun unarchiveById(id: Long, updatedAt: java.util.Date = java.util.Date())
+
+    /**
+     * 批量取消归档密码条目
+     */
+    @Query("UPDATE password_entries SET isArchived = 0, archivedAt = NULL, updatedAt = :updatedAt WHERE id IN (:ids) AND isDeleted = 0")
+    suspend fun unarchiveByIds(ids: List<Long>, updatedAt: java.util.Date = java.util.Date())
     
     /**
      * 软删除条目（移动到回收站）
      */
-    @Query("UPDATE password_entries SET isDeleted = 1, deletedAt = :deletedAt WHERE id = :id")
+    @Query("UPDATE password_entries SET isDeleted = 1, deletedAt = :deletedAt, isArchived = 0, archivedAt = NULL WHERE id = :id")
     suspend fun softDelete(id: Long, deletedAt: Long = System.currentTimeMillis())
     
     /**
      * 恢复已删除的条目
      */
-    @Query("UPDATE password_entries SET isDeleted = 0, deletedAt = NULL WHERE id = :id")
+    @Query("UPDATE password_entries SET isDeleted = 0, deletedAt = NULL, isArchived = 0, archivedAt = NULL WHERE id = :id")
     suspend fun restore(id: Long)
     
     /**
@@ -405,6 +439,7 @@ interface PasswordEntryDao {
         """
         SELECT * FROM password_entries
         WHERE isDeleted = 0
+          AND isArchived = 0
           AND bitwarden_vault_id = :vaultId
         ORDER BY title ASC
         """
@@ -419,6 +454,7 @@ interface PasswordEntryDao {
         """
         SELECT * FROM password_entries
         WHERE isDeleted = 0
+          AND isArchived = 0
           AND bitwarden_vault_id = :vaultId
         ORDER BY title ASC
         """
@@ -428,7 +464,7 @@ interface PasswordEntryDao {
     /**
      * 获取所有 Bitwarden 条目
      */
-    @Query("SELECT * FROM password_entries WHERE bitwarden_vault_id IS NOT NULL AND isDeleted = 0 ORDER BY title ASC")
+    @Query("SELECT * FROM password_entries WHERE bitwarden_vault_id IS NOT NULL AND isDeleted = 0 AND isArchived = 0 ORDER BY title ASC")
     suspend fun getAllBitwardenEntries(): List<PasswordEntry>
     
     /**
@@ -460,7 +496,7 @@ interface PasswordEntryDao {
     """)
     suspend fun updateBitwardenSyncInfo(entryId: Long, revisionDate: String?)
     
-    @Query("SELECT * FROM password_entries WHERE bitwarden_folder_id = :folderId AND isDeleted = 0 ORDER BY title ASC")
+    @Query("SELECT * FROM password_entries WHERE bitwarden_folder_id = :folderId AND isDeleted = 0 AND isArchived = 0 ORDER BY title ASC")
     fun getByBitwardenFolderIdFlow(folderId: String): kotlinx.coroutines.flow.Flow<List<PasswordEntry>>
 
     @Query(
@@ -469,6 +505,7 @@ interface PasswordEntryDao {
         WHERE bitwarden_vault_id = :vaultId
           AND bitwarden_folder_id = :folderId
           AND isDeleted = 0
+          AND isArchived = 0
         ORDER BY title ASC
         """
     )
@@ -477,7 +514,7 @@ interface PasswordEntryDao {
     /**
      * 根据 Bitwarden Folder ID 获取条目
      */
-    @Query("SELECT * FROM password_entries WHERE bitwarden_folder_id = :folderId AND isDeleted = 0 ORDER BY title ASC")
+    @Query("SELECT * FROM password_entries WHERE bitwarden_folder_id = :folderId AND isDeleted = 0 AND isArchived = 0 ORDER BY title ASC")
     suspend fun getByBitwardenFolderId(folderId: String): List<PasswordEntry>
 
     @Query(
@@ -486,6 +523,7 @@ interface PasswordEntryDao {
         WHERE bitwarden_vault_id = :vaultId
           AND bitwarden_folder_id = :folderId
           AND isDeleted = 0
+          AND isArchived = 0
         ORDER BY title ASC
         """
     )
@@ -494,7 +532,7 @@ interface PasswordEntryDao {
     /**
      * 获取 Bitwarden 条目按类型分组
      */
-    @Query("SELECT * FROM password_entries WHERE bitwarden_vault_id = :vaultId AND bitwarden_cipher_type = :cipherType AND isDeleted = 0 ORDER BY title ASC")
+    @Query("SELECT * FROM password_entries WHERE bitwarden_vault_id = :vaultId AND bitwarden_cipher_type = :cipherType AND isDeleted = 0 AND isArchived = 0 ORDER BY title ASC")
     suspend fun getBitwardenEntriesByCipherType(vaultId: Long, cipherType: Int): List<PasswordEntry>
     
     /**
@@ -504,6 +542,7 @@ interface PasswordEntryDao {
         SELECT * FROM password_entries 
         WHERE bitwarden_vault_id = :vaultId 
         AND isDeleted = 0 
+        AND isArchived = 0
         AND (title LIKE '%' || :query || '%' 
              OR username LIKE '%' || :query || '%' 
              OR notes LIKE '%' || :query || '%')
@@ -520,7 +559,7 @@ interface PasswordEntryDao {
     /**
      * 获取 Bitwarden 条目数量
      */
-    @Query("SELECT COUNT(*) FROM password_entries WHERE bitwarden_vault_id = :vaultId AND isDeleted = 0")
+    @Query("SELECT COUNT(*) FROM password_entries WHERE bitwarden_vault_id = :vaultId AND isDeleted = 0 AND isArchived = 0")
     suspend fun getBitwardenEntryCount(vaultId: Long): Int
     
     /**
@@ -535,41 +574,41 @@ interface PasswordEntryDao {
      * 获取纯本地条目数量（非 Bitwarden、非 KeePass）
      * 用于 V2 多源密码库统计
      */
-    @Query("SELECT COUNT(*) FROM password_entries WHERE bitwarden_vault_id IS NULL AND keepassDatabaseId IS NULL AND isDeleted = 0")
+    @Query("SELECT COUNT(*) FROM password_entries WHERE bitwarden_vault_id IS NULL AND keepassDatabaseId IS NULL AND isDeleted = 0 AND isArchived = 0")
     suspend fun getLocalEntriesCount(): Int
 
     /**
      * 获取指定 Bitwarden Vault 的条目数量
      * 用于 V2 多源密码库统计
      */
-    @Query("SELECT COUNT(*) FROM password_entries WHERE bitwarden_vault_id = :vaultId AND isDeleted = 0")
+    @Query("SELECT COUNT(*) FROM password_entries WHERE bitwarden_vault_id = :vaultId AND isDeleted = 0 AND isArchived = 0")
     suspend fun getBitwardenEntriesCount(vaultId: Long): Int
     
     /**
      * 获取 KeePass 条目数量
      * 用于 V2 多源密码库统计
      */
-    @Query("SELECT COUNT(*) FROM password_entries WHERE keepassDatabaseId IS NOT NULL AND isDeleted = 0")
+    @Query("SELECT COUNT(*) FROM password_entries WHERE keepassDatabaseId IS NOT NULL AND isDeleted = 0 AND isArchived = 0")
     suspend fun getKeePassEntriesCount(): Int
 
     /**
      * 获取所有纯本地条目（非 Bitwarden、非 KeePass）
      * 用于 V2 多源密码库显示
      */
-    @Query("SELECT * FROM password_entries WHERE bitwarden_vault_id IS NULL AND keepassDatabaseId IS NULL AND isDeleted = 0 ORDER BY isFavorite DESC, updatedAt DESC")
+    @Query("SELECT * FROM password_entries WHERE bitwarden_vault_id IS NULL AND keepassDatabaseId IS NULL AND isDeleted = 0 AND isArchived = 0 ORDER BY isFavorite DESC, updatedAt DESC")
     suspend fun getAllLocalEntries(): List<PasswordEntry>
     
     /**
      * 获取所有 KeePass 条目
      * 用于 V2 多源密码库显示
      */
-    @Query("SELECT * FROM password_entries WHERE keepassDatabaseId IS NOT NULL AND isDeleted = 0 ORDER BY isFavorite DESC, updatedAt DESC")
+    @Query("SELECT * FROM password_entries WHERE keepassDatabaseId IS NOT NULL AND isDeleted = 0 AND isArchived = 0 ORDER BY isFavorite DESC, updatedAt DESC")
     suspend fun getAllKeePassEntries(): List<PasswordEntry>
     /**
      * 获取指定 Bitwarden Vault 的所有条目
      * 用于 V2 多源密码库显示
      */
-    @Query("SELECT * FROM password_entries WHERE bitwarden_vault_id = :vaultId AND isDeleted = 0 ORDER BY isFavorite DESC, updatedAt DESC")
+    @Query("SELECT * FROM password_entries WHERE bitwarden_vault_id = :vaultId AND isDeleted = 0 AND isArchived = 0 ORDER BY isFavorite DESC, updatedAt DESC")
     suspend fun getEntriesByVaultId(vaultId: Long): List<PasswordEntry>
     
     /**

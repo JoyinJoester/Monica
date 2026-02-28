@@ -139,6 +139,11 @@
 
     <!-- Group/display menu -->
     <string name="display_options_menu_title">Display &amp; grouping</string>
+    <string name="archive_page_title">Archived</string>
+    <string name="archive_action">Archive</string>
+    <string name="unarchive_action">Unarchive</string>
+    <string name="archive_empty_hint">No archived passwords yet</string>
+    <string name="archive_item_subtitle_empty">No username or website</string>
     <string name="group_mode_menu_title">Stacking style</string>
     <string name="group_mode_smart">Smart (notes > web > app > title)</string>
     <string name="smart_deduplication">Smart Deduplication</string>
@@ -297,7 +302,7 @@
     <string name="notes_placeholder">Add notes...</string>
     <string name="bottom_nav_settings">Bottom navigation</string>
     <string name="bottom_nav_toggle_subtitle">Show or hide this tab in the bottom bar</string>
-    <string name="bottom_nav_reorder_hint">Use the arrows to reorder the tabs. Settings always stays at the end.</string>
+    <string name="bottom_nav_reorder_hint">Long press and drag to reorder tabs. Settings always stays at the end.</string>
     <string name="bottom_nav_move_up">Move tab up</string>
     <string name="bottom_nav_move_down">Move tab down</string>
     <string name="bottom_nav_settings_entry_subtitle">Choose which tabs appear and reorder them</string>
@@ -2152,6 +2157,8 @@
     
     <!-- Timeline/trash hardcoded text cleanup -->
     <string name="timeline_title">Timeline</string>
+    <string name="timeline_and_trash_title">Timeline / Recycle Bin</string>
+    <string name="sync_bitwarden_database_menu">Sync Bitwarden database</string>
     <string name="timeline_subtitle">Operation history</string>
     <string name="timeline_trash_title">Recycle Bin</string>
     <string name="timeline_trash_subtitle">Deleted items</string>
@@ -2180,9 +2187,16 @@
     <string name="timeline_log_meta_with_time">%1$s · %2$s · %3$s</string>
     <string name="timeline_change_details">Change details</string>
     <string name="timeline_field_password">Password</string>
+    <string name="timeline_field_batch_move">Batch move</string>
+    <string name="timeline_field_batch_copy">Batch copy</string>
+    <string name="timeline_batch_source_multiple">Multiple items</string>
+    <string name="timeline_batch_move_title">Batch move (%1$d)</string>
+    <string name="timeline_batch_copy_title">Batch copy (%1$d)</string>
     <string name="timeline_count_suffix_items">items</string>
     <string name="timeline_restore_to_after_edit">Restore to post-edit state</string>
     <string name="timeline_restore_to_before_edit">Restore to pre-edit state</string>
+    <string name="timeline_undo_operation">Undo action</string>
+    <string name="timeline_redo_operation">Redo action</string>
     <string name="timeline_save_old_as_new">Save old data as new entry</string>
     <string name="timeline_empty_trash_title">Empty recycle bin</string>
     <string name="timeline_empty_trash_message">Permanently delete %1$d items in recycle bin? This cannot be undone.</string>

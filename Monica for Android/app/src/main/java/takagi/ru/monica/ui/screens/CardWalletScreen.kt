@@ -1,8 +1,12 @@
 package takagi.ru.monica.ui.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -10,14 +14,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
@@ -25,6 +34,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.animation.core.Animatable
@@ -49,6 +59,8 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -56,6 +68,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.Velocity
 import androidx.fragment.app.FragmentActivity
@@ -93,6 +106,8 @@ import takagi.ru.monica.utils.SavedCategoryFilterState
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 
 enum class CardWalletTab {
     ALL,
@@ -162,7 +177,8 @@ fun CardWalletScreen(
 
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
-    var showTypeMenu by remember { mutableStateOf(false) }
+    var showTopActionsMenu by remember { mutableStateOf(false) }
+    var showHistoryPage by rememberSaveable { mutableStateOf(false) }
     var showCategoryFilterDialog by remember { mutableStateOf(false) }
     var selectedCategoryFilter by rememberSaveable(stateSaver = cardWalletCategoryFilterSaver) {
         mutableStateOf<UnifiedCategoryFilterSelection>(UnifiedCategoryFilterSelection.All)
@@ -741,6 +757,14 @@ fun CardWalletScreen(
         }
     }
 
+    if (showHistoryPage) {
+        TimelineScreen(
+            showBackButton = true,
+            onNavigateBack = { showHistoryPage = false }
+        )
+        return
+    }
+
     Column(modifier = modifier.fillMaxSize()) {
         ExpressiveTopBar(
             title = topBarTitle,
@@ -761,60 +785,104 @@ fun CardWalletScreen(
                         contentDescription = stringResource(R.string.category)
                     )
                 }
-                Box {
-                    IconButton(onClick = { showTypeMenu = true }) {
-                        Icon(
-                            imageVector = Icons.Default.FilterList,
-                            contentDescription = stringResource(R.string.category)
-                        )
-                    }
-                    DropdownMenu(
-                        expanded = showTypeMenu,
-                        onDismissRequest = { showTypeMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.filter_all)) },
-                            onClick = {
-                                showTypeMenu = false
-                                onTabSelected(CardWalletTab.ALL)
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.nav_bank_cards_short)) },
-                            onClick = {
-                                showTypeMenu = false
-                                onTabSelected(CardWalletTab.BANK_CARDS)
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text(stringResource(R.string.nav_documents_short)) },
-                            onClick = {
-                                showTypeMenu = false
-                                onTabSelected(CardWalletTab.DOCUMENTS)
-                            }
-                        )
-                    }
-                }
-                if (selectedBitwardenVaultId != null) {
-                    IconButton(
-                        onClick = {
-                            if (isTopBarSyncing) return@IconButton
-                            val vaultId = selectedBitwardenVaultId ?: return@IconButton
-                            bitwardenViewModel.requestManualSync(vaultId)
-                        },
-                        enabled = !isTopBarSyncing
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Sync,
-                            contentDescription = stringResource(R.string.refresh)
-                        )
-                    }
-                }
                 IconButton(onClick = { isSearchExpanded = true }) {
                     Icon(
                         imageVector = Icons.Default.Search,
                         contentDescription = stringResource(R.string.search)
                     )
+                }
+                Box {
+                    IconButton(onClick = { showTopActionsMenu = true }) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = stringResource(R.string.more_options)
+                        )
+                    }
+                    MaterialTheme(
+                        shapes = MaterialTheme.shapes.copy(
+                            extraSmall = RoundedCornerShape(20.dp),
+                            small = RoundedCornerShape(20.dp)
+                        )
+                    ) {
+                        DropdownMenu(
+                            expanded = showTopActionsMenu,
+                            onDismissRequest = { showTopActionsMenu = false },
+                            offset = DpOffset(x = 48.dp, y = 6.dp),
+                            modifier = Modifier
+                                .widthIn(min = 220.dp, max = 260.dp)
+                                .shadow(10.dp, RoundedCornerShape(20.dp))
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                .border(
+                                    width = 1.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
+                                    shape = RoundedCornerShape(20.dp)
+                                )
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.filter_all)) },
+                                leadingIcon = { Icon(Icons.Default.FilterList, contentDescription = null) },
+                                trailingIcon = {
+                                    if (currentTab == CardWalletTab.ALL) {
+                                        Icon(Icons.Default.Check, contentDescription = null)
+                                    }
+                                },
+                                onClick = {
+                                    showTopActionsMenu = false
+                                    onTabSelected(CardWalletTab.ALL)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.nav_bank_cards_short)) },
+                                leadingIcon = { Icon(Icons.Default.CreditCard, contentDescription = null) },
+                                trailingIcon = {
+                                    if (currentTab == CardWalletTab.BANK_CARDS) {
+                                        Icon(Icons.Default.Check, contentDescription = null)
+                                    }
+                                },
+                                onClick = {
+                                    showTopActionsMenu = false
+                                    onTabSelected(CardWalletTab.BANK_CARDS)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.nav_documents_short)) },
+                                leadingIcon = { Icon(Icons.Default.Description, contentDescription = null) },
+                                trailingIcon = {
+                                    if (currentTab == CardWalletTab.DOCUMENTS) {
+                                        Icon(Icons.Default.Check, contentDescription = null)
+                                    }
+                                },
+                                onClick = {
+                                    showTopActionsMenu = false
+                                    onTabSelected(CardWalletTab.DOCUMENTS)
+                                }
+                            )
+                            if (selectedBitwardenVaultId != null) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.sync_bitwarden_database_menu)) },
+                                    leadingIcon = { Icon(Icons.Default.Sync, contentDescription = null) },
+                                    enabled = !isTopBarSyncing,
+                                    onClick = {
+                                        if (isTopBarSyncing) return@DropdownMenuItem
+                                        val vaultId = selectedBitwardenVaultId ?: return@DropdownMenuItem
+                                        showTopActionsMenu = false
+                                        bitwardenViewModel.requestManualSync(vaultId)
+                                    }
+                                )
+                            }
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.timeline_and_trash_title)) },
+                                leadingIcon = { Icon(Icons.Default.History, contentDescription = null) },
+                                onClick = {
+                                    showTopActionsMenu = false
+                                    isSelectionMode = false
+                                    selectedIds = emptySet()
+                                    showHistoryPage = true
+                                }
+                            )
+                        }
+                    }
                 }
             }
         )
@@ -957,70 +1025,115 @@ fun CardWalletScreen(
                     }
 
                     else -> {
+                        var localFilteredItems by remember(filteredItems) { mutableStateOf(filteredItems) }
+                        LaunchedEffect(filteredItems) {
+                            localFilteredItems = filteredItems
+                        }
+                        val reorderableLazyListState = rememberReorderableLazyListState(listState) { from, to ->
+                            if (isSelectionMode) {
+                                localFilteredItems = localFilteredItems.toMutableList().apply {
+                                    add(to.index, removeAt(from.index))
+                                }
+                            }
+                        }
+                        LaunchedEffect(reorderableLazyListState.isAnyItemDragging) {
+                            if (!reorderableLazyListState.isAnyItemDragging && isSelectionMode) {
+                                val bankOrders = localFilteredItems
+                                    .filter { it.itemType == ItemType.BANK_CARD }
+                                    .mapIndexed { index, item -> item.id to index }
+                                val docOrders = localFilteredItems
+                                    .filter { it.itemType == ItemType.DOCUMENT }
+                                    .mapIndexed { index, item -> item.id to index }
+                                if (bankOrders.isNotEmpty()) bankCardViewModel.updateSortOrders(bankOrders)
+                                if (docOrders.isNotEmpty()) documentViewModel.updateSortOrders(docOrders)
+                            }
+                        }
+
                         LazyColumn(
                             state = listState,
                             modifier = Modifier
                                 .fillMaxSize()
                                 .offset { IntOffset(0, contentPullOffset) }
                                 .nestedScroll(nestedScrollConnection),
+                            userScrollEnabled = !isSelectionMode,
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                         ) {
-                            items(filteredItems, key = { it.id }) { item ->
-                                val isSelected = selectedIds.contains(item.id)
-                                when (item.itemType) {
-                                    ItemType.BANK_CARD -> BankCardCard(
-                                        item = item,
-                                        onClick = {
-                                            if (isSelectionMode) {
-                                                selectedIds = if (isSelected) selectedIds - item.id else selectedIds + item.id
-                                                if (selectedIds.isEmpty()) isSelectionMode = false
-                                            } else {
-                                                onCardClick(item.id)
-                                            }
-                                        },
-                                        onDelete = { itemToDelete = item },
-                                        onToggleFavorite = { id, _ -> bankCardViewModel.toggleFavorite(id) },
-                                        isSelectionMode = isSelectionMode,
-                                        isSelected = isSelected,
-                                        onLongClick = {
-                                            if (!isSelectionMode) {
-                                                isSelectionMode = true
-                                                selectedIds = setOf(item.id)
-                                            } else {
-                                                selectedIds = if (isSelected) selectedIds - item.id else selectedIds + item.id
-                                                if (selectedIds.isEmpty()) isSelectionMode = false
-                                            }
-                                        },
-                                        modifier = Modifier.padding(bottom = 8.dp)
+                            items(localFilteredItems, key = { it.id }) { item ->
+                                ReorderableItem(
+                                    reorderableLazyListState,
+                                    key = item.id,
+                                    enabled = isSelectionMode
+                                ) { isDragging ->
+                                    val isSelected = selectedIds.contains(item.id)
+                                    val elevation by animateDpAsState(
+                                        if (isDragging) 8.dp else 0.dp,
+                                        label = "wallet_drag_elevation"
                                     )
+                                    val dragModifier = if (isSelectionMode) {
+                                        Modifier.longPressDraggableHandle()
+                                    } else {
+                                        Modifier
+                                    }
 
-                                    ItemType.DOCUMENT -> DocumentCard(
-                                        item = item,
-                                        onClick = {
-                                            if (isSelectionMode) {
-                                                selectedIds = if (isSelected) selectedIds - item.id else selectedIds + item.id
-                                                if (selectedIds.isEmpty()) isSelectionMode = false
-                                            } else {
-                                                onDocumentClick(item.id)
-                                            }
-                                        },
-                                        onDelete = { itemToDelete = item },
-                                        onToggleFavorite = { id, _ -> documentViewModel.toggleFavorite(id) },
-                                        isSelectionMode = isSelectionMode,
-                                        isSelected = isSelected,
-                                        onLongClick = {
-                                            if (!isSelectionMode) {
-                                                isSelectionMode = true
-                                                selectedIds = setOf(item.id)
-                                            } else {
-                                                selectedIds = if (isSelected) selectedIds - item.id else selectedIds + item.id
-                                                if (selectedIds.isEmpty()) isSelectionMode = false
-                                            }
-                                        },
-                                        modifier = Modifier.padding(bottom = 8.dp)
-                                    )
+                                    when (item.itemType) {
+                                        ItemType.BANK_CARD -> BankCardCard(
+                                            item = item,
+                                            onClick = {
+                                                if (isSelectionMode) {
+                                                    selectedIds = if (isSelected) selectedIds - item.id else selectedIds + item.id
+                                                    if (selectedIds.isEmpty()) isSelectionMode = false
+                                                } else {
+                                                    onCardClick(item.id)
+                                                }
+                                            },
+                                            onDelete = { itemToDelete = item },
+                                            onToggleFavorite = { id, _ -> bankCardViewModel.toggleFavorite(id) },
+                                            isSelectionMode = isSelectionMode,
+                                            isSelected = isSelected,
+                                            onLongClick = {
+                                                if (!isSelectionMode) {
+                                                    isSelectionMode = true
+                                                    selectedIds = setOf(item.id)
+                                                } else {
+                                                    selectedIds = if (isSelected) selectedIds - item.id else selectedIds + item.id
+                                                    if (selectedIds.isEmpty()) isSelectionMode = false
+                                                }
+                                            },
+                                            modifier = Modifier
+                                                .padding(bottom = 8.dp)
+                                                .then(dragModifier)
+                                        )
 
-                                    else -> Unit
+                                        ItemType.DOCUMENT -> DocumentCard(
+                                            item = item,
+                                            onClick = {
+                                                if (isSelectionMode) {
+                                                    selectedIds = if (isSelected) selectedIds - item.id else selectedIds + item.id
+                                                    if (selectedIds.isEmpty()) isSelectionMode = false
+                                                } else {
+                                                    onDocumentClick(item.id)
+                                                }
+                                            },
+                                            onDelete = { itemToDelete = item },
+                                            onToggleFavorite = { id, _ -> documentViewModel.toggleFavorite(id) },
+                                            isSelectionMode = isSelectionMode,
+                                            isSelected = isSelected,
+                                            onLongClick = {
+                                                if (!isSelectionMode) {
+                                                    isSelectionMode = true
+                                                    selectedIds = setOf(item.id)
+                                                } else {
+                                                    selectedIds = if (isSelected) selectedIds - item.id else selectedIds + item.id
+                                                    if (selectedIds.isEmpty()) isSelectionMode = false
+                                                }
+                                            },
+                                            modifier = Modifier
+                                                .padding(bottom = 8.dp)
+                                                .then(dragModifier)
+                                        )
+
+                                        else -> Unit
+                                    }
                                 }
                             }
                             item { Box(modifier = Modifier.height(80.dp)) }

@@ -77,6 +77,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Path
@@ -248,6 +249,7 @@ fun TotpListContent(
     val haptic = rememberHapticFeedback()
     val focusManager = LocalFocusManager.current
     var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
+    var showTopActionsMenu by remember { mutableStateOf(false) }
     
     // 分类选择状态
     var isCategorySheetVisible by rememberSaveable { mutableStateOf(false) }
@@ -505,30 +507,6 @@ fun TotpListContent(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                // 快速扫码按钮
-                IconButton(onClick = onQuickScanTotp) {
-                    Icon(
-                        imageVector = Icons.Default.QrCodeScanner,
-                        contentDescription = stringResource(R.string.quick_action_scan_qr),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                if (selectedBitwardenVaultId != null) {
-                    IconButton(
-                        onClick = {
-                            if (isTopBarSyncing) return@IconButton
-                            val vaultId = selectedBitwardenVaultId ?: return@IconButton
-                            bitwardenViewModel.requestManualSync(vaultId)
-                        },
-                        enabled = !isTopBarSyncing
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Sync,
-                            contentDescription = stringResource(R.string.refresh),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
                 // 搜索按钮
                 IconButton(onClick = { isSearchExpanded = true }) {
                     Icon(
@@ -536,6 +514,59 @@ fun TotpListContent(
                         contentDescription = stringResource(R.string.search),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+                Box {
+                    IconButton(onClick = { showTopActionsMenu = true }) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = stringResource(R.string.more_options),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    MaterialTheme(
+                        shapes = MaterialTheme.shapes.copy(
+                            extraSmall = RoundedCornerShape(20.dp),
+                            small = RoundedCornerShape(20.dp)
+                        )
+                    ) {
+                        DropdownMenu(
+                            expanded = showTopActionsMenu,
+                            onDismissRequest = { showTopActionsMenu = false },
+                            offset = androidx.compose.ui.unit.DpOffset(x = 48.dp, y = 6.dp),
+                            modifier = Modifier
+                                .widthIn(min = 220.dp, max = 260.dp)
+                                .shadow(10.dp, RoundedCornerShape(20.dp))
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                .border(
+                                    width = 1.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
+                                    shape = RoundedCornerShape(20.dp)
+                                )
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.quick_action_scan_qr)) },
+                                leadingIcon = { Icon(Icons.Default.QrCodeScanner, contentDescription = null) },
+                                onClick = {
+                                    showTopActionsMenu = false
+                                    onQuickScanTotp()
+                                }
+                            )
+                            if (selectedBitwardenVaultId != null) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.sync_bitwarden_database_menu)) },
+                                    leadingIcon = { Icon(Icons.Default.Sync, contentDescription = null) },
+                                    enabled = !isTopBarSyncing,
+                                    onClick = {
+                                        if (isTopBarSyncing) return@DropdownMenuItem
+                                        val vaultId = selectedBitwardenVaultId ?: return@DropdownMenuItem
+                                        showTopActionsMenu = false
+                                        bitwardenViewModel.requestManualSync(vaultId)
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
             }
         )

@@ -58,8 +58,21 @@ fun DocumentCard(
     // 获取对应容器的文字颜色
     val contentColor = getDocumentCardContentColor(documentData.documentType, isSelected)
     
+    val cardInteractionModifier = if (isSelectionMode) {
+        modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+    } else {
+        modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+    }
+
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = cardInteractionModifier,
         shape = RoundedCornerShape(16.dp),
         elevation = CardDefaults.cardElevation(
             defaultElevation = 2.dp
@@ -82,10 +95,6 @@ fun DocumentCard(
     ) {
         Column(
             modifier = Modifier
-                .combinedClickable(
-                    onClick = onClick,
-                    onLongClick = onLongClick
-                )
                 .padding(16.dp)
         ) {
             // 标题和菜单

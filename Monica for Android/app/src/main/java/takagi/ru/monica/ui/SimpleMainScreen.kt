@@ -559,6 +559,7 @@ fun SimpleMainScreen(
     
     // 双击返回退出相关状态
     var backPressedOnce by remember { mutableStateOf(false) }
+    var showPasswordHistoryPage by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val bitwardenRepository = remember { takagi.ru.monica.bitwarden.repository.BitwardenRepository.getInstance(context) }
@@ -569,6 +570,10 @@ fun SimpleMainScreen(
     // 目前 SwipeableAddFab 应该自己处理了返回键（如果有 BackHandler）
     // 为了安全起见，我们只在最外层处理
     BackHandler(enabled = true) {
+        if (showPasswordHistoryPage) {
+            showPasswordHistoryPage = false
+            return@BackHandler
+        }
         if (backPressedOnce) {
             // 第二次按返回键,退出应用
             (context as? android.app.Activity)?.finish()
@@ -1133,6 +1138,7 @@ fun SimpleMainScreen(
             selectedPasswordId = null
             inlinePasswordEditorId = null
             isAddingPasswordInline = false
+            showPasswordHistoryPage = false
         }
     }
     LaunchedEffect(currentTab.key) {
@@ -1192,8 +1198,8 @@ fun SimpleMainScreen(
             isAddingSendInline = false
         }
     }
-    LaunchedEffect(currentTab.key, isCompactWidth) {
-        if (isCompactWidth || currentTab != BottomNavItem.Timeline) {
+    LaunchedEffect(currentTab.key, isCompactWidth, showPasswordHistoryPage) {
+        if (isCompactWidth || currentTab != BottomNavItem.Passwords || !showPasswordHistoryPage) {
             selectedTimelineLog = null
         }
     }
@@ -1378,6 +1384,9 @@ fun SimpleMainScreen(
                     onNavigateToPageCustomization = onNavigateToPageCustomization,
                     onClearAllData = onClearAllData,
                     cardWalletSubTab = cardWalletSubTab,
+                    showPasswordHistoryPage = showPasswordHistoryPage,
+                    onOpenHistoryPage = { showPasswordHistoryPage = true },
+                    onCloseHistoryPage = { showPasswordHistoryPage = false },
                     isPasswordSelectionMode = isPasswordSelectionMode,
                     selectedPasswordCount = selectedPasswordCount,
                     onExitPasswordSelection = onExitPasswordSelection,
@@ -1493,9 +1502,14 @@ fun SimpleMainScreen(
                         keepassDatabases = keepassDatabases,
                         bitwardenVaults = bitwardenVaults,
                         localKeePassViewModel = localKeePassViewModel,
+                        timelineViewModel = timelineViewModel,
                         groupMode = passwordGroupMode,
                         stackCardMode = stackCardMode,
                         onPasswordOpen = handlePasswordDetailOpen,
+                        onOpenHistoryPage = { showPasswordHistoryPage = true },
+                        onCloseHistoryPage = { showPasswordHistoryPage = false },
+                        showPasswordHistoryPage = showPasswordHistoryPage,
+                        onTimelineLogSelected = handleTimelineLogOpen,
                         onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onMoveToCategory, onStack, onDelete ->
                             isPasswordSelectionMode = isSelectionMode
                             selectedPasswordCount = count
@@ -1596,13 +1610,6 @@ fun SimpleMainScreen(
                         isAddingNoteInline = isAddingNoteInline,
                         inlineNoteEditorId = inlineNoteEditorId,
                         onInlineNoteEditorBack = handleInlineNoteEditorBack
-                    )
-                }
-                BottomNavItem.Timeline -> {
-                    TimelineScreen(
-                        viewModel = timelineViewModel,
-                        onLogSelected = handleTimelineLogOpen,
-                        splitPaneMode = !isCompactWidth
                     )
                 }
                 BottomNavItem.Passkey -> {
@@ -1789,7 +1796,10 @@ fun SimpleMainScreen(
             currentTab == BottomNavItem.Generator ||
             currentTab == BottomNavItem.Notes ||
             currentTab == BottomNavItem.Send
-        ) && !isAnySelectionMode && !hasWideDetailSelection
+        ) &&
+        !(currentTab == BottomNavItem.Passwords && showPasswordHistoryPage) &&
+        !isAnySelectionMode &&
+        !hasWideDetailSelection
 
     val fabOverlayModifier = if (isCompactWidth) {
         Modifier.fillMaxSize().zIndex(5f)
@@ -1932,8 +1942,13 @@ fun SimpleMainScreen(
         }
     } // End if (showFab)
 
-    LaunchedEffect(currentTab, appSettings.passwordListQuickAccessEnabled) {
-        if ((currentTab != BottomNavItem.Passwords || !appSettings.passwordListQuickAccessEnabled) &&
+    LaunchedEffect(currentTab, appSettings.passwordListQuickAccessEnabled, showPasswordHistoryPage) {
+        if (
+            (
+                currentTab != BottomNavItem.Passwords ||
+                    !appSettings.passwordListQuickAccessEnabled ||
+                    showPasswordHistoryPage
+                ) &&
             showPasswordQuickAccessSheet
         ) {
             showPasswordQuickAccessSheet = false
@@ -2038,9 +2053,14 @@ private fun PasswordTabPane(
     keepassDatabases: List<takagi.ru.monica.data.LocalKeePassDatabase>,
     bitwardenVaults: List<takagi.ru.monica.data.bitwarden.BitwardenVault>,
     localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
+    timelineViewModel: TimelineViewModel,
     groupMode: String,
     stackCardMode: StackCardMode,
     onPasswordOpen: (Long) -> Unit,
+    onOpenHistoryPage: () -> Unit,
+    onCloseHistoryPage: () -> Unit,
+    showPasswordHistoryPage: Boolean,
+    onTimelineLogSelected: (TimelineEvent.StandardLog) -> Unit,
     onSelectionModeChange: (
         Boolean,
         Int,
@@ -2088,8 +2108,20 @@ private fun PasswordTabPane(
             },
             onSelectionModeChange = onSelectionModeChange,
             onBackToTopVisibilityChange = onBackToTopVisibilityChange,
-            scrollToTopRequestKey = scrollToTopRequestKey
+            scrollToTopRequestKey = scrollToTopRequestKey,
+            onOpenHistory = onOpenHistoryPage
         )
+    }
+
+    if (showPasswordHistoryPage) {
+        TimelineScreen(
+            viewModel = timelineViewModel,
+            onLogSelected = onTimelineLogSelected,
+            splitPaneMode = !isCompactWidth,
+            showBackButton = true,
+            onNavigateBack = onCloseHistoryPage
+        )
+        return
     }
 
     if (isCompactWidth) {
@@ -2374,6 +2406,9 @@ private fun CompactDraggableTabContent(
     onNavigateToPageCustomization: () -> Unit,
     onClearAllData: (Boolean, Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit,
     cardWalletSubTab: CardWalletTab,
+    showPasswordHistoryPage: Boolean,
+    onOpenHistoryPage: () -> Unit,
+    onCloseHistoryPage: () -> Unit,
     isPasswordSelectionMode: Boolean,
     selectedPasswordCount: Int,
     onExitPasswordSelection: () -> Unit,
@@ -2409,28 +2444,38 @@ private fun CompactDraggableTabContent(
     ) {
         when (currentTab) {
             BottomNavItem.Passwords -> {
-                PasswordListContent(
-                    viewModel = passwordViewModel,
-                    settingsViewModel = settingsViewModel,
-                    securityManager = securityManager,
-                    keepassDatabases = keepassDatabases,
-                    bitwardenVaults = bitwardenVaults,
-                    localKeePassViewModel = localKeePassViewModel,
-                    groupMode = passwordGroupMode,
-                    stackCardMode = stackCardMode,
-                    onRenameCategory = { category ->
-                        passwordViewModel.updateCategory(category)
-                    },
-                    onDeleteCategory = { category ->
-                        passwordViewModel.deleteCategory(category)
-                    },
-                    onPasswordClick = { password ->
-                        onPasswordOpen(password.id)
-                    },
-                    onSelectionModeChange = onPasswordSelectionModeChange,
-                    onBackToTopVisibilityChange = onBackToTopVisibilityChange,
-                    scrollToTopRequestKey = passwordScrollToTopRequestKey
-                )
+                if (showPasswordHistoryPage) {
+                    TimelineScreen(
+                        viewModel = timelineViewModel,
+                        splitPaneMode = false,
+                        showBackButton = true,
+                        onNavigateBack = onCloseHistoryPage
+                    )
+                } else {
+                    PasswordListContent(
+                        viewModel = passwordViewModel,
+                        settingsViewModel = settingsViewModel,
+                        securityManager = securityManager,
+                        keepassDatabases = keepassDatabases,
+                        bitwardenVaults = bitwardenVaults,
+                        localKeePassViewModel = localKeePassViewModel,
+                        groupMode = passwordGroupMode,
+                        stackCardMode = stackCardMode,
+                        onRenameCategory = { category ->
+                            passwordViewModel.updateCategory(category)
+                        },
+                        onDeleteCategory = { category ->
+                            passwordViewModel.deleteCategory(category)
+                        },
+                        onPasswordClick = { password ->
+                            onPasswordOpen(password.id)
+                        },
+                        onSelectionModeChange = onPasswordSelectionModeChange,
+                        onBackToTopVisibilityChange = onBackToTopVisibilityChange,
+                        scrollToTopRequestKey = passwordScrollToTopRequestKey,
+                        onOpenHistory = onOpenHistoryPage
+                    )
+                }
             }
             BottomNavItem.Authenticator -> {
                 TotpListContent(
@@ -2469,12 +2514,6 @@ private fun CompactDraggableTabContent(
                     onNavigateToAddNote = onNavigateToAddNote,
                     securityManager = securityManager,
                     onSelectionModeChange = onNoteSelectionModeChange
-                )
-            }
-            BottomNavItem.Timeline -> {
-                TimelineScreen(
-                    viewModel = timelineViewModel,
-                    splitPaneMode = false
                 )
             }
             BottomNavItem.Passkey -> {
@@ -2808,7 +2847,6 @@ private val adaptivePreviewTabs = listOf(
     BottomNavItem.Generator,
     BottomNavItem.Notes,
     BottomNavItem.Send,
-    BottomNavItem.Timeline,
     BottomNavItem.Passkey,
     BottomNavItem.Settings
 )

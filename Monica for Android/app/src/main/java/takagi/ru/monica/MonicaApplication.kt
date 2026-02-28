@@ -91,92 +91,43 @@ class MonicaApplication : Application() {
     }
     
     /**
-     * 仅在首次运行或安装包发生更新时刷新 Credential Provider Service
-     * 避免每次启动都切换组件导致系统缓存抖动
+     * 启动后做一次软刷新，不进入 DISABLED 状态，尽量避免体验抖动。
      */
-    private fun maybeRefreshCredentialProviderService() {
+    private fun maybeSoftRefreshCredentialProviderServiceState() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
         try {
-            val prefs = getSharedPreferences("app_state", MODE_PRIVATE)
-            val lastVersion = prefs.getLong("last_version_code", -1L)
-            val currentVersion = getCurrentVersionCode()
-            val lastUpdateTime = prefs.getLong("last_update_time", -1L)
-            val currentUpdateTime = getCurrentLastUpdateTime()
+            val componentName = ComponentName(this, MonicaCredentialProviderService::class.java)
+            val currentState = packageManager.getComponentEnabledSetting(componentName)
+            when (currentState) {
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER -> {
+                    return
+                }
 
-            val isFirstRun = lastVersion == -1L
-            val isUpgrade = lastVersion != -1L && lastVersion != currentVersion
-            val isPackageReinstalledOrUpdated =
-                currentUpdateTime > 0L &&
-                    lastUpdateTime > 0L &&
-                    currentUpdateTime != lastUpdateTime
-
-            prefs.edit()
-                .putLong("last_version_code", currentVersion)
-                .putLong("last_update_time", currentUpdateTime)
-                .apply()
-
-            if (isFirstRun || isUpgrade || isPackageReinstalledOrUpdated) {
-                refreshCredentialProviderService()
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to check app version for credential refresh", e)
-            refreshCredentialProviderService()
-        }
-    }
-
-    /**
-     * 刷新 Credential Provider Service 注册
-     * 
-     * 通过禁用再启用组件的方式，强制系统刷新对 CredentialProviderService 的识别
-     * 这解决了安装新版本后需要手动切换通行密钥提供者的问题
-     */
-    private fun refreshCredentialProviderService() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            try {
-                val componentName = ComponentName(this, MonicaCredentialProviderService::class.java)
-                val pm = packageManager
-                
-                // 检查当前状态
-                val currentState = pm.getComponentEnabledSetting(componentName)
-                
-                // 如果组件已启用，执行刷新
-                if (currentState == PackageManager.COMPONENT_ENABLED_STATE_DEFAULT ||
-                    currentState == PackageManager.COMPONENT_ENABLED_STATE_ENABLED) {
-                    
-                    // 先禁用
-                    pm.setComponentEnabledSetting(
-                        componentName,
-                        PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                        PackageManager.DONT_KILL_APP
-                    )
-                    
-                    // 再启用 - 这会触发系统重新识别服务
-                    pm.setComponentEnabledSetting(
+                PackageManager.COMPONENT_ENABLED_STATE_DEFAULT -> {
+                    packageManager.setComponentEnabledSetting(
                         componentName,
                         PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
                         PackageManager.DONT_KILL_APP
                     )
-                    
-                    Log.d(TAG, "CredentialProviderService refreshed")
+                    packageManager.setComponentEnabledSetting(
+                        componentName,
+                        PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,
+                        PackageManager.DONT_KILL_APP
+                    )
                 }
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to refresh CredentialProviderService", e)
-            }
-        }
-    }
 
-    private fun getCurrentVersionCode(): Long {
-        return try {
-            val info = packageManager.getPackageInfo(packageName, 0)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                info.longVersionCode
-            } else {
-                @Suppress("DEPRECATION")
-                info.versionCode.toLong()
+                PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> {
+                    packageManager.setComponentEnabledSetting(
+                        componentName,
+                        PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,
+                        PackageManager.DONT_KILL_APP
+                    )
+                }
             }
+            Log.d(TAG, "CredentialProviderService state soft-refreshed")
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to read versionCode", e)
-            -1L
+            Log.w(TAG, "Failed to soft-refresh CredentialProviderService state", e)
         }
     }
 
@@ -184,17 +135,7 @@ class MonicaApplication : Application() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
         appScope.launch {
             delay(CREDENTIAL_REFRESH_DELAY_MS)
-            maybeRefreshCredentialProviderService()
-        }
-    }
-
-    private fun getCurrentLastUpdateTime(): Long {
-        return try {
-            val info = packageManager.getPackageInfo(packageName, 0)
-            info.lastUpdateTime
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to read lastUpdateTime", e)
-            -1L
+            maybeSoftRefreshCredentialProviderServiceState()
         }
     }
 }

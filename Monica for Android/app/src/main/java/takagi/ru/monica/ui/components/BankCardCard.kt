@@ -1,6 +1,7 @@
 package takagi.ru.monica.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -72,8 +73,21 @@ fun BankCardCard(
         CardType.PREPAID -> MaterialTheme.colorScheme.onTertiaryContainer
     }
     
+    val cardInteractionModifier = if (isSelectionMode) {
+        modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+    } else {
+        modifier
+            .fillMaxWidth()
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
+    }
+
     Card(
-        modifier = modifier.fillMaxWidth(),
+        modifier = cardInteractionModifier,
         shape = MaterialTheme.shapes.medium,
         elevation = CardDefaults.cardElevation(
             defaultElevation = 2.dp
@@ -94,10 +108,6 @@ fun BankCardCard(
     ) {
         Column(
             modifier = Modifier
-                .combinedClickable(
-                    onClick = onClick,
-                    onLongClick = onLongClick
-                )
                 .padding(16.dp)
         ) {
             // 标题和菜单

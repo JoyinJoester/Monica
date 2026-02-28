@@ -79,6 +79,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Path
@@ -92,6 +93,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.zIndex
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.platform.LocalContext
@@ -104,12 +106,23 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.PasskeyEntry
+import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.data.model.PasskeyBindingCodec
+import takagi.ru.monica.data.model.TIMELINE_FIELD_BATCH_COPY_PAYLOAD
+import takagi.ru.monica.data.model.TIMELINE_FIELD_BATCH_MOVE_PAYLOAD
+import takagi.ru.monica.data.model.TimelineBatchCopyPayload
+import takagi.ru.monica.data.model.TimelineBatchMovePayload
+import takagi.ru.monica.data.model.TimelinePasswordLocationState
 import takagi.ru.monica.data.model.TimelineEvent
 import takagi.ru.monica.utils.BiometricHelper
+import takagi.ru.monica.utils.FieldChange
+import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.SettingsViewModel
@@ -155,6 +168,7 @@ import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
 import takagi.ru.monica.ui.components.UnifiedMoveAction
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
 import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
+import takagi.ru.monica.ui.components.UNIFIED_MOVE_ARCHIVE_SENTINEL_CATEGORY_ID
 import takagi.ru.monica.ui.common.dialog.DeleteConfirmDialog
 import takagi.ru.monica.ui.common.layout.DetailPane
 import takagi.ru.monica.ui.common.layout.InspectorRow
@@ -171,6 +185,7 @@ import takagi.ru.monica.ui.main.navigation.indexToDefaultTabKey
 import takagi.ru.monica.ui.main.navigation.shortLabelRes
 import takagi.ru.monica.ui.main.navigation.toBottomNavItem
 import takagi.ru.monica.ui.main.layout.AdaptiveMainScaffold
+import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.ui.password.buildAdditionalInfoPreview
 import takagi.ru.monica.ui.password.MultiPasswordEntryCard
 import takagi.ru.monica.ui.password.StackedPasswordGroup
@@ -201,6 +216,294 @@ private val stringSetSaver = Saver<Set<String>, ArrayList<String>>(
     restore = { saved -> saved.toSet() }
 )
 
+private val timelineBatchJson = Json {
+    ignoreUnknownKeys = true
+    prettyPrint = false
+}
+
+private fun toLocationState(entry: PasswordEntry): TimelinePasswordLocationState {
+    return TimelinePasswordLocationState(
+        id = entry.id,
+        categoryId = entry.categoryId,
+        keepassDatabaseId = entry.keepassDatabaseId,
+        keepassGroupPath = entry.keepassGroupPath,
+        bitwardenVaultId = entry.bitwardenVaultId,
+        bitwardenFolderId = entry.bitwardenFolderId,
+        bitwardenLocalModified = entry.bitwardenLocalModified,
+        isArchived = entry.isArchived,
+        archivedAtMillis = entry.archivedAt?.time
+    )
+}
+
+private fun toMovedLocationState(
+    entry: PasswordEntry,
+    target: UnifiedMoveCategoryTarget
+): TimelinePasswordLocationState {
+    val archivedAt = if (target is UnifiedMoveCategoryTarget.MonicaCategory &&
+        target.categoryId == UNIFIED_MOVE_ARCHIVE_SENTINEL_CATEGORY_ID
+    ) {
+        entry.archivedAt?.time ?: System.currentTimeMillis()
+    } else {
+        null
+    }
+
+    return when (target) {
+        UnifiedMoveCategoryTarget.Uncategorized -> TimelinePasswordLocationState(
+            id = entry.id,
+            categoryId = null,
+            keepassDatabaseId = null,
+            keepassGroupPath = null,
+            bitwardenVaultId = null,
+            bitwardenFolderId = null,
+            bitwardenLocalModified = false,
+            isArchived = false,
+            archivedAtMillis = null
+        )
+
+        is UnifiedMoveCategoryTarget.MonicaCategory -> {
+            if (target.categoryId == UNIFIED_MOVE_ARCHIVE_SENTINEL_CATEGORY_ID) {
+                TimelinePasswordLocationState(
+                    id = entry.id,
+                    categoryId = null,
+                    keepassDatabaseId = null,
+                    keepassGroupPath = null,
+                    bitwardenVaultId = null,
+                    bitwardenFolderId = null,
+                    bitwardenLocalModified = false,
+                    isArchived = true,
+                    archivedAtMillis = archivedAt
+                )
+            } else {
+                TimelinePasswordLocationState(
+                    id = entry.id,
+                    categoryId = target.categoryId,
+                    keepassDatabaseId = null,
+                    keepassGroupPath = null,
+                    bitwardenVaultId = null,
+                    bitwardenFolderId = null,
+                    bitwardenLocalModified = false,
+                    isArchived = false,
+                    archivedAtMillis = null
+                )
+            }
+        }
+
+        is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> TimelinePasswordLocationState(
+            id = entry.id,
+            categoryId = null,
+            keepassDatabaseId = null,
+            keepassGroupPath = null,
+            bitwardenVaultId = target.vaultId,
+            bitwardenFolderId = "",
+            bitwardenLocalModified = false,
+            isArchived = false,
+            archivedAtMillis = null
+        )
+
+        is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> TimelinePasswordLocationState(
+            id = entry.id,
+            categoryId = null,
+            keepassDatabaseId = null,
+            keepassGroupPath = null,
+            bitwardenVaultId = target.vaultId,
+            bitwardenFolderId = target.folderId,
+            bitwardenLocalModified = false,
+            isArchived = false,
+            archivedAtMillis = null
+        )
+
+        is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> TimelinePasswordLocationState(
+            id = entry.id,
+            categoryId = null,
+            keepassDatabaseId = target.databaseId,
+            keepassGroupPath = null,
+            bitwardenVaultId = null,
+            bitwardenFolderId = null,
+            bitwardenLocalModified = false,
+            isArchived = false,
+            archivedAtMillis = null
+        )
+
+        is UnifiedMoveCategoryTarget.KeePassGroupTarget -> TimelinePasswordLocationState(
+            id = entry.id,
+            categoryId = null,
+            keepassDatabaseId = target.databaseId,
+            keepassGroupPath = target.groupPath,
+            bitwardenVaultId = null,
+            bitwardenFolderId = null,
+            bitwardenLocalModified = false,
+            isArchived = false,
+            archivedAtMillis = null
+        )
+    }
+}
+
+private fun buildCopiedEntryForTarget(
+    entry: PasswordEntry,
+    target: UnifiedMoveCategoryTarget
+): PasswordEntry {
+    val now = Date()
+    return when (target) {
+        UnifiedMoveCategoryTarget.Uncategorized -> entry.copy(
+            id = 0,
+            createdAt = now,
+            updatedAt = now,
+            categoryId = null,
+            keepassDatabaseId = null,
+            keepassGroupPath = null,
+            bitwardenVaultId = null,
+            bitwardenCipherId = null,
+            bitwardenFolderId = null,
+            bitwardenRevisionDate = null,
+            bitwardenLocalModified = false,
+            isArchived = false,
+            archivedAt = null,
+            isDeleted = false,
+            deletedAt = null
+        )
+
+        is UnifiedMoveCategoryTarget.MonicaCategory -> {
+            if (target.categoryId == UNIFIED_MOVE_ARCHIVE_SENTINEL_CATEGORY_ID) {
+                entry.copy(
+                    id = 0,
+                    createdAt = now,
+                    updatedAt = now,
+                    categoryId = null,
+                    keepassDatabaseId = null,
+                    keepassGroupPath = null,
+                    bitwardenVaultId = null,
+                    bitwardenCipherId = null,
+                    bitwardenFolderId = null,
+                    bitwardenRevisionDate = null,
+                    bitwardenLocalModified = false,
+                    isArchived = true,
+                    archivedAt = now,
+                    isDeleted = false,
+                    deletedAt = null
+                )
+            } else {
+                entry.copy(
+                    id = 0,
+                    createdAt = now,
+                    updatedAt = now,
+                    categoryId = target.categoryId,
+                    keepassDatabaseId = null,
+                    keepassGroupPath = null,
+                    bitwardenVaultId = null,
+                    bitwardenCipherId = null,
+                    bitwardenFolderId = null,
+                    bitwardenRevisionDate = null,
+                    bitwardenLocalModified = false,
+                    isArchived = false,
+                    archivedAt = null,
+                    isDeleted = false,
+                    deletedAt = null
+                )
+            }
+        }
+
+        is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> entry.copy(
+            id = 0,
+            createdAt = now,
+            updatedAt = now,
+            categoryId = null,
+            keepassDatabaseId = null,
+            keepassGroupPath = null,
+            bitwardenVaultId = target.vaultId,
+            bitwardenCipherId = null,
+            bitwardenFolderId = "",
+            bitwardenRevisionDate = null,
+            bitwardenLocalModified = false,
+            isArchived = false,
+            archivedAt = null,
+            isDeleted = false,
+            deletedAt = null
+        )
+
+        is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> entry.copy(
+            id = 0,
+            createdAt = now,
+            updatedAt = now,
+            categoryId = null,
+            keepassDatabaseId = null,
+            keepassGroupPath = null,
+            bitwardenVaultId = target.vaultId,
+            bitwardenCipherId = null,
+            bitwardenFolderId = target.folderId,
+            bitwardenRevisionDate = null,
+            bitwardenLocalModified = false,
+            isArchived = false,
+            archivedAt = null,
+            isDeleted = false,
+            deletedAt = null
+        )
+
+        is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> entry.copy(
+            id = 0,
+            createdAt = now,
+            updatedAt = now,
+            categoryId = null,
+            keepassDatabaseId = target.databaseId,
+            keepassGroupPath = null,
+            bitwardenVaultId = null,
+            bitwardenCipherId = null,
+            bitwardenFolderId = null,
+            bitwardenRevisionDate = null,
+            bitwardenLocalModified = false,
+            isArchived = false,
+            archivedAt = null,
+            isDeleted = false,
+            deletedAt = null
+        )
+
+        is UnifiedMoveCategoryTarget.KeePassGroupTarget -> entry.copy(
+            id = 0,
+            createdAt = now,
+            updatedAt = now,
+            categoryId = null,
+            keepassDatabaseId = target.databaseId,
+            keepassGroupPath = target.groupPath,
+            bitwardenVaultId = null,
+            bitwardenCipherId = null,
+            bitwardenFolderId = null,
+            bitwardenRevisionDate = null,
+            bitwardenLocalModified = false,
+            isArchived = false,
+            archivedAt = null,
+            isDeleted = false,
+            deletedAt = null
+        )
+    }
+}
+
+private fun buildMoveTargetLabel(
+    context: Context,
+    target: UnifiedMoveCategoryTarget,
+    categories: List<Category>,
+    keepassDatabases: List<takagi.ru.monica.data.LocalKeePassDatabase>
+): String {
+    return when (target) {
+        UnifiedMoveCategoryTarget.Uncategorized -> context.getString(R.string.category_none)
+        is UnifiedMoveCategoryTarget.MonicaCategory -> {
+            if (target.categoryId == UNIFIED_MOVE_ARCHIVE_SENTINEL_CATEGORY_ID) {
+                context.getString(R.string.archive_page_title)
+            } else {
+                categories.find { it.id == target.categoryId }?.name
+                    ?: context.getString(R.string.filter_monica)
+            }
+        }
+
+        is UnifiedMoveCategoryTarget.BitwardenVaultTarget,
+        is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> context.getString(R.string.filter_bitwarden)
+
+        is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> {
+            keepassDatabases.find { it.id == target.databaseId }?.name ?: "KeePass"
+        }
+
+        is UnifiedMoveCategoryTarget.KeePassGroupTarget -> decodeKeePassPathForDisplay(target.groupPath)
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun PasswordListContent(
@@ -226,7 +529,8 @@ fun PasswordListContent(
         onDelete: () -> Unit
     ) -> Unit,
     onBackToTopVisibilityChange: (Boolean) -> Unit = {},
-    scrollToTopRequestKey: Int = 0
+    scrollToTopRequestKey: Int = 0,
+    onOpenHistory: () -> Unit = {}
 ) {
     val coroutineScope = rememberCoroutineScope()
     val passwordEntries by viewModel.passwordEntries.collectAsState()
@@ -287,8 +591,9 @@ fun PasswordListContent(
     val database = remember { takagi.ru.monica.data.PasswordDatabase.getDatabase(context) }
     val bitwardenRepository = remember { takagi.ru.monica.bitwarden.repository.BitwardenRepository.getInstance(context) }
 
-    // Display options menu state (moved here)
-    var displayMenuExpanded by remember { mutableStateOf(false) }
+    // Top actions menu and display options sheet state
+    var topActionsMenuExpanded by remember { mutableStateOf(false) }
+    var showDisplayOptionsSheet by remember { mutableStateOf(false) }
     // Search state hoisted for morphing animation
     var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
 
@@ -917,104 +1222,51 @@ fun PasswordListContent(
         getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
         getKeePassGroups = localKeePassViewModel::getGroups,
         allowCopy = true,
+        allowArchiveTarget = true,
         onTargetSelected = { target, action ->
             val selectedIds = selectedPasswords.toList()
             val selectedEntries = passwordEntries.filter { it.id in selectedPasswords }
+            val isArchiveTarget = target is UnifiedMoveCategoryTarget.MonicaCategory &&
+                target.categoryId == UNIFIED_MOVE_ARCHIVE_SENTINEL_CATEGORY_ID
             if (action == UnifiedMoveAction.COPY) {
+                val copiedIds = mutableListOf<Long>()
+                var remaining = selectedEntries.size
                 selectedEntries.forEach { entry ->
-                    val copiedEntry = when (target) {
-                        UnifiedMoveCategoryTarget.Uncategorized -> entry.copy(
-                            id = 0,
-                            createdAt = Date(),
-                            updatedAt = Date(),
-                            categoryId = null,
-                            keepassDatabaseId = null,
-                            keepassGroupPath = null,
-                            bitwardenVaultId = null,
-                            bitwardenCipherId = null,
-                            bitwardenFolderId = null,
-                            bitwardenRevisionDate = null,
-                            bitwardenLocalModified = false,
-                            isDeleted = false,
-                            deletedAt = null
-                        )
-                        is UnifiedMoveCategoryTarget.MonicaCategory -> entry.copy(
-                            id = 0,
-                            createdAt = Date(),
-                            updatedAt = Date(),
-                            categoryId = target.categoryId,
-                            keepassDatabaseId = null,
-                            keepassGroupPath = null,
-                            bitwardenVaultId = null,
-                            bitwardenCipherId = null,
-                            bitwardenFolderId = null,
-                            bitwardenRevisionDate = null,
-                            bitwardenLocalModified = false,
-                            isDeleted = false,
-                            deletedAt = null
-                        )
-                        is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> entry.copy(
-                            id = 0,
-                            createdAt = Date(),
-                            updatedAt = Date(),
-                            categoryId = null,
-                            keepassDatabaseId = null,
-                            keepassGroupPath = null,
-                            bitwardenVaultId = target.vaultId,
-                            bitwardenCipherId = null,
-                            bitwardenFolderId = "",
-                            bitwardenRevisionDate = null,
-                            bitwardenLocalModified = false,
-                            isDeleted = false,
-                            deletedAt = null
-                        )
-                        is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> entry.copy(
-                            id = 0,
-                            createdAt = Date(),
-                            updatedAt = Date(),
-                            categoryId = null,
-                            keepassDatabaseId = null,
-                            keepassGroupPath = null,
-                            bitwardenVaultId = target.vaultId,
-                            bitwardenCipherId = null,
-                            bitwardenFolderId = target.folderId,
-                            bitwardenRevisionDate = null,
-                            bitwardenLocalModified = false,
-                            isDeleted = false,
-                            deletedAt = null
-                        )
-                        is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> entry.copy(
-                            id = 0,
-                            createdAt = Date(),
-                            updatedAt = Date(),
-                            categoryId = null,
-                            keepassDatabaseId = target.databaseId,
-                            keepassGroupPath = null,
-                            bitwardenVaultId = null,
-                            bitwardenCipherId = null,
-                            bitwardenFolderId = null,
-                            bitwardenRevisionDate = null,
-                            bitwardenLocalModified = false,
-                            isDeleted = false,
-                            deletedAt = null
-                        )
-                        is UnifiedMoveCategoryTarget.KeePassGroupTarget -> entry.copy(
-                            id = 0,
-                            createdAt = Date(),
-                            updatedAt = Date(),
-                            categoryId = null,
-                            keepassDatabaseId = target.databaseId,
-                            keepassGroupPath = target.groupPath,
-                            bitwardenVaultId = null,
-                            bitwardenCipherId = null,
-                            bitwardenFolderId = null,
-                            bitwardenRevisionDate = null,
-                            bitwardenLocalModified = false,
-                            isDeleted = false,
-                            deletedAt = null
-                        )
+                    val copiedEntry = buildCopiedEntryForTarget(entry, target)
+                    viewModel.addPasswordEntryWithResult(
+                        entry = copiedEntry,
+                        includeDetailedLog = false
+                    ) { createdId ->
+                        if (createdId != null && createdId > 0) {
+                            copiedIds.add(createdId)
+                        }
+                        remaining -= 1
+                        if (remaining == 0 && copiedIds.isNotEmpty()) {
+                            val payload = TimelineBatchCopyPayload(
+                                copiedEntryIds = copiedIds.toList()
+                            )
+                            OperationLogger.logUpdate(
+                                itemType = OperationLogItemType.PASSWORD,
+                                itemId = System.currentTimeMillis(),
+                                itemTitle = context.getString(
+                                    R.string.timeline_batch_copy_title,
+                                    copiedIds.size
+                                ),
+                                changes = listOf(
+                                    FieldChange(
+                                        fieldName = context.getString(R.string.timeline_field_batch_copy),
+                                        oldValue = "0",
+                                        newValue = copiedIds.size.toString()
+                                    ),
+                                    FieldChange(
+                                        fieldName = TIMELINE_FIELD_BATCH_COPY_PAYLOAD,
+                                        oldValue = "{}",
+                                        newValue = timelineBatchJson.encodeToString(payload)
+                                    )
+                                )
+                            )
+                        }
                     }
-                    viewModel.addPasswordEntry(copiedEntry)
                 }
                 Toast.makeText(
                     context,
@@ -1022,33 +1274,54 @@ fun PasswordListContent(
                     Toast.LENGTH_SHORT
                 ).show()
             } else {
-                when (target) {
-                    UnifiedMoveCategoryTarget.Uncategorized -> {
+                val oldStates = selectedEntries.map(::toLocationState)
+                val newStates = selectedEntries.map { toMovedLocationState(it, target) }
+                when {
+                    isArchiveTarget -> {
+                        viewModel.archivePasswords(selectedIds)
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.archive_page_title),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    target == UnifiedMoveCategoryTarget.Uncategorized -> {
+                        viewModel.unarchivePasswords(selectedIds)
                         viewModel.movePasswordsToCategory(selectedIds, null)
                         Toast.makeText(context, context.getString(R.string.category_none), Toast.LENGTH_SHORT).show()
                     }
-                    is UnifiedMoveCategoryTarget.MonicaCategory -> {
+                    target is UnifiedMoveCategoryTarget.MonicaCategory -> {
+                        viewModel.unarchivePasswords(selectedIds)
                         viewModel.movePasswordsToCategory(selectedIds, target.categoryId)
                         val name = categories.find { it.id == target.categoryId }?.name ?: ""
                         Toast.makeText(context, "${context.getString(R.string.move_to_category)} $name", Toast.LENGTH_SHORT).show()
                     }
-                    is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> {
+                    target is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> {
+                        viewModel.unarchivePasswords(selectedIds)
                         viewModel.movePasswordsToBitwardenFolder(selectedIds, target.vaultId, "")
                         Toast.makeText(context, context.getString(R.string.filter_bitwarden), Toast.LENGTH_SHORT).show()
                     }
-                    is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> {
+                    target is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> {
+                        viewModel.unarchivePasswords(selectedIds)
                         viewModel.movePasswordsToBitwardenFolder(selectedIds, target.vaultId, target.folderId)
                         Toast.makeText(context, context.getString(R.string.filter_bitwarden), Toast.LENGTH_SHORT).show()
                     }
-                    is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> {
+                    target is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> {
                         coroutineScope.launch {
                             try {
+                                val entriesForTargetDatabase = selectedEntries.map { entry ->
+                                    entry.copy(
+                                        keepassDatabaseId = target.databaseId,
+                                        keepassGroupPath = null
+                                    )
+                                }
                                 val result = localKeePassViewModel.addPasswordEntriesToKdbx(
                                     databaseId = target.databaseId,
-                                    entries = selectedEntries,
+                                    entries = entriesForTargetDatabase,
                                     decryptPassword = { encrypted -> securityManager.decryptData(encrypted) ?: "" }
                                 )
                                 if (result.isSuccess) {
+                                    viewModel.unarchivePasswords(selectedIds)
                                     viewModel.movePasswordsToKeePassDatabase(selectedIds, target.databaseId)
                                     Toast.makeText(
                                         context,
@@ -1071,15 +1344,22 @@ fun PasswordListContent(
                             }
                         }
                     }
-                    is UnifiedMoveCategoryTarget.KeePassGroupTarget -> {
+                    target is UnifiedMoveCategoryTarget.KeePassGroupTarget -> {
                         coroutineScope.launch {
                             try {
+                                val entriesForTargetGroup = selectedEntries.map { entry ->
+                                    entry.copy(
+                                        keepassDatabaseId = target.databaseId,
+                                        keepassGroupPath = target.groupPath
+                                    )
+                                }
                                 val result = localKeePassViewModel.addPasswordEntriesToKdbx(
                                     databaseId = target.databaseId,
-                                    entries = selectedEntries,
+                                    entries = entriesForTargetGroup,
                                     decryptPassword = { encrypted -> securityManager.decryptData(encrypted) ?: "" }
                                 )
                                 if (result.isSuccess) {
+                                    viewModel.unarchivePasswords(selectedIds)
                                     viewModel.movePasswordsToKeePassGroup(selectedIds, target.databaseId, target.groupPath)
                                     Toast.makeText(
                                         context,
@@ -1103,6 +1383,37 @@ fun PasswordListContent(
                         }
                     }
                 }
+                if (selectedEntries.isNotEmpty()) {
+                    val payload = TimelineBatchMovePayload(
+                        oldStates = oldStates,
+                        newStates = newStates
+                    )
+                    OperationLogger.logUpdate(
+                        itemType = OperationLogItemType.PASSWORD,
+                        itemId = System.currentTimeMillis(),
+                        itemTitle = context.getString(
+                            R.string.timeline_batch_move_title,
+                            selectedEntries.size
+                        ),
+                        changes = listOf(
+                            FieldChange(
+                                fieldName = context.getString(R.string.timeline_field_batch_move),
+                                oldValue = context.getString(R.string.timeline_batch_source_multiple),
+                                newValue = buildMoveTargetLabel(
+                                    context = context,
+                                    target = target,
+                                    categories = categories,
+                                    keepassDatabases = keepassDatabases
+                                )
+                            ),
+                            FieldChange(
+                                fieldName = TIMELINE_FIELD_BATCH_MOVE_PAYLOAD,
+                                oldValue = timelineBatchJson.encodeToString(payload),
+                                newValue = timelineBatchJson.encodeToString(payload)
+                            )
+                        )
+                    )
+                }
             }
             showMoveToCategoryDialog = false
             isSelectionMode = false
@@ -1116,6 +1427,7 @@ fun PasswordListContent(
         // M3E Top Bar with integrated search - 始终显示
         val title = when(val filter = currentFilter) {
             is CategoryFilter.All -> stringResource(R.string.filter_all)
+            is CategoryFilter.Archived -> stringResource(R.string.archive_page_title)
             is CategoryFilter.Local -> stringResource(R.string.filter_monica)
             is CategoryFilter.LocalOnly -> stringResource(R.string.filter_local_only)
             is CategoryFilter.Starred -> stringResource(R.string.filter_starred)
@@ -1151,32 +1463,6 @@ fun PasswordListContent(
                         )
                     }
 
-                    // 2. Display Options Trigger
-                    IconButton(onClick = { displayMenuExpanded = true }) {
-                        Icon(
-                            imageVector = Icons.Default.DashboardCustomize,
-                            contentDescription = stringResource(R.string.display_options_menu_title),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    if (selectedBitwardenVaultId != null) {
-                        IconButton(
-                            onClick = {
-                                if (isTopBarSyncing) return@IconButton
-                                val vaultId = selectedBitwardenVaultId ?: return@IconButton
-                                bitwardenViewModel.requestManualSync(vaultId)
-                            },
-                            enabled = !isTopBarSyncing
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Sync,
-                                contentDescription = stringResource(R.string.refresh),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
                     // 3. Search Trigger (放在最右边)
                     IconButton(onClick = { isSearchExpanded = true }) {
                         Icon(
@@ -1185,11 +1471,83 @@ fun PasswordListContent(
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+
+                    // 4. Top actions menu trigger (to the right of search)
+                    Box {
+                        IconButton(onClick = { topActionsMenuExpanded = true }) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = stringResource(R.string.more_options),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        MaterialTheme(
+                            shapes = MaterialTheme.shapes.copy(
+                                extraSmall = RoundedCornerShape(20.dp),
+                                small = RoundedCornerShape(20.dp)
+                            )
+                        ) {
+                            DropdownMenu(
+                                expanded = topActionsMenuExpanded,
+                                onDismissRequest = { topActionsMenuExpanded = false },
+                                offset = DpOffset(x = 48.dp, y = 6.dp),
+                                modifier = Modifier
+                                    .widthIn(min = 220.dp, max = 260.dp)
+                                    .shadow(10.dp, RoundedCornerShape(20.dp))
+                                    .clip(RoundedCornerShape(20.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                    .border(
+                                        width = 1.dp,
+                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
+                                        shape = RoundedCornerShape(20.dp)
+                                    )
+                            ) {
+                                if (selectedBitwardenVaultId != null) {
+                                    DropdownMenuItem(
+                                        text = { Text("同步bitwarden数据库") },
+                                        leadingIcon = { Icon(Icons.Default.Sync, contentDescription = null) },
+                                        enabled = !isTopBarSyncing,
+                                        onClick = {
+                                            if (isTopBarSyncing) return@DropdownMenuItem
+                                            val vaultId = selectedBitwardenVaultId ?: return@DropdownMenuItem
+                                            topActionsMenuExpanded = false
+                                            bitwardenViewModel.requestManualSync(vaultId)
+                                        }
+                                    )
+                                }
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.display_options_menu_title)) },
+                                    leadingIcon = { Icon(Icons.Default.DashboardCustomize, contentDescription = null) },
+                                    onClick = {
+                                        topActionsMenuExpanded = false
+                                        showDisplayOptionsSheet = true
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.timeline_and_trash_title)) },
+                                    leadingIcon = { Icon(Icons.Default.History, contentDescription = null) },
+                                    onClick = {
+                                        topActionsMenuExpanded = false
+                                        onOpenHistory()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.archive_page_title)) },
+                                    leadingIcon = { Icon(Icons.Default.Archive, contentDescription = null) },
+                                    onClick = {
+                                        topActionsMenuExpanded = false
+                                        viewModel.setCategoryFilter(CategoryFilter.Archived)
+                                    }
+                                )
+                            }
+                        }
+                    }
                 }
             )
 
             val unifiedSelectedFilter = when (val filter = currentFilter) {
                 is CategoryFilter.All -> UnifiedCategoryFilterSelection.All
+                is CategoryFilter.Archived -> UnifiedCategoryFilterSelection.All
                 is CategoryFilter.Local -> UnifiedCategoryFilterSelection.Local
                 is CategoryFilter.LocalOnly -> UnifiedCategoryFilterSelection.Local
                 is CategoryFilter.Starred -> UnifiedCategoryFilterSelection.Starred
@@ -1347,177 +1705,152 @@ fun PasswordListContent(
                 )
             }
 
-    // Display Options Bottom Sheet
-    if (displayMenuExpanded) {
-        ModalBottomSheet(
-            onDismissRequest = { displayMenuExpanded = false },
-            containerColor = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        ) {
-            Column(
-                 modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(bottom = 32.dp)
-                    .navigationBarsPadding()
+        if (showDisplayOptionsSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showDisplayOptionsSheet = false },
+                containerColor = MaterialTheme.colorScheme.surface,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
             ) {
-                 Text(
-                    text = stringResource(R.string.display_options_menu_title),
-                    style = MaterialTheme.typography.titleLarge,
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
-                )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(bottom = 24.dp)
+                        .navigationBarsPadding()
+                ) {
+                    Text(
+                        text = stringResource(R.string.display_options_menu_title),
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
+                    )
 
-                // Stack Mode Section
-                Text(
-                    text = stringResource(R.string.stack_mode_menu_title),
-                     style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
-                )
+                    Text(
+                        text = stringResource(R.string.stack_mode_menu_title),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+                    )
 
-                val stackModes = listOf(
-                    StackCardMode.AUTO,
-                    StackCardMode.ALWAYS_EXPANDED
-                )
-
-                stackModes.forEach { mode ->
-                    val selected = mode == stackCardMode
-                    val (modeTitle, desc, icon) = when (mode) {
-                        StackCardMode.AUTO -> Triple(
-                            stringResource(R.string.stack_mode_auto),
-                            stringResource(R.string.stack_mode_auto_desc),
-                            Icons.Default.AutoAwesome
-                        )
-                        StackCardMode.ALWAYS_EXPANDED -> Triple(
-                            stringResource(R.string.stack_mode_expand),
-                            stringResource(R.string.stack_mode_expand_desc),
-                            Icons.Default.UnfoldMore
+                    listOf(StackCardMode.AUTO, StackCardMode.ALWAYS_EXPANDED).forEach { mode ->
+                        val selected = mode == stackCardMode
+                        val (modeTitle, desc, icon) = when (mode) {
+                            StackCardMode.AUTO -> Triple(
+                                stringResource(R.string.stack_mode_auto),
+                                stringResource(R.string.stack_mode_auto_desc),
+                                Icons.Default.AutoAwesome
+                            )
+                            StackCardMode.ALWAYS_EXPANDED -> Triple(
+                                stringResource(R.string.stack_mode_expand),
+                                stringResource(R.string.stack_mode_expand_desc),
+                                Icons.Default.UnfoldMore
+                            )
+                        }
+                        takagi.ru.monica.ui.components.SettingsOptionItem(
+                            title = modeTitle,
+                            description = desc,
+                            icon = icon,
+                            selected = selected,
+                            onClick = { settingsViewModel.updateStackCardMode(mode.name) }
                         )
                     }
 
-                    takagi.ru.monica.ui.components.SettingsOptionItem(
-                        title = modeTitle,
-                        description = desc,
-                        icon = icon,
-                        selected = selected,
-                        onClick = {
-                            settingsViewModel.updateStackCardMode(mode.name)
-                            displayMenuExpanded = false
-                        }
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 12.dp, horizontal = 24.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                     )
-                }
 
-                 HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 16.dp, horizontal = 24.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                )
-
-                // Group Mode Section
-                Text(
-                    text = stringResource(R.string.group_mode_menu_title),
-                     style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
-                )
-
-                val groupModes = listOf(
-                    "smart" to Triple(
-                        stringResource(R.string.group_mode_smart),
-                        stringResource(R.string.group_mode_smart_desc),
-                        Icons.Default.DashboardCustomize
-                    ),
-                    "note" to Triple(
-                        stringResource(R.string.group_mode_note),
-                        stringResource(R.string.group_mode_note_desc),
-                        Icons.Default.Description
-                    ),
-                    "website" to Triple(
-                        stringResource(R.string.group_mode_website),
-                        stringResource(R.string.group_mode_website_desc),
-                        Icons.Default.Language
-                    ),
-                    "app" to Triple(
-                        stringResource(R.string.group_mode_app),
-                        stringResource(R.string.group_mode_app_desc),
-                        Icons.Default.Apps
-                    ),
-                    "title" to Triple(
-                        stringResource(R.string.group_mode_title),
-                        stringResource(R.string.group_mode_title_desc),
-                        Icons.Default.Title
+                    Text(
+                        text = stringResource(R.string.group_mode_menu_title),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
                     )
-                )
 
-                groupModes.forEach { (modeKey, meta) ->
-                    val selected = groupMode == modeKey
-                    val (modeTitle, desc, icon) = meta
-
-                    takagi.ru.monica.ui.components.SettingsOptionItem(
-                        title = modeTitle,
-                        description = desc,
-                        icon = icon,
-                        selected = selected,
-                        onClick = {
-                            settingsViewModel.updatePasswordGroupMode(modeKey)
-                            displayMenuExpanded = false
-                        }
-                    )
-                }
-
-                HorizontalDivider(
-                    modifier = Modifier.padding(vertical = 16.dp, horizontal = 24.dp),
-                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
-                )
-
-                // Password Card Display Mode Section
-                Text(
-                    text = stringResource(R.string.password_card_display_mode_title),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
-                )
-
-                val displayModes = listOf(
-                    takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL,
-                    takagi.ru.monica.data.PasswordCardDisplayMode.TITLE_USERNAME,
-                    takagi.ru.monica.data.PasswordCardDisplayMode.TITLE_ONLY
-                )
-
-                displayModes.forEach { mode ->
-                    val selected = mode == appSettings.passwordCardDisplayMode
-                    val (modeTitle, desc, icon) = when (mode) {
-                        takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL -> Triple(
-                            stringResource(R.string.display_mode_all),
-                            stringResource(R.string.display_mode_all_desc),
-                            Icons.Default.Visibility
-                        )
-                        takagi.ru.monica.data.PasswordCardDisplayMode.TITLE_USERNAME -> Triple(
-                            stringResource(R.string.display_mode_title_username),
-                            stringResource(R.string.display_mode_title_username_desc),
-                            Icons.Default.Person
-                        )
-                        takagi.ru.monica.data.PasswordCardDisplayMode.TITLE_ONLY -> Triple(
-                            stringResource(R.string.display_mode_title_only),
-                            stringResource(R.string.display_mode_title_only_desc),
+                    val groupModes = listOf(
+                        "smart" to Triple(
+                            stringResource(R.string.group_mode_smart),
+                            stringResource(R.string.group_mode_smart_desc),
+                            Icons.Default.DashboardCustomize
+                        ),
+                        "note" to Triple(
+                            stringResource(R.string.group_mode_note),
+                            stringResource(R.string.group_mode_note_desc),
+                            Icons.Default.Description
+                        ),
+                        "website" to Triple(
+                            stringResource(R.string.group_mode_website),
+                            stringResource(R.string.group_mode_website_desc),
+                            Icons.Default.Language
+                        ),
+                        "app" to Triple(
+                            stringResource(R.string.group_mode_app),
+                            stringResource(R.string.group_mode_app_desc),
+                            Icons.Default.Apps
+                        ),
+                        "title" to Triple(
+                            stringResource(R.string.group_mode_title),
+                            stringResource(R.string.group_mode_title_desc),
                             Icons.Default.Title
                         )
+                    )
+                    groupModes.forEach { (modeKey, meta) ->
+                        val selected = groupMode == modeKey
+                        val (modeTitle, desc, icon) = meta
+                        takagi.ru.monica.ui.components.SettingsOptionItem(
+                            title = modeTitle,
+                            description = desc,
+                            icon = icon,
+                            selected = selected,
+                            onClick = { settingsViewModel.updatePasswordGroupMode(modeKey) }
+                        )
                     }
 
-                    takagi.ru.monica.ui.components.SettingsOptionItem(
-                        title = modeTitle,
-                        description = desc,
-                        icon = icon,
-                        selected = selected,
-                        onClick = {
-                            settingsViewModel.updatePasswordCardDisplayMode(mode)
-                            displayMenuExpanded = false
-                        }
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 12.dp, horizontal = 24.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
                     )
+
+                    Text(
+                        text = stringResource(R.string.password_card_display_mode_title),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp)
+                    )
+                    listOf(
+                        takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL,
+                        takagi.ru.monica.data.PasswordCardDisplayMode.TITLE_USERNAME,
+                        takagi.ru.monica.data.PasswordCardDisplayMode.TITLE_ONLY
+                    ).forEach { mode ->
+                        val selected = mode == appSettings.passwordCardDisplayMode
+                        val (modeTitle, desc, icon) = when (mode) {
+                            takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL -> Triple(
+                                stringResource(R.string.display_mode_all),
+                                stringResource(R.string.display_mode_all_desc),
+                                Icons.Default.Visibility
+                            )
+                            takagi.ru.monica.data.PasswordCardDisplayMode.TITLE_USERNAME -> Triple(
+                                stringResource(R.string.display_mode_title_username),
+                                stringResource(R.string.display_mode_title_username_desc),
+                                Icons.Default.Person
+                            )
+                            takagi.ru.monica.data.PasswordCardDisplayMode.TITLE_ONLY -> Triple(
+                                stringResource(R.string.display_mode_title_only),
+                                stringResource(R.string.display_mode_title_only_desc),
+                                Icons.Default.Title
+                            )
+                        }
+                        takagi.ru.monica.ui.components.SettingsOptionItem(
+                            title = modeTitle,
+                            description = desc,
+                            icon = icon,
+                            selected = selected,
+                            onClick = { settingsViewModel.updatePasswordCardDisplayMode(mode) }
+                        )
+                    }
                 }
             }
         }
-    }
 
         // 密码列表 - 使用堆叠分组视图
         Box(
@@ -2549,6 +2882,7 @@ private fun CategoryFilter.supportsQuickFolders(): Boolean = when (this) {
 
 private fun CategoryFilter.toQuickFolderRootKeyOrNull(): String? = when (this) {
     is CategoryFilter.All -> QUICK_FOLDER_ROOT_ALL
+    is CategoryFilter.Archived -> null
     is CategoryFilter.Local -> QUICK_FOLDER_ROOT_LOCAL
     is CategoryFilter.Starred -> QUICK_FOLDER_ROOT_STARRED
     is CategoryFilter.Uncategorized -> QUICK_FOLDER_ROOT_UNCATEGORIZED

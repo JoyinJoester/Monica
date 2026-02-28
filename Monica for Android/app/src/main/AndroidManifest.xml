@@ -111,10 +111,14 @@
 
         <receiver
             android:name=".passkey.CredentialProviderRefreshReceiver"
-            android:exported="false"
+            android:exported="true"
             tools:targetApi="upside_down_cake">
             <intent-filter>
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.PACKAGE_REPLACED" />
+                <data android:scheme="package" />
             </intent-filter>
         </receiver>
         

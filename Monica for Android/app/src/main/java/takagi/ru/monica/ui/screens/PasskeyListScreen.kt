@@ -1303,7 +1303,7 @@ fun PasskeyListScreen(
     PasswordEntryPickerBottomSheet(
         visible = passkeyToBind != null,
         title = stringResource(R.string.select_password_to_bind),
-        passwords = passwords.filter { !it.isDeleted },
+        passwords = passwords.filter { !it.isDeleted && !it.isArchived },
         selectedEntryId = passkeyToBind?.boundPasswordId,
         onDismiss = { passkeyToBind = null },
         onSelect = { password ->

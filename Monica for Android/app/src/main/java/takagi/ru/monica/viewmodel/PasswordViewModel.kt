@@ -35,6 +35,7 @@ import takagi.ru.monica.data.bitwarden.BitwardenFolder
 
 sealed class CategoryFilter {
     object All : CategoryFilter()
+    object Archived : CategoryFilter()
     object Local : CategoryFilter() // Pure local view (Monica)
     object LocalOnly : CategoryFilter() // Local entries that have no matching item in Bitwarden
     object Starred : CategoryFilter()
@@ -67,6 +68,7 @@ class PasswordViewModel(
 
     companion object {
         private const val SAVED_FILTER_ALL = "all"
+        private const val SAVED_FILTER_ARCHIVED = "archived"
         private const val SAVED_FILTER_LOCAL = "local"
         private const val SAVED_FILTER_LOCAL_ONLY = "local_only"
         private const val SAVED_FILTER_STARRED = "starred"
@@ -176,6 +178,21 @@ class PasswordViewModel(
                 }
 
                 when (filter) {
+                    is CategoryFilter.Archived -> repository.getArchivedEntries().map { archivedEntries ->
+                        val byText = archivedEntries.filter { matchesSearchQuery(it, query) }
+                        val customFieldMatchIds = try {
+                            customFieldRepository?.searchEntryIdsByFieldContent(query)?.toSet() ?: emptySet()
+                        } catch (e: Exception) {
+                            Log.w("PasswordViewModel", "Custom field search failed in archived view", e)
+                            emptySet()
+                        }
+                        if (customFieldMatchIds.isEmpty()) {
+                            byText
+                        } else {
+                            val existingIds = byText.map { it.id }.toHashSet()
+                            byText + archivedEntries.filter { it.id in customFieldMatchIds && it.id !in existingIds }
+                        }
+                    }
                     is CategoryFilter.LocalOnly -> combine(
                         searchFlow,
                         repository.getAllPasswordEntries()
@@ -194,6 +211,7 @@ class PasswordViewModel(
 
                 when (filter) {
                     is CategoryFilter.All -> repository.getAllPasswordEntries()
+                    is CategoryFilter.Archived -> repository.getArchivedEntries()
                     is CategoryFilter.Local -> repository.getAllPasswordEntries().map { list ->
                         list.filter { it.keepassDatabaseId == null && it.bitwardenVaultId == null }
                     }
@@ -300,6 +318,19 @@ class PasswordViewModel(
             initialValue = emptyList()
         )
 
+    val archivedPasswords: StateFlow<List<PasswordEntry>> = repository.getArchivedEntries()
+        .map { entries ->
+            entries.map { entry ->
+                entry.copy(password = decryptForDisplay(entry.password))
+            }
+        }
+        .flowOn(kotlinx.coroutines.Dispatchers.Default)
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
     /**
      * Smart Deduplication Logic
      * Display-layer dedupe for "All" view:
@@ -348,6 +379,7 @@ class PasswordViewModel(
     ): List<PasswordEntry> {
         return when (filter) {
             is CategoryFilter.All -> entries
+            is CategoryFilter.Archived -> entries
             is CategoryFilter.Local -> entries.filter { it.keepassDatabaseId == null && it.bitwardenVaultId == null }
             is CategoryFilter.LocalOnly -> entries // handled separately because it needs full dataset comparison
             is CategoryFilter.Starred -> entries.filter { it.isFavorite }
@@ -500,6 +532,16 @@ class PasswordViewModel(
 
     private fun normalizeComparableText(value: String): String {
         return value.trim().lowercase(Locale.ROOT)
+    }
+
+    private fun matchesSearchQuery(entry: PasswordEntry, query: String): Boolean {
+        val normalizedQuery = query.trim().lowercase(Locale.ROOT)
+        if (normalizedQuery.isBlank()) return true
+        return entry.title.lowercase(Locale.ROOT).contains(normalizedQuery) ||
+            entry.website.lowercase(Locale.ROOT).contains(normalizedQuery) ||
+            entry.username.lowercase(Locale.ROOT).contains(normalizedQuery) ||
+            entry.appName.lowercase(Locale.ROOT).contains(normalizedQuery) ||
+            entry.appPackageName.lowercase(Locale.ROOT).contains(normalizedQuery)
     }
 
     private fun extractComparableDomain(value: String): String {
@@ -866,6 +908,7 @@ class PasswordViewModel(
         val type = settings.lastPasswordCategoryFilterType.lowercase(Locale.ROOT)
         return when (type) {
             SAVED_FILTER_ALL -> CategoryFilter.All
+            SAVED_FILTER_ARCHIVED -> CategoryFilter.Archived
             SAVED_FILTER_LOCAL -> CategoryFilter.Local
             SAVED_FILTER_LOCAL_ONLY -> CategoryFilter.LocalOnly
             SAVED_FILTER_STARRED -> CategoryFilter.Starred
@@ -922,6 +965,10 @@ class PasswordViewModel(
             runCatching {
                 when (filter) {
                     is CategoryFilter.All -> manager.updateLastPasswordCategoryFilter(
+                        type = SAVED_FILTER_ALL
+                    )
+                    is CategoryFilter.Archived -> manager.updateLastPasswordCategoryFilter(
+                        // Archive is a temporary view; avoid restoring into it next launch.
                         type = SAVED_FILTER_ALL
                     )
                     is CategoryFilter.Local -> manager.updateLastPasswordCategoryFilter(
@@ -1093,8 +1140,26 @@ class PasswordViewModel(
     }
     
     fun addPasswordEntry(entry: PasswordEntry, onResult: (Long) -> Unit = {}) {
+        addPasswordEntryWithResult(
+            entry = entry,
+            includeDetailedLog = true
+        ) { id ->
+            if (id != null) {
+                onResult(id)
+            }
+        }
+    }
+
+    fun addPasswordEntryWithResult(
+        entry: PasswordEntry,
+        includeDetailedLog: Boolean = true,
+        onResult: (Long?) -> Unit = {}
+    ) {
         viewModelScope.launch {
-            val id = createPasswordEntryInternal(entry, includeDetailedLog = true) ?: return@launch
+            val id = createPasswordEntryInternal(
+                entry = entry,
+                includeDetailedLog = includeDetailedLog
+            )
             onResult(id)
         }
     }
@@ -1155,12 +1220,6 @@ class PasswordViewModel(
                 itemId = id,
                 itemTitle = boundEntry.title,
                 details = createDetails
-            )
-        } else {
-            takagi.ru.monica.utils.OperationLogger.logCreate(
-                itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
-                itemId = id,
-                itemTitle = boundEntry.title
             )
         }
         return id
@@ -1309,6 +1368,8 @@ class PasswordViewModel(
                 val softDeletedEntry = entry.copy(
                     isDeleted = true,
                     deletedAt = Date(),
+                    isArchived = false,
+                    archivedAt = null,
                     updatedAt = Date(),
                     bitwardenLocalModified = true
                 )
@@ -1334,6 +1395,8 @@ class PasswordViewModel(
                 val softDeletedEntry = entry.copy(
                     isDeleted = true,
                     deletedAt = Date(),
+                    isArchived = false,
+                    archivedAt = null,
                     updatedAt = Date()
                 )
                 repository.updatePasswordEntry(softDeletedEntry)
@@ -1367,6 +1430,30 @@ class PasswordViewModel(
     fun toggleFavorite(id: Long, isFavorite: Boolean) {
         viewModelScope.launch {
             repository.toggleFavorite(id, isFavorite)
+        }
+    }
+
+    fun archivePassword(id: Long) {
+        viewModelScope.launch {
+            repository.archivePasswordById(id)
+        }
+    }
+
+    fun archivePasswords(ids: List<Long>) {
+        viewModelScope.launch {
+            repository.archivePasswordsByIds(ids)
+        }
+    }
+
+    fun unarchivePassword(id: Long) {
+        viewModelScope.launch {
+            repository.unarchivePasswordById(id)
+        }
+    }
+
+    fun unarchivePasswords(ids: List<Long>) {
+        viewModelScope.launch {
+            repository.unarchivePasswordsByIds(ids)
         }
     }
     

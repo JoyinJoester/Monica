@@ -260,7 +260,7 @@ class PasskeyCreateActivity : FragmentActivity() {
                 PasswordEntryPickerBottomSheet(
                     visible = showPasswordPicker,
                     title = stringResource(R.string.select_password_to_bind),
-                    passwords = passwords.filter { !it.isDeleted },
+                    passwords = passwords.filter { !it.isDeleted && !it.isArchived },
                     selectedEntryId = pendingBoundPasswordId,
                     onDismiss = {
                         pendingBoundPasswordId = null

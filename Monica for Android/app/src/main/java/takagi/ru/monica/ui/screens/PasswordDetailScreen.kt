@@ -391,6 +391,25 @@ fun PasswordDetailScreen(
                         onClick = { onEditPassword(passwordId) }
                     ),
                     ActionStripItem(
+                        icon = if (passwordEntry?.isArchived == true) Icons.Default.Unarchive else Icons.Default.Archive,
+                        contentDescription = if (passwordEntry?.isArchived == true) {
+                            stringResource(R.string.unarchive_action)
+                        } else {
+                            stringResource(R.string.archive_action)
+                        },
+                        onClick = {
+                            passwordEntry?.let { entry ->
+                                if (entry.isArchived) {
+                                    viewModel.unarchivePassword(entry.id)
+                                    passwordEntry = entry.copy(isArchived = false, archivedAt = null)
+                                } else {
+                                    viewModel.archivePassword(entry.id)
+                                    onNavigateBack()
+                                }
+                            }
+                        }
+                    ),
+                    ActionStripItem(
                         icon = MonicaIcons.Action.delete,
                         contentDescription = stringResource(R.string.delete),
                         onClick = { 

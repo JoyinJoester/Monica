@@ -4,6 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -21,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -54,6 +58,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import takagi.ru.monica.data.SecureItem
+import sh.calvin.reorderable.ReorderableItem
+import sh.calvin.reorderable.rememberReorderableLazyListState
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
@@ -1454,81 +1460,65 @@ private fun BottomNavConfigRow(
     subtitle: String,
     checked: Boolean,
     switchEnabled: Boolean,
-    canMoveUp: Boolean,
-    canMoveDown: Boolean,
     onCheckedChange: (Boolean) -> Unit,
-    onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit
+    dragHandleModifier: Modifier = Modifier,
+    modifier: Modifier = Modifier
 ) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 6.dp),
+            .then(modifier),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
         )
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(24.dp)
+            )
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .then(dragHandleModifier),
+                contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = icon,
+                    imageVector = Icons.Default.DragIndicator,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(24.dp)
-                )
-
-                Spacer(modifier = Modifier.width(16.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                Switch(
-                    checked = checked,
-                    onCheckedChange = onCheckedChange,
-                    enabled = switchEnabled
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.width(8.dp))
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                IconButton(
-                    onClick = onMoveUp,
-                    enabled = canMoveUp
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.ArrowUpward,
-                        contentDescription = stringResource(R.string.bottom_nav_move_up)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                IconButton(
-                    onClick = onMoveDown,
-                    enabled = canMoveDown
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.ArrowDownward,
-                        contentDescription = stringResource(R.string.bottom_nav_move_down)
-                    )
-                }
-            }
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                enabled = switchEnabled
+            )
         }
     }
 }
@@ -1539,7 +1529,6 @@ private fun BottomNavContentTab.toIcon(): ImageVector = when (this) {
     BottomNavContentTab.CARD_WALLET -> Icons.Default.Wallet
     BottomNavContentTab.GENERATOR -> Icons.Default.AutoAwesome
     BottomNavContentTab.NOTES -> Icons.Default.Note
-    BottomNavContentTab.TIMELINE -> Icons.Default.AccountTree
     BottomNavContentTab.PASSKEY -> Icons.Default.Key
     BottomNavContentTab.SEND -> Icons.AutoMirrored.Default.Send
 }
@@ -1550,7 +1539,6 @@ private fun BottomNavContentTab.toLabelRes(): Int = when (this) {
     BottomNavContentTab.CARD_WALLET -> R.string.nav_card_wallet
     BottomNavContentTab.GENERATOR -> R.string.nav_generator
     BottomNavContentTab.NOTES -> R.string.nav_notes
-    BottomNavContentTab.TIMELINE -> R.string.nav_timeline
     BottomNavContentTab.PASSKEY -> R.string.nav_passkey
     BottomNavContentTab.SEND -> R.string.nav_v2_send
 }
@@ -1793,7 +1781,14 @@ fun BottomNavSettingsScreen(
     val context = LocalContext.current
     val settings by viewModel.settings.collectAsState()
     val bottomNavVisibility = settings.bottomNavVisibility
-    val scrollState = rememberScrollState()
+    val listState = rememberLazyListState()
+    var localBottomNavOrder by remember(settings.bottomNavOrder) { mutableStateOf(settings.bottomNavOrder) }
+    val reorderableState = rememberReorderableLazyListState(listState) { from, to ->
+        localBottomNavOrder = localBottomNavOrder.toMutableList().apply {
+            add(to.index, removeAt(from.index))
+        }
+        viewModel.updateBottomNavOrder(localBottomNavOrder)
+    }
 
     // 准备共享元素 Modifier
     val sharedTransitionScope = takagi.ru.monica.ui.LocalSharedTransitionScope.current
@@ -1830,7 +1825,6 @@ fun BottomNavSettingsScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .verticalScroll(scrollState)
         ) {
             Text(
                 text = context.getString(R.string.bottom_nav_reorder_hint),
@@ -1841,42 +1835,43 @@ fun BottomNavSettingsScreen(
                     .padding(horizontal = 20.dp, vertical = 16.dp)
             )
 
-            val bottomNavOrder = settings.bottomNavOrder
-            val visibleCount = bottomNavVisibility.visibleCount()
-            bottomNavOrder.forEachIndexed { index, tab ->
-                val isVisible = bottomNavVisibility.isVisible(tab)
-                val switchEnabled = !isVisible || visibleCount > 1
-                BottomNavConfigRow(
-                    icon = tab.toIcon(),
-                    title = context.getString(tab.toLabelRes()),
-                    subtitle = context.getString(R.string.bottom_nav_toggle_subtitle),
-                    checked = isVisible,
-                    switchEnabled = switchEnabled,
-                    canMoveUp = index > 0,
-                    canMoveDown = index < bottomNavOrder.lastIndex,
-                    onCheckedChange = { checked ->
-                        viewModel.updateBottomNavVisibility(tab, checked)
-                    },
-                    onMoveUp = {
-                        if (index > 0) {
-                            val newOrder = bottomNavOrder.toMutableList().apply {
-                                add(index - 1, removeAt(index))
-                            }
-                            viewModel.updateBottomNavOrder(newOrder)
-                        }
-                    },
-                    onMoveDown = {
-                        if (index < bottomNavOrder.lastIndex) {
-                            val newOrder = bottomNavOrder.toMutableList().apply {
-                                add(index + 1, removeAt(index))
-                            }
-                            viewModel.updateBottomNavOrder(newOrder)
-                        }
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                userScrollEnabled = !reorderableState.isAnyItemDragging,
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(
+                    items = localBottomNavOrder,
+                    key = { it.name }
+                ) { tab ->
+                    ReorderableItem(
+                        reorderableState,
+                        key = tab.name,
+                        enabled = true
+                    ) { isDragging ->
+                        val elevation by androidx.compose.animation.core.animateDpAsState(
+                            if (isDragging) 8.dp else 0.dp,
+                            label = "bottom_nav_drag_elevation"
+                        )
+                        val isVisible = bottomNavVisibility.isVisible(tab)
+                        val switchEnabled = !isVisible || bottomNavVisibility.visibleCount() > 1
+                        BottomNavConfigRow(
+                            icon = tab.toIcon(),
+                            title = context.getString(tab.toLabelRes()),
+                            subtitle = context.getString(R.string.bottom_nav_toggle_subtitle),
+                            checked = isVisible,
+                            switchEnabled = switchEnabled,
+                            onCheckedChange = { checked ->
+                                viewModel.updateBottomNavVisibility(tab, checked)
+                            },
+                            dragHandleModifier = Modifier.longPressDraggableHandle(),
+                            modifier = Modifier.shadow(elevation)
+                        )
                     }
-                )
+                }
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }

@@ -25,6 +25,7 @@ import androidx.credentials.provider.CredentialProviderService
 import androidx.credentials.provider.ProviderClearCredentialStateRequest
 import androidx.credentials.provider.PublicKeyCredentialEntry
 import takagi.ru.monica.data.PasswordDatabase
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -259,28 +260,37 @@ class MonicaCredentialProviderService : CredentialProviderService() {
                 }
                 Log.d(TAG, "allowCredentials specified: ${allowedCredentialIds.size} credentials")
             }
-            
-            // 查询数据库中匹配的 Passkey
-            val passkeys = if (allowedCredentialIds.isNotEmpty()) {
-                // allowCredentials 存在时，优先按凭据 ID 过滤（必要时再按 rpId 限制）
-                val candidates = if (rpId.isNotBlank()) {
-                    database.passkeyDao().getPasskeysByRpIdSync(rpId)
-                } else {
-                    database.passkeyDao().getAllPasskeysSync()
-                }
-                candidates.filter { passkey ->
-                    val normalizedId = normalizeCredentialId(passkey.credentialId)
-                    normalizedId != null && normalizedId in allowedCredentialIds
-                }
-            } else if (rpId.isNotBlank()) {
-                database.passkeyDao().getPasskeysByRpIdSync(rpId)
-            } else {
-                database.passkeyDao().getDiscoverablePasskeysSync()
+
+            warmUpDatabase()
+            var filteredPasskeys = resolvePasskeys(
+                rpId = rpId,
+                allowedCredentialIds = allowedCredentialIds,
+                strictAllowCredentials = true
+            )
+
+            // Some OEMs/request payloads can cause transient allowCredentials mismatch.
+            // Fall back to RP/discoverable query to avoid empty provider sheet.
+            if (filteredPasskeys.isEmpty() && allowedCredentialIds.isNotEmpty()) {
+                Log.w(TAG, "No strict allowCredentials match, fallback to RP/discoverable")
+                filteredPasskeys = resolvePasskeys(
+                    rpId = rpId,
+                    allowedCredentialIds = allowedCredentialIds,
+                    strictAllowCredentials = false
+                )
+            }
+
+            // Right after app update, first provider call may race with db/cache readiness.
+            if (filteredPasskeys.isEmpty() && isRecentlyUpdated()) {
+                delay(120)
+                warmUpDatabase()
+                filteredPasskeys = resolvePasskeys(
+                    rpId = rpId,
+                    allowedCredentialIds = allowedCredentialIds,
+                    strictAllowCredentials = false
+                )
             }
             
-            val filteredPasskeys = passkeys.filter(::isUsablePasskey)
-            
-            Log.d(TAG, "Found ${passkeys.size} passkeys, filtered to ${filteredPasskeys.size}")
+            Log.d(TAG, "Resolved passkeys count=${filteredPasskeys.size}, rpId=$rpId")
             
             for (passkey in filteredPasskeys) {
                 val intent = Intent(this, PasskeyAuthActivity::class.java).apply {
@@ -317,6 +327,45 @@ class MonicaCredentialProviderService : CredentialProviderService() {
     private fun isUsablePasskey(passkey: takagi.ru.monica.data.PasskeyEntry): Boolean {
         if (passkey.syncStatus == "REFERENCE") return false
         return passkey.privateKeyAlias.isNotBlank()
+    }
+
+    private suspend fun resolvePasskeys(
+        rpId: String,
+        allowedCredentialIds: Set<String>,
+        strictAllowCredentials: Boolean
+    ): List<takagi.ru.monica.data.PasskeyEntry> {
+        val passkeys = if (allowedCredentialIds.isNotEmpty() && strictAllowCredentials) {
+            val candidates = if (rpId.isNotBlank()) {
+                database.passkeyDao().getPasskeysByRpIdSync(rpId)
+            } else {
+                database.passkeyDao().getAllPasskeysSync()
+            }
+            candidates.filter { passkey ->
+                val normalizedId = normalizeCredentialId(passkey.credentialId)
+                normalizedId != null && normalizedId in allowedCredentialIds
+            }
+        } else if (rpId.isNotBlank()) {
+            database.passkeyDao().getPasskeysByRpIdSync(rpId)
+        } else {
+            database.passkeyDao().getDiscoverablePasskeysSync()
+        }
+        return passkeys.filter(::isUsablePasskey)
+    }
+
+    private fun warmUpDatabase() {
+        runCatching {
+            database.openHelper.writableDatabase.query("SELECT 1").close()
+        }.onFailure { error ->
+            Log.w(TAG, "Database warmup failed", error)
+        }
+    }
+
+    private fun isRecentlyUpdated(windowMs: Long = 5 * 60 * 1000L): Boolean {
+        return runCatching {
+            val info = packageManager.getPackageInfo(packageName, 0)
+            val now = System.currentTimeMillis()
+            (now - info.lastUpdateTime) in 0..windowMs
+        }.getOrDefault(false)
     }
 
     private fun normalizeCredentialId(credentialId: String): String? {

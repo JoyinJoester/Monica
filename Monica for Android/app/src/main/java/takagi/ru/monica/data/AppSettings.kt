@@ -56,7 +56,6 @@ enum class BottomNavContentTab {
     GENERATOR,
     NOTES,
     SEND,         // 发送（安全分享）
-    TIMELINE,
     PASSKEY;  // 通行密钥
 
     companion object {
@@ -66,8 +65,7 @@ enum class BottomNavContentTab {
             CARD_WALLET,
             PASSKEY,
             NOTES,
-            SEND,
-            TIMELINE
+            SEND
         )
 
         fun sanitizeOrder(order: List<BottomNavContentTab>): List<BottomNavContentTab> {
@@ -95,7 +93,6 @@ data class BottomNavVisibility(
     val generator: Boolean = false,   // 生成器功能默认关闭
     val notes: Boolean = true,        // 笔记功能默认开启
     val send: Boolean = false,        // 发送功能默认关闭
-    val timeline: Boolean = false,    // 时间线功能默认关闭
     val passkey: Boolean = true       // 通行密钥功能默认开启
 ) {
     fun isVisible(tab: BottomNavContentTab): Boolean = when (tab) {
@@ -106,11 +103,10 @@ data class BottomNavVisibility(
         BottomNavContentTab.GENERATOR -> generator
         BottomNavContentTab.NOTES -> notes
         BottomNavContentTab.SEND -> send
-        BottomNavContentTab.TIMELINE -> timeline
         BottomNavContentTab.PASSKEY -> passkey
     }
 
-    fun visibleCount(): Int = listOf(passwords, authenticator, cardWallet, generator, notes, send, timeline, passkey).count { it }
+    fun visibleCount(): Int = listOf(passwords, authenticator, cardWallet, generator, notes, send, passkey).count { it }
 }
 
 /**

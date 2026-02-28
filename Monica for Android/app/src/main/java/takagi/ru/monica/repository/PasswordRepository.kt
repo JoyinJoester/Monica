@@ -59,6 +59,10 @@ class PasswordRepository(
         return passwordEntryDao.getFavoritePasswordEntries()
     }
 
+    fun getArchivedEntries(): Flow<List<PasswordEntry>> {
+        return passwordEntryDao.getArchivedEntries()
+    }
+
     // Category operations
     fun getAllCategories(): Flow<List<Category>> {
         return categoryDao?.getAllCategories() ?: kotlinx.coroutines.flow.flowOf(emptyList())
@@ -146,6 +150,24 @@ class PasswordRepository(
     
     suspend fun deletePasswordEntryById(id: Long) {
         passwordEntryDao.deletePasswordEntryById(id)
+    }
+
+    suspend fun archivePasswordById(id: Long) {
+        passwordEntryDao.archiveById(id)
+    }
+
+    suspend fun archivePasswordsByIds(ids: List<Long>) {
+        if (ids.isEmpty()) return
+        passwordEntryDao.archiveByIds(ids)
+    }
+
+    suspend fun unarchivePasswordById(id: Long) {
+        passwordEntryDao.unarchiveById(id)
+    }
+
+    suspend fun unarchivePasswordsByIds(ids: List<Long>) {
+        if (ids.isEmpty()) return
+        passwordEntryDao.unarchiveByIds(ids)
     }
     
     suspend fun toggleFavorite(id: Long, isFavorite: Boolean) {

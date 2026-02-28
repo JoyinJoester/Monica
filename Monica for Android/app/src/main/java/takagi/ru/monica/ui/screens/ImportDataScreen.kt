@@ -894,7 +894,7 @@ fun ImportDataScreen(
         PasswordEntryPickerBottomSheet(
             visible = true,
             title = stringResource(R.string.select_password_to_bind),
-            passwords = passwordEntriesForPicker.filter { !it.isDeleted },
+            passwords = passwordEntriesForPicker.filter { !it.isDeleted && !it.isArchived },
             onDismiss = { showSteamPasswordPicker = false },
             onSelect = { entry ->
                 val resolvedUsername = runCatching { pickerSecurityManager.decryptData(entry.username) }

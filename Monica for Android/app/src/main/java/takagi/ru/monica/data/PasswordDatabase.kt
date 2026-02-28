@@ -27,7 +27,7 @@ import takagi.ru.monica.data.bitwarden.*
         BitwardenConflictBackup::class,
         BitwardenPendingOperation::class
     ],
-    version = 40,
+    version = 41,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -1025,6 +1025,30 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Migration 40 -> 41:
+         * 为 password_entries 添加归档字段，并创建索引。
+         */
+        private val MIGRATION_40_41 = object : androidx.room.migration.Migration(40, 41) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 40→41: password archive fields")
+                    database.execSQL(
+                        "ALTER TABLE password_entries ADD COLUMN isArchived INTEGER NOT NULL DEFAULT 0"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE password_entries ADD COLUMN archivedAt INTEGER DEFAULT NULL"
+                    )
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_password_entries_isArchived ON password_entries(isArchived)"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 40→41 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 40→41 failed: ${e.message}")
+                }
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -1071,7 +1095,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_36_37,  // secure_items/passkeys KeePass 归属字段
                         MIGRATION_37_38,  // keepass 分组路径字段
                         MIGRATION_38_39,  // 自定义密码图标字段
-                        MIGRATION_39_40   // Passkey 模式字段
+                        MIGRATION_39_40,  // Passkey 模式字段
+                        MIGRATION_40_41   // 密码归档字段
                     )
                     .build()
                 INSTANCE = instance

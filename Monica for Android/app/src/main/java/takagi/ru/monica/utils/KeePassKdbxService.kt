@@ -681,16 +681,21 @@ class KeePassKdbxService(
                 matchByKey(existing, entry)
             }
         }
-        val updater: (Entry) -> Entry = { existing ->
-            existing.copy(fields = buildEntryFields(entry, plainPassword))
+        val rootGroup = keePassDatabase.content.group
+        val removeResult = removeEntryInGroup(rootGroup, matcher)
+        val removedCount = removeResult.second
+        if (removedCount <= 0) {
+            return keePassDatabase to false
         }
-        val result = updateEntryInGroup(keePassDatabase.content.group, matcher, updater)
-        val updatedDatabase = if (result.second) {
-            keePassDatabase.modifyParentGroup { result.first }
-        } else {
-            keePassDatabase
-        }
-        return updatedDatabase to result.second
+
+        val newEntry = buildEntry(entry, plainPassword)
+        val updatedRoot = addEntryToGroupPath(
+            rootGroup = removeResult.first,
+            groupPath = entry.keepassGroupPath,
+            entry = newEntry
+        )
+        val updatedDatabase = keePassDatabase.modifyParentGroup { updatedRoot }
+        return updatedDatabase to true
     }
 
     private fun updateSecureItemInternal(

@@ -14,7 +14,7 @@ import java.util.Date
 @Parcelize
 @Entity(
     tableName = "password_entries",
-    indices = [Index(value = ["isDeleted"])]
+    indices = [Index(value = ["isDeleted"]), Index(value = ["isArchived"])]
 )
 data class PasswordEntry(
     @PrimaryKey(autoGenerate = true)
@@ -85,6 +85,12 @@ data class PasswordEntry(
     val isDeleted: Boolean = false,      // 是否已删除（在回收站中）
     @ColumnInfo(defaultValue = "NULL")
     val deletedAt: java.util.Date? = null, // 删除时间（用于自动清空）
+
+    // 归档功能 - 临时隐藏字段（不删除）
+    @ColumnInfo(defaultValue = "0")
+    val isArchived: Boolean = false,
+    @ColumnInfo(defaultValue = "NULL")
+    val archivedAt: java.util.Date? = null,
     
     // === Bitwarden 集成字段 ===
     // 当此条目来自 Bitwarden 时，以下字段有值

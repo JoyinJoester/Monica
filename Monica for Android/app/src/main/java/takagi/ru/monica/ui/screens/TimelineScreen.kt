@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
@@ -121,7 +122,9 @@ fun TimelineScreen(
     viewModel: TimelineViewModel = viewModel(),
     trashViewModel: TrashViewModel = viewModel(),
     onLogSelected: (TimelineEvent.StandardLog) -> Unit = {},
-    splitPaneMode: Boolean = false
+    splitPaneMode: Boolean = false,
+    showBackButton: Boolean = false,
+    onNavigateBack: () -> Unit = {}
 ) {
     if (splitPaneMode) {
         Row(
@@ -179,7 +182,9 @@ fun TimelineScreen(
         // M3E 风格的顶部标题栏
         HistoryTopBar(
             currentTab = currentTab,
-            onTabSelected = { currentTab = it }
+            onTabSelected = { currentTab = it },
+            showBackButton = showBackButton,
+            onNavigateBack = onNavigateBack
         )
         
         // 内容区域，带有切换动画
@@ -263,7 +268,9 @@ private fun SplitPaneHeader(
 @Composable
 private fun HistoryTopBar(
     currentTab: HistoryTab,
-    onTabSelected: (HistoryTab) -> Unit
+    onTabSelected: (HistoryTab) -> Unit,
+    showBackButton: Boolean,
+    onNavigateBack: () -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
     
@@ -274,21 +281,20 @@ private fun HistoryTopBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 16.dp),
+                .padding(horizontal = 12.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 左侧大标题 - 带渐变效果
-            Text(
-                text = if (currentTab == HistoryTab.TIMELINE) {
-                    stringResource(R.string.timeline_title)
-                } else {
-                    stringResource(R.string.timeline_trash_title)
-                },
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                color = colorScheme.onBackground
-            )
+            if (showBackButton) {
+                IconButton(onClick = onNavigateBack) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.back)
+                    )
+                }
+            } else {
+                Spacer(modifier = Modifier.width(48.dp))
+            }
 
             // 右侧胶囊形切换器 - 更精致的设计
             Surface(
@@ -1059,6 +1065,10 @@ private fun StandardLogDetailSheet(
     
     val isUpdateOperation = log.operationType == "UPDATE"
     val hasOldValues = log.changes.any { it.oldValue.isNotBlank() }
+    val isBatchOperation = log.changes.any {
+        it.fieldName == stringResource(R.string.timeline_field_batch_move) ||
+            it.fieldName == stringResource(R.string.timeline_field_batch_copy)
+    }
     val gradient = getOperationGradient(log.operationType, log.itemType)
     val icon = getOperationIcon(log.operationType, log.itemType)
 
@@ -1281,7 +1291,7 @@ private fun StandardLogDetailSheet(
             }
             
             // 操作按钮
-            if (isUpdateOperation && hasOldValues) {
+            if (isUpdateOperation && hasOldValues && (!isBatchOperation || !log.isReverted)) {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -1301,12 +1311,16 @@ private fun StandardLogDetailSheet(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (log.isReverted) stringResource(R.string.timeline_restore_to_after_edit) else stringResource(R.string.timeline_restore_to_before_edit),
+                            text = when {
+                                isBatchOperation -> stringResource(R.string.timeline_undo_operation)
+                                log.isReverted -> stringResource(R.string.timeline_restore_to_after_edit)
+                                else -> stringResource(R.string.timeline_restore_to_before_edit)
+                            },
                             fontWeight = FontWeight.Medium
                         )
                     }
                     
-                    if (!log.isReverted) {
+                    if (!log.isReverted && !isBatchOperation) {
                         OutlinedButton(
                             onClick = onSaveOldAsNew,
                             modifier = Modifier.fillMaxWidth(),

@@ -136,6 +136,11 @@
 
     <!-- Group/display menu -->
     <string name="display_options_menu_title">显示与分组</string>
+    <string name="archive_page_title">归档</string>
+    <string name="archive_action">归档</string>
+    <string name="unarchive_action">取消归档</string>
+    <string name="archive_empty_hint">暂无归档密码</string>
+    <string name="archive_item_subtitle_empty">无用户名或网站信息</string>
     <string name="smart_deduplication">智能去重</string>
     <string name="smart_deduplication_desc">在“全部”视图中合并来自不同来源的重复条目</string>
     <string name="separate_username_account_title">用户名/账号分离</string>
@@ -282,7 +287,7 @@
     <string name="notes_placeholder">添加备注信息...</string>
     <string name="bottom_nav_settings">底部导航栏</string>
     <string name="bottom_nav_toggle_subtitle">在底部栏中显示或隐藏该页签</string>
-    <string name="bottom_nav_reorder_hint">使用箭头调整顺序，设置页始终位于最后。</string>
+    <string name="bottom_nav_reorder_hint">长按拖动可调整顺序，设置页始终位于最后。</string>
     <string name="bottom_nav_move_up">上移标签</string>
     <string name="bottom_nav_move_down">下移标签</string>
     <string name="bottom_nav_settings_entry_subtitle">选择要显示的页签并调整顺序</string>
@@ -1975,6 +1980,8 @@
     
     <!-- 时间线/回收站硬编码修复 -->
     <string name="timeline_title">时间线</string>
+    <string name="timeline_and_trash_title">时间线/回收站</string>
+    <string name="sync_bitwarden_database_menu">同步bitwarden数据库</string>
     <string name="timeline_subtitle">操作历史</string>
     <string name="timeline_trash_title">回收站</string>
     <string name="timeline_trash_subtitle">已删除项目</string>
@@ -2003,9 +2010,16 @@
     <string name="timeline_log_meta_with_time">%1$s · %2$s · %3$s</string>
     <string name="timeline_change_details">变更详情</string>
     <string name="timeline_field_password">密码</string>
+    <string name="timeline_field_batch_move">批量移动</string>
+    <string name="timeline_field_batch_copy">批量复制</string>
+    <string name="timeline_batch_source_multiple">多个条目</string>
+    <string name="timeline_batch_move_title">批量移动（%1$d）</string>
+    <string name="timeline_batch_copy_title">批量复制（%1$d）</string>
     <string name="timeline_count_suffix_items">项</string>
     <string name="timeline_restore_to_after_edit">恢复到编辑后</string>
     <string name="timeline_restore_to_before_edit">恢复到编辑前</string>
+    <string name="timeline_undo_operation">撤销操作</string>
+    <string name="timeline_redo_operation">重做操作</string>
     <string name="timeline_save_old_as_new">旧数据另存为新条目</string>
     <string name="timeline_empty_trash_title">清空回收站</string>
     <string name="timeline_empty_trash_message">确定要永久删除回收站中的 %1$d 个条目吗？此操作无法撤销。</string>
