@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -34,6 +35,9 @@ class LocalKeePassViewModel(
     private val dao: LocalKeePassDatabaseDao,
     private val securityManager: SecurityManager
 ) : AndroidViewModel(application) {
+    companion object {
+        private const val TAG = "LocalKeePassViewModel"
+    }
     
     private val context: Context get() = getApplication()
     
@@ -402,17 +406,20 @@ class LocalKeePassViewModel(
                     val encryptedPassword = if (password.isNotBlank()) securityManager.encryptData(password) else null
                     
                     // 获取持久化 URI 权限
-                    context.contentResolver.takePersistableUriPermission(
-                        uri,
-                        android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                        android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                    )
+                    runCatching {
+                        context.contentResolver.takePersistableUriPermission(
+                            uri,
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION
+                        )
+                    }.onFailure { error ->
+                        Log.w(TAG, "Persistable READ permission not granted for imported DB uri=$uri", error)
+                    }
                     
                     if (keyFileUri != null) {
                         runCatching {
                             context.contentResolver.takePersistableUriPermission(
                                 keyFileUri,
-                                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION
                             )
                         }
                         context.contentResolver.openInputStream(keyFileUri)?.close()

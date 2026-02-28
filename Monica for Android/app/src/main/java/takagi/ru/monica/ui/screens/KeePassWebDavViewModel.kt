@@ -366,12 +366,19 @@ class KeePassWebDavViewModel {
     suspend fun importFromLocalKdbx(
         context: Context,
         sourceUri: Uri,
-        kdbxPassword: String
+        kdbxPassword: String,
+        keyFileUri: Uri? = null
     ): Result<Int> = withContext(Dispatchers.IO) {
         try {
             Log.d(TAG, "Starting local KDBX import from uri=$sourceUri ...")
             val importedCount = context.contentResolver.openInputStream(sourceUri)?.use { inputStream ->
-                parseKdbxAndInsertToDb(context, sourceUri, inputStream, kdbxPassword)
+                parseKdbxAndInsertToDb(
+                    context = context,
+                    sourceUri = sourceUri,
+                    inputStream = inputStream,
+                    kdbxPassword = kdbxPassword,
+                    keyFileUri = keyFileUri
+                )
             } ?: throw Exception(context.getString(R.string.import_data_error))
             Log.d(TAG, "Local KDBX import completed: $importedCount entries")
             Result.success(importedCount)
@@ -413,7 +420,7 @@ class KeePassWebDavViewModel {
             }
             val entries = mutableListOf<Entry>()
             collectEntries(keepassDb.content.group, entries)
-            val entryCount = entries.count { isCredentialLikeEntry(it) }
+            val entryCount = entries.count { isImportablePasswordEntry(it) }
 
             // 2) 将远端 .kdbx 注册到本地 KeePass 数据库列表（之后通过 KeePassKdbxService 实时直连读写）
             bindRemoteDatabase(context, remotePath, file.name, kdbxPassword, entryCount)
@@ -883,17 +890,36 @@ class KeePassWebDavViewModel {
         context: Context,
         sourceUri: Uri,
         inputStream: InputStream,
-        kdbxPassword: String
+        kdbxPassword: String,
+        keyFileUri: Uri?
     ): Int = withContext(Dispatchers.IO) {
         Log.d(TAG, "parseKdbxAndInsertToDb: Starting KDBX import")
         
         try {
-            // 1. 创建凭证
-            val credentials = Credentials.from(EncryptedValue.fromString(kdbxPassword))
-            
-            // 2. 解码 KDBX 文件
+            // 1. 读取 KDBX 数据和可选密钥文件
+            val kdbxBytes = inputStream.readBytes()
+            val keyFileBytes = keyFileUri?.let { uri ->
+                context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    ?: throw Exception(context.getString(R.string.import_data_error))
+            }
+
+            // 2. 创建凭证并解码 KDBX（兼容旧版空密码+密钥文件）
+            val credentials = buildKdbxCredentials(kdbxPassword, keyFileBytes)
             val keePassDatabase = KeePassKdbxService.withGlobalDecodeLock {
-                KeePassDatabase.decode(inputStream, credentials)
+                try {
+                    KeePassDatabase.decode(kdbxBytes.inputStream(), credentials)
+                } catch (primaryError: Exception) {
+                    if (keyFileBytes != null && kdbxPassword.isBlank()) {
+                        val legacyCredentials = Credentials.from(
+                            EncryptedValue.fromString(""),
+                            keyFileBytes
+                        )
+                        Log.w(TAG, "Retry KDBX decode with legacy empty-password+keyfile credentials")
+                        KeePassDatabase.decode(kdbxBytes.inputStream(), legacyCredentials)
+                    } else {
+                        throw primaryError
+                    }
+                }
             }
             
             // 3. 获取所有条目（保留分组路径）
@@ -906,7 +932,7 @@ class KeePassWebDavViewModel {
             val passwordDao = database.passwordEntryDao()
             val secureItemDao = database.secureItemDao()
             val securityManager = takagi.ru.monica.security.SecurityManager(context)
-            val keepassCredentialCount = allEntries.count { (entry, _) -> isCredentialLikeEntry(entry) }
+            val keepassCredentialCount = allEntries.count { (entry, _) -> isImportablePasswordEntry(entry) }
             val keepassDatabaseId = bindLocalDatabase(
                 context = context,
                 sourceUri = sourceUri,
@@ -1003,7 +1029,7 @@ class KeePassWebDavViewModel {
                                 Log.d(TAG, "Imported TOTP: $normalizedTitle")
                             }
                         }
-                    } else if (username.isNotEmpty() || password.isNotEmpty() || url.isNotEmpty()) {
+                    } else if (isImportablePasswordEntry(entry)) {
                         // 这是一个普通密码条目（按数据库+分组路径去重）
                         val encryptedPassword = securityManager.encryptData(password)
                         val existingByKeePass = passwordDao.findDuplicateEntryInKeePass(
@@ -1013,16 +1039,7 @@ class KeePassWebDavViewModel {
                             website = url,
                             groupPath = groupPath
                         )
-                        val existingLocal = if (existingByKeePass == null) {
-                            passwordDao.findLocalDuplicateByKey(
-                                title = title.lowercase(Locale.ROOT),
-                                username = username.lowercase(Locale.ROOT),
-                                website = url.lowercase(Locale.ROOT)
-                            )
-                        } else {
-                            null
-                        }
-                        val existingEntry = existingByKeePass ?: existingLocal
+                        val existingEntry = existingByKeePass
 
                         val insertedPasswordId = if (existingEntry != null) {
                             val updated = existingEntry.copy(
@@ -1146,16 +1163,47 @@ class KeePassWebDavViewModel {
         }
     }
 
-    private fun isCredentialLikeEntry(entry: Entry): Boolean {
+    private fun isImportablePasswordEntry(entry: Entry): Boolean {
         fun field(key: String): String = runCatching { entry.fields[key]?.content ?: "" }.getOrDefault("")
 
         // 带 Monica 安全项标记的条目不是密码项（避免计数虚高）。
         if (field("MonicaItemType").isNotBlank()) return false
 
+        // TOTP 条目单独导入到验证器，不作为密码项重复导入。
+        if (field("otp").isNotBlank() || field("TOTP Seed").isNotBlank()) return false
+
         val username = field("UserName")
         val password = field("Password")
         val url = field("URL")
-        return username.isNotBlank() || password.isNotBlank() || url.isNotBlank()
+        val title = field("Title")
+        val notes = field("Notes")
+
+        if (username.isNotBlank() || password.isNotBlank() || url.isNotBlank()) {
+            return true
+        }
+
+        if (title.isNotBlank() || notes.isNotBlank()) {
+            return true
+        }
+
+        val standardFields = setOf(
+            "Title", "UserName", "Password", "URL", "Notes",
+            "otp", "TOTP Seed", "TOTP Settings", "MonicaItemType"
+        )
+        return entry.fields.any { (key, value) ->
+            key !in standardFields && runCatching { value.content.isNotBlank() }.getOrDefault(false)
+        }
+    }
+
+    private fun buildKdbxCredentials(password: String, keyFileBytes: ByteArray?): Credentials {
+        if (keyFileBytes == null) {
+            return Credentials.from(EncryptedValue.fromString(password))
+        }
+        return if (password.isBlank()) {
+            Credentials.from(keyFileBytes)
+        } else {
+            Credentials.from(EncryptedValue.fromString(password), keyFileBytes)
+        }
     }
     
     /**

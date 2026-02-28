@@ -1283,9 +1283,14 @@ fun MonicaContent(
                 onImportStratum = { uri, password ->
                     dataExportImportViewModel.importStratum(uri, password)
                 },
-                onImportKdbx = { uri, password ->
+                onImportKdbx = { uri, password, keyFileUri ->
                     val ctx = navController.context
-                    val result = keePassViewModel.importFromLocalKdbx(ctx, uri, password)
+                    val result = keePassViewModel.importFromLocalKdbx(
+                        context = ctx,
+                        sourceUri = uri,
+                        kdbxPassword = password,
+                        keyFileUri = keyFileUri
+                    )
                     result.fold(
                         onSuccess = { count: Int -> Result.success(count) },
                         onFailure = { error: Throwable -> Result.failure(error) }

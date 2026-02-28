@@ -3,6 +3,8 @@ package takagi.ru.monica.ui.screens
 import android.app.Activity
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.BorderStroke
@@ -155,7 +157,7 @@ fun ImportDataScreen(
     }, // Steam 登录导入（提交验证码）
     onClearSteamLoginImportSession: (String) -> Unit = {}, // 清理 Steam 登录会话
     onImportZip: suspend (Uri, String?) -> Result<Int>,  // Monica ZIP导入
-    onImportKdbx: suspend (Uri, String) -> Result<Int> = { _, _ -> Result.failure(Exception("Not implemented")) },  // KDBX导入
+    onImportKdbx: suspend (Uri, String, Uri?) -> Result<Int> = { _, _, _ -> Result.failure(Exception("Not implemented")) },  // KDBX导入
     onImportKeePassCsv: suspend (Uri) -> Result<Int> = { _ -> Result.failure(Exception("Not implemented")) },  // KeePass CSV导入
     onImportBitwardenCsv: suspend (Uri) -> Result<Int> = { _ -> Result.failure(Exception("Not implemented")) }  // Bitwarden CSV导入
 ) {
@@ -178,6 +180,16 @@ fun ImportDataScreen(
     var showKdbxPasswordDialog by remember { mutableStateOf(false) }
     var kdbxPassword by remember { mutableStateOf("") }
     var kdbxPasswordVisible by remember { mutableStateOf(false) }
+    var kdbxKeyFileUri by remember { mutableStateOf<Uri?>(null) }
+    var kdbxKeyFileName by remember { mutableStateOf("") }
+    val kdbxKeyFilePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { selectedUri: Uri? ->
+        selectedUri?.let {
+            kdbxKeyFileUri = it
+            kdbxKeyFileName = it.lastPathSegment?.substringAfterLast("/") ?: "keyfile"
+        }
+    }
 
     var steamImportMode by remember { mutableStateOf("mafile") } // mafile / login
     var steamDeviceIdInput by remember { mutableStateOf("") }
@@ -477,6 +489,8 @@ fun ImportDataScreen(
                                                     isImporting = false
                                                     showKdbxPasswordDialog = true
                                                     kdbxPassword = ""
+                                                    kdbxKeyFileUri = null
+                                                    kdbxKeyFileName = ""
                                                 }
                                                 "keepass_csv" -> {
                                                     val result = onImportKeePassCsv(uri)
@@ -1045,6 +1059,8 @@ fun ImportDataScreen(
             onDismissRequest = { 
                 showKdbxPasswordDialog = false
                 kdbxPassword = ""
+                kdbxKeyFileUri = null
+                kdbxKeyFileName = ""
             },
             title = { Text(stringResource(R.string.kdbx_import_password_title)) },
             text = {
@@ -1071,6 +1087,33 @@ fun ImportDataScreen(
                         },
                         singleLine = true
                     )
+                    OutlinedTextField(
+                        value = kdbxKeyFileName,
+                        onValueChange = {},
+                        readOnly = true,
+                        label = { Text(stringResource(R.string.local_keepass_key_file_optional)) },
+                        placeholder = { Text(stringResource(R.string.local_keepass_key_file_tap_to_select)) },
+                        trailingIcon = {
+                            IconButton(onClick = { kdbxKeyFilePickerLauncher.launch(arrayOf("*/*")) }) {
+                                Icon(
+                                    Icons.Default.FolderOpen,
+                                    contentDescription = stringResource(R.string.local_keepass_select_key_file)
+                                )
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { kdbxKeyFilePickerLauncher.launch(arrayOf("*/*")) }
+                    )
+                    Text(
+                        if (kdbxKeyFileUri == null) {
+                            stringResource(R.string.local_keepass_no_key_file_selected)
+                        } else {
+                            stringResource(R.string.local_keepass_key_file_selected)
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             },
             confirmButton = {
@@ -1081,7 +1124,7 @@ fun ImportDataScreen(
                             scope.launch {
                                 isImporting = true
                                 try {
-                                    val result = onImportKdbx(uri, kdbxPassword)
+                                    val result = onImportKdbx(uri, kdbxPassword, kdbxKeyFileUri)
                                     result.onSuccess { count ->
                                         snackbarHostState.showSnackbar(
                                             context.getString(R.string.import_data_kdbx_import_success_count, count)
@@ -1102,11 +1145,13 @@ fun ImportDataScreen(
                                 } finally {
                                     isImporting = false
                                     kdbxPassword = ""
+                                    kdbxKeyFileUri = null
+                                    kdbxKeyFileName = ""
                                 }
                             }
                         }
                     },
-                    enabled = kdbxPassword.isNotEmpty() && !isImporting
+                    enabled = (kdbxPassword.isNotEmpty() || kdbxKeyFileUri != null) && !isImporting
                 ) {
                     if (isImporting) {
                         CircularProgressIndicator(
@@ -1123,6 +1168,8 @@ fun ImportDataScreen(
                     onClick = { 
                         showKdbxPasswordDialog = false
                         kdbxPassword = ""
+                        kdbxKeyFileUri = null
+                        kdbxKeyFileName = ""
                     },
                     enabled = !isImporting
                 ) {

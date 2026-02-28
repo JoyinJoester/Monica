@@ -234,7 +234,9 @@ fun LocalKeePassScreen(
                 visible = operationState != LocalKeePassViewModel.OperationState.Idle,
                 enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
                 exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-                modifier = Modifier.align(Alignment.BottomCenter)
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(start = 16.dp, end = 16.dp, bottom = 104.dp)
             ) {
                 OperationStatusBar(operationState)
             }
@@ -648,7 +650,7 @@ private fun OperationStatusBar(state: LocalKeePassViewModel.OperationState) {
     
     Surface(
         color = backgroundColor,
-        shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
+        shape = RoundedCornerShape(16.dp),
         shadowElevation = 8.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
