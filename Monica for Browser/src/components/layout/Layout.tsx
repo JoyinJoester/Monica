@@ -1,7 +1,22 @@
 import React from 'react';
 import styled, { css } from 'styled-components';
 import { NavLink } from 'react-router-dom';
-import { KeyRound, StickyNote, Settings as SettingsIcon, CreditCard, ShieldCheck, ExternalLink } from 'lucide-react';
+import {
+  KeyRound,
+  StickyNote,
+  Settings as SettingsIcon,
+  CreditCard,
+  IdCard,
+  ShieldCheck,
+  ExternalLink,
+  Infinity,
+  Key,
+  Send,
+  Shield,
+  WandSparkles,
+  History,
+  Trash2
+} from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 const LayoutContainer = styled.div<{ $manager: boolean }>`
@@ -13,6 +28,9 @@ const LayoutContainer = styled.div<{ $manager: boolean }>`
 
   @media (min-width: 960px) {
     flex-direction: ${({ $manager }) => ($manager ? 'row' : 'column')};
+    ${({ $manager }) => $manager && css`
+      background: radial-gradient(circle at 20% 0%, #1a3157 0%, #121f3a 38%, #0c1528 100%);
+    `}
   }
 `;
 
@@ -45,16 +63,20 @@ const Header = styled.header<{ $manager: boolean }>`
 
   @media (min-width: 960px) {
     ${({ $manager }) => $manager && css`
+      min-height: 72px;
       padding: 20px 28px;
+      background: rgba(13, 24, 45, 0.88);
+      border-bottom: 1px solid rgba(112, 146, 204, 0.26);
+      backdrop-filter: blur(12px);
     `}
   }
 `;
 
-const Title = styled.h1`
+const Title = styled.h1<{ $manager: boolean }>`
   margin: 0;
   font-size: 20px;
   font-weight: 700;
-  color: ${({ theme }) => theme.colors.primary};
+  color: ${({ theme, $manager }) => ($manager ? '#e9ebff' : theme.colors.primary)};
   letter-spacing: -0.5px;
 `;
 
@@ -85,7 +107,8 @@ const OpenManagerButton = styled.button`
   }
 
   &:active {
-    transform: translateY(0);
+    transform: translateY(0) scale(0.95);
+    opacity: 0.8;
   }
 
   svg {
@@ -102,6 +125,7 @@ const Content = styled.main<{ $manager: boolean }>`
 
   ${({ $manager }) => $manager && css`
     animation: content-fade 220ms ease-out;
+    background: transparent;
 
     @keyframes content-fade {
       from {
@@ -129,15 +153,45 @@ const Navigation = styled.nav<{ $manager: boolean }>`
 
   @media (min-width: 960px) {
     ${({ $manager }) => $manager && css`
-      width: 100px;
+      width: 84px;
+      background: rgba(12, 22, 41, 0.96);
       border-top: none;
-      border-right: 1px solid ${({ theme }) => theme.colors.outlineVariant};
+      border-right: 1px solid rgba(112, 146, 204, 0.26);
       justify-content: flex-start;
       align-items: stretch;
       flex-direction: column;
-      gap: 8px;
-      padding: 20px 10px;
+      gap: 6px;
+      padding: 16px 10px;
+      overflow-y: auto;
     `}
+  }
+`;
+
+const ManagerNavTop = styled.div`
+  display: none;
+
+  @media (min-width: 960px) {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 10px;
+  }
+`;
+
+const ManagerLogo = styled.div`
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid rgba(138, 177, 243, 0.48);
+  background: linear-gradient(135deg, rgba(70, 124, 220, 0.28), rgba(54, 97, 198, 0.26));
+  color: #b8d5ff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 10px 24px rgba(22, 66, 150, 0.35);
+
+  svg {
+    width: 22px;
+    height: 22px;
   }
 `;
 
@@ -156,9 +210,10 @@ const NavItem = styled(NavLink)<{ $manager: boolean }>`
   flex: 1;
   cursor: pointer;
 
-  &.active {
-    color: ${({ theme }) => theme.colors.primary};
-    background-color: ${({ theme }) => theme.colors.primaryContainer};
+    &:active {
+      transform: scale(0.92);
+      opacity: 0.8;
+    }
   }
 
   svg {
@@ -171,9 +226,22 @@ const NavItem = styled(NavLink)<{ $manager: boolean }>`
     ${({ $manager }) => $manager && css`
       flex: unset;
       width: 100%;
-      padding: 10px 8px;
-      border-radius: 14px;
-      font-size: 11px;
+      padding: 10px 6px;
+      border-radius: 12px;
+      font-size: 10px;
+      color: #8fa9d8;
+
+      &.active {
+        background: linear-gradient(135deg, rgba(64, 121, 221, 0.5), rgba(47, 96, 196, 0.38));
+        color: #f5f6ff;
+        border: 1px solid rgba(126, 168, 235, 0.45);
+        box-shadow: 0 8px 24px rgba(25, 74, 169, 0.3);
+      }
+
+      &:hover {
+        color: #dce1ff;
+        background: rgba(107, 145, 216, 0.16);
+      }
 
       svg {
         margin-bottom: 4px;
@@ -197,9 +265,54 @@ export const Layout = ({ children, isManagerMode = false }: LayoutProps) => {
 
   return (
     <LayoutContainer $manager={isManagerMode}>
+      {isManagerMode && (
+        <Navigation $manager={isManagerMode}>
+          <ManagerNavTop>
+            <ManagerLogo>
+              <Infinity />
+            </ManagerLogo>
+          </ManagerNavTop>
+          <NavItem $manager={isManagerMode} to="/" title={t('nav.passwords')}>
+            <KeyRound />
+          </NavItem>
+          <NavItem $manager={isManagerMode} to="/notes" title={t('nav.notes')}>
+            <StickyNote />
+          </NavItem>
+          <NavItem $manager={isManagerMode} to="/documents" title={t('nav.documents')}>
+            <IdCard />
+          </NavItem>
+          <NavItem $manager={isManagerMode} to="/cards" title={t('nav.cards')}>
+            <CreditCard />
+          </NavItem>
+          <NavItem $manager={isManagerMode} to="/authenticator" title={t('nav.authenticator')}>
+            <ShieldCheck />
+          </NavItem>
+          <NavItem $manager={isManagerMode} to="/passkeys" title={t('nav.passkeys')}>
+            <Key />
+          </NavItem>
+          <NavItem $manager={isManagerMode} to="/send" title={t('nav.send')}>
+            <Send />
+          </NavItem>
+          <NavItem $manager={isManagerMode} to="/bitwarden" title={t('nav.bitwarden')}>
+            <Shield />
+          </NavItem>
+          <NavItem $manager={isManagerMode} to="/generator" title={t('nav.generator')}>
+            <WandSparkles />
+          </NavItem>
+          <NavItem $manager={isManagerMode} to="/timeline" title={t('nav.timeline')}>
+            <History />
+          </NavItem>
+          <NavItem $manager={isManagerMode} to="/recycle-bin" title={t('nav.recycleBin')}>
+            <Trash2 />
+          </NavItem>
+          <NavItem $manager={isManagerMode} to="/settings" title={t('nav.settings')}>
+            <SettingsIcon />
+          </NavItem>
+        </Navigation>
+      )}
       <MainArea $manager={isManagerMode}>
         <Header $manager={isManagerMode}>
-          <Title>{t('app.title')}</Title>
+          <Title $manager={isManagerMode}>{t('app.title')}</Title>
           <HeaderActions>
             {!isManagerMode && (
               <OpenManagerButton type="button" onClick={handleOpenManagerTab} title={t('app.openManager')}>
@@ -213,28 +326,30 @@ export const Layout = ({ children, isManagerMode = false }: LayoutProps) => {
           {children}
         </Content>
       </MainArea>
-      <Navigation $manager={isManagerMode}>
-        <NavItem $manager={isManagerMode} to="/">
-          <KeyRound />
-          {t('nav.passwords')}
-        </NavItem>
-        <NavItem $manager={isManagerMode} to="/notes">
-          <StickyNote />
-          {t('nav.notes')}
-        </NavItem>
-        <NavItem $manager={isManagerMode} to="/documents">
-          <CreditCard />
-          {t('nav.documents')}
-        </NavItem>
-        <NavItem $manager={isManagerMode} to="/authenticator">
-          <ShieldCheck />
-          {t('nav.authenticator')}
-        </NavItem>
-        <NavItem $manager={isManagerMode} to="/settings">
-          <SettingsIcon />
-          {t('nav.settings')}
-        </NavItem>
-      </Navigation>
+      {!isManagerMode && (
+        <Navigation $manager={isManagerMode}>
+          <NavItem $manager={isManagerMode} to="/">
+            <KeyRound />
+            {t('nav.passwords')}
+          </NavItem>
+          <NavItem $manager={isManagerMode} to="/notes">
+            <StickyNote />
+            {t('nav.notes')}
+          </NavItem>
+          <NavItem $manager={isManagerMode} to="/documents">
+            <CreditCard />
+            {t('nav.documents')}
+          </NavItem>
+          <NavItem $manager={isManagerMode} to="/authenticator">
+            <ShieldCheck />
+            {t('nav.authenticator')}
+          </NavItem>
+          <NavItem $manager={isManagerMode} to="/settings">
+            <SettingsIcon />
+            {t('nav.settings')}
+          </NavItem>
+        </Navigation>
+      )}
     </LayoutContainer>
   );
 };

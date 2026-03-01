@@ -4,8 +4,14 @@
  */
 
 // ========== Constants ==========
-const MAGIC_HEADER = new Uint8Array([0x4D, 0x4F, 0x4E, 0x49, 0x43, 0x41, 0x45, 0x4E]); // "MONICAEN"
-const SALT_LENGTH = 16;
+// Android-compatible header: "MONICA_ENC_V1"
+const ANDROID_MAGIC_HEADER = new TextEncoder().encode('MONICA_ENC_V1');
+const ANDROID_SALT_LENGTH = 32;
+
+// Legacy browser header (kept for backward compatibility)
+const LEGACY_MAGIC_HEADER = new Uint8Array([0x4D, 0x4F, 0x4E, 0x49, 0x43, 0x41, 0x45, 0x4E]); // "MONICAEN"
+const LEGACY_SALT_LENGTH = 16;
+
 const IV_LENGTH = 12;
 const KEY_LENGTH = 256;
 const ITERATIONS = 100000;
@@ -15,6 +21,40 @@ export interface EncryptedData {
     salt: Uint8Array;
     iv: Uint8Array;
     data: Uint8Array;
+}
+
+type EncryptionFormat = 'android_v1' | 'legacy_browser';
+
+function detectEncryptionFormat(data: ArrayBuffer | Uint8Array): EncryptionFormat | null {
+    const arr = new Uint8Array(data);
+
+    if (arr.length >= ANDROID_MAGIC_HEADER.length) {
+        let androidMatch = true;
+        for (let i = 0; i < ANDROID_MAGIC_HEADER.length; i++) {
+            if (arr[i] !== ANDROID_MAGIC_HEADER[i]) {
+                androidMatch = false;
+                break;
+            }
+        }
+        if (androidMatch) {
+            return 'android_v1';
+        }
+    }
+
+    if (arr.length >= LEGACY_MAGIC_HEADER.length) {
+        let legacyMatch = true;
+        for (let i = 0; i < LEGACY_MAGIC_HEADER.length; i++) {
+            if (arr[i] !== LEGACY_MAGIC_HEADER[i]) {
+                legacyMatch = false;
+                break;
+            }
+        }
+        if (legacyMatch) {
+            return 'legacy_browser';
+        }
+    }
+
+    return null;
 }
 
 // ========== PBKDF2 Key Derivation ==========
@@ -55,7 +95,8 @@ export async function encrypt(
     password: string
 ): Promise<ArrayBuffer> {
     // Generate random salt and IV
-    const salt = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
+    // Use Android-compatible format by default.
+    const salt = crypto.getRandomValues(new Uint8Array(ANDROID_SALT_LENGTH));
     const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
 
     // Derive key from password
@@ -71,18 +112,18 @@ export async function encrypt(
         dataBuffer
     );
 
-    // Combine: MAGIC_HEADER + salt + iv + encryptedData
+    // Combine: ANDROID_MAGIC_HEADER + salt + iv + encryptedData
     const encryptedArray = new Uint8Array(encrypted);
     const result = new Uint8Array(
-        MAGIC_HEADER.length + SALT_LENGTH + IV_LENGTH + encryptedArray.length
+        ANDROID_MAGIC_HEADER.length + ANDROID_SALT_LENGTH + IV_LENGTH + encryptedArray.length
     );
 
     let offset = 0;
-    result.set(MAGIC_HEADER, offset);
-    offset += MAGIC_HEADER.length;
+    result.set(ANDROID_MAGIC_HEADER, offset);
+    offset += ANDROID_MAGIC_HEADER.length;
 
     result.set(salt, offset);
-    offset += SALT_LENGTH;
+    offset += ANDROID_SALT_LENGTH;
 
     result.set(iv, offset);
     offset += IV_LENGTH;
@@ -104,16 +145,19 @@ export async function decrypt(
 ): Promise<ArrayBuffer> {
     const data = new Uint8Array(encryptedData);
 
-    // Verify magic header
-    if (!isEncrypted(data)) {
+    const format = detectEncryptionFormat(data);
+    if (!format) {
         throw new Error('Invalid encrypted file format');
     }
 
-    let offset = MAGIC_HEADER.length;
+    const headerLength = format === 'android_v1' ? ANDROID_MAGIC_HEADER.length : LEGACY_MAGIC_HEADER.length;
+    const saltLength = format === 'android_v1' ? ANDROID_SALT_LENGTH : LEGACY_SALT_LENGTH;
+
+    let offset = headerLength;
 
     // Extract salt
-    const salt = data.slice(offset, offset + SALT_LENGTH);
-    offset += SALT_LENGTH;
+    const salt = data.slice(offset, offset + saltLength);
+    offset += saltLength;
 
     // Extract IV
     const iv = data.slice(offset, offset + IV_LENGTH);
@@ -142,13 +186,7 @@ export async function decrypt(
  * Check if data is encrypted (has Monica magic header)
  */
 export function isEncrypted(data: ArrayBuffer | Uint8Array): boolean {
-    const arr = new Uint8Array(data);
-    if (arr.length < MAGIC_HEADER.length) return false;
-
-    for (let i = 0; i < MAGIC_HEADER.length; i++) {
-        if (arr[i] !== MAGIC_HEADER[i]) return false;
-    }
-    return true;
+    return detectEncryptionFormat(data) !== null;
 }
 
 /**

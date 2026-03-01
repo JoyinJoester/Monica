@@ -30,8 +30,13 @@ const BackButton = styled.button`
   align-items: center;
   justify-content: center;
   color: ${({ theme }) => theme.colors.onSurface};
+  transition: all 0.15s ease;
   &:hover {
     background: ${({ theme }) => theme.colors.surfaceVariant};
+  }
+  &:active {
+    transform: scale(0.9);
+    opacity: 0.7;
   }
 `;
 
@@ -70,6 +75,10 @@ const PasswordToggle = styled.button`
   cursor: pointer;
   padding: 4px;
   color: ${({ theme }) => theme.colors.onSurfaceVariant};
+  transition: opacity 0.15s ease;
+  &:active {
+    opacity: 0.6;
+  }
 `;
 
 const StatusBadge = styled.div<{ $status: 'success' | 'error' | 'pending' }>`

@@ -1,16 +1,21 @@
 /**
  * Import Manager for Monica Browser Extension
- * Handles CSV and JSON file imports for passwords, notes, documents, and TOTP
- * 
- * Supported formats:
- * - Chrome Password CSV (name, url, username, password, note)
- * - Monica CSV Export (9-field format)
- * - Aegis JSON (TOTP authenticators)
+ * Handles CSV/JSON/ZIP imports and keeps compatibility with Android strategies.
  */
 
-import type { SecureItem, PasswordEntry, TotpData, NoteData, DocumentData, BankCardData } from '../types/models';
-import { ItemType } from '../types/models';
+import type {
+    SecureItem,
+    PasswordEntry,
+    TotpData,
+    NoteData,
+    DocumentData,
+    BankCardData,
+    PasskeyData,
+    SendData,
+} from '../types/models';
+import { ItemType, OtpType } from '../types/models';
 import { saveItem } from './storage';
+import { backupManager } from './webdav';
 
 // ========== Types ==========
 
@@ -18,7 +23,10 @@ export const ImportFormat = {
     UNKNOWN: 'unknown',
     CHROME_PASSWORD: 'chrome_password',
     MONICA_CSV: 'monica_csv',
-    AEGIS_JSON: 'aegis_json'
+    KEEPASS_CSV: 'keepass_csv',
+    AEGIS_JSON: 'aegis_json',
+    MONICA_ZIP: 'monica_zip',
+    KEEPASS_KDBX: 'keepass_kdbx',
 } as const;
 export type ImportFormat = typeof ImportFormat[keyof typeof ImportFormat];
 
@@ -48,8 +56,16 @@ interface ParsedMonicaItem {
     notes: string;
     isFavorite: boolean;
     imagePaths: string;
-    createdAt: number;
-    updatedAt: number;
+    createdAt: number | string;
+    updatedAt: number | string;
+    categoryId?: number;
+    keepassDatabaseId?: number;
+    keepassGroupPath?: string;
+    bitwardenVaultId?: number;
+    bitwardenFolderId?: string;
+    bitwardenCipherId?: string;
+    isDeleted?: boolean;
+    deletedAt?: string;
 }
 
 interface AegisEntry {
@@ -61,6 +77,7 @@ interface AegisEntry {
     algorithm: string;
     digits: number;
     period: number;
+    otpType?: string;
 }
 
 interface AegisJsonEntry {
@@ -77,11 +94,8 @@ interface AegisJsonEntry {
     };
 }
 
-// ========== CSV Parsing ==========
+// ========== CSV Utilities ==========
 
-/**
- * Parse a CSV line handling quoted fields and escaped quotes
- */
 function parseCsvLine(line: string): string[] {
     const fields: string[] = [];
     let currentField = '';
@@ -90,9 +104,7 @@ function parseCsvLine(line: string): string[] {
 
     while (i < line.length) {
         const char = line[i];
-
         if (char === '"' && inQuotes && i + 1 < line.length && line[i + 1] === '"') {
-            // Escaped quote
             currentField += '"';
             i++;
         } else if (char === '"') {
@@ -110,9 +122,6 @@ function parseCsvLine(line: string): string[] {
     return fields;
 }
 
-/**
- * Check if we're in an unclosed quote state
- */
 function isInQuotes(text: string): boolean {
     let inQuotes = false;
     let i = 0;
@@ -120,7 +129,6 @@ function isInQuotes(text: string): boolean {
     while (i < text.length) {
         const c = text[i];
         if (c === '"' && inQuotes && i + 1 < text.length && text[i + 1] === '"') {
-            // Escaped quote, skip
             i++;
         } else if (c === '"') {
             inQuotes = !inQuotes;
@@ -131,9 +139,6 @@ function isInQuotes(text: string): boolean {
     return inQuotes;
 }
 
-/**
- * Read complete CSV records (handling multi-line quoted fields)
- */
 function readCsvRecords(content: string): string[] {
     const lines = content.split(/\r?\n/);
     const records: string[] = [];
@@ -154,7 +159,6 @@ function readCsvRecords(content: string): string[] {
         }
     }
 
-    // Handle last record if not closed
     if (currentRecord.trim()) {
         records.push(currentRecord);
     }
@@ -162,51 +166,38 @@ function readCsvRecords(content: string): string[] {
     return records;
 }
 
-// ========== Format Detection ==========
+// ========== Detection ==========
 
-/**
- * Detect CSV format from the header line
- */
 function detectCsvFormat(firstLine: string): ImportFormat {
     const lowerLine = firstLine.toLowerCase();
 
-    // Chrome Password format: name,url,username,password[,note]
-    if (lowerLine.includes('name') &&
-        lowerLine.includes('url') &&
-        lowerLine.includes('username') &&
-        lowerLine.includes('password')) {
+    if (lowerLine.includes('name') && lowerLine.includes('url') && lowerLine.includes('username') && lowerLine.includes('password')) {
         return ImportFormat.CHROME_PASSWORD;
     }
 
-    // Monica CSV format: ID,Type,Title,Data,Notes,IsFavorite,ImagePaths,CreatedAt,UpdatedAt
-    if (lowerLine.includes('type') &&
-        lowerLine.includes('title') &&
-        lowerLine.includes('data')) {
+    if (lowerLine.includes('type') && lowerLine.includes('title') && lowerLine.includes('data')) {
         return ImportFormat.MONICA_CSV;
     }
 
-    // Try to guess by field count
+    const keepassHints = ['title', 'user name', 'username', 'password', 'url', 'notes', 'account', 'login'];
+    const keepassMatches = keepassHints.filter((k) => lowerLine.includes(k)).length;
+    if (keepassMatches >= 2 && lowerLine.includes('password')) {
+        return ImportFormat.KEEPASS_CSV;
+    }
+
     const fields = parseCsvLine(firstLine);
-    if (fields.length >= 9) {
-        return ImportFormat.MONICA_CSV;
-    } else if (fields.length >= 4 && fields.length <= 5) {
-        return ImportFormat.CHROME_PASSWORD;
-    }
+    if (fields.length >= 9) return ImportFormat.MONICA_CSV;
+    if (fields.length >= 4 && fields.length <= 6) return ImportFormat.CHROME_PASSWORD;
 
     return ImportFormat.UNKNOWN;
 }
 
-/**
- * Check if content is Aegis JSON
- */
 function isAegisJson(content: string): boolean {
     try {
         const json = JSON.parse(content);
-        // Aegis has either db.entries or entries at root level
         if (json.db?.entries || json.entries) {
             return true;
         }
-        // Check for encrypted Aegis (has header with slots)
         if (json.header?.slots && typeof json.db === 'string') {
             return true;
         }
@@ -216,41 +207,16 @@ function isAegisJson(content: string): boolean {
     }
 }
 
-// ========== Format Conversion ==========
+// ========== Shared Parsing ==========
 
-/**
- * Convert Chrome password entry to SecureItem
- */
-function convertChromePassword(parsed: ParsedChromePassword): Omit<SecureItem, 'id' | 'createdAt' | 'updatedAt'> {
-    const passwordEntry: PasswordEntry = {
-        username: parsed.username,
-        password: parsed.password,
-        website: parsed.url
-    };
-
-    return {
-        itemType: ItemType.Password,
-        title: parsed.name || parsed.url || parsed.username,
-        notes: parsed.note || '',
-        isFavorite: false,
-        sortOrder: 0,
-        itemData: passwordEntry
-    };
-}
-
-/**
- * Parse itemData string (format: "key:value;key:value")
- */
 function parseItemDataString(data: string): Record<string, string> {
     const result: Record<string, string> = {};
-
     if (!data) return result;
 
-    // Try parsing as JSON first
     try {
         return JSON.parse(data);
     } catch {
-        // Fall back to key:value;key:value format
+        // fall back
     }
 
     const pairs = data.split(';');
@@ -266,49 +232,193 @@ function parseItemDataString(data: string): Record<string, string> {
     return result;
 }
 
-/**
- * Convert Monica CSV item to SecureItem
- */
-function convertMonicaCsv(parsed: ParsedMonicaItem): Omit<SecureItem, 'id' | 'createdAt' | 'updatedAt'> | null {
-    const itemTypeMap: Record<string, typeof ItemType[keyof typeof ItemType]> = {
-        'PASSWORD': ItemType.Password,
-        'TOTP': ItemType.Totp,
-        'NOTE': ItemType.Note,
-        'DOCUMENT': ItemType.Document,
-        'BANKCARD': ItemType.BankCard
+function readString(value: unknown): string {
+    return typeof value === 'string' ? value : '';
+}
+
+function readPositiveInt(value: unknown, fallback: number): number {
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+        return Math.floor(value);
+    }
+    if (typeof value === 'string') {
+        const parsed = parseInt(value, 10);
+        if (Number.isFinite(parsed) && parsed > 0) return parsed;
+    }
+    return fallback;
+}
+
+function normalizeAlgorithm(value: unknown): string {
+    const upper = readString(value).trim().toUpperCase();
+    if (upper === 'SHA1' || upper === 'SHA256' || upper === 'SHA512') {
+        return upper;
+    }
+    return 'SHA1';
+}
+
+function normalizeOtpType(value: unknown): typeof OtpType[keyof typeof OtpType] | undefined {
+    const upper = readString(value).trim().toUpperCase();
+    if (upper === 'YAOTP') return OtpType.YANDEX;
+    if (upper === OtpType.TOTP) return OtpType.TOTP;
+    if (upper === OtpType.HOTP) return OtpType.HOTP;
+    if (upper === OtpType.STEAM) return OtpType.STEAM;
+    if (upper === OtpType.YANDEX) return OtpType.YANDEX;
+    if (upper === OtpType.MOTP) return OtpType.MOTP;
+    return undefined;
+}
+
+function normalizeTotpData(raw: Record<string, unknown>, fallbackTitle: string): TotpData {
+    const secret = readString(raw.secret);
+    const issuer = readString(raw.issuer);
+    const accountName = readString(raw.accountName) || readString(raw.account);
+    const inputOtpType = normalizeOtpType(raw.otpType);
+    const hasSteamMetadata = [
+        'steamFingerprint',
+        'steamDeviceId',
+        'steamSerialNumber',
+        'steamSharedSecretBase64',
+        'steamRevocationCode',
+        'steamIdentitySecret',
+        'steamTokenGid',
+        'steamRawJson',
+    ].some((key) => readString(raw[key]).length > 0);
+    const looksLikeSteam = [issuer, accountName, fallbackTitle].some((text) => text.toLowerCase().includes('steam')) ||
+        readString(raw.link).toLowerCase().includes('encoder=steam');
+    const shouldUseSteam = inputOtpType === OtpType.STEAM ||
+        hasSteamMetadata ||
+        (looksLikeSteam && (inputOtpType === undefined || inputOtpType === OtpType.TOTP));
+
+    const otpType = shouldUseSteam ? OtpType.STEAM : (inputOtpType || OtpType.TOTP);
+    const digits = shouldUseSteam ? 5 : Math.min(10, Math.max(4, readPositiveInt(raw.digits, 6)));
+    const period = shouldUseSteam ? 30 : Math.max(1, readPositiveInt(raw.period, 30));
+    const algorithm = shouldUseSteam ? 'SHA1' : normalizeAlgorithm(raw.algorithm);
+
+    return {
+        secret,
+        issuer,
+        accountName,
+        period,
+        digits,
+        algorithm,
+        otpType,
+    };
+}
+
+function parseBooleanLike(v: string | undefined): boolean {
+    const normalized = (v || '').trim().toLowerCase();
+    return normalized === '1' || normalized === 'true' || normalized === 'yes' || normalized === 'y';
+}
+
+function parseTimeLikeToIso(v: string | number | undefined): string {
+    if (v == null) return new Date().toISOString();
+
+    if (typeof v === 'number') {
+        const ms = Number.isFinite(v) ? v : Date.now();
+        return new Date(ms).toISOString();
+    }
+
+    const raw = v.trim();
+    if (!raw) return new Date().toISOString();
+
+    if (/^\d+$/.test(raw)) {
+        const n = parseInt(raw, 10);
+        return new Date(Number.isFinite(n) ? n : Date.now()).toISOString();
+    }
+
+    const parsed = new Date(raw).getTime();
+    return Number.isNaN(parsed) ? new Date().toISOString() : new Date(parsed).toISOString();
+}
+
+function normalizeHeader(h: string): string {
+    return h.trim().toLowerCase().replace(/[ _-]+/g, ' ');
+}
+
+function buildHeaderIndexMap(headers: string[]): Map<string, number> {
+    const map = new Map<string, number>();
+    headers.forEach((h, idx) => {
+        map.set(normalizeHeader(h), idx);
+    });
+    return map;
+}
+
+function getFieldByAliases(fields: string[], headerMap: Map<string, number> | null, aliases: string[]): string {
+    if (!headerMap) return '';
+    for (const alias of aliases) {
+        const idx = headerMap.get(normalizeHeader(alias));
+        if (idx != null) {
+            return fields[idx] || '';
+        }
+    }
+    return '';
+}
+
+// ========== Conversion ==========
+
+function convertChromePassword(parsed: ParsedChromePassword): Omit<SecureItem, 'id' | 'createdAt' | 'updatedAt'> {
+    const passwordEntry: PasswordEntry = {
+        username: parsed.username,
+        password: parsed.password,
+        website: parsed.url,
     };
 
-    const itemType = itemTypeMap[parsed.itemType.toUpperCase()];
+    return {
+        itemType: ItemType.Password,
+        title: parsed.name || parsed.url || parsed.username,
+        notes: parsed.note || '',
+        isFavorite: false,
+        sortOrder: 0,
+        itemData: passwordEntry,
+    };
+}
+
+function convertMonicaCsv(parsed: ParsedMonicaItem): Omit<SecureItem, 'id' | 'createdAt' | 'updatedAt'> | null {
+    const itemTypeMap: Record<string, typeof ItemType[keyof typeof ItemType]> = {
+        PASSWORD: ItemType.Password,
+        TOTP: ItemType.Totp,
+        NOTE: ItemType.Note,
+        DOCUMENT: ItemType.Document,
+        BANKCARD: ItemType.BankCard,
+        BANK_CARD: ItemType.BankCard,
+        CARD: ItemType.BankCard,
+        PASSKEY: ItemType.Passkey,
+        SEND: ItemType.Send,
+        '0': ItemType.Password,
+        '1': ItemType.Totp,
+        '2': ItemType.BankCard,
+        '3': ItemType.Document,
+        '4': ItemType.Note,
+        '5': ItemType.Passkey,
+        '6': ItemType.Send,
+    };
+
+    const itemType = itemTypeMap[(parsed.itemType || '').toUpperCase()] ?? itemTypeMap[parsed.itemType || ''];
     if (itemType === undefined) {
         console.warn(`[ImportManager] Unknown item type: ${parsed.itemType}`);
         return null;
     }
 
-    // Parse itemData based on type
-    let itemData: PasswordEntry | TotpData | NoteData | DocumentData | BankCardData;
     const parsedData = parseItemDataString(parsed.itemData);
+    let itemData: PasswordEntry | TotpData | NoteData | DocumentData | BankCardData | PasskeyData | SendData;
 
     switch (itemType) {
         case ItemType.Password:
             itemData = {
                 username: parsedData.username || '',
                 password: parsedData.password || '',
-                website: parsedData.website || parsedData.url || ''
+                website: parsedData.website || parsedData.url || '',
+                categoryId: parsed.categoryId,
+                keepassDatabaseId: parsed.keepassDatabaseId,
+                keepassGroupPath: parsed.keepassGroupPath,
+                bitwardenVaultId: parsed.bitwardenVaultId,
+                bitwardenFolderId: parsed.bitwardenFolderId,
+                bitwardenCipherId: parsed.bitwardenCipherId,
             } as PasswordEntry;
             break;
         case ItemType.Totp:
-            itemData = {
-                secret: parsedData.secret || '',
-                issuer: parsedData.issuer || '',
-                accountName: parsedData.accountName || parsedData.account || '',
-                period: parseInt(parsedData.period) || 30,
-                digits: parseInt(parsedData.digits) || 6,
-                algorithm: parsedData.algorithm || 'SHA1'
-            } as TotpData;
+            itemData = normalizeTotpData(parsedData as unknown as Record<string, unknown>, parsed.title);
             break;
         case ItemType.Note:
             itemData = {
-                content: parsedData.content || ''
+                content: parsedData.content || parsedData.notes || '',
             } as NoteData;
             break;
         case ItemType.Document:
@@ -319,7 +429,7 @@ function convertMonicaCsv(parsed: ParsedMonicaItem): Omit<SecureItem, 'id' | 'cr
                 issuedDate: parsedData.issuedDate,
                 expiryDate: parsedData.expiryDate,
                 issuedBy: parsedData.issuedBy,
-                additionalInfo: parsedData.additionalInfo
+                additionalInfo: parsedData.additionalInfo,
             } as DocumentData;
             break;
         case ItemType.BankCard:
@@ -329,8 +439,25 @@ function convertMonicaCsv(parsed: ParsedMonicaItem): Omit<SecureItem, 'id' | 'cr
                 expiryMonth: parsedData.expiryMonth || '',
                 expiryYear: parsedData.expiryYear || '',
                 cvv: parsedData.cvv,
-                bankName: parsedData.bankName
+                bankName: parsedData.bankName,
             } as BankCardData;
+            break;
+        case ItemType.Passkey:
+            itemData = {
+                username: parsedData.username || '',
+                rpId: parsedData.rpId || parsedData.rpid || '',
+                credentialId: parsedData.credentialId || parsedData.credentialID || '',
+                userDisplayName: parsedData.userDisplayName || parsedData.displayName || '',
+            } as PasskeyData;
+            break;
+        case ItemType.Send:
+            itemData = {
+                sendType: (parsedData.sendType as 'text' | 'link') || 'text',
+                content: parsedData.content || parsedData.text || '',
+                expirationAt: parsedData.expirationAt || parsedData.expiresAt || '',
+                maxAccessCount: parsedData.maxAccessCount ? parseInt(parsedData.maxAccessCount, 10) : undefined,
+                accessCount: parsedData.accessCount ? parseInt(parsedData.accessCount, 10) : undefined,
+            } as SendData;
             break;
         default:
             itemData = {} as PasswordEntry;
@@ -342,22 +469,22 @@ function convertMonicaCsv(parsed: ParsedMonicaItem): Omit<SecureItem, 'id' | 'cr
         notes: parsed.notes,
         isFavorite: parsed.isFavorite,
         sortOrder: 0,
-        itemData
-    };
+        itemData,
+        isDeleted: parsed.isDeleted ?? false,
+        deletedAt: parsed.deletedAt,
+    } as Omit<SecureItem, 'id' | 'createdAt' | 'updatedAt'>;
 }
 
-/**
- * Convert Aegis entry to SecureItem
- */
 function convertAegisEntry(entry: AegisEntry): Omit<SecureItem, 'id' | 'createdAt' | 'updatedAt'> {
-    const totpData: TotpData = {
+    const totpData: TotpData = normalizeTotpData({
         secret: entry.secret,
         issuer: entry.issuer,
         accountName: entry.name,
         period: entry.period || 30,
         digits: entry.digits || 6,
-        algorithm: entry.algorithm || 'SHA1'
-    };
+        algorithm: entry.algorithm || 'SHA1',
+        otpType: entry.otpType || '',
+    }, entry.name);
 
     return {
         itemType: ItemType.Totp,
@@ -365,15 +492,12 @@ function convertAegisEntry(entry: AegisEntry): Omit<SecureItem, 'id' | 'createdA
         notes: entry.note || '',
         isFavorite: false,
         sortOrder: 0,
-        itemData: totpData
+        itemData: totpData,
     };
 }
 
-// ========== Import Functions ==========
+// ========== Importers ==========
 
-/**
- * Import Chrome Password CSV
- */
 async function importChromePassword(content: string): Promise<ImportResult> {
     const result: ImportResult = {
         success: false,
@@ -382,7 +506,7 @@ async function importChromePassword(content: string): Promise<ImportResult> {
         skippedCount: 0,
         errorCount: 0,
         errors: [],
-        format: ImportFormat.CHROME_PASSWORD
+        format: ImportFormat.CHROME_PASSWORD,
     };
 
     const records = readCsvRecords(content);
@@ -391,7 +515,6 @@ async function importChromePassword(content: string): Promise<ImportResult> {
         return result;
     }
 
-    // Skip header
     const dataRecords = records.slice(1);
     result.totalCount = dataRecords.length;
 
@@ -409,10 +532,9 @@ async function importChromePassword(content: string): Promise<ImportResult> {
                 url: fields[1] || '',
                 username: fields[2] || '',
                 password: fields[3] || '',
-                note: fields[4] || ''
+                note: fields[4] || '',
             };
 
-            // Skip empty entries
             if (!parsed.username && !parsed.password && !parsed.name) {
                 result.skippedCount++;
                 continue;
@@ -431,9 +553,70 @@ async function importChromePassword(content: string): Promise<ImportResult> {
     return result;
 }
 
-/**
- * Import Monica CSV
- */
+async function importKeePassCsv(content: string): Promise<ImportResult> {
+    const result: ImportResult = {
+        success: false,
+        totalCount: 0,
+        importedCount: 0,
+        skippedCount: 0,
+        errorCount: 0,
+        errors: [],
+        format: ImportFormat.KEEPASS_CSV,
+    };
+
+    const records = readCsvRecords(content);
+    if (records.length === 0) {
+        result.errors.push('文件为空或格式不正确');
+        return result;
+    }
+
+    const firstFields = parseCsvLine(records[0]).map((f) => normalizeHeader(f));
+    const knownHeaderCount = firstFields.filter((f) => ['title', 'user name', 'username', 'password', 'url', 'notes', 'account', 'name'].includes(f)).length;
+    const hasHeader = knownHeaderCount >= 2;
+
+    const headerMap = hasHeader ? buildHeaderIndexMap(parseCsvLine(records[0])) : null;
+    const dataRecords = hasHeader ? records.slice(1) : records;
+    result.totalCount = dataRecords.length;
+
+    for (let i = 0; i < dataRecords.length; i++) {
+        try {
+            const fields = parseCsvLine(dataRecords[i]);
+
+            const title = getFieldByAliases(fields, headerMap, ['title', 'name', 'account', '标题', '账户']) || fields[0] || '';
+            const username = getFieldByAliases(fields, headerMap, ['user name', 'username', 'user_name', 'login name', 'login', 'login_username', '用户名', '账号']) || fields[1] || '';
+            const password = getFieldByAliases(fields, headerMap, ['password', 'pass', 'pwd', 'login_password', '密码']) || fields[2] || '';
+            const url = getFieldByAliases(fields, headerMap, ['url', 'website', 'web site', 'web_site', 'location', 'address', 'login_uri', '网址']) || fields[3] || '';
+            const note = getFieldByAliases(fields, headerMap, ['notes', 'note', 'comment', 'comments', 'description', '备注', '描述']) || fields[4] || '';
+
+            if (!title.trim() && !username.trim() && !password.trim() && !url.trim()) {
+                result.skippedCount++;
+                continue;
+            }
+
+            await saveItem({
+                itemType: ItemType.Password,
+                title: title || url || username,
+                notes: note || '',
+                isFavorite: false,
+                sortOrder: 0,
+                itemData: {
+                    username,
+                    password,
+                    website: url,
+                } as PasswordEntry,
+            });
+            result.importedCount++;
+        } catch (error) {
+            result.errorCount++;
+            const lineNo = i + (hasHeader ? 2 : 1);
+            result.errors.push(`行 ${lineNo}: ${error instanceof Error ? error.message : '未知错误'}`);
+        }
+    }
+
+    result.success = result.importedCount > 0;
+    return result;
+}
+
 async function importMonicaCsv(content: string): Promise<ImportResult> {
     const result: ImportResult = {
         success: false,
@@ -442,41 +625,80 @@ async function importMonicaCsv(content: string): Promise<ImportResult> {
         skippedCount: 0,
         errorCount: 0,
         errors: [],
-        format: ImportFormat.MONICA_CSV
+        format: ImportFormat.MONICA_CSV,
     };
 
     const records = readCsvRecords(content);
-    if (records.length < 2) {
+    if (records.length < 1) {
         result.errors.push('文件为空或格式不正确');
         return result;
     }
 
-    // Check if first line is header
     const firstLine = records[0].toLowerCase();
     const hasHeader = firstLine.includes('type') && firstLine.includes('title');
+    const headerFields = hasHeader ? parseCsvLine(records[0]) : [];
     const dataRecords = hasHeader ? records.slice(1) : records;
     result.totalCount = dataRecords.length;
 
     for (let i = 0; i < dataRecords.length; i++) {
         try {
             const fields = parseCsvLine(dataRecords[i]);
-            if (fields.length < 9) {
-                result.errorCount++;
-                result.errors.push(`行 ${i + (hasHeader ? 2 : 1)}: 字段数量不足 (需要9个)`);
-                continue;
-            }
+            const lineNo = i + (hasHeader ? 2 : 1);
 
-            const parsed: ParsedMonicaItem = {
-                id: parseInt(fields[0]) || 0,
-                itemType: fields[1] || '',
-                title: fields[2] || '',
-                itemData: fields[3] || '',
-                notes: fields[4] || '',
-                isFavorite: fields[5]?.toLowerCase() === 'true',
-                imagePaths: fields[6] || '',
-                createdAt: parseInt(fields[7]) || Date.now(),
-                updatedAt: parseInt(fields[8]) || Date.now()
-            };
+            let parsed: ParsedMonicaItem;
+            if (hasHeader) {
+                const row: Record<string, string> = {};
+                headerFields.forEach((header, index) => {
+                    row[normalizeHeader(header)] = fields[index] || '';
+                });
+
+                parsed = {
+                    id: parseInt(row.id || '0', 10) || 0,
+                    itemType: row.type || row.itemtype || '',
+                    title: row.title || '',
+                    itemData: row.data || row.itemdata || '{}',
+                    notes: row.notes || '',
+                    isFavorite: parseBooleanLike(row.isfavorite),
+                    imagePaths: row.imagepaths || '',
+                    createdAt: row.createdat || Date.now(),
+                    updatedAt: row.updatedat || Date.now(),
+                    categoryId: row.categoryid ? parseInt(row.categoryid, 10) : undefined,
+                    keepassDatabaseId: row.keepassdatabaseid ? parseInt(row.keepassdatabaseid, 10) : undefined,
+                    keepassGroupPath: row.keepassgrouppath || undefined,
+                    bitwardenVaultId: row.bitwardenvaultid ? parseInt(row.bitwardenvaultid, 10) : undefined,
+                    bitwardenFolderId: row.bitwardenfolderid || undefined,
+                    bitwardenCipherId: row.bitwardencipherid || undefined,
+                    isDeleted: parseBooleanLike(row.isdeleted),
+                    deletedAt: row.deletedat || undefined,
+                };
+            } else {
+                if (fields.length < 4) {
+                    result.errorCount++;
+                    result.errors.push(`行 ${lineNo}: 字段数量不足`);
+                    continue;
+                }
+
+                const hasCipherColumn = fields.length >= 17;
+                parsed = {
+                    id: parseInt(fields[0], 10) || 0,
+                    itemType: fields[1] || '',
+                    title: fields[2] || '',
+                    itemData: fields[3] || '{}',
+                    notes: fields[4] || '',
+                    isFavorite: parseBooleanLike(fields[5]),
+                    imagePaths: fields[6] || '',
+                    createdAt: fields[7] || Date.now(),
+                    updatedAt: fields[8] || Date.now(),
+                    categoryId: fields[9] ? parseInt(fields[9], 10) : undefined,
+                    keepassDatabaseId: fields[10] ? parseInt(fields[10], 10) : undefined,
+                    keepassGroupPath: fields[11] || undefined,
+                    bitwardenVaultId: fields[12] ? parseInt(fields[12], 10) : undefined,
+                    bitwardenFolderId: fields[13] || undefined,
+                    bitwardenCipherId: hasCipherColumn ? (fields[14] || undefined) : undefined,
+                    isDeleted: parseBooleanLike(fields[hasCipherColumn ? 15 : 14]),
+                    deletedAt: fields[hasCipherColumn ? 16 : 15] || undefined,
+                };
+            }
 
             const item = convertMonicaCsv(parsed);
             if (!item) {
@@ -484,7 +706,13 @@ async function importMonicaCsv(content: string): Promise<ImportResult> {
                 continue;
             }
 
-            await saveItem(item);
+            await saveItem({
+                ...item,
+                createdAt: parseTimeLikeToIso(parsed.createdAt),
+                updatedAt: parseTimeLikeToIso(parsed.updatedAt),
+                isDeleted: parsed.isDeleted,
+                deletedAt: parsed.deletedAt,
+            });
             result.importedCount++;
         } catch (error) {
             result.errorCount++;
@@ -496,9 +724,6 @@ async function importMonicaCsv(content: string): Promise<ImportResult> {
     return result;
 }
 
-/**
- * Import Aegis JSON
- */
 async function importAegisJson(content: string): Promise<ImportResult> {
     const result: ImportResult = {
         success: false,
@@ -507,19 +732,17 @@ async function importAegisJson(content: string): Promise<ImportResult> {
         skippedCount: 0,
         errorCount: 0,
         errors: [],
-        format: ImportFormat.AEGIS_JSON
+        format: ImportFormat.AEGIS_JSON,
     };
 
     try {
         const json = JSON.parse(content);
 
-        // Check for encrypted vault
         if (json.header?.slots && typeof json.db === 'string') {
             result.errors.push('无法导入加密的 Aegis 备份文件。请导出未加密的 JSON 文件。');
             return result;
         }
 
-        // Get entries array
         let entries: AegisJsonEntry[] = [];
         if (json.db?.entries) {
             entries = json.db.entries;
@@ -538,9 +761,7 @@ async function importAegisJson(content: string): Promise<ImportResult> {
             try {
                 const entry = entries[i];
                 const type = entry.type?.toLowerCase();
-
-                // Only process TOTP entries
-                if (type !== 'totp') {
+                if (type && !['totp', 'steam', 'hotp', 'yaotp', 'yandex', 'motp'].includes(type)) {
                     result.skippedCount++;
                     continue;
                 }
@@ -558,8 +779,9 @@ async function importAegisJson(content: string): Promise<ImportResult> {
                     note: entry.note || '',
                     secret: info.secret,
                     algorithm: info.algo || 'SHA1',
-                    digits: parseInt(info.digits || '6') || 6,
-                    period: parseInt(info.period || '30') || 30
+                    digits: parseInt(info.digits || '6', 10) || 6,
+                    period: parseInt(info.period || '30', 10) || 30,
+                    otpType: type || 'totp',
                 };
 
                 const item = convertAegisEntry(aegisEntry);
@@ -579,47 +801,111 @@ async function importAegisJson(content: string): Promise<ImportResult> {
     return result;
 }
 
-// ========== Main API ==========
+async function importMonicaZip(file: File): Promise<ImportResult> {
+    const result: ImportResult = {
+        success: false,
+        totalCount: 0,
+        importedCount: 0,
+        skippedCount: 0,
+        errorCount: 0,
+        errors: [],
+        format: ImportFormat.MONICA_ZIP,
+    };
 
-/**
- * Import from file - auto-detects format
- */
+    try {
+        const data = await file.arrayBuffer();
+        const report = await backupManager.restoreBackup(data);
+        const importedCount = (report.passwordsRestored || 0)
+            + (report.notesRestored || 0)
+            + (report.totpsRestored || 0)
+            + (report.documentsRestored || 0)
+            + (report.cardsRestored || 0);
+
+        result.totalCount = importedCount;
+        result.importedCount = importedCount;
+        result.errorCount = report.errors.length;
+        result.errors = report.errors;
+        result.success = report.success;
+
+        if (!report.success && report.errors.length === 0) {
+            result.errors.push('ZIP 导入失败，请确认是否为 Monica 备份。');
+            result.errorCount = 1;
+        }
+        if (report.errors.some((e) => e.includes('已加密') || e.toLowerCase().includes('password'))) {
+            result.errors.unshift('检测到加密 ZIP，浏览器端暂不支持输入解密密码，请在 Android 端解密后再导入。');
+        }
+    } catch (error) {
+        result.errorCount = 1;
+        result.errors = [error instanceof Error ? error.message : 'ZIP 导入失败'];
+    }
+
+    return result;
+}
+
+function importKdbxUnsupported(): ImportResult {
+    return {
+        success: false,
+        totalCount: 0,
+        importedCount: 0,
+        skippedCount: 0,
+        errorCount: 1,
+        errors: ['暂不支持直接导入 .kdbx。请先在 Android 端或 KeePass 客户端导出为 KeePass CSV（Title/User Name/Password/URL/Notes）后导入。'],
+        format: ImportFormat.KEEPASS_KDBX,
+    };
+}
+
+// ========== Public APIs ==========
+
 export async function importFromFile(file: File): Promise<ImportResult> {
-    const content = await file.text();
+    const extension = file.name.split('.').pop()?.toLowerCase() || '';
 
-    // Remove BOM if present
+    if (extension === 'zip') {
+        return importMonicaZip(file);
+    }
+
+    if (extension === 'kdbx') {
+        return importKdbxUnsupported();
+    }
+
+    const content = await file.text();
     const cleanContent = content.startsWith('\uFEFF') ? content.substring(1) : content;
 
-    // Detect format
-    if (file.name.endsWith('.json') || isAegisJson(cleanContent)) {
+    if (extension === 'json' || isAegisJson(cleanContent)) {
         return importAegisJson(cleanContent);
     }
 
-    // For CSV files, detect format from content
     const firstLine = cleanContent.split(/\r?\n/)[0] || '';
     const format = detectCsvFormat(firstLine);
 
     switch (format) {
         case ImportFormat.CHROME_PASSWORD:
             return importChromePassword(cleanContent);
+        case ImportFormat.KEEPASS_CSV:
+            return importKeePassCsv(cleanContent);
         case ImportFormat.MONICA_CSV:
             return importMonicaCsv(cleanContent);
         default:
-            // Try Chrome format as fallback for unknown CSV
             return importChromePassword(cleanContent);
     }
 }
 
-/**
- * Import with specific format
- */
 export async function importWithFormat(file: File, format: ImportFormat): Promise<ImportResult> {
+    if (format === ImportFormat.MONICA_ZIP) {
+        return importMonicaZip(file);
+    }
+
+    if (format === ImportFormat.KEEPASS_KDBX) {
+        return importKdbxUnsupported();
+    }
+
     const content = await file.text();
     const cleanContent = content.startsWith('\uFEFF') ? content.substring(1) : content;
 
     switch (format) {
         case ImportFormat.CHROME_PASSWORD:
             return importChromePassword(cleanContent);
+        case ImportFormat.KEEPASS_CSV:
+            return importKeePassCsv(cleanContent);
         case ImportFormat.MONICA_CSV:
             return importMonicaCsv(cleanContent);
         case ImportFormat.AEGIS_JSON:
@@ -629,9 +915,6 @@ export async function importWithFormat(file: File, format: ImportFormat): Promis
     }
 }
 
-/**
- * Validate file before import (quick check)
- */
 export function validateFile(file: File): { valid: boolean; format: ImportFormat; error?: string } {
     const extension = file.name.split('.').pop()?.toLowerCase();
 
@@ -640,12 +923,20 @@ export function validateFile(file: File): { valid: boolean; format: ImportFormat
     }
 
     if (extension === 'csv') {
-        return { valid: true, format: ImportFormat.UNKNOWN }; // Will be detected later
+        return { valid: true, format: ImportFormat.UNKNOWN };
+    }
+
+    if (extension === 'zip') {
+        return { valid: true, format: ImportFormat.MONICA_ZIP };
+    }
+
+    if (extension === 'kdbx') {
+        return { valid: true, format: ImportFormat.KEEPASS_KDBX };
     }
 
     return {
         valid: false,
         format: ImportFormat.UNKNOWN,
-        error: '不支持的文件格式。请选择 CSV 或 JSON 文件。'
+        error: '不支持的文件格式。请选择 CSV、JSON、ZIP 或 KDBX 文件。',
     };
 }

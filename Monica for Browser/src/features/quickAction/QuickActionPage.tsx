@@ -68,12 +68,16 @@ const ActionCard = styled.div`
     padding: 16px;
     margin-bottom: 12px;
     cursor: pointer;
-    transition: transform 0.1s, box-shadow 0.1s;
+    transition: transform 0.1s, box-shadow 0.1s, opacity 0.1s;
     border: 1px solid ${({ theme }) => theme.colors.outlineVariant};
     
     &:hover {
         transform: translateY(-2px);
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    &:active {
+        transform: translateY(0) scale(0.98);
+        opacity: 0.85;
     }
 `;
 
@@ -124,10 +128,14 @@ const PasswordItem = styled.div`
     gap: 12px;
     cursor: pointer;
     border: 1px solid ${({ theme }) => theme.colors.outlineVariant};
-    transition: background 0.15s;
+    transition: background 0.15s, transform 0.15s, opacity 0.15s;
     
     &:hover {
         background: ${({ theme }) => theme.colors.surfaceVariant};
+    }
+    &:active {
+        transform: scale(0.98);
+        opacity: 0.85;
     }
 `;
 

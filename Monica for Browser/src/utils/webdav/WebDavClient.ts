@@ -17,6 +17,8 @@ export interface BackupFile {
     size: number;
     lastModified: Date;
     isEncrypted: boolean;
+    isPermanent: boolean;
+    isExpiring: boolean;
 }
 
 interface BackgroundResponse {
@@ -41,11 +43,20 @@ const STORAGE_KEYS = {
     LAST_BACKUP_TIME: 'webdav_last_backup_time',
 };
 
+const BACKUP_DIR_CANDIDATES = [
+    '/Monica_Backups',
+    '/Monica/Backups',
+    '/Monica/backups',
+    '/backups',
+] as const;
+
 // ========== WebDAV Client Class ==========
 class WebDavClientService {
     private config: WebDavConfig | null = null;
     private encryptionEnabled = false;
     private encryptionPassword = '';
+    private autoBackupEnabled = false;
+    private activeBackupDir: string | null = null;
 
     /**
      * Get Basic Auth header
@@ -139,6 +150,34 @@ class WebDavClientService {
         return this.sendToBackground(method, url, headers, options.body);
     }
 
+    private normalizeDirPath(path: string): string {
+        if (!path.startsWith('/')) return `/${path}`.replace(/\/+/g, '/');
+        return path.replace(/\/+/g, '/');
+    }
+
+    private async getExistingBackupDir(): Promise<string | null> {
+        for (const rawDir of BACKUP_DIR_CANDIDATES) {
+            const dir = this.normalizeDirPath(rawDir);
+            const response = await this.request('PROPFIND', dir, { headers: { Depth: '0' } });
+            if (this.isSuccess(response)) {
+                return dir;
+            }
+        }
+        return null;
+    }
+
+    private async resolveBackupDirForUpload(): Promise<string> {
+        if (this.activeBackupDir) return this.activeBackupDir;
+        const existing = await this.getExistingBackupDir();
+        if (existing) {
+            this.activeBackupDir = existing;
+            return existing;
+        }
+        const preferred = this.normalizeDirPath(BACKUP_DIR_CANDIDATES[0]);
+        this.activeBackupDir = preferred;
+        return preferred;
+    }
+
     /**
      * Check if response is successful
      */
@@ -175,6 +214,7 @@ class WebDavClientService {
             [STORAGE_KEYS.PASSWORD]: obfuscateString(this.config.password),
             [STORAGE_KEYS.ENABLE_ENCRYPTION]: this.encryptionEnabled,
             [STORAGE_KEYS.ENCRYPTION_PASSWORD]: obfuscateString(this.encryptionPassword),
+            [STORAGE_KEYS.AUTO_BACKUP_ENABLED]: this.autoBackupEnabled,
         };
 
         if (typeof chrome !== 'undefined' && chrome.storage?.local) {
@@ -199,6 +239,7 @@ class WebDavClientService {
                 STORAGE_KEYS.PASSWORD,
                 STORAGE_KEYS.ENABLE_ENCRYPTION,
                 STORAGE_KEYS.ENCRYPTION_PASSWORD,
+                STORAGE_KEYS.AUTO_BACKUP_ENABLED,
             ]) as Record<string, string | boolean | number>;
             url = (data[STORAGE_KEYS.SERVER_URL] as string) || '';
             // Deobfuscate sensitive credentials
@@ -206,12 +247,14 @@ class WebDavClientService {
             password = deobfuscateString((data[STORAGE_KEYS.PASSWORD] as string) || '');
             this.encryptionEnabled = (data[STORAGE_KEYS.ENABLE_ENCRYPTION] as boolean) || false;
             this.encryptionPassword = deobfuscateString((data[STORAGE_KEYS.ENCRYPTION_PASSWORD] as string) || '');
+            this.autoBackupEnabled = (data[STORAGE_KEYS.AUTO_BACKUP_ENABLED] as boolean) || false;
         } else {
             url = localStorage.getItem(STORAGE_KEYS.SERVER_URL) || '';
             username = deobfuscateString(localStorage.getItem(STORAGE_KEYS.USERNAME) || '');
             password = deobfuscateString(localStorage.getItem(STORAGE_KEYS.PASSWORD) || '');
             this.encryptionEnabled = localStorage.getItem(STORAGE_KEYS.ENABLE_ENCRYPTION) === 'true';
             this.encryptionPassword = deobfuscateString(localStorage.getItem(STORAGE_KEYS.ENCRYPTION_PASSWORD) || '');
+            this.autoBackupEnabled = localStorage.getItem(STORAGE_KEYS.AUTO_BACKUP_ENABLED) === 'true';
         }
 
         if (url && username && password) {
@@ -238,6 +281,7 @@ class WebDavClientService {
         this.config = null;
         this.encryptionEnabled = false;
         this.encryptionPassword = '';
+        this.autoBackupEnabled = false;
 
         const keys = Object.values(STORAGE_KEYS);
         if (typeof chrome !== 'undefined' && chrome.storage?.local) {
@@ -260,6 +304,38 @@ class WebDavClientService {
 
     getEncryptionPassword(): string {
         return this.encryptionPassword;
+    }
+
+    async configureAutoBackup(enabled: boolean): Promise<void> {
+        this.autoBackupEnabled = enabled;
+        if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+            await chrome.storage.local.set({ [STORAGE_KEYS.AUTO_BACKUP_ENABLED]: enabled });
+        } else {
+            localStorage.setItem(STORAGE_KEYS.AUTO_BACKUP_ENABLED, String(enabled));
+        }
+    }
+
+    isAutoBackupEnabled(): boolean {
+        return this.autoBackupEnabled;
+    }
+
+    async shouldAutoBackup(): Promise<boolean> {
+        if (!this.autoBackupEnabled) return false;
+        const lastBackupTime = await this.getLastBackupTime();
+        if (lastBackupTime === 0) return true;
+
+        const currentTime = Date.now();
+        const last = new Date(lastBackupTime);
+        const now = new Date(currentTime);
+
+        const isNewDay = now.getFullYear() > last.getFullYear() ||
+            (now.getFullYear() === last.getFullYear() && now.getMonth() > last.getMonth()) ||
+            (now.getFullYear() === last.getFullYear() && now.getMonth() === last.getMonth() && now.getDate() > last.getDate());
+
+        if (isNewDay) return true;
+
+        const hoursSince = (currentTime - lastBackupTime) / (1000 * 60 * 60);
+        return hoursSince >= 12;
     }
 
     /**
@@ -310,19 +386,21 @@ class WebDavClientService {
     async ensureBackupDir(): Promise<void> {
         if (!this.config) throw new Error('WebDAV not configured');
 
-        try {
-            const response = await this.request('PROPFIND', '/Monica_Backups', {
+        const targetDir = await this.resolveBackupDirForUpload();
+        const segments = targetDir.split('/').filter(Boolean);
+        let current = '';
+
+        for (const segment of segments) {
+            current += `/${segment}`;
+            const response = await this.request('PROPFIND', current, {
                 headers: { 'Depth': '0' },
             });
-
-            if (response.status === 404) {
-                const mkcolResponse = await this.request('MKCOL', '/Monica_Backups');
-                if (this.isSuccess(mkcolResponse)) {
-                    console.log('[WebDav] Created /Monica_Backups directory');
+            if (!this.isSuccess(response) && response.status === 404) {
+                const mkcolResponse = await this.request('MKCOL', current);
+                if (this.isSuccess(mkcolResponse, 405)) {
+                    console.log('[WebDav] Created directory:', current);
                 }
             }
-        } catch (e) {
-            console.warn('[WebDav] Could not ensure /Monica_Backups dir:', e);
         }
     }
 
@@ -333,7 +411,8 @@ class WebDavClientService {
         if (!this.config) throw new Error('WebDAV not configured');
 
         await this.ensureBackupDir();
-        const path = `/Monica_Backups/${filename}`;
+        const backupDir = await this.resolveBackupDirForUpload();
+        const path = `${backupDir}/${filename}`;
 
         // Convert to base64 for sending via message
         const buffer = data instanceof Uint8Array ? data : new Uint8Array(data);
@@ -362,30 +441,42 @@ class WebDavClientService {
     /**
      * Download backup file
      */
-    async downloadBackup(filename: string): Promise<ArrayBuffer> {
+    async downloadBackup(filenameOrPath: string): Promise<ArrayBuffer> {
         if (!this.config) throw new Error('WebDAV not configured');
 
-        const path = `/Monica_Backups/${filename}`;
+        const path = this.resolvePathFromBackupOrFilename(filenameOrPath);
+        const fallbackDir = this.normalizeDirPath(BACKUP_DIR_CANDIDATES[0]);
+        const fileName = filenameOrPath.split('/').pop() || filenameOrPath;
         const response = await this.request('GET', path);
 
-        // Try Base64 first (newer format), fallback to number array (old format)
-        if (!response.success) {
-            throw new Error(`Download failed: ${response.error || `HTTP ${response.status}`}`);
+        let finalResponse = response;
+        if (!this.isSuccess(response)) {
+            const fallbackPath = `${fallbackDir}/${fileName}`;
+            if (fallbackPath !== path) {
+                finalResponse = await this.request('GET', fallbackPath);
+            }
         }
 
-        if (response.arrayBufferBase64) {
+        // HTTP 4xx/5xx still come back with success=true from background fetch,
+        // so we must validate status explicitly.
+        if (!this.isSuccess(finalResponse)) {
+            throw new Error(`Download failed: ${finalResponse.error || `HTTP ${finalResponse.status}`}`);
+        }
+
+        // Try Base64 first (newer format), fallback to number array (old format)
+        if (finalResponse.arrayBufferBase64) {
             // Convert Base64 string back to ArrayBuffer
-            const binaryString = atob(response.arrayBufferBase64);
+            const binaryString = atob(finalResponse.arrayBufferBase64);
             const bytes = new Uint8Array(binaryString.length);
             for (let i = 0; i < binaryString.length; i++) {
                 bytes[i] = binaryString.charCodeAt(i);
             }
-            console.log('[WebDav] Downloaded (Base64):', path);
+            console.log('[WebDav] Downloaded (Base64):', filenameOrPath);
             return bytes.buffer;
-        } else if (response.arrayBuffer) {
+        } else if (finalResponse.arrayBuffer) {
             // Legacy format: convert number array back to ArrayBuffer
-            const uint8Array = new Uint8Array(response.arrayBuffer);
-            console.log('[WebDav] Downloaded (legacy):', path);
+            const uint8Array = new Uint8Array(finalResponse.arrayBuffer);
+            console.log('[WebDav] Downloaded (legacy):', filenameOrPath);
             return uint8Array.buffer as ArrayBuffer;
         } else {
             throw new Error(`Download failed: No data received`);
@@ -401,12 +492,16 @@ class WebDavClientService {
         await this.ensureBackupDir();
 
         try {
-            const response = await this.request('PROPFIND', '/Monica_Backups', {
-                headers: {
-                    'Depth': '1',
-                    'Content-Type': 'application/xml',
-                },
-                body: `<?xml version="1.0" encoding="utf-8"?>
+            const allBackups: BackupFile[] = [];
+
+            for (const rawDir of BACKUP_DIR_CANDIDATES) {
+                const dir = this.normalizeDirPath(rawDir);
+                const response = await this.request('PROPFIND', dir, {
+                    headers: {
+                        Depth: '1',
+                        'Content-Type': 'application/xml',
+                    },
+                    body: `<?xml version="1.0" encoding="utf-8"?>
 <D:propfind xmlns:D="DAV:">
   <D:prop>
     <D:displayname/>
@@ -415,86 +510,184 @@ class WebDavClientService {
     <D:resourcetype/>
   </D:prop>
 </D:propfind>`,
-            });
+                });
 
-            if (!response.success || !response.body) {
-                console.warn('[WebDav] List failed:', response.error || response.status);
-                return [];
-            }
+                if (!response.success || !response.body) {
+                    continue;
+                }
 
-            const text = response.body;
-            if (!text || text.length === 0) {
-                console.warn('[WebDav] Empty response body');
-                return [];
-            }
+                const text = response.body;
+                if (!text || text.length === 0) continue;
 
-            console.log('[WebDav] PROPFIND response:', text.substring(0, Math.min(500, text.length)));
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(text, 'application/xml');
+                const responses = doc.querySelectorAll('response, D\\:response');
 
-            // Parse XML response
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(text, 'application/xml');
+                for (let i = 0; i < responses.length; i++) {
+                    try {
+                        const resp = responses[i];
+                        if (!resp) continue;
 
-            const backups: BackupFile[] = [];
-            const responses = doc.querySelectorAll('response, D\\:response');
+                        const href = resp.querySelector('href, D\\:href')?.textContent || '';
+                        const displayName = resp.querySelector('displayname, D\\:displayname')?.textContent || '';
+                        const contentLength = resp.querySelector('getcontentlength, D\\:getcontentlength')?.textContent || '0';
+                        const lastModified = resp.querySelector('getlastmodified, D\\:getlastmodified')?.textContent || '';
+                        const resourceType = resp.querySelector('resourcetype, D\\:resourcetype');
+                        const isCollection = resourceType?.querySelector('collection, D\\:collection');
 
-            if (!responses || responses.length === 0) {
-                console.log('[WebDav] No backup files found');
-                return [];
-            }
+                        if (isCollection) continue;
 
-            for (let i = 0; i < responses.length; i++) {
-                try {
-                    const resp = responses[i];
-                    if (!resp) continue;
+                        const filename = displayName || decodeURIComponent(href.split('/').pop() || '');
+                        if (!filename.endsWith('.zip')) continue;
 
-                    const href = resp.querySelector('href, D\\:href')?.textContent || '';
-                    const displayName = resp.querySelector('displayname, D\\:displayname')?.textContent || '';
-                    const contentLength = resp.querySelector('getcontentlength, D\\:getcontentlength')?.textContent || '0';
-                    const lastModified = resp.querySelector('getlastmodified, D\\:getlastmodified')?.textContent || '';
-                    const resourceType = resp.querySelector('resourcetype, D\\:resourcetype');
-                    const isCollection = resourceType?.querySelector('collection, D\\:collection');
-
-                    if (isCollection) continue;
-
-                    const filename = displayName || decodeURIComponent(href.split('/').pop() || '');
-                    if (!filename.endsWith('.zip')) continue;
-
-                    backups.push({
-                        filename,
-                        path: href,
-                        size: parseInt(contentLength, 10) || 0,
-                        lastModified: lastModified ? new Date(lastModified) : new Date(),
-                        isEncrypted: filename.includes('.enc.'),
-                    });
-                } catch (itemError) {
-                    console.error('[WebDav] Error parsing backup item:', itemError);
-                    // Continue to next item
+                        allBackups.push({
+                            filename,
+                            path: href || `${dir}/${filename}`,
+                            size: parseInt(contentLength, 10) || 0,
+                            lastModified: lastModified ? new Date(lastModified) : new Date(),
+                            isEncrypted: filename.includes('.enc.'),
+                            isPermanent: filename.includes('_permanent'),
+                            isExpiring: false,
+                        });
+                    } catch (itemError) {
+                        console.error('[WebDav] Error parsing backup item:', itemError);
+                    }
                 }
             }
 
-            backups.sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime());
-            console.log('[WebDav] Found', backups.length, 'backups');
-            return backups;
+            const deduped = Array.from(
+                new Map(allBackups.map((item) => [`${item.filename}|${item.lastModified.getTime()}`, item])).values()
+            );
+            const fiftyDaysMs = 50 * 24 * 60 * 60 * 1000;
+            const now = Date.now();
+            deduped.forEach((item) => {
+                item.isExpiring = !item.isPermanent && (now - item.lastModified.getTime()) > fiftyDaysMs;
+            });
+            deduped.sort((a, b) => b.lastModified.getTime() - a.lastModified.getTime());
+            console.log('[WebDav] Found', deduped.length, 'backups');
+            return deduped;
         } catch (e) {
             console.error('[WebDav] Error listing backups:', e, (e as Error).stack);
             return [];
         }
     }
 
+    private resolvePathFromBackupOrFilename(input: string): string {
+        if (!this.config) return input;
+        let normalizedInput = input;
+
+        if (input.startsWith('http://') || input.startsWith('https://')) {
+            try {
+                const base = new URL(this.config.serverUrl);
+                const full = new URL(input);
+                if (base.origin === full.origin) {
+                    normalizedInput = full.pathname;
+                }
+            } catch {
+                // fall through
+            }
+        }
+
+        if (normalizedInput.startsWith('/')) {
+            // Some WebDAV providers return href as absolute path including the same
+            // server base path (e.g. /remote.php/dav/files/user/...). Request()
+            // already prefixes serverUrl, so strip duplicated base path.
+            try {
+                const basePath = new URL(this.config.serverUrl).pathname.replace(/\/+$/, '');
+                if (basePath && normalizedInput.startsWith(`${basePath}/`)) {
+                    const relative = normalizedInput.slice(basePath.length);
+                    return relative.startsWith('/') ? relative : `/${relative}`;
+                }
+            } catch {
+                // ignore URL parse issues and keep original path
+            }
+            return normalizedInput;
+        }
+
+        const active = this.activeBackupDir || this.normalizeDirPath(BACKUP_DIR_CANDIDATES[0]);
+        return `${active}/${normalizedInput}`;
+    }
+
+    private toAbsoluteWebDavUrl(path: string): string {
+        if (!this.config) return path;
+        if (path.startsWith('http://') || path.startsWith('https://')) return path;
+        return `${this.config.serverUrl}${path}`;
+    }
+
     /**
      * Delete a backup file
      */
-    async deleteBackup(filename: string): Promise<void> {
+    async deleteBackup(filenameOrPath: string): Promise<void> {
         if (!this.config) throw new Error('WebDAV not configured');
 
-        const path = `/Monica_Backups/${filename}`;
+        const path = this.resolvePathFromBackupOrFilename(filenameOrPath);
         const response = await this.request('DELETE', path);
 
         if (!this.isSuccess(response)) {
             throw new Error(`Delete failed: ${response.error || `HTTP ${response.status}`}`);
         }
 
-        console.log('[WebDav] Deleted:', path);
+        console.log('[WebDav] Deleted:', filenameOrPath);
+    }
+
+    async markBackupAsPermanent(backup: BackupFile): Promise<void> {
+        if (!this.config) throw new Error('WebDAV not configured');
+        if (backup.isPermanent) return;
+        const currentPath = this.resolvePathFromBackupOrFilename(backup.path || backup.filename);
+        const newFilename = backup.filename.replace('.zip', '_permanent.zip');
+        const parentDir = currentPath.substring(0, currentPath.lastIndexOf('/'));
+        const newPath = `${parentDir}/${newFilename}`;
+
+        const response = await this.request('MOVE', currentPath, {
+            headers: {
+                Destination: this.toAbsoluteWebDavUrl(newPath),
+                Overwrite: 'F',
+            },
+        });
+        if (!this.isSuccess(response, 201)) {
+            throw new Error(`Mark permanent failed: ${response.error || `HTTP ${response.status}`}`);
+        }
+    }
+
+    async unmarkBackupPermanent(backup: BackupFile): Promise<void> {
+        if (!this.config) throw new Error('WebDAV not configured');
+        if (!backup.isPermanent) return;
+        const currentPath = this.resolvePathFromBackupOrFilename(backup.path || backup.filename);
+        const newFilename = backup.filename.replace('_permanent', '');
+        const parentDir = currentPath.substring(0, currentPath.lastIndexOf('/'));
+        const newPath = `${parentDir}/${newFilename}`;
+
+        const response = await this.request('MOVE', currentPath, {
+            headers: {
+                Destination: this.toAbsoluteWebDavUrl(newPath),
+                Overwrite: 'T',
+            },
+        });
+        if (!this.isSuccess(response, 201)) {
+            throw new Error(`Unmark permanent failed: ${response.error || `HTTP ${response.status}`}`);
+        }
+    }
+
+    async cleanupBackups(retentionDays = 60): Promise<number> {
+        const backups = await this.listBackups();
+        const cutoff = Date.now() - retentionDays * 24 * 60 * 60 * 1000;
+        const targets = backups.filter((item) => !item.isPermanent && item.lastModified.getTime() < cutoff);
+        let deletedCount = 0;
+        for (const backup of targets) {
+            try {
+                await this.deleteBackup(backup.path || backup.filename);
+                deletedCount++;
+            } catch (e) {
+                console.warn('[WebDav] Cleanup delete failed:', backup.filename, e);
+            }
+        }
+        return deletedCount;
+    }
+
+    async getLatestBackup(): Promise<BackupFile | null> {
+        const backups = await this.listBackups();
+        if (!backups.length) return null;
+        return backups[0];
     }
 
     async getLastBackupTime(): Promise<number> {

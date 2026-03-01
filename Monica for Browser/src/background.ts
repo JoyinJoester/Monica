@@ -197,6 +197,7 @@ interface TotpItem {
     period: number;
     digits: number;
     algorithm: string;
+    otpType: string;
 }
 
 interface GetTotpsRequest {
@@ -367,6 +368,7 @@ async function getTotpsFromStorage(): Promise<TotpItem[]> {
                 period: (item.itemData?.period as number) || 30,
                 digits: (item.itemData?.digits as number) || 6,
                 algorithm: (item.itemData?.algorithm as string) || 'SHA1',
+                otpType: (item.itemData?.otpType as string) || 'TOTP',
             }));
     } catch (error) {
         console.error('[Background] Failed to get TOTPs:', error);

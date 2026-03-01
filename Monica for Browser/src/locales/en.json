@@ -9,7 +9,14 @@
         "passwords": "Passwords",
         "notes": "Notes",
         "documents": "Documents",
+        "cards": "Cards",
         "authenticator": "2FA",
+        "passkeys": "Passkeys",
+        "send": "Send",
+        "bitwarden": "Bitwarden",
+        "generator": "Generator",
+        "timeline": "Timeline",
+        "recycleBin": "Recycle Bin",
         "settings": "Settings"
     },
     "common": {
@@ -17,6 +24,8 @@
         "edit": "Edit",
         "delete": "Delete",
         "copy": "Copy",
+        "restore": "Restore",
+        "permanentDelete": "Delete Permanently",
         "save": "Save",
         "cancel": "Cancel",
         "copied": "Copied to clipboard",
@@ -53,6 +62,15 @@
             "other": "Other"
         }
     },
+    "cards": {
+        "title": "Cards",
+        "number": "Card Number",
+        "holder": "Cardholder",
+        "bankName": "Bank Name",
+        "expiryMonth": "Expiry Month",
+        "expiryYear": "Expiry Year",
+        "cvv": "CVV"
+    },
     "authenticator": {
         "title": "Authenticator",
         "secret": "Secret Key",
@@ -87,5 +105,12 @@
         "startImport": "Start Import",
         "success": "Import Complete",
         "error": "Import Failed"
+    },
+    "extra": {
+        "passkeysDesc": "Passkey items will be managed here. Next step is to align Android flows for create, edit, and site binding.",
+        "sendDesc": "Send items will be managed here. We can add secure link sharing, expiry, and access limits next.",
+        "generatorDesc": "This page will provide password and username generation with length and character-set controls.",
+        "timelineDesc": "This page will show the vault timeline, including create, update, and delete events.",
+        "recycleBinDesc": "This page will manage deleted items with restore, permanent delete, and retention countdown."
     }
 }

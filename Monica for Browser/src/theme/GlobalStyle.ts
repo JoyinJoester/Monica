@@ -64,4 +64,15 @@ export const GlobalStyle = createGlobalStyle`
       background-color: transparent;
     }
   }
+
+  /* Global tap/click feedback for all interactive elements */
+  button, [role="button"], a, select, summary {
+    -webkit-tap-highlight-color: rgba(0, 0, 0, 0.08);
+  }
+
+  /* Ensure focus-visible rings for keyboard navigation */
+  :focus-visible {
+    outline: 2px solid ${({ theme }) => theme.colors.primary};
+    outline-offset: 2px;
+  }
 `;

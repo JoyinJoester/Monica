@@ -4,7 +4,9 @@ export const ItemType = {
     Totp: 1,
     BankCard: 2, // Reserved
     Document: 3,
-    Note: 4
+    Note: 4,
+    Passkey: 5,
+    Send: 6
 } as const;
 export type ItemType = typeof ItemType[keyof typeof ItemType];
 
@@ -38,9 +40,11 @@ export interface SecureItem {
     sortOrder: number;
     createdAt: string; // ISO String
     updatedAt: string; // ISO String
+    deletedAt?: string;
+    isDeleted?: boolean;
 
     // Encrypted JSON data containing type-specific fields
-    itemData: PasswordEntry | NoteData | DocumentData | TotpData | BankCardData;
+    itemData: PasswordEntry | NoteData | DocumentData | TotpData | BankCardData | PasskeyData | SendData;
 }
 
 // ==========================================
@@ -53,6 +57,13 @@ export interface PasswordEntry {
     website: string;
     categoryId?: number;
     category?: string;
+    keepassDatabaseId?: number;
+    keepassGroupPath?: string;
+    bitwardenVaultId?: number;
+    bitwardenFolderId?: string;
+    bitwardenCipherId?: string;
+    isArchived?: boolean;
+    archivedAt?: string;
 }
 
 export interface NoteData {
@@ -89,4 +100,19 @@ export interface BankCardData {
     expiryYear: string;
     cvv?: string;
     bankName?: string;
+}
+
+export interface PasskeyData {
+    username: string;
+    rpId: string;
+    credentialId: string;
+    userDisplayName?: string;
+}
+
+export interface SendData {
+    sendType: 'text' | 'link';
+    content: string;
+    expirationAt?: string;
+    maxAccessCount?: number;
+    accessCount?: number;
 }

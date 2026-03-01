@@ -4,10 +4,10 @@ import { useTranslation } from 'react-i18next';
 import { Card, CardTitle, CardSubtitle } from '../../components/common/Card';
 import { Input } from '../../components/common/Input';
 import { Button } from '../../components/common/Button';
-import { Plus, Trash2, CreditCard, Star, Search, Copy, UserRound, IdCard, PencilLine } from 'lucide-react';
-import { getDocuments, saveItem, deleteItem, updateItem } from '../../utils/storage';
-import type { SecureItem, DocumentData } from '../../types/models';
-import { ItemType, DocumentType } from '../../types/models';
+import { Plus, Trash2, CreditCard, Star, Search, Copy, Building2, UserRound, CalendarClock, PencilLine } from 'lucide-react';
+import { getBankCards, saveItem, deleteItem, updateItem } from '../../utils/storage';
+import type { SecureItem, BankCardData } from '../../types/models';
+import { ItemType } from '../../types/models';
 import {
     InteractionHint,
     ManagerContainer,
@@ -36,7 +36,6 @@ import {
     ManagerGhostButton,
     ManagerDangerButton,
     ManagerEmptyState,
-    ManagerChip,
 } from '../shared/ManagerStyles';
 
 const FAB = styled(Button)<{ $manager: boolean }>`
@@ -87,17 +86,6 @@ const ModalHeader = styled.div`
   margin-bottom: 16px;
 `;
 
-const Select = styled.select`
-  width: 100%;
-  padding: 16px;
-  border-radius: 12px;
-  margin-bottom: 12px;
-  border: 1px solid ${({ theme }) => theme.colors.outline};
-  background: ${({ theme }) => theme.colors.surface};
-  color: ${({ theme }) => theme.colors.onSurface};
-  font-size: 16px;
-`;
-
 const CardActions = styled.div`
   display: flex;
   gap: 8px;
@@ -121,11 +109,6 @@ const IconButton = styled.button`
     transform: scale(0.92);
     opacity: 0.8;
   }
-
-  svg {
-    width: 18px;
-    height: 18px;
-  }
 `;
 
 const ButtonRow = styled.div`
@@ -140,17 +123,6 @@ const EmptyState = styled.div`
   color: ${({ theme }) => theme.colors.onSurfaceVariant};
 `;
 
-const TypeBadge = styled.span`
-  display: inline-block;
-  padding: 4px 8px;
-  border-radius: 4px;
-  background: ${({ theme }) => theme.colors.primaryContainer};
-  color: ${({ theme }) => theme.colors.onPrimaryContainer};
-  font-size: 11px;
-  font-weight: 600;
-  margin-top: 8px;
-`;
-
 const FavoriteIcon = styled(Star)<{ active: boolean }>`
   color: ${({ active }) => active ? '#FFC107' : '#999'};
   fill: ${({ active }) => active ? '#FFC107' : 'none'};
@@ -162,57 +134,39 @@ const FavoriteIcon = styled(Star)<{ active: boolean }>`
   }
 `;
 
-const DOC_TYPES = [
-    { value: DocumentType.ID_CARD, labelEn: 'ID Card', labelZh: '身份证' },
-    { value: DocumentType.PASSPORT, labelEn: 'Passport', labelZh: '护照' },
-    { value: DocumentType.DRIVER_LICENSE, labelEn: 'Driver License', labelZh: '驾驶证' },
-    { value: DocumentType.OTHER, labelEn: 'Other', labelZh: '其他' },
-];
-
-const getDocTypeLabel = (value: typeof DocumentType[keyof typeof DocumentType], isZh: boolean): string => {
-    const found = DOC_TYPES.find((item) => item.value === value);
-    if (!found) return isZh ? '其他' : 'Other';
-    return isZh ? found.labelZh : found.labelEn;
+const maskCard = (cardNumber: string) => {
+    if (!cardNumber) return '';
+    const plain = cardNumber.replace(/\s+/g, '');
+    if (plain.length <= 4) return plain;
+    return `**** **** **** ${plain.slice(-4)}`;
 };
 
-const maskDocumentNumber = (value: string): string => {
-    if (!value) return '';
-    const clean = value.replace(/\s+/g, '');
-    if (clean.length <= 4) return clean;
-    return `****${clean.slice(-4)}`;
+const formatExpiry = (month?: string, year?: string): string => {
+    const m = month || '--';
+    const y = year || '--';
+    return `${m}/${y}`;
 };
 
-export const DocumentList = () => {
+export const BankCardList = () => {
     const { t, i18n } = useTranslation();
     const isZh = i18n.language?.startsWith('zh');
     const isManagerMode = useMemo(() => new URLSearchParams(window.location.search).get('manager') === '1', []);
 
-    const [documents, setDocuments] = useState<SecureItem[]>([]);
+    const [cards, setCards] = useState<SecureItem[]>([]);
     const [search, setSearch] = useState('');
     const [showModal, setShowModal] = useState(false);
     const [editingId, setEditingId] = useState<number | null>(null);
     const [selectedId, setSelectedId] = useState<number | null>(null);
     const [interactionHint, setInteractionHint] = useState('');
     const interactionHintTimerRef = useRef<number | null>(null);
-
-    const [form, setForm] = useState<{
-        title: string;
-        documentType: typeof DocumentType[keyof typeof DocumentType];
-        documentNumber: string;
-        fullName: string;
-        issuedDate: string;
-        expiryDate: string;
-        issuedBy: string;
-        notes: string;
-        isFavorite: boolean;
-    }>({
+    const [form, setForm] = useState({
         title: '',
-        documentType: DocumentType.ID_CARD,
-        documentNumber: '',
-        fullName: '',
-        issuedDate: '',
-        expiryDate: '',
-        issuedBy: '',
+        cardNumber: '',
+        cardholderName: '',
+        expiryMonth: '',
+        expiryYear: '',
+        cvv: '',
+        bankName: '',
         notes: '',
         isFavorite: false,
     });
@@ -220,12 +174,12 @@ export const DocumentList = () => {
     const resetForm = () => {
         setForm({
             title: '',
-            documentType: DocumentType.ID_CARD,
-            documentNumber: '',
-            fullName: '',
-            issuedDate: '',
-            expiryDate: '',
-            issuedBy: '',
+            cardNumber: '',
+            cardholderName: '',
+            expiryMonth: '',
+            expiryYear: '',
+            cvv: '',
+            bankName: '',
             notes: '',
             isFavorite: false,
         });
@@ -250,63 +204,68 @@ export const DocumentList = () => {
         };
     }, []);
 
-    const loadDocuments = useCallback(async () => {
-        const data = await getDocuments();
-        setDocuments(data);
+    const loadCards = useCallback(async () => {
+        const data = await getBankCards();
+        setCards(data);
     }, []);
 
     useEffect(() => {
-        void loadDocuments();
-    }, [loadDocuments]);
+        void loadCards();
+    }, [loadCards]);
 
-    const filteredDocuments = useMemo(() => {
+    const filteredCards = useMemo(() => {
         const term = search.trim().toLowerCase();
-        if (!term) return documents;
-        return documents.filter((item) => {
-            const data = item.itemData as DocumentData;
+        if (!term) return cards;
+        return cards.filter((item) => {
+            const data = item.itemData as BankCardData;
             return (
                 (item.title || '').toLowerCase().includes(term) ||
-                (data.fullName || '').toLowerCase().includes(term) ||
-                (data.documentNumber || '').toLowerCase().includes(term)
+                (data.cardholderName || '').toLowerCase().includes(term) ||
+                (data.bankName || '').toLowerCase().includes(term) ||
+                (data.cardNumber || '').toLowerCase().includes(term)
             );
         });
-    }, [documents, search]);
+    }, [cards, search]);
 
     useEffect(() => {
-        if (filteredDocuments.length === 0) {
+        if (filteredCards.length === 0) {
             setSelectedId(null);
             return;
         }
-        if (!selectedId || !filteredDocuments.some((item) => item.id === selectedId)) {
-            setSelectedId(filteredDocuments[0].id);
+        if (!selectedId || !filteredCards.some((item) => item.id === selectedId)) {
+            setSelectedId(filteredCards[0].id);
         }
-    }, [filteredDocuments, selectedId]);
+    }, [filteredCards, selectedId]);
 
     const selectedItem = useMemo(
-        () => filteredDocuments.find((item) => item.id === selectedId) || null,
-        [filteredDocuments, selectedId]
+        () => filteredCards.find((item) => item.id === selectedId) || null,
+        [filteredCards, selectedId]
     );
 
     const handleSave = async () => {
-        if (!form.title.trim() || !form.documentNumber.trim()) return;
+        if (!form.title.trim() || !form.cardNumber.trim() || !form.cardholderName.trim()) return;
 
-        const itemData: DocumentData = {
-            documentType: form.documentType,
-            documentNumber: form.documentNumber,
-            fullName: form.fullName,
-            issuedDate: form.issuedDate,
-            expiryDate: form.expiryDate,
-            issuedBy: form.issuedBy,
-            additionalInfo: form.notes,
+        const itemData: BankCardData = {
+            cardNumber: form.cardNumber,
+            cardholderName: form.cardholderName,
+            expiryMonth: form.expiryMonth,
+            expiryYear: form.expiryYear,
+            cvv: form.cvv || undefined,
+            bankName: form.bankName || undefined,
         };
 
         if (editingId) {
-            await updateItem(editingId, { title: form.title, isFavorite: form.isFavorite, itemData });
+            await updateItem(editingId, {
+                title: form.title,
+                notes: form.notes,
+                isFavorite: form.isFavorite,
+                itemData,
+            });
         } else {
             await saveItem({
-                itemType: ItemType.Document,
+                itemType: ItemType.BankCard,
                 title: form.title,
-                notes: '',
+                notes: form.notes,
                 isFavorite: form.isFavorite,
                 sortOrder: 0,
                 itemData,
@@ -314,21 +273,21 @@ export const DocumentList = () => {
         }
         resetForm();
         setShowModal(false);
-        await loadDocuments();
-        showInteractionHint(isZh ? '已保存证件' : 'Document saved');
+        await loadCards();
+        showInteractionHint(isZh ? '已保存银行卡' : 'Card saved');
     };
 
     const handleEdit = (item: SecureItem) => {
-        const data = item.itemData as DocumentData;
+        const data = item.itemData as BankCardData;
         setForm({
             title: item.title,
-            documentType: data.documentType,
-            documentNumber: data.documentNumber,
-            fullName: data.fullName,
-            issuedDate: data.issuedDate || '',
-            expiryDate: data.expiryDate || '',
-            issuedBy: data.issuedBy || '',
-            notes: data.additionalInfo || '',
+            cardNumber: data.cardNumber || '',
+            cardholderName: data.cardholderName || '',
+            expiryMonth: data.expiryMonth || '',
+            expiryYear: data.expiryYear || '',
+            cvv: data.cvv || '',
+            bankName: data.bankName || '',
+            notes: item.notes || '',
             isFavorite: item.isFavorite,
         });
         setEditingId(item.id);
@@ -341,22 +300,22 @@ export const DocumentList = () => {
         if (editingId === id) {
             resetForm();
         }
-        await loadDocuments();
+        await loadCards();
         showInteractionHint(isZh ? '已删除' : 'Deleted');
     };
 
     const handleToggleFavorite = async (item: SecureItem) => {
         await updateItem(item.id, { isFavorite: !item.isFavorite });
-        await loadDocuments();
+        await loadCards();
         showInteractionHint(!item.isFavorite ? (isZh ? '已加入收藏' : 'Added to favorites') : (isZh ? '已取消收藏' : 'Removed from favorites'));
     };
 
-    const handleCopyDocumentNumber = async () => {
+    const handleCopyCardNumber = async () => {
         if (!selectedItem) return;
-        const data = selectedItem.itemData as DocumentData;
+        const data = selectedItem.itemData as BankCardData;
         try {
-            await navigator.clipboard.writeText(data.documentNumber || '');
-            showInteractionHint(isZh ? '已复制证件号码' : 'Document number copied');
+            await navigator.clipboard.writeText(data.cardNumber || '');
+            showInteractionHint(isZh ? '已复制卡号' : 'Card number copied');
         } catch {
             showInteractionHint(isZh ? '复制失败' : 'Copy failed');
         }
@@ -377,25 +336,25 @@ export const DocumentList = () => {
                         </ManagerSearchWrap>
                         <ManagerPrimaryButton onClick={() => { resetForm(); setShowModal(true); }}>
                             <Plus size={16} />
-                            {t('common.add')} {t('documents.title')}
+                            {t('common.add')} {t('cards.title')}
                         </ManagerPrimaryButton>
                     </ManagerTopBar>
 
                     <ManagerWorkspace>
                         <ManagerListPane>
                             <ManagerRows>
-                                {documents.length === 0 ? (
+                                {cards.length === 0 ? (
                                     <ManagerEmptyState>
-                                        <h3>{isZh ? '还没有证件条目' : 'No documents yet'}</h3>
-                                        <p>{isZh ? '添加身份证、护照等证件，后续可以快速检索和复制。' : 'Add IDs, passports, and other documents for quick lookup.'}</p>
+                                        <h3>{isZh ? '还没有银行卡条目' : 'No cards yet'}</h3>
+                                        <p>{isZh ? '添加银行卡后，这里会展示可快速复制和查看的卡片信息。' : 'Add your cards to manage and copy them quickly.'}</p>
                                     </ManagerEmptyState>
-                                ) : filteredDocuments.length === 0 ? (
+                                ) : filteredCards.length === 0 ? (
                                     <ManagerEmptyState>
-                                        <h3>{isZh ? '未找到匹配结果' : 'No matching documents'}</h3>
-                                        <p>{isZh ? '试试姓名、标题或证件号码关键词。' : 'Try searching by name, title, or document number.'}</p>
+                                        <h3>{isZh ? '未找到匹配结果' : 'No matching cards'}</h3>
+                                        <p>{isZh ? '可按卡片标题、银行名或持卡人进行搜索。' : 'Search by title, bank name, or cardholder.'}</p>
                                     </ManagerEmptyState>
-                                ) : filteredDocuments.map((item) => {
-                                    const data = item.itemData as DocumentData;
+                                ) : filteredCards.map((item) => {
+                                    const data = item.itemData as BankCardData;
                                     return (
                                         <ManagerRow
                                             key={item.id}
@@ -415,17 +374,22 @@ export const DocumentList = () => {
                                                     <Star size={18} fill={item.isFavorite ? '#ffd34a' : 'none'} />
                                                 </ManagerFavorite>
                                             </ManagerRowHead>
-                                            <div style={{ marginTop: 8 }}>
-                                                <ManagerChip>{getDocTypeLabel(data.documentType, !!isZh)}</ManagerChip>
-                                            </div>
                                             <ManagerMeta>
                                                 <ManagerMetaItem>
-                                                    <UserRound size={13} />
-                                                    <span>{data.fullName || (isZh ? '未填写姓名' : 'No name')}</span>
+                                                    <CreditCard size={13} />
+                                                    <span>{maskCard(data.cardNumber || '')}</span>
                                                 </ManagerMetaItem>
                                                 <ManagerMetaItem>
-                                                    <IdCard size={13} />
-                                                    <span>{maskDocumentNumber(data.documentNumber)}</span>
+                                                    <CalendarClock size={13} />
+                                                    <span>{formatExpiry(data.expiryMonth, data.expiryYear)}</span>
+                                                </ManagerMetaItem>
+                                                <ManagerMetaItem>
+                                                    <UserRound size={13} />
+                                                    <span>{data.cardholderName || (isZh ? '未填写持卡人' : 'No holder')}</span>
+                                                </ManagerMetaItem>
+                                                <ManagerMetaItem>
+                                                    <Building2 size={13} />
+                                                    <span>{data.bankName || (isZh ? '未填写银行' : 'No bank')}</span>
                                                 </ManagerMetaItem>
                                             </ManagerMeta>
                                         </ManagerRow>
@@ -454,22 +418,22 @@ export const DocumentList = () => {
                                 {selectedItem ? (
                                     <>
                                         {(() => {
-                                            const data = selectedItem.itemData as DocumentData;
+                                            const data = selectedItem.itemData as BankCardData;
                                             return (
                                                 <>
                                                     <ManagerDetailTitle>{selectedItem.title}</ManagerDetailTitle>
-                                                    <ManagerDetailLabel>{t('documents.type')}</ManagerDetailLabel>
-                                                    <ManagerDetailField>{getDocTypeLabel(data.documentType, !!isZh)}</ManagerDetailField>
-                                                    <ManagerDetailLabel>{t('documents.fullName')}</ManagerDetailLabel>
-                                                    <ManagerDetailField>{data.fullName || (isZh ? '未填写' : 'Not set')}</ManagerDetailField>
-                                                    <ManagerDetailLabel>{t('documents.number')}</ManagerDetailLabel>
-                                                    <ManagerDetailField>{data.documentNumber || (isZh ? '未填写' : 'Not set')}</ManagerDetailField>
-                                                    <ManagerDetailLabel>{isZh ? '签发日期 / 有效期至' : 'Issued / Expires'}</ManagerDetailLabel>
-                                                    <ManagerDetailField>{`${data.issuedDate || '--'} / ${data.expiryDate || '--'}`}</ManagerDetailField>
-                                                    <ManagerDetailLabel>{isZh ? '签发机关' : 'Issued By'}</ManagerDetailLabel>
-                                                    <ManagerDetailField>{data.issuedBy || (isZh ? '未填写' : 'Not set')}</ManagerDetailField>
+                                                    <ManagerDetailLabel>{t('cards.number')}</ManagerDetailLabel>
+                                                    <ManagerDetailField>{data.cardNumber || (isZh ? '未填写' : 'Not set')}</ManagerDetailField>
+                                                    <ManagerDetailLabel>{t('cards.holder')}</ManagerDetailLabel>
+                                                    <ManagerDetailField>{data.cardholderName || (isZh ? '未填写' : 'Not set')}</ManagerDetailField>
+                                                    <ManagerDetailLabel>{t('cards.bankName')}</ManagerDetailLabel>
+                                                    <ManagerDetailField>{data.bankName || (isZh ? '未填写' : 'Not set')}</ManagerDetailField>
+                                                    <ManagerDetailLabel>{isZh ? '到期时间' : 'Expiry'}</ManagerDetailLabel>
+                                                    <ManagerDetailField>{formatExpiry(data.expiryMonth, data.expiryYear)}</ManagerDetailField>
+                                                    <ManagerDetailLabel>{t('cards.cvv')}</ManagerDetailLabel>
+                                                    <ManagerDetailField>{data.cvv || (isZh ? '未填写' : 'Not set')}</ManagerDetailField>
                                                     <ManagerDetailLabel>{isZh ? '备注' : 'Notes'}</ManagerDetailLabel>
-                                                    <ManagerDetailNotes>{data.additionalInfo || (isZh ? '暂无备注' : 'No notes')}</ManagerDetailNotes>
+                                                    <ManagerDetailNotes>{selectedItem.notes || (isZh ? '暂无备注' : 'No notes')}</ManagerDetailNotes>
                                                 </>
                                             );
                                         })()}
@@ -477,8 +441,8 @@ export const DocumentList = () => {
                                 ) : (
                                     <ManagerEmptyState>
                                         <CreditCard size={24} />
-                                        <h3>{isZh ? '选择一条证件' : 'Select a document'}</h3>
-                                        <p>{isZh ? '从左侧选择条目后，这里会展示证件完整信息。' : 'Select a document on the left to view full details here.'}</p>
+                                        <h3>{isZh ? '选择一张银行卡' : 'Select a card'}</h3>
+                                        <p>{isZh ? '从左侧选中条目后，右侧会展示完整银行卡信息。' : 'Select a card on the left to view complete details.'}</p>
                                     </ManagerEmptyState>
                                 )}
                             </ManagerDetailBody>
@@ -496,7 +460,7 @@ export const DocumentList = () => {
                                 </ManagerGhostButton>
                                 <ManagerGhostButton
                                     onClick={() => {
-                                        void handleCopyDocumentNumber();
+                                        void handleCopyCardNumber();
                                     }}
                                     disabled={!selectedItem}
                                 >
@@ -520,25 +484,26 @@ export const DocumentList = () => {
                 </ManagerDashboard>
             ) : (
                 <>
-                    <h2 style={{ fontSize: 18, margin: '0 0 16px 0' }}>{t('documents.title')}</h2>
+                    <h2 style={{ fontSize: 18, margin: '0 0 16px 0' }}>{t('cards.title')}</h2>
 
-                    {documents.length === 0 && <EmptyState>{t('common.noItems')}</EmptyState>}
+                    {cards.length === 0 && <EmptyState>{t('common.noItems')}</EmptyState>}
 
-                    {documents.map((item) => {
-                        const data = item.itemData as DocumentData;
+                    {cards.map((item) => {
+                        const data = item.itemData as BankCardData;
+                        const expiry = formatExpiry(data.expiryMonth, data.expiryYear);
                         return (
                             <Card key={item.id} onClick={() => handleEdit(item)} style={{ cursor: 'pointer' }}>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                                     <div>
                                         <CardTitle><CreditCard size={14} style={{ marginRight: 8, verticalAlign: 'middle' }} />{item.title}</CardTitle>
-                                        <CardSubtitle>{data.fullName}</CardSubtitle>
-                                        <TypeBadge>{getDocTypeLabel(data.documentType, !!isZh)}</TypeBadge>
+                                        <CardSubtitle>{maskCard(data.cardNumber)}</CardSubtitle>
+                                        <CardSubtitle style={{ opacity: 0.7 }}>{data.cardholderName} · {expiry}</CardSubtitle>
                                     </div>
                                     {item.isFavorite && <Star size={16} fill="#FFC107" color="#FFC107" />}
                                 </div>
                                 <CardActions onClick={(e) => e.stopPropagation()}>
                                     <IconButton onClick={() => { void handleDelete(item.id); }} title={t('common.delete')}>
-                                        <Trash2 />
+                                        <Trash2 size={18} />
                                     </IconButton>
                                 </CardActions>
                             </Card>
@@ -553,29 +518,28 @@ export const DocumentList = () => {
                 <Modal onClick={() => { setShowModal(false); resetForm(); }}>
                     <ModalContent onClick={(e) => e.stopPropagation()}>
                         <ModalHeader>
-                            <h3 style={{ margin: 0 }}>{editingId ? t('common.edit') : t('common.add')} {t('documents.title')}</h3>
-                            <FavoriteIcon active={form.isFavorite} onClick={() => setForm({ ...form, isFavorite: !form.isFavorite })} size={24} />
+                            <h3 style={{ margin: 0 }}>{editingId ? t('common.edit') : t('common.add')} {t('cards.title')}</h3>
+                            <FavoriteIcon
+                                active={form.isFavorite}
+                                onClick={() => setForm({ ...form, isFavorite: !form.isFavorite })}
+                                size={24}
+                            />
                         </ModalHeader>
 
                         <Input label={`${isZh ? '标题' : 'Title'} *`} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} />
-
-                        <label style={{ fontSize: 12, color: 'gray', marginTop: 8, display: 'block' }}>{t('documents.type')}</label>
-                        <Select value={form.documentType} onChange={(e) => setForm({ ...form, documentType: e.target.value as typeof DocumentType[keyof typeof DocumentType] })}>
-                            {DOC_TYPES.map((doc) => <option key={doc.value} value={doc.value}>{isZh ? doc.labelZh : doc.labelEn}</option>)}
-                        </Select>
-
-                        <Input label={t('documents.fullName')} value={form.fullName} onChange={(e) => setForm({ ...form, fullName: e.target.value })} />
-                        <Input label={`${t('documents.number')} *`} value={form.documentNumber} onChange={(e) => setForm({ ...form, documentNumber: e.target.value })} />
-
-                        <Input label={isZh ? '签发日期' : 'Issued Date'} type="date" value={form.issuedDate} onChange={(e) => setForm({ ...form, issuedDate: e.target.value })} />
-                        <Input label={isZh ? '有效期至' : 'Expiry Date'} type="date" value={form.expiryDate} onChange={(e) => setForm({ ...form, expiryDate: e.target.value })} />
-
-                        <Input label={isZh ? '签发机关' : 'Issued By'} value={form.issuedBy} onChange={(e) => setForm({ ...form, issuedBy: e.target.value })} />
+                        <Input label={`${t('cards.number')} *`} value={form.cardNumber} onChange={(e) => setForm({ ...form, cardNumber: e.target.value })} />
+                        <Input label={`${t('cards.holder')} *`} value={form.cardholderName} onChange={(e) => setForm({ ...form, cardholderName: e.target.value })} />
+                        <Input label={t('cards.bankName')} value={form.bankName} onChange={(e) => setForm({ ...form, bankName: e.target.value })} />
+                        <div style={{ display: 'flex', gap: 8 }}>
+                            <Input label={t('cards.expiryMonth')} value={form.expiryMonth} onChange={(e) => setForm({ ...form, expiryMonth: e.target.value })} />
+                            <Input label={t('cards.expiryYear')} value={form.expiryYear} onChange={(e) => setForm({ ...form, expiryYear: e.target.value })} />
+                        </div>
+                        <Input label={t('cards.cvv')} value={form.cvv} onChange={(e) => setForm({ ...form, cvv: e.target.value })} />
                         <Input label={isZh ? '备注' : 'Notes'} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
 
                         <ButtonRow>
                             <Button variant="text" onClick={() => { setShowModal(false); resetForm(); }}>{t('common.cancel')}</Button>
-                            <Button onClick={() => { void handleSave(); }} disabled={!form.title || !form.documentNumber}>{t('common.save')}</Button>
+                            <Button onClick={() => { void handleSave(); }} disabled={!form.title || !form.cardNumber || !form.cardholderName}>{t('common.save')}</Button>
                         </ButtonRow>
                     </ModalContent>
                 </Modal>

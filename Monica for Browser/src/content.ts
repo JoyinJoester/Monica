@@ -70,6 +70,7 @@ if ((window as unknown as Record<string, unknown>).__monica_content_loaded__) {
     period: number;
     digits: number;
     algorithm: string;
+    otpType: string;
   }
 
 
@@ -1025,8 +1026,11 @@ if ((window as unknown as Record<string, unknown>).__monica_content_loaded__) {
 
     const html = totps.map(t => {
       const initial = (t.issuer || t.title || 'T')[0].toUpperCase();
+      const otpType = (t.otpType || 'TOTP').toUpperCase();
+      const period = otpType === 'STEAM' ? 30 : (t.period || 30);
+      const digits = otpType === 'STEAM' ? 5 : (t.digits || 6);
       return `
-      <div class="monica-2fa-item" data-id="${t.id}" data-secret="${t.secret}" data-period="${t.period || 30}" data-digits="${t.digits || 6}" data-algorithm="${t.algorithm || 'SHA1'}">
+      <div class="monica-2fa-item" data-id="${t.id}" data-secret="${t.secret}" data-period="${period}" data-digits="${digits}" data-algorithm="${t.algorithm || 'SHA1'}" data-otptype="${otpType}">
         <div class="monica-2fa-icon">${initial}</div>
         <div class="monica-2fa-info">
           <div class="monica-2fa-title">${escapeHtml(t.title)}</div>
@@ -1047,9 +1051,10 @@ if ((window as unknown as Record<string, unknown>).__monica_content_loaded__) {
       const secret = item.getAttribute('data-secret') || '';
       const period = parseInt(item.getAttribute('data-period') || '30');
       const digits = parseInt(item.getAttribute('data-digits') || '6');
+      const otpType = (item.getAttribute('data-otptype') || 'TOTP').toUpperCase();
 
       // Start generating TOTP code
-      generate2FACode(item as HTMLElement, secret, period, digits);
+      generate2FACode(item as HTMLElement, secret, period, digits, otpType);
 
       // Click to fill
       item.addEventListener('click', () => {
@@ -1062,7 +1067,7 @@ if ((window as unknown as Record<string, unknown>).__monica_content_loaded__) {
     });
   }
 
-  function generate2FACode(item: HTMLElement, secret: string, period: number, digits: number) {
+  function generate2FACode(item: HTMLElement, secret: string, period: number, digits: number, otpType: string) {
     const codeEl = item.querySelector('.monica-2fa-code');
     const timerEl = item.querySelector('.monica-2fa-timer');
     if (!codeEl) return;
@@ -1084,7 +1089,7 @@ if ((window as unknown as Record<string, unknown>).__monica_content_loaded__) {
       return bytes;
     }
 
-    // Generate TOTP using Web Crypto
+    // Generate OTP using Web Crypto
     async function generateTOTP(): Promise<string> {
       try {
         const keyBytes = base32Decode(secret);
@@ -1118,6 +1123,17 @@ if ((window as unknown as Record<string, unknown>).__monica_content_loaded__) {
           ((hash[offset + 2] & 0xff) << 8) |
           (hash[offset + 3] & 0xff);
 
+        if (otpType === 'STEAM') {
+          const steamChars = '23456789BCDFGHJKMNPQRTVWXY';
+          let fullCode = binary;
+          let steamCode = '';
+          for (let i = 0; i < 5; i++) {
+            steamCode += steamChars[fullCode % steamChars.length];
+            fullCode = Math.floor(fullCode / steamChars.length);
+          }
+          return steamCode;
+        }
+
         const otp = binary % Math.pow(10, digits);
         return otp.toString().padStart(digits, '0');
       } catch (e) {
@@ -1133,7 +1149,11 @@ if ((window as unknown as Record<string, unknown>).__monica_content_loaded__) {
       const remaining = period - (epoch % period);
 
       if (code !== '------') {
-        codeEl.textContent = code.slice(0, 3) + ' ' + code.slice(3);
+        if (otpType === 'STEAM' && code.length === 5) {
+          codeEl.textContent = code.slice(0, 2) + ' ' + code.slice(2);
+        } else {
+          codeEl.textContent = code.slice(0, 3) + ' ' + code.slice(3);
+        }
       } else {
         codeEl.textContent = '错误';
       }

@@ -17,6 +17,11 @@ export const Card = styled(motion.div)`
     transform: translateY(-1px);
     box-shadow: 0 4px 6px rgba(0,0,0,0.05);
   }
+
+  &:active {
+    transform: translateY(0) scale(0.98);
+    background-color: ${({ theme }) => theme.colors.primaryContainer}20; /* 20% opacity */
+  }
 `;
 
 export const CardTitle = styled.h3`

@@ -89,10 +89,15 @@ const Button = styled.button`
     font-size: 15px;
     font-weight: 500;
     cursor: pointer;
-    transition: opacity 0.2s;
+    transition: opacity 0.2s, transform 0.15s ease;
     
     &:hover {
         opacity: 0.9;
+    }
+    
+    &:active {
+        transform: scale(0.97);
+        opacity: 0.8;
     }
     
     &:disabled {
@@ -134,9 +139,13 @@ const ForgotLink = styled.button`
     cursor: pointer;
     margin-top: 16px;
     text-decoration: underline;
+    transition: opacity 0.15s ease;
     
     &:hover {
         opacity: 0.8;
+    }
+    &:active {
+        opacity: 0.5;
     }
 `;
 
@@ -185,6 +194,10 @@ const PasswordItem = styled.div`
         border-color: ${({ theme }) => theme.colors.primary};
         transform: translateY(-1px);
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    &:active {
+        transform: scale(0.98);
+        opacity: 0.85;
     }
 `;
 

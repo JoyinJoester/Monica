@@ -19,10 +19,14 @@ import takagi.ru.monica.data.BackupReport
 import takagi.ru.monica.data.RestoreReport
 import takagi.ru.monica.data.ItemCounts
 import takagi.ru.monica.data.FailedItem
+import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.util.DataExportImportManager
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -889,7 +893,7 @@ class WebDavHelper(
                             val backup = TotpBackupEntry(
                                 id = item.id,
                                 title = item.title,
-                                itemData = item.itemData,
+                                itemData = normalizeRestoredTotpItemData(item.itemData, item.title),
                                 notes = item.notes,
                                 isFavorite = item.isFavorite,
                                 imagePaths = item.imagePaths,
@@ -1168,11 +1172,16 @@ class WebDavHelper(
                             // 备份已删除的安全项目
                             if (deletedSecureItems.isNotEmpty()) {
                                 val trashSecureItemBackups = deletedSecureItems.map { item ->
+                                    val normalizedItemData = if (item.itemType == ItemType.TOTP) {
+                                        normalizeRestoredTotpItemData(item.itemData, item.title)
+                                    } else {
+                                        item.itemData
+                                    }
                                     TrashSecureItemBackupEntry(
                                         id = item.id,
                                         title = item.title,
                                         itemType = item.itemType.name,
-                                        itemData = item.itemData,
+                                        itemData = normalizedItemData,
                                         notes = item.notes,
                                         isFavorite = item.isFavorite,
                                         imagePaths = item.imagePaths,
@@ -2390,10 +2399,11 @@ class WebDavHelper(
                             val importResult = exportManager.importData(Uri.fromFile(csvFile))
                             if (importResult.isSuccess) {
                                 val imported = importResult.getOrNull() ?: emptyList()
+                                val normalizedImported = imported.map(::normalizeRestoredTotpItem)
                                 if (totpWithMetadata.isNotEmpty()) {
-                                    secureItems.addAll(imported.filterNot { it.itemType == ItemType.TOTP.name })
+                                    secureItems.addAll(normalizedImported.filterNot { it.itemType == ItemType.TOTP.name })
                                 } else {
-                                    secureItems.addAll(imported)
+                                    secureItems.addAll(normalizedImported)
                                 }
                             } else {
                                 warnings.add("导入CSV失败 ${csvFile.name}: ${importResult.exceptionOrNull()?.message}")
@@ -2429,9 +2439,10 @@ class WebDavHelper(
                 if (backupPasswordCount == 0) {
                     backupPasswordCount = passwords.size
                 }
-                val totpItems = secureItems.count { it.itemType == "TOTP" }
-                val cardItems = secureItems.count { it.itemType == "BANK_CARD" }
-                val docItems = secureItems.count { it.itemType == "DOCUMENT" }
+                val normalizedSecureItems = secureItems.map(::normalizeRestoredTotpItem)
+                val totpItems = normalizedSecureItems.count { it.itemType == "TOTP" }
+                val cardItems = normalizedSecureItems.count { it.itemType == "BANK_CARD" }
+                val docItems = normalizedSecureItems.count { it.itemType == "DOCUMENT" }
                 
                 val backupCounts = ItemCounts(
                     passwords = backupPasswordCount,
@@ -2466,7 +2477,7 @@ class WebDavHelper(
                 Result.success(RestoreResult(
                     content = BackupContent(
                         passwords = passwords,
-                        secureItems = secureItems,
+                        secureItems = normalizedSecureItems,
                         passkeys = passkeys,
                         customFieldsMap = pendingCustomFields.toMap()
                     ),
@@ -2737,7 +2748,7 @@ class WebDavHelper(
                     id = entry.id,
                     itemType = ItemType.TOTP.name,
                     title = entry.title,
-                    itemData = entry.itemData,
+                    itemData = normalizeRestoredTotpItemData(entry.itemData, entry.title),
                     notes = entry.notes,
                     isFavorite = entry.isFavorite,
                     imagePaths = entry.imagePaths,
@@ -2754,6 +2765,86 @@ class WebDavHelper(
             android.util.Log.w("WebDavHelper", "Failed to restore totp from ${file.name}: ${e.message}")
             null
         }
+    }
+
+    private fun normalizeRestoredTotpItem(
+        item: DataExportImportManager.ExportItem
+    ): DataExportImportManager.ExportItem {
+        if (!item.itemType.equals(ItemType.TOTP.name, ignoreCase = true)) {
+            return item
+        }
+        val normalizedItemData = normalizeRestoredTotpItemData(item.itemData, item.title)
+        return if (normalizedItemData == item.itemData) {
+            item
+        } else {
+            item.copy(itemData = normalizedItemData)
+        }
+    }
+
+    /**
+     * 兼容老备份中的 Steam 验证器：
+     * - otpType 丢失/小写时，按 Steam 特征自动修正为 STEAM
+     * - 强制 Steam 使用 5 位、30 秒、SHA1
+     */
+    private fun normalizeRestoredTotpItemData(itemData: String, title: String): String {
+        val json = Json { ignoreUnknownKeys = true }
+        val root = runCatching { json.parseToJsonElement(itemData).jsonObject }.getOrNull()
+            ?: return itemData
+
+        val normalizedMap = root.toMutableMap()
+        var changed = false
+
+        val rawOtpType = root["otpType"]?.jsonPrimitive?.contentOrNull
+        val canonicalOtpType = when (rawOtpType?.trim()?.uppercase(Locale.ROOT)) {
+            OtpType.TOTP.name -> OtpType.TOTP.name
+            OtpType.HOTP.name -> OtpType.HOTP.name
+            OtpType.STEAM.name -> OtpType.STEAM.name
+            OtpType.YANDEX.name -> OtpType.YANDEX.name
+            OtpType.MOTP.name -> OtpType.MOTP.name
+            else -> null
+        }
+        if (canonicalOtpType != null && canonicalOtpType != rawOtpType) {
+            normalizedMap["otpType"] = JsonPrimitive(canonicalOtpType)
+            changed = true
+        }
+
+        val candidateJson = JsonObject(normalizedMap).toString()
+        val totpData = runCatching { json.decodeFromString<TotpData>(candidateJson) }.getOrNull()
+            ?: return if (changed) candidateJson else itemData
+
+        val hasSteamMetadata = listOf(
+            totpData.steamFingerprint,
+            totpData.steamDeviceId,
+            totpData.steamSerialNumber,
+            totpData.steamSharedSecretBase64,
+            totpData.steamRevocationCode,
+            totpData.steamIdentitySecret,
+            totpData.steamTokenGid,
+            totpData.steamRawJson
+        ).any { it.isNotBlank() }
+        val looksLikeSteam = listOf(totpData.issuer, totpData.accountName, title).any {
+            it.contains("steam", ignoreCase = true)
+        } || totpData.link.contains("encoder=steam", ignoreCase = true)
+
+        val shouldForceSteam = totpData.otpType == OtpType.STEAM ||
+            hasSteamMetadata ||
+            (looksLikeSteam && totpData.otpType == OtpType.TOTP)
+
+        fun updateField(key: String, value: JsonPrimitive) {
+            if (normalizedMap[key] != value) {
+                normalizedMap[key] = value
+                changed = true
+            }
+        }
+
+        if (shouldForceSteam) {
+            updateField("otpType", JsonPrimitive(OtpType.STEAM.name))
+            updateField("digits", JsonPrimitive(5))
+            updateField("period", JsonPrimitive(30))
+            updateField("algorithm", JsonPrimitive("SHA1"))
+        }
+
+        return if (changed) JsonObject(normalizedMap).toString() else itemData
     }
 
     private fun restorePasskeyFromJson(file: File): Pair<PasskeyEntry, String?>? {

@@ -2,20 +2,25 @@ import { useState, useCallback } from 'react';
 import styled from 'styled-components';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Upload, FileText, Check, AlertCircle, Loader2 } from 'lucide-react';
-import { ItemType, OtpType } from '../../types/models';
-import type { SecureItem, PasswordEntry, TotpData } from '../../types/models';
+import {
+    ImportFormat,
+    importFromFile,
+    importWithFormat,
+    validateFile,
+    type ImportResult
+} from '../../utils/ImportManager';
 
-// ========== Types ==========
-const ImportFormat = {
+const UiFormat = {
     AUTO: 'auto',
-    CHROME_PASSWORDS: 'chrome',
-    MONICA_CSV: 'monica',
-    AEGIS_TOTP: 'aegis',
+    CHROME: 'chrome',
+    MONICA: 'monica',
+    MONICA_ZIP: 'monica_zip',
+    KEEPASS_CSV: 'keepass_csv',
+    KEEPASS_KDBX: 'keepass_kdbx',
+    AEGIS: 'aegis',
 } as const;
+type UiFormat = typeof UiFormat[keyof typeof UiFormat];
 
-type ImportFormatType = typeof ImportFormat[keyof typeof ImportFormat];
-
-// ========== Styled Components ==========
 const Container = styled.div`
   padding: 16px;
   max-width: 480px;
@@ -39,8 +44,13 @@ const BackButton = styled.button`
   align-items: center;
   justify-content: center;
   color: ${({ theme }) => theme.colors.onSurface};
+  transition: all 0.15s ease;
   &:hover {
     background: ${({ theme }) => theme.colors.surfaceVariant};
+  }
+  &:active {
+    transform: scale(0.9);
+    opacity: 0.7;
   }
 `;
 
@@ -71,10 +81,6 @@ const FormatSelect = styled.select`
   color: ${({ theme }) => theme.colors.onSurface};
   font-size: 14px;
   cursor: pointer;
-  &:focus {
-    outline: none;
-    border-color: ${({ theme }) => theme.colors.primary};
-  }
 `;
 
 const DropZone = styled.div<{ $isDragging?: boolean }>`
@@ -87,10 +93,9 @@ const DropZone = styled.div<{ $isDragging?: boolean }>`
         $isDragging ? theme.colors.primaryContainer : theme.colors.surfaceVariant};
   transition: all 0.2s ease;
   cursor: pointer;
-  
-  &:hover {
-    border-color: ${({ theme }) => theme.colors.primary};
-    background: ${({ theme }) => theme.colors.primaryContainer};
+  &:active {
+    transform: scale(0.98);
+    opacity: 0.85;
   }
 `;
 
@@ -136,236 +141,67 @@ const ResultTitle = styled.div`
 const ResultDetails = styled.div`
   font-size: 12px;
   color: ${({ theme }) => theme.colors.onSurfaceVariant};
+  white-space: pre-line;
 `;
 
-// ========== Import Logic ==========
-function parseCSV(content: string): Record<string, string>[] {
-    const lines = content.trim().split(/\r?\n/);
-    if (lines.length < 2) return [];
-
-    const headers = parseCSVLine(lines[0]);
-    const items: Record<string, string>[] = [];
-
-    for (let i = 1; i < lines.length; i++) {
-        const values = parseCSVLine(lines[i]);
-        const item: Record<string, string> = {};
-        headers.forEach((header, index) => {
-            item[header] = values[index] || '';
-        });
-        items.push(item);
-    }
-
-    return items;
-}
-
-function parseCSVLine(line: string): string[] {
-    const result: string[] = [];
-    let current = '';
-    let inQuotes = false;
-
-    for (let i = 0; i < line.length; i++) {
-        const char = line[i];
-        if (char === '"') {
-            if (inQuotes && line[i + 1] === '"') {
-                current += '"';
-                i++;
-            } else {
-                inQuotes = !inQuotes;
-            }
-        } else if (char === ',' && !inQuotes) {
-            result.push(current);
-            current = '';
-        } else {
-            current += char;
-        }
-    }
-    result.push(current);
-    return result;
-}
-
-function detectFormat(content: string, filename: string): ImportFormatType {
-    const lowerFilename = filename.toLowerCase();
-
-    if (lowerFilename.endsWith('.json')) {
-        try {
-            const json = JSON.parse(content);
-            if (json.db && json.db.entries) {
-                return ImportFormat.AEGIS_TOTP;
-            }
-        } catch {
-            // Not valid JSON
-        }
-    }
-
-    if (lowerFilename.endsWith('.csv')) {
-        const firstLine = content.split(/\r?\n/)[0].toLowerCase();
-        if (firstLine.includes('name') && firstLine.includes('url') && firstLine.includes('username') && firstLine.includes('password')) {
-            return ImportFormat.CHROME_PASSWORDS;
-        }
-        if (firstLine.includes('id') && firstLine.includes('type') && firstLine.includes('title') && firstLine.includes('data')) {
-            return ImportFormat.MONICA_CSV;
-        }
-    }
-
-    return ImportFormat.AUTO;
-}
-
-async function importChromePasswords(content: string): Promise<{ count: number; items: Partial<SecureItem>[] }> {
-    const rows = parseCSV(content);
-    const items: Partial<SecureItem>[] = [];
-
-    for (const row of rows) {
-        const passwordData: PasswordEntry = {
-            username: row.username || row.Username || '',
-            password: row.password || row.Password || '',
-            website: row.url || row.URL || '',
-            category: 'default',
-        };
-
-        items.push({
-            itemType: ItemType.Password,
-            title: row.name || row.Name || row.url || 'Imported Password',
-            notes: row.note || row.Note || '',
-            isFavorite: false,
-            sortOrder: 0,
-            itemData: passwordData,
-        });
-    }
-
-    return { count: items.length, items };
-}
-
-async function importAegisTotp(content: string): Promise<{ count: number; items: Partial<SecureItem>[] }> {
-    const json = JSON.parse(content);
-    const items: Partial<SecureItem>[] = [];
-
-    if (json.db && json.db.entries) {
-        for (const entry of json.db.entries) {
-            const totpData: TotpData = {
-                secret: entry.info?.secret || '',
-                issuer: entry.issuer || '',
-                accountName: entry.name || '',
-                period: entry.info?.period || 30,
-                digits: entry.info?.digits || 6,
-                algorithm: entry.info?.algo || 'SHA1',
-                otpType: OtpType.TOTP,
-            };
-
-            if (!totpData.secret) continue;
-
-            items.push({
-                itemType: ItemType.Totp,
-                title: entry.issuer || entry.name || 'Imported TOTP',
-                notes: '',
-                isFavorite: entry.favorite || false,
-                sortOrder: 0,
-                itemData: totpData,
-            });
-        }
-    }
-
-    return { count: items.length, items };
-}
-
-async function importMonicaCsv(content: string): Promise<{ count: number; items: Partial<SecureItem>[] }> {
-    const rows = parseCSV(content);
-    const items: Partial<SecureItem>[] = [];
-
-    const itemTypeMap: Record<string, ItemType> = {
-        'PASSWORD': ItemType.Password,
-        'NOTE': ItemType.Note,
-        'TOTP': ItemType.Totp,
-        'DOCUMENT': ItemType.Document,
-    };
-
-    for (const row of rows) {
-        const typeStr = (row.Type || row.type || '').toUpperCase();
-        const itemType = itemTypeMap[typeStr];
-        if (itemType === undefined) continue;
-
-        let itemData: unknown;
-        try {
-            itemData = JSON.parse(row.Data || row.data || '{}');
-        } catch {
-            itemData = {};
-        }
-
-        items.push({
-            itemType,
-            title: row.Title || row.title || 'Imported Item',
-            notes: row.Notes || row.notes || '',
-            isFavorite: (row.IsFavorite || row.isFavorite) === 'true',
-            sortOrder: 0,
-            itemData: itemData as PasswordEntry | TotpData | undefined,
-        });
-    }
-
-    return { count: items.length, items };
-}
-
-// ========== Component ==========
 interface ImportPageProps {
     onBack: () => void;
 }
+
+const toManagerFormat = (uiFormat: UiFormat): ImportFormat | null => {
+    if (uiFormat === UiFormat.CHROME) return ImportFormat.CHROME_PASSWORD;
+    if (uiFormat === UiFormat.MONICA) return ImportFormat.MONICA_CSV;
+    if (uiFormat === UiFormat.MONICA_ZIP) return ImportFormat.MONICA_ZIP;
+    if (uiFormat === UiFormat.KEEPASS_CSV) return ImportFormat.KEEPASS_CSV;
+    if (uiFormat === UiFormat.KEEPASS_KDBX) return ImportFormat.KEEPASS_KDBX;
+    if (uiFormat === UiFormat.AEGIS) return ImportFormat.AEGIS_JSON;
+    return null;
+};
 
 export const ImportPage: React.FC<ImportPageProps> = ({ onBack }) => {
     const { i18n } = useTranslation();
     const isZh = i18n.language.startsWith('zh');
 
-    const [selectedFormat, setSelectedFormat] = useState<ImportFormatType>(ImportFormat.AUTO);
+    const [selectedFormat, setSelectedFormat] = useState<UiFormat>(UiFormat.AUTO);
     const [isDragging, setIsDragging] = useState(false);
     const [isImporting, setIsImporting] = useState(false);
     const [result, setResult] = useState<{ success: boolean; message: string; details?: string } | null>(null);
+
+    const renderResultDetails = (importResult: ImportResult) => {
+        const lines = [
+            isZh ? `总计: ${importResult.totalCount}` : `Total: ${importResult.totalCount}`,
+            isZh ? `导入成功: ${importResult.importedCount}` : `Imported: ${importResult.importedCount}`,
+            isZh ? `跳过: ${importResult.skippedCount}` : `Skipped: ${importResult.skippedCount}`,
+            isZh ? `失败: ${importResult.errorCount}` : `Failed: ${importResult.errorCount}`,
+        ];
+        if (importResult.errors.length > 0) {
+            lines.push('');
+            lines.push(...importResult.errors.slice(0, 3));
+        }
+        return lines.join('\n');
+    };
 
     const handleFile = useCallback(async (file: File) => {
         setIsImporting(true);
         setResult(null);
 
         try {
-            const content = await file.text();
-            let format = selectedFormat;
-
-            if (format === ImportFormat.AUTO) {
-                format = detectFormat(content, file.name);
-                if (format === ImportFormat.AUTO) {
-                    throw new Error(isZh ? '无法识别文件格式' : 'Unable to detect file format');
-                }
+            const validation = validateFile(file);
+            if (!validation.valid) {
+                throw new Error(validation.error || (isZh ? '文件格式无效' : 'Invalid file format'));
             }
 
-            let importResult: { count: number; items: Partial<SecureItem>[] };
-
-            switch (format) {
-                case ImportFormat.CHROME_PASSWORDS:
-                    importResult = await importChromePasswords(content);
-                    break;
-                case ImportFormat.AEGIS_TOTP:
-                    importResult = await importAegisTotp(content);
-                    break;
-                case ImportFormat.MONICA_CSV:
-                    importResult = await importMonicaCsv(content);
-                    break;
-                default:
-                    throw new Error(isZh ? '不支持的格式' : 'Unsupported format');
-            }
-
-            // Save items to storage
-            const { saveItem } = await import('../../utils/storage');
-            let savedCount = 0;
-            for (const item of importResult.items) {
-                try {
-                    await saveItem(item as SecureItem);
-                    savedCount++;
-                } catch (e) {
-                    console.error('[ImportPage] Failed to save item:', e);
-                }
-            }
+            const managerFormat = toManagerFormat(selectedFormat);
+            const importResult = managerFormat
+                ? await importWithFormat(file, managerFormat)
+                : await importFromFile(file);
 
             setResult({
-                success: true,
-                message: isZh ? '导入成功' : 'Import Successful',
-                details: isZh
-                    ? `成功导入 ${savedCount} 个项目`
-                    : `Successfully imported ${savedCount} items`,
+                success: importResult.success,
+                message: importResult.success
+                    ? (isZh ? '导入完成' : 'Import Completed')
+                    : (isZh ? '导入失败' : 'Import Failed'),
+                details: renderResultDetails(importResult),
             });
         } catch (error) {
             const err = error as Error;
@@ -377,23 +213,18 @@ export const ImportPage: React.FC<ImportPageProps> = ({ onBack }) => {
         } finally {
             setIsImporting(false);
         }
-    }, [selectedFormat, isZh]);
+    }, [isZh, selectedFormat]);
 
     const handleDrop = useCallback((e: React.DragEvent) => {
         e.preventDefault();
         setIsDragging(false);
-
         const file = e.dataTransfer.files[0];
-        if (file) {
-            handleFile(file);
-        }
+        if (file) handleFile(file);
     }, [handleFile]);
 
     const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
-        if (file) {
-            handleFile(file);
-        }
+        if (file) handleFile(file);
     }, [handleFile]);
 
     return (
@@ -409,12 +240,15 @@ export const ImportPage: React.FC<ImportPageProps> = ({ onBack }) => {
                 <SectionTitle>{isZh ? '选择格式' : 'Select Format'}</SectionTitle>
                 <FormatSelect
                     value={selectedFormat}
-                    onChange={(e) => setSelectedFormat(e.target.value as ImportFormatType)}
+                    onChange={(e) => setSelectedFormat(e.target.value as UiFormat)}
                 >
-                    <option value={ImportFormat.AUTO}>{isZh ? '自动检测' : 'Auto Detect'}</option>
-                    <option value={ImportFormat.CHROME_PASSWORDS}>{isZh ? 'Chrome 密码' : 'Chrome Passwords'}</option>
-                    <option value={ImportFormat.MONICA_CSV}>Monica CSV</option>
-                    <option value={ImportFormat.AEGIS_TOTP}>Aegis TOTP</option>
+                    <option value={UiFormat.AUTO}>{isZh ? '自动检测' : 'Auto Detect'}</option>
+                    <option value={UiFormat.CHROME}>{isZh ? 'Chrome 密码' : 'Chrome Passwords'}</option>
+                    <option value={UiFormat.MONICA}>Monica CSV</option>
+                    <option value={UiFormat.MONICA_ZIP}>Monica ZIP</option>
+                    <option value={UiFormat.KEEPASS_CSV}>KeePass CSV</option>
+                    <option value={UiFormat.KEEPASS_KDBX}>KeePass KDBX</option>
+                    <option value={UiFormat.AEGIS}>Aegis TOTP</option>
                 </FormatSelect>
             </Section>
 
@@ -440,7 +274,7 @@ export const ImportPage: React.FC<ImportPageProps> = ({ onBack }) => {
                 <HiddenInput
                     id="file-input"
                     type="file"
-                    accept=".csv,.json"
+                    accept=".csv,.json,.zip,.kdbx"
                     onChange={handleFileSelect}
                 />
             </Section>
@@ -465,8 +299,9 @@ export const ImportPage: React.FC<ImportPageProps> = ({ onBack }) => {
                     <FileText size={20} />
                     <ResultText>
                         <ResultDetails>
-                            • Chrome {isZh ? '密码导出' : 'Password Export'} (CSV)<br />
-                            • Monica {isZh ? '数据导出' : 'Data Export'} (CSV)<br />
+                            • Chrome {isZh ? '密码导出' : 'Password Export'} (CSV){'\n'}
+                            • Monica {isZh ? '数据导出' : 'Data Export'} (CSV / ZIP){'\n'}
+                            • KeePass (CSV / KDBX){'\n'}
                             • Aegis Authenticator (JSON)
                         </ResultDetails>
                     </ResultText>

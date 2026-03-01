@@ -9,7 +9,14 @@
         "passwords": "密码",
         "notes": "笔记",
         "documents": "证件",
+        "cards": "银行卡",
         "authenticator": "两步验证",
+        "passkeys": "通行秘钥",
+        "send": "发送",
+        "bitwarden": "Bitwarden",
+        "generator": "生成器",
+        "timeline": "时间线",
+        "recycleBin": "回收站",
         "settings": "设置"
     },
     "common": {
@@ -17,6 +24,8 @@
         "edit": "编辑",
         "delete": "删除",
         "copy": "复制",
+        "restore": "恢复",
+        "permanentDelete": "永久删除",
         "save": "保存",
         "cancel": "取消",
         "copied": "已复制到剪贴板",
@@ -53,6 +62,15 @@
             "other": "其他"
         }
     },
+    "cards": {
+        "title": "银行卡",
+        "number": "卡号",
+        "holder": "持卡人",
+        "bankName": "银行名称",
+        "expiryMonth": "到期月",
+        "expiryYear": "到期年",
+        "cvv": "安全码"
+    },
     "authenticator": {
         "title": "身份验证器",
         "secret": "密钥",
@@ -87,5 +105,12 @@
         "startImport": "开始导入",
         "success": "导入完成",
         "error": "导入失败"
+    },
+    "extra": {
+        "passkeysDesc": "这里将管理通行秘钥条目。下一步可对齐 Android 端的创建、编辑与网站绑定流程。",
+        "sendDesc": "这里将管理发送条目。后续可补充链接分享、失效时间与访问次数控制。",
+        "generatorDesc": "这里将提供密码与用户名生成能力，可按长度、字符集和规则快速生成。",
+        "timelineDesc": "这里将展示保险库时间线，包含新增、修改、删除等关键事件记录。",
+        "recycleBinDesc": "这里将管理回收站条目，支持恢复与永久删除，并显示剩余保留时间。"
     }
 }
