@@ -560,7 +560,7 @@
     <string name="settings_import_data">Nhập dữ liệu</string>
     <string name="settings_import_data_description">Khôi phục từ file sao lưu</string>
     <string name="settings_version_info">Thông tin phiên bản</string>
-    <string name="settings_version_number">V1.0.26a</string>
+    <string name="settings_version_number">V1.0.27</string>
     <string name="settings_support_author">Ủng hộ tác giả</string>
     <string name="settings_support_author_description">Cảm ơn sự ủng hộ của bạn</string>
     <string name="settings_privacy_policy">Chính sách bảo mật</string>
@@ -943,6 +943,8 @@
     <string name="autofill_fill_suggestions_desc">Tự động hiển thị gợi ý mật khẩu phù hợp</string>
     <string name="autofill_fill_manual_selection">Chọn thủ công</string>
     <string name="autofill_fill_manual_selection_desc">Cho phép chọn thủ công mật khẩu để điền</string>
+    <string name="autofill_bitwarden_compat_mode_title">Tự động điền tương thích Bitwarden</string>
+    <string name="autofill_bitwarden_compat_mode_desc">Dùng mô hình kiểu Bitwarden cho trường đăng nhập (chế độ thử nghiệm)</string>
     
     <!-- Cài đặt tự động điền - Hành vi lưu -->
     <string name="autofill_save_behavior_title">Hành vi lưu</string>

@@ -80,6 +80,7 @@ fun AutofillSettingsScreen(
     val domainMatchStrategy by autofillPreferences.domainMatchStrategy.collectAsState(initial = DomainMatchStrategy.BASE_DOMAIN)
     val fillSuggestionsEnabled by autofillPreferences.isFillSuggestionsEnabled.collectAsState(initial = true)
     val manualSelectionEnabled by autofillPreferences.isManualSelectionEnabled.collectAsState(initial = true)
+    val bitwardenCompatAutofillEnabled by autofillPreferences.useBitwardenCompatAutofill.collectAsState(initial = false)
     val biometricQuickFillEnabled by autofillPreferences.isBiometricQuickFillEnabled.collectAsState(initial = true)
     val requestSaveDataEnabled by autofillPreferences.isRequestSaveDataEnabled.collectAsState(initial = true)
     val autoSaveAppInfoEnabled by autofillPreferences.isAutoSaveAppInfoEnabled.collectAsState(initial = true)
@@ -297,6 +298,19 @@ fun AutofillSettingsScreen(
                     onCheckedChange = {
                         scope.launch {
                             autofillPreferences.setManualSelectionEnabled(it)
+                        }
+                    }
+                )
+
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                SwitchSettingItem(
+                    icon = Icons.Outlined.Tune,
+                    title = stringResource(R.string.autofill_bitwarden_compat_mode_title),
+                    subtitle = stringResource(R.string.autofill_bitwarden_compat_mode_desc),
+                    checked = bitwardenCompatAutofillEnabled,
+                    onCheckedChange = {
+                        scope.launch {
+                            autofillPreferences.setUseBitwardenCompatAutofill(it)
                         }
                     }
                 )

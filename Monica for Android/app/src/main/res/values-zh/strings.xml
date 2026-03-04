@@ -776,7 +776,7 @@
     <string name="custom_icon_load_more">加载更多图标（剩余 %1$d 个）</string>
     <string name="custom_icon_upload_success">图标上传成功</string>
     <string name="custom_icon_upload_failed">上传失败：%1$s</string>
-    <string name="settings_version_number">V1.0.26a</string>
+    <string name="settings_version_number">V1.0.27</string>
     <string name="settings_support_author">支持作者</string>
     <string name="settings_support_author_description">感谢您的支持</string>
     <string name="settings_privacy_policy">隐私政策</string>
@@ -1216,6 +1216,8 @@
     <string name="autofill_fill_suggestions_desc">自动显示匹配的密码建议</string>
     <string name="autofill_fill_manual_selection">手动选择</string>
     <string name="autofill_fill_manual_selection_desc">允许手动选择要填充的密码</string>
+    <string name="autofill_bitwarden_compat_mode_title">Bitwarden 兼容自动填充</string>
+    <string name="autofill_bitwarden_compat_mode_desc">登录字段改用 Bitwarden 风格模型（测试模式）</string>
     
     <!-- 自动填充设置 - 保存行为 -->
     <string name="autofill_save_behavior_title">保存行为</string>

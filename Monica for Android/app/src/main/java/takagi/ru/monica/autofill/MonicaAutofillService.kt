@@ -47,6 +47,7 @@ import takagi.ru.monica.autofill.core.safeTextOrNull
 import takagi.ru.monica.autofill.data.AutofillContext
 import takagi.ru.monica.autofill.data.PasswordMatch
 import takagi.ru.monica.autofill.builder.AutofillDatasetBuilder
+import takagi.ru.monica.autofill.bwcompat.processor.AutofillProcessor as BwCompatAutofillProcessor
 import takagi.ru.monica.utils.DeviceUtils
 import takagi.ru.monica.utils.PermissionGuide
 
@@ -78,6 +79,7 @@ class MonicaAutofillService : AutofillService() {
     // 📦 数据仓库和缓存 - Koin 注入
     private val autofillRepository: AutofillRepository by inject()
     private val autofillCache: AutofillCache by inject()
+    private val bwCompatAutofillProcessor by lazy { BwCompatAutofillProcessor(applicationContext) }
     
     // SMS Retriever Helper for OTP auto-read
     private var smsRetrieverHelper: SmsRetrieverHelper? = null
@@ -729,6 +731,53 @@ class MonicaAutofillService : AutofillService() {
         // 始终显示填充选项,即使没有匹配的密码也会显示"生成强密码"
         
         autofillPreferences.touchAutofillInteraction(identifier)
+
+        val useBitwardenCompatAutofill = autofillPreferences.useBitwardenCompatAutofill.first()
+        if (useBitwardenCompatAutofill) {
+            try {
+                AutofillLogger.i("RESPONSE", "Bitwarden-compatible autofill mode enabled")
+                val bwCompatUri = effectiveParsedStructure.webDomain
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { "https://$it" }
+                    ?: "androidapp://$packageName"
+                val bwCompatResponse = bwCompatAutofillProcessor.process(
+                    packageName = packageName,
+                    uri = bwCompatUri,
+                    credentialTargets = effectiveCredentialTargets,
+                    inlineRequest = inlineRequest,
+                    passwords = matchedPasswords
+                )
+                if (bwCompatResponse != null) {
+                    AutofillLogger.i("RESPONSE", "Bitwarden-compatible response created successfully")
+                    return bwCompatResponse
+                }
+                AutofillLogger.w("RESPONSE", "Bitwarden-compatible response was empty, trying manual-entry-only fallback")
+                buildBwCompatManualFallbackResponse(
+                    packageName = packageName,
+                    webDomain = effectiveParsedStructure.webDomain,
+                    credentialTargets = effectiveCredentialTargets,
+                    inlineRequest = inlineRequest,
+                    suggestedPasswordIds = matchedPasswords.map { it.id }.toLongArray()
+                )?.let { fallbackResponse ->
+                    AutofillLogger.i("RESPONSE", "Bitwarden-compatible manual fallback response created")
+                    return fallbackResponse
+                }
+                AutofillLogger.w("RESPONSE", "Bitwarden-compatible manual fallback unavailable, fallback to Monica response")
+            } catch (e: Exception) {
+                AutofillLogger.e("RESPONSE", "Bitwarden-compatible pipeline failed, trying manual-entry-only fallback", e)
+                buildBwCompatManualFallbackResponse(
+                    packageName = packageName,
+                    webDomain = effectiveParsedStructure.webDomain,
+                    credentialTargets = effectiveCredentialTargets,
+                    inlineRequest = inlineRequest,
+                    suggestedPasswordIds = matchedPasswords.map { it.id }.toLongArray()
+                )?.let { fallbackResponse ->
+                    AutofillLogger.i("RESPONSE", "Bitwarden-compatible manual fallback response created after exception")
+                    return fallbackResponse
+                }
+                AutofillLogger.w("RESPONSE", "Bitwarden-compatible manual fallback unavailable after exception, fallback to Monica response")
+            }
+        }
         
         return buildFillResponseEnhanced(
             passwords = matchedPasswords, 
@@ -1437,6 +1486,101 @@ class MonicaAutofillService : AutofillService() {
             // 如果失败,继续使用标准方式
             buildStandardResponse(passwords, parsedStructure, fieldCollection, enhancedCollection, packageName, inlineRequest)
         }
+    }
+
+    private fun buildBwCompatManualFallbackResponse(
+        packageName: String,
+        webDomain: String?,
+        credentialTargets: List<ParsedItem>,
+        inlineRequest: InlineSuggestionsRequest?,
+        suggestedPasswordIds: LongArray,
+    ): FillResponse? {
+        val authTargets = selectAuthenticationTargets(credentialTargets)
+        if (authTargets.isEmpty()) {
+            AutofillLogger.w("RESPONSE", "Manual fallback skipped: no authentication targets")
+            return null
+        }
+
+        val responseBuilder = FillResponse.Builder()
+        val manualPresentation = RemoteViews(this.packageName, R.layout.autofill_manual_card_v2).apply {
+            setTextViewText(R.id.text_title, getString(R.string.autofill_manual_entry_title))
+            setViewVisibility(R.id.text_username, android.view.View.GONE)
+            setImageViewResource(R.id.icon_app, R.drawable.ic_list)
+        }
+
+        val args = AutofillPickerActivityV2.Args(
+            applicationId = packageName,
+            webDomain = webDomain,
+            autofillIds = ArrayList(authTargets.map { it.id }),
+            autofillHints = ArrayList(authTargets.map { it.hint.name }),
+            suggestedPasswordIds = suggestedPasswordIds,
+            isSaveMode = false,
+            rememberLastFilled = false,
+        )
+        val pickerIntent = AutofillPickerActivityV2.getIntent(this, args)
+        val requestCode = buildString {
+            append(packageName)
+            append('|')
+            append(webDomain.orEmpty())
+            append('|')
+            append(authTargets.joinToString(separator = ",") { it.id.toString() })
+        }.hashCode() and 0x7FFFFFFF
+        val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_MUTABLE
+        } else {
+            PendingIntent.FLAG_CANCEL_CURRENT
+        }
+        val manualPendingIntent = PendingIntent.getActivity(
+            this,
+            requestCode,
+            pickerIntent,
+            flags
+        )
+
+        val manualInline = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val inlineSpecs = inlineRequest?.inlinePresentationSpecs
+            if (!inlineSpecs.isNullOrEmpty()) {
+                val manualSpec = inlineSpecs.last()
+                AutofillDatasetBuilder.InlinePresentationBuilder.tryCreate(
+                    context = this,
+                    spec = manualSpec,
+                    specs = inlineSpecs,
+                    index = inlineSpecs.lastIndex,
+                    pendingIntent = manualPendingIntent,
+                    title = getString(R.string.autofill_manual_entry_title),
+                    subtitle = webDomain?.takeIf { it.isNotBlank() } ?: packageName,
+                    icon = AutofillDatasetBuilder.InlinePresentationBuilder.createAppIcon(
+                        context = this,
+                        packageName = packageName
+                    ),
+                    contentDescription = getString(R.string.autofill_manual_entry_title)
+                )
+            } else {
+                null
+            }
+        } else {
+            null
+        }
+
+        val placeholder = AutofillValue.forText("MONICA_AUTOFILL_MANUAL_PLACEHOLDER")
+        val manualFields = linkedMapOf<AutofillId, AutofillDatasetBuilder.FieldData?>()
+        authTargets.forEach { target ->
+            manualFields[target.id] = AutofillDatasetBuilder.FieldData(
+                value = placeholder,
+                presentation = manualPresentation
+            )
+        }
+
+        val manualDatasetBuilder = AutofillDatasetBuilder.create(
+            menuPresentation = manualPresentation,
+            fields = manualFields
+        ) { manualInline }
+        manualDatasetBuilder.setAuthentication(manualPendingIntent.intentSender)
+        responseBuilder.addDataset(manualDatasetBuilder.build())
+
+        return runCatching { responseBuilder.build() }
+            .onFailure { AutofillLogger.e("RESPONSE", "Manual fallback build failed", it) }
+            .getOrNull()
     }
     
     /**

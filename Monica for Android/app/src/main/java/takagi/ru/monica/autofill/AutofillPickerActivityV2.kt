@@ -53,6 +53,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.core.app.NotificationManagerCompat
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -178,7 +179,8 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         val suggestedPasswordIds: LongArray? = null,
         val isSaveMode: Boolean = false,
         val fieldSignatureKey: String? = null,
-        val responseAuthMode: Boolean = false
+        val responseAuthMode: Boolean = false,
+        val rememberLastFilled: Boolean = true,
     ) : Parcelable {
         override fun equals(other: Any?): Boolean {
             if (this === other) return true
@@ -472,7 +474,9 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             saveUriBinding(password)
         }
 
-        rememberLastFilledCredential(password.id)
+        if (args.rememberLastFilled) {
+            rememberLastFilledCredential(password.id)
+        }
         rememberLearnedFieldSignature()
         processSelectedOtpActions(password)
         
@@ -776,7 +780,9 @@ private fun AutofillPickerContent(
     
     var allPasswords by remember { mutableStateOf<List<PasswordEntry>>(emptyList()) }
     var suggestedPasswords by remember { mutableStateOf<List<PasswordEntry>>(emptyList()) }
+    var searchedPasswords by remember { mutableStateOf<List<PasswordEntry>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
+    var isSearchLoading by remember { mutableStateOf(false) }
     var sourceFilter by remember { mutableStateOf(AutofillStorageSourceFilter.ALL) }
     var selectedKeePassDatabaseId by remember { mutableStateOf<Long?>(null) }
     var selectedKeePassGroupPath by remember { mutableStateOf<String?>(null) }
@@ -784,6 +790,7 @@ private fun AutofillPickerContent(
     var selectedFolderId by remember { mutableStateOf<String?>(null) }
     var isFilterExpanded by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(true) }
+    var visibleMainPasswordCount by remember { mutableStateOf(AUTOFILL_INITIAL_PAGE_SIZE) }
     var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
     var foldersByVault by remember { mutableStateOf<Map<Long, List<BitwardenFolder>>>(emptyMap()) }
     val coroutineScope = rememberCoroutineScope()
@@ -858,6 +865,29 @@ private fun AutofillPickerContent(
         }
     }
 
+    LaunchedEffect(searchQuery) {
+        val query = searchQuery.trim()
+        if (query.isBlank()) {
+            searchedPasswords = emptyList()
+            isSearchLoading = false
+            return@LaunchedEffect
+        }
+        searchedPasswords = emptyList()
+        isSearchLoading = true
+        try {
+            // 防抖，避免每次按键都触发数据库搜索。
+            delay(260)
+            searchedPasswords = withContext(Dispatchers.IO) {
+                repository.searchPasswordEntries(query).first()
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("AutofillPickerV2", "Error searching passwords", e)
+            searchedPasswords = emptyList()
+        } finally {
+            isSearchLoading = false
+        }
+    }
+
     LaunchedEffect(Unit) {
         bitwardenVaults = withContext(Dispatchers.IO) {
             bitwardenRepository.getAllVaults()
@@ -906,8 +936,10 @@ private fun AutofillPickerContent(
         }
     }
 
+    val basePasswords = if (searchQuery.isBlank()) allPasswords else searchedPasswords
+
     val sourceFilteredPasswords by remember(
-        allPasswords,
+        basePasswords,
         sourceFilter,
         selectedKeePassDatabaseId,
         selectedKeePassGroupPath,
@@ -915,7 +947,7 @@ private fun AutofillPickerContent(
         selectedFolderId
     ) {
         derivedStateOf {
-            allPasswords.filter { entry ->
+            basePasswords.filter { entry ->
                 when (sourceFilter) {
                     AutofillStorageSourceFilter.ALL -> true
                     AutofillStorageSourceFilter.LOCAL ->
@@ -953,6 +985,17 @@ private fun AutofillPickerContent(
                 sourceFilteredPasswords.filter { it.matchesSearchQuery(searchQuery) }
             }
         }
+    }
+
+    LaunchedEffect(
+        searchQuery,
+        sourceFilter,
+        selectedKeePassDatabaseId,
+        selectedKeePassGroupPath,
+        selectedVaultId,
+        selectedFolderId
+    ) {
+        visibleMainPasswordCount = AUTOFILL_INITIAL_PAGE_SIZE
     }
 
     val filteredPasswordIds = remember(filteredPasswords) { filteredPasswords.map { it.id }.toHashSet() }
@@ -1170,6 +1213,16 @@ private fun AutofillPickerContent(
                             } else {
                                 filteredPasswords
                             }
+                            val displayedMainPasswords = if (searchQuery.isBlank()) {
+                                mainPasswords.take(
+                                    visibleMainPasswordCount.coerceAtLeast(AUTOFILL_INITIAL_PAGE_SIZE)
+                                )
+                            } else {
+                                // 搜索模式优先保证命中，直接展示搜索结果全集。
+                                mainPasswords
+                            }
+                            val canLoadMoreMainPasswords =
+                                searchQuery.isBlank() && displayedMainPasswords.size < mainPasswords.size
                             val showNoSuggestionsHint = sourceFilter == AutofillStorageSourceFilter.ALL &&
                                 selectedKeePassDatabaseId == null &&
                                 selectedKeePassGroupPath == null &&
@@ -1184,6 +1237,22 @@ private fun AutofillPickerContent(
                                     .fillMaxSize()
                                     .weight(1f)
                             ) {
+                                if (isSearchLoading) {
+                                    item(key = "search_loading") {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(18.dp),
+                                                strokeWidth = 2.dp
+                                            )
+                                        }
+                                    }
+                                }
+
                                 // 建议密码区域（高亮）
                                 if (showSuggestedSection) {
                                     item {
@@ -1277,7 +1346,7 @@ private fun AutofillPickerContent(
                                 }
                                 
                                 items(
-                                    items = mainPasswords,
+                                    items = displayedMainPasswords,
                                     key = { it.id }
                                 ) { password ->
                                     PasswordListItem(
@@ -1313,6 +1382,27 @@ private fun AutofillPickerContent(
                                             }
                                         }
                                     )
+                                }
+
+                                if (canLoadMoreMainPasswords) {
+                                    item(key = "load_more_main_${displayedMainPasswords.size}") {
+                                        LaunchedEffect(displayedMainPasswords.size, mainPasswords.size) {
+                                            visibleMainPasswordCount =
+                                                (visibleMainPasswordCount + AUTOFILL_PAGE_SIZE)
+                                                    .coerceAtMost(mainPasswords.size)
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 10.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(18.dp),
+                                                strokeWidth = 2.dp
+                                            )
+                                        }
+                                    }
                                 }
                                 
                                 item {
@@ -1399,6 +1489,8 @@ private enum class AutofillStorageSourceFilter {
 
 private const val KEEPASS_GROUP_UNCATEGORIZED = "__keepass_uncategorized__"
 private const val BITWARDEN_FOLDER_UNCATEGORIZED = "__bitwarden_uncategorized__"
+private const val AUTOFILL_INITIAL_PAGE_SIZE = 50
+private const val AUTOFILL_PAGE_SIZE = 50
 
 private fun AutofillStorageSourceFilter.labelResId(): Int = when (this) {
     AutofillStorageSourceFilter.ALL -> R.string.filter_all

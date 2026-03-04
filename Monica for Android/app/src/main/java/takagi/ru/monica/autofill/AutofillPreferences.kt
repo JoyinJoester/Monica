@@ -38,6 +38,10 @@ class AutofillPreferences(private val context: Context) {
         
         // 新架构：使用增强匹配引擎
         private val KEY_USE_ENHANCED_MATCHING = booleanPreferencesKey("use_enhanced_matching")
+
+        // Bitwarden 兼容自动填充模式
+        private val KEY_USE_BITWARDEN_COMPAT_AUTOFILL =
+            booleanPreferencesKey("use_bitwarden_compat_autofill")
         
         // 是否尊重自动填充禁用标识
         private val KEY_RESPECT_AUTOFILL_DISABLED = booleanPreferencesKey("respect_autofill_disabled")
@@ -202,6 +206,20 @@ class AutofillPreferences(private val context: Context) {
     suspend fun setUseEnhancedMatching(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[KEY_USE_ENHANCED_MATCHING] = enabled
+        }
+    }
+
+    /**
+     * 是否启用 Bitwarden 兼容自动填充模式
+     * 默认关闭，仅用于对比测试新旧填充链路。
+     */
+    val useBitwardenCompatAutofill: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[KEY_USE_BITWARDEN_COMPAT_AUTOFILL] ?: false
+    }
+
+    suspend fun setUseBitwardenCompatAutofill(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_USE_BITWARDEN_COMPAT_AUTOFILL] = enabled
         }
     }
 

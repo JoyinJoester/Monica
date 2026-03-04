@@ -827,7 +827,7 @@
     <string name="all_navigation_items">All Navigation Items</string>
     <string name="category_all">All</string>
     <string name="hidden">Hidden</string>
-    <string name="settings_version_number">V1.0.26a</string>
+    <string name="settings_version_number">V1.0.27</string>
     <string name="settings_support_author">Support Author</string>
     <string name="settings_support_author_description">Thank you for your support</string>
     <string name="settings_privacy_policy">Privacy Policy</string>
@@ -1382,6 +1382,8 @@
     <string name="autofill_fill_suggestions_desc">Automatically show matching password suggestions</string>
     <string name="autofill_fill_manual_selection">Manual Selection</string>
     <string name="autofill_fill_manual_selection_desc">Allow manual selection of password to fill</string>
+    <string name="autofill_bitwarden_compat_mode_title">Bitwarden-Compatible Autofill</string>
+    <string name="autofill_bitwarden_compat_mode_desc">Use Bitwarden-style autofill model for login fields (test mode)</string>
     <string name="autofill_respect_disabled_flag_title">Respect Autofill disabled flag</string>
     <string name="autofill_respect_disabled_flag_desc">Disables autofill for a browser field that has autofill disabled flag set</string>
     

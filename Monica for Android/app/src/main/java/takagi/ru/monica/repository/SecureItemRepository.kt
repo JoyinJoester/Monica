@@ -4,6 +4,14 @@ import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.SecureItemDao
 import takagi.ru.monica.data.ItemType
 import kotlinx.coroutines.flow.Flow
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import takagi.ru.monica.data.model.TotpData
+import java.net.URLDecoder
+import java.util.Locale
 
 /**
  * Repository for secure items (TOTP, Bank Cards, Documents)
@@ -11,6 +19,14 @@ import kotlinx.coroutines.flow.Flow
 class SecureItemRepository(
     private val secureItemDao: SecureItemDao
 ) {
+    private val json = Json { ignoreUnknownKeys = true }
+
+    private data class TotpFingerprint(
+        val issuer: String,
+        val accountName: String,
+        val secret: String
+    )
+
     
     fun getAllItems(): Flow<List<SecureItem>> {
         return secureItemDao.getAllItems()
@@ -140,22 +156,32 @@ class SecureItemRepository(
                 }
             }
             ItemType.TOTP -> {
-                // 解析新项目的 issuer + accountName
-                val newTotpData = try {
-                    kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-                        .decodeFromString<takagi.ru.monica.data.model.TotpData>(itemData)
-                } catch (e: Exception) { null }
-                
-                if (newTotpData == null) {
-                    existingItems.find { it.title == title }
+                val normalizedTitle = normalizeText(title)
+                val incoming = parseTotpFingerprint(itemData)
+
+                if (incoming == null) {
+                    existingItems.find { normalizeText(it.title) == normalizedTitle }
                 } else {
                     existingItems.find { existing ->
-                        try {
-                            val existingTotpData = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-                                .decodeFromString<takagi.ru.monica.data.model.TotpData>(existing.itemData)
-                            existingTotpData.issuer == newTotpData.issuer && 
-                                existingTotpData.accountName == newTotpData.accountName
-                        } catch (e: Exception) { false }
+                        val candidate = parseTotpFingerprint(existing.itemData)
+                        if (candidate == null) {
+                            normalizeText(existing.title) == normalizedTitle
+                        } else {
+                            val issuerAccountMatch =
+                                incoming.issuer.isNotBlank() &&
+                                    incoming.accountName.isNotBlank() &&
+                                    candidate.issuer.isNotBlank() &&
+                                    candidate.accountName.isNotBlank() &&
+                                    incoming.issuer == candidate.issuer &&
+                                    incoming.accountName == candidate.accountName
+
+                            val secretMatch =
+                                incoming.secret.isNotBlank() &&
+                                    candidate.secret.isNotBlank() &&
+                                    incoming.secret == candidate.secret
+
+                            issuerAccountMatch || secretMatch
+                        }
                     }
                 }
             }
@@ -234,5 +260,104 @@ class SecureItemRepository(
      */
     fun getActiveItemsByType(type: ItemType): kotlinx.coroutines.flow.Flow<List<SecureItem>> {
         return secureItemDao.getActiveItemsByType(type)
+    }
+
+    private fun parseTotpFingerprint(itemData: String): TotpFingerprint? {
+        runCatching {
+            json.decodeFromString<TotpData>(itemData)
+        }.getOrNull()?.let { data ->
+            return TotpFingerprint(
+                issuer = normalizeText(data.issuer),
+                accountName = normalizeText(data.accountName),
+                secret = normalizeSecret(data.secret)
+            )
+        }
+
+        runCatching {
+            json.parseToJsonElement(itemData).jsonObject
+        }.getOrNull()?.let { obj ->
+            val issuer = obj["issuer"]?.jsonPrimitive?.contentOrNull.orEmpty()
+            val account = obj["accountName"]?.jsonPrimitive?.contentOrNull
+                ?: obj["account"]?.jsonPrimitive?.contentOrNull
+                ?: obj["name"]?.jsonPrimitive?.contentOrNull
+                ?: ""
+            val secret = obj["secret"]?.jsonPrimitive?.contentOrNull.orEmpty()
+            if (issuer.isNotBlank() || account.isNotBlank() || secret.isNotBlank()) {
+                return TotpFingerprint(
+                    issuer = normalizeText(issuer),
+                    accountName = normalizeText(account),
+                    secret = normalizeSecret(secret)
+                )
+            }
+        }
+
+        parseOtpUriFingerprint(itemData)?.let { return it }
+
+        return null
+    }
+
+    private fun parseOtpUriFingerprint(itemData: String): TotpFingerprint? {
+        val raw = itemData.trim()
+        val lower = raw.lowercase(Locale.ROOT)
+        if (!lower.startsWith("otpauth://") && !lower.startsWith("motp://")) {
+            return null
+        }
+
+        return runCatching {
+            val uri = java.net.URI(raw)
+            val queryParams = parseQueryParams(uri.rawQuery)
+            val secret = queryParams["secret"].orEmpty()
+            if (secret.isBlank()) return null
+
+            val issuerFromQuery = queryParams["issuer"].orEmpty()
+            val label = uri.rawPath?.removePrefix("/").orEmpty()
+            val decodedLabel = urlDecode(label)
+            val issuerFromLabel = decodedLabel.substringBefore(":", missingDelimiterValue = "").trim()
+            val accountFromLabel = decodedLabel.substringAfter(":", missingDelimiterValue = decodedLabel).trim()
+            val accountFromQuery = queryParams["accountName"].orEmpty()
+
+            val issuer = issuerFromQuery.ifBlank { issuerFromLabel }
+            val account = accountFromQuery.ifBlank {
+                if (decodedLabel.contains(":")) accountFromLabel else decodedLabel
+            }
+
+            TotpFingerprint(
+                issuer = normalizeText(issuer),
+                accountName = normalizeText(account),
+                secret = normalizeSecret(secret)
+            )
+        }.getOrNull()
+    }
+
+    private fun parseQueryParams(rawQuery: String?): Map<String, String> {
+        if (rawQuery.isNullOrBlank()) return emptyMap()
+        return rawQuery
+            .split("&")
+            .mapNotNull { segment ->
+                if (segment.isBlank()) return@mapNotNull null
+                val key = segment.substringBefore("=")
+                if (key.isBlank()) return@mapNotNull null
+                val value = segment.substringAfter("=", "")
+                urlDecode(key) to urlDecode(value)
+            }
+            .toMap()
+    }
+
+    private fun urlDecode(value: String): String {
+        return runCatching { URLDecoder.decode(value, Charsets.UTF_8.name()) }
+            .getOrElse { value }
+    }
+
+    private fun normalizeText(value: String?): String {
+        return value?.trim()?.lowercase(Locale.ROOT).orEmpty()
+    }
+
+    private fun normalizeSecret(value: String?): String {
+        return value
+            ?.trim()
+            ?.replace(" ", "")
+            ?.replace("-", "")
+            ?.uppercase(Locale.ROOT)
+            .orEmpty()
     }
 }

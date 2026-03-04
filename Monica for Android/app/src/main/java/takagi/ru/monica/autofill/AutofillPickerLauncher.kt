@@ -83,7 +83,6 @@ object AutofillPickerLauncher {
         )
 
         var lastFilledDatasetResult: LastFilledDatasetBuildResult? = null
-        var lastFilledCanStandAlone = false
         if (entryMode != DirectEntryMode.TRIGGER_ONLY && lastFilledPassword != null) {
             val datasetResult = buildLastFilledDataset(
                 context = context,
@@ -92,25 +91,13 @@ object AutofillPickerLauncher {
             )
             if (datasetResult != null) {
                 lastFilledDatasetResult = datasetResult
-                val needsUsernameLike = fillTargets.any {
-                    it.hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME ||
-                        it.hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS ||
-                        it.hint == EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER
-                }
-                val needsPassword = fillTargets.any {
-                    it.hint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD ||
-                        it.hint == EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD
-                }
-                lastFilledCanStandAlone =
-                    (!needsUsernameLike || datasetResult.hasUsernameLikeValue) &&
-                        (!needsPassword || datasetResult.hasPasswordValue)
             }
         }
 
-        val includeTriggerEntry = when (entryMode) {
-            DirectEntryMode.LAST_FILLED_ONLY -> lastFilledDatasetResult == null || !lastFilledCanStandAlone
-            else -> true
-        }
+        // Invariant: always keep the picker/manual trigger entry visible.
+        // Some apps issue follow-up requests after clearing fields; hiding this entry
+        // causes the UI to degrade into "last-filled only" and breaks re-entry.
+        val includeTriggerEntry = true
         val inlineSpecs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             inlineRequest?.inlinePresentationSpecs
         } else {
