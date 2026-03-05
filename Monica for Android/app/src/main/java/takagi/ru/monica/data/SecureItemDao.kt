@@ -189,6 +189,16 @@ interface SecureItemDao {
      */
     @Query("SELECT * FROM secure_items WHERE bitwarden_cipher_id = :cipherId LIMIT 1")
     suspend fun getByBitwardenCipherId(cipherId: String): SecureItem?
+
+    @Query(
+        """
+        SELECT * FROM secure_items
+        WHERE bitwarden_vault_id = :vaultId
+          AND bitwarden_cipher_id = :cipherId
+        LIMIT 1
+        """
+    )
+    suspend fun getByBitwardenCipherIdInVault(vaultId: Long, cipherId: String): SecureItem?
     
     /**
      * 获取指定 Vault 的所有项目
@@ -219,6 +229,9 @@ interface SecureItemDao {
      */
     @Query("SELECT COUNT(*) FROM secure_items WHERE bitwarden_vault_id = :vaultId AND isDeleted = 0")
     suspend fun getBitwardenEntriesCount(vaultId: Long): Int
+
+    @Query("DELETE FROM secure_items WHERE bitwarden_vault_id = :vaultId")
+    suspend fun deleteAllByBitwardenVaultId(vaultId: Long)
 
     /**
      * 删除指定 Vault 下所有已同步的 Bitwarden 安全项。

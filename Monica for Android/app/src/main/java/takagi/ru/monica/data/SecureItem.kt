@@ -12,7 +12,14 @@ import java.util.Date
  */
 @Entity(
     tableName = "secure_items",
-    indices = [Index(value = ["isDeleted"])]
+    indices = [
+        Index(value = ["isDeleted"]),
+        Index(
+            value = ["bitwarden_vault_id", "bitwarden_cipher_id"],
+            unique = true,
+            name = "index_secure_items_bitwarden_vault_cipher_unique"
+        )
+    ]
 )
 data class SecureItem(
     @PrimaryKey(autoGenerate = true)

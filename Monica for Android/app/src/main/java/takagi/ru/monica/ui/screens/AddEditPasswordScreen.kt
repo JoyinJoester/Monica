@@ -196,12 +196,7 @@ fun AddEditPasswordScreen(
     var bitwardenVaultId by rememberSaveable { mutableStateOf<Long?>(null) }
     var bitwardenFolderId by rememberSaveable { mutableStateOf<String?>(null) }
     val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
-    var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
-    
-    // 加载 Bitwarden vaults
-    LaunchedEffect(Unit) {
-        bitwardenVaults = bitwardenRepository.getAllVaults()
-    }
+    val bitwardenVaults by bitwardenRepository.getAllVaultsFlow().collectAsState(initial = emptyList())
     
     // SSO 登录方式字段
     var loginType by rememberSaveable { mutableStateOf("PASSWORD") }

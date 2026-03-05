@@ -14,7 +14,15 @@ import java.util.Date
 @Parcelize
 @Entity(
     tableName = "password_entries",
-    indices = [Index(value = ["isDeleted"]), Index(value = ["isArchived"])]
+    indices = [
+        Index(value = ["isDeleted"]),
+        Index(value = ["isArchived"]),
+        Index(
+            value = ["bitwarden_vault_id", "bitwarden_cipher_id"],
+            unique = true,
+            name = "index_password_entries_bitwarden_vault_cipher_unique"
+        )
+    ]
 )
 data class PasswordEntry(
     @PrimaryKey(autoGenerate = true)

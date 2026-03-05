@@ -57,7 +57,10 @@ interface CategoryDao {
      */
     @Query("UPDATE categories SET bitwarden_vault_id = NULL, bitwarden_folder_id = NULL, sync_item_types = NULL WHERE bitwarden_folder_id = :folderId")
     suspend fun unlinkByFolderId(folderId: String)
-    
+
+    @Query("UPDATE categories SET bitwarden_vault_id = NULL, bitwarden_folder_id = NULL, sync_item_types = NULL WHERE bitwarden_vault_id = :vaultId")
+    suspend fun unlinkByVaultId(vaultId: Long)
+
     /**
      * 更新同步类型
      */

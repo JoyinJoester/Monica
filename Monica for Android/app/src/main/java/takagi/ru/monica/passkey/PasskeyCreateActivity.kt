@@ -114,6 +114,14 @@ class PasskeyCreateActivity : FragmentActivity() {
     private var pendingKeepassGroupPath: String? = null
     private var pendingBitwardenVaultId: Long? = null
     private var pendingBitwardenFolderId: String? = null
+
+    private data class ResolvedStorageTarget(
+        val categoryId: Long?,
+        val keepassDatabaseId: Long?,
+        val keepassGroupPath: String?,
+        val bitwardenVaultId: Long?,
+        val bitwardenFolderId: String?
+    )
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -260,8 +268,7 @@ class PasskeyCreateActivity : FragmentActivity() {
                 var selectedBitwardenFolderId by remember { mutableStateOf<String?>(pendingBitwardenFolderId) }
                 val context = LocalContext.current
                 val scope = rememberCoroutineScope()
-                val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
-                var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
+                val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
                 val securityManager = remember { takagi.ru.monica.security.SecurityManager(context) }
                 val keePassService = remember {
                     KeePassKdbxService(
@@ -285,9 +292,6 @@ class PasskeyCreateActivity : FragmentActivity() {
                         }
                         flow
                     }
-                }
-                LaunchedEffect(Unit) {
-                    bitwardenVaults = bitwardenRepository.getAllVaults()
                 }
 
                 PasskeyCreateScreen(
@@ -361,20 +365,13 @@ class PasskeyCreateActivity : FragmentActivity() {
                         showPasswordPicker = false
                     },
                     onSelect = { password ->
+                        val resolvedTarget = resolveStorageFromPassword(password)
                         pendingBoundPasswordId = password.id
-                        selectedCategoryId = password.categoryId
-                        selectedKeePassDatabaseId = password.keepassDatabaseId
-                        selectedKeePassGroupPath = password.keepassGroupPath
-                        selectedBitwardenVaultId = if (password.keepassDatabaseId != null) {
-                            null
-                        } else {
-                            password.bitwardenVaultId
-                        }
-                        selectedBitwardenFolderId = if (password.keepassDatabaseId != null) {
-                            null
-                        } else {
-                            password.bitwardenFolderId
-                        }
+                        selectedCategoryId = resolvedTarget.categoryId
+                        selectedKeePassDatabaseId = resolvedTarget.keepassDatabaseId
+                        selectedKeePassGroupPath = resolvedTarget.keepassGroupPath
+                        selectedBitwardenVaultId = resolvedTarget.bitwardenVaultId
+                        selectedBitwardenFolderId = resolvedTarget.bitwardenFolderId
                         pendingCategoryId = selectedCategoryId
                         pendingKeepassDatabaseId = selectedKeePassDatabaseId
                         pendingKeepassGroupPath = selectedKeePassGroupPath
@@ -439,6 +436,35 @@ class PasskeyCreateActivity : FragmentActivity() {
             rpJson?.optString("name") ?: defaultRpId
         } catch (e: Exception) {
             defaultRpId
+        }
+    }
+
+    /**
+     * 与主程序通行密钥绑定页保持一致：位置目标互斥（Monica/KeePass/Bitwarden 三选一）。
+     */
+    private fun resolveStorageFromPassword(password: PasswordEntry): ResolvedStorageTarget {
+        return when {
+            password.bitwardenVaultId != null -> ResolvedStorageTarget(
+                categoryId = null,
+                keepassDatabaseId = null,
+                keepassGroupPath = null,
+                bitwardenVaultId = password.bitwardenVaultId,
+                bitwardenFolderId = password.bitwardenFolderId
+            )
+            password.keepassDatabaseId != null -> ResolvedStorageTarget(
+                categoryId = null,
+                keepassDatabaseId = password.keepassDatabaseId,
+                keepassGroupPath = password.keepassGroupPath,
+                bitwardenVaultId = null,
+                bitwardenFolderId = null
+            )
+            else -> ResolvedStorageTarget(
+                categoryId = password.categoryId,
+                keepassDatabaseId = null,
+                keepassGroupPath = null,
+                bitwardenVaultId = null,
+                bitwardenFolderId = null
+            )
         }
     }
     
@@ -520,9 +546,16 @@ class PasskeyCreateActivity : FragmentActivity() {
 
             val discoverable = parseDiscoverable(requestJson)
             val normalizedRpId = PasskeyRpIdNormalizer.normalize(rpId) ?: rpId
-            val initialBitwardenVaultId = pendingBitwardenVaultId
-            val initialBitwardenFolderId = pendingBitwardenFolderId
-            val initialKeepassGroupPath = pendingKeepassGroupPath
+            val resolvedBoundTarget = kotlinx.coroutines.runBlocking {
+                pendingBoundPasswordId
+                    ?.let { passwordId -> database.passwordEntryDao().getPasswordEntryById(passwordId) }
+                    ?.let(::resolveStorageFromPassword)
+            }
+            val initialCategoryId = resolvedBoundTarget?.categoryId ?: pendingCategoryId
+            val initialKeepassDatabaseId = resolvedBoundTarget?.keepassDatabaseId ?: pendingKeepassDatabaseId
+            val initialKeepassGroupPath = resolvedBoundTarget?.keepassGroupPath ?: pendingKeepassGroupPath
+            val initialBitwardenVaultId = resolvedBoundTarget?.bitwardenVaultId ?: pendingBitwardenVaultId
+            val initialBitwardenFolderId = resolvedBoundTarget?.bitwardenFolderId ?: pendingBitwardenFolderId
              
             // 保存到数据库
             val passkeyEntry = PasskeyEntry(
@@ -541,8 +574,8 @@ class PasskeyCreateActivity : FragmentActivity() {
                 isDiscoverable = discoverable,
                 signCount = 0L,
                 boundPasswordId = pendingBoundPasswordId,
-                categoryId = pendingCategoryId,
-                keepassDatabaseId = pendingKeepassDatabaseId,
+                categoryId = initialCategoryId,
+                keepassDatabaseId = initialKeepassDatabaseId,
                 keepassGroupPath = initialKeepassGroupPath,
                 bitwardenVaultId = initialBitwardenVaultId,
                 bitwardenFolderId = initialBitwardenFolderId,

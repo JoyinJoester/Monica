@@ -179,11 +179,30 @@ interface PasskeyDao {
     @Query("SELECT * FROM passkeys WHERE bitwarden_cipher_id = :cipherId LIMIT 1")
     suspend fun getByBitwardenCipherId(cipherId: String): PasskeyEntry?
 
+    @Query(
+        """
+        SELECT * FROM passkeys
+        WHERE bitwarden_vault_id = :vaultId
+          AND bitwarden_cipher_id = :cipherId
+        LIMIT 1
+        """
+    )
+    suspend fun getByBitwardenCipherIdInVault(vaultId: Long, cipherId: String): PasskeyEntry?
+
     /**
      * 根据 Bitwarden Cipher ID 获取所有 Passkey
      */
     @Query("SELECT * FROM passkeys WHERE bitwarden_cipher_id = :cipherId")
     suspend fun getAllByBitwardenCipherId(cipherId: String): List<PasskeyEntry>
+
+    @Query(
+        """
+        SELECT * FROM passkeys
+        WHERE bitwarden_vault_id = :vaultId
+          AND bitwarden_cipher_id = :cipherId
+        """
+    )
+    suspend fun getAllByBitwardenCipherIdInVault(vaultId: Long, cipherId: String): List<PasskeyEntry>
     
     /**
      * 获取指定 Vault 的所有 Passkeys

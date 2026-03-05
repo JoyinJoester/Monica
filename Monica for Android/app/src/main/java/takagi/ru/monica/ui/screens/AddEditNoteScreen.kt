@@ -166,17 +166,12 @@ fun AddEditNoteScreen(
     val database = remember { PasswordDatabase.getDatabase(context) }
     val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList())
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
-    val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
-    var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
+    val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
     val draftStorageTarget by viewModel.draftStorageTarget.collectAsState()
     val rememberedStorageTarget by settingsManager
         .rememberedStorageTargetFlow(SettingsManager.StorageTargetScope.NOTE)
         .collectAsState(initial = null as RememberedStorageTarget?)
     
-    LaunchedEffect(Unit) {
-        bitwardenVaults = bitwardenRepository.getAllVaults()
-    }
-
     LaunchedEffect(noteId) {
         if (!isEditing) return@LaunchedEffect
         val note = viewModel.getNoteById(noteId)

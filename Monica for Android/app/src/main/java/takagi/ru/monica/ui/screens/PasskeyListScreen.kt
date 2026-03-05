@@ -132,7 +132,7 @@ fun PasskeyListScreen(
     val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList())
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
     val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
-    var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
+    val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
     val securityManager = remember { takagi.ru.monica.security.SecurityManager(context) }
     val keePassService = remember {
         KeePassKdbxService(
@@ -158,10 +158,6 @@ fun PasskeyListScreen(
         }
     }
     val categoryMap = remember(categories) { categories.associateBy { it.id } }
-
-    LaunchedEffect(Unit) {
-        bitwardenVaults = bitwardenRepository.getAllVaults()
-    }
 
     val bindingPasskeys = remember(passwords, searchQuery) {
         val rawList = passwords.flatMap { password ->
@@ -207,13 +203,15 @@ fun PasskeyListScreen(
                     passkey.userName.contains(searchQuery, ignoreCase = true) ||
                     passkey.userDisplayName.contains(searchQuery, ignoreCase = true)
             }
-        }
+        }.distinctBy { it.credentialId }
     }
 
     val combinedPasskeys = remember(passkeys, bindingPasskeys) {
         if (bindingPasskeys.isEmpty()) return@remember passkeys
-        val existingIds = passkeys.map { it.credentialId }.toSet()
-        passkeys + bindingPasskeys.filterNot { it.credentialId in existingIds }
+        val merged = LinkedHashMap<String, PasskeyEntry>(passkeys.size + bindingPasskeys.size)
+        passkeys.forEach { merged[it.credentialId] = it }
+        bindingPasskeys.forEach { if (!merged.containsKey(it.credentialId)) merged[it.credentialId] = it }
+        merged.values.toList()
     }
     var passkeyMigratableById by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
     LaunchedEffect(combinedPasskeys) {
@@ -343,11 +341,13 @@ fun PasskeyListScreen(
     }
     val visiblePasskeys = remember(categoryFilteredPasskeys, pendingDeletePasskey) {
         val deletingId = pendingDeletePasskey?.credentialId
-        if (deletingId == null) {
+        val baseList = if (deletingId == null) {
             categoryFilteredPasskeys
         } else {
             categoryFilteredPasskeys.filterNot { it.credentialId == deletingId }
         }
+        // 防御性去重：避免历史重复绑定数据触发 LazyColumn key 冲突崩溃
+        baseList.distinctBy { it.credentialId }
     }
     val failedPasskeyCount = remember(visiblePasskeys) {
         visiblePasskeys.count { it.syncStatus == "FAILED" }

@@ -377,11 +377,30 @@ interface PasswordEntryDao {
     @Query("SELECT * FROM password_entries WHERE bitwarden_cipher_id = :cipherId LIMIT 1")
     suspend fun getByBitwardenCipherId(cipherId: String): PasswordEntry?
 
+    @Query(
+        """
+        SELECT * FROM password_entries
+        WHERE bitwarden_vault_id = :vaultId
+          AND bitwarden_cipher_id = :cipherId
+        LIMIT 1
+        """
+    )
+    suspend fun getByBitwardenCipherIdInVault(vaultId: Long, cipherId: String): PasswordEntry?
+
     /**
      * 根据 Bitwarden Cipher ID 获取所有条目（用于清理历史重复数据）
      */
     @Query("SELECT * FROM password_entries WHERE bitwarden_cipher_id = :cipherId")
     suspend fun getAllByBitwardenCipherId(cipherId: String): List<PasswordEntry>
+
+    @Query(
+        """
+        SELECT * FROM password_entries
+        WHERE bitwarden_vault_id = :vaultId
+          AND bitwarden_cipher_id = :cipherId
+        """
+    )
+    suspend fun getAllByBitwardenCipherIdInVault(vaultId: Long, cipherId: String): List<PasswordEntry>
 
     /**
      * 删除指定 Vault 下所有已同步的 Bitwarden 密码条目。

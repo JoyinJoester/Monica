@@ -3,6 +3,7 @@ package takagi.ru.monica.bitwarden.repository
 import android.content.Context
 import android.util.Base64
 import android.util.Log
+import androidx.room.withTransaction
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import kotlinx.coroutines.Dispatchers
@@ -130,6 +131,8 @@ class BitwardenRepository(private val context: Context) {
     private val conflictDao = database.bitwardenConflictBackupDao()
     private val pendingOpDao = database.bitwardenPendingOperationDao()
     private val passwordEntryDao = database.passwordEntryDao()
+    private val secureItemDao = database.secureItemDao()
+    private val passkeyDao = database.passkeyDao()
     private val categoryDao = database.categoryDao()
     
     // Services
@@ -164,6 +167,8 @@ class BitwardenRepository(private val context: Context) {
     suspend fun getAllVaults(): List<BitwardenVault> = withContext(Dispatchers.IO) {
         vaultDao.getAllVaults()
     }
+
+    fun getAllVaultsFlow(): Flow<List<BitwardenVault>> = vaultDao.getAllVaultsFlow()
     
     /**
      * 获取活跃的 Vault
@@ -517,19 +522,24 @@ class BitwardenRepository(private val context: Context) {
             // 清除缓存
             symmetricKeyCache.remove(vaultId)
             accessTokenCache.remove(vaultId)
-            
-            // 删除该 Vault 的所有密码条目
-            passwordEntryDao.deleteAllByBitwardenVaultId(vaultId)
-            
-            // 删除文件夹
-            folderDao.deleteByVault(vaultId)
 
-            // 删除 Send 缓存
-            sendDao.deleteByVault(vaultId)
-            
-            // 删除 Vault
-            vaultDao.deleteById(vaultId)
-            
+            database.withTransaction {
+                // 先清理所有引用 vault_id 的表，避免外键约束导致登出失败。
+                pendingOpDao.deleteByVault(vaultId)
+                conflictDao.deleteByVault(vaultId)
+                sendDao.deleteByVault(vaultId)
+                folderDao.deleteByVault(vaultId)
+
+                // 清理本地业务数据
+                passwordEntryDao.deleteAllByBitwardenVaultId(vaultId)
+                secureItemDao.deleteAllByBitwardenVaultId(vaultId)
+                passkeyDao.deleteAllByBitwardenVaultId(vaultId)
+                categoryDao.unlinkByVaultId(vaultId)
+
+                // 最后删除 Vault 本体
+                vaultDao.deleteById(vaultId)
+            }
+
             // 重置活跃 Vault
             if (securePrefs.getLong(KEY_ACTIVE_VAULT_ID, -1) == vaultId) {
                 securePrefs.edit().remove(KEY_ACTIVE_VAULT_ID).apply()
@@ -1189,7 +1199,7 @@ class BitwardenRepository(private val context: Context) {
             
             // 获取对应的密码条目
             val cipherId = conflict.bitwardenCipherId ?: return@withContext false
-            val entry = passwordEntryDao.getByBitwardenCipherId(cipherId)
+            val entry = passwordEntryDao.getByBitwardenCipherIdInVault(conflict.vaultId, cipherId)
             
             if (entry != null) {
                 // 使用备份的服务器数据更新本地条目

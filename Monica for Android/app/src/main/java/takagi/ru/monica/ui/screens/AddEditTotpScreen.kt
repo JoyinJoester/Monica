@@ -141,11 +141,7 @@ fun AddEditTotpScreen(
     var bitwardenVaultId by rememberSaveable { mutableStateOf(initialBitwardenVaultId) }
     var bitwardenFolderId by rememberSaveable { mutableStateOf(initialBitwardenFolderId) }
     val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
-    var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
-
-    LaunchedEffect(Unit) {
-        bitwardenVaults = bitwardenRepository.getAllVaults()
-    }
+    val bitwardenVaults by bitwardenRepository.getAllVaultsFlow().collectAsState(initial = emptyList())
 
     fun normalizedIconFileName(value: String?): String? = value?.takeIf { it.isNotBlank() }?.let { File(it).name }
     fun isOriginalUploadedIconFile(value: String?): Boolean {

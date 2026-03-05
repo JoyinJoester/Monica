@@ -237,7 +237,7 @@ fun UnifiedMoveToCategoryBottomSheet(
                 if (bitwardenVaults.isNotEmpty()) {
                     item {
                         MoveSectionCard(title = stringResource(R.string.filter_bitwarden)) {
-                            bitwardenVaults.forEach { vault ->
+                            bitwardenVaults.forEachIndexed { index, vault ->
                                 val expanded = bitwardenExpanded.value[vault.id] ?: false
                                 val folders by (
                                     if (expanded) getBitwardenFolders(vault.id) else flowOf(emptyList())
@@ -309,6 +309,9 @@ fun UnifiedMoveToCategoryBottomSheet(
                                             }
                                         }
                                     }
+                                }
+                                if (index < bitwardenVaults.lastIndex) {
+                                    Spacer(modifier = Modifier.height(6.dp))
                                 }
                             }
                         }

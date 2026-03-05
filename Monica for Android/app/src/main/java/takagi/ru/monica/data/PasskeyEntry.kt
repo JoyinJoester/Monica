@@ -36,7 +36,11 @@ import androidx.room.PrimaryKey
     tableName = "passkeys",
     indices = [
         Index(value = ["rp_id"], name = "index_passkeys_rp_id"),
-        Index(value = ["user_name"], name = "index_passkeys_user_name")
+        Index(value = ["user_name"], name = "index_passkeys_user_name"),
+        Index(
+            value = ["bitwarden_vault_id", "bitwarden_cipher_id"],
+            name = "index_passkeys_bitwarden_vault_cipher"
+        )
     ]
 )
 data class PasskeyEntry(

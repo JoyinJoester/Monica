@@ -305,6 +305,9 @@ interface BitwardenConflictBackupDao {
      */
     @Query("DELETE FROM bitwarden_conflict_backups WHERE is_resolved = 1 AND resolved_at < :beforeTimestamp")
     suspend fun deleteResolvedBefore(beforeTimestamp: Long)
+
+    @Query("DELETE FROM bitwarden_conflict_backups WHERE vault_id = :vaultId")
+    suspend fun deleteByVault(vaultId: Long)
 }
 
 /**
@@ -509,6 +512,9 @@ interface BitwardenPendingOperationDao {
         GROUP BY item_type
     """)
     suspend fun getPendingCountByType(vaultId: Long): List<ItemTypeCount>
+
+    @Query("DELETE FROM bitwarden_pending_operations WHERE vault_id = :vaultId")
+    suspend fun deleteByVault(vaultId: Long)
 }
 
 /**

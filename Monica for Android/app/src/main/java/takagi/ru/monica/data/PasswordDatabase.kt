@@ -27,7 +27,7 @@ import takagi.ru.monica.data.bitwarden.*
         BitwardenConflictBackup::class,
         BitwardenPendingOperation::class
     ],
-    version = 43,
+    version = 44,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -1103,6 +1103,64 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Migration 43 -> 44:
+         * 1. 清理 Bitwarden 多库场景下遗留的重复映射数据（按 vault+cipher 收敛）。
+         * 2. 为 password_entries / secure_items 添加 vault+cipher 唯一索引，防止重复插入。
+         * 3. 为 passkeys 添加 vault+cipher 查询索引（非唯一，兼容一个 cipher 多凭据）。
+         */
+        private val MIGRATION_43_44 = object : androidx.room.migration.Migration(43, 44) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 43→44: bitwarden vault+cipher uniqueness hardening")
+
+                    database.execSQL(
+                        """
+                        DELETE FROM password_entries
+                        WHERE bitwarden_vault_id IS NOT NULL
+                          AND bitwarden_cipher_id IS NOT NULL
+                          AND id NOT IN (
+                              SELECT MAX(id)
+                              FROM password_entries
+                              WHERE bitwarden_vault_id IS NOT NULL
+                                AND bitwarden_cipher_id IS NOT NULL
+                              GROUP BY bitwarden_vault_id, bitwarden_cipher_id
+                          )
+                        """.trimIndent()
+                    )
+
+                    database.execSQL(
+                        """
+                        DELETE FROM secure_items
+                        WHERE bitwarden_vault_id IS NOT NULL
+                          AND bitwarden_cipher_id IS NOT NULL
+                          AND id NOT IN (
+                              SELECT MAX(id)
+                              FROM secure_items
+                              WHERE bitwarden_vault_id IS NOT NULL
+                                AND bitwarden_cipher_id IS NOT NULL
+                              GROUP BY bitwarden_vault_id, bitwarden_cipher_id
+                          )
+                        """.trimIndent()
+                    )
+
+                    database.execSQL(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS index_password_entries_bitwarden_vault_cipher_unique ON password_entries(bitwarden_vault_id, bitwarden_cipher_id)"
+                    )
+                    database.execSQL(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS index_secure_items_bitwarden_vault_cipher_unique ON secure_items(bitwarden_vault_id, bitwarden_cipher_id)"
+                    )
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_passkeys_bitwarden_vault_cipher ON passkeys(bitwarden_vault_id, bitwarden_cipher_id)"
+                    )
+
+                    android.util.Log.i("PasswordDatabase", "Migration 43→44 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 43→44 failed: ${e.message}")
+                }
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -1152,7 +1210,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_39_40,  // Passkey 模式字段
                         MIGRATION_40_41,  // 密码归档字段
                         MIGRATION_41_42,  // Passkey 文件夹/分组字段
-                        MIGRATION_42_43   // 清理 legacy KeePass WebDAV 残余
+                        MIGRATION_42_43,  // 清理 legacy KeePass WebDAV 残余
+                        MIGRATION_43_44   // Bitwarden 多库去重与唯一约束
                     )
                     .build()
                 INSTANCE = instance

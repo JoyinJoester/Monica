@@ -325,7 +325,7 @@ class BitwardenSyncService(
         }
         
         // 查找本地是否存在此 Cipher
-        val existingEntry = passwordEntryDao.getByBitwardenCipherId(cipherApi.id)
+        val existingEntry = passwordEntryDao.getByBitwardenCipherIdInVault(vault.id, cipherApi.id)
         
         if (existingEntry == null) {
             // 新建条目

@@ -109,7 +109,7 @@ class CipherSyncProcessor(
         val login = cipher.login ?: return CipherSyncResult.Skipped("No login data")
 
         // 先按 cipherId 收敛历史重复副本，避免“同一条目异常膨胀”。
-        val existing = resolveCanonicalPasswordEntry(cipher.id)
+        val existing = resolveCanonicalPasswordEntry(vault.id, cipher.id)
         val hasPendingDelete = pendingOpDao.hasActiveDeleteByCipher(vault.id, cipher.id)
         
         // 解密字段
@@ -235,8 +235,8 @@ class CipherSyncProcessor(
         }
     }
 
-    private suspend fun resolveCanonicalPasswordEntry(cipherId: String): PasswordEntry? {
-        val allEntries = passwordEntryDao.getAllByBitwardenCipherId(cipherId)
+    private suspend fun resolveCanonicalPasswordEntry(vaultId: Long, cipherId: String): PasswordEntry? {
+        val allEntries = passwordEntryDao.getAllByBitwardenCipherIdInVault(vaultId, cipherId)
         if (allEntries.isEmpty()) return null
 
         val canonical = allEntries.maxWithOrNull(
@@ -290,7 +290,7 @@ class CipherSyncProcessor(
         val account = decryptString(login.username, symmetricKey) ?: ""
         
         // 查找本地是否存在
-        val existing = secureItemDao.getByBitwardenCipherId(cipher.id)
+        val existing = secureItemDao.getByBitwardenCipherIdInVault(vault.id, cipher.id)
         
         // 构建 TOTP 数据
         val totpData = TotpData(
@@ -367,7 +367,7 @@ class CipherSyncProcessor(
         val name = decryptString(cipher.name, symmetricKey) ?: "Note"
         val notes = decryptString(cipher.notes, symmetricKey) ?: ""
         
-        val existing = secureItemDao.getByBitwardenCipherId(cipher.id)
+        val existing = secureItemDao.getByBitwardenCipherIdInVault(vault.id, cipher.id)
         
         // 构建笔记数据
         val noteData = NoteData(content = notes)
@@ -445,7 +445,7 @@ class CipherSyncProcessor(
         val cvv = decryptString(card.code, symmetricKey) ?: ""
         val brand = decryptString(card.brand, symmetricKey) ?: ""
         
-        val existing = secureItemDao.getByBitwardenCipherId(cipher.id)
+        val existing = secureItemDao.getByBitwardenCipherIdInVault(vault.id, cipher.id)
         
         // 构建银行卡数据（使用 CardMapper.kt 中的 CardItemData 结构）
         val cardData = BankCardData(
@@ -544,7 +544,7 @@ class CipherSyncProcessor(
             }
         }
         
-        val existing = secureItemDao.getByBitwardenCipherId(cipher.id)
+        val existing = secureItemDao.getByBitwardenCipherIdInVault(vault.id, cipher.id)
         
         // 构建证件数据（使用 IdentityMapper.kt 中的 DocumentItemData 结构）
         val docData = DocumentData(
@@ -642,7 +642,7 @@ class CipherSyncProcessor(
         if (decodedCredentials.isEmpty()) {
             // 兼容历史 Monica marker-only passkey：至少落一个引用记录
             val referenceId = buildReferenceCredentialId(cipher.id, 0)
-            val existing = passkeyDao.getByBitwardenCipherId(cipher.id)
+            val existing = passkeyDao.getByBitwardenCipherIdInVault(vault.id, cipher.id)
                 ?: passkeyDao.getPasskeyById(referenceId)
 
             val rpId = fallbackRpId
@@ -774,7 +774,7 @@ class CipherSyncProcessor(
             }
         }
 
-        val staleEntries = passkeyDao.getAllByBitwardenCipherId(cipher.id)
+        val staleEntries = passkeyDao.getAllByBitwardenCipherIdInVault(vault.id, cipher.id)
             .filterNot { keepCredentialIds.contains(it.credentialId) }
         staleEntries.forEach { passkeyDao.delete(it) }
 

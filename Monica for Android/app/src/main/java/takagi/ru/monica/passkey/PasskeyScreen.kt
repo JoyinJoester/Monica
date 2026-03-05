@@ -71,6 +71,7 @@ fun PasskeyScreen(
             }
         }
     }
+    val renderPasskeys = remember(filteredPasskeys) { filteredPasskeys.distinctBy { it.credentialId } }
     
     // 删除确认对话框
     if (showDeleteDialog && passkeyToDelete != null) {
@@ -153,7 +154,7 @@ fun PasskeyScreen(
         )
         
         // Passkey 列表
-        if (filteredPasskeys.isEmpty()) {
+        if (renderPasskeys.isEmpty()) {
             EmptyPasskeyState(
                 hasSearchQuery = searchQuery.isNotBlank(),
                 modifier = Modifier.weight(1f)
@@ -165,7 +166,7 @@ fun PasskeyScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 items(
-                    items = filteredPasskeys,
+                    items = renderPasskeys,
                     key = { it.credentialId }
                 ) { passkey ->
                     PasskeyCard(

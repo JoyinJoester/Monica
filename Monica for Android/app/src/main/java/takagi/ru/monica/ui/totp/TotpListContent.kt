@@ -218,7 +218,7 @@ fun TotpListContent(
     val database = remember { takagi.ru.monica.data.PasswordDatabase.getDatabase(context) }
     val scope = rememberCoroutineScope()
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
-    var bitwardenVaults by remember { mutableStateOf<List<takagi.ru.monica.data.bitwarden.BitwardenVault>>(emptyList()) }
+    val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
     val keePassService = remember {
         takagi.ru.monica.utils.KeePassKdbxService(
             context,
@@ -256,9 +256,6 @@ fun TotpListContent(
     var categoryPillBoundsInWindow by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     val categories by viewModel.categories.collectAsState()
     val currentFilter by viewModel.categoryFilter.collectAsState()
-    LaunchedEffect(Unit) {
-        bitwardenVaults = bitwardenRepository.getAllVaults()
-    }
 
     // 如果搜索框展开，按返回键关闭搜索框
     BackHandler(enabled = isSearchExpanded) {

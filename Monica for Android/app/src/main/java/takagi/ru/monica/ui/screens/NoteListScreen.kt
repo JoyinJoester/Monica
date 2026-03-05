@@ -147,7 +147,7 @@ fun NoteListScreen(
     val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList())
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
     val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
-    var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
+    val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
     val keePassService = remember {
         takagi.ru.monica.utils.KeePassKdbxService(
             context,
@@ -173,10 +173,6 @@ fun NoteListScreen(
     }
     val biometricHelper = remember { BiometricHelper(context) }
     val canUseBiometric = activity != null && settings.biometricEnabled && biometricHelper.isBiometricAvailable()
-    LaunchedEffect(Unit) {
-        bitwardenVaults = bitwardenRepository.getAllVaults()
-    }
-    
     val notes by viewModel.allNotes.collectAsState(initial = emptyList())
     var selectedCategoryFilter by remember { mutableStateOf<NoteCategoryFilter>(NoteCategoryFilter.All) }
     val savedCategoryFilterState by settingsManager

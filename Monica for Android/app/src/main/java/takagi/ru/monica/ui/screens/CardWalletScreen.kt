@@ -173,7 +173,7 @@ fun CardWalletScreen(
     val documents by documentViewModel.allDocuments.collectAsState(initial = emptyList())
     val bankLoading by bankCardViewModel.isLoading.collectAsState()
     val documentLoading by documentViewModel.isLoading.collectAsState()
-    var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
+    val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
 
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
@@ -242,7 +242,6 @@ fun CardWalletScreen(
     LaunchedEffect(Unit) {
         bankCardViewModel.syncAllKeePassCards()
         documentViewModel.syncAllKeePassDocuments()
-        bitwardenVaults = bitwardenRepository.getAllVaults()
     }
 
     LaunchedEffect(savedCategoryFilterState, hasRestoredCategoryFilter) {

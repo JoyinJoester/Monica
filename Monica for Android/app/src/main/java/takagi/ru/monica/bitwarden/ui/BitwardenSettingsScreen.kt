@@ -1,5 +1,6 @@
 package takagi.ru.monica.bitwarden.ui
 
+import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
@@ -11,6 +12,7 @@ import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,6 +55,7 @@ fun BitwardenSettingsScreen(
     val isSyncOnWifiOnly by viewModel.isSyncOnWifiOnlyFlow.collectAsState()
     val pendingCount by viewModel.pendingSyncCount.collectAsState()
     val failedCount by viewModel.failedSyncCount.collectAsState()
+    val context = LocalContext.current
     
     // 对话框状态
     var showLogoutConfirmDialog by remember { mutableStateOf(false) }
@@ -68,6 +71,12 @@ fun BitwardenSettingsScreen(
             when (event) {
                 is BitwardenViewModel.BitwardenEvent.NavigateToLogin -> {
                     onNavigateToLogin()
+                }
+                is BitwardenViewModel.BitwardenEvent.ShowSuccess -> {
+                    Toast.makeText(context, event.message, Toast.LENGTH_SHORT).show()
+                }
+                is BitwardenViewModel.BitwardenEvent.ShowError -> {
+                    Toast.makeText(context, event.message, Toast.LENGTH_SHORT).show()
                 }
                 else -> {}
             }

@@ -84,14 +84,9 @@ fun PasswordEntryPickerBottomSheet(
     val context = LocalContext.current
     val database = remember(context) { PasswordDatabase.getDatabase(context) }
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
-    val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
-    var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
+    val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
     var foldersByVault by remember { mutableStateOf<Map<Long, List<BitwardenFolder>>>(emptyMap()) }
     val scope = rememberCoroutineScope()
-
-    LaunchedEffect(Unit) {
-        bitwardenVaults = bitwardenRepository.getAllVaults()
-    }
 
     LaunchedEffect(bitwardenVaults) {
         foldersByVault = withContext(Dispatchers.IO) {
