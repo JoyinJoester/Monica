@@ -27,7 +27,7 @@ import takagi.ru.monica.data.bitwarden.*
         BitwardenConflictBackup::class,
         BitwardenPendingOperation::class
     ],
-    version = 41,
+    version = 43,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -1049,6 +1049,60 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Migration 41 -> 42:
+         * 为 passkeys 增加精确存储定位字段（KeePass 分组路径 / Bitwarden 文件夹）。
+         */
+        private val MIGRATION_41_42 = object : androidx.room.migration.Migration(41, 42) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 41→42: passkey folder/group fields")
+                    database.execSQL(
+                        "ALTER TABLE passkeys ADD COLUMN keepass_group_path TEXT DEFAULT NULL"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE passkeys ADD COLUMN bitwarden_folder_id TEXT DEFAULT NULL"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 41→42 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 41→42 failed: ${e.message}")
+                }
+            }
+        }
+
+        /**
+         * Migration 42 -> 43:
+         * 仅清理已下线的 KeePass WebDAV 残余数据，不改变现有功能行为。
+         */
+        private val MIGRATION_42_43 = object : androidx.room.migration.Migration(42, 43) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 42→43: cleanup legacy KeePass WebDAV data")
+                    val legacyWebDavIdSubQuery = "SELECT id FROM local_keepass_databases WHERE filePath LIKE 'webdav://%'"
+
+                    // 清理依赖于 legacy KeePass WebDAV 库的归属引用。
+                    database.execSQL(
+                        "UPDATE password_entries SET keepassDatabaseId = NULL, keepassGroupPath = NULL WHERE keepassDatabaseId IN ($legacyWebDavIdSubQuery)"
+                    )
+                    database.execSQL(
+                        "UPDATE secure_items SET keepass_database_id = NULL, keepass_group_path = NULL WHERE keepass_database_id IN ($legacyWebDavIdSubQuery)"
+                    )
+                    database.execSQL(
+                        "UPDATE passkeys SET keepass_database_id = NULL, keepass_group_path = NULL WHERE keepass_database_id IN ($legacyWebDavIdSubQuery)"
+                    )
+                    database.execSQL(
+                        "DELETE FROM keepass_group_sync_configs WHERE keepassDatabaseId IN ($legacyWebDavIdSubQuery)"
+                    )
+                    database.execSQL(
+                        "DELETE FROM local_keepass_databases WHERE filePath LIKE 'webdav://%'"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 42→43 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 42→43 failed: ${e.message}")
+                }
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -1096,7 +1150,9 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_37_38,  // keepass 分组路径字段
                         MIGRATION_38_39,  // 自定义密码图标字段
                         MIGRATION_39_40,  // Passkey 模式字段
-                        MIGRATION_40_41   // 密码归档字段
+                        MIGRATION_40_41,  // 密码归档字段
+                        MIGRATION_41_42,  // Passkey 文件夹/分组字段
+                        MIGRATION_42_43   // 清理 legacy KeePass WebDAV 残余
                     )
                     .build()
                 INSTANCE = instance

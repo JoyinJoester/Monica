@@ -10,13 +10,9 @@ import android.util.Base64
 import android.util.Log
 import androidx.activity.compose.setContent
 import androidx.annotation.RequiresApi
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -25,15 +21,12 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
 import androidx.credentials.CreatePublicKeyCredentialRequest
 import androidx.credentials.CreatePublicKeyCredentialResponse
 import androidx.credentials.exceptions.CreateCredentialCancellationException
@@ -46,19 +39,25 @@ import org.json.JSONArray
 import org.json.JSONObject
 import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
+import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordDatabase
+import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.PasskeyBinding
 import takagi.ru.monica.data.model.PasskeyBindingCodec
 import takagi.ru.monica.repository.PasskeyRepository
 import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
-import takagi.ru.monica.ui.components.StorageTargetSelectorCard
+import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
+import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
 import takagi.ru.monica.ui.theme.MonicaTheme
 import takagi.ru.monica.utils.BiometricAuthHelper
+import takagi.ru.monica.utils.KeePassKdbxService
+import takagi.ru.monica.utils.SettingsManager
+import takagi.ru.monica.utils.decodeKeePassPathForDisplay
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.MessageDigest
@@ -112,7 +111,9 @@ class PasskeyCreateActivity : FragmentActivity() {
     private var pendingBoundPasswordId: Long? = null
     private var pendingCategoryId: Long? = null
     private var pendingKeepassDatabaseId: Long? = null
+    private var pendingKeepassGroupPath: String? = null
     private var pendingBitwardenVaultId: Long? = null
+    private var pendingBitwardenFolderId: String? = null
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -225,9 +226,27 @@ class PasskeyCreateActivity : FragmentActivity() {
         pendingUserDisplayName = userDisplayName
         
         setContent {
-            MonicaTheme {
+            val settingsManager = remember { SettingsManager(this@PasskeyCreateActivity) }
+            val settings by settingsManager.settingsFlow.collectAsState(
+                initial = AppSettings(biometricEnabled = false)
+            )
+            val systemDarkTheme = isSystemInDarkTheme()
+            val darkTheme = when (settings.themeMode) {
+                ThemeMode.SYSTEM -> systemDarkTheme
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+            }
+
+            MonicaTheme(
+                darkTheme = darkTheme,
+                colorScheme = settings.colorScheme,
+                customPrimaryColor = settings.customPrimaryColor,
+                customSecondaryColor = settings.customSecondaryColor,
+                customTertiaryColor = settings.customTertiaryColor,
+                customNeutralColor = settings.customNeutralColor,
+                customNeutralVariantColor = settings.customNeutralVariantColor
+            ) {
                 var showPasswordPicker by remember { mutableStateOf(false) }
-                var showCategoryPicker by remember { mutableStateOf(false) }
                 val passwords by database.passwordEntryDao().getAllPasswordEntries()
                     .collectAsState(initial = emptyList())
                 val categories by database.categoryDao().getAllCategories()
@@ -236,12 +255,36 @@ class PasskeyCreateActivity : FragmentActivity() {
                     .collectAsState(initial = emptyList())
                 var selectedCategoryId by remember { mutableStateOf<Long?>(pendingCategoryId) }
                 var selectedKeePassDatabaseId by remember { mutableStateOf<Long?>(pendingKeepassDatabaseId) }
+                var selectedKeePassGroupPath by remember { mutableStateOf<String?>(pendingKeepassGroupPath) }
                 var selectedBitwardenVaultId by remember { mutableStateOf<Long?>(pendingBitwardenVaultId) }
+                var selectedBitwardenFolderId by remember { mutableStateOf<String?>(pendingBitwardenFolderId) }
                 val context = LocalContext.current
+                val scope = rememberCoroutineScope()
                 val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
                 var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
-                val selectedCategoryName = remember(selectedCategoryId, categories) {
-                    selectedCategoryId?.let { id -> categories.find { it.id == id }?.name }
+                val securityManager = remember { takagi.ru.monica.security.SecurityManager(context) }
+                val keePassService = remember {
+                    KeePassKdbxService(
+                        context,
+                        database.localKeePassDatabaseDao(),
+                        securityManager
+                    )
+                }
+                val keepassGroupFlows = remember {
+                    mutableMapOf<Long, kotlinx.coroutines.flow.MutableStateFlow<List<takagi.ru.monica.utils.KeePassGroupInfo>>>()
+                }
+                val getKeePassGroups: (Long) -> kotlinx.coroutines.flow.Flow<List<takagi.ru.monica.utils.KeePassGroupInfo>> = remember {
+                    { databaseId ->
+                        val flow = keepassGroupFlows.getOrPut(databaseId) {
+                            kotlinx.coroutines.flow.MutableStateFlow(emptyList())
+                        }
+                        if (flow.value.isEmpty()) {
+                            scope.launch {
+                                flow.value = keePassService.listGroups(databaseId).getOrDefault(emptyList())
+                            }
+                        }
+                        flow
+                    }
                 }
                 LaunchedEffect(Unit) {
                     bitwardenVaults = bitwardenRepository.getAllVaults()
@@ -254,33 +297,46 @@ class PasskeyCreateActivity : FragmentActivity() {
                     userDisplayName = userDisplayName,
                     keepassDatabases = keepassDatabases,
                     selectedKeePassDatabaseId = selectedKeePassDatabaseId,
+                    selectedKeePassGroupPath = selectedKeePassGroupPath,
                     onKeePassDatabaseSelected = {
                         selectedKeePassDatabaseId = it
-                        if (it != null) selectedBitwardenVaultId = null
+                        selectedKeePassGroupPath = null
+                        if (it != null) {
+                            selectedBitwardenVaultId = null
+                            selectedBitwardenFolderId = null
+                            selectedCategoryId = null
+                        }
                     },
+                    onKeePassGroupPathSelected = { selectedKeePassGroupPath = it },
                     bitwardenVaults = bitwardenVaults,
                     selectedBitwardenVaultId = selectedBitwardenVaultId,
+                    selectedBitwardenFolderId = selectedBitwardenFolderId,
                     onBitwardenVaultSelected = {
                         selectedBitwardenVaultId = it
-                        if (it != null) selectedKeePassDatabaseId = null
+                        selectedBitwardenFolderId = null
+                        if (it != null) {
+                            selectedKeePassDatabaseId = null
+                            selectedKeePassGroupPath = null
+                            selectedCategoryId = null
+                        }
                     },
+                    onBitwardenFolderSelected = { selectedBitwardenFolderId = it },
                     categories = categories,
                     selectedCategoryId = selectedCategoryId,
                     onCategorySelected = { selectedCategoryId = it },
-                    selectedCategoryName = selectedCategoryName,
+                    getKeePassGroups = getKeePassGroups,
                     onCreateDirect = {
                         pendingBoundPasswordId = null
                         pendingCategoryId = selectedCategoryId
                         pendingKeepassDatabaseId = selectedKeePassDatabaseId
+                        pendingKeepassGroupPath = selectedKeePassGroupPath
                         pendingBitwardenVaultId = selectedBitwardenVaultId
+                        pendingBitwardenFolderId = selectedBitwardenFolderId
                         // 触发生物识别验证
                         requestBiometricAuth()
                     },
                     onBindToPassword = {
                         showPasswordPicker = true
-                    },
-                    onPickCategory = {
-                        showCategoryPicker = true
                     },
                     onCancel = {
                         repository.logAudit("PASSKEY_CREATE_CANCELLED", rpId)
@@ -308,31 +364,26 @@ class PasskeyCreateActivity : FragmentActivity() {
                         pendingBoundPasswordId = password.id
                         selectedCategoryId = password.categoryId
                         selectedKeePassDatabaseId = password.keepassDatabaseId
+                        selectedKeePassGroupPath = password.keepassGroupPath
                         selectedBitwardenVaultId = if (password.keepassDatabaseId != null) {
                             null
                         } else {
                             password.bitwardenVaultId
                         }
+                        selectedBitwardenFolderId = if (password.keepassDatabaseId != null) {
+                            null
+                        } else {
+                            password.bitwardenFolderId
+                        }
                         pendingCategoryId = selectedCategoryId
                         pendingKeepassDatabaseId = selectedKeePassDatabaseId
+                        pendingKeepassGroupPath = selectedKeePassGroupPath
                         pendingBitwardenVaultId = selectedBitwardenVaultId
+                        pendingBitwardenFolderId = selectedBitwardenFolderId
                         showPasswordPicker = false
                         requestBiometricAuth()
                     }
                 )
-
-                if (showCategoryPicker) {
-                    CategoryPickerDialog(
-                        categories = categories,
-                        selectedCategoryId = selectedCategoryId,
-                        onDismiss = { showCategoryPicker = false },
-                        onCategorySelected = { categoryId ->
-                            selectedCategoryId = categoryId
-                            pendingCategoryId = categoryId
-                            showCategoryPicker = false
-                        }
-                    )
-                }
             }
         }
     }
@@ -470,6 +521,8 @@ class PasskeyCreateActivity : FragmentActivity() {
             val discoverable = parseDiscoverable(requestJson)
             val normalizedRpId = PasskeyRpIdNormalizer.normalize(rpId) ?: rpId
             val initialBitwardenVaultId = pendingBitwardenVaultId
+            val initialBitwardenFolderId = pendingBitwardenFolderId
+            val initialKeepassGroupPath = pendingKeepassGroupPath
              
             // 保存到数据库
             val passkeyEntry = PasskeyEntry(
@@ -490,7 +543,9 @@ class PasskeyCreateActivity : FragmentActivity() {
                 boundPasswordId = pendingBoundPasswordId,
                 categoryId = pendingCategoryId,
                 keepassDatabaseId = pendingKeepassDatabaseId,
+                keepassGroupPath = initialKeepassGroupPath,
                 bitwardenVaultId = initialBitwardenVaultId,
+                bitwardenFolderId = initialBitwardenFolderId,
                 syncStatus = if (initialBitwardenVaultId != null) "PENDING" else "NONE",
                 passkeyMode = PasskeyEntry.MODE_BW_COMPAT
             )
@@ -766,299 +821,324 @@ private fun PasskeyCreateScreen(
     userDisplayName: String,
     keepassDatabases: List<LocalKeePassDatabase>,
     selectedKeePassDatabaseId: Long?,
+    selectedKeePassGroupPath: String?,
     onKeePassDatabaseSelected: (Long?) -> Unit,
+    onKeePassGroupPathSelected: (String?) -> Unit,
     bitwardenVaults: List<BitwardenVault>,
     selectedBitwardenVaultId: Long?,
+    selectedBitwardenFolderId: String?,
     onBitwardenVaultSelected: (Long?) -> Unit,
+    onBitwardenFolderSelected: (String?) -> Unit,
     categories: List<Category>,
     selectedCategoryId: Long?,
     onCategorySelected: (Long?) -> Unit,
-    selectedCategoryName: String?,
+    getKeePassGroups: (Long) -> kotlinx.coroutines.flow.Flow<List<takagi.ru.monica.utils.KeePassGroupInfo>>,
     onCreateDirect: () -> Unit,
     onBindToPassword: () -> Unit,
-    onPickCategory: () -> Unit,
     onCancel: () -> Unit
 ) {
     var isCreating by remember { mutableStateOf(false) }
-    
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // 图标
-            Box(
-                modifier = Modifier
-                    .size(80.dp)
-                    .clip(CircleShape)
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.primary,
-                                MaterialTheme.colorScheme.tertiary
-                            )
-                        )
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Key,
-                    contentDescription = null,
-                    modifier = Modifier.size(40.dp),
-                    tint = MaterialTheme.colorScheme.onPrimary
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            Text(
-                text = stringResource(R.string.passkey_create_title),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center
-            )
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            Text(
-                text = stringResource(R.string.passkey_create_message, rpName),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                textAlign = TextAlign.Center
-            )
-            
-            Spacer(modifier = Modifier.height(32.dp))
-            
-            // 账户信息卡片
+    var showStoragePicker by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val database = remember(context) { PasswordDatabase.getDatabase(context) }
+    val selectedBitwardenVault = bitwardenVaults.find { it.id == selectedBitwardenVaultId }
+    val selectedBitwardenFolders by (
+        if (selectedBitwardenVault != null) {
+            database.bitwardenFolderDao().getFoldersByVaultFlow(selectedBitwardenVault.id)
+        } else {
+            kotlinx.coroutines.flow.flowOf(emptyList())
+        }
+    ).collectAsState(initial = emptyList())
+    val selectedCategoryName = selectedCategoryId?.let { id ->
+        categories.find { it.id == id }?.name
+    }
+    val selectedKeePassName = selectedKeePassDatabaseId?.let { id ->
+        keepassDatabases.find { it.id == id }?.name
+    }
+    val selectedBitwardenName = selectedBitwardenVault?.let { vault ->
+        vault.displayName ?: vault.email
+    }
+    val selectedBitwardenFolderName = selectedBitwardenFolderId?.let { folderId ->
+        selectedBitwardenFolders.find { it.bitwardenFolderId == folderId }?.name
+    }
+
+    val storageTitle = when {
+        selectedKeePassDatabaseId != null -> selectedKeePassName ?: stringResource(R.string.filter_keepass)
+        selectedBitwardenVaultId != null -> selectedBitwardenName ?: stringResource(R.string.filter_bitwarden)
+        selectedCategoryId != null -> selectedCategoryName ?: stringResource(R.string.filter_monica)
+        else -> stringResource(R.string.vault_monica_only)
+    }
+    val storageSubtitle = when {
+        selectedKeePassDatabaseId != null -> {
+            selectedKeePassGroupPath
+                ?.takeIf { it.isNotBlank() }
+                ?.let { decodeKeePassPathForDisplay(it) }
+                ?: stringResource(R.string.category_none)
+        }
+        selectedBitwardenVaultId != null -> selectedBitwardenFolderName ?: stringResource(R.string.category_none)
+        selectedCategoryId != null -> selectedCategoryName ?: stringResource(R.string.category_none)
+        else -> stringResource(R.string.category_none)
+    }
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        bottomBar = {
             Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                tonalElevation = 2.dp,
+                shadowElevation = 10.dp,
+                color = MaterialTheme.colorScheme.surface
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // 网站信息
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
+                    Button(
+                        onClick = {
+                            isCreating = true
+                            onCreateDirect()
+                        },
+                        enabled = !isCreating,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        shape = RoundedCornerShape(18.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Language,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                            tint = MaterialTheme.colorScheme.primary
+                            imageVector = Icons.Default.Check,
+                            contentDescription = null
                         )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = rpName,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = rpId,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                            )
-                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(R.string.passkey_create_confirm))
                     }
-                    
-                    Spacer(modifier = Modifier.height(12.dp))
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-                    Spacer(modifier = Modifier.height(12.dp))
-                    
-                    // 用户信息
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
+
+                    OutlinedButton(
+                        onClick = onBindToPassword,
+                        enabled = !isCreating,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        shape = RoundedCornerShape(18.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                            tint = MaterialTheme.colorScheme.secondary
+                            imageVector = Icons.Default.Link,
+                            contentDescription = null
                         )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = userDisplayName,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            if (userName != userDisplayName) {
-                                Text(
-                                    text = userName,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                                )
-                            }
-                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(stringResource(R.string.bind_password))
+                    }
+
+                    TextButton(
+                        onClick = onCancel,
+                        enabled = !isCreating,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(stringResource(R.string.cancel))
                     }
                 }
             }
-            
-            Spacer(modifier = Modifier.height(8.dp))
+        }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                tonalElevation = 4.dp
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Key,
+                        contentDescription = null,
+                        modifier = Modifier.size(42.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
 
-            StorageTargetSelectorCard(
-                keepassDatabases = keepassDatabases,
-                selectedKeePassDatabaseId = selectedKeePassDatabaseId,
-                onKeePassDatabaseSelected = onKeePassDatabaseSelected,
-                bitwardenVaults = bitwardenVaults,
-                selectedBitwardenVaultId = selectedBitwardenVaultId,
-                onBitwardenVaultSelected = onBitwardenVaultSelected,
+                    Text(
+                        text = stringResource(R.string.passkey_create_title),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Text(
+                        text = stringResource(R.string.passkey_create_message, rpName),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
+                }
+            }
+
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    PasskeyInfoRow(
+                        icon = Icons.Default.Language,
+                        title = rpName,
+                        subtitle = rpId
+                    )
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                    PasskeyInfoRow(
+                        icon = Icons.Default.Person,
+                        title = userDisplayName,
+                        subtitle = if (userName != userDisplayName) userName else null
+                    )
+                }
+            }
+
+            ElevatedCard(
+                onClick = { showStoragePicker = true },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Folder,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = storageTitle,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = storageSubtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Icon(
+                        imageVector = Icons.Default.UnfoldMore,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            UnifiedMoveToCategoryBottomSheet(
+                visible = showStoragePicker,
+                onDismiss = { showStoragePicker = false },
                 categories = categories,
-                selectedCategoryId = selectedCategoryId,
-                onCategorySelected = onCategorySelected
+                keepassDatabases = keepassDatabases,
+                bitwardenVaults = bitwardenVaults,
+                getBitwardenFolders = { vaultId ->
+                    database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId)
+                },
+                getKeePassGroups = getKeePassGroups,
+                allowCopy = false,
+                onTargetSelected = { target, _ ->
+                    when (target) {
+                        UnifiedMoveCategoryTarget.Uncategorized -> {
+                            onCategorySelected(null)
+                            onKeePassDatabaseSelected(null)
+                            onKeePassGroupPathSelected(null)
+                            onBitwardenVaultSelected(null)
+                            onBitwardenFolderSelected(null)
+                        }
+                        is UnifiedMoveCategoryTarget.MonicaCategory -> {
+                            onCategorySelected(target.categoryId)
+                            onKeePassDatabaseSelected(null)
+                            onKeePassGroupPathSelected(null)
+                            onBitwardenVaultSelected(null)
+                            onBitwardenFolderSelected(null)
+                        }
+                        is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> {
+                            onCategorySelected(null)
+                            onKeePassDatabaseSelected(null)
+                            onKeePassGroupPathSelected(null)
+                            onBitwardenVaultSelected(target.vaultId)
+                            onBitwardenFolderSelected(null)
+                        }
+                        is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> {
+                            onCategorySelected(null)
+                            onKeePassDatabaseSelected(null)
+                            onKeePassGroupPathSelected(null)
+                            onBitwardenVaultSelected(target.vaultId)
+                            onBitwardenFolderSelected(target.folderId)
+                        }
+                        is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> {
+                            onCategorySelected(null)
+                            onBitwardenVaultSelected(null)
+                            onBitwardenFolderSelected(null)
+                            onKeePassDatabaseSelected(target.databaseId)
+                            onKeePassGroupPathSelected(null)
+                        }
+                        is UnifiedMoveCategoryTarget.KeePassGroupTarget -> {
+                            onCategorySelected(null)
+                            onBitwardenVaultSelected(null)
+                            onBitwardenFolderSelected(null)
+                            onKeePassDatabaseSelected(target.databaseId)
+                            onKeePassGroupPathSelected(target.groupPath)
+                        }
+                    }
+                    showStoragePicker = false
+                }
             )
-
-            OutlinedButton(
-                onClick = onPickCategory,
-                enabled = !isCreating,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Folder,
-                    contentDescription = null
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = selectedCategoryName?.let { "文件夹: $it" } ?: "选择文件夹（可选）"
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            // 绑定密码按钮（先选择密码）
-            Button(
-                onClick = {
-                    onBindToPassword()
-                },
-                enabled = !isCreating,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Link,
-                    contentDescription = null
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(stringResource(R.string.bind_password))
-            }
-            
-            Spacer(modifier = Modifier.height(12.dp))
- 
-            // 直接创建按钮（不绑定）
-            OutlinedButton(
-                onClick = {
-                    isCreating = true
-                    onCreateDirect()
-                },
-                enabled = !isCreating,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = null
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(stringResource(R.string.passkey_create_confirm))
-            }
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            OutlinedButton(
-                onClick = onCancel,
-                enabled = !isCreating,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Text(stringResource(R.string.cancel))
-            }
         }
     }
 }
 
 @Composable
-private fun CategoryPickerDialog(
-    categories: List<Category>,
-    selectedCategoryId: Long?,
-    onDismiss: () -> Unit,
-    onCategorySelected: (Long?) -> Unit
+private fun PasskeyInfoRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String?
 ) {
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 520.dp),
-            shape = MaterialTheme.shapes.extraLarge,
-            tonalElevation = 6.dp,
-            color = MaterialTheme.colorScheme.surface
-        ) {
-            Column(modifier = Modifier.padding(24.dp)) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+            tint = MaterialTheme.colorScheme.primary
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            if (!subtitle.isNullOrBlank()) {
                 Text(
-                    text = "选择文件夹",
-                    style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.padding(bottom = 12.dp)
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                LazyColumn(
-                    modifier = Modifier.weight(1f, fill = false)
-                ) {
-                    item {
-                        ListItem(
-                            headlineContent = { Text(stringResource(R.string.category_none)) },
-                            leadingContent = { Icon(Icons.Default.Folder, contentDescription = null) },
-                            trailingContent = {
-                                if (selectedCategoryId == null) {
-                                    Icon(Icons.Default.Check, contentDescription = null)
-                                }
-                            },
-                            modifier = Modifier
-                                .clickable { onCategorySelected(null) }
-                                .fillMaxWidth()
-                        )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                    }
-                    items(categories) { category ->
-                        ListItem(
-                            headlineContent = { Text(category.name) },
-                            leadingContent = { Icon(Icons.Default.Folder, contentDescription = null) },
-                            trailingContent = {
-                                if (selectedCategoryId == category.id) {
-                                    Icon(Icons.Default.Check, contentDescription = null)
-                                }
-                            },
-                            modifier = Modifier
-                                .clickable { onCategorySelected(category.id) }
-                                .fillMaxWidth()
-                        )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                    }
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                TextButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.align(Alignment.End)
-                ) {
-                    Text(stringResource(R.string.cancel))
-                }
             }
         }
     }
 }
+
 

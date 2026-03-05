@@ -282,9 +282,9 @@ fun PasskeyListScreen(
             val boundVaultId = boundPassword?.bitwardenVaultId
             val canSyncToBitwarden = passkeyMigratableById[passkey.credentialId] ?: false
             if (boundVaultId != null && !canSyncToBitwarden) {
-                null
+                passkey.bitwardenFolderId
             } else {
-                boundPassword?.bitwardenFolderId
+                boundPassword?.bitwardenFolderId ?: passkey.bitwardenFolderId
             }
         }
     }
@@ -292,7 +292,7 @@ fun PasskeyListScreen(
         { passkey -> boundPasswordForPasskey(passkey)?.keepassDatabaseId ?: passkey.keepassDatabaseId }
     }
     val effectiveKeePassGroupPath: (PasskeyEntry) -> String? = remember(passwordMap) {
-        { passkey -> boundPasswordForPasskey(passkey)?.keepassGroupPath }
+        { passkey -> boundPasswordForPasskey(passkey)?.keepassGroupPath ?: passkey.keepassGroupPath }
     }
     val effectiveIsFavorite: (PasskeyEntry) -> Boolean = remember(passwordMap) {
         { passkey -> boundPasswordForPasskey(passkey)?.isFavorite == true }
@@ -699,27 +699,39 @@ fun PasskeyListScreen(
             UnifiedMoveCategoryTarget.Uncategorized -> passkey.copy(
                 categoryId = null,
                 keepassDatabaseId = null,
+                keepassGroupPath = null,
+                bitwardenFolderId = null,
                 bitwardenVaultId = null
             )
             is UnifiedMoveCategoryTarget.MonicaCategory -> passkey.copy(
                 categoryId = target.categoryId,
                 keepassDatabaseId = null,
+                keepassGroupPath = null,
+                bitwardenFolderId = null,
                 bitwardenVaultId = null
             )
             is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> passkey.copy(
                 bitwardenVaultId = target.vaultId,
+                bitwardenFolderId = null,
+                keepassGroupPath = null,
                 keepassDatabaseId = null
             )
             is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> passkey.copy(
                 bitwardenVaultId = target.vaultId,
+                bitwardenFolderId = target.folderId,
+                keepassGroupPath = null,
                 keepassDatabaseId = null
             )
             is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> passkey.copy(
                 keepassDatabaseId = target.databaseId,
+                keepassGroupPath = null,
+                bitwardenFolderId = null,
                 bitwardenVaultId = null
             )
             is UnifiedMoveCategoryTarget.KeePassGroupTarget -> passkey.copy(
                 keepassDatabaseId = target.databaseId,
+                keepassGroupPath = target.groupPath,
+                bitwardenFolderId = null,
                 bitwardenVaultId = null
             )
         }
@@ -1343,6 +1355,11 @@ fun PasskeyListScreen(
                         password.bitwardenVaultId != null && nonMigratableForBitwarden -> passkey.bitwardenVaultId
                         else -> null
                     }
+                    val targetFolderId = when {
+                        password.bitwardenVaultId != null && !nonMigratableForBitwarden -> password.bitwardenFolderId
+                        password.bitwardenVaultId != null && nonMigratableForBitwarden -> passkey.bitwardenFolderId
+                        else -> null
+                    }
                     val currentVaultId = passkey.bitwardenVaultId
                     val currentCipherId = passkey.bitwardenCipherId
                     val isLeavingCurrentCipher =
@@ -1378,7 +1395,9 @@ fun PasskeyListScreen(
                             boundPasswordId = password.id,
                             categoryId = password.categoryId,
                             keepassDatabaseId = password.keepassDatabaseId,
+                            keepassGroupPath = password.keepassGroupPath,
                             bitwardenVaultId = targetVaultId,
+                            bitwardenFolderId = targetFolderId,
                             bitwardenCipherId = if (keepExistingCipher) currentCipherId else null,
                             syncStatus = resolvedSyncStatus
                         )

@@ -112,10 +112,18 @@ data class PasskeyEntry(
     // 归属的 KeePass 数据库（用于统一目标存储选择）
     @ColumnInfo(name = "keepass_database_id", defaultValue = "NULL")
     val keepassDatabaseId: Long? = null,
+
+    // KeePass 分组路径（为空表示数据库根目录）
+    @ColumnInfo(name = "keepass_group_path", defaultValue = "NULL")
+    val keepassGroupPath: String? = null,
     
     // Bitwarden 同步字段（仅同步元数据，私钥无法导出）
     @ColumnInfo(name = "bitwarden_vault_id", defaultValue = "NULL")
     val bitwardenVaultId: Long? = null,           // 关联的 Bitwarden Vault
+
+    // Bitwarden 文件夹 ID（为空表示 Vault 根目录）
+    @ColumnInfo(name = "bitwarden_folder_id", defaultValue = "NULL")
+    val bitwardenFolderId: String? = null,
     
     @ColumnInfo(name = "bitwarden_cipher_id", defaultValue = "NULL")
     val bitwardenCipherId: String? = null,        // Bitwarden Cipher UUID
