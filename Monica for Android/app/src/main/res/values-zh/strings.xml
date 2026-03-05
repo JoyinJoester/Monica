@@ -1090,6 +1090,20 @@
     <string name="passkey_feature_phishing_desc">通行密钥绑定到特定网站，防止钓鱼攻击</string>
     <string name="passkey_settings_requirement_title">系统要求</string>
     <string name="passkey_settings_requirement_desc">要使用 Monica 作为通行密钥提供者，您的设备必须运行 Android 14 (API 34) 或更高版本。您仍可查看从其他设备同步的通行密钥。</string>
+    <string name="passkey_validation_title">请求校验</string>
+    <string name="passkey_shadow_validation_title">影子校验</string>
+    <string name="passkey_shadow_validation_desc">仅记录可疑通行密钥请求，不阻断登录。</string>
+    <string name="passkey_strict_validation_title">严格校验</string>
+    <string name="passkey_strict_validation_desc">阻断明显不符合依赖方来源规则的请求。</string>
+    <string name="passkey_strict_validation_warning">严格模式可能会拦截接入不规范的应用登录，仅在排障时开启。</string>
+    <string name="passkey_diagnostics_title">校验诊断</string>
+    <string name="passkey_diagnostics_summary">请求数：%1$d，可疑：%2$d，严格候选：%3$d</string>
+    <string name="passkey_diagnostics_top_bucket">最高风险：%1$s @ %2$s（可疑 %3$d）</string>
+    <string name="passkey_diagnostics_refresh">刷新</string>
+    <string name="passkey_diagnostics_copy">复制报告</string>
+    <string name="passkey_diagnostics_clear">清空诊断</string>
+    <string name="passkey_diagnostics_copied">已复制通行密钥诊断报告</string>
+    <string name="passkey_diagnostics_cleared">已清空通行密钥诊断数据</string>
     
     <!-- Passkey 生物识别认证 -->
     <string name="biometric_title_passkey_auth">验证身份以登录</string>
@@ -1216,8 +1230,6 @@
     <string name="autofill_fill_suggestions_desc">自动显示匹配的密码建议</string>
     <string name="autofill_fill_manual_selection">手动选择</string>
     <string name="autofill_fill_manual_selection_desc">允许手动选择要填充的密码</string>
-    <string name="autofill_bitwarden_compat_mode_title">Bitwarden 兼容自动填充</string>
-    <string name="autofill_bitwarden_compat_mode_desc">登录字段改用 Bitwarden 风格模型（测试模式）</string>
     
     <!-- 自动填充设置 - 保存行为 -->
     <string name="autofill_save_behavior_title">保存行为</string>
@@ -2532,4 +2544,29 @@
     <string name="password_quick_access_empty_frequent">还没有经常打开记录</string>
     <string name="password_quick_access_last_opened">最近打开：%1$s</string>
     <string name="password_quick_access_open_count">%1$d 次</string>
+    <string name="autofill_v2_title">自动填充</string>
+    <string name="autofill_v2_engine_title">引擎：Bitwarden V2</string>
+    <string name="autofill_v2_engine_desc">自动填充已切换到并行重建的 Bitwarden 风格模型，旧逻辑已冻结。</string>
+    <string name="autofill_v2_engine_mode_legacy">当前为旧引擎冻结模式</string>
+    <string name="autofill_v2_enable_service">启用应用内自动填充</string>
+    <string name="autofill_v2_enable_service_desc">控制 Monica 在应用内是否提供自动填充能力。</string>
+    <string name="autofill_v2_strict_match">严格匹配（推荐）</string>
+    <string name="autofill_v2_strict_match_desc">仅允许高置信度的包名/域名匹配，降低误填风险。</string>
+    <string name="autofill_v2_subdomain_match">允许子域名匹配</string>
+    <string name="autofill_v2_subdomain_match_desc">同一主域下的子域名视为关联登录目标。</string>
+    <string name="autofill_v2_respect_off">遵循 autofill-off 字段</string>
+    <string name="autofill_v2_respect_off_desc">当站点或应用明确禁用自动填充时跳过该字段。</string>
+    <string name="autofill_v2_save_prompt">启用保存提示</string>
+    <string name="autofill_v2_save_prompt_desc">登录/注册后提示保存新凭据。</string>
+    <string name="autofill_v2_blacklist">启用黑名单</string>
+    <string name="autofill_v2_blacklist_desc">在敏感应用中禁用自动填充（当前 %1$d 个包名）。</string>
+    <string name="autofill_v2_set_system_service">设置 Monica 为系统自动填充服务</string>
+    <string name="autofill_v2_set_system_service_desc">打开系统设置并将 Monica 设为默认自动填充提供方。</string>
+    <string name="autofill_v2_privileged_apps">特权 App</string>
+    <string name="autofill_v2_privileged_apps_desc">打开 Android 凭据提供方权限相关设置。</string>
+    <string name="autofill_v2_freeze_notice">旧自动填充逻辑和旧设置页已冻结。后续行为仅由本 V2 页面控制。</string>
+    <string name="autofill_v2_default_scope_title">默认列表范围</string>
+    <string name="autofill_v2_default_scope_desc">设置自动填充列表默认展示的数据来源范围。</string>
+    <string name="autofill_v2_default_keepass_title">默认 KeePass 数据库</string>
+    <string name="autofill_v2_default_keepass_desc">将默认建议和列表限制在单个 KeePass 数据库内。</string>
 </resources>

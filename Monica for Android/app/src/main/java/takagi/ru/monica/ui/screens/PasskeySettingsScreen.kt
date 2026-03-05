@@ -1,8 +1,11 @@
 package takagi.ru.monica.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings
+import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
@@ -29,9 +32,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import takagi.ru.monica.passkey.PasskeyValidationDiagnostics
+import takagi.ru.monica.passkey.PasskeyValidationFlags
 import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordDatabase
-import kotlinx.coroutines.launch
 
 /**
  * Passkey 设置页面
@@ -48,8 +52,16 @@ fun PasskeySettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val database = remember { PasswordDatabase.getDatabase(context) }
+    var shadowValidationEnabled by remember {
+        mutableStateOf(PasskeyValidationFlags.isShadowValidationEnabled(context))
+    }
+    var strictValidationEnabled by remember {
+        mutableStateOf(PasskeyValidationFlags.isStrictValidationEnabled(context))
+    }
+    var diagnosticsSummary by remember {
+        mutableStateOf(PasskeyValidationDiagnostics.readSummary(context))
+    }
     
     // Passkey 统计
     val passkeyCount by database.passkeyDao().getPasskeyCount().collectAsState(initial = 0)
@@ -108,6 +120,45 @@ fun PasskeySettingsScreen(
                 PasskeyStatsCard(passkeyCount = passkeyCount)
                 
                 Spacer(modifier = Modifier.height(16.dp))
+
+                PasskeyValidationCard(
+                    shadowValidationEnabled = shadowValidationEnabled,
+                    strictValidationEnabled = strictValidationEnabled,
+                    onShadowValidationChanged = { enabled ->
+                        shadowValidationEnabled = enabled
+                        PasskeyValidationFlags.setShadowValidationEnabled(context, enabled)
+                        if (!enabled && strictValidationEnabled) {
+                            strictValidationEnabled = false
+                            PasskeyValidationFlags.setStrictValidationEnabled(context, false)
+                        }
+                    },
+                    onStrictValidationChanged = { enabled ->
+                        strictValidationEnabled = enabled
+                        PasskeyValidationFlags.setStrictValidationEnabled(context, enabled)
+                    }
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
+
+                PasskeyDiagnosticsCard(
+                    summary = diagnosticsSummary,
+                    onRefresh = {
+                        diagnosticsSummary = PasskeyValidationDiagnostics.readSummary(context)
+                    },
+                    onCopyReport = {
+                        val report = PasskeyValidationDiagnostics.buildReport(context)
+                        val clipboard = context.getSystemService(ClipboardManager::class.java)
+                        clipboard?.setPrimaryClip(ClipData.newPlainText("passkey_diagnostics", report))
+                        Toast.makeText(context, context.getString(R.string.passkey_diagnostics_copied), Toast.LENGTH_SHORT).show()
+                    },
+                    onClear = {
+                        PasskeyValidationDiagnostics.clear(context)
+                        diagnosticsSummary = PasskeyValidationDiagnostics.readSummary(context)
+                        Toast.makeText(context, context.getString(R.string.passkey_diagnostics_cleared), Toast.LENGTH_SHORT).show()
+                    }
+                )
+                
+                Spacer(modifier = Modifier.height(16.dp))
                 
                 // 功能说明
                 PasskeyFeaturesSection()
@@ -118,6 +169,175 @@ fun PasskeySettingsScreen(
             }
             
             Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+@Composable
+private fun PasskeyDiagnosticsCard(
+    summary: takagi.ru.monica.passkey.PasskeyValidationSummary,
+    onRefresh: () -> Unit,
+    onCopyReport: () -> Unit,
+    onClear: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.passkey_diagnostics_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Text(
+                text = stringResource(
+                    R.string.passkey_diagnostics_summary,
+                    summary.total,
+                    summary.suspicious,
+                    summary.strictCandidates
+                ),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            val topBucket = summary.buckets.firstOrNull()
+            if (topBucket != null) {
+                Text(
+                    text = stringResource(
+                        R.string.passkey_diagnostics_top_bucket,
+                        topBucket.packageName,
+                        topBucket.rpId,
+                        topBucket.suspicious
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = onRefresh
+                ) {
+                    Text(stringResource(R.string.passkey_diagnostics_refresh))
+                }
+                OutlinedButton(
+                    modifier = Modifier.weight(1f),
+                    onClick = onCopyReport
+                ) {
+                    Text(stringResource(R.string.passkey_diagnostics_copy))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            TextButton(
+                onClick = onClear
+            ) {
+                Text(
+                    text = stringResource(R.string.passkey_diagnostics_clear),
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PasskeyValidationCard(
+    shadowValidationEnabled: Boolean,
+    strictValidationEnabled: Boolean,
+    onShadowValidationChanged: (Boolean) -> Unit,
+    onStrictValidationChanged: (Boolean) -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.passkey_validation_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.passkey_shadow_validation_title),
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = stringResource(R.string.passkey_shadow_validation_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = shadowValidationEnabled,
+                    onCheckedChange = onShadowValidationChanged
+                )
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.passkey_strict_validation_title),
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = stringResource(R.string.passkey_strict_validation_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = strictValidationEnabled,
+                    enabled = shadowValidationEnabled,
+                    onCheckedChange = onStrictValidationChanged
+                )
+            }
+
+            if (strictValidationEnabled) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = stringResource(R.string.passkey_strict_validation_warning),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
+                )
+            }
         }
     }
 }

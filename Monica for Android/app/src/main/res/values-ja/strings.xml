@@ -952,8 +952,6 @@
     <string name="autofill_fill_suggestions_desc">一致するパスワード候補を自動表示</string>
     <string name="autofill_fill_manual_selection">手動選択</string>
     <string name="autofill_fill_manual_selection_desc">入力するパスワードを手動で選択可能</string>
-    <string name="autofill_bitwarden_compat_mode_title">Bitwarden互換の自動入力</string>
-    <string name="autofill_bitwarden_compat_mode_desc">ログイン欄でBitwarden風モデルを使用（テストモード）</string>
     <string name="autofill_save_behavior_title">保存動作</string>
     <string name="autofill_save_enable">自動保存を有効化</string>
     <string name="autofill_save_enable_desc">フォーム入力時にパスワードの保存を自動的に促す</string>

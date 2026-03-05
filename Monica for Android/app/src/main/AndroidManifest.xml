@@ -78,10 +78,10 @@
             </intent-filter>
         </activity>
         
-        <!-- Autofill Service -->
+        <!-- Autofill Service (Bitwarden engine) -->
         <service
-            android:name=".autofill.MonicaAutofillService"
-            android:label="@string/app_name"
+            android:name=".autofill_ng.MonicaAutofillServiceNg"
+            android:label="@string/autofill_service_label"
             android:permission="android.permission.BIND_AUTOFILL_SERVICE"
             android:exported="false">
             <intent-filter>
@@ -142,12 +142,12 @@
             android:theme="@style/Theme.Monica"
             android:exported="true" />
         
-        <receiver android:name=".autofill.AutofillNotificationReceiver"
+        <receiver android:name=".autofill_ng.AutofillNotificationReceiver"
             android:exported="false" />
 
         <!-- Quick Settings Tile for Manual Autofill -->
         <service
-            android:name=".autofill.service.AutofillTileService"
+            android:name=".autofill_ng.service.AutofillTileService"
             android:label="@string/tile_autofill_label"
             android:icon="@drawable/ic_key"
             android:exported="true"
@@ -159,7 +159,7 @@
 
         <!-- Smart Copy Broadcast Receiver -->
         <receiver 
-            android:name=".autofill.utils.SmartCopyReceiver"
+            android:name=".autofill_ng.utils.SmartCopyReceiver"
             android:exported="false">
             <intent-filter>
                 <action android:name="takagi.ru.monica.ACTION_SMART_COPY" />
@@ -194,7 +194,7 @@
         
         <!-- Autofill Save Activity (旧版全屏) -->
         <activity
-            android:name=".autofill.AutofillSaveActivity"
+            android:name=".autofill_ng.AutofillSaveActivity"
             android:exported="false"
             android:theme="@style/Theme.Monica"
             android:excludeFromRecents="true"
@@ -202,7 +202,7 @@
         
         <!-- Autofill Save Activity (Keyguard 风格全屏) -->
         <activity
-            android:name=".autofill.AutofillSaveTransparentActivity"
+            android:name=".autofill_ng.AutofillSaveTransparentActivity"
             android:exported="false"
             android:theme="@style/Theme.Monica"
             android:excludeFromRecents="true"
@@ -212,7 +212,7 @@
         
         <!-- Phase 8: Biometric Authentication Activity for Autofill -->
         <activity
-            android:name=".autofill.BiometricAuthActivity"
+            android:name=".autofill_ng.BiometricAuthActivity"
             android:exported="false"
             android:theme="@style/Theme.Transparent"
             android:excludeFromRecents="true"
@@ -220,7 +220,7 @@
         
         <!-- Autofill Authentication Activity -->
         <activity
-            android:name=".autofill.AutofillAuthenticationActivity"
+            android:name=".autofill_ng.AutofillAuthenticationActivity"
             android:exported="false"
             android:theme="@style/Theme.TransparentDialog"
             android:excludeFromRecents="true"
@@ -228,7 +228,7 @@
         
         <!-- Autofill Picker Activity (UI Improvement) -->
         <activity
-            android:name=".autofill.AutofillPickerActivity"
+            android:name=".autofill_ng.AutofillPickerActivity"
             android:exported="false"
             android:theme="@style/Theme.Monica.BottomSheet"
             android:excludeFromRecents="true"
@@ -236,7 +236,7 @@
         
         <!-- Autofill Picker Activity V2 (Keyguard Style Full Screen) -->
         <activity
-            android:name=".autofill.AutofillPickerActivityV2"
+            android:name=".autofill_ng.AutofillPickerActivityV2"
             android:exported="false"
             android:theme="@style/Theme.Monica"
             android:excludeFromRecents="true"
@@ -245,7 +245,7 @@
 
         <!-- 🔐 Password Suggestion Activity (Strong Password Generator) -->
         <activity
-            android:name=".autofill.PasswordSuggestionActivity"
+            android:name=".autofill_ng.PasswordSuggestionActivity"
             android:exported="false"
             android:theme="@style/Theme.TransparentDialog"
             android:excludeFromRecents="true"

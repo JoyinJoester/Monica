@@ -74,8 +74,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import takagi.ru.monica.R
-import takagi.ru.monica.autofill.AutofillPickerActivityV2
-import takagi.ru.monica.autofill.core.AutofillLogger
+import takagi.ru.monica.autofill_ng.AutofillPickerActivityV2
+import takagi.ru.monica.autofill_ng.core.AutofillLogger
 import takagi.ru.monica.bitwarden.service.BitwardenDiagLogger
 import takagi.ru.monica.security.SessionManager
 import takagi.ru.monica.viewmodel.SettingsViewModel
@@ -813,5 +813,7 @@ private object DeveloperLogDebugHelper {
         }
     }
 }
+
+
 
 

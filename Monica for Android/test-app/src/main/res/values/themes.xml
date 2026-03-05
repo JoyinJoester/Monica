@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.AutofillDebugLab" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/debug_primary</item>
+        <item name="colorOnPrimary">@color/debug_on_primary</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:colorBackground">@color/debug_background</item>
+        <item name="android:textColorPrimary">@color/debug_on_background</item>
+    </style>
+</resources>

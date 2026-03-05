@@ -65,8 +65,6 @@ import java.security.MessageDigest
 import java.security.Signature
 import java.security.spec.ECGenParameterSpec
 import java.util.UUID
-import java.security.cert.CertificateFactory
-import java.security.cert.X509Certificate
 
 /**
  * Passkey 创建确认 Activity
@@ -80,13 +78,15 @@ class PasskeyCreateActivity : FragmentActivity() {
         private const val TAG = "PasskeyCreateActivity"
         private const val KEYSTORE_PROVIDER = "AndroidKeyStore"
         
-        // Monica AAGUID - 使用自定义 UUID: 6d6f6e69-6361-7061-7373-6b6579617070
-        // "monicapasskeyapp" 的十六进制表示
+        // Monica authenticator AAGUID.
+        // Keep this stable forever. Relying parties may display authenticator brand from AAGUID.
+        // Existing passkeys registered with previous AAGUID remain valid; this only affects new registrations.
+        // 6d6f6e69-6361-4d33-a001-706173736b79
         val MONICA_AAGUID = byteArrayOf(
             0x6d.toByte(), 0x6f.toByte(), 0x6e.toByte(), 0x69.toByte(),
-            0x63.toByte(), 0x61.toByte(), 0x70.toByte(), 0x61.toByte(),
-            0x73.toByte(), 0x73.toByte(), 0x6b.toByte(), 0x65.toByte(),
-            0x79.toByte(), 0x61.toByte(), 0x70.toByte(), 0x70.toByte()
+            0x63.toByte(), 0x61.toByte(), 0x4d.toByte(), 0x33.toByte(),
+            0xa0.toByte(), 0x01.toByte(), 0x70.toByte(), 0x61.toByte(),
+            0x73.toByte(), 0x73.toByte(), 0x6b.toByte(), 0x79.toByte()
         )
     }
     
@@ -117,9 +117,7 @@ class PasskeyCreateActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        Log.d(TAG, "PasskeyCreateActivity onCreate called")
-        Log.d(TAG, "Intent: $intent")
-        Log.d(TAG, "Intent extras: ${intent.extras}")
+        Log.i(TAG, "PasskeyCreateActivity onCreate")
         
         // 首先尝试从 PendingIntentHandler 获取请求（这是正确的方式）
         val providerRequest = try {
@@ -132,7 +130,7 @@ class PasskeyCreateActivity : FragmentActivity() {
         if (providerRequest == null) {
             Log.e(TAG, "providerRequest is null - this should not happen!")
         } else {
-            Log.d(TAG, "providerRequest retrieved successfully")
+            Log.i(TAG, "providerRequest retrieved successfully")
             pendingCallingAppInfo = providerRequest.callingAppInfo
             Log.d(TAG, "CallingAppInfo: $pendingCallingAppInfo")
             Log.d(TAG, "CallingAppInfo origin: ${pendingCallingAppInfo?.origin}")
@@ -150,8 +148,10 @@ class PasskeyCreateActivity : FragmentActivity() {
         val userName = intent.getStringExtra(MonicaCredentialProviderService.EXTRA_USER_NAME) ?: ""
         val userDisplayName = intent.getStringExtra(MonicaCredentialProviderService.EXTRA_USER_DISPLAY_NAME) ?: userName
         
-        Log.d(TAG, "requestJson from extras: ${requestJson.take(100)}...")
-        Log.d(TAG, "rpId: $rpId, userName: $userName")
+        Log.i(
+            TAG,
+            "request loaded: requestJsonSize=${requestJson.length}, rpIdLen=${rpId.length}, userNameLen=${userName.length}"
+        )
         
         // 检查必要参数
         if (requestJson.isBlank()) {
@@ -177,8 +177,46 @@ class PasskeyCreateActivity : FragmentActivity() {
             finish()
             return
         }
+
+        val shadowEnabled = PasskeyValidationFlags.isShadowValidationEnabled(this)
+        val strictEnabled = PasskeyValidationFlags.isStrictValidationEnabled(this)
+        if (shadowEnabled || strictEnabled) {
+            val verdict = PasskeyRequestValidator.validate(
+                context = this,
+                requestJson = requestJson,
+                rpId = rpId,
+                callingAppInfo = pendingCallingAppInfo
+            )
+            PasskeyRequestValidator.logShadow(
+                flowTag = "CREATE",
+                rpId = rpId,
+                callingPackage = pendingCallingAppInfo?.packageName,
+                verdict = verdict
+            )
+            PasskeyValidationDiagnostics.record(
+                context = this,
+                flowTag = "CREATE",
+                rpId = rpId,
+                callingPackage = pendingCallingAppInfo?.packageName,
+                verdict = verdict
+            )
+            repository.logAudit(
+                "PASSKEY_CREATE_VALIDATION",
+                "rpId=$rpId|source=${verdict.resolvedSource}|reasons=${verdict.reasons.joinToString(",")}"
+            )
+            if (strictEnabled && verdict.strictBlock) {
+                val resultIntent = Intent()
+                PendingIntentHandler.setCreateCredentialException(
+                    resultIntent,
+                    CreateCredentialUnknownException("Passkey request validation failed")
+                )
+                setResult(Activity.RESULT_OK, resultIntent)
+                finish()
+                return
+            }
+        }
         
-        Log.d(TAG, "Creating passkey for $rpId / $userName")
+        Log.i(TAG, "Creating passkey for $rpId / $userName")
         
         // 保存待处理的数据
         pendingRequestJson = requestJson
@@ -404,7 +442,12 @@ class PasskeyCreateActivity : FragmentActivity() {
                 clientDataJsonValue = "<placeholder>"
                 Log.d(TAG, "Using placeholder clientDataJSON (clientDataHash provided)")
             } else {
-                val origin = resolveOrigin(requestJson, pendingCallingAppInfo)
+                val origin = PasskeyOriginResolver.resolveOrigin(
+                    context = this,
+                    requestJson = requestJson,
+                    callingAppInfo = pendingCallingAppInfo,
+                    rpIdFallback = rpId
+                )
                 val androidPackageName = pendingCallingAppInfo?.packageName
                 val clientDataJson = createClientDataJson(
                     type = "webauthn.create",
@@ -425,13 +468,14 @@ class PasskeyCreateActivity : FragmentActivity() {
             val publicKeyB64 = Base64.encodeToString(keyPair.public.encoded, Base64.NO_WRAP)
 
             val discoverable = parseDiscoverable(requestJson)
+            val normalizedRpId = PasskeyRpIdNormalizer.normalize(rpId) ?: rpId
             val initialBitwardenVaultId = pendingBitwardenVaultId
              
             // 保存到数据库
             val passkeyEntry = PasskeyEntry(
                 credentialId = credentialIdB64,
-                rpId = rpId,
-                rpName = parseRpName(requestJson, rpId),
+                rpId = normalizedRpId,
+                rpName = parseRpName(requestJson, normalizedRpId),
                 userId = userIdB64,
                 userName = userName,
                 userDisplayName = userDisplayName,
@@ -463,8 +507,8 @@ class PasskeyCreateActivity : FragmentActivity() {
                     if (passwordEntry != null) {
                         val binding = PasskeyBinding(
                             credentialId = credentialIdB64,
-                            rpId = rpId,
-                            rpName = parseRpName(requestJson, rpId),
+                            rpId = normalizedRpId,
+                            rpName = parseRpName(requestJson, normalizedRpId),
                             userName = userName,
                             userDisplayName = userDisplayName
                         )
@@ -700,56 +744,6 @@ class PasskeyCreateActivity : FragmentActivity() {
         }.toString()
     }
 
-    private fun resolveOrigin(requestJson: String, callingAppInfo: CallingAppInfo?): String {
-        return try {
-            val json = JSONObject(requestJson)
-            val originFromRequest = json.optString("origin")
-            if (originFromRequest.isNotBlank()) {
-                originFromRequest
-            } else {
-                getOriginFromCallingAppInfo(callingAppInfo)
-                    ?: "android:apk-key-hash:${getAppSigningHash()}"
-            }
-        } catch (e: Exception) {
-            getOriginFromCallingAppInfo(callingAppInfo)
-                ?: "android:apk-key-hash:${getAppSigningHash()}"
-        }
-    }
-
-    private fun getOriginFromCallingAppInfo(callingAppInfo: CallingAppInfo?): String? {
-        if (callingAppInfo == null) return null
-        return try {
-            val origin = callingAppInfo.origin
-            if (!origin.isNullOrBlank()) {
-                origin
-            } else {
-                val hash = getCallingAppSigningHash(callingAppInfo)
-                if (hash.isNullOrBlank()) null else "android:apk-key-hash:$hash"
-            }
-        } catch (e: Exception) {
-            val hash = getCallingAppSigningHash(callingAppInfo)
-            if (hash.isNullOrBlank()) null else "android:apk-key-hash:$hash"
-        }
-    }
-
-    private fun getCallingAppSigningHash(callingAppInfo: CallingAppInfo): String? {
-        return try {
-            val signatures = callingAppInfo.signingInfo.apkContentsSigners
-            if (signatures.isNotEmpty()) {
-                val certFactory = CertificateFactory.getInstance("X509")
-                val cert = certFactory.generateCertificate(
-                    signatures[0].toByteArray().inputStream()
-                ) as X509Certificate
-                val md = MessageDigest.getInstance("SHA-256")
-                val hash = md.digest(cert.encoded)
-                Base64.encodeToString(hash, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
-            } else null
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to get calling app signing hash", e)
-            null
-        }
-    }
-
     private fun parseDiscoverable(requestJson: String): Boolean {
         return try {
             val json = JSONObject(requestJson)
@@ -762,23 +756,6 @@ class PasskeyCreateActivity : FragmentActivity() {
         }
     }
     
-    private fun getAppSigningHash(): String {
-        return try {
-            val packageInfo = packageManager.getPackageInfo(
-                packageName,
-                android.content.pm.PackageManager.GET_SIGNING_CERTIFICATES
-            )
-            val signatures = packageInfo.signingInfo?.apkContentsSigners ?: return ""
-            if (signatures.isNotEmpty()) {
-                val md = MessageDigest.getInstance("SHA-256")
-                val hash = md.digest(signatures[0].toByteArray())
-                Base64.encodeToString(hash, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
-            } else ""
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to get app signing hash", e)
-            ""
-        }
-    }
 }
 
 @Composable

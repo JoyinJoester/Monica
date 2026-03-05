@@ -73,7 +73,7 @@ import takagi.ru.monica.ui.screens.AddEditBankCardScreen
 import takagi.ru.monica.ui.screens.AddEditDocumentScreen
 import takagi.ru.monica.ui.screens.AddEditPasswordScreen
 import takagi.ru.monica.ui.screens.AddEditTotpScreen
-import takagi.ru.monica.ui.screens.AutofillSettingsScreen
+import takagi.ru.monica.ui.screens.AutofillSettingsV2Screen
 import takagi.ru.monica.ui.screens.BankCardDetailScreen
 import takagi.ru.monica.ui.screens.BottomNavSettingsScreen
 import takagi.ru.monica.ui.screens.ChangePasswordScreen
@@ -1619,7 +1619,7 @@ fun MonicaContent(
             androidx.compose.runtime.CompositionLocalProvider(
                 takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
             ) {
-                takagi.ru.monica.ui.screens.AutofillSettingsScreen(
+                AutofillSettingsV2Screen(
                     onNavigateBack = {
                         navController.popBackStack()
                     }

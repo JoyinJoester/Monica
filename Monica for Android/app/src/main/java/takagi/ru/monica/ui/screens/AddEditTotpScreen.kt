@@ -40,8 +40,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import takagi.ru.monica.R
-import takagi.ru.monica.autofill.ui.rememberAppIcon
-import takagi.ru.monica.autofill.ui.rememberFavicon
+import takagi.ru.monica.autofill_ng.ui.rememberAppIcon
+import takagi.ru.monica.autofill_ng.ui.rememberFavicon
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.Category
@@ -1369,3 +1369,4 @@ private fun VaultOptionItem(
         }
     }
 }
+

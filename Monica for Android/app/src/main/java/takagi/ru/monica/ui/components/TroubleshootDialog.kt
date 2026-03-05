@@ -13,9 +13,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
-import takagi.ru.monica.autofill.core.DiagnosticReport
-import takagi.ru.monica.autofill.core.Issue
-import takagi.ru.monica.autofill.core.Severity
+import takagi.ru.monica.autofill_ng.core.DiagnosticReport
+import takagi.ru.monica.autofill_ng.core.Issue
+import takagi.ru.monica.autofill_ng.core.Severity
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -290,7 +290,7 @@ private fun StatusItem(label: String, isOk: Boolean) {
 @Composable
 private fun RequestItem(
     context: android.content.Context,
-    request: takagi.ru.monica.autofill.core.RequestInfo, 
+    request: takagi.ru.monica.autofill_ng.core.RequestInfo, 
     isLast: Boolean = false
 ) {
     Column(
@@ -387,7 +387,7 @@ private fun IssueItem(context: android.content.Context, issue: Issue) {
  * 建议项
  */
 @Composable
-private fun RecommendationItem(recommendation: takagi.ru.monica.autofill.core.Recommendation) {
+private fun RecommendationItem(recommendation: takagi.ru.monica.autofill_ng.core.Recommendation) {
     Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.Top
@@ -436,4 +436,5 @@ private fun formatStatKey(context: android.content.Context, key: String): String
         else -> key
     }
 }
+
 

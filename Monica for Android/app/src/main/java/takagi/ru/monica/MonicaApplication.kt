@@ -14,8 +14,6 @@ import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
 import org.koin.core.logger.Level
-import takagi.ru.monica.autofill.di.autofillModule
-import takagi.ru.monica.autofill.di.autofillSessionModule
 import takagi.ru.monica.bitwarden.sync.NetworkMonitor
 import takagi.ru.monica.bitwarden.sync.SyncQueueManager
 import takagi.ru.monica.bitwarden.sync.SyncQueueManagerHolder
@@ -51,10 +49,6 @@ class MonicaApplication : Application() {
     
     /**
      * 初始化 Koin 依赖注入框架
-     * 
-     * 按模块加载依赖:
-     * - autofillModule: 自动填充核心组件
-     * - autofillSessionModule: 会话级临时依赖
      */
     private fun initKoin() {
         startKoin {
@@ -63,12 +57,6 @@ class MonicaApplication : Application() {
             
             // 提供 Android Context
             androidContext(this@MonicaApplication)
-            
-            // 加载模块
-            modules(
-                autofillModule,
-                autofillSessionModule
-            )
         }
     }
 

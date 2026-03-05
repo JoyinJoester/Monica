@@ -101,7 +101,7 @@ fun MultiPasswordEntryCard(
                         null
                     }
                     val appIcon = if (!firstEntry.appPackageName.isNullOrBlank()) {
-                        takagi.ru.monica.autofill.ui.rememberAppIcon(firstEntry.appPackageName)
+                        takagi.ru.monica.autofill_ng.ui.rememberAppIcon(firstEntry.appPackageName)
                     } else null
                     val autoMatchedSimpleIcon = takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon(
                         website = firstEntry.website,
@@ -112,7 +112,7 @@ fun MultiPasswordEntryCard(
                     )
 
                     val favicon = if (firstEntry.website.isNotBlank()) {
-                        takagi.ru.monica.autofill.ui.rememberFavicon(
+                        takagi.ru.monica.autofill_ng.ui.rememberFavicon(
                             url = firstEntry.website,
                             enabled = autoMatchedSimpleIcon.resolved && autoMatchedSimpleIcon.slug == null
                         )
@@ -441,3 +441,4 @@ private fun MultiPasswordAuthenticatorInlineRow(
         }
     }
 }
+

@@ -934,7 +934,7 @@ fun PasswordEntryCard(
                             enabled = entry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
                         )
                         val favicon = if (entry.website.isNotBlank()) {
-                            takagi.ru.monica.autofill.ui.rememberFavicon(
+                            takagi.ru.monica.autofill_ng.ui.rememberFavicon(
                                 url = entry.website,
                                 enabled = autoMatchedSimpleIcon.resolved && autoMatchedSimpleIcon.slug == null
                             )
@@ -1234,3 +1234,4 @@ fun PasswordEntryCard(
         )
     }
 }
+

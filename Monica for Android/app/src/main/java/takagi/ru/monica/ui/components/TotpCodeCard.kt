@@ -277,7 +277,7 @@ fun TotpCodeCard(
             totpData.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
     )
     val favicon = if (iconWebsite.isNotBlank()) {
-        takagi.ru.monica.autofill.ui.rememberFavicon(
+        takagi.ru.monica.autofill_ng.ui.rememberFavicon(
             url = iconWebsite,
             enabled = settings.iconCardsEnabled && autoMatchedSimpleIcon.resolved && autoMatchedSimpleIcon.slug == null
         )
@@ -285,7 +285,7 @@ fun TotpCodeCard(
         null
     }
     val appIcon = if (settings.iconCardsEnabled && associatedAppPackage.isNotBlank()) {
-        takagi.ru.monica.autofill.ui.rememberAppIcon(packageName = associatedAppPackage)
+        takagi.ru.monica.autofill_ng.ui.rememberAppIcon(packageName = associatedAppPackage)
     } else {
         null
     }
@@ -912,3 +912,4 @@ private fun formatOtpCode(code: String, otpType: OtpType): String {
         }
     }
 }
+

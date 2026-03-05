@@ -88,8 +88,8 @@ import takagi.ru.monica.utils.decodeKeePassPathForDisplay
 import takagi.ru.monica.viewmodel.PasskeyViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import kotlinx.coroutines.flow.flowOf
-import takagi.ru.monica.autofill.ui.rememberAppIcon
-import takagi.ru.monica.autofill.ui.rememberFavicon
+import takagi.ru.monica.autofill_ng.ui.rememberAppIcon
+import takagi.ru.monica.autofill_ng.ui.rememberFavicon
 import takagi.ru.monica.ui.icons.UnmatchedIconFallback
 import takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon
 import takagi.ru.monica.ui.icons.shouldShowFallbackSlot
@@ -2268,3 +2268,4 @@ private fun isPkcs8PrivateKeyBase64(value: String): Boolean {
         true
     }.getOrDefault(false)
 }
+

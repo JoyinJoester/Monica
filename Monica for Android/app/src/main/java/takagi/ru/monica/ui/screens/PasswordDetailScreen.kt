@@ -75,8 +75,8 @@ import takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon
 import takagi.ru.monica.ui.icons.rememberSimpleIconBitmap
 import takagi.ru.monica.ui.icons.rememberUploadedPasswordIcon
 import takagi.ru.monica.ui.icons.shouldShowFallbackSlot
-import takagi.ru.monica.autofill.ui.rememberAppIcon
-import takagi.ru.monica.autofill.ui.rememberFavicon
+import takagi.ru.monica.autofill_ng.ui.rememberAppIcon
+import takagi.ru.monica.autofill_ng.ui.rememberFavicon
 import kotlinx.coroutines.flow.flowOf
 import java.text.DateFormat
 import java.util.Locale
@@ -2141,6 +2141,7 @@ private fun MultiDeleteConfirmDialog(
         textContentColor = MaterialTheme.colorScheme.onSurfaceVariant
     )
 }
+
 
 
 

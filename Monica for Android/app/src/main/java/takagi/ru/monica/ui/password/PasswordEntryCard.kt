@@ -109,7 +109,7 @@ fun PasswordEntryCard(
                     takagi.ru.monica.ui.icons.rememberUploadedPasswordIcon(entry.customIconValue)
                 } else null
                 val appIcon = if (!entry.appPackageName.isNullOrBlank()) {
-                    takagi.ru.monica.autofill.ui.rememberAppIcon(entry.appPackageName)
+                    takagi.ru.monica.autofill_ng.ui.rememberAppIcon(entry.appPackageName)
                 } else null
                 val autoMatchedSimpleIcon = takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon(
                     website = entry.website,
@@ -120,7 +120,7 @@ fun PasswordEntryCard(
                 )
 
                 val favicon = if (entry.website.isNotBlank()) {
-                    takagi.ru.monica.autofill.ui.rememberFavicon(
+                    takagi.ru.monica.autofill_ng.ui.rememberFavicon(
                         url = entry.website,
                         enabled = autoMatchedSimpleIcon.resolved && autoMatchedSimpleIcon.slug == null
                     )
@@ -369,3 +369,4 @@ private fun PasswordAuthenticatorInlineRow(
         }
     }
 }
+

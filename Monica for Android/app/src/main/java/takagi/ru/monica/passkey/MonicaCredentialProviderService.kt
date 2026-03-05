@@ -99,7 +99,7 @@ class MonicaCredentialProviderService : CredentialProviderService() {
         cancellationSignal: CancellationSignal,
         callback: OutcomeReceiver<BeginCreateCredentialResponse, CreateCredentialException>
     ) {
-        Log.d(TAG, "onBeginCreateCredentialRequest")
+        Log.i(TAG, "onBeginCreateCredentialRequest")
         
         try {
             when (request) {
@@ -125,7 +125,7 @@ class MonicaCredentialProviderService : CredentialProviderService() {
         cancellationSignal: CancellationSignal,
         callback: OutcomeReceiver<BeginGetCredentialResponse, GetCredentialException>
     ) {
-        Log.d(TAG, "onBeginGetCredentialRequest")
+        Log.i(TAG, "onBeginGetCredentialRequest")
         
         serviceScope.launch {
             try {
@@ -189,7 +189,7 @@ class MonicaCredentialProviderService : CredentialProviderService() {
             val userName = userJson?.optString("name") ?: ""
             val userDisplayName = userJson?.optString("displayName") ?: userName
             
-            Log.d(TAG, "Create passkey for RP: $rpId, User: $userName")
+            Log.i(TAG, "Create passkey for RP: $rpId, user=$userName")
             
             // 创建 PendingIntent 用于启动确认 Activity
             val intent = Intent(this, PasskeyCreateActivity::class.java).apply {
@@ -243,7 +243,7 @@ class MonicaCredentialProviderService : CredentialProviderService() {
             val json = JSONObject(requestJson)
             
             val rpId = json.optString("rpId", "")
-            Log.d(TAG, "Get passkeys for RP: $rpId")
+            Log.i(TAG, "Get passkeys for RP: $rpId")
             
             // 解析 allowCredentials 列表，并进行规范化
             val allowCredentials = json.optJSONArray("allowCredentials")
@@ -334,9 +334,28 @@ class MonicaCredentialProviderService : CredentialProviderService() {
         allowedCredentialIds: Set<String>,
         strictAllowCredentials: Boolean
     ): List<takagi.ru.monica.data.PasskeyEntry> {
+        val normalizedRpId = PasskeyRpIdNormalizer.normalize(rpId)
+
+        suspend fun rpIdCandidates(): List<takagi.ru.monica.data.PasskeyEntry> {
+            if (rpId.isBlank()) return emptyList()
+            val direct = runCatching { database.passkeyDao().getPasskeysByRpIdSync(rpId) }
+                .getOrDefault(emptyList())
+            if (direct.isNotEmpty()) return direct
+
+            if (normalizedRpId.isNullOrBlank()) return emptyList()
+            val normalizedMatches = runCatching { database.passkeyDao().getAllPasskeysSync() }
+                .getOrDefault(emptyList())
+                .filter { PasskeyRpIdNormalizer.isEquivalent(it.rpId, normalizedRpId) }
+
+            if (normalizedMatches.isNotEmpty()) {
+                Log.i(TAG, "RP normalization fallback matched ${normalizedMatches.size} passkeys for $rpId")
+            }
+            return normalizedMatches
+        }
+
         val passkeys = if (allowedCredentialIds.isNotEmpty() && strictAllowCredentials) {
             val candidates = if (rpId.isNotBlank()) {
-                database.passkeyDao().getPasskeysByRpIdSync(rpId)
+                rpIdCandidates()
             } else {
                 database.passkeyDao().getAllPasskeysSync()
             }
@@ -345,7 +364,7 @@ class MonicaCredentialProviderService : CredentialProviderService() {
                 normalizedId != null && normalizedId in allowedCredentialIds
             }
         } else if (rpId.isNotBlank()) {
-            database.passkeyDao().getPasskeysByRpIdSync(rpId)
+            rpIdCandidates()
         } else {
             database.passkeyDao().getDiscoverablePasskeysSync()
         }

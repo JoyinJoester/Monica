@@ -12,7 +12,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
-import takagi.ru.monica.autofill.core.AutofillServiceChecker
+import takagi.ru.monica.autofill_ng.core.AutofillServiceChecker
 
 /**
  * 自动填充状态卡片
@@ -177,4 +177,5 @@ fun AutofillStatusCard(
         }
     }
 }
+
 

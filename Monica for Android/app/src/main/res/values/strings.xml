@@ -1149,6 +1149,20 @@
     <string name="passkey_feature_phishing_desc">Passkeys are bound to specific websites, preventing phishing attacks</string>
     <string name="passkey_settings_requirement_title">System Requirements</string>
     <string name="passkey_settings_requirement_desc">To use Monica as a Passkey provider, your device must be running Android 14 (API 34) or later. You can still view passkeys synced from other devices.</string>
+    <string name="passkey_validation_title">Request Validation</string>
+    <string name="passkey_shadow_validation_title">Shadow Validation</string>
+    <string name="passkey_shadow_validation_desc">Observe and log suspicious passkey requests without blocking sign-ins.</string>
+    <string name="passkey_strict_validation_title">Strict Validation</string>
+    <string name="passkey_strict_validation_desc">Block requests that clearly conflict with relying-party origin rules.</string>
+    <string name="passkey_strict_validation_warning">Strict mode may block login on poorly implemented apps. Keep this off unless you are debugging.</string>
+    <string name="passkey_diagnostics_title">Validation Diagnostics</string>
+    <string name="passkey_diagnostics_summary">Requests: %1$d, Suspicious: %2$d, Strict Candidates: %3$d</string>
+    <string name="passkey_diagnostics_top_bucket">Top bucket: %1$s @ %2$s (suspicious %3$d)</string>
+    <string name="passkey_diagnostics_refresh">Refresh</string>
+    <string name="passkey_diagnostics_copy">Copy Report</string>
+    <string name="passkey_diagnostics_clear">Clear Diagnostics</string>
+    <string name="passkey_diagnostics_copied">Passkey diagnostics report copied</string>
+    <string name="passkey_diagnostics_cleared">Passkey diagnostics cleared</string>
     
     <!-- Passkey Biometric Authentication -->
     <string name="biometric_title_passkey_auth">Verify to Sign In</string>
@@ -1171,6 +1185,8 @@
     <string name="autofill_cancel">Cancel</string>
     <string name="autofill_never_for_site">Never save for this website</string>
     <string name="autofill_saved_via">Saved via autofill</string>
+    <string name="autofill_save_result_saved">Password saved</string>
+    <string name="autofill_save_result_updated">Password updated</string>
     <string name="autofill_manager_icon">Password Manager Icon</string>
     <string name="linked_app">Linked App</string>
     <string name="select_app">Select App</string>
@@ -1382,8 +1398,6 @@
     <string name="autofill_fill_suggestions_desc">Automatically show matching password suggestions</string>
     <string name="autofill_fill_manual_selection">Manual Selection</string>
     <string name="autofill_fill_manual_selection_desc">Allow manual selection of password to fill</string>
-    <string name="autofill_bitwarden_compat_mode_title">Bitwarden-Compatible Autofill</string>
-    <string name="autofill_bitwarden_compat_mode_desc">Use Bitwarden-style autofill model for login fields (test mode)</string>
     <string name="autofill_respect_disabled_flag_title">Respect Autofill disabled flag</string>
     <string name="autofill_respect_disabled_flag_desc">Disables autofill for a browser field that has autofill disabled flag set</string>
     
@@ -2691,5 +2705,33 @@
     <string name="password_quick_access_empty_frequent">No frequent password records yet</string>
     <string name="password_quick_access_last_opened">Last opened: %1$s</string>
     <string name="password_quick_access_open_count">%1$d times</string>
+    <string name="autofill_v2_title">Autofill</string>
+    <string name="autofill_v2_engine_title">Engine: Bitwarden</string>
+    <string name="autofill_v2_engine_desc">Autofill is now handled by a rebuilt Bitwarden-style engine. Legacy chain is frozen.</string>
+    <string name="autofill_v2_engine_mode_legacy">Legacy Frozen mode is active</string>
+    <string name="autofill_v2_enable_service">Enable autofill in app</string>
+    <string name="autofill_v2_enable_service_desc">Turn Monica autofill on or off at app level.</string>
+    <string name="autofill_v2_strict_match">Strict matching (recommended)</string>
+    <string name="autofill_v2_strict_match_desc">Only allow high-confidence package/domain matches to reduce false fill.</string>
+    <string name="autofill_v2_subdomain_match">Allow subdomain matching</string>
+    <string name="autofill_v2_subdomain_match_desc">Treat subdomains of the same site as related login targets.</string>
+    <string name="autofill_v2_respect_off">Respect autofill-off fields</string>
+    <string name="autofill_v2_respect_off_desc">Skip fields where apps/websites explicitly disable autofill.</string>
+    <string name="autofill_v2_save_prompt">Enable save prompt</string>
+    <string name="autofill_v2_save_prompt_desc">Offer to save new credentials after login/register.</string>
+    <string name="autofill_v2_blacklist">Enable blacklist</string>
+    <string name="autofill_v2_blacklist_desc">Block autofill in sensitive apps (%1$d packages).</string>
+    <string name="autofill_v2_set_system_service">Set Monica as system autofill service</string>
+    <string name="autofill_v2_set_system_service_desc">Open Android system settings and set Monica as your autofill provider.</string>
+    <string name="autofill_v2_privileged_apps">Privileged apps</string>
+    <string name="autofill_v2_privileged_apps_desc">Open Android settings for credential-provider privileges.</string>
+    <string name="autofill_v2_freeze_notice">Legacy autofill and its old settings are frozen. New behavior is controlled only by this V2 page.</string>
+    <string name="autofill_v2_default_scope_title">Default picker scope</string>
+    <string name="autofill_v2_default_scope_desc">Set which storage source Monica shows by default when autofill list opens.</string>
+    <string name="autofill_v2_default_keepass_title">Default KeePass database</string>
+    <string name="autofill_v2_default_keepass_desc">Limit default suggestions and list items to one KeePass database.</string>
+    <string name="autofill_v2_default_bitwarden_title">Default Bitwarden vault</string>
+    <string name="autofill_v2_default_bitwarden_desc">Limit default suggestions and list items to one Bitwarden vault.</string>
+    <string name="autofill_service_label">Monica Autofill</string>
     <string name="version_code_max" translatable="false">9223372036854775807</string>
 </resources>

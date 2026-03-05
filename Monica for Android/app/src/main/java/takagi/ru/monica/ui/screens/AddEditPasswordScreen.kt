@@ -91,7 +91,7 @@ import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
-import takagi.ru.monica.autofill.ui.rememberFavicon
+import takagi.ru.monica.autofill_ng.ui.rememberFavicon
 import java.io.File
 import java.util.Locale
 
@@ -99,6 +99,15 @@ private const val MONICA_USERNAME_ALIAS_FIELD_TITLE = "__monica_username_alias"
 private const val MONICA_USERNAME_ALIAS_META_FIELD_TITLE = "__monica_username_alias_meta"
 private const val MONICA_USERNAME_ALIAS_META_VALUE = "migrated_v1"
 private const val ICON_PICKER_PAGE_SIZE = 120
+
+data class AddEditPasswordInitialDraft(
+    val title: String = "",
+    val website: String = "",
+    val username: String = "",
+    val password: String = "",
+    val appPackageName: String = "",
+    val appName: String = "",
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -108,6 +117,9 @@ fun AddEditPasswordScreen(
     bankCardViewModel: BankCardViewModel? = null,
     localKeePassViewModel: LocalKeePassViewModel? = null,
     passwordId: Long?,
+    initialDraft: AddEditPasswordInitialDraft? = null,
+    forceShowAppBinding: Boolean = false,
+    onSaveCompleted: ((Long?) -> Unit)? = null,
     onNavigateBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -262,7 +274,7 @@ fun AddEditPasswordScreen(
     // 判断字段是否应该显示：设置开启 或 条目已有该字段数据
     fun shouldShowSecurityVerification() = fieldVisibility.securityVerification || authenticatorKey.isNotEmpty()
     fun shouldShowCategoryAndNotes() = fieldVisibility.categoryAndNotes || notes.isNotEmpty()
-    fun shouldShowAppBinding() = fieldVisibility.appBinding || appPackageName.isNotEmpty()
+    fun shouldShowAppBinding() = forceShowAppBinding || fieldVisibility.appBinding || appPackageName.isNotEmpty()
     fun shouldShowPersonalInfo() = fieldVisibility.personalInfo || 
         emails.any { it.isNotEmpty() } || phones.any { it.isNotEmpty() }
     fun shouldShowAddressInfo() = fieldVisibility.addressInfo || 
@@ -274,6 +286,7 @@ fun AddEditPasswordScreen(
     
     // 新建条目时的自动填充标记（只执行一次）
     var hasAutoFilled by rememberSaveable { mutableStateOf(false) }
+    var initialDraftApplied by rememberSaveable(passwordId) { mutableStateOf(false) }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -496,6 +509,18 @@ fun AddEditPasswordScreen(
             }
         } else {
              if (passwords.isEmpty()) passwords.add("")
+             if (!initialDraftApplied && initialDraft != null) {
+                 if (title.isBlank()) title = initialDraft.title
+                 if (website.isBlank()) website = initialDraft.website
+                 if (username.isBlank()) username = initialDraft.username
+                 if (appPackageName.isBlank()) appPackageName = initialDraft.appPackageName
+                 if (appName.isBlank()) appName = initialDraft.appName
+                 if (initialDraft.password.isNotBlank()) {
+                     passwords.clear()
+                     passwords.add(initialDraft.password)
+                 }
+                 initialDraftApplied = true
+             }
         }
     }
 
@@ -647,6 +672,7 @@ fun AddEditPasswordScreen(
                         PasswordCustomIconStore.deleteIconFile(context, originalUploaded)
                     }
                     hasSavedSuccessfully = true
+                    onSaveCompleted?.invoke(firstPasswordId)
                     onNavigateBack()
                 }
             )
@@ -2492,3 +2518,4 @@ private fun VaultOptionItem(
         }
     }
 }
+
