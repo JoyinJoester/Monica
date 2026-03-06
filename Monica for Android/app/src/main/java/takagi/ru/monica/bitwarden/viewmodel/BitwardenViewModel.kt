@@ -306,6 +306,8 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                 
                 is BitwardenRepository.RepositoryLoginResult.TwoFactorRequired -> {
                     _loginState.value = LoginState.TwoFactorRequired(result.providers)
+                    twoFactorState = result.state
+                    _events.emit(BitwardenEvent.ShowTwoFactorDialog(result.providers))
                     _events.emit(BitwardenEvent.ShowError("验证码错误，请重试"))
                 }
 

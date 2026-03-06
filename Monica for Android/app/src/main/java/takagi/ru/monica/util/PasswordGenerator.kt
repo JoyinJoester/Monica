@@ -38,6 +38,7 @@ class PasswordGenerator {
             includeLowercase: Boolean = true,
             includeNumbers: Boolean = true,
             includeSymbols: Boolean = true,
+            allowedSymbols: String? = null,
             excludeSimilar: Boolean = false,
             excludeAmbiguous: Boolean = false,
             // ✨ 新增 Keyguard 特性：最小字符数要求
@@ -52,7 +53,8 @@ class PasswordGenerator {
             val uppercaseChars = if (includeUppercase) UPPERCASE else ""
             val lowercaseChars = if (includeLowercase) LOWERCASE else ""
             val numberChars = if (includeNumbers) NUMBERS else ""
-            val symbolChars = if (includeSymbols) SYMBOLS else ""
+            val symbolBase = allowedSymbols ?: SYMBOLS
+            val symbolChars = if (includeSymbols) symbolBase else ""
             
             val allChars = buildString {
                 append(uppercaseChars)
@@ -90,11 +92,23 @@ class PasswordGenerator {
             includeLowercase: Boolean,
             includeNumbers: Boolean,
             includeSymbols: Boolean,
+            allowedSymbols: String? = null,
             excludeSimilar: Boolean,
             excludeAmbiguous: Boolean,
             weightPercent: Int
         ): String {
-            if (passwords.isEmpty()) return generatePassword(length = targetLength)
+            if (passwords.isEmpty()) {
+                return generatePassword(
+                    length = targetLength,
+                    includeUppercase = includeUppercase,
+                    includeLowercase = includeLowercase,
+                    includeNumbers = includeNumbers,
+                    includeSymbols = includeSymbols,
+                    allowedSymbols = allowedSymbols,
+                    excludeSimilar = excludeSimilar,
+                    excludeAmbiguous = excludeAmbiguous
+                )
+            }
 
             val weight = weightPercent.coerceIn(0, 100) / 100f // 0..1
 
@@ -134,6 +148,7 @@ class PasswordGenerator {
                 includeLowercase = if (hasAny) safeLower else true,
                 includeNumbers = if (hasAny) safeNumber else true,
                 includeSymbols = if (hasAny) safeSymbol else true,
+                allowedSymbols = allowedSymbols,
                 excludeSimilar = excludeSimilar,
                 excludeAmbiguous = excludeAmbiguous
             )
@@ -163,6 +178,7 @@ class PasswordGenerator {
                         includeLowercase = if (hasAny) safeLower else true,
                         includeNumbers = if (hasAny) safeNumber else true,
                         includeSymbols = if (hasAny) safeSymbol else true,
+                        allowedSymbols = allowedSymbols,
                         excludeSimilar = excludeSimilar,
                         excludeAmbiguous = excludeAmbiguous
                     )
@@ -238,24 +254,39 @@ class PasswordGenerator {
             capitalize: Boolean = false,
             includeNumber: Boolean = false,
             customWord: String? = null,
+            customWords: List<String> = emptyList(),
             context: Context? = null
         ): String {
             require(wordCount > 0) { "Word count must be greater than zero" }
             
             val wordlist = loadWordlist(context)
             if (wordlist.isEmpty()) return ""
-            
-            // 随机选择插入自定义单词的位置
-            val customWordIndex = if (customWord != null) {
-                random.nextInt(wordCount)
-            } else {
-                -1
-            }
+
+            val cleanedCustomWords = customWords
+                .map { it.trim() }
+                .filter { it.isNotEmpty() }
+                .distinct()
+                .toMutableList()
+            customWord
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+                ?.let { single ->
+                    if (single !in cleanedCustomWords) {
+                        cleanedCustomWords.add(single)
+                    }
+                }
+            val hasCustomPool = cleanedCustomWords.isNotEmpty()
+            val guaranteedCustomIndex = if (hasCustomPool) random.nextInt(wordCount) else -1
             
             val phrases = buildList {
                 repeat(wordCount) { index ->
                     val rawWord = when {
-                        index == customWordIndex && customWord != null -> customWord
+                        index == guaranteedCustomIndex && hasCustomPool -> {
+                            cleanedCustomWords[random.nextInt(cleanedCustomWords.size)]
+                        }
+                        hasCustomPool && random.nextFloat() < 0.35f -> {
+                            cleanedCustomWords[random.nextInt(cleanedCustomWords.size)]
+                        }
                         else -> wordlist[random.nextInt(wordlist.size)]
                     }
                     
@@ -435,40 +466,76 @@ class PasswordGenerator {
             // 1. 计算熵值（信息论基础）
             val charset = detectCharset(password)
             val entropy = calculateEntropy(password.length, charset.size)
+            val length = password.length
+            val typeCount = listOf(
+                charset.hasLowercase,
+                charset.hasUppercase,
+                charset.hasDigits,
+                charset.hasSymbols
+            ).count { it }
             
             // 2. 计算基础得分
             var score = 0
             
-            // 长度得分（每个字符 4 分，最多 80 分）
-            score += (password.length.coerceAtMost(20)) * 4
+            // 长度得分（长度权重更高，短密码不会被其他项轻易拉高）
+            score += when {
+                length <= 4 -> length * 4
+                length <= 7 -> 16 + (length - 4) * 5
+                length <= 11 -> 31 + (length - 7) * 6
+                length <= 16 -> 55 + (length - 11) * 5
+                else -> 80 + ((length - 16) * 2).coerceAtMost(10)
+            }
             
             // 字符类型多样性得分
-            if (password.any { it.isUpperCase() }) score += 10
-            if (password.any { it.isLowerCase() }) score += 10
-            if (password.any { it.isDigit() }) score += 10
-            if (password.any { it in SYMBOLS }) score += 15  // 符号加分更多
+            score += when (typeCount) {
+                1 -> 0
+                2 -> 10
+                3 -> 18
+                4 -> 24
+                else -> 0
+            }
             
             // 字符唯一性得分
             val uniqueChars = password.toSet().size
-            score += (uniqueChars.coerceAtMost(15)) * 2
+            val uniqueRatio = uniqueChars.toDouble() / length
+            score += (uniqueRatio * 12).toInt()
             
             // 熵值加分
-            score += (entropy / 3).toInt()
+            score += (entropy / 2.4).toInt().coerceAtMost(24)
             
             // 惩罚项
             val penalties = calculatePenalties(password)
             score -= penalties
+            if (length < 8) score -= 20
+            if (length < 10) score -= 10
+            if (typeCount <= 2 && length < 12) score -= 10
             
-            val finalScore = score.coerceIn(0, 100)
+            val rawScore = score.coerceIn(0, 100)
+            val maxScoreByLength = when {
+                length < 6 -> 19
+                length < 8 -> 39
+                length < 10 -> 59
+                length < 12 -> 79
+                else -> 100
+            }
+            val finalScore = rawScore.coerceAtMost(maxScoreByLength)
             
             // 3. 确定强度等级
-            val level = when {
+            val baseLevel = when {
                 finalScore < 20 -> StrengthLevel.VERY_WEAK
                 finalScore < 40 -> StrengthLevel.WEAK
                 finalScore < 60 -> StrengthLevel.FAIR
                 finalScore < 80 -> StrengthLevel.STRONG
                 else -> StrengthLevel.VERY_STRONG
             }
+            val maxLevelByLength = when {
+                length < 6 -> StrengthLevel.VERY_WEAK
+                length < 8 -> StrengthLevel.WEAK
+                length < 10 -> StrengthLevel.FAIR
+                length < 12 -> StrengthLevel.STRONG
+                else -> StrengthLevel.VERY_STRONG
+            }
+            val level = if (baseLevel.ordinal <= maxLevelByLength.ordinal) baseLevel else maxLevelByLength
             
             // 4. 估算破解时间
             val crackTime = estimateCrackTime(entropy)
@@ -498,6 +565,8 @@ class PasswordGenerator {
                 else -> "非常强"
             }
         }
+
+        fun getDefaultSymbols(): String = SYMBOLS
         
         // ===== 高级强度分析算法 =====
         

@@ -530,7 +530,8 @@ fun PasswordListContent(
     ) -> Unit,
     onBackToTopVisibilityChange: (Boolean) -> Unit = {},
     scrollToTopRequestKey: Int = 0,
-    onOpenHistory: () -> Unit = {}
+    onOpenHistory: () -> Unit = {},
+    onOpenCommonAccountTemplates: () -> Unit = {}
 ) {
     val coroutineScope = rememberCoroutineScope()
     val passwordEntries by viewModel.passwordEntries.collectAsState()
@@ -903,14 +904,14 @@ fun PasswordListContent(
             } else {
                 filteredEntries
                     .groupBy { entry ->
-                        if (entry.id in effectiveNoStackEntryIds) {
-                            "$NO_STACK_GROUP_KEY_PREFIX${entry.id}"
-                        } else {
-                            effectiveManualStackGroupByEntryId[entry.id]
-                                ?.let { groupId -> "$MANUAL_STACK_GROUP_KEY_PREFIX$groupId" }
-                                ?: getPasswordInfoKey(entry)
-                        }
-                    }
+                                if (entry.id in effectiveNoStackEntryIds) {
+                                    "$NO_STACK_GROUP_KEY_PREFIX${entry.id}"
+                                } else {
+                                    effectiveManualStackGroupByEntryId[entry.id]
+                                        ?.let { groupId -> "$MANUAL_STACK_GROUP_KEY_PREFIX$groupId" }
+                                        ?: getPasswordInfoKey(entry)
+                                }
+                            }
                     .map { (_, entries) ->
                         entries.sortedBy { it.sortOrder }
                     }
@@ -962,7 +963,11 @@ fun PasswordListContent(
                                 } else {
                                     effectiveManualStackGroupByEntryId[first.id]
                                         ?.let { groupId -> "$MANUAL_STACK_GROUP_KEY_PREFIX$groupId" }
-                                        ?: getGroupKeyForMode(first, effectiveGroupMode)
+                                        ?: getGroupKeyForMode(
+                                            first,
+                                            effectiveGroupMode,
+                                            appSettings.passwordWebsiteStackMatchMode
+                                        )
                                 }
                             }
                             .mapValues { (_, groups) -> groups.flatten() }
@@ -1116,6 +1121,7 @@ fun PasswordListContent(
     LaunchedEffect(
         visiblePasswordEntries,
         effectiveGroupMode,
+        appSettings.passwordWebsiteStackMatchMode,
         effectiveStackCardMode,
         effectiveManualStackGroupByEntryId,
         effectiveNoStackEntryIds
@@ -1521,6 +1527,14 @@ fun PasswordListContent(
                                     onClick = {
                                         topActionsMenuExpanded = false
                                         showDisplayOptionsSheet = true
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.common_account_title)) },
+                                    leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
+                                    onClick = {
+                                        topActionsMenuExpanded = false
+                                        onOpenCommonAccountTemplates()
                                     }
                                 )
                                 DropdownMenuItem(

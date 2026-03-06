@@ -4,11 +4,13 @@ import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import takagi.ru.monica.util.PasswordGenerator
 
 /**
  * ViewModel for generator screen to persist state across navigation
  */
 class GeneratorViewModel : ViewModel() {
+    private val defaultSymbols = PasswordGenerator.getDefaultSymbols()
     
     // 生成器类型状态
     private val _selectedGenerator = MutableStateFlow(GeneratorType.SYMBOL)
@@ -29,6 +31,15 @@ class GeneratorViewModel : ViewModel() {
     
     private val _includeSymbols = MutableStateFlow(true)
     val includeSymbols: StateFlow<Boolean> = _includeSymbols.asStateFlow()
+
+    private val _useSymbolExclusionMode = MutableStateFlow(true)
+    val useSymbolExclusionMode: StateFlow<Boolean> = _useSymbolExclusionMode.asStateFlow()
+
+    private val _excludedSymbols = MutableStateFlow("")
+    val excludedSymbols: StateFlow<String> = _excludedSymbols.asStateFlow()
+
+    private val _customSymbols = MutableStateFlow(defaultSymbols)
+    val customSymbols: StateFlow<String> = _customSymbols.asStateFlow()
     
     private val _excludeSimilar = MutableStateFlow(false)
     val excludeSimilar: StateFlow<Boolean> = _excludeSimilar.asStateFlow()
@@ -75,6 +86,9 @@ class GeneratorViewModel : ViewModel() {
     
     private val _passphraseCustomWord = MutableStateFlow("")
     val passphraseCustomWord: StateFlow<String> = _passphraseCustomWord.asStateFlow()
+
+    private val _passphraseCustomWords = MutableStateFlow("")
+    val passphraseCustomWords: StateFlow<String> = _passphraseCustomWords.asStateFlow()
     
     private val _passphraseResult = MutableStateFlow("")
     val passphraseResult: StateFlow<String> = _passphraseResult.asStateFlow()
@@ -139,6 +153,52 @@ class GeneratorViewModel : ViewModel() {
     
     fun updateIncludeSymbols(include: Boolean) {
         _includeSymbols.value = include
+    }
+
+    fun updateUseSymbolExclusionMode(enabled: Boolean) {
+        _useSymbolExclusionMode.value = enabled
+    }
+
+    fun updateExcludedSymbols(symbols: String) {
+        _excludedSymbols.value = symbols
+            .filter { it in defaultSymbols }
+            .fold(StringBuilder()) { acc, c ->
+                if (c !in acc) {
+                    acc.append(c)
+                }
+                acc
+            }
+            .toString()
+    }
+
+    fun toggleExcludedSymbol(symbol: Char) {
+        if (symbol !in defaultSymbols) return
+        val current = _excludedSymbols.value
+        _excludedSymbols.value = if (symbol in current) {
+            current.filter { it != symbol }
+        } else {
+            current + symbol
+        }
+    }
+
+    fun clearExcludedSymbols() {
+        _excludedSymbols.value = ""
+    }
+
+    fun updateCustomSymbols(symbols: String) {
+        _customSymbols.value = symbols
+            .filter { it in defaultSymbols }
+            .fold(StringBuilder()) { acc, c ->
+                if (c !in acc) {
+                    acc.append(c)
+                }
+                acc
+            }
+            .toString()
+    }
+
+    fun resetCustomSymbols() {
+        _customSymbols.value = defaultSymbols
     }
     
     fun updateExcludeSimilar(exclude: Boolean) {
@@ -235,6 +295,10 @@ class GeneratorViewModel : ViewModel() {
     
     fun updatePassphraseCustomWord(word: String) {
         _passphraseCustomWord.value = word
+    }
+
+    fun updatePassphraseCustomWords(words: String) {
+        _passphraseCustomWords.value = words
     }
     
     fun updatePassphraseResult(result: String) {

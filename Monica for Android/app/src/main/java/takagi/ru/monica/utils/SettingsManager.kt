@@ -84,6 +84,8 @@ class SettingsManager(private val context: Context) {
         private val IS_PLUS_ACTIVATED_KEY = booleanPreferencesKey("is_plus_activated")
         private val STACK_CARD_MODE_KEY = stringPreferencesKey("stack_card_mode")
         private val PASSWORD_GROUP_MODE_KEY = stringPreferencesKey("password_group_mode")
+        private val PASSWORD_WEBSITE_STACK_MATCH_MODE_KEY =
+            stringPreferencesKey("password_website_stack_match_mode")
         private val TOTP_TIME_OFFSET_KEY = intPreferencesKey("totp_time_offset") // TOTP时间偏移（秒）
         private val TRASH_ENABLED_KEY = booleanPreferencesKey("trash_enabled") // 回收站功能开关
         private val TRASH_AUTO_DELETE_DAYS_KEY = intPreferencesKey("trash_auto_delete_days") // 回收站自动清空天数
@@ -121,6 +123,8 @@ class SettingsManager(private val context: Context) {
         
         // 减少动画 - 解决部分设备动画卡顿问题
         private val REDUCE_ANIMATIONS_KEY = booleanPreferencesKey("reduce_animations")
+        private val PREDICTIVE_BACK_FOR_PAGE_NAVIGATION_ENABLED_KEY =
+            booleanPreferencesKey("predictive_back_for_page_navigation_enabled")
 
         // 智能去重
         private val SMART_DEDUPLICATION_ENABLED_KEY = booleanPreferencesKey("smart_deduplication_enabled")
@@ -331,6 +335,8 @@ class SettingsManager(private val context: Context) {
             isPlusActivated = preferences[IS_PLUS_ACTIVATED_KEY] ?: false,
             stackCardMode = preferences[STACK_CARD_MODE_KEY] ?: "AUTO",
             passwordGroupMode = preferences[PASSWORD_GROUP_MODE_KEY] ?: "smart",
+            passwordWebsiteStackMatchMode =
+                preferences[PASSWORD_WEBSITE_STACK_MATCH_MODE_KEY] ?: "strict",
             totpTimeOffset = preferences[TOTP_TIME_OFFSET_KEY] ?: 0,
             trashEnabled = preferences[TRASH_ENABLED_KEY] ?: true,
             trashAutoDeleteDays = preferences[TRASH_AUTO_DELETE_DAYS_KEY] ?: 30,
@@ -386,6 +392,8 @@ class SettingsManager(private val context: Context) {
                 paymentInfo = preferences[FIELD_PAYMENT_INFO_KEY] ?: true
             ),
             reduceAnimations = preferences[REDUCE_ANIMATIONS_KEY] ?: false,
+            predictiveBackForPageNavigationEnabled =
+                preferences[PREDICTIVE_BACK_FOR_PAGE_NAVIGATION_ENABLED_KEY] ?: false,
             smartDeduplicationEnabled = preferences[SMART_DEDUPLICATION_ENABLED_KEY] ?: true,
             separateUsernameAccountEnabled = preferences[SEPARATE_USERNAME_ACCOUNT_ENABLED_KEY] ?: false,
             lastPasswordCategoryFilterType = preferences[LAST_PASSWORD_CATEGORY_FILTER_TYPE_KEY] ?: "all",
@@ -577,6 +585,12 @@ class SettingsManager(private val context: Context) {
     suspend fun updatePasswordGroupMode(mode: String) {
         dataStore.edit { preferences ->
             preferences[PASSWORD_GROUP_MODE_KEY] = mode
+        }
+    }
+
+    suspend fun updatePasswordWebsiteStackMatchMode(mode: String) {
+        dataStore.edit { preferences ->
+            preferences[PASSWORD_WEBSITE_STACK_MATCH_MODE_KEY] = mode
         }
     }
 
@@ -827,6 +841,12 @@ class SettingsManager(private val context: Context) {
     suspend fun updateReduceAnimations(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[REDUCE_ANIMATIONS_KEY] = enabled
+        }
+    }
+
+    suspend fun updatePredictiveBackForPageNavigationEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PREDICTIVE_BACK_FOR_PAGE_NAVIGATION_ENABLED_KEY] = enabled
         }
     }
 

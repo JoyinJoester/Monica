@@ -15,6 +15,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -33,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -49,6 +51,8 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
@@ -100,6 +104,18 @@ private const val MONICA_USERNAME_ALIAS_META_FIELD_TITLE = "__monica_username_al
 private const val MONICA_USERNAME_ALIAS_META_VALUE = "migrated_v1"
 private const val ICON_PICKER_PAGE_SIZE = 120
 
+private data class CommonAccountFillOption(
+    val id: String,
+    val type: String,
+    val title: String,
+    val content: String
+)
+
+private enum class PasswordFillMode {
+    GENERATOR,
+    COMMON_ACCOUNT
+}
+
 data class AddEditPasswordInitialDraft(
     val title: String = "",
     val website: String = "",
@@ -124,7 +140,6 @@ fun AddEditPasswordScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    val passwordGenerator = remember { PasswordGenerator() }
 
     // 获取设置以读取进度条样式
     val settingsManager = remember { takagi.ru.monica.utils.SettingsManager(context) }
@@ -138,10 +153,12 @@ fun AddEditPasswordScreen(
     val commonAccountInfo by commonAccountPreferences.commonAccountInfo.collectAsState(
         initial = takagi.ru.monica.data.CommonAccountInfo()
     )
+    val commonAccountTemplates by commonAccountPreferences.templatesFlow.collectAsState(initial = emptyList())
     
     // 是否显示常用账号选择器
     var showCommonAccountSelector by remember { mutableStateOf(false) }
-    var commonAccountSelectorField by remember { mutableStateOf("") } // "email", "phone", "username"
+    var commonAccountSelectorField by remember { mutableStateOf("") } // "email", "phone", "username", "password"
+    var commonAccountSelectorTargetIndex by remember { mutableStateOf(-1) }
 
     var title by rememberSaveable { mutableStateOf("") }
     var website by rememberSaveable { mutableStateOf("") }
@@ -256,6 +273,191 @@ fun AddEditPasswordScreen(
     
     // 字段可见性设置
     val fieldVisibility = settings.passwordFieldVisibility
+    val commonAccountTypeEmail = stringResource(R.string.common_account_type_email)
+    val commonAccountTypeAccount = stringResource(R.string.common_account_type_account)
+    val commonAccountTypePhone = stringResource(R.string.common_account_type_phone)
+    val commonAccountTypePassword = stringResource(R.string.common_account_type_password)
+    val fieldAccountLabel = stringResource(R.string.field_account)
+    val fieldEmailLabel = stringResource(R.string.field_email)
+    val fieldPhoneLabel = stringResource(R.string.field_phone)
+
+    fun normalizeCommonTemplateType(raw: String): String {
+        val value = raw.trim()
+        val normalized = value.lowercase(Locale.ROOT)
+        return when {
+            normalized == commonAccountTypeEmail.lowercase(Locale.ROOT) ||
+                normalized == "email" || normalized == "邮箱" -> commonAccountTypeEmail
+            normalized == commonAccountTypeAccount.lowercase(Locale.ROOT) ||
+                normalized == "account" || normalized == "账号" -> commonAccountTypeAccount
+            normalized == commonAccountTypePhone.lowercase(Locale.ROOT) ||
+                normalized == "phone" || normalized == "手机号" || normalized == "电话" -> commonAccountTypePhone
+            normalized == commonAccountTypePassword.lowercase(Locale.ROOT) ||
+                normalized == "password" || normalized == "密码" -> commonAccountTypePassword
+            else -> commonAccountTypeAccount
+        }
+    }
+
+    val accountTemplates = remember(commonAccountTemplates, commonAccountTypeAccount, commonAccountTypeEmail, commonAccountTypePassword) {
+        commonAccountTemplates.filter {
+            normalizeCommonTemplateType(it.type) == commonAccountTypeAccount && it.content.isNotBlank()
+        }
+    }
+    val emailTemplates = remember(commonAccountTemplates, commonAccountTypeAccount, commonAccountTypeEmail, commonAccountTypePassword) {
+        commonAccountTemplates.filter {
+            normalizeCommonTemplateType(it.type) == commonAccountTypeEmail && it.content.isNotBlank()
+        }
+    }
+    val phoneTypeTemplates = remember(commonAccountTemplates, commonAccountTypePhone) {
+        commonAccountTemplates.filter {
+            normalizeCommonTemplateType(it.type) == commonAccountTypePhone && it.content.isNotBlank()
+        }
+    }
+    val passwordTemplates = remember(commonAccountTemplates, commonAccountTypeAccount, commonAccountTypeEmail, commonAccountTypePhone, commonAccountTypePassword) {
+        commonAccountTemplates.filter {
+            normalizeCommonTemplateType(it.type) == commonAccountTypePassword && it.content.isNotBlank()
+        }
+    }
+    val phoneTemplates = remember(phoneTypeTemplates, accountTemplates, fieldPhoneLabel) {
+        val normalizedPhoneLabel = fieldPhoneLabel.trim().lowercase(Locale.ROOT)
+        val legacyPhoneLikeFromAccount = accountTemplates.filter { template ->
+            val normalizedTitle = template.title.trim().lowercase(Locale.ROOT)
+            val digits = template.content.filter { it.isDigit() }
+            val trimmedContent = template.content.trim()
+            val looksLikePhoneByTitle =
+                normalizedTitle.contains(normalizedPhoneLabel) ||
+                    normalizedTitle.contains("phone") ||
+                    normalizedTitle.contains("手机号") ||
+                    normalizedTitle.contains("电话")
+            val looksLikePhoneByPattern =
+                trimmedContent.matches(Regex("^[+()\\-\\s\\d]{7,}$")) && digits.length >= 7
+            looksLikePhoneByTitle || looksLikePhoneByPattern
+        }
+        (phoneTypeTemplates + legacyPhoneLikeFromAccount)
+            .distinctBy { "${it.title.trim()}|${it.content.trim().lowercase(Locale.ROOT)}" }
+    }
+
+    val canSelectUsernameTemplate = !isEditing && !commonAccountInfo.autoFillEnabled &&
+        (accountTemplates.isNotEmpty() || emailTemplates.isNotEmpty() || phoneTemplates.isNotEmpty())
+    val canSelectEmailTemplate = !isEditing && !commonAccountInfo.autoFillEnabled &&
+        emailTemplates.isNotEmpty()
+    val canSelectPhoneTemplate = !isEditing && !commonAccountInfo.autoFillEnabled &&
+        phoneTemplates.isNotEmpty()
+    fun buildCommonAccountOptions(field: String): List<CommonAccountFillOption> {
+        val options = buildList {
+            when (field) {
+                "username" -> {
+                    accountTemplates.forEach { template ->
+                        add(
+                            CommonAccountFillOption(
+                                id = template.id,
+                                type = commonAccountTypeAccount,
+                                title = template.title.ifBlank { commonAccountTypeAccount },
+                                content = template.content
+                            )
+                        )
+                    }
+                    emailTemplates.forEach { template ->
+                        add(
+                            CommonAccountFillOption(
+                                id = "email_as_account_${template.id}",
+                                type = commonAccountTypeEmail,
+                                title = template.title.ifBlank { commonAccountTypeEmail },
+                                content = template.content
+                            )
+                        )
+                    }
+                    phoneTemplates.forEach { template ->
+                        add(
+                            CommonAccountFillOption(
+                                id = "phone_as_account_${template.id}",
+                                type = commonAccountTypePhone,
+                                title = template.title.ifBlank { commonAccountTypePhone },
+                                content = template.content
+                            )
+                        )
+                    }
+                }
+                "email" -> {
+                    emailTemplates.forEach { template ->
+                        add(
+                            CommonAccountFillOption(
+                                id = template.id,
+                                type = commonAccountTypeEmail,
+                                title = template.title.ifBlank { commonAccountTypeEmail },
+                                content = template.content
+                            )
+                        )
+                    }
+                }
+                "phone" -> {
+                    phoneTemplates.forEach { template ->
+                        add(
+                            CommonAccountFillOption(
+                                id = template.id,
+                                type = commonAccountTypePhone,
+                                title = template.title.ifBlank { commonAccountTypePhone },
+                                content = template.content
+                            )
+                        )
+                    }
+                }
+                "password" -> {
+                    passwordTemplates.forEach { template ->
+                        add(
+                            CommonAccountFillOption(
+                                id = template.id,
+                                type = commonAccountTypePassword,
+                                title = template.title.ifBlank { commonAccountTypePassword },
+                                content = template.content
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        return options
+            .filter { it.content.isNotBlank() }
+            .distinctBy { "${it.title.trim()}|${it.content.trim().lowercase(Locale.ROOT)}" }
+    }
+
+    fun applyCommonAccountSelection(field: String, content: String) {
+        val value = content.trim()
+        if (value.isEmpty()) return
+        when (field) {
+            "username" -> username = value
+            "email" -> {
+                val targetIndex = commonAccountSelectorTargetIndex.takeIf { it in emails.indices }
+                if (targetIndex != null) {
+                    emails[targetIndex] = value
+                } else if (emails.size == 1 && emails[0].isEmpty()) {
+                    emails[0] = value
+                } else {
+                    emails.add(value)
+                }
+            }
+            "phone" -> {
+                val targetIndex = commonAccountSelectorTargetIndex.takeIf { it in phones.indices }
+                if (targetIndex != null) {
+                    phones[targetIndex] = value
+                } else if (phones.size == 1 && phones[0].isEmpty()) {
+                    phones[0] = value
+                } else {
+                    phones.add(value)
+                }
+            }
+            "password" -> {
+                val targetIndex = commonAccountSelectorTargetIndex.takeIf { it in passwords.indices }
+                if (targetIndex != null) {
+                    passwords[targetIndex] = value
+                } else if (passwords.size == 1 && passwords[0].isEmpty()) {
+                    passwords[0] = value
+                } else {
+                    passwords.add(value)
+                }
+            }
+        }
+    }
     
     fun normalizedIconFileName(value: String?): String? = value?.takeIf { it.isNotBlank() }?.let { File(it).name }
     fun isOriginalUploadedIconFile(value: String?): Boolean {
@@ -323,6 +525,18 @@ fun AddEditPasswordScreen(
                 }
             }
         }
+    }
+
+    // 旧版默认账号信息迁移到模板，避免新页面出现“默认XXX”遗留项
+    LaunchedEffect(commonAccountTypeAccount, commonAccountTypeEmail, commonAccountTypePhone, fieldAccountLabel, fieldEmailLabel, fieldPhoneLabel) {
+        commonAccountPreferences.migrateLegacyDefaultsToTemplatesIfNeeded(
+            accountType = commonAccountTypeAccount,
+            emailType = commonAccountTypeEmail,
+            phoneType = commonAccountTypePhone,
+            accountTitle = fieldAccountLabel,
+            emailTitle = fieldEmailLabel,
+            phoneTitle = fieldPhoneLabel
+        )
     }
     
     // 新建条目时自动填充常用账号信息
@@ -958,10 +1172,14 @@ fun AddEditPasswordScreen(
                                 leadingIcon = { Icon(Icons.Default.Person, null) },
                                 trailingIcon = {
                                     Row {
-                                        // 常用账号填充按钮（仅在新建且有配置常用信息时显示）
-                                        if (!isEditing && commonAccountInfo.hasAnyInfo() && !commonAccountInfo.autoFillEnabled && commonAccountInfo.username.isNotEmpty()) {
+                                        // 常用账号填充按钮（新建时可从模板/默认值中选择）
+                                        if (canSelectUsernameTemplate) {
                                             IconButton(
-                                                onClick = { username = commonAccountInfo.username }
+                                                onClick = {
+                                                    commonAccountSelectorField = "username"
+                                                    commonAccountSelectorTargetIndex = -1
+                                                    showCommonAccountSelector = true
+                                                }
                                             ) {
                                                 Icon(
                                                     Icons.Default.PersonAdd,
@@ -1045,7 +1263,10 @@ fun AddEditPasswordScreen(
                                                             showPasswordGenerator = true 
                                                             currentPasswordIndexForGenerator = index
                                                         }) {
-                                                            Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.generate_password))
+                                                            Icon(
+                                                                Icons.Default.Key,
+                                                                contentDescription = stringResource(R.string.password_fill_title)
+                                                            )
                                                         }
                                                         IconButton(onClick = { passwordVisible = !passwordVisible }) {
                                                             Icon(
@@ -1234,26 +1455,6 @@ fun AddEditPasswordScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.weight(1f)
                                 )
-                                // 常用邮箱填充按钮
-                                if (!isEditing && commonAccountInfo.hasAnyInfo() && !commonAccountInfo.autoFillEnabled && commonAccountInfo.email.isNotEmpty()) {
-                                    TextButton(
-                                        onClick = {
-                                            if (emails.size == 1 && emails[0].isEmpty()) {
-                                                emails[0] = commonAccountInfo.email
-                                            } else {
-                                                emails.add(commonAccountInfo.email)
-                                            }
-                                        }
-                                    ) {
-                                        Icon(
-                                            Icons.Default.PersonAdd,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(stringResource(R.string.fill_common_account))
-                                    }
-                                }
                         }
                         emails.forEachIndexed { index, emailValue ->
                             Row(
@@ -1269,7 +1470,24 @@ fun AddEditPasswordScreen(
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
                                     singleLine = true,
                                     shape = RoundedCornerShape(12.dp),
-                                    isError = emailValue.isNotEmpty() && !takagi.ru.monica.utils.FieldValidation.isValidEmail(emailValue)
+                                    isError = emailValue.isNotEmpty() && !takagi.ru.monica.utils.FieldValidation.isValidEmail(emailValue),
+                                    trailingIcon = if (canSelectEmailTemplate) {
+                                        {
+                                            IconButton(
+                                                onClick = {
+                                                    commonAccountSelectorField = "email"
+                                                    commonAccountSelectorTargetIndex = index
+                                                    showCommonAccountSelector = true
+                                                }
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.PersonAdd,
+                                                    contentDescription = stringResource(R.string.fill_common_account),
+                                                    tint = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        }
+                                    } else null
                                 )
                                 if (emails.size > 1) {
                                     IconButton(
@@ -1306,26 +1524,6 @@ fun AddEditPasswordScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.weight(1f)
                             )
-                            // 常用电话填充按钮
-                            if (!isEditing && commonAccountInfo.hasAnyInfo() && !commonAccountInfo.autoFillEnabled && commonAccountInfo.phone.isNotEmpty()) {
-                                TextButton(
-                                    onClick = {
-                                        if (phones.size == 1 && phones[0].isEmpty()) {
-                                            phones[0] = commonAccountInfo.phone
-                                        } else {
-                                            phones.add(commonAccountInfo.phone)
-                                        }
-                                    }
-                                ) {
-                                    Icon(
-                                        Icons.Default.PersonAdd,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(stringResource(R.string.fill_common_account))
-                                }
-                            }
                         }
                         phones.forEachIndexed { index, phoneValue ->
                             Row(
@@ -1340,7 +1538,24 @@ fun AddEditPasswordScreen(
                                     modifier = Modifier.weight(1f),
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Done),
                                     singleLine = true,
-                                    shape = RoundedCornerShape(12.dp)
+                                    shape = RoundedCornerShape(12.dp),
+                                    trailingIcon = if (canSelectPhoneTemplate) {
+                                        {
+                                            IconButton(
+                                                onClick = {
+                                                    commonAccountSelectorField = "phone"
+                                                    commonAccountSelectorTargetIndex = index
+                                                    showCommonAccountSelector = true
+                                                }
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.PersonAdd,
+                                                    contentDescription = stringResource(R.string.fill_common_account),
+                                                    tint = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        }
+                                    } else null
                                 )
                                 if (phones.size > 1) {
                                     IconButton(
@@ -1555,6 +1770,7 @@ fun AddEditPasswordScreen(
 
     if (showPasswordGenerator) {
         PasswordGeneratorDialog(
+            commonPasswordOptions = buildCommonAccountOptions("password"),
             onDismiss = { showPasswordGenerator = false },
             onPasswordGenerated = { generatedPassword ->
                 if (currentPasswordIndexForGenerator >= 0 && currentPasswordIndexForGenerator < passwords.size) {
@@ -1640,6 +1856,184 @@ fun AddEditPasswordScreen(
             },
             onDismissRequest = { showSimpleIconPicker = false }
         )
+    }
+
+    if (showCommonAccountSelector) {
+        val selectorOptions = buildCommonAccountOptions(commonAccountSelectorField)
+        val allFilterLabel = stringResource(R.string.filter_all)
+        val selectorFieldLabel = when (commonAccountSelectorField) {
+            "username" -> stringResource(R.string.field_account)
+            "email" -> stringResource(R.string.field_email)
+            "phone" -> stringResource(R.string.field_phone)
+            "password" -> stringResource(R.string.password)
+            else -> ""
+        }
+        val availableTypeFilters = remember(selectorOptions, allFilterLabel) {
+            buildList {
+                add(allFilterLabel)
+                addAll(selectorOptions.map { it.type }.distinct())
+            }
+        }
+        var selectedTypeFilter by remember(commonAccountSelectorField) {
+            mutableStateOf(allFilterLabel)
+        }
+        val filteredSelectorOptions = remember(selectorOptions, selectedTypeFilter, allFilterLabel) {
+            if (selectedTypeFilter == allFilterLabel) {
+                selectorOptions
+            } else {
+                selectorOptions.filter { it.type == selectedTypeFilter }
+            }
+        }
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+        ModalBottomSheet(
+            onDismissRequest = {
+                showCommonAccountSelector = false
+                commonAccountSelectorTargetIndex = -1
+            },
+            sheetState = sheetState,
+            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = stringResource(R.string.fill_common_account),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = selectorFieldLabel,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    TextButton(
+                        onClick = {
+                            showCommonAccountSelector = false
+                            commonAccountSelectorTargetIndex = -1
+                        }
+                    ) {
+                        Text(stringResource(R.string.close))
+                    }
+                }
+
+                if (selectorOptions.isEmpty()) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh
+                    ) {
+                        Text(
+                            text = stringResource(R.string.no_results),
+                            modifier = Modifier.padding(16.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        availableTypeFilters.forEach { typeFilter ->
+                            FilterChip(
+                                selected = selectedTypeFilter == typeFilter,
+                                onClick = { selectedTypeFilter = typeFilter },
+                                label = { Text(typeFilter) }
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                        }
+                    }
+
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 420.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(filteredSelectorOptions, key = { it.id }) { option ->
+                            val typeIcon = when (option.type) {
+                                commonAccountTypeEmail -> MonicaIcons.General.email
+                                commonAccountTypePassword -> Icons.Default.Lock
+                                commonAccountTypePhone -> MonicaIcons.General.phone
+                                else -> Icons.Default.Person
+                            }
+
+                            Surface(
+                                onClick = {
+                                    applyCommonAccountSelection(commonAccountSelectorField, option.content)
+                                    showCommonAccountSelector = false
+                                    commonAccountSelectorTargetIndex = -1
+                                },
+                                shape = RoundedCornerShape(18.dp),
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                tonalElevation = 1.dp
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Surface(
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = MaterialTheme.colorScheme.secondaryContainer
+                                            ) {
+                                                Icon(
+                                                    imageVector = typeIcon,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.padding(6.dp).size(16.dp),
+                                                    tint = MaterialTheme.colorScheme.onSecondaryContainer
+                                                )
+                                            }
+                                            Text(
+                                                text = option.title,
+                                                style = MaterialTheme.typography.titleSmall,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                        SuggestionChip(
+                                            onClick = { },
+                                            enabled = false,
+                                            label = { Text(option.type) }
+                                        )
+                                    }
+                                    Text(
+                                        text = option.content,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
 }
@@ -1740,11 +2134,17 @@ private fun CollapsibleCard(
 }
 
 @Composable
-fun PasswordGeneratorDialog(
+private fun PasswordGeneratorDialog(
+    commonPasswordOptions: List<CommonAccountFillOption>,
     onDismiss: () -> Unit,
     onPasswordGenerated: (String) -> Unit
 ) {
     val passwordGenerator = remember { PasswordGenerator() }
+    val configuration = LocalConfiguration.current
+    val contentViewportHeight = remember(configuration.screenHeightDp) {
+        (configuration.screenHeightDp.dp * 0.46f).coerceIn(280.dp, 420.dp)
+    }
+    val generatorScrollState = rememberScrollState()
     var length by remember { mutableStateOf(16) }
     var includeUppercase by remember { mutableStateOf(true) }
     var includeLowercase by remember { mutableStateOf(true) }
@@ -1752,6 +2152,7 @@ fun PasswordGeneratorDialog(
     var includeSymbols by remember { mutableStateOf(true) }
     var excludeSimilar by remember { mutableStateOf(true) }
     var generatedPassword by remember { mutableStateOf("") }
+    var fillMode by remember { mutableStateOf(PasswordFillMode.GENERATOR) }
     
     // Helper to generate
     fun generate() {
@@ -1763,44 +2164,325 @@ fun PasswordGeneratorDialog(
     }
 
     LaunchedEffect(Unit) { generate() }
-    
-    AlertDialog(
+
+    Dialog(
         onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.password_generator)) },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = generatedPassword,
-                    onValueChange = { },
-                    readOnly = true,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.96f)
+                .navigationBarsPadding()
+                .imePadding(),
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            tonalElevation = 6.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
                     modifier = Modifier.fillMaxWidth(),
-                    trailingIcon = {
-                        IconButton(onClick = { generate() }) {
-                            Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.generate_password))
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.primaryContainer
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Key,
+                                    contentDescription = null,
+                                    modifier = Modifier.padding(8.dp).size(16.dp),
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                            Text(
+                                text = stringResource(R.string.password_fill_title),
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.SemiBold
+                            )
                         }
-                    },
-                    shape = RoundedCornerShape(12.dp)
-                )
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(stringResource(R.string.length_value, length))
-                Slider(
-                    value = length.toFloat(),
-                    onValueChange = { length = it.toInt(); generate() },
-                    valueRange = 8f..32f,
-                    steps = 24
-                )
-                Column {
-                    Row(Modifier.fillMaxWidth().clickable { includeUppercase = !includeUppercase; generate() }, horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(stringResource(R.string.uppercase_az)); Checkbox(checked = includeUppercase, onCheckedChange = { includeUppercase = it; generate() }) }
-                    Row(Modifier.fillMaxWidth().clickable { includeLowercase = !includeLowercase; generate() }, horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(stringResource(R.string.lowercase_az)); Checkbox(checked = includeLowercase, onCheckedChange = { includeLowercase = it; generate() }) }
-                    Row(Modifier.fillMaxWidth().clickable { includeNumbers = !includeNumbers; generate() }, horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(stringResource(R.string.numbers_09)); Checkbox(checked = includeNumbers, onCheckedChange = { includeNumbers = it; generate() }) }
-                    Row(Modifier.fillMaxWidth().clickable { includeSymbols = !includeSymbols; generate() }, horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(stringResource(R.string.symbols)); Checkbox(checked = includeSymbols, onCheckedChange = { includeSymbols = it; generate() }) }
-                    Row(Modifier.fillMaxWidth().clickable { excludeSimilar = !excludeSimilar; generate() }, horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) { Text(stringResource(R.string.exclude_similar)); Checkbox(checked = excludeSimilar, onCheckedChange = { excludeSimilar = it; generate() }) }
+                        Text(
+                            text = stringResource(R.string.password_fill_subtitle),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = stringResource(R.string.close)
+                        )
+                    }
+                }
+
+                SingleChoiceSegmentedButtonRow(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    SegmentedButton(
+                        selected = fillMode == PasswordFillMode.GENERATOR,
+                        onClick = { fillMode = PasswordFillMode.GENERATOR },
+                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2)
+                    ) {
+                        Text(stringResource(R.string.password_fill_mode_generator))
+                    }
+                    SegmentedButton(
+                        selected = fillMode == PasswordFillMode.COMMON_ACCOUNT,
+                        onClick = { fillMode = PasswordFillMode.COMMON_ACCOUNT },
+                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2)
+                    ) {
+                        Text(stringResource(R.string.password_fill_mode_common))
+                    }
+                }
+
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(contentViewportHeight),
+                    shape = RoundedCornerShape(16.dp),
+                    color = Color.Transparent
+                ) {
+                    when (fillMode) {
+                        PasswordFillMode.GENERATOR -> {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .verticalScroll(generatorScrollState),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = generatedPassword,
+                                    onValueChange = { },
+                                    readOnly = true,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textStyle = MaterialTheme.typography.titleMedium.copy(
+                                        letterSpacing = 0.2.sp
+                                    ),
+                                    trailingIcon = {
+                                        FilledTonalIconButton(onClick = { generate() }) {
+                                            Icon(
+                                                Icons.Default.Refresh,
+                                                contentDescription = stringResource(R.string.generate_password)
+                                            )
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(14.dp)
+                                )
+
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.length_value, length),
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Slider(
+                                            value = length.toFloat(),
+                                            onValueChange = { length = it.toInt(); generate() },
+                                            valueRange = 8f..32f,
+                                            steps = 24
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = MaterialTheme.colorScheme.surfaceContainer
+                                ) {
+                                    Column {
+                                        PasswordFillOptionRow(
+                                            title = stringResource(R.string.uppercase_az),
+                                            checked = includeUppercase,
+                                            onChange = { includeUppercase = it; generate() },
+                                            showDivider = true
+                                        )
+                                        PasswordFillOptionRow(
+                                            title = stringResource(R.string.lowercase_az),
+                                            checked = includeLowercase,
+                                            onChange = { includeLowercase = it; generate() },
+                                            showDivider = true
+                                        )
+                                        PasswordFillOptionRow(
+                                            title = stringResource(R.string.numbers_09),
+                                            checked = includeNumbers,
+                                            onChange = { includeNumbers = it; generate() },
+                                            showDivider = true
+                                        )
+                                        PasswordFillOptionRow(
+                                            title = stringResource(R.string.symbols),
+                                            checked = includeSymbols,
+                                            onChange = { includeSymbols = it; generate() },
+                                            showDivider = true
+                                        )
+                                        PasswordFillOptionRow(
+                                            title = stringResource(R.string.exclude_similar),
+                                            checked = excludeSimilar,
+                                            onChange = { excludeSimilar = it; generate() },
+                                            showDivider = false
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        PasswordFillMode.COMMON_ACCOUNT -> {
+                            if (commonPasswordOptions.isEmpty()) {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = MaterialTheme.colorScheme.surfaceContainerHigh
+                                ) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(14.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.password_fill_no_templates),
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                        Text(
+                                            text = stringResource(R.string.password_fill_no_templates_hint),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            } else {
+                                LazyColumn(
+                                    modifier = Modifier.fillMaxSize(),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    items(commonPasswordOptions, key = { it.id }) { option ->
+                                        OutlinedCard(
+                                            onClick = { onPasswordGenerated(option.content) },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(14.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    color = MaterialTheme.colorScheme.secondaryContainer
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Lock,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.padding(6.dp).size(16.dp),
+                                                        tint = MaterialTheme.colorScheme.onSecondaryContainer
+                                                    )
+                                                }
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = option.title,
+                                                        style = MaterialTheme.typography.titleSmall,
+                                                        fontWeight = FontWeight.Medium
+                                                    )
+                                                    Text(
+                                                        text = maskSensitiveContent(option.content),
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                                Text(
+                                                    text = stringResource(R.string.use_password),
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text(stringResource(R.string.cancel))
+                    }
+                    if (fillMode == PasswordFillMode.GENERATOR) {
+                        FilledTonalButton(onClick = { onPasswordGenerated(generatedPassword) }) {
+                            Text(stringResource(R.string.use_password))
+                        }
+                    }
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = { onPasswordGenerated(generatedPassword) }) { Text(stringResource(R.string.use_password)) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } }
-    )
+        }
+    }
+}
+
+@Composable
+private fun PasswordFillOptionRow(
+    title: String,
+    checked: Boolean,
+    onChange: (Boolean) -> Unit,
+    showDivider: Boolean
+) {
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onChange(!checked) }
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            Checkbox(
+                checked = checked,
+                onCheckedChange = onChange
+            )
+        }
+        if (showDivider) {
+            HorizontalDivider(
+                thickness = 0.5.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+            )
+        }
+    }
+}
+
+private fun maskSensitiveContent(content: String): String {
+    val value = content.trim()
+    if (value.isEmpty()) return ""
+    if (value.length <= 2) return "•".repeat(value.length)
+    return value.first() + "•".repeat((value.length - 2).coerceAtLeast(0)) + value.last()
 }
 
 /**

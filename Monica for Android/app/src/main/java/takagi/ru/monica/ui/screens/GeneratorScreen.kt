@@ -5,10 +5,13 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
@@ -19,6 +22,8 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -58,6 +63,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 
@@ -82,7 +88,7 @@ fun colorizePassword(password: String): AnnotatedString {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun GeneratorScreen(
     onNavigateBack: () -> Unit,
@@ -93,7 +99,7 @@ fun GeneratorScreen(
     viewModel: GeneratorViewModel = viewModel()
 ) {
     val context = LocalContext.current
-    val scrollState = rememberScrollState()
+    val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     
     // 历史记录状态
@@ -118,14 +124,42 @@ fun GeneratorScreen(
     val includeLowercase by viewModel.includeLowercase.collectAsState()
     val includeNumbers by viewModel.includeNumbers.collectAsState()
     val includeSymbols by viewModel.includeSymbols.collectAsState()
+    val useSymbolExclusionMode by viewModel.useSymbolExclusionMode.collectAsState()
+    val excludedSymbols by viewModel.excludedSymbols.collectAsState()
+    val customSymbols by viewModel.customSymbols.collectAsState()
     val excludeSimilar by viewModel.excludeSimilar.collectAsState()
     val excludeAmbiguous by viewModel.excludeAmbiguous.collectAsState()
     val analyzeCommonPasswords by viewModel.analyzeCommonPasswords.collectAsState()
     val analyzeWeight by viewModel.analyzeWeight.collectAsState()
     val symbolResult by viewModel.symbolResult.collectAsState()
+    val defaultSymbols = remember { PasswordGenerator.getDefaultSymbols() }
+    val allowedSymbols = remember(useSymbolExclusionMode, excludedSymbols, customSymbols, defaultSymbols) {
+        if (useSymbolExclusionMode) {
+            defaultSymbols.filter { it !in excludedSymbols }
+        } else {
+            customSymbols
+        }
+    }
+    val filteredAllowedSymbols = remember(allowedSymbols, excludeSimilar, excludeAmbiguous) {
+        applyGeneratorSymbolFilters(allowedSymbols, excludeSimilar, excludeAmbiguous)
+    }
+    val excludedSymbolsSet = remember(excludedSymbols) { excludedSymbols.toSet() }
 
     // 用户密码数据用于分析
     val passwordEntries by passwordViewModel.passwordEntries.collectAsState()
+    val appendGeneratorHistory: (password: String, domain: String, type: String) -> Unit = history@{ password, domain, type ->
+        if (password.isBlank()) return@history
+        val latest = filteredHistoryList.firstOrNull()
+        if (latest?.password == password && latest.type == type) return@history
+        scope.launch {
+            historyManager.addHistory(
+                password = password,
+                packageName = "generator",
+                domain = domain,
+                type = type
+            )
+        }
+    }
     
     // 初始化时生成默认密码
     LaunchedEffect(Unit) {
@@ -136,6 +170,7 @@ fun GeneratorScreen(
                 includeLowercase = includeLowercase,
                 includeNumbers = includeNumbers,
                 includeSymbols = includeSymbols,
+                allowedSymbols = allowedSymbols,
                 excludeSimilar = excludeSimilar,
                 excludeAmbiguous = excludeAmbiguous,
                 uppercaseMin = 0,
@@ -167,14 +202,27 @@ fun GeneratorScreen(
     val passphraseCapitalize by viewModel.passphraseCapitalize.collectAsState()
     val passphraseIncludeNumber by viewModel.passphraseIncludeNumber.collectAsState()
     val passphraseCustomWord by viewModel.passphraseCustomWord.collectAsState()
+    val passphraseCustomWords by viewModel.passphraseCustomWords.collectAsState()
     val passphraseResult by viewModel.passphraseResult.collectAsState()
+    val parsedCustomMnemonicWords = remember(passphraseCustomWords) {
+        passphraseCustomWords
+            .split(",", " ", "\n", "\t")
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinct()
+    }
     
     val pinLength by viewModel.pinLength.collectAsState()
     val pinResult by viewModel.pinResult.collectAsState()
+    var symbolRulesExpanded by remember { mutableStateOf(false) }
 
-    val regenerateNow: () -> Unit = {
+    val regenerateNow: () -> Unit = regenerate@{
         when (selectedGenerator) {
             GeneratorType.SYMBOL -> {
+                if (includeSymbols && filteredAllowedSymbols.isEmpty()) {
+                    viewModel.updateSymbolResult("")
+                    return@regenerate
+                }
                 val result = if (analyzeCommonPasswords && passwordEntries.isNotEmpty()) {
                     PasswordGenerator.generateSimilarPassword(
                         passwords = passwordEntries,
@@ -183,6 +231,7 @@ fun GeneratorScreen(
                         includeLowercase = includeLowercase,
                         includeNumbers = includeNumbers,
                         includeSymbols = includeSymbols,
+                        allowedSymbols = allowedSymbols,
                         excludeSimilar = excludeSimilar,
                         excludeAmbiguous = excludeAmbiguous,
                         weightPercent = analyzeWeight
@@ -194,6 +243,7 @@ fun GeneratorScreen(
                         includeLowercase = includeLowercase,
                         includeNumbers = includeNumbers,
                         includeSymbols = includeSymbols,
+                        allowedSymbols = allowedSymbols,
                         excludeSimilar = excludeSimilar,
                         excludeAmbiguous = excludeAmbiguous,
                         uppercaseMin = uppercaseMin,
@@ -203,14 +253,8 @@ fun GeneratorScreen(
                     )
                 }
                 viewModel.updateSymbolResult(result)
-                scope.launch {
-                    historyManager.addHistory(
-                        password = result,
-                        packageName = "generator",
-                        domain = context.getString(R.string.random_symbol_generator),
-                        type = "SYMBOL"
-                    )
-                }
+                if (result.isEmpty()) return@regenerate
+                appendGeneratorHistory(result, context.getString(R.string.random_symbol_generator), "SYMBOL")
             }
             GeneratorType.PASSWORD -> {
                 val result = generatePassword(
@@ -222,14 +266,7 @@ fun GeneratorScreen(
                     segmentLength = segmentLength
                 )
                 viewModel.updatePasswordResult(result)
-                scope.launch {
-                    historyManager.addHistory(
-                        password = result,
-                        packageName = "generator",
-                        domain = context.getString(R.string.password_generator),
-                        type = "PASSWORD"
-                    )
-                }
+                appendGeneratorHistory(result, context.getString(R.string.password_generator), "PASSWORD")
             }
             GeneratorType.PASSPHRASE -> {
                 val result = PasswordGenerator.generatePassphrase(
@@ -238,29 +275,16 @@ fun GeneratorScreen(
                     delimiter = passphraseDelimiter,
                     capitalize = passphraseCapitalize,
                     includeNumber = passphraseIncludeNumber,
-                    customWord = passphraseCustomWord.takeIf { it.isNotEmpty() }
+                    customWord = passphraseCustomWord.takeIf { it.isNotEmpty() },
+                    customWords = parsedCustomMnemonicWords
                 )
                 viewModel.updatePassphraseResult(result)
-                scope.launch {
-                    historyManager.addHistory(
-                        password = result,
-                        packageName = "generator",
-                        domain = context.getString(R.string.passphrase_generator),
-                        type = "PASSPHRASE"
-                    )
-                }
+                appendGeneratorHistory(result, context.getString(R.string.passphrase_generator), "PASSPHRASE")
             }
             GeneratorType.PIN -> {
                 val result = PasswordGenerator.generatePinCode(pinLength)
                 viewModel.updatePinResult(result)
-                scope.launch {
-                    historyManager.addHistory(
-                        password = result,
-                        packageName = "generator",
-                        domain = context.getString(R.string.pin_generator),
-                        type = "PIN"
-                    )
-                }
+                appendGeneratorHistory(result, context.getString(R.string.pin_generator), "PIN")
             }
         }
     }
@@ -276,12 +300,12 @@ fun GeneratorScreen(
     LaunchedEffect(
         selectedGenerator,
         symbolLength, includeUppercase, includeLowercase, includeNumbers, 
-        includeSymbols, excludeSimilar, excludeAmbiguous, analyzeCommonPasswords, analyzeWeight,
+        includeSymbols, useSymbolExclusionMode, excludedSymbols, customSymbols, excludeSimilar, excludeAmbiguous, analyzeCommonPasswords, analyzeWeight,
         uppercaseMin, lowercaseMin, numbersMin, symbolsMin,
         passwordLength, firstLetterUppercase, includeNumbersInPassword, 
         customSeparator, separatorCountsTowardsLength, segmentLength,
         passphraseWordCount, passphraseDelimiter, passphraseCapitalize, 
-        passphraseIncludeNumber, passphraseCustomWord,
+        passphraseIncludeNumber, passphraseCustomWord, passphraseCustomWords,
         pinLength
     ) {
         // 延迟100ms以避免频繁生成
@@ -289,6 +313,10 @@ fun GeneratorScreen(
         
         when (selectedGenerator) {
             GeneratorType.SYMBOL -> {
+                if (includeSymbols && filteredAllowedSymbols.isEmpty()) {
+                    viewModel.updateSymbolResult("")
+                    return@LaunchedEffect
+                }
                 val result = if (analyzeCommonPasswords && passwordEntries.isNotEmpty()) {
                     PasswordGenerator.generateSimilarPassword(
                         passwords = passwordEntries,
@@ -297,6 +325,7 @@ fun GeneratorScreen(
                         includeLowercase = includeLowercase,
                         includeNumbers = includeNumbers,
                         includeSymbols = includeSymbols,
+                        allowedSymbols = allowedSymbols,
                         excludeSimilar = excludeSimilar,
                         excludeAmbiguous = excludeAmbiguous,
                         weightPercent = analyzeWeight
@@ -308,6 +337,7 @@ fun GeneratorScreen(
                         includeLowercase = includeLowercase,
                         includeNumbers = includeNumbers,
                         includeSymbols = includeSymbols,
+                        allowedSymbols = allowedSymbols,
                         excludeSimilar = excludeSimilar,
                         excludeAmbiguous = excludeAmbiguous,
                         uppercaseMin = uppercaseMin,
@@ -317,15 +347,7 @@ fun GeneratorScreen(
                     )
                 }
                 viewModel.updateSymbolResult(result)
-                // 保存到历史记录
-                scope.launch {
-                    historyManager.addHistory(
-                        password = result,
-                        packageName = "generator",
-                        domain = context.getString(R.string.random_symbol_generator),
-                        type = "SYMBOL"
-                    )
-                }
+                if (result.isEmpty()) return@LaunchedEffect
             }
             GeneratorType.PASSWORD -> {
                 val result = generatePassword(
@@ -337,15 +359,6 @@ fun GeneratorScreen(
                     segmentLength = segmentLength
                 )
                 viewModel.updatePasswordResult(result)
-                // 保存到历史记录
-                scope.launch {
-                    historyManager.addHistory(
-                        password = result,
-                        packageName = "generator",
-                        domain = context.getString(R.string.password_generator),
-                        type = "PASSWORD"
-                    )
-                }
             }
             GeneratorType.PASSPHRASE -> {
                 val result = PasswordGenerator.generatePassphrase(
@@ -354,31 +367,14 @@ fun GeneratorScreen(
                     delimiter = passphraseDelimiter,
                     capitalize = passphraseCapitalize,
                     includeNumber = passphraseIncludeNumber,
-                    customWord = passphraseCustomWord.takeIf { it.isNotEmpty() }
+                    customWord = passphraseCustomWord.takeIf { it.isNotEmpty() },
+                    customWords = parsedCustomMnemonicWords
                 )
                 viewModel.updatePassphraseResult(result)
-                // 保存到历史记录
-                scope.launch {
-                    historyManager.addHistory(
-                        password = result,
-                        packageName = "generator",
-                        domain = context.getString(R.string.passphrase_generator),
-                        type = "PASSPHRASE"
-                    )
-                }
             }
             GeneratorType.PIN -> {
                 val result = PasswordGenerator.generatePinCode(pinLength)
                 viewModel.updatePinResult(result)
-                // 保存到历史记录
-                scope.launch {
-                    historyManager.addHistory(
-                        password = result,
-                        packageName = "generator",
-                        domain = context.getString(R.string.pin_generator),
-                        type = "PIN"
-                    )
-                }
             }
         }
     }
@@ -387,106 +383,134 @@ fun GeneratorScreen(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
+            .imePadding()
     ) {
-        Column(
+        val currentResult = when (selectedGenerator) {
+            GeneratorType.SYMBOL -> symbolResult
+            GeneratorType.PASSWORD -> passwordResult
+            GeneratorType.PASSPHRASE -> passphraseResult
+            GeneratorType.PIN -> pinResult
+        }
+        val isResultCardPinned by remember(listState, currentResult) {
+            derivedStateOf {
+                currentResult.isNotEmpty() &&
+                    (listState.firstVisibleItemIndex > 2 ||
+                        (listState.firstVisibleItemIndex == 2 && listState.firstVisibleItemScrollOffset > 0))
+            }
+        }
+
+        LazyColumn(
             modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(scrollState)
+                .fillMaxSize(),
+            state = listState,
+            contentPadding = PaddingValues(bottom = 96.dp)
         ) {
-            // 页面标题和历史按钮
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = stringResource(R.string.generator_title),
-                    style = MaterialTheme.typography.headlineMedium
-                )
-                
-                IconButton(
-                    onClick = { showHistorySheet = true }
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.History,
-                        contentDescription = stringResource(R.string.history),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-            
-            // 生成器类型选择按钮 - Pill 样式按钮
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 20.dp),
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-            ) {
+            item {
+                // 页面标题和历史按钮
                 Row(
-                    modifier = Modifier.padding(4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    FilterChipTab(
-                        text = stringResource(R.string.generator_symbol),
-                        isSelected = selectedGenerator == GeneratorType.SYMBOL,
-                        onClick = { viewModel.updateSelectedGenerator(GeneratorType.SYMBOL) },
-                        modifier = Modifier.weight(1f)
+                    Text(
+                        text = stringResource(R.string.generator_title),
+                        style = MaterialTheme.typography.headlineMedium
                     )
-                    
-                    FilterChipTab(
-                        text = stringResource(R.string.generator_word),
-                        isSelected = selectedGenerator == GeneratorType.PASSWORD,
-                        onClick = { viewModel.updateSelectedGenerator(GeneratorType.PASSWORD) },
-                        modifier = Modifier.weight(1f)
-                    )
-                    
-                    FilterChipTab(
-                        text = stringResource(R.string.generator_passphrase),
-                        isSelected = selectedGenerator == GeneratorType.PASSPHRASE,
-                        onClick = { viewModel.updateSelectedGenerator(GeneratorType.PASSPHRASE) },
-                        modifier = Modifier.weight(1f)
-                    )
-                    
-                    FilterChipTab(
-                        text = stringResource(R.string.generator_pin),
-                        isSelected = selectedGenerator == GeneratorType.PIN,
-                        onClick = { viewModel.updateSelectedGenerator(GeneratorType.PIN) },
-                        modifier = Modifier.weight(1f)
-                    )
+
+                    IconButton(
+                        onClick = { showHistorySheet = true }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.History,
+                            contentDescription = stringResource(R.string.history),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
-            
-            // 结果显示卡片区域：按上一次尺寸到新尺寸平滑过渡，不再做缩放进出
-            val currentResult = when (selectedGenerator) {
-                GeneratorType.SYMBOL -> symbolResult
-                GeneratorType.PASSWORD -> passwordResult
-                GeneratorType.PASSPHRASE -> passphraseResult
-                GeneratorType.PIN -> pinResult
-            }
-            if (currentResult.isNotEmpty()) {
-                ResultCard(
-                    result = currentResult,
+
+            item {
+                // 生成器类型选择按钮 - Pill 样式按钮
+                Surface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 20.dp),
-                    onCopy = { text ->
-                        copyToClipboard(context, text)
-                        Toast.makeText(context, context.getString(R.string.copied_to_clipboard), Toast.LENGTH_SHORT).show()
+                    shape = RoundedCornerShape(24.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        FilterChipTab(
+                            text = stringResource(R.string.generator_symbol),
+                            isSelected = selectedGenerator == GeneratorType.SYMBOL,
+                            onClick = { viewModel.updateSelectedGenerator(GeneratorType.SYMBOL) },
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        FilterChipTab(
+                            text = stringResource(R.string.generator_word),
+                            isSelected = selectedGenerator == GeneratorType.PASSWORD,
+                            onClick = { viewModel.updateSelectedGenerator(GeneratorType.PASSWORD) },
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        FilterChipTab(
+                            text = stringResource(R.string.generator_passphrase),
+                            isSelected = selectedGenerator == GeneratorType.PASSPHRASE,
+                            onClick = { viewModel.updateSelectedGenerator(GeneratorType.PASSPHRASE) },
+                            modifier = Modifier.weight(1f)
+                        )
+
+                        FilterChipTab(
+                            text = stringResource(R.string.generator_pin),
+                            isSelected = selectedGenerator == GeneratorType.PIN,
+                            onClick = { viewModel.updateSelectedGenerator(GeneratorType.PIN) },
+                            modifier = Modifier.weight(1f)
+                        )
                     }
-                )
+                }
             }
-            
-            // 根据选择的生成器类型显示相应的配置选项
-            when (selectedGenerator) {
-                GeneratorType.SYMBOL -> {
+
+            if (currentResult.isNotEmpty()) {
+                stickyHeader {
+                    Surface(
+                        color = MaterialTheme.colorScheme.background.copy(alpha = 0.98f)
+                    ) {
+                        ResultCard(
+                            result = currentResult,
+                            compactMode = isResultCardPinned,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = if (isResultCardPinned) 8.dp else 20.dp),
+                            onCopy = { text ->
+                                copyToClipboard(context, text)
+                                Toast.makeText(context, context.getString(R.string.copied_to_clipboard), Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                    }
+                }
+            }
+
+            item {
+                // 根据选择的生成器类型显示相应的配置选项
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.elevatedCardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer
+                    ),
+                    elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        when (selectedGenerator) {
+                    GeneratorType.SYMBOL -> {
                     // 随机符号生成器配置选项
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
                     ) {
                         Text(
                             text = stringResource(R.string.symbol_password_generator),
@@ -539,9 +563,150 @@ fun GeneratorScreen(
                             CheckboxWithText(
                                 text = stringResource(R.string.include_symbols),
                                 checked = includeSymbols,
-                                onCheckedChange = { viewModel.updateIncludeSymbols(it) }
+                                onCheckedChange = {
+                                    viewModel.updateIncludeSymbols(it)
+                                    if (!it && symbolsMin > 0) {
+                                        viewModel.updateSymbolsMin(0)
+                                    }
+                                }
                             )
-                            
+                            ElevatedCard(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                                colors = CardDefaults.elevatedCardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                                )
+                            ) {
+                                Column(modifier = Modifier.padding(12.dp)) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = stringResource(R.string.generator_symbols_setup),
+                                                style = MaterialTheme.typography.titleSmall
+                                            )
+                                            Text(
+                                                text = stringResource(
+                                                    R.string.generator_effective_symbols,
+                                                    filteredAllowedSymbols.ifEmpty { "-" }
+                                                ),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = if (includeSymbols && filteredAllowedSymbols.isEmpty()) {
+                                                    MaterialTheme.colorScheme.error
+                                                } else {
+                                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                                }
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = { symbolRulesExpanded = !symbolRulesExpanded },
+                                            enabled = includeSymbols
+                                        ) {
+                                            Icon(
+                                                imageVector = if (symbolRulesExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                                contentDescription = if (symbolRulesExpanded) "Collapse symbol rules" else "Expand symbol rules"
+                                            )
+                                        }
+                                    }
+
+                                    AnimatedVisibility(visible = symbolRulesExpanded) {
+                                        Column {
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                                                SegmentedButton(
+                                                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                                                    onClick = { viewModel.updateUseSymbolExclusionMode(true) },
+                                                    selected = useSymbolExclusionMode,
+                                                    enabled = includeSymbols
+                                                ) {
+                                                    Text(stringResource(R.string.generator_symbols_mode_exclude))
+                                                }
+                                                SegmentedButton(
+                                                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                                                    onClick = { viewModel.updateUseSymbolExclusionMode(false) },
+                                                    selected = !useSymbolExclusionMode,
+                                                    enabled = includeSymbols
+                                                ) {
+                                                    Text(stringResource(R.string.generator_symbols_mode_whitelist))
+                                                }
+                                            }
+
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            if (useSymbolExclusionMode) {
+                                                Text(
+                                                    text = stringResource(R.string.generator_symbols_exclude_hint),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Spacer(modifier = Modifier.height(6.dp))
+                                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                                    OutlinedButton(
+                                                        onClick = { viewModel.clearExcludedSymbols() },
+                                                        enabled = includeSymbols
+                                                    ) {
+                                                        Text(stringResource(R.string.generator_custom_symbols_reset))
+                                                    }
+                                                    OutlinedButton(
+                                                        onClick = { viewModel.updateExcludedSymbols("&!") },
+                                                        enabled = includeSymbols
+                                                    ) {
+                                                        Text(stringResource(R.string.generator_exclude_amp_bang))
+                                                    }
+                                                }
+                                                Spacer(modifier = Modifier.height(8.dp))
+                                                FlowRow(
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    defaultSymbols.forEach { symbol ->
+                                                        FilterChip(
+                                                            selected = symbol in excludedSymbolsSet,
+                                                            onClick = { viewModel.toggleExcludedSymbol(symbol) },
+                                                            enabled = includeSymbols,
+                                                            label = { Text(symbol.toString()) }
+                                                        )
+                                                    }
+                                                }
+                                            } else {
+                                                OutlinedTextField(
+                                                    value = customSymbols,
+                                                    onValueChange = { viewModel.updateCustomSymbols(it) },
+                                                    label = { Text(stringResource(R.string.generator_custom_symbols_label)) },
+                                                    placeholder = { Text(stringResource(R.string.generator_custom_symbols_placeholder)) },
+                                                    singleLine = true,
+                                                    enabled = includeSymbols,
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.End
+                                                ) {
+                                                    TextButton(
+                                                        onClick = { viewModel.resetCustomSymbols() },
+                                                        enabled = includeSymbols
+                                                    ) {
+                                                        Text(text = stringResource(R.string.generator_custom_symbols_reset))
+                                                    }
+                                                }
+                                            }
+
+                                            if (includeSymbols && filteredAllowedSymbols.isEmpty()) {
+                                                Text(
+                                                    text = stringResource(R.string.generator_custom_symbols_empty_error),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.error
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                             
                             CheckboxWithText(
                                 text = stringResource(R.string.generator_exclude_similar),
                                 checked = excludeSimilar,
@@ -586,7 +751,32 @@ fun GeneratorScreen(
                         }
                         
                         Spacer(modifier = Modifier.height(16.dp))
-                        
+
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(R.string.generator_require_symbol),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Switch(
+                                checked = includeSymbols && symbolsMin > 0,
+                                onCheckedChange = { enabled ->
+                                    if (enabled) {
+                                        viewModel.updateIncludeSymbols(true)
+                                        viewModel.updateSymbolsMin(if (symbolsMin > 0) symbolsMin else 1)
+                                    } else {
+                                        viewModel.updateSymbolsMin(0)
+                                    }
+                                },
+                                enabled = includeSymbols || symbolsMin > 0
+                            )
+                        }
+                         
                         // 最小字符数要求
                         Text(
                             text = stringResource(R.string.minimum_characters_requirement),
@@ -654,12 +844,11 @@ fun GeneratorScreen(
                     }
                 }
                 
-                GeneratorType.PASSWORD -> {
+                    GeneratorType.PASSWORD -> {
                     // 口令生成器配置选项
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
                     ) {
                         Text(
                             text = stringResource(R.string.password_generator),
@@ -730,12 +919,11 @@ fun GeneratorScreen(
                     }
                 }
                 
-                GeneratorType.PASSPHRASE -> {
+                    GeneratorType.PASSPHRASE -> {
                     // 密码短语生成器配置选项
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
                     ) {
                         Text(
                             text = stringResource(R.string.passphrase_generator),
@@ -794,15 +982,29 @@ fun GeneratorScreen(
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true
                         )
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        OutlinedTextField(
+                            value = passphraseCustomWords,
+                            onValueChange = { viewModel.updatePassphraseCustomWords(it) },
+                            label = { Text(stringResource(R.string.custom_mnemonic_words_optional)) },
+                            placeholder = { Text(stringResource(R.string.custom_mnemonic_words_placeholder)) },
+                            supportingText = {
+                                Text(stringResource(R.string.custom_mnemonic_words_hint))
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            minLines = 2,
+                            maxLines = 4
+                        )
                     }
                 }
                 
-                GeneratorType.PIN -> {
+                    GeneratorType.PIN -> {
                     // PIN码生成器配置选项
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp)
                     ) {
                         Text(
                             text = stringResource(R.string.pin_generator),
@@ -824,9 +1026,10 @@ fun GeneratorScreen(
                         )
                     }
                 }
+                }
+                    }
+                }
             }
-            
-            Spacer(modifier = Modifier.height(80.dp))
         }
         
         if (!useExternalRefreshFab) {
@@ -1232,10 +1435,19 @@ private fun FilterChipTab(
 private fun ResultCard(
     result: String,
     modifier: Modifier = Modifier,
+    compactMode: Boolean = false,
     onCopy: (String) -> Unit
 ) {
     var showCopied by remember { mutableStateOf(false) }
     val colorScheme = MaterialTheme.colorScheme
+    val strengthResult = remember(result) { PasswordGenerator.analyzePasswordStrength(result) }
+    val strengthColor = when (strengthResult.level) {
+        PasswordGenerator.StrengthLevel.VERY_WEAK -> colorScheme.error
+        PasswordGenerator.StrengthLevel.WEAK -> colorScheme.tertiary
+        PasswordGenerator.StrengthLevel.FAIR -> colorScheme.secondary
+        PasswordGenerator.StrengthLevel.STRONG -> colorScheme.primary
+        PasswordGenerator.StrengthLevel.VERY_STRONG -> colorScheme.primary
+    }
     
     LaunchedEffect(showCopied) {
         if (showCopied) {
@@ -1281,126 +1493,183 @@ private fun ResultCard(
             )
             .graphicsLayer { alpha = cardAlpha },
         elevation = CardDefaults.elevatedCardElevation(
-            defaultElevation = 4.dp
+            defaultElevation = if (compactMode) 0.dp else 4.dp
         ),
         colors = CardDefaults.elevatedCardColors(
-            containerColor = colorScheme.primaryContainer
+            containerColor = if (compactMode) {
+                MaterialTheme.colorScheme.surfaceContainerHigh
+            } else {
+                colorScheme.primaryContainer
+            }
         )
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+        AnimatedContent(
+            targetState = compactMode,
+            transitionSpec = {
+                (fadeIn(animationSpec = tween(180)) + scaleIn(initialScale = 0.94f)) togetherWith
+                    (fadeOut(animationSpec = tween(160)) + scaleOut(targetScale = 1.02f))
+            },
+            label = "result_card_compact_transition"
+        ) { isCompact ->
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(if (isCompact) 10.dp else 20.dp)
             ) {
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.weight(1f, fill = false)
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Key,
-                        contentDescription = null,
-                        tint = colorScheme.primary,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Text(
-                        text = stringResource(R.string.generated_password),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = colorScheme.onPrimaryContainer,
-                        maxLines = 1
-                    )
-                }
-                
-                Spacer(modifier = Modifier.width(8.dp))
-                
-                FilledTonalButton(
-                    onClick = {
-                        onCopy(result)
-                        showCopied = true
-                    },
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = buttonColor,
-                        contentColor = buttonContentColor
-                    ),
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
-                ) {
-                    // 图标动画切换
-                    AnimatedContent(
-                        targetState = showCopied,
-                        transitionSpec = {
-                            fadeIn(animationSpec = tween(200)) togetherWith 
-                            fadeOut(animationSpec = tween(200))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.weight(1f, fill = false)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Key,
+                            contentDescription = null,
+                            tint = colorScheme.primary,
+                            modifier = Modifier.size(if (isCompact) 18.dp else 24.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.generated_password),
+                            style = if (isCompact) MaterialTheme.typography.labelLarge else MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (isCompact) colorScheme.onSurfaceVariant else colorScheme.onPrimaryContainer,
+                            maxLines = 1
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    FilledTonalButton(
+                        onClick = {
+                            onCopy(result)
+                            showCopied = true
                         },
-                        label = "icon_animation"
-                    ) { copied ->
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Icon(
-                                imageVector = if (copied) Icons.Default.Done else Icons.Default.ContentCopy,
-                                contentDescription = null,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Text(
-                                text = if (copied) stringResource(R.string.generator_copied) else stringResource(R.string.copy),
-                                style = MaterialTheme.typography.labelLarge
-                            )
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = buttonColor,
+                            contentColor = buttonContentColor
+                        ),
+                        contentPadding = if (isCompact) {
+                            PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                        } else {
+                            PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                        }
+                    ) {
+                        AnimatedContent(
+                            targetState = showCopied,
+                            transitionSpec = {
+                                fadeIn(animationSpec = tween(200)) togetherWith
+                                    fadeOut(animationSpec = tween(200))
+                            },
+                            label = "icon_animation"
+                        ) { copied ->
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = if (copied) Icons.Default.Done else Icons.Default.ContentCopy,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(if (isCompact) 16.dp else 18.dp)
+                                )
+                                if (!isCompact) {
+                                    Text(
+                                        text = if (copied) stringResource(R.string.generator_copied) else stringResource(R.string.copy),
+                                        style = MaterialTheme.typography.labelLarge
+                                    )
+                                }
+                            }
                         }
                     }
                 }
-            }
-            
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            // 结果文本 - 使用等宽字体，带入场动画
-            AnimatedVisibility(
-                visible = result.isNotEmpty(),
-                enter = fadeIn(animationSpec = tween(300)) + expandVertically(),
-                exit = fadeOut(animationSpec = tween(200)) + shrinkVertically()
-            ) {
-                SelectionContainer {
-                    Text(
-                        text = colorizePassword(result),
-                        style = MaterialTheme.typography.headlineSmall.copy(
-                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                            letterSpacing = androidx.compose.ui.unit.TextUnit(0.5f, androidx.compose.ui.unit.TextUnitType.Sp)
-                        ),
-                        fontWeight = FontWeight.Medium,
-                        lineHeight = MaterialTheme.typography.headlineSmall.lineHeight * 1.4f
-                    )
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            // 长度信息 - 带动画
-            AnimatedVisibility(
-                visible = result.isNotEmpty(),
-                enter = fadeIn(animationSpec = tween(300, delayMillis = 100)) + slideInVertically(),
-                exit = fadeOut(animationSpec = tween(200))
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+
+                Spacer(modifier = Modifier.height(if (isCompact) 8.dp else 16.dp))
+
+                AnimatedVisibility(
+                    visible = result.isNotEmpty(),
+                    enter = fadeIn(animationSpec = tween(300)) + expandVertically(),
+                    exit = fadeOut(animationSpec = tween(200)) + shrinkVertically()
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Info,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
-                        modifier = Modifier.size(16.dp)
-                    )
+                    SelectionContainer {
+                        Text(
+                            text = colorizePassword(result),
+                            style = (if (isCompact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.headlineSmall).copy(
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                letterSpacing = androidx.compose.ui.unit.TextUnit(0.5f, androidx.compose.ui.unit.TextUnitType.Sp)
+                            ),
+                            fontWeight = FontWeight.Medium,
+                            lineHeight = if (isCompact) {
+                                MaterialTheme.typography.titleMedium.lineHeight
+                            } else {
+                                MaterialTheme.typography.headlineSmall.lineHeight * 1.4f
+                            },
+                            maxLines = if (isCompact) 1 else Int.MAX_VALUE
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(if (isCompact) 6.dp else 12.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
                     Text(
-                        text = stringResource(R.string.length_chars, result.length),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                        text = "安全程度",
+                        style = if (isCompact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
+                        color = if (isCompact) {
+                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
+                        } else {
+                            MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
+                        }
                     )
+                    Surface(
+                        shape = RoundedCornerShape(99.dp),
+                        color = strengthColor.copy(alpha = if (isCompact) 0.18f else 0.16f),
+                        contentColor = strengthColor
+                    ) {
+                        Text(
+                            text = strengthResult.level.displayName,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            style = if (isCompact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+
+                AnimatedVisibility(
+                    visible = result.isNotEmpty(),
+                    enter = fadeIn(animationSpec = tween(300, delayMillis = 100)) + slideInVertically(),
+                    exit = fadeOut(animationSpec = tween(200))
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = null,
+                            tint = if (isCompact) {
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                            } else {
+                                MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                            },
+                            modifier = Modifier.size(if (isCompact) 14.dp else 16.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.length_chars, result.length),
+                            style = if (isCompact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
+                            color = if (isCompact) {
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                            } else {
+                                MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -1816,4 +2085,19 @@ private fun GeneratorFilterSheet(
             }
         }
     }
+}
+
+private fun applyGeneratorSymbolFilters(
+    symbols: String,
+    excludeSimilar: Boolean,
+    excludeAmbiguous: Boolean
+): String {
+    var result = symbols
+    if (excludeSimilar) {
+        result = result.filter { it !in "0OlI1" }
+    }
+    if (excludeAmbiguous) {
+        result = result.filter { it !in "{}[]()/~`'" }
+    }
+    return result
 }

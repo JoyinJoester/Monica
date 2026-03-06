@@ -215,11 +215,20 @@ private data class TrashSecureItemBackupEntry(
  * 用于备份设置中的常用账号信息
  */
 @Serializable
+private data class CommonAccountTemplateBackupEntry(
+    val id: String = "",
+    val type: String = "",
+    val title: String = "",
+    val content: String = ""
+)
+
+@Serializable
 private data class CommonAccountBackupEntry(
     val email: String = "",
     val phone: String = "",
     val username: String = "",
-    val autoFillEnabled: Boolean = false
+    val autoFillEnabled: Boolean = false,
+    val templates: List<CommonAccountTemplateBackupEntry> = emptyList()
 )
 
 /**
@@ -1215,13 +1224,23 @@ class WebDavHelper(
                     try {
                         val commonAccountPreferences = takagi.ru.monica.data.CommonAccountPreferences(context)
                         val commonInfo = commonAccountPreferences.commonAccountInfo.first()
+                        val commonTemplates = commonAccountPreferences.templatesFlow.first()
                         
-                        if (commonInfo.hasAnyInfo() || commonInfo.autoFillEnabled) {
+                        if (commonInfo.hasAnyInfo() || commonInfo.autoFillEnabled || commonTemplates.isNotEmpty()) {
+                            val templateBackups = commonTemplates.map { template ->
+                                CommonAccountTemplateBackupEntry(
+                                    id = template.id,
+                                    type = template.type,
+                                    title = template.title,
+                                    content = template.content
+                                )
+                            }
                             val commonAccountBackup = CommonAccountBackupEntry(
                                 email = commonInfo.email,
                                 phone = commonInfo.phone,
                                 username = commonInfo.username,
-                                autoFillEnabled = commonInfo.autoFillEnabled
+                                autoFillEnabled = commonInfo.autoFillEnabled,
+                                templates = templateBackups
                             )
                             val json = Json { prettyPrint = false }
                             val commonAccountFile = File(cacheBackupDir, "common_account.json")
@@ -1231,7 +1250,7 @@ class WebDavHelper(
                             )
                             addFileToZip(zipOut, commonAccountFile, commonAccountFile.name)
                             commonAccountFile.delete()
-                            android.util.Log.d("WebDavHelper", "Backup common account info")
+                            android.util.Log.d("WebDavHelper", "Backup common account info (templates=${templateBackups.size})")
                         } else {
                             // no-op
                         }
@@ -2105,8 +2124,39 @@ class WebDavHelper(
                                         if (!currentInfo.autoFillEnabled && commonAccountBackup.autoFillEnabled) {
                                             commonAccountPreferences.setAutoFillEnabled(true)
                                         }
+
+                                        // 恢复模板：采用合并模式，不覆盖本地，仅补充缺失模板
+                                        val currentTemplates = commonAccountPreferences.templatesFlow.first()
+                                        val backupTemplates = commonAccountBackup.templates.mapNotNull { backupTemplate ->
+                                            val content = backupTemplate.content.trim()
+                                            if (content.isEmpty()) return@mapNotNull null
+                                            takagi.ru.monica.data.CommonAccountTemplate(
+                                                id = backupTemplate.id.trim().ifEmpty {
+                                                    java.util.UUID.randomUUID().toString()
+                                                },
+                                                type = backupTemplate.type.trim(),
+                                                title = backupTemplate.title.trim(),
+                                                content = content
+                                            ).normalized()
+                                        }
+                                        if (backupTemplates.isNotEmpty()) {
+                                            val mergedTemplates = (currentTemplates + backupTemplates)
+                                                .map { it.normalized() }
+                                                .filter { it.content.isNotBlank() }
+                                                .distinctBy {
+                                                    "${it.type.trim().lowercase(Locale.ROOT)}|" +
+                                                        "${it.title.trim().lowercase(Locale.ROOT)}|" +
+                                                        it.content.trim().lowercase(Locale.ROOT)
+                                                }
+                                            if (mergedTemplates != currentTemplates) {
+                                                commonAccountPreferences.setTemplates(mergedTemplates)
+                                            }
+                                        }
                                         
-                                        android.util.Log.d("WebDavHelper", "Restored common account info (merge mode)")
+                                        android.util.Log.d(
+                                            "WebDavHelper",
+                                            "Restored common account info (merge mode, templates=${commonAccountBackup.templates.size})"
+                                        )
                                     } catch (e: Exception) {
                                         android.util.Log.w("WebDavHelper", "Failed to restore common account info: ${e.message}")
                                         warnings.add("常用账号信息恢复失败: ${e.message}")

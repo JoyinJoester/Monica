@@ -989,8 +989,10 @@ class BitwardenAuthService(
     }
 
     private fun isNewDeviceVerificationRequired(errorResponse: TokenResponse?): Boolean {
-        val message = errorResponse?.errorModel?.message ?: return false
-        return message.equals("new device verification required", ignoreCase = true)
+        val modelMessage = errorResponse?.errorModel?.message.orEmpty()
+        val errorDescription = errorResponse?.errorDescription.orEmpty()
+        return modelMessage.contains("new device verification required", ignoreCase = true) ||
+            errorDescription.contains("new device verification required", ignoreCase = true)
     }
 
     private fun isCaptchaRequired(errorResponse: TokenResponse?, errorBody: String?): Boolean {

@@ -547,6 +547,7 @@ fun SimpleMainScreen(
     onNavigateToPermissionManagement: () -> Unit = {},
     onNavigateToMonicaPlus: () -> Unit = {},
     onNavigateToExtensions: () -> Unit = {},
+    onNavigateToCommonAccountTemplates: () -> Unit = {},
     onNavigateToPageCustomization: () -> Unit = {},
     onNavigateToBitwardenLogin: () -> Unit = {},
     onClearAllData: (Boolean, Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit,
@@ -1381,6 +1382,7 @@ fun SimpleMainScreen(
                     onNavigateToPermissionManagement = onNavigateToPermissionManagement,
                     onNavigateToMonicaPlus = onNavigateToMonicaPlus,
                     onNavigateToExtensions = onNavigateToExtensions,
+                    onNavigateToCommonAccountTemplates = onNavigateToCommonAccountTemplates,
                     onNavigateToPageCustomization = onNavigateToPageCustomization,
                     onClearAllData = onClearAllData,
                     cardWalletSubTab = cardWalletSubTab,
@@ -1507,6 +1509,7 @@ fun SimpleMainScreen(
                         stackCardMode = stackCardMode,
                         onPasswordOpen = handlePasswordDetailOpen,
                         onOpenHistoryPage = { showPasswordHistoryPage = true },
+                        onOpenCommonAccountTemplatesPage = onNavigateToCommonAccountTemplates,
                         onCloseHistoryPage = { showPasswordHistoryPage = false },
                         showPasswordHistoryPage = showPasswordHistoryPage,
                         onTimelineLogSelected = handleTimelineLogOpen,
@@ -2058,6 +2061,7 @@ private fun PasswordTabPane(
     stackCardMode: StackCardMode,
     onPasswordOpen: (Long) -> Unit,
     onOpenHistoryPage: () -> Unit,
+    onOpenCommonAccountTemplatesPage: () -> Unit,
     onCloseHistoryPage: () -> Unit,
     showPasswordHistoryPage: Boolean,
     onTimelineLogSelected: (TimelineEvent.StandardLog) -> Unit,
@@ -2109,7 +2113,8 @@ private fun PasswordTabPane(
             onSelectionModeChange = onSelectionModeChange,
             onBackToTopVisibilityChange = onBackToTopVisibilityChange,
             scrollToTopRequestKey = scrollToTopRequestKey,
-            onOpenHistory = onOpenHistoryPage
+            onOpenHistory = onOpenHistoryPage,
+            onOpenCommonAccountTemplates = onOpenCommonAccountTemplatesPage
         )
     }
 
@@ -2403,6 +2408,7 @@ private fun CompactDraggableTabContent(
     onNavigateToPermissionManagement: () -> Unit,
     onNavigateToMonicaPlus: () -> Unit,
     onNavigateToExtensions: () -> Unit,
+    onNavigateToCommonAccountTemplates: () -> Unit,
     onNavigateToPageCustomization: () -> Unit,
     onClearAllData: (Boolean, Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit,
     cardWalletSubTab: CardWalletTab,
@@ -2473,7 +2479,8 @@ private fun CompactDraggableTabContent(
                         onSelectionModeChange = onPasswordSelectionModeChange,
                         onBackToTopVisibilityChange = onBackToTopVisibilityChange,
                         scrollToTopRequestKey = passwordScrollToTopRequestKey,
-                        onOpenHistory = onOpenHistoryPage
+                        onOpenHistory = onOpenHistoryPage,
+                        onOpenCommonAccountTemplates = onNavigateToCommonAccountTemplates
                     )
                 }
             }

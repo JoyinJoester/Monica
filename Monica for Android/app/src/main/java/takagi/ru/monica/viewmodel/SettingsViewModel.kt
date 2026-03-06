@@ -126,6 +126,12 @@ class SettingsViewModel(
         }
     }
 
+    fun updatePasswordWebsiteStackMatchMode(mode: String) {
+        viewModelScope.launch {
+            settingsManager.updatePasswordWebsiteStackMatchMode(mode)
+        }
+    }
+
     fun updateDisablePasswordVerification(disabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updateDisablePasswordVerification(disabled)
@@ -373,6 +379,12 @@ class SettingsViewModel(
     fun updateReduceAnimations(enabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updateReduceAnimations(enabled)
+        }
+    }
+
+    fun updatePredictiveBackForPageNavigationEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updatePredictiveBackForPageNavigationEnabled(enabled)
         }
     }
 

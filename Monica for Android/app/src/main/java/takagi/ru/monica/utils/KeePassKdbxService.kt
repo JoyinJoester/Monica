@@ -876,10 +876,6 @@ class KeePassKdbxService(
         if (title.isEmpty() && username.isEmpty() && password.isEmpty() && url.isEmpty() && notes.isEmpty()) {
             return null
         }
-        // 过滤备注型/空登录条目，避免空密码幽灵进入密码页。
-        if (username.isBlank() && password.isBlank() && url.isBlank()) {
-            return null
-        }
         val monicaId = getFieldValue(entry, FIELD_MONICA_LOCAL_ID).toLongOrNull()
         return KeePassEntryData(
             title = title,

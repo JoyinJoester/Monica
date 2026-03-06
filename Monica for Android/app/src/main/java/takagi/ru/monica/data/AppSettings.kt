@@ -383,6 +383,7 @@ data class AppSettings(
     val isPlusActivated: Boolean = false, // Plus是否已激活
     val stackCardMode: String = "AUTO", // 堆叠卡片模式
     val passwordGroupMode: String = "smart", // 密码分组模式
+    val passwordWebsiteStackMatchMode: String = "strict", // 网站自动堆叠匹配模式：strict/relaxed
     val totpTimeOffset: Int = 0, // TOTP时间偏移（秒），用于校正系统时间误差
     val trashEnabled: Boolean = true, // 回收站功能是否启用
     val trashAutoDeleteDays: Int = 30, // 回收站自动清空天数（0=不自动清空，-1=禁用回收站）
@@ -406,6 +407,7 @@ data class AppSettings(
     val autofillAuthRequired: Boolean = true, // 自动填充验证 - 默认开启
     val passwordFieldVisibility: PasswordFieldVisibility = PasswordFieldVisibility(), // 添加密码页面字段定制
     val reduceAnimations: Boolean = false, // 减少动画 - 解决部分设备（如 HyperOS 2/Android 15）动画卡顿问题
+    val predictiveBackForPageNavigationEnabled: Boolean = false, // 页面级预见式返回（实验）
     val smartDeduplicationEnabled: Boolean = true, // 智能去重（在“所有”视图中合并显示相同密码）
     val separateUsernameAccountEnabled: Boolean = false, // 用户名/账号分离（实验）
     val lastPasswordCategoryFilterType: String = "all", // 上次密码列表分类类型

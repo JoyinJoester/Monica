@@ -1,13 +1,38 @@
 package takagi.ru.monica.ui.password
 
+import java.net.URI
 import java.util.Locale
 import takagi.ru.monica.data.PasswordEntry
+
+enum class WebsiteStackMatchMode(val storageValue: String) {
+    STRICT("strict"),
+    RELAXED("relaxed")
+}
+
+private val COMMON_SECOND_LEVEL_DOMAINS = setOf(
+    "ac",
+    "co",
+    "com",
+    "edu",
+    "gov",
+    "mil",
+    "net",
+    "nom",
+    "org"
+)
+
+private fun parseWebsiteStackMatchMode(mode: String): WebsiteStackMatchMode {
+    return when (mode.lowercase(Locale.ROOT)) {
+        WebsiteStackMatchMode.RELAXED.storageValue -> WebsiteStackMatchMode.RELAXED
+        else -> WebsiteStackMatchMode.STRICT
+    }
+}
 
 fun getPasswordInfoKey(entry: PasswordEntry): String {
     val sourceKey = buildPasswordSourceKey(entry)
     val title = entry.title.trim().lowercase(Locale.ROOT)
     val username = entry.username.trim().lowercase(Locale.ROOT)
-    val website = normalizeWebsiteForGroupKey(entry.website)
+    val website = normalizeWebsiteForInfoKey(entry.website)
     return "$sourceKey|$title|$website|$username"
 }
 
@@ -23,23 +48,16 @@ fun buildPasswordSourceKey(entry: PasswordEntry): String {
     }
 }
 
-fun normalizeWebsiteForGroupKey(value: String): String {
-    val raw = value.trim()
-    if (raw.isEmpty()) return ""
-    return raw
-        .lowercase(Locale.ROOT)
-        .removePrefix("http://")
-        .removePrefix("https://")
-        .removePrefix("www.")
-        .trimEnd('/')
-}
-
-fun getGroupKeyForMode(entry: PasswordEntry, mode: String): String {
+fun getGroupKeyForMode(
+    entry: PasswordEntry,
+    mode: String,
+    websiteStackMatchMode: String = WebsiteStackMatchMode.STRICT.storageValue
+): String {
     val noteLabel = entry.notes
         .lineSequence()
         .firstOrNull { it.isNotBlank() }
         ?.trim()
-    val website = entry.website.trim()
+    val website = normalizeWebsiteForStackGroupKey(entry.website, websiteStackMatchMode)
     val appName = entry.appName.trim()
     val packageName = entry.appPackageName.trim()
     val title = entry.title.trim()
@@ -63,8 +81,86 @@ fun getGroupKeyForMode(entry: PasswordEntry, mode: String): String {
     }
 }
 
-fun getPasswordGroupTitle(entry: PasswordEntry): String =
-    getGroupKeyForMode(entry, "smart")
+fun getPasswordGroupTitle(
+    entry: PasswordEntry,
+    websiteStackMatchMode: String = WebsiteStackMatchMode.STRICT.storageValue
+): String = getGroupKeyForMode(entry, "smart", websiteStackMatchMode)
+
+private fun normalizeWebsiteStrict(raw: String): String {
+    return raw
+        .lowercase(Locale.ROOT)
+        .removePrefix("http://")
+        .removePrefix("https://")
+        .removePrefix("www.")
+        .trimEnd('/')
+}
+
+private fun normalizeWebsiteForInfoKey(value: String): String {
+    val raw = value.trim()
+    if (raw.isEmpty()) return ""
+    return normalizeWebsiteStrict(raw)
+}
+
+private fun normalizeWebsiteForStackGroupKey(
+    value: String,
+    websiteStackMatchMode: String
+): String {
+    val raw = value.trim()
+    if (raw.isEmpty()) return ""
+    return when (parseWebsiteStackMatchMode(websiteStackMatchMode)) {
+        WebsiteStackMatchMode.STRICT -> raw
+        WebsiteStackMatchMode.RELAXED -> extractPrimaryDomain(raw) ?: raw
+    }
+}
+
+private fun extractPrimaryDomain(raw: String): String? {
+    val host = extractHost(raw) ?: return null
+    if (host.isBlank()) return null
+    if (isIpAddress(host)) return host
+
+    val labels = host.split('.').filter { it.isNotBlank() }
+    if (labels.size <= 2) return labels.joinToString(".")
+
+    val tld = labels.last()
+    val secondLevel = labels[labels.lastIndex - 1]
+    val thirdLevel = labels[labels.lastIndex - 2]
+
+    return if (isCountryCodeTld(tld) && secondLevel in COMMON_SECOND_LEVEL_DOMAINS) {
+        "$thirdLevel.$secondLevel.$tld"
+    } else {
+        "$secondLevel.$tld"
+    }
+}
+
+private fun extractHost(raw: String): String? {
+    val normalized = raw.trim().lowercase(Locale.ROOT)
+    if (normalized.isBlank()) return null
+
+    val fromUri = runCatching {
+        val withScheme = if ("://" in normalized) normalized else "https://$normalized"
+        URI(withScheme).host
+    }.getOrNull()
+
+    val fallback = normalized
+        .substringBefore('/')
+        .substringBefore('?')
+        .substringBefore('#')
+
+    val host = (fromUri ?: fallback)
+        .substringBefore(':')
+        .trim('.')
+        .removePrefix("www.")
+
+    return host.ifBlank { null }
+}
+
+private fun isCountryCodeTld(tld: String): Boolean =
+    tld.length == 2 && tld.all { it in 'a'..'z' }
+
+private fun isIpAddress(host: String): Boolean {
+    val ipv4Regex = Regex("^\\d{1,3}(\\.\\d{1,3}){3}$")
+    return ipv4Regex.matches(host) || host.contains(':')
+}
 
 enum class StackCardMode {
     AUTO,

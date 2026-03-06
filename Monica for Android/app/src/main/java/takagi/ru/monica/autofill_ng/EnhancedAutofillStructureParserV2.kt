@@ -314,14 +314,6 @@ class EnhancedAutofillStructureParserV2 {
             hint = InternalHint.OFF,
             target = "off",
         ),
-        AutofillHintMatcher(
-            hint = InternalHint.OFF,
-            target = "no",
-        ),
-        AutofillHintMatcher(
-            hint = InternalHint.OFF,
-            target = "nope",
-        ),
     )
 
     fun parse(structure: AssistStructure, respectAutofillOff: Boolean = true): ParsedStructure {

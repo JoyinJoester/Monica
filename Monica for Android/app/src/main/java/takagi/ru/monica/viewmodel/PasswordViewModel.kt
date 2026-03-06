@@ -772,9 +772,13 @@ class PasswordViewModel(
     }
 
     private fun shouldImportKeePassPasswordEntry(item: KeePassEntryData): Boolean {
-        // 仅导入“密码型”条目：至少有 username/password/url 之一。
-        // 这样可避免把安全项/备注型条目误导入密码列表形成幽灵卡片。
-        return item.username.isNotBlank() || item.password.isNotBlank() || item.url.isNotBlank()
+        // KeepassXC 默认模板条目通常只有标题（登录字段为空）。
+        // 若这里过滤太严格，会导致“数据库可解密但显示为空”。
+        return item.title.isNotBlank() ||
+            item.username.isNotBlank() ||
+            item.password.isNotBlank() ||
+            item.url.isNotBlank() ||
+            item.notes.isNotBlank()
     }
 
     private fun buildKeePassSyncKey(

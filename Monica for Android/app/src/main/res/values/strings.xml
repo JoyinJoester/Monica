@@ -167,6 +167,10 @@
     <string name="group_mode_note_desc">First non-empty note line</string>
     <string name="group_mode_website">Stack by website</string>
     <string name="group_mode_website_desc">Website first</string>
+    <string name="website_stack_match_mode_title">Website stack matching</string>
+    <string name="website_stack_match_mode_desc">Strict: only identical websites stack. Relaxed: stack when the primary domain matches.</string>
+    <string name="website_stack_match_mode_strict">Strict</string>
+    <string name="website_stack_match_mode_relaxed">Relaxed</string>
     <string name="group_mode_app">Stack by app</string>
     <string name="group_mode_app_desc">App name/package first</string>
     <string name="group_mode_title">Stack by title</string>
@@ -190,6 +194,12 @@
     
     <!-- Password Generator -->
     <string name="password_generator_title">Password Generator</string>
+    <string name="password_fill_title">Password Fill</string>
+    <string name="password_fill_subtitle">Generate a password or choose one from your common account templates.</string>
+    <string name="password_fill_mode_generator">Generator</string>
+    <string name="password_fill_mode_common">Fill</string>
+    <string name="password_fill_no_templates">No common password templates</string>
+    <string name="password_fill_no_templates_hint">Create a password template in Common Account Info first.</string>
     <string name="length">Length: %d</string>
     <string name="length_value">Length: %d</string>
     <string name="uppercase_letters">Uppercase (A-Z)</string>
@@ -981,6 +991,8 @@
     <string name="experimental_features_section">Experimental Features</string>
     <string name="hide_fab_on_scroll_title">Hide FAB on scroll</string>
     <string name="hide_fab_on_scroll_description">Hide the floating action button when scrolling down</string>
+    <string name="predictive_back_for_pages_title">Predictive back for pages</string>
+    <string name="predictive_back_for_pages_description">Enable system predictive back animation on detail/edit pages with parent navigation</string>
     <string name="bitwarden_bottom_status_bar_title">Bitwarden bottom status bar</string>
     <string name="bitwarden_bottom_status_bar_description">Show sync state above the bottom area on Bitwarden pages</string>
     <string name="bitwarden_status_auth_required">Re-login required</string>
@@ -1615,12 +1627,26 @@
     <string name="add_number_at_end">Add Number at End</string>
     <string name="custom_word_optional">Custom Word (Optional)</string>
     <string name="custom_word_placeholder">Custom word to include in phrase</string>
+    <string name="custom_mnemonic_words_optional">Custom Mnemonic Words (Optional)</string>
+    <string name="custom_mnemonic_words_placeholder">Example: cloud river maple</string>
+    <string name="custom_mnemonic_words_hint">Separate words with spaces or commas. Generated phrase will mix these words in.</string>
     <string name="generator_history_description">Passwords generated and used through autofill will appear here</string>
     <string name="character_types">Character Types</string>
     <string name="include_uppercase">Include Uppercase (A-Z)</string>
     <string name="include_lowercase">Include Lowercase (a-z)</string>
     <string name="include_numbers">Include Numbers (0-9)</string>
     <string name="include_symbols">Include Symbols (!@#$%)</string>
+    <string name="generator_custom_symbols_label">Custom Symbols</string>
+    <string name="generator_custom_symbols_placeholder">Example: *_-.@</string>
+    <string name="generator_custom_symbols_reset">Reset</string>
+    <string name="generator_effective_symbols">Effective symbols: %s</string>
+    <string name="generator_custom_symbols_empty_error">No symbols available after filters. Add allowed symbols or disable exclusion options.</string>
+    <string name="generator_symbols_setup">Symbol Rules</string>
+    <string name="generator_symbols_mode_exclude">Exclude from default</string>
+    <string name="generator_symbols_mode_whitelist">Custom whitelist</string>
+    <string name="generator_symbols_exclude_hint">Tap symbols to exclude. This is faster when only a few symbols are not allowed.</string>
+    <string name="generator_exclude_amp_bang">Exclude &amp; and !</string>
+    <string name="generator_require_symbol">Must include symbol</string>
     <string name="passphrase_generator">Passphrase Generator</string>
     <string name="pin_length">PIN Length: %d</string>
     <string name="length_label">Length: %d</string>
@@ -1929,6 +1955,24 @@
     <string name="common_account_auto_fill_desc">Auto-fill default info when adding new entry</string>
     <string name="common_account_saved">Saved</string>
     <string name="fill_common_account">Fill</string>
+    <string name="common_account_templates_title">Common Account Info</string>
+    <string name="common_account_templates_description">Manage reusable templates for email, account, phone, and password.</string>
+    <string name="common_account_templates_empty_title">No templates yet</string>
+    <string name="common_account_templates_empty_desc">Create your first common account template from the button below.</string>
+    <string name="common_account_template_add">Create template</string>
+    <string name="common_account_template_edit">Edit template</string>
+    <string name="common_account_template_type">Type</string>
+    <string name="common_account_template_title">Title</string>
+    <string name="common_account_template_content">Content</string>
+    <string name="common_account_template_delete_title">Delete template</string>
+    <string name="common_account_template_delete_message">Are you sure you want to delete this template?</string>
+    <string name="common_account_templates_count">%1$d templates</string>
+    <string name="common_account_templates_create_hint">Create reusable items for quick copy and fill.</string>
+    <string name="common_account_type_email">Email</string>
+    <string name="common_account_type_password">Password</string>
+    <string name="common_account_type_account">Account</string>
+    <string name="common_account_type_phone">Phone</string>
+    <string name="common_account_template_preview">Preview</string>
     
     <!-- SSO / Third-party Login -->
     <string name="login_type_label">Login Type</string>

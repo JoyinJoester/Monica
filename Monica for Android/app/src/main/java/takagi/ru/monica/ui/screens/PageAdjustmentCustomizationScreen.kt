@@ -1019,6 +1019,12 @@ fun PasswordCardAdjustmentScreen(
     val selectedGroupOption = remember(settings.passwordGroupMode, groupOptions) {
         groupOptions.firstOrNull { it.mode == settings.passwordGroupMode } ?: groupOptions.first()
     }
+    val websiteStackMatchMode = remember(settings.passwordWebsiteStackMatchMode) {
+        when (settings.passwordWebsiteStackMatchMode.lowercase()) {
+            "relaxed" -> "relaxed"
+            else -> "strict"
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -1305,6 +1311,41 @@ fun PasswordCardAdjustmentScreen(
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.website_stack_match_mode_title),
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(
+                        text = stringResource(R.string.website_stack_match_mode_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                        listOf("strict", "relaxed").forEachIndexed { index, mode ->
+                            val text = if (mode == "strict") {
+                                stringResource(R.string.website_stack_match_mode_strict)
+                            } else {
+                                stringResource(R.string.website_stack_match_mode_relaxed)
+                            }
+                            SegmentedButton(
+                                selected = websiteStackMatchMode == mode,
+                                onClick = { viewModel.updatePasswordWebsiteStackMatchMode(mode) },
+                                shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(
+                                    index = index,
+                                    count = 2
+                                ),
+                                label = { Text(text = text) }
+                            )
                         }
                     }
                 }

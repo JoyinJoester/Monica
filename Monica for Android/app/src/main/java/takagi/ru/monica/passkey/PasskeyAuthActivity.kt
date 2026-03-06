@@ -8,6 +8,7 @@ import android.util.Base64
 import android.util.Log
 import androidx.activity.compose.setContent
 import androidx.annotation.RequiresApi
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -19,8 +20,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -36,13 +36,16 @@ import androidx.fragment.app.FragmentActivity
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import takagi.ru.monica.R
+import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.PasswordDatabase
+import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.repository.PasskeyRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.components.MasterPasswordDialog
 import takagi.ru.monica.ui.theme.MonicaTheme
 import takagi.ru.monica.utils.BiometricAuthHelper
+import takagi.ru.monica.utils.SettingsManager
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.Signature
@@ -214,7 +217,26 @@ class PasskeyAuthActivity : FragmentActivity() {
         pendingRequestJson = requestJson
         
         setContent {
-            MonicaTheme {
+            val settingsManager = remember { SettingsManager(this@PasskeyAuthActivity) }
+            val settings by settingsManager.settingsFlow.collectAsState(
+                initial = AppSettings(biometricEnabled = false)
+            )
+            val systemDarkTheme = isSystemInDarkTheme()
+            val darkTheme = when (settings.themeMode) {
+                ThemeMode.SYSTEM -> systemDarkTheme
+                ThemeMode.LIGHT -> false
+                ThemeMode.DARK -> true
+            }
+
+            MonicaTheme(
+                darkTheme = darkTheme,
+                colorScheme = settings.colorScheme,
+                customPrimaryColor = settings.customPrimaryColor,
+                customSecondaryColor = settings.customSecondaryColor,
+                customTertiaryColor = settings.customTertiaryColor,
+                customNeutralColor = settings.customNeutralColor,
+                customNeutralVariantColor = settings.customNeutralVariantColor
+            ) {
                 PasskeyAuthScreen(
                     passkey = currentPasskey,
                     onConfirm = {
@@ -509,202 +531,191 @@ private fun PasskeyAuthScreen(
     onUseMasterPassword: () -> Unit
 ) {
     var isAuthenticating by remember { mutableStateOf(false) }
-    
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
-    ) {
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        bottomBar = {
+            Surface(
+                tonalElevation = 2.dp,
+                shadowElevation = 10.dp,
+                color = MaterialTheme.colorScheme.surface
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            isAuthenticating = true
+                            onConfirm()
+                        },
+                        enabled = !isAuthenticating,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        shape = RoundedCornerShape(18.dp)
+                    ) {
+                        if (isAuthenticating) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                strokeWidth = 2.dp
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Login,
+                                contentDescription = null
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(stringResource(R.string.passkey_auth_confirm))
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = onCancel,
+                        enabled = !isAuthenticating,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        shape = RoundedCornerShape(18.dp)
+                    ) {
+                        Text(stringResource(R.string.cancel))
+                    }
+
+                    TextButton(
+                        onClick = onUseMasterPassword,
+                        enabled = !isAuthenticating,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(stringResource(R.string.use_master_password))
+                    }
+                }
+            }
+        }
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(24.dp),
+                .padding(innerPadding)
+                .padding(horizontal = 20.dp, vertical = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            // 图标
-            Box(
-                modifier = Modifier
-                    .size(80.dp)
-                    .clip(CircleShape)
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.secondary,
-                                MaterialTheme.colorScheme.primary
-                            )
-                        )
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Fingerprint,
-                    contentDescription = null,
-                    modifier = Modifier.size(40.dp),
-                    tint = MaterialTheme.colorScheme.onPrimary
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            Text(
-                text = stringResource(R.string.passkey_auth_title),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center
-            )
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            Text(
-                text = stringResource(R.string.passkey_auth_message, passkey.rpName),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.7f),
-                textAlign = TextAlign.Center
-            )
-            
-            Spacer(modifier = Modifier.height(32.dp))
-            
-            // 账户信息卡片
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                tonalElevation = 4.dp
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    // 网站信息
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
+                    Box(
+                        modifier = Modifier
+                            .size(84.dp)
+                            .clip(CircleShape)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Language,
+                            imageVector = Icons.Default.Fingerprint,
                             contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = passkey.rpName,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = passkey.rpId,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                            )
-                        }
-                    }
-                    
-                    Spacer(modifier = Modifier.height(12.dp))
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-                    Spacer(modifier = Modifier.height(12.dp))
-                    
-                    // 用户信息
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                            tint = MaterialTheme.colorScheme.secondary
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                text = passkey.userDisplayName.ifBlank { passkey.userName },
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            if (passkey.userName != passkey.userDisplayName && passkey.userDisplayName.isNotBlank()) {
-                                Text(
-                                    text = passkey.userName,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
-                                )
-                            }
-                        }
-                    }
-                    
-                    Spacer(modifier = Modifier.height(12.dp))
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-                    Spacer(modifier = Modifier.height(12.dp))
-                    
-                    // 使用次数
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.TouchApp,
-                            contentDescription = null,
-                            modifier = Modifier.size(20.dp),
-                            tint = MaterialTheme.colorScheme.tertiary
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = stringResource(R.string.passkey_use_count, passkey.useCount),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                            modifier = Modifier.size(40.dp),
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
+
+                    Text(
+                        text = stringResource(R.string.passkey_auth_title),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+
+                    Text(
+                        text = stringResource(R.string.passkey_auth_message, passkey.rpName),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center
+                    )
                 }
             }
-            
-            Spacer(modifier = Modifier.height(32.dp))
-            
-            // 按钮
-            Button(
-                onClick = {
-                    isAuthenticating = true
-                    onConfirm()
-                },
-                enabled = !isAuthenticating,
+
+            ElevatedCard(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp),
-                shape = RoundedCornerShape(16.dp)
+                    .weight(1f, fill = false),
+                shape = RoundedCornerShape(24.dp)
             ) {
-                if (isAuthenticating) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        strokeWidth = 2.dp
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    PasskeyAuthInfoRow(
+                        icon = Icons.Default.Language,
+                        title = passkey.rpName,
+                        subtitle = passkey.rpId
                     )
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.Login,
-                        contentDescription = null
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                    PasskeyAuthInfoRow(
+                        icon = Icons.Default.Person,
+                        title = passkey.userDisplayName.ifBlank { passkey.userName },
+                        subtitle = if (
+                            passkey.userName != passkey.userDisplayName &&
+                            passkey.userDisplayName.isNotBlank()
+                        ) {
+                            passkey.userName
+                        } else {
+                            passkey.userName
+                        }
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.passkey_auth_confirm))
+
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+                    PasskeyAuthInfoRow(
+                        icon = Icons.Default.TouchApp,
+                        title = stringResource(R.string.passkey_use_count),
+                        subtitle = stringResource(R.string.passkey_used_count, passkey.useCount)
+                    )
                 }
             }
-            
-            Spacer(modifier = Modifier.height(12.dp))
-            
-            OutlinedButton(
-                onClick = onCancel,
-                enabled = !isAuthenticating,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Text(stringResource(R.string.cancel))
-            }
+        }
+    }
+}
 
-            Spacer(modifier = Modifier.height(8.dp))
-
-            TextButton(
-                onClick = onUseMasterPassword,
-                enabled = !isAuthenticating,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text(stringResource(R.string.use_master_password))
-            }
+@Composable
+private fun PasskeyAuthInfoRow(
+    icon: ImageVector,
+    title: String,
+    subtitle: String
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+            tint = MaterialTheme.colorScheme.primary
+        )
+        Spacer(modifier = Modifier.width(12.dp))
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

@@ -268,7 +268,7 @@ class AutofillPreferences(private val context: Context) {
     }
 
     val isV2RespectAutofillOffEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
-        preferences[KEY_V2_RESPECT_AUTOFILL_OFF] ?: true
+        preferences[KEY_V2_RESPECT_AUTOFILL_OFF] ?: false
     }
 
     suspend fun setV2RespectAutofillOffEnabled(enabled: Boolean) {

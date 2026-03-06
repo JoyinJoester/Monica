@@ -117,7 +117,7 @@ fun BitwardenLoginScreen(
             when (event) {
                 is BitwardenViewModel.BitwardenEvent.ShowTwoFactorDialog -> {
                     availableTwoFactorMethods = event.methods
-                    selectedTwoFactorMethod = event.methods.firstOrNull() ?: 0
+                    selectedTwoFactorMethod = choosePreferredTwoFactorMethod(event.methods)
                     showTwoFactorDialog = true
                 }
                 is BitwardenViewModel.BitwardenEvent.NavigateToVault -> {
@@ -637,9 +637,8 @@ fun TwoFactorDialog(
         },
         text = {
             Column {
-                val isNewDevice = selectedMethod == BitwardenAuthService.TWO_FACTOR_EMAIL_NEW_DEVICE
                 Text(
-                    text = if (isNewDevice) "请输入邮箱中的新设备验证码" else "请输入您的验证码完成登录",
+                    text = getTwoFactorInputGuide(selectedMethod),
                     style = MaterialTheme.typography.bodyMedium
                 )
                 
@@ -656,17 +655,24 @@ fun TwoFactorDialog(
                     
                     availableMethods.forEach { method ->
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
+                            verticalAlignment = Alignment.Top,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             RadioButton(
                                 selected = selectedMethod == method,
                                 onClick = { onMethodSelected(method) }
                             )
-                            Text(
-                                text = getTwoFactorMethodName(method),
-                                modifier = Modifier.padding(start = 8.dp)
-                            )
+                            Column(modifier = Modifier.padding(start = 8.dp, top = 10.dp)) {
+                                Text(text = getTwoFactorMethodName(method))
+                                val hint = getTwoFactorMethodHint(method)
+                                if (hint.isNotBlank()) {
+                                    Text(
+                                        text = hint,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
                         }
                     }
                     
@@ -676,9 +682,10 @@ fun TwoFactorDialog(
                 OutlinedTextField(
                     value = code,
                     onValueChange = onCodeChange,
-                    label = { Text(if (isNewDevice) "新设备验证码" else "验证码") },
+                    label = { Text(getTwoFactorFieldLabel(selectedMethod)) },
+                    placeholder = { Text(getTwoFactorFieldPlaceholder(selectedMethod)) },
                     keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.Number,
+                        keyboardType = if (isNumericTwoFactorCode(selectedMethod)) KeyboardType.Number else KeyboardType.Text,
                         imeAction = ImeAction.Done
                     ),
                     keyboardActions = KeyboardActions(
@@ -720,5 +727,70 @@ private fun getTwoFactorMethodName(method: Int): String {
         7 -> "WebAuthn"
         BitwardenAuthService.TWO_FACTOR_EMAIL_NEW_DEVICE -> "新设备邮箱验证"
         else -> "未知方式"
+    }
+}
+
+private fun getTwoFactorMethodHint(method: Int): String {
+    return when (method) {
+        BitwardenAuthService.TWO_FACTOR_EMAIL ->
+            "邮箱里收到的验证码（不要填验证器 App 的动态码）"
+        BitwardenAuthService.TWO_FACTOR_AUTHENTICATOR ->
+            "来自 Google/Microsoft Authenticator 等 App 的动态码"
+        BitwardenAuthService.TWO_FACTOR_EMAIL_NEW_DEVICE ->
+            "新设备验证邮件中的验证码"
+        else -> ""
+    }
+}
+
+private fun getTwoFactorInputGuide(method: Int): String {
+    return when (method) {
+        BitwardenAuthService.TWO_FACTOR_EMAIL ->
+            "当前方式：邮箱验证码。请输入邮箱收到的验证码，不要输入验证器动态码。"
+        BitwardenAuthService.TWO_FACTOR_AUTHENTICATOR ->
+            "当前方式：验证器动态码（TOTP）。请输入验证器 App 里当前 6 位动态码。"
+        BitwardenAuthService.TWO_FACTOR_EMAIL_NEW_DEVICE ->
+            "当前方式：新设备邮箱验证。请输入邮箱中的新设备验证码。"
+        else ->
+            "请输入该验证方式对应的验证码完成登录。"
+    }
+}
+
+private fun getTwoFactorFieldLabel(method: Int): String {
+    return when (method) {
+        BitwardenAuthService.TWO_FACTOR_EMAIL -> "邮箱验证码"
+        BitwardenAuthService.TWO_FACTOR_AUTHENTICATOR -> "验证器动态码 (TOTP)"
+        BitwardenAuthService.TWO_FACTOR_EMAIL_NEW_DEVICE -> "新设备验证码"
+        else -> "验证码"
+    }
+}
+
+private fun getTwoFactorFieldPlaceholder(method: Int): String {
+    return when (method) {
+        BitwardenAuthService.TWO_FACTOR_EMAIL ->
+            "输入邮箱收到的验证码"
+        BitwardenAuthService.TWO_FACTOR_AUTHENTICATOR ->
+            "输入验证器 App 的 6 位动态码"
+        BitwardenAuthService.TWO_FACTOR_EMAIL_NEW_DEVICE ->
+            "输入新设备验证邮件中的验证码"
+        else -> "输入验证码"
+    }
+}
+
+private fun isNumericTwoFactorCode(method: Int): Boolean {
+    return method == BitwardenAuthService.TWO_FACTOR_EMAIL ||
+        method == BitwardenAuthService.TWO_FACTOR_AUTHENTICATOR ||
+        method == BitwardenAuthService.TWO_FACTOR_EMAIL_NEW_DEVICE
+}
+
+private fun choosePreferredTwoFactorMethod(methods: List<Int>): Int {
+    if (methods.isEmpty()) return BitwardenAuthService.TWO_FACTOR_AUTHENTICATOR
+    return when {
+        methods.contains(BitwardenAuthService.TWO_FACTOR_EMAIL_NEW_DEVICE) ->
+            BitwardenAuthService.TWO_FACTOR_EMAIL_NEW_DEVICE
+        methods.contains(BitwardenAuthService.TWO_FACTOR_EMAIL) ->
+            BitwardenAuthService.TWO_FACTOR_EMAIL
+        methods.contains(BitwardenAuthService.TWO_FACTOR_AUTHENTICATOR) ->
+            BitwardenAuthService.TWO_FACTOR_AUTHENTICATOR
+        else -> methods.first()
     }
 }

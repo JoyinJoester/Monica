@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
@@ -12,6 +13,9 @@ import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.BackEventCompat
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -29,6 +33,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -36,8 +41,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.dp
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.WindowCompat
 import androidx.fragment.app.FragmentActivity
@@ -53,10 +61,12 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.Dispatchers
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -657,6 +667,9 @@ fun MonicaContent(
                 onNavigateToExtensions = {
                     navController.navigate(Screen.Extensions.route)
                 },
+                onNavigateToCommonAccountTemplates = {
+                    navController.navigate(Screen.CommonAccountTemplates.route)
+                },
                 onNavigateToPageCustomization = {
                     navController.navigate(Screen.PageAdjustmentCustomization.route)
                 },
@@ -727,16 +740,28 @@ fun MonicaContent(
             popExitTransition = { rightSlidePopExitTransition() }
         ) { backStackEntry ->
             val passwordId = backStackEntry.arguments?.getString("passwordId")?.toLongOrNull() ?: -1L
-            AddEditPasswordScreen(
-                viewModel = viewModel,
-                totpViewModel = totpViewModel,
-                bankCardViewModel = bankCardViewModel,
-                localKeePassViewModel = localKeePassViewModel,
-                passwordId = if (passwordId == -1L) null else passwordId,
-                onNavigateBack = {
-                    navController.popBackStack()
+            val navigateBackFromAddEditPassword = {
+                val popped = navController.popBackStack()
+                if (!popped) {
+                    navController.navigate(Screen.Main.createRoute()) {
+                        popUpTo(0) { inclusive = true }
+                        launchSingleTop = true
+                    }
                 }
-            )
+            }
+            PredictiveBackPageContainer(
+                enabled = settings.predictiveBackForPageNavigationEnabled,
+                onNavigateBack = navigateBackFromAddEditPassword
+            ) {
+                AddEditPasswordScreen(
+                    viewModel = viewModel,
+                    totpViewModel = totpViewModel,
+                    bankCardViewModel = bankCardViewModel,
+                    localKeePassViewModel = localKeePassViewModel,
+                    passwordId = if (passwordId == -1L) null else passwordId,
+                    onNavigateBack = navigateBackFromAddEditPassword
+                )
+            }
         }
 
         composable(
@@ -1017,33 +1042,39 @@ fun MonicaContent(
             val passwordId = backStackEntry.arguments?.getString("passwordId")?.toLongOrNull() ?: -1L
 
             if (passwordId > 0) {
+                val navigateBackFromPasswordDetail = {
+                    val popped = navController.popBackStack()
+                    if (!popped) {
+                        navController.navigate(Screen.Main.createRoute()) {
+                            popUpTo(0) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    }
+                }
                 androidx.compose.runtime.CompositionLocalProvider(
                     takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
                 ) {
-                    takagi.ru.monica.ui.screens.PasswordDetailScreen(
-                        viewModel = viewModel,
-                        passkeyViewModel = passkeyViewModel,
-                        passwordId = passwordId,
-                        disablePasswordVerification = settings.disablePasswordVerification,
-                        biometricEnabled = settings.biometricEnabled,
-                        iconCardsEnabled = settings.iconCardsEnabled && settings.passwordPageIconEnabled,
-                        unmatchedIconHandlingStrategy = settings.unmatchedIconHandlingStrategy,
-                        enableSharedBounds = false,
-                        onNavigateBack = {
-                            val popped = navController.popBackStack()
-                            if (!popped) {
-                                navController.navigate(Screen.Main.createRoute()) {
-                                    popUpTo(0) { inclusive = true }
+                    PredictiveBackPageContainer(
+                        enabled = settings.predictiveBackForPageNavigationEnabled,
+                        onNavigateBack = navigateBackFromPasswordDetail
+                    ) {
+                        takagi.ru.monica.ui.screens.PasswordDetailScreen(
+                            viewModel = viewModel,
+                            passkeyViewModel = passkeyViewModel,
+                            passwordId = passwordId,
+                            disablePasswordVerification = settings.disablePasswordVerification,
+                            biometricEnabled = settings.biometricEnabled,
+                            iconCardsEnabled = settings.iconCardsEnabled && settings.passwordPageIconEnabled,
+                            unmatchedIconHandlingStrategy = settings.unmatchedIconHandlingStrategy,
+                            enableSharedBounds = false,
+                            onNavigateBack = navigateBackFromPasswordDetail,
+                            onEditPassword = { id ->
+                                navController.navigate(Screen.AddEditPassword.createRoute(id)) {
                                     launchSingleTop = true
                                 }
                             }
-                        },
-                        onEditPassword = { id ->
-                            navController.navigate(Screen.AddEditPassword.createRoute(id)) {
-                                launchSingleTop = true
-                            }
-                        }
-                    )
+                        )
+                    }
                 }
             }
         }
@@ -1772,6 +1803,24 @@ fun MonicaContent(
         }
 
         composable(
+            route = Screen.CommonAccountTemplates.route,
+            enterTransition = { rightSlideEnterTransition() },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { rightSlidePopExitTransition() }
+        ) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
+            takagi.ru.monica.ui.screens.CommonAccountTemplatesScreen(
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+            }
+        }
+
+        composable(
             route = Screen.PageAdjustmentCustomization.route,
             enterTransition = { rightSlideEnterTransition() },
             exitTransition = { ExitTransition.None },
@@ -2122,6 +2171,56 @@ fun MonicaContent(
         }
     }
         }
+    }
+}
+
+@Composable
+private fun PredictiveBackPageContainer(
+    enabled: Boolean,
+    onNavigateBack: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    var progress by remember { mutableFloatStateOf(0f) }
+    var swipeEdge by remember { mutableStateOf(BackEventCompat.EDGE_LEFT) }
+
+    PredictiveBackHandler(enabled = enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { events ->
+        try {
+            events.collect { event ->
+                swipeEdge = event.swipeEdge
+                progress = event.progress.coerceIn(0f, 1f)
+            }
+            onNavigateBack()
+        } catch (_: CancellationException) {
+            // Gesture canceled: just reset visual state.
+        } finally {
+            progress = 0f
+        }
+    }
+
+    BackHandler(enabled = enabled && Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        onNavigateBack()
+    }
+
+    val edgeDirection = if (swipeEdge == BackEventCompat.EDGE_RIGHT) -1f else 1f
+    val scale = 1f - (0.08f * progress)
+    val alpha = 1f - (0.08f * progress)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                val translationPx = 24.dp.toPx() * progress * edgeDirection
+                translationX = translationPx
+                scaleX = scale
+                scaleY = scale
+                this.alpha = alpha
+                transformOrigin = TransformOrigin(
+                    pivotFractionX = if (edgeDirection > 0f) 0f else 1f,
+                    pivotFractionY = 0.5f
+                )
+            }
+    ) {
+        content()
     }
 }
 

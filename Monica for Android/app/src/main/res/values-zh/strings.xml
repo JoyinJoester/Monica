@@ -152,6 +152,10 @@
     <string name="group_mode_note_desc">取备注首个非空行</string>
     <string name="group_mode_website">按网站堆叠</string>
     <string name="group_mode_website_desc">网站优先</string>
+    <string name="website_stack_match_mode_title">网站堆叠匹配方式</string>
+    <string name="website_stack_match_mode_desc">严格：仅网址完全一致才堆叠。宽松：主域名一致即可堆叠。</string>
+    <string name="website_stack_match_mode_strict">严格</string>
+    <string name="website_stack_match_mode_relaxed">宽松</string>
     <string name="group_mode_app">按应用堆叠</string>
     <string name="group_mode_app_desc">应用名/包名优先</string>
     <string name="group_mode_title">按标题堆叠</string>
@@ -175,6 +179,12 @@
     
     <!-- Password Generator -->
     <string name="password_generator_title">密码生成器</string>
+    <string name="password_fill_title">密码填充</string>
+    <string name="password_fill_subtitle">可在生成器与常用账号密码模板之间切换并快速应用。</string>
+    <string name="password_fill_mode_generator">生成器</string>
+    <string name="password_fill_mode_common">填充</string>
+    <string name="password_fill_no_templates">暂无常用密码模板</string>
+    <string name="password_fill_no_templates_hint">请先在“常用账号信息”里创建密码类型模板。</string>
     <string name="length">长度：%d</string>
     <string name="length_value">长度：%d</string>
     <string name="uppercase_letters">大写字母 (A-Z)</string>
@@ -943,6 +953,8 @@
     <string name="experimental_features_section">实验功能</string>
     <string name="hide_fab_on_scroll_title">滚动时隐藏悬浮按钮</string>
     <string name="hide_fab_on_scroll_description">向下滑动列表时隐藏右下角的添加按钮</string>
+    <string name="predictive_back_for_pages_title">页面预见式返回</string>
+    <string name="predictive_back_for_pages_description">为有上级页面的详情/编辑页启用系统预见式返回动画</string>
     
     <!-- 验证器震动 -->
     <string name="validator_vibration">验证器震动</string>
@@ -1450,12 +1462,26 @@
     <string name="add_number_at_end">在末尾添加数字</string>
     <string name="custom_word_optional">自定义单词（可选）</string>
     <string name="custom_word_placeholder">将包含在短语中的自定义单词</string>
+    <string name="custom_mnemonic_words_optional">自定义助记词（可选）</string>
+    <string name="custom_mnemonic_words_placeholder">例如: 云 河 枫叶</string>
+    <string name="custom_mnemonic_words_hint">可用空格或逗号分隔多个词，生成时会混入这些词。</string>
     <string name="generator_history_description">通过自动填充生成并使用的密码将显示在这里</string>
     <string name="character_types">字符类型</string>
     <string name="include_uppercase">包含大写字母 (A-Z)</string>
     <string name="include_lowercase">包含小写字母 (a-z)</string>
     <string name="include_numbers">包含数字 (0-9)</string>
     <string name="include_symbols">包含符号 (!@#$%)</string>
+    <string name="generator_custom_symbols_label">自定义符号</string>
+    <string name="generator_custom_symbols_placeholder">例如: *_-.@</string>
+    <string name="generator_custom_symbols_reset">重置</string>
+    <string name="generator_effective_symbols">生效符号: %s</string>
+    <string name="generator_custom_symbols_empty_error">过滤后没有可用符号，请添加允许的符号或关闭排除选项。</string>
+    <string name="generator_symbols_setup">符号规则</string>
+    <string name="generator_symbols_mode_exclude">从默认中排除</string>
+    <string name="generator_symbols_mode_whitelist">自定义白名单</string>
+    <string name="generator_symbols_exclude_hint">点击符号即可排除。只想禁用少量符号时，这种方式更快。</string>
+    <string name="generator_exclude_amp_bang">排除 &amp; 和 !</string>
+    <string name="generator_require_symbol">必须包含符号</string>
     <string name="passphrase_generator">密码短语生成器</string>
     <string name="pin_length">PIN码长度: %d</string>
     <string name="length_label">长度: %d</string>
@@ -1736,6 +1762,24 @@
     <string name="common_account_auto_fill_desc">新建条目时自动填充默认信息</string>
     <string name="common_account_saved">已保存</string>
     <string name="fill_common_account">填充</string>
+    <string name="common_account_templates_title">常用账号信息</string>
+    <string name="common_account_templates_description">管理可复用的账号模板，支持邮箱、账号、手机号、密码四种类型。</string>
+    <string name="common_account_templates_empty_title">还没有模板</string>
+    <string name="common_account_templates_empty_desc">点击下方按钮创建第一条常用账号模板。</string>
+    <string name="common_account_template_add">创建模板</string>
+    <string name="common_account_template_edit">编辑模板</string>
+    <string name="common_account_template_type">类型</string>
+    <string name="common_account_template_title">标题</string>
+    <string name="common_account_template_content">内容</string>
+    <string name="common_account_template_delete_title">删除模板</string>
+    <string name="common_account_template_delete_message">确定删除这条模板吗？</string>
+    <string name="common_account_templates_count">%1$d 条模板</string>
+    <string name="common_account_templates_create_hint">创建可复用条目，后续可快速复制与填充。</string>
+    <string name="common_account_type_email">邮箱</string>
+    <string name="common_account_type_password">密码</string>
+    <string name="common_account_type_account">账号</string>
+    <string name="common_account_type_phone">手机号</string>
+    <string name="common_account_template_preview">预览</string>
     
     <!-- SSO / Third-party Login -->
     <string name="login_type_label">登录方式</string>
