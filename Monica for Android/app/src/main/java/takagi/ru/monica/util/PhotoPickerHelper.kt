@@ -221,7 +221,7 @@ object PhotoPickerHelper {
         val timeStamp = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())
         val imageFileName = "JPEG_${timeStamp}_"
         // 确保使用正确的目录，与file_paths.xml中的配置匹配
-        val storageDir = File(context.cacheDir, "temp_photos")
+        val storageDir = File(context.cacheDir, "temp_share")
         if (!storageDir.exists()) {
             storageDir.mkdirs()
         }

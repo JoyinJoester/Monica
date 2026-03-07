@@ -559,7 +559,7 @@ private data class ClearLogsResult(
 
 private object DeveloperLogDebugHelper {
     private const val LOG_LINE_LIMIT = 1200
-    private const val SHARE_DIR = "temp_photos"
+    private const val SHARE_DIR = "temp_share"
     private const val SHARE_PREFIX = "monica_logs_"
     private val AUTOFILL_LOG_TAGS = arrayOf(
         "MonicaAutofill:V",

@@ -324,6 +324,7 @@ class WebDavHelper(
         private const val KEY_KEEPASS_CONFLICT_PROTECTION_MODE = "conflict_protection_mode"
         private const val KEEPASS_CONFLICT_MODE_AUTO = "auto"
         private const val KEEPASS_CONFLICT_MODE_STRICT = "strict"
+        private const val BACKUP_FOLDER_NAME = "Monica_Backups"
     }
     
     // 加密相关
@@ -339,7 +340,7 @@ class WebDavHelper(
      * 配置 WebDAV 连接
      */
     fun configure(url: String, user: String, pass: String) {
-        serverUrl = url.trimEnd('/')
+        serverUrl = normalizeServerUrl(url)
         username = user
         password = pass
         // 创建新的 Sardine 实例并立即设置凭证
@@ -370,7 +371,8 @@ class WebDavHelper(
      */
     private fun loadConfig() {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val url = prefs.getString(KEY_SERVER_URL, "") ?: ""
+        val storedUrl = prefs.getString(KEY_SERVER_URL, "") ?: ""
+        val url = normalizeServerUrl(storedUrl)
         val user = prefs.getString(KEY_USERNAME, "") ?: ""
         val pass = prefs.getString(KEY_PASSWORD, "") ?: ""
         enableEncryption = prefs.getBoolean(KEY_ENABLE_ENCRYPTION, false)
@@ -384,6 +386,9 @@ class WebDavHelper(
             sardine = OkHttpSardine()
             sardine?.setCredentials(username, password)
             android.util.Log.d("WebDavHelper", "Loaded WebDAV config: url=$serverUrl, user=$username, encryption=$enableEncryption")
+            if (url != storedUrl) {
+                saveConfig()
+            }
         }
     }
     
@@ -3179,6 +3184,23 @@ class WebDavHelper(
             }
         }.trim('_').ifEmpty { "_root" }
     }
+
+    private fun normalizeServerUrl(url: String): String {
+        return url.trim().trimEnd('/')
+    }
+
+    private fun getBackupDirectoryPath(): String {
+        val normalizedBase = normalizeServerUrl(serverUrl)
+        return if (normalizedBase.endsWith("/$BACKUP_FOLDER_NAME", ignoreCase = true)) {
+            normalizedBase
+        } else {
+            "$normalizedBase/$BACKUP_FOLDER_NAME"
+        }
+    }
+
+    private fun getBackupFilePath(fileName: String): String {
+        return "${getBackupDirectoryPath()}/$fileName"
+    }
     
     /**
      * 上传备份文件
@@ -3197,7 +3219,7 @@ class WebDavHelper(
             }
             
             // 创建 Monica 备份目录
-            val backupDir = "$serverUrl/Monica_Backups"
+            val backupDir = getBackupDirectoryPath()
             if (!sardine!!.exists(backupDir)) {
                 sardine!!.createDirectory(backupDir)
             }
@@ -3249,7 +3271,7 @@ class WebDavHelper(
                 return@withContext Result.failure(Exception("WebDAV not configured"))
             }
             
-            val backupDir = "$serverUrl/Monica_Backups"
+            val backupDir = getBackupDirectoryPath()
             
             // 检查目录是否存在
             if (!sardine!!.exists(backupDir)) {
@@ -3286,7 +3308,7 @@ class WebDavHelper(
                 return@withContext Result.failure(Exception("WebDAV not configured"))
             }
             
-            val remotePath = "$serverUrl/Monica_Backups/${backupFile.name}"
+            val remotePath = getBackupFilePath(backupFile.name)
             
             // 下载文件
             sardine!!.get(remotePath).use { inputStream ->
@@ -3351,10 +3373,10 @@ class WebDavHelper(
                 return@withContext Result.success(true)
             }
 
-            val oldPath = "$serverUrl/Monica_Backups/${backup.name}"
+            val oldPath = getBackupFilePath(backup.name)
             // Insert _permanent before .zip
             val newName = backup.name.replace(".zip", "${PERMANENT_SUFFIX}.zip")
-            val newPath = "$serverUrl/Monica_Backups/$newName"
+            val newPath = getBackupFilePath(newName)
 
             sardine!!.move(oldPath, newPath)
             android.util.Log.d("WebDavHelper", "Marked backup as permanent: ${backup.name} -> $newName")
@@ -3378,10 +3400,10 @@ class WebDavHelper(
                 return@withContext Result.success(true)
             }
 
-            val oldPath = "$serverUrl/Monica_Backups/${backup.name}"
+            val oldPath = getBackupFilePath(backup.name)
             // Remove _permanent suffix
             val newName = backup.name.replace(PERMANENT_SUFFIX, "")
-            val newPath = "$serverUrl/Monica_Backups/$newName"
+            val newPath = getBackupFilePath(newName)
 
             sardine!!.move(oldPath, newPath)
             android.util.Log.d("WebDavHelper", "Unmarked permanent backup: ${backup.name} -> $newName")
@@ -3403,7 +3425,7 @@ class WebDavHelper(
                 return@withContext Result.failure(Exception("WebDAV not configured"))
             }
             
-            val remotePath = "$serverUrl/Monica_Backups/${backupFile.name}"
+            val remotePath = getBackupFilePath(backupFile.name)
             android.util.Log.d("WebDavHelper", "Deleting backup: $remotePath")
             
             sardine!!.delete(remotePath)

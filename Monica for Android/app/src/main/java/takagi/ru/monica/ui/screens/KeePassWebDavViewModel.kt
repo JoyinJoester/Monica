@@ -85,7 +85,8 @@ class KeePassWebDavViewModel {
      */
     fun loadSavedConfig(context: Context): KeePassWebDavConfig? {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val url = prefs.getString(KEY_SERVER_URL, "") ?: ""
+        val storedUrl = prefs.getString(KEY_SERVER_URL, "") ?: ""
+        val url = normalizeServerUrl(storedUrl)
         val user = prefs.getString(KEY_USERNAME, "") ?: ""
         val pass = prefs.getString(KEY_PASSWORD, "") ?: ""
         val kdbxPass = prefs.getString(KEY_KDBX_PASSWORD, "") ?: ""
@@ -102,6 +103,9 @@ class KeePassWebDavViewModel {
             }
             
             Log.d(TAG, "Loaded saved config: url=$serverUrl, user=$username")
+            if (url != storedUrl) {
+                saveConfig(context)
+            }
             return KeePassWebDavConfig(serverUrl, username, kdbxPass, conflictProtectionEnabled)
         }
         return null
@@ -192,7 +196,7 @@ class KeePassWebDavViewModel {
         pass: String
     ): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
-            serverUrl = url.trimEnd('/')
+            serverUrl = normalizeServerUrl(url)
             username = user
             password = pass
             
@@ -262,7 +266,7 @@ class KeePassWebDavViewModel {
      */
     private suspend fun ensureKeePassFolder() = withContext(Dispatchers.IO) {
         try {
-            val folderPath = "$serverUrl/$KEEPASS_FOLDER"
+            val folderPath = getKeepassFolderPath()
             if (sardine?.exists(folderPath) != true) {
                 sardine?.createDirectory(folderPath)
                 Log.d(TAG, "Created KeePass folder: $folderPath")
@@ -283,7 +287,7 @@ class KeePassWebDavViewModel {
                 return@withContext Result.failure(Exception(context.getString(R.string.keepass_webdav_not_configured)))
             }
             
-            val folderPath = "$serverUrl/$KEEPASS_FOLDER"
+            val folderPath = getKeepassFolderPath()
             
             // 检查文件夹是否存在
             if (sardine?.exists(folderPath) != true) {
@@ -408,7 +412,7 @@ class KeePassWebDavViewModel {
             
             Log.d(TAG, "Starting direct WebDAV database binding from: ${file.name}")
 
-            val remotePath = "$serverUrl/$KEEPASS_FOLDER/${file.name}"
+            val remotePath = getKeepassFilePath(file.name)
             val currentSardine = sardine
                 ?: return@withContext Result.failure(Exception(context.getString(R.string.keepass_webdav_not_configured)))
 
@@ -420,7 +424,9 @@ class KeePassWebDavViewModel {
             }
             val entries = mutableListOf<Entry>()
             collectEntries(keepassDb.content.group, entries)
-            val entryCount = entries.count { isImportablePasswordEntry(it) }
+            val entryCount = entries.count {
+                isImportablePasswordEntry(it, hasTotpPayload = hasTotpPayload(it))
+            }
 
             // 2) 将远端 .kdbx 注册到本地 KeePass 数据库列表（之后通过 KeePassKdbxService 实时直连读写）
             bindRemoteDatabase(context, remotePath, file.name, kdbxPassword, entryCount)
@@ -465,7 +471,7 @@ class KeePassWebDavViewModel {
                 "${name.trim()}.kdbx"
             }
 
-            val remotePath = "$serverUrl/$KEEPASS_FOLDER/$normalizedName"
+            val remotePath = getKeepassFilePath(normalizedName)
             val currentSardine = sardine
                 ?: return@withContext Result.failure(Exception(context.getString(R.string.keepass_webdav_not_configured)))
 
@@ -607,6 +613,7 @@ class KeePassWebDavViewModel {
         context: Context,
         sourceUri: Uri,
         kdbxPassword: String,
+        keyFileUri: Uri?,
         entryCount: Int
     ): Long {
         val appDb = PasswordDatabase.getDatabase(context)
@@ -625,6 +632,15 @@ class KeePassWebDavViewModel {
                     android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             )
         }
+        if (keyFileUri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    keyFileUri,
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                        android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            }
+        }
 
         val allDatabases = keepassDao.getAllDatabasesSync()
         val uriPath = sourceUri.toString()
@@ -640,17 +656,20 @@ class KeePassWebDavViewModel {
                 existing.copy(
                     name = displayName,
                     encryptedPassword = encryptedPassword,
+                    keyFileUri = keyFileUri?.toString() ?: existing.keyFileUri,
                     storageLocation = KeePassStorageLocation.EXTERNAL,
                     lastAccessedAt = System.currentTimeMillis(),
                     entryCount = entryCount
                 )
             )
+            KeePassKdbxService.invalidateProcessCache(existing.id)
             existing.id
         } else {
-            keepassDao.insertDatabase(
+            val newId = keepassDao.insertDatabase(
                 LocalKeePassDatabase(
                     name = displayName,
                     filePath = uriPath,
+                    keyFileUri = keyFileUri?.toString(),
                     storageLocation = KeePassStorageLocation.EXTERNAL,
                     encryptedPassword = encryptedPassword,
                     description = "Imported local KDBX",
@@ -658,6 +677,8 @@ class KeePassWebDavViewModel {
                     isDefault = allDatabases.isEmpty()
                 )
             )
+            KeePassKdbxService.invalidateProcessCache(newId)
+            newId
         }
     }
     
@@ -673,7 +694,7 @@ class KeePassWebDavViewModel {
                 return@withContext Result.failure(Exception("WebDAV not configured"))
             }
             
-            val remotePath = "$serverUrl/$KEEPASS_FOLDER/${file.name}"
+            val remotePath = getKeepassFilePath(file.name)
             val currentSardine = sardine ?: return@withContext Result.failure(Exception("WebDAV not configured"))
             val inputStream = currentSardine.get(remotePath)
             
@@ -683,6 +704,23 @@ class KeePassWebDavViewModel {
             Log.e(TAG, "Failed to download stream", e)
             Result.failure(e)
         }
+    }
+
+    private fun normalizeServerUrl(url: String): String {
+        return url.trim().trimEnd('/')
+    }
+
+    private fun getKeepassFolderPath(): String {
+        val normalizedBase = normalizeServerUrl(serverUrl)
+        return if (normalizedBase.endsWith("/$KEEPASS_FOLDER", ignoreCase = true)) {
+            normalizedBase
+        } else {
+            "$normalizedBase/$KEEPASS_FOLDER"
+        }
+    }
+
+    private fun getKeepassFilePath(fileName: String): String {
+        return "${getKeepassFolderPath()}/$fileName"
     }
     
     // ==================== KDBX 导出和导入实现 ====================
@@ -932,11 +970,14 @@ class KeePassWebDavViewModel {
             val passwordDao = database.passwordEntryDao()
             val secureItemDao = database.secureItemDao()
             val securityManager = takagi.ru.monica.security.SecurityManager(context)
-            val keepassCredentialCount = allEntries.count { (entry, _) -> isImportablePasswordEntry(entry) }
+            val keepassCredentialCount = allEntries.count { (entry, _) ->
+                isImportablePasswordEntry(entry, hasTotpPayload = hasTotpPayload(entry))
+            }
             val keepassDatabaseId = bindLocalDatabase(
                 context = context,
                 sourceUri = sourceUri,
                 kdbxPassword = kdbxPassword,
+                keyFileUri = keyFileUri,
                 entryCount = keepassCredentialCount
             )
             
@@ -971,76 +1012,23 @@ class KeePassWebDavViewModel {
                     val otpField = getFieldValue("otp")
                     val totpSeed = getFieldValue("TOTP Seed")
                     val totpSettings = getFieldValue("TOTP Settings")
-                    
-                    if (otpField.isNotEmpty() || totpSeed.isNotEmpty()) {
-                        // 这是一个 TOTP 条目
-                        val totpData = if (otpField.startsWith("otpauth://")) {
-                            parseOtpAuthUri(otpField, securityManager)
-                        } else if (totpSeed.isNotEmpty()) {
-                            // 使用 TOTP Seed 和 TOTP Settings
-                            val (period, digits) = parseTotpSettings(totpSettings)
-                            TotpData(
-                                secret = securityManager.encryptData(totpSeed),
-                                issuer = title,
-                                accountName = username,
-                                period = period,
-                                digits = digits,
-                                algorithm = "SHA1",
-                                link = url
-                            )
-                        } else {
-                            null
-                        }
-                        
-                        if (totpData != null) {
-                            val normalizedTitle = title.ifEmpty { totpData.issuer }
-                            val duplicateByTitle = secureItemDao.findDuplicateItem(ItemType.TOTP, normalizedTitle)
-                            val existingItem = duplicateByTitle?.takeIf { candidate ->
-                                (candidate.keepassDatabaseId == keepassDatabaseId && candidate.keepassGroupPath == groupPath) ||
-                                    (candidate.keepassDatabaseId == null && candidate.bitwardenVaultId == null)
-                            }
-                            if (existingItem != null) {
-                                val updatedItem = existingItem.copy(
-                                    title = normalizedTitle,
-                                    notes = notes,
-                                    itemData = Json.encodeToString(TotpData.serializer(), totpData),
-                                    keepassDatabaseId = keepassDatabaseId,
-                                    keepassGroupPath = groupPath,
-                                    isDeleted = false,
-                                    deletedAt = null,
-                                    updatedAt = Date()
-                                )
-                                secureItemDao.updateItem(updatedItem)
-                                Log.d(TAG, "Updated existing TOTP: $normalizedTitle")
-                            } else {
-                                val secureItem = SecureItem(
-                                    itemType = ItemType.TOTP,
-                                    title = normalizedTitle,
-                                    notes = notes,
-                                    itemData = Json.encodeToString(TotpData.serializer(), totpData),
-                                    createdAt = Date(),
-                                    updatedAt = Date(),
-                                    keepassDatabaseId = keepassDatabaseId,
-                                    keepassGroupPath = groupPath
-                                )
-                                
-                                secureItemDao.insertItem(secureItem)
-                                totpImportedCount++
-                                Log.d(TAG, "Imported TOTP: $normalizedTitle")
-                            }
-                        }
-                    } else if (isImportablePasswordEntry(entry)) {
-                        // 这是一个普通密码条目（按数据库+分组路径去重）
-                        val encryptedPassword = securityManager.encryptData(password)
-                        val existingByKeePass = passwordDao.findDuplicateEntryInKeePass(
+                    val hasTotpPayload = otpField.isNotEmpty() || totpSeed.isNotEmpty()
+                    val shouldImportPassword = isImportablePasswordEntry(entry, hasTotpPayload)
+
+                    // 先导入密码，便于后续 TOTP 绑定到同一账号。
+                    var passwordIdForBinding: Long? = null
+                    if (shouldImportPassword) {
+                        val normalizedPassword = normalizeImportedPassword(password, securityManager)
+                        val encryptedPassword = securityManager.encryptData(normalizedPassword)
+                        val existingEntry = passwordDao.findDuplicateEntryInKeePass(
                             databaseId = keepassDatabaseId,
                             title = title,
                             username = username,
                             website = url,
                             groupPath = groupPath
                         )
-                        val existingEntry = existingByKeePass
 
+                        val isNewPasswordEntry = existingEntry == null
                         val insertedPasswordId = if (existingEntry != null) {
                             val updated = existingEntry.copy(
                                 title = title,
@@ -1056,7 +1044,7 @@ class KeePassWebDavViewModel {
                             )
                             passwordDao.update(updated)
                             Log.d(TAG, "Updated existing password: $title")
-                            null
+                            existingEntry.id
                         } else {
                             val passwordEntry = takagi.ru.monica.data.PasswordEntry(
                                 title = title,
@@ -1073,15 +1061,17 @@ class KeePassWebDavViewModel {
                             passwordImportedCount++
                             newPasswordId
                         }
-                        
+
+                        passwordIdForBinding = insertedPasswordId
+
                         // 导入自定义字段（KeePass 中的非标准字段）
-                        if (insertedPasswordId != null && insertedPasswordId > 0) {
+                        if (isNewPasswordEntry && insertedPasswordId > 0) {
                             val customFieldDao = database.customFieldDao()
                             val standardFields = setOf(
                                 "Title", "UserName", "Password", "URL", "Notes",
                                 "otp", "TOTP Seed", "TOTP Settings", "MonicaItemType"
                             )
-                            
+
                             var sortOrder = 0
                             entry.fields.forEach { (fieldKey, fieldValue) ->
                                 if (fieldKey !in standardFields) {
@@ -1104,6 +1094,70 @@ class KeePassWebDavViewModel {
                                         Log.w(TAG, "Failed to import custom field '$fieldKey': ${e.message}")
                                     }
                                 }
+                            }
+                        }
+                    }
+
+                    if (hasTotpPayload) {
+                        // 这是一个 TOTP 条目
+                        val totpData = if (otpField.startsWith("otpauth://")) {
+                            parseOtpAuthUri(otpField, securityManager)
+                        } else if (totpSeed.isNotEmpty()) {
+                            // 使用 TOTP Seed 和 TOTP Settings
+                            val (period, digits) = parseTotpSettings(totpSettings)
+                            TotpData(
+                                secret = securityManager.encryptData(totpSeed),
+                                issuer = title,
+                                accountName = username,
+                                period = period,
+                                digits = digits,
+                                algorithm = "SHA1",
+                                link = url
+                            )
+                        } else {
+                            null
+                        }
+                        
+                        if (totpData != null) {
+                            val boundTotpData = if (passwordIdForBinding != null) {
+                                totpData.copy(boundPasswordId = passwordIdForBinding)
+                            } else {
+                                totpData
+                            }
+                            val normalizedTitle = title.ifEmpty { totpData.issuer }
+                            val duplicateByTitle = secureItemDao.findDuplicateItem(ItemType.TOTP, normalizedTitle)
+                            val existingItem = duplicateByTitle?.takeIf { candidate ->
+                                (candidate.keepassDatabaseId == keepassDatabaseId && candidate.keepassGroupPath == groupPath) ||
+                                    (candidate.keepassDatabaseId == null && candidate.bitwardenVaultId == null)
+                            }
+                            if (existingItem != null) {
+                                val updatedItem = existingItem.copy(
+                                    title = normalizedTitle,
+                                    notes = notes,
+                                    itemData = Json.encodeToString(TotpData.serializer(), boundTotpData),
+                                    keepassDatabaseId = keepassDatabaseId,
+                                    keepassGroupPath = groupPath,
+                                    isDeleted = false,
+                                    deletedAt = null,
+                                    updatedAt = Date()
+                                )
+                                secureItemDao.updateItem(updatedItem)
+                                Log.d(TAG, "Updated existing TOTP: $normalizedTitle")
+                            } else {
+                                val secureItem = SecureItem(
+                                    itemType = ItemType.TOTP,
+                                    title = normalizedTitle,
+                                    notes = notes,
+                                    itemData = Json.encodeToString(TotpData.serializer(), boundTotpData),
+                                    createdAt = Date(),
+                                    updatedAt = Date(),
+                                    keepassDatabaseId = keepassDatabaseId,
+                                    keepassGroupPath = groupPath
+                                )
+                                
+                                secureItemDao.insertItem(secureItem)
+                                totpImportedCount++
+                                Log.d(TAG, "Imported TOTP: $normalizedTitle")
                             }
                         }
                     }
@@ -1163,20 +1217,27 @@ class KeePassWebDavViewModel {
         }
     }
 
-    private fun isImportablePasswordEntry(entry: Entry): Boolean {
+    private fun hasTotpPayload(entry: Entry): Boolean {
+        fun field(key: String): String = runCatching { entry.fields[key]?.content ?: "" }.getOrDefault("")
+        return field("otp").isNotBlank() || field("TOTP Seed").isNotBlank()
+    }
+
+    private fun isImportablePasswordEntry(entry: Entry, hasTotpPayload: Boolean = false): Boolean {
         fun field(key: String): String = runCatching { entry.fields[key]?.content ?: "" }.getOrDefault("")
 
         // 带 Monica 安全项标记的条目不是密码项（避免计数虚高）。
         if (field("MonicaItemType").isNotBlank()) return false
-
-        // TOTP 条目单独导入到验证器，不作为密码项重复导入。
-        if (field("otp").isNotBlank() || field("TOTP Seed").isNotBlank()) return false
 
         val username = field("UserName")
         val password = field("Password")
         val url = field("URL")
         val title = field("Title")
         val notes = field("Notes")
+
+        // 含 TOTP 的条目只有在具备账号凭据时才作为密码导入，避免纯验证器被错误导入为密码。
+        if (hasTotpPayload) {
+            return username.isNotBlank() || password.isNotBlank() || url.isNotBlank()
+        }
 
         if (username.isNotBlank() || password.isNotBlank() || url.isNotBlank()) {
             return true
@@ -1280,5 +1341,27 @@ class KeePassWebDavViewModel {
         } catch (e: Exception) {
             30 to 6
         }
+    }
+
+    /**
+     * 防止“已加密字符串再次被当作明文导入”导致 UI 显示密文。
+     * 若 payload 可被当前安全上下文解开，则使用解开的值；否则保留原值。
+     */
+    private fun normalizeImportedPassword(
+        rawPassword: String,
+        securityManager: SecurityManager
+    ): String {
+        if (rawPassword.isBlank()) return rawPassword
+
+        var current = rawPassword
+        repeat(3) {
+            val candidate = runCatching { securityManager.decryptData(current) }
+                .getOrDefault(current)
+            if (candidate == current || candidate.isBlank()) {
+                return current
+            }
+            current = candidate
+        }
+        return current
     }
 }

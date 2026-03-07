@@ -33,7 +33,7 @@ class ImageManager(private val context: Context) {
     
     companion object {
         private const val IMAGE_DIR = "secure_images"
-        private const val TEMP_IMAGE_DIR = "temp_photos"
+        private const val TEMP_IMAGE_DIR = "temp_share"
         private const val ALGORITHM = "AES/CBC/PKCS5Padding"
         private const val KEY_ALGORITHM = "AES"
         

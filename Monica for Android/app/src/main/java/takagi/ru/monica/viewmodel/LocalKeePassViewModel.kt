@@ -426,18 +426,35 @@ class LocalKeePassViewModel(
                             ?: throw Exception("无法访问密钥文件")
                     }
                     
-                    val database = LocalKeePassDatabase(
-                        name = name,
-                        filePath = uri.toString(),
-                        keyFileUri = keyFileUri?.toString(),
-                        storageLocation = KeePassStorageLocation.EXTERNAL,
-                        encryptedPassword = encryptedPassword,
-                        description = description,
-                        entryCount = entryCount,
-                        isDefault = allDatabases.value.isEmpty()
-                    )
-                    
-                    dao.insertDatabase(database)
+                    val uriPath = uri.toString()
+                    val existing = dao.getAllDatabasesSync().firstOrNull { it.filePath == uriPath }
+                    if (existing != null) {
+                        dao.updateDatabase(
+                            existing.copy(
+                                name = name,
+                                keyFileUri = keyFileUri?.toString() ?: existing.keyFileUri,
+                                storageLocation = KeePassStorageLocation.EXTERNAL,
+                                encryptedPassword = encryptedPassword,
+                                description = description ?: existing.description,
+                                entryCount = entryCount,
+                                lastAccessedAt = System.currentTimeMillis()
+                            )
+                        )
+                        KeePassKdbxService.invalidateProcessCache(existing.id)
+                    } else {
+                        val database = LocalKeePassDatabase(
+                            name = name,
+                            filePath = uriPath,
+                            keyFileUri = keyFileUri?.toString(),
+                            storageLocation = KeePassStorageLocation.EXTERNAL,
+                            encryptedPassword = encryptedPassword,
+                            description = description,
+                            entryCount = entryCount,
+                            isDefault = allDatabases.value.isEmpty()
+                        )
+                        val newId = dao.insertDatabase(database)
+                        KeePassKdbxService.invalidateProcessCache(newId)
+                    }
                 }
                 
                 _operationState.value = OperationState.Success("数据库添加成功")

@@ -110,6 +110,8 @@ class KeePassKdbxService(
         // Global single-writer queue, shared across all service instances.
         private val persistScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         private val persistQueue = Channel<suspend () -> Unit>(Channel.UNLIMITED)
+        // 跨实例缓存失效信号：某实例更新数据库绑定后，其他实例的本地缓存应立即失效。
+        private val externallyInvalidatedDatabaseIds = mutableSetOf<Long>()
         @Volatile
         private var persistWorkerStarted = false
 
@@ -131,6 +133,16 @@ class KeePassKdbxService(
 
         suspend fun <T> withGlobalDecodeLock(block: () -> T): T {
             return globalDecodeMutex.withLock { block() }
+        }
+
+        @Synchronized
+        fun invalidateProcessCache(databaseId: Long) {
+            externallyInvalidatedDatabaseIds += databaseId
+        }
+
+        @Synchronized
+        private fun consumeProcessCacheInvalidation(databaseId: Long): Boolean {
+            return externallyInvalidatedDatabaseIds.remove(databaseId)
         }
     }
     
@@ -1540,6 +1552,11 @@ class KeePassKdbxService(
     }
 
     private suspend fun getCachedLoadedDatabase(databaseId: Long): LoadedDatabase? {
+        if (consumeProcessCacheInvalidation(databaseId)) {
+            invalidateLoadedDatabaseCache(databaseId)
+            return null
+        }
+
         val now = System.currentTimeMillis()
         val cached = synchronized(loadedDatabaseCache) { loadedDatabaseCache[databaseId] } ?: return null
 
