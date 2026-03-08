@@ -785,8 +785,6 @@ class SecurityAnalysisViewModel(
     private suspend fun ensureSourceNameCaches() {
         val keepassMap = withContext(Dispatchers.IO) {
             localKeePassDatabaseDao.getAllDatabasesSync()
-                // 与本地 KeePass 管理页保持一致：安全分析范围不展示 WebDAV 挂载库
-                .filterNot { it.isWebDavDatabase() }
                 .associate { db ->
                     db.id to db.name.trim().ifBlank { "KeePass #${db.id}" }
                 }

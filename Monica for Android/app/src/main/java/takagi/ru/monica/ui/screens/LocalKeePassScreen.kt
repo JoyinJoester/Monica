@@ -34,8 +34,13 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
+import takagi.ru.monica.data.KeePassCipherAlgorithm
+import takagi.ru.monica.data.KeePassDatabaseCreationOptions
+import takagi.ru.monica.data.KeePassFormatVersion
+import takagi.ru.monica.data.KeePassKdfAlgorithm
 import takagi.ru.monica.data.KeePassStorageLocation
 import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.toCreationOptions
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import java.text.SimpleDateFormat
 import java.util.*
@@ -248,8 +253,8 @@ fun LocalKeePassScreen(
         CreateKeePassDatabaseBottomSheet(
             onDismiss = { showCreateDialog = false },
             onGenerateKeyFile = { uri -> viewModel.generateKeyFile(uri) },
-            onCreate = { name, password, location, externalUri, keyFileUri ->
-                viewModel.createDatabase(name, password, location, externalUri, keyFileUri, null)
+            onCreate = { name, password, location, externalUri, keyFileUri, options ->
+                viewModel.createDatabase(name, password, location, externalUri, keyFileUri, options, null)
                 showCreateDialog = false
             }
         )
@@ -556,6 +561,16 @@ private fun KeePassDatabaseCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = statusColor
                 )
+                if (verificationState is LocalKeePassViewModel.VerificationState.Verified) {
+                    Text(
+                        text = stringResource(
+                            R.string.local_keepass_decrypt_time_value,
+                            verificationState.decryptTimeMs
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
             
             Icon(
@@ -694,7 +709,14 @@ private fun OperationStatusBar(state: LocalKeePassViewModel.OperationState) {
 private fun CreateKeePassDatabaseBottomSheet(
     onDismiss: () -> Unit,
     onGenerateKeyFile: (Uri) -> Unit,
-    onCreate: (name: String, password: String, location: KeePassStorageLocation, externalUri: Uri?, keyFileUri: Uri?) -> Unit
+    onCreate: (
+        name: String,
+        password: String,
+        location: KeePassStorageLocation,
+        externalUri: Uri?,
+        keyFileUri: Uri?,
+        options: KeePassDatabaseCreationOptions
+    ) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -702,6 +724,16 @@ private fun CreateKeePassDatabaseBottomSheet(
     var storageLocation by remember { mutableStateOf(KeePassStorageLocation.INTERNAL) }
     var showPassword by remember { mutableStateOf(false) }
     var externalUri by remember { mutableStateOf<Uri?>(null) }
+
+    var formatVersion by remember { mutableStateOf(KeePassFormatVersion.KDBX4) }
+    var cipherAlgorithm by remember { mutableStateOf(KeePassCipherAlgorithm.AES) }
+    var kdfAlgorithm by remember { mutableStateOf(KeePassKdfAlgorithm.ARGON2D) }
+    var transformRounds by remember { mutableStateOf("8") }
+    var memoryMb by remember {
+        mutableStateOf((KeePassDatabaseCreationOptions.DEFAULT_ARGON_MEMORY_BYTES / 1024L / 1024L).toString())
+    }
+    var parallelism by remember { mutableStateOf("2") }
+    var showAdvancedCryptoOptions by remember { mutableStateOf(false) }
     
     // 密钥文件相关状态
     var useKeyFile by remember { mutableStateOf(false) }
@@ -736,13 +768,56 @@ private fun CreateKeePassDatabaseBottomSheet(
             keyFileName = it.lastPathSegment?.substringAfterLast("/") ?: "new_keyfile.xml"
         }
     }
-    
+
+    val availableCipherOptions = remember(formatVersion) {
+        if (formatVersion == KeePassFormatVersion.KDBX3) {
+            listOf(KeePassCipherAlgorithm.AES, KeePassCipherAlgorithm.TWOFISH)
+        } else {
+            listOf(
+                KeePassCipherAlgorithm.AES,
+                KeePassCipherAlgorithm.CHACHA20,
+                KeePassCipherAlgorithm.TWOFISH
+            )
+        }
+    }
+    val availableKdfOptions = remember(formatVersion) {
+        if (formatVersion == KeePassFormatVersion.KDBX3) {
+            listOf(KeePassKdfAlgorithm.AES_KDF)
+        } else {
+            listOf(
+                KeePassKdfAlgorithm.ARGON2D,
+                KeePassKdfAlgorithm.ARGON2ID,
+                KeePassKdfAlgorithm.AES_KDF
+            )
+        }
+    }
+
+    LaunchedEffect(formatVersion) {
+        if (cipherAlgorithm !in availableCipherOptions) {
+            cipherAlgorithm = availableCipherOptions.first()
+        }
+        if (kdfAlgorithm !in availableKdfOptions) {
+            kdfAlgorithm = availableKdfOptions.first()
+        }
+    }
+
+    val roundsValue = transformRounds.toLongOrNull()
+    val memoryMbValue = memoryMb.toLongOrNull()
+    val parallelismValue = parallelism.toIntOrNull()
+    val advancedOptionsValid = roundsValue != null && roundsValue > 0L &&
+        (
+            kdfAlgorithm == KeePassKdfAlgorithm.AES_KDF ||
+                ((memoryMbValue != null && memoryMbValue > 0L) &&
+                    (parallelismValue != null && parallelismValue > 0))
+            )
+
     val isValid = name.isNotBlank() &&
                   (storageLocation == KeePassStorageLocation.INTERNAL || externalUri != null) &&
                   (
                     (password.isNotBlank() && password == confirmPassword) ||
                     (useKeyFile && keyFileUri != null)
-                  )
+                  ) &&
+                  advancedOptionsValid
     
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -910,7 +985,122 @@ private fun CreateKeePassDatabaseBottomSheet(
                     }
                 }
             }
-            
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    onClick = { showAdvancedCryptoOptions = !showAdvancedCryptoOptions }
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 14.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Tune,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = stringResource(R.string.local_keepass_advanced_crypto_options),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            text = if (showAdvancedCryptoOptions) {
+                                stringResource(R.string.collapse)
+                            } else {
+                                stringResource(R.string.expand)
+                            },
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(
+                            imageVector = if (showAdvancedCryptoOptions) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                AnimatedVisibility(visible = showAdvancedCryptoOptions) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        KeepassOptionDropdown(
+                            label = stringResource(R.string.local_keepass_kdbx_version),
+                            selectedText = when (formatVersion) {
+                                KeePassFormatVersion.KDBX3 -> stringResource(R.string.local_keepass_kdbx3)
+                                KeePassFormatVersion.KDBX4 -> stringResource(R.string.local_keepass_kdbx4)
+                            },
+                            options = KeePassFormatVersion.entries,
+                            optionLabel = { option ->
+                                when (option) {
+                                    KeePassFormatVersion.KDBX3 -> stringResource(R.string.local_keepass_kdbx3)
+                                    KeePassFormatVersion.KDBX4 -> stringResource(R.string.local_keepass_kdbx4)
+                                }
+                            },
+                            onSelected = { formatVersion = it }
+                        )
+
+                        KeepassOptionDropdown(
+                            label = stringResource(R.string.local_keepass_cipher_algorithm),
+                            selectedText = cipherAlgorithm.toReadableLabel(),
+                            options = availableCipherOptions,
+                            optionLabel = { it.toReadableLabel() },
+                            onSelected = { cipherAlgorithm = it }
+                        )
+
+                        KeepassOptionDropdown(
+                            label = stringResource(R.string.local_keepass_kdf_algorithm),
+                            selectedText = kdfAlgorithm.toReadableLabel(),
+                            options = availableKdfOptions,
+                            optionLabel = { it.toReadableLabel() },
+                            onSelected = { kdfAlgorithm = it }
+                        )
+
+                        OutlinedTextField(
+                            value = transformRounds,
+                            onValueChange = { transformRounds = it.filter(Char::isDigit) },
+                            label = { Text(stringResource(R.string.local_keepass_transform_rounds)) },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        AnimatedVisibility(visible = kdfAlgorithm != KeePassKdfAlgorithm.AES_KDF) {
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                OutlinedTextField(
+                                    value = memoryMb,
+                                    onValueChange = { memoryMb = it.filter(Char::isDigit) },
+                                    label = { Text(stringResource(R.string.local_keepass_kdf_memory_mb)) },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                OutlinedTextField(
+                                    value = parallelism,
+                                    onValueChange = { parallelism = it.filter(Char::isDigit) },
+                                    label = { Text(stringResource(R.string.local_keepass_kdf_parallelism)) },
+                                    singleLine = true,
+                                    shape = RoundedCornerShape(12.dp),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             
             // 存储位置选择
@@ -993,12 +1183,21 @@ private fun CreateKeePassDatabaseBottomSheet(
             // 创建按钮
             Button(
                 onClick = {
+                    val options = KeePassDatabaseCreationOptions(
+                        formatVersion = formatVersion,
+                        cipherAlgorithm = cipherAlgorithm,
+                        kdfAlgorithm = kdfAlgorithm,
+                        transformRounds = roundsValue ?: 8L,
+                        memoryBytes = ((memoryMbValue ?: 32L) * 1024L * 1024L),
+                        parallelism = parallelismValue ?: 2
+                    ).normalized()
                     onCreate(
                         name,
                         password,
                         storageLocation,
                         externalUri,
-                        if (useKeyFile) keyFileUri else null
+                        if (useKeyFile) keyFileUri else null,
+                        options
                     )
                 },
                 enabled = isValid,
@@ -1014,6 +1213,70 @@ private fun CreateKeePassDatabaseBottomSheet(
                 )
             }
         }
+    }
+}
+
+/**
+ * KeePass 参数下拉框
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun <T> KeepassOptionDropdown(
+    label: String,
+    selectedText: String,
+    options: List<T>,
+    optionLabel: @Composable (T) -> String,
+    onSelected: (T) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded }
+    ) {
+        OutlinedTextField(
+            value = selectedText,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(label) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor(),
+            shape = RoundedCornerShape(12.dp)
+        )
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            options.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(optionLabel(option)) },
+                    onClick = {
+                        onSelected(option)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun KeePassCipherAlgorithm.toReadableLabel(): String {
+    return when (this) {
+        KeePassCipherAlgorithm.AES -> stringResource(R.string.local_keepass_cipher_aes)
+        KeePassCipherAlgorithm.CHACHA20 -> stringResource(R.string.local_keepass_cipher_chacha20)
+        KeePassCipherAlgorithm.TWOFISH -> stringResource(R.string.local_keepass_cipher_twofish)
+    }
+}
+
+@Composable
+private fun KeePassKdfAlgorithm.toReadableLabel(): String {
+    return when (this) {
+        KeePassKdfAlgorithm.AES_KDF -> stringResource(R.string.local_keepass_kdf_aes)
+        KeePassKdfAlgorithm.ARGON2D -> stringResource(R.string.local_keepass_kdf_argon2d)
+        KeePassKdfAlgorithm.ARGON2ID -> stringResource(R.string.local_keepass_kdf_argon2id)
     }
 }
 
@@ -1080,11 +1343,14 @@ private fun ImportExternalDatabaseDialog(
     onDismiss: () -> Unit,
     onImport: (name: String, password: String, keyFileUri: Uri?) -> Unit
 ) {
-    val context = LocalContext.current
     var name by remember { 
         mutableStateOf(
             // 从 URI 获取文件名作为默认名称
-            uri.lastPathSegment?.substringAfterLast("/")?.removeSuffix(".kdbx") ?: "KeePass Database"
+            uri.lastPathSegment
+                ?.substringAfterLast("/")
+                ?.removeSuffix(".kdbx")
+                ?.removeSuffix(".kdb")
+                ?: "KeePass Database"
         )
     }
     var password by remember { mutableStateOf("") }
@@ -1307,6 +1573,7 @@ private fun DatabaseDetailBottomSheet(
     onExport: (LocalKeePassDatabase) -> Unit
 ) {
     val dateFormat = remember { SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()) }
+    val creationOptions = database.toCreationOptions()
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showVerifyDialog by remember { mutableStateOf(false) }
     var verifyPassword by remember { mutableStateOf("") }
@@ -1326,9 +1593,11 @@ private fun DatabaseDetailBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ) {
+        val detailSheetScrollState = rememberScrollState()
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .verticalScroll(detailSheetScrollState)
                 .padding(horizontal = 24.dp)
                 .padding(bottom = 32.dp)
         ) {
@@ -1442,6 +1711,85 @@ private fun DatabaseDetailBottomSheet(
                         label = stringResource(R.string.local_keepass_verify_status),
                         value = verifyStatus
                     )
+
+                    if (verificationState is LocalKeePassViewModel.VerificationState.Verified) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 12.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                        InfoRow(
+                            label = stringResource(R.string.local_keepass_decrypt_time),
+                            value = stringResource(
+                                R.string.local_keepass_decrypt_time_value,
+                                verificationState.decryptTimeMs
+                            )
+                        )
+                    }
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+
+                    InfoRow(
+                        label = stringResource(R.string.local_keepass_kdbx_version),
+                        value = when (creationOptions.formatVersion) {
+                            KeePassFormatVersion.KDBX3 -> stringResource(R.string.local_keepass_kdbx3)
+                            KeePassFormatVersion.KDBX4 -> stringResource(R.string.local_keepass_kdbx4)
+                        }
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+
+                    InfoRow(
+                        label = stringResource(R.string.local_keepass_cipher_algorithm),
+                        value = creationOptions.cipherAlgorithm.toReadableLabel()
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+
+                    InfoRow(
+                        label = stringResource(R.string.local_keepass_kdf_algorithm),
+                        value = creationOptions.kdfAlgorithm.toReadableLabel()
+                    )
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+
+                    InfoRow(
+                        label = stringResource(R.string.local_keepass_transform_rounds),
+                        value = creationOptions.transformRounds.toString()
+                    )
+
+                    if (creationOptions.kdfAlgorithm != KeePassKdfAlgorithm.AES_KDF) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 12.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                        InfoRow(
+                            label = stringResource(R.string.local_keepass_kdf_memory_mb),
+                            value = stringResource(
+                                R.string.local_keepass_kdf_memory_mb_value,
+                                creationOptions.memoryBytes / 1024L / 1024L
+                            )
+                        )
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 12.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                        InfoRow(
+                            label = stringResource(R.string.local_keepass_kdf_parallelism),
+                            value = creationOptions.parallelism.toString()
+                        )
+                    }
 
                     if (verificationState is LocalKeePassViewModel.VerificationState.Failed) {
                         Spacer(modifier = Modifier.height(8.dp))

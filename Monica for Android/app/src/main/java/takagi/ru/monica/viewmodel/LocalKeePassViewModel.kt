@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.SystemClock
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
@@ -13,15 +14,22 @@ import app.keemobile.kotpass.cryptography.EncryptedValue
 import app.keemobile.kotpass.database.Credentials
 import app.keemobile.kotpass.database.KeePassDatabase
 import app.keemobile.kotpass.database.encode
+import app.keemobile.kotpass.database.header.KdfParameters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import takagi.ru.monica.data.KeePassCipherAlgorithm
+import takagi.ru.monica.data.KeePassDatabaseCreationOptions
+import takagi.ru.monica.data.KeePassFormatVersion
+import takagi.ru.monica.data.KeePassKdfAlgorithm
 import takagi.ru.monica.data.KeePassStorageLocation
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.utils.KeePassCodecSupport
+import takagi.ru.monica.utils.KeePassOperationException
 import takagi.ru.monica.utils.KeePassGroupInfo
 import takagi.ru.monica.utils.KeePassKdbxService
 import java.io.File
@@ -43,19 +51,16 @@ class LocalKeePassViewModel(
     
     /** 所有数据库列表 */
     val allDatabases: StateFlow<List<LocalKeePassDatabase>> = dao.getAllDatabases()
-        .map { list -> list.filterNot { it.isWebDavDatabase() } }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     
     /** 内部数据库列表 */
     val internalDatabases: StateFlow<List<LocalKeePassDatabase>> = 
         dao.getDatabasesByLocation(KeePassStorageLocation.INTERNAL)
-            .map { list -> list.filterNot { it.isWebDavDatabase() } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     
     /** 外部数据库列表 */
     val externalDatabases: StateFlow<List<LocalKeePassDatabase>> = 
         dao.getDatabasesByLocation(KeePassStorageLocation.EXTERNAL)
-            .map { list -> list.filterNot { it.isWebDavDatabase() } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     
     /** 操作状态 */
@@ -108,15 +113,25 @@ class LocalKeePassViewModel(
                 current + (databaseId to VerificationState.Verifying)
             }
 
+            val startedAt = SystemClock.elapsedRealtime()
             val verifyResult = kdbxService.verifyDatabase(databaseId)
+            val elapsedMs = SystemClock.elapsedRealtime() - startedAt
             _verificationStates.update { current ->
                 current + (
                     databaseId to if (verifyResult.isSuccess) {
-                        VerificationState.Verified(verifyResult.getOrDefault(0))
+                        VerificationState.Verified(
+                            entryCount = verifyResult.getOrDefault(0),
+                            decryptTimeMs = elapsedMs
+                        )
                     } else {
                         VerificationState.Failed(verifyResult.exceptionOrNull()?.message ?: "验证失败")
                     }
                 )
+            }
+            if (verifyResult.isSuccess) {
+                Log.d(TAG, "KeePass verify success db=$databaseId elapsed=${elapsedMs}ms")
+            } else {
+                Log.w(TAG, "KeePass verify failed db=$databaseId elapsed=${elapsedMs}ms")
             }
         }
     }
@@ -128,6 +143,7 @@ class LocalKeePassViewModel(
                 current + (databaseId to VerificationState.Verifying)
             }
             try {
+                var verifyElapsedMs = 0L
                 withContext(Dispatchers.IO) {
                     val database = dao.getDatabaseById(databaseId) ?: throw Exception("数据库不存在")
                     val passwordToUse = if (password.isNotBlank()) {
@@ -135,12 +151,16 @@ class LocalKeePassViewModel(
                     } else {
                         database.encryptedPassword?.let { securityManager.decryptData(it) } ?: ""
                     }
-                    val verifyResult = kdbxService.verifyDatabase(
+                    val verifyStart = SystemClock.elapsedRealtime()
+                    val verifyResult = kdbxService.inspectDatabase(
                         databaseId = databaseId,
                         passwordOverride = passwordToUse,
                         keyFileUriOverride = keyFileUri
                     )
-                    val count = verifyResult.getOrElse { throw it }
+                    verifyElapsedMs = SystemClock.elapsedRealtime() - verifyStart
+                    val diagnostics = verifyResult.getOrElse { throw it }
+                    val count = diagnostics.entryCount
+                    val options = diagnostics.creationOptions
                     val encryptedPassword = securityManager.encryptData(passwordToUse)
                     if (keyFileUri != null) {
                         runCatching {
@@ -155,19 +175,30 @@ class LocalKeePassViewModel(
                             encryptedPassword = encryptedPassword,
                             keyFileUri = keyFileUri?.toString() ?: database.keyFileUri,
                             entryCount = count,
+                            kdbxMajorVersion = options.formatVersion.majorVersion,
+                            cipherAlgorithm = options.cipherAlgorithm.name,
+                            kdfAlgorithm = options.kdfAlgorithm.name,
+                            kdfTransformRounds = options.transformRounds,
+                            kdfMemoryBytes = options.memoryBytes,
+                            kdfParallelism = options.parallelism,
                             lastAccessedAt = System.currentTimeMillis()
                         )
                     )
                     _verificationStates.update { current ->
-                        current + (databaseId to VerificationState.Verified(count))
+                        current + (
+                            databaseId to VerificationState.Verified(
+                                entryCount = count,
+                                decryptTimeMs = verifyElapsedMs
+                            )
+                        )
                     }
                 }
-                _operationState.value = OperationState.Success("密码验证成功")
+                _operationState.value = OperationState.Success("密码验证成功（${verifyElapsedMs}ms）")
             } catch (e: Exception) {
                 _verificationStates.update { current ->
                     current + (databaseId to VerificationState.Failed(e.message ?: "验证失败"))
                 }
-                _operationState.value = OperationState.Error("验证失败: ${e.message}")
+                _operationState.value = OperationState.Error("验证失败: ${formatOperationError(e)}")
             }
         }
     }
@@ -242,6 +273,7 @@ class LocalKeePassViewModel(
         storageLocation: KeePassStorageLocation,
         externalUri: Uri? = null,
         keyFileUri: Uri? = null,
+        creationOptions: KeePassDatabaseCreationOptions = KeePassDatabaseCreationOptions(),
         description: String? = null
     ) {
         viewModelScope.launch {
@@ -280,7 +312,13 @@ class LocalKeePassViewModel(
                         
                         // 创建空的 kdbx 文件（实际应该用 KeePass 库创建）
                         val dbFile = File(keepassDir, fileName)
-                        createEmptyKdbxFile(dbFile, password, keyFileBytes)
+                        createEmptyKdbxFile(
+                            file = dbFile,
+                            password = password,
+                            keyFileBytes = keyFileBytes,
+                            options = creationOptions,
+                            databaseName = name
+                        )
                         
                         filePath = "keepass/$fileName"
                     } else {
@@ -295,7 +333,12 @@ class LocalKeePassViewModel(
                         
                         if (newFile?.uri != null) {
                             context.contentResolver.openOutputStream(newFile.uri)?.use { output ->
-                                createEmptyKdbxContent(password, keyFileBytes).let { content ->
+                                createEmptyKdbxContent(
+                                    password = password,
+                                    keyFileBytes = keyFileBytes,
+                                    options = creationOptions,
+                                    databaseName = name
+                                ).let { content ->
                                     output.write(content)
                                 }
                             }
@@ -304,7 +347,8 @@ class LocalKeePassViewModel(
                             throw Exception("无法在指定位置创建文件")
                         }
                     }
-                    
+
+                    val normalizedOptions = creationOptions.normalized()
                     // 保存数据库信息
                     val database = LocalKeePassDatabase(
                         name = name,
@@ -313,7 +357,13 @@ class LocalKeePassViewModel(
                         storageLocation = storageLocation,
                         encryptedPassword = encryptedPassword,
                         description = description,
-                        isDefault = allDatabases.value.isEmpty()
+                        isDefault = allDatabases.value.isEmpty(),
+                        kdbxMajorVersion = normalizedOptions.formatVersion.majorVersion,
+                        cipherAlgorithm = normalizedOptions.cipherAlgorithm.name,
+                        kdfAlgorithm = normalizedOptions.kdfAlgorithm.name,
+                        kdfTransformRounds = normalizedOptions.transformRounds,
+                        kdfMemoryBytes = normalizedOptions.memoryBytes,
+                        kdfParallelism = normalizedOptions.parallelism
                     )
                     
                     dao.insertDatabase(database)
@@ -321,7 +371,7 @@ class LocalKeePassViewModel(
                 
                 _operationState.value = OperationState.Success("数据库创建成功")
             } catch (e: Exception) {
-                _operationState.value = OperationState.Error("创建失败: ${e.message}")
+                _operationState.value = OperationState.Error("创建失败: ${formatOperationError(e)}")
             }
         }
     }
@@ -370,7 +420,7 @@ class LocalKeePassViewModel(
                 
                 _operationState.value = OperationState.Success("密钥文件生成成功")
             } catch (e: Exception) {
-                _operationState.value = OperationState.Error("生成密钥文件失败: ${e.message}")
+                _operationState.value = OperationState.Error("生成密钥文件失败: ${formatOperationError(e)}")
             }
         }
     }
@@ -389,19 +439,22 @@ class LocalKeePassViewModel(
             _operationState.value = OperationState.Loading("正在添加数据库...")
             
             try {
+                var verifyElapsedMs = 0L
                 withContext(Dispatchers.IO) {
                     // 验证文件是否可访问
                     context.contentResolver.openInputStream(uri)?.close()
                         ?: throw Exception("无法访问文件")
 
-                    val verifyResult = kdbxService.verifyExternalDatabase(
+                    val verifyStart = SystemClock.elapsedRealtime()
+                    val verifyResult = kdbxService.inspectExternalDatabase(
                         fileUri = uri,
                         password = password,
                         keyFileUri = keyFileUri
                     )
-                    val entryCount = verifyResult.getOrElse {
-                        throw Exception("数据库密码或密钥文件无效: ${it.message}")
-                    }
+                    verifyElapsedMs = SystemClock.elapsedRealtime() - verifyStart
+                    val diagnostics = verifyResult.getOrElse { throw it }
+                    val entryCount = diagnostics.entryCount
+                    val options = diagnostics.creationOptions
                     
                     val encryptedPassword = if (password.isNotBlank()) securityManager.encryptData(password) else null
                     
@@ -437,6 +490,12 @@ class LocalKeePassViewModel(
                                 encryptedPassword = encryptedPassword,
                                 description = description ?: existing.description,
                                 entryCount = entryCount,
+                                kdbxMajorVersion = options.formatVersion.majorVersion,
+                                cipherAlgorithm = options.cipherAlgorithm.name,
+                                kdfAlgorithm = options.kdfAlgorithm.name,
+                                kdfTransformRounds = options.transformRounds,
+                                kdfMemoryBytes = options.memoryBytes,
+                                kdfParallelism = options.parallelism,
                                 lastAccessedAt = System.currentTimeMillis()
                             )
                         )
@@ -450,6 +509,12 @@ class LocalKeePassViewModel(
                             encryptedPassword = encryptedPassword,
                             description = description,
                             entryCount = entryCount,
+                            kdbxMajorVersion = options.formatVersion.majorVersion,
+                            cipherAlgorithm = options.cipherAlgorithm.name,
+                            kdfAlgorithm = options.kdfAlgorithm.name,
+                            kdfTransformRounds = options.transformRounds,
+                            kdfMemoryBytes = options.memoryBytes,
+                            kdfParallelism = options.parallelism,
                             isDefault = allDatabases.value.isEmpty()
                         )
                         val newId = dao.insertDatabase(database)
@@ -457,9 +522,9 @@ class LocalKeePassViewModel(
                     }
                 }
                 
-                _operationState.value = OperationState.Success("数据库添加成功")
+                _operationState.value = OperationState.Success("数据库添加成功（验证${verifyElapsedMs}ms）")
             } catch (e: Exception) {
-                _operationState.value = OperationState.Error("添加失败: ${e.message}")
+                _operationState.value = OperationState.Error("添加失败: ${formatOperationError(e)}")
             }
         }
     }
@@ -512,7 +577,7 @@ class LocalKeePassViewModel(
                 
                 _operationState.value = OperationState.Success("已复制到内部存储")
             } catch (e: Exception) {
-                _operationState.value = OperationState.Error("复制失败: ${e.message}")
+                _operationState.value = OperationState.Error("复制失败: ${formatOperationError(e)}")
             }
         }
     }
@@ -548,7 +613,7 @@ class LocalKeePassViewModel(
                 
                 _operationState.value = OperationState.Success("导出成功")
             } catch (e: Exception) {
-                _operationState.value = OperationState.Error("导出失败: ${e.message}")
+                _operationState.value = OperationState.Error("导出失败: ${formatOperationError(e)}")
             }
         }
     }
@@ -639,7 +704,7 @@ class LocalKeePassViewModel(
                 
                 _operationState.value = OperationState.Success("转移成功")
             } catch (e: Exception) {
-                _operationState.value = OperationState.Error("转移失败: ${e.message}")
+                _operationState.value = OperationState.Error("转移失败: ${formatOperationError(e)}")
             }
         }
     }
@@ -671,7 +736,7 @@ class LocalKeePassViewModel(
                 
                 _operationState.value = OperationState.Success("已删除")
             } catch (e: Exception) {
-                _operationState.value = OperationState.Error("删除失败: ${e.message}")
+                _operationState.value = OperationState.Error("删除失败: ${formatOperationError(e)}")
             }
         }
     }
@@ -682,29 +747,46 @@ class LocalKeePassViewModel(
     fun updatePassword(databaseId: Long, newPassword: String) {
         viewModelScope.launch {
             try {
+                var verifyElapsedMs = 0L
                 withContext(Dispatchers.IO) {
                     val database = dao.getDatabaseById(databaseId)
                         ?: throw Exception("数据库不存在")
-                    val verifyResult = kdbxService.verifyDatabase(databaseId, passwordOverride = newPassword)
-                    val entryCount = verifyResult.getOrElse {
-                        throw Exception("密码验证失败: ${it.message}")
-                    }
+                    val verifyStart = SystemClock.elapsedRealtime()
+                    val verifyResult = kdbxService.inspectDatabase(
+                        databaseId = databaseId,
+                        passwordOverride = newPassword
+                    )
+                    verifyElapsedMs = SystemClock.elapsedRealtime() - verifyStart
+                    val diagnostics = verifyResult.getOrElse { throw it }
+                    val entryCount = diagnostics.entryCount
+                    val options = diagnostics.creationOptions
                     val encryptedPassword = securityManager.encryptData(newPassword)
                     dao.updateDatabase(
                         database.copy(
                             encryptedPassword = encryptedPassword,
                             entryCount = entryCount,
+                            kdbxMajorVersion = options.formatVersion.majorVersion,
+                            cipherAlgorithm = options.cipherAlgorithm.name,
+                            kdfAlgorithm = options.kdfAlgorithm.name,
+                            kdfTransformRounds = options.transformRounds,
+                            kdfMemoryBytes = options.memoryBytes,
+                            kdfParallelism = options.parallelism,
                             lastAccessedAt = System.currentTimeMillis()
                         )
                     )
                     _verificationStates.update { current ->
-                        current + (databaseId to VerificationState.Verified(entryCount))
+                        current + (
+                            databaseId to VerificationState.Verified(
+                                entryCount = entryCount,
+                                decryptTimeMs = verifyElapsedMs
+                            )
+                        )
                     }
                 }
                 
-                _operationState.value = OperationState.Success("密码已更新")
+                _operationState.value = OperationState.Success("密码已更新（验证${verifyElapsedMs}ms）")
             } catch (e: Exception) {
-                _operationState.value = OperationState.Error("更新失败: ${e.message}")
+                _operationState.value = OperationState.Error("更新失败: ${formatOperationError(e)}")
             }
         }
     }
@@ -720,7 +802,7 @@ class LocalKeePassViewModel(
                     dao.setDefaultDatabase(databaseId)
                 }
             } catch (e: Exception) {
-                _operationState.value = OperationState.Error("设置失败: ${e.message}")
+                _operationState.value = OperationState.Error("设置失败: ${formatOperationError(e)}")
             }
         }
     }
@@ -755,59 +837,142 @@ class LocalKeePassViewModel(
     fun clearOperationState() {
         _operationState.value = OperationState.Idle
     }
+
+    private fun formatOperationError(error: Throwable): String {
+        return if (error is KeePassOperationException) {
+            "[${error.code.name}] ${error.message}"
+        } else {
+            error.message ?: "未知错误"
+        }
+    }
     
     // === 私有辅助方法 ===
     
     /**
      * 使用 kotpass 库创建真正的 KDBX 格式数据库文件
      */
-    private fun createEmptyKdbxFile(file: File, password: String, keyFileBytes: ByteArray? = null) {
+    private fun createEmptyKdbxFile(
+        file: File,
+        password: String,
+        keyFileBytes: ByteArray? = null,
+        options: KeePassDatabaseCreationOptions,
+        databaseName: String
+    ) {
         // 创建凭据：空密码 + 密钥文件时优先使用 key-only，兼容 KeePassXC 习惯
         val credentials = buildKdbxCredentials(password, keyFileBytes)
-        
+
         // 创建元数据
         val meta = Meta(
             generator = "Monica Password Manager",
-            name = file.nameWithoutExtension
+            name = databaseName.ifBlank { file.nameWithoutExtension }
         )
-        
-        // 创建空的 KeePass 数据库
-        val database = KeePassDatabase.Ver4x.create(
-            rootName = "Root",
+
+        val database = createConfiguredDatabase(
+            credentials = credentials,
             meta = meta,
-            credentials = credentials
+            options = options
         )
-        
+
         // 写入文件
         FileOutputStream(file).use { output ->
-            database.encode(output)
+            database.encode(output, cipherProviders = KeePassCodecSupport.cipherProviders)
         }
     }
     
     /**
      * 使用 kotpass 库创建真正的 KDBX 格式数据库内容
      */
-    private fun createEmptyKdbxContent(password: String, keyFileBytes: ByteArray? = null): ByteArray {
+    private fun createEmptyKdbxContent(
+        password: String,
+        keyFileBytes: ByteArray? = null,
+        options: KeePassDatabaseCreationOptions,
+        databaseName: String
+    ): ByteArray {
         // 创建凭据：空密码 + 密钥文件时优先使用 key-only，兼容 KeePassXC 习惯
         val credentials = buildKdbxCredentials(password, keyFileBytes)
-        
+
         // 创建元数据
         val meta = Meta(
             generator = "Monica Password Manager",
-            name = "Monica Database"
+            name = databaseName.ifBlank { "Monica Database" }
         )
-        
-        // 创建空的 KeePass 数据库
-        val database = KeePassDatabase.Ver4x.create(
-            rootName = "Root",
+
+        val database = createConfiguredDatabase(
+            credentials = credentials,
             meta = meta,
-            credentials = credentials
+            options = options
         )
-        
+
         // 返回字节数组
         return java.io.ByteArrayOutputStream().use { output ->
-            database.encode(output)
+            database.encode(output, cipherProviders = KeePassCodecSupport.cipherProviders)
             output.toByteArray()
+        }
+    }
+
+    private fun createConfiguredDatabase(
+        credentials: Credentials,
+        meta: Meta,
+        options: KeePassDatabaseCreationOptions
+    ): KeePassDatabase {
+        val normalized = options.normalized()
+        return when (normalized.formatVersion) {
+            KeePassFormatVersion.KDBX3 -> {
+                val base = KeePassDatabase.Ver3x.create(
+                    rootName = "Root",
+                    meta = meta,
+                    credentials = credentials
+                )
+                base.copy(
+                    header = base.header.copy(
+                        cipherId = KeePassCodecSupport.resolveCipherUuid(normalized.cipherAlgorithm),
+                        transformRounds = normalized.transformRounds.toULong()
+                    )
+                )
+            }
+            KeePassFormatVersion.KDBX4 -> {
+                val base = KeePassDatabase.Ver4x.create(
+                    rootName = "Root",
+                    meta = meta,
+                    credentials = credentials
+                )
+                val saltOrSeed = when (val existing = base.header.kdfParameters) {
+                    is KdfParameters.Aes -> existing.seed
+                    is KdfParameters.Argon2 -> existing.salt
+                }
+                val kdfParameters = when (normalized.kdfAlgorithm) {
+                    KeePassKdfAlgorithm.AES_KDF -> KdfParameters.Aes(
+                        rounds = normalized.transformRounds.toULong(),
+                        seed = saltOrSeed
+                    )
+                    KeePassKdfAlgorithm.ARGON2D -> KdfParameters.Argon2(
+                        variant = KdfParameters.Argon2.Variant.Argon2d,
+                        salt = saltOrSeed,
+                        parallelism = normalized.parallelism.toUInt(),
+                        memory = normalized.memoryBytes.toULong(),
+                        iterations = normalized.transformRounds.toULong(),
+                        version = 0x13U,
+                        secretKey = null,
+                        associatedData = null
+                    )
+                    KeePassKdfAlgorithm.ARGON2ID -> KdfParameters.Argon2(
+                        variant = KdfParameters.Argon2.Variant.Argon2id,
+                        salt = saltOrSeed,
+                        parallelism = normalized.parallelism.toUInt(),
+                        memory = normalized.memoryBytes.toULong(),
+                        iterations = normalized.transformRounds.toULong(),
+                        version = 0x13U,
+                        secretKey = null,
+                        associatedData = null
+                    )
+                }
+                base.copy(
+                    header = base.header.copy(
+                        cipherId = KeePassCodecSupport.resolveCipherUuid(normalized.cipherAlgorithm),
+                        kdfParameters = kdfParameters
+                    )
+                )
+            }
         }
     }
 
@@ -835,7 +1000,10 @@ class LocalKeePassViewModel(
     sealed class VerificationState {
         object Unknown : VerificationState()
         object Verifying : VerificationState()
-        data class Verified(val entryCount: Int) : VerificationState()
+        data class Verified(
+            val entryCount: Int,
+            val decryptTimeMs: Long
+        ) : VerificationState()
         data class Failed(val message: String) : VerificationState()
     }
 }

@@ -50,7 +50,6 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.flowOf
 import takagi.ru.monica.R
 import takagi.ru.monica.data.Category
-import takagi.ru.monica.data.KeePassStorageLocation
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
@@ -76,8 +75,9 @@ fun StorageTargetSelectorCard(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
     val database = remember { PasswordDatabase.getDatabase(context) }
+    val availableKeePassDatabases = keepassDatabases
 
-    val selectedKeePassDatabase = keepassDatabases.find { it.id == selectedKeePassDatabaseId }
+    val selectedKeePassDatabase = availableKeePassDatabases.find { it.id == selectedKeePassDatabaseId }
     val selectedBitwardenVault = bitwardenVaults.find { it.id == selectedBitwardenVaultId }
     val selectedLocalCategory = categories.find { it.id == selectedCategoryId }
 
@@ -277,6 +277,24 @@ fun StorageTargetSelectorCard(
                     }
                 }
 
+                availableKeePassDatabases.forEach { keepassDatabase ->
+                    StorageTargetLeafItem(
+                        title = keepassDatabase.name,
+                        subtitle = stringResource(R.string.vault_sync_hint),
+                        icon = Icons.Default.Key,
+                        isSelected = selectedKeePassDatabaseId == keepassDatabase.id,
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        iconColor = MaterialTheme.colorScheme.primary,
+                        onClick = {
+                            onCategorySelected(null)
+                            onBitwardenVaultSelected(null)
+                            onBitwardenFolderSelected(null)
+                            onKeePassDatabaseSelected(keepassDatabase.id)
+                        }
+                    )
+                }
+
                 bitwardenVaults.forEach { vault ->
                     val vaultExpanded = expandedBitwardenVaultId == vault.id
                     val folders by (
@@ -339,30 +357,6 @@ fun StorageTargetSelectorCard(
                     }
                 }
 
-                keepassDatabases.forEach { databaseItem ->
-                    val storageText = if (databaseItem.storageLocation == KeePassStorageLocation.EXTERNAL) {
-                        stringResource(R.string.external_storage)
-                    } else {
-                        stringResource(R.string.internal_storage)
-                    }
-
-                    StorageTargetLeafItem(
-                        title = databaseItem.name,
-                        subtitle = storageText,
-                        icon = Icons.Default.Key,
-                        isSelected = selectedKeePassDatabaseId == databaseItem.id,
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                        iconColor = MaterialTheme.colorScheme.primary,
-                        onClick = {
-                            onKeePassDatabaseSelected(databaseItem.id)
-                            onBitwardenVaultSelected(null)
-                            onBitwardenFolderSelected(null)
-                            expandedBitwardenVaultId = null
-                            localExpanded = false
-                        }
-                    )
-                }
             }
         }
     }

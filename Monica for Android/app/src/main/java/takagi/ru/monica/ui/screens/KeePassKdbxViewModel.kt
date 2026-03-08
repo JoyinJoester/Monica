@@ -1,7 +1,6 @@
 package takagi.ru.monica.ui.screens
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.net.Uri
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
@@ -17,14 +16,12 @@ import app.keemobile.kotpass.models.EntryFields
 import app.keemobile.kotpass.models.EntryValue
 import app.keemobile.kotpass.models.Meta
 import app.keemobile.kotpass.models.Group
-import com.thegrizzlylabs.sardineandroid.Sardine
-import com.thegrizzlylabs.sardineandroid.impl.OkHttpSardine
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
 import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.KeePassDatabaseCreationOptions
 import takagi.ru.monica.data.KeePassStorageLocation
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.PasswordDatabase
@@ -32,300 +29,30 @@ import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.CustomField
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.utils.KeePassCodecSupport
+import takagi.ru.monica.utils.KeePassCredentialSupport
+import takagi.ru.monica.utils.KeePassErrorCode
+import takagi.ru.monica.utils.KeePassOperationException
+import takagi.ru.monica.utils.KeePassFormatInspector
 import takagi.ru.monica.utils.KeePassKdbxService
-import java.io.File
+import takagi.ru.monica.utils.toKeePassOperationException
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.URLEncoder
-import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
 
 /**
- * KeePass WebDAV ViewModel
- * 
- * 负责处理 WebDAV 连接和 .kdbx 文件的上传/下载操作
+ * KeePass KDBX 本地导入/导出 ViewModel
  */
-class KeePassWebDavViewModel {
+class KeePassKdbxViewModel {
     
     companion object {
-        private const val TAG = "KeePassWebDavVM"
-        private const val PREFS_NAME = "keepass_webdav_config"
-        private const val KEY_SERVER_URL = "server_url"
-        private const val KEY_USERNAME = "username"
-        private const val KEY_PASSWORD = "password"
-        private const val KEY_KDBX_PASSWORD = "kdbx_password"  // KeePass 数据库密码
-        private const val KEY_CONFLICT_PROTECTION_ENABLED = "conflict_protection_enabled"
-        private const val KEY_CONFLICT_PROTECTION_MODE = "conflict_protection_mode"
-        private const val CONFLICT_MODE_AUTO = "auto"
-        private const val CONFLICT_MODE_STRICT = "strict"
-        
-        // KeePass 文件夹名称
-        private const val KEEPASS_FOLDER = "KeePass_Monica"
+        private const val TAG = "KeePassKdbxVM"
     }
     
-    private var sardine: Sardine? = null
-    private var serverUrl: String = ""
-    private var username: String = ""
-    private var password: String = ""
-    
-    /**
-     * WebDAV 配置信息
-     */
-    data class KeePassWebDavConfig(
-        val serverUrl: String,
-        val username: String,
-        val kdbxPassword: String = "",  // KeePass 数据库密码
-        val conflictProtectionEnabled: Boolean = false
-    )
-    
-    /**
-     * 从 SharedPreferences 加载已保存的配置
-     */
-    fun loadSavedConfig(context: Context): KeePassWebDavConfig? {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val storedUrl = prefs.getString(KEY_SERVER_URL, "") ?: ""
-        val url = normalizeServerUrl(storedUrl)
-        val user = prefs.getString(KEY_USERNAME, "") ?: ""
-        val pass = prefs.getString(KEY_PASSWORD, "") ?: ""
-        val kdbxPass = prefs.getString(KEY_KDBX_PASSWORD, "") ?: ""
-        val conflictProtectionEnabled = isStrictConflictProtectionEnabled(prefs)
-        
-        if (url.isNotEmpty() && user.isNotEmpty() && pass.isNotEmpty()) {
-            serverUrl = url
-            username = user
-            password = pass
-            
-            // 初始化 Sardine
-            sardine = OkHttpSardine().apply {
-                setCredentials(username, password)
-            }
-            
-            Log.d(TAG, "Loaded saved config: url=$serverUrl, user=$username")
-            if (url != storedUrl) {
-                saveConfig(context)
-            }
-            return KeePassWebDavConfig(serverUrl, username, kdbxPass, conflictProtectionEnabled)
-        }
-        return null
-    }
-    
-    /**
-     * 保存 KeePass 数据库密码
-     */
-    fun saveKdbxPassword(context: Context, kdbxPassword: String) {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putString(KEY_KDBX_PASSWORD, kdbxPassword).apply()
-        Log.d(TAG, "Saved kdbx password")
-    }
-    
-    /**
-     * 获取保存的 KeePass 数据库密码
-     */
-    fun getSavedKdbxPassword(context: Context): String {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getString(KEY_KDBX_PASSWORD, "") ?: ""
-    }
-
-    fun isConflictProtectionEnabled(context: Context): Boolean {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return isStrictConflictProtectionEnabled(prefs)
-    }
-
-    fun setConflictProtectionEnabled(context: Context, enabled: Boolean) {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit()
-            .putBoolean(KEY_CONFLICT_PROTECTION_ENABLED, enabled)
-            .putString(
-                KEY_CONFLICT_PROTECTION_MODE,
-                if (enabled) CONFLICT_MODE_STRICT else CONFLICT_MODE_AUTO
-            )
-            .apply()
-    }
-
-    private fun isStrictConflictProtectionEnabled(prefs: SharedPreferences): Boolean {
-        val mode = prefs.getString(KEY_CONFLICT_PROTECTION_MODE, null)
-            ?.trim()
-            ?.lowercase(Locale.ROOT)
-        if (!mode.isNullOrBlank()) {
-            return mode == CONFLICT_MODE_STRICT
-        }
-        if (prefs.contains(KEY_CONFLICT_PROTECTION_ENABLED)) {
-            return prefs.getBoolean(KEY_CONFLICT_PROTECTION_ENABLED, false)
-        }
-        return false
-    }
-    
-    /**
-     * 保存配置到 SharedPreferences
-     */
-    private fun saveConfig(context: Context) {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().apply {
-            putString(KEY_SERVER_URL, serverUrl)
-            putString(KEY_USERNAME, username)
-            putString(KEY_PASSWORD, password)
-            apply()
-        }
-        Log.d(TAG, "Saved config: url=$serverUrl, user=$username")
-    }
-    
-    /**
-     * 清除配置
-     */
-    fun clearConfig(context: Context) {
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().clear().apply()
-        
-        serverUrl = ""
-        username = ""
-        password = ""
-        sardine = null
-        
-        Log.d(TAG, "Config cleared")
-    }
-    
-    /**
-     * 配置并测试 WebDAV 连接
-     */
-    suspend fun configureAndTest(
-        context: Context,
-        url: String,
-        user: String,
-        pass: String
-    ): Result<Boolean> = withContext(Dispatchers.IO) {
-        try {
-            serverUrl = normalizeServerUrl(url)
-            username = user
-            password = pass
-            
-            // 创建 Sardine 实例
-            sardine = OkHttpSardine().apply {
-                setCredentials(username, password)
-            }
-            
-            Log.d(TAG, "Testing connection to: $serverUrl")
-            
-            // 测试连接
-            var connectionOk = false
-            
-            // 方法1: 使用 exists()
-            try {
-                val exists = sardine?.exists(serverUrl) ?: false
-                Log.d(TAG, "Method 1 (exists): path exists = $exists")
-                connectionOk = true
-            } catch (e: Exception) {
-                Log.w(TAG, "Method 1 (exists) failed: ${e.message}")
-                
-                // 方法2: 使用 list()
-                try {
-                    sardine?.list(serverUrl)
-                    Log.d(TAG, "Method 2 (list): success")
-                    connectionOk = true
-                } catch (e2: Exception) {
-                    Log.w(TAG, "Method 2 (list) failed: ${e2.message}")
-                    throw e2
-                }
-            }
-            
-            if (connectionOk) {
-                // 确保 KeePass 文件夹存在
-                ensureKeePassFolder()
-                
-                // 保存配置
-                saveConfig(context)
-                
-                Log.d(TAG, "Connection test SUCCESSFUL")
-                Result.success(true)
-            } else {
-                Result.failure(Exception(context.getString(R.string.keepass_webdav_connection_test_failed)))
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Connection test FAILED", e)
-            
-            val detailedMessage = when {
-                e.message?.contains("Network is unreachable") == true -> 
-                    context.getString(R.string.webdav_network_unreachable)
-                e.message?.contains("Connection timed out") == true -> 
-                    context.getString(R.string.webdav_connection_timeout)
-                e.message?.contains("401") == true || e.message?.contains("Unauthorized") == true -> 
-                    context.getString(R.string.webdav_auth_failed)
-                e.message?.contains("404") == true -> 
-                    context.getString(R.string.webdav_path_not_found)
-                e.message?.contains("403") == true -> 
-                    context.getString(R.string.webdav_operation_failed, e.message ?: "")
-                else -> context.getString(R.string.webdav_connection_failed, e.message ?: "")
-            }
-            Result.failure(Exception(detailedMessage))
-        }
-    }
-    
-    /**
-     * 确保 KeePass 文件夹存在
-     */
-    private suspend fun ensureKeePassFolder() = withContext(Dispatchers.IO) {
-        try {
-            val folderPath = getKeepassFolderPath()
-            if (sardine?.exists(folderPath) != true) {
-                sardine?.createDirectory(folderPath)
-                Log.d(TAG, "Created KeePass folder: $folderPath")
-            }
-            Unit
-        } catch (e: Exception) {
-            Log.w(TAG, "Could not create KeePass folder: ${e.message}")
-            // 不抛出异常，可能是文件夹已存在
-        }
-    }
-    
-    /**
-     * 列出所有 .kdbx 文件
-     */
-    suspend fun listKdbxFiles(context: Context): Result<List<KdbxFileInfo>> = withContext(Dispatchers.IO) {
-        try {
-            if (sardine == null) {
-                return@withContext Result.failure(Exception(context.getString(R.string.keepass_webdav_not_configured)))
-            }
-            
-            val folderPath = getKeepassFolderPath()
-            
-            // 检查文件夹是否存在
-            if (sardine?.exists(folderPath) != true) {
-                // 尝试创建文件夹
-                try {
-                    sardine?.createDirectory(folderPath)
-                } catch (e: Exception) {
-                    Log.w(TAG, "Could not create folder: ${e.message}")
-                }
-                return@withContext Result.success(emptyList())
-            }
-            
-            // 列出目录内容
-            val currentSardine = sardine
-                ?: return@withContext Result.failure(Exception(context.getString(R.string.keepass_webdav_not_configured)))
-            val resources = currentSardine.list(folderPath)
-            
-            val kdbxFiles = resources
-                .filter { !it.isDirectory && it.name.endsWith(".kdbx", ignoreCase = true) }
-                .map { resource ->
-                    KdbxFileInfo(
-                        name = resource.name,
-                        path = resource.href.toString(),
-                        size = resource.contentLength ?: 0,
-                        modified = resource.modified ?: Date()
-                    )
-                }
-                .sortedByDescending { it.modified }
-            
-            Log.d(TAG, "Found ${kdbxFiles.size} .kdbx files")
-            Result.success(kdbxFiles)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to list kdbx files", e)
-            Result.failure(e)
-        }
-    }
-    
-    // ==================== 本地 KDBX 导出和导入（不需要 WebDAV）====================
+    // ==================== 本地 KDBX 导出和导入 ====================
     
     /**
      * 导出数据为 .kdbx 格式到本地 OutputStream
@@ -354,7 +81,7 @@ class KeePassWebDavViewModel {
             Result.success(totalCount)
         } catch (e: Exception) {
             Log.e(TAG, "Local KDBX export failed", e)
-            Result.failure(e)
+            Result.failure(e.toKeePassOperationException())
         }
     }
     
@@ -388,233 +115,17 @@ class KeePassWebDavViewModel {
             Result.success(importedCount)
         } catch (e: Exception) {
             Log.e(TAG, "Local KDBX import failed", e)
-            Result.failure(e)
+            Result.failure(e.toKeePassOperationException())
         }
     }
     
-    /**
-     * 从 WebDAV 读取 .kdbx 文件并接入为独立数据库（直接读写远端）
-     *
-     * @param context Android Context
-     * @param file 远端文件信息
-     * @param kdbxPassword 用于解密 .kdbx 文件的密码
-     * @return 校验成功后识别到的条目数量
-     */
-    suspend fun attachRemoteKdbx(
-        context: Context,
-        file: KdbxFileInfo,
-        kdbxPassword: String
-    ): Result<Int> = withContext(Dispatchers.IO) {
-        try {
-            if (sardine == null) {
-                return@withContext Result.failure(Exception(context.getString(R.string.keepass_webdav_not_configured)))
-            }
-            
-            Log.d(TAG, "Starting direct WebDAV database binding from: ${file.name}")
-
-            val remotePath = getKeepassFilePath(file.name)
-            val currentSardine = sardine
-                ?: return@withContext Result.failure(Exception(context.getString(R.string.keepass_webdav_not_configured)))
-
-            // 1) 读取远端数据库并校验密码
-            val dbBytes = currentSardine.get(remotePath).use { it.readBytes() }
-            val credentials = Credentials.from(EncryptedValue.fromString(kdbxPassword))
-            val keepassDb = KeePassKdbxService.withGlobalDecodeLock {
-                KeePassDatabase.decode(dbBytes.inputStream(), credentials)
-            }
-            val entries = mutableListOf<Entry>()
-            collectEntries(keepassDb.content.group, entries)
-            val entryCount = entries.count {
-                isImportablePasswordEntry(it, hasTotpPayload = hasTotpPayload(it))
-            }
-
-            // 2) 将远端 .kdbx 注册到本地 KeePass 数据库列表（之后通过 KeePassKdbxService 实时直连读写）
-            bindRemoteDatabase(context, remotePath, file.name, kdbxPassword, entryCount)
-
-            Log.d(TAG, "Bound remote database successfully: ${file.name} ($entryCount entries)")
-            Result.success(entryCount)
-        } catch (e: Exception) {
-            Log.e(TAG, "Attach failed", e)
-            val error = when {
-                e.message?.contains("Invalid credentials", ignoreCase = true) == true ||
-                    e.message?.contains("Wrong password", ignoreCase = true) == true ||
-                    e.message?.contains("InvalidKey", ignoreCase = true) == true ->
-                    Exception(context.getString(R.string.keepass_webdav_import_wrong_password))
-                e.message?.contains("Invalid database", ignoreCase = true) == true ||
-                    e.message?.contains("Not a valid KDBX", ignoreCase = true) == true ->
-                    Exception(context.getString(R.string.keepass_webdav_import_invalid_database))
-                else -> e
-            }
-            Result.failure(error)
-        }
-    }
-
-    suspend fun createRemoteKdbxDatabase(
-        context: Context,
-        name: String,
-        kdbxPassword: String
-    ): Result<KdbxFileInfo> = withContext(Dispatchers.IO) {
-        try {
-            if (sardine == null) {
-                return@withContext Result.failure(Exception(context.getString(R.string.keepass_webdav_not_configured)))
-            }
-            if (name.isBlank()) {
-                return@withContext Result.failure(Exception(context.getString(R.string.keepass_webdav_create_name_required)))
-            }
-            if (kdbxPassword.isBlank()) {
-                return@withContext Result.failure(Exception(context.getString(R.string.keepass_webdav_enter_password)))
-            }
-
-            val normalizedName = if (name.endsWith(".kdbx", ignoreCase = true)) {
-                name.trim()
-            } else {
-                "${name.trim()}.kdbx"
-            }
-
-            val remotePath = getKeepassFilePath(normalizedName)
-            val currentSardine = sardine
-                ?: return@withContext Result.failure(Exception(context.getString(R.string.keepass_webdav_not_configured)))
-
-            ensureKeePassFolder()
-            if (currentSardine.exists(remotePath)) {
-                return@withContext Result.failure(Exception(context.getString(R.string.keepass_webdav_create_exists)))
-            }
-
-            val credentials = Credentials.from(EncryptedValue.fromString(kdbxPassword))
-            val meta = Meta(generator = "Monica Password Manager", name = normalizedName.removeSuffix(".kdbx"))
-            val db = KeePassDatabase.Ver4x.create(
-                rootName = "Monica",
-                meta = meta,
-                credentials = credentials
-            )
-            val bytes = java.io.ByteArrayOutputStream().use { output ->
-                db.encode(output)
-                output.toByteArray()
-            }
-
-            currentSardine.put(remotePath, bytes, "application/octet-stream")
-            bindRemoteDatabase(context, remotePath, normalizedName, kdbxPassword, entryCount = 0)
-
-            Result.success(
-                KdbxFileInfo(
-                    name = normalizedName,
-                    path = remotePath,
-                    size = bytes.size.toLong(),
-                    modified = Date()
-                )
-            )
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    suspend fun getAttachedRemotePaths(context: Context): Set<String> = withContext(Dispatchers.IO) {
-        val appDb = PasswordDatabase.getDatabase(context)
-        val keepassDao = appDb.localKeePassDatabaseDao()
-        keepassDao.getAllDatabasesSync()
-            .asSequence()
-            .map { it.filePath }
-            .filter { it.startsWith(KeePassKdbxService.WEBDAV_PATH_PREFIX) }
-            .map { it.removePrefix(KeePassKdbxService.WEBDAV_PATH_PREFIX) }
-            .toSet()
-    }
-
-    suspend fun forceOverwriteRemoteDatabase(
-        context: Context,
-        remotePath: String,
-        kdbxPassword: String? = null
-    ): Result<Int> = withContext(Dispatchers.IO) {
-        try {
-            val appDb = PasswordDatabase.getDatabase(context)
-            val keepassDao = appDb.localKeePassDatabaseDao()
-            val passwordDao = appDb.passwordEntryDao()
-            val secureItemDao = appDb.secureItemDao()
-            val securityManager = SecurityManager(context)
-
-            val encodedRemotePath = KeePassKdbxService.toWebDavFilePath(remotePath)
-            val attachedDatabase = keepassDao.getAllDatabasesSync().firstOrNull {
-                it.filePath == encodedRemotePath
-            } ?: return@withContext Result.failure(
-                Exception(context.getString(R.string.keepass_webdav_force_overwrite_not_attached))
-            )
-
-            if (!kdbxPassword.isNullOrBlank()) {
-                keepassDao.updateDatabase(
-                    attachedDatabase.copy(
-                        encryptedPassword = securityManager.encryptData(kdbxPassword),
-                        lastAccessedAt = System.currentTimeMillis()
-                    )
-                )
-            }
-
-            val passwordEntries = passwordDao.getPasswordEntriesByKeePassDatabaseSync(attachedDatabase.id)
-            val secureItems = secureItemDao.getByKeePassDatabaseIdSync(attachedDatabase.id)
-            val service = KeePassKdbxService(context, keepassDao, securityManager)
-
-            service.forceOverwriteWebDavDatabaseFromLocal(
-                databaseId = attachedDatabase.id,
-                passwordEntries = passwordEntries,
-                secureItems = secureItems,
-                resolvePassword = { entry ->
-                    securityManager.decryptData(entry.password) ?: entry.password
-                }
-            )
-        } catch (e: Exception) {
-            Log.e(TAG, "forceOverwriteRemoteDatabase failed", e)
-            Result.failure(e)
-        }
-    }
-
-    private suspend fun bindRemoteDatabase(
-        context: Context,
-        remotePath: String,
-        displayFileName: String,
-        kdbxPassword: String,
-        entryCount: Int
-    ) {
-        val appDb = PasswordDatabase.getDatabase(context)
-        val keepassDao = appDb.localKeePassDatabaseDao()
-        val securityManager = SecurityManager(context)
-        val encryptedPassword = if (kdbxPassword.isNotBlank()) {
-            securityManager.encryptData(kdbxPassword)
-        } else {
-            null
-        }
-        val allDatabases = keepassDao.getAllDatabasesSync()
-        val encodedRemotePath = KeePassKdbxService.toWebDavFilePath(remotePath)
-        val displayName = displayFileName.removeSuffix(".kdbx")
-        val existing = allDatabases.firstOrNull { it.filePath == encodedRemotePath }
-
-        if (existing != null) {
-            keepassDao.updateDatabase(
-                existing.copy(
-                    name = displayName,
-                    encryptedPassword = encryptedPassword,
-                    lastAccessedAt = System.currentTimeMillis(),
-                    entryCount = entryCount
-                )
-            )
-        } else {
-            keepassDao.insertDatabase(
-                LocalKeePassDatabase(
-                    name = displayName,
-                    filePath = encodedRemotePath,
-                    storageLocation = KeePassStorageLocation.EXTERNAL,
-                    encryptedPassword = encryptedPassword,
-                    description = "WebDAV: $serverUrl",
-                    entryCount = entryCount,
-                    isDefault = allDatabases.isEmpty()
-                )
-            )
-        }
-    }
-
     private suspend fun bindLocalDatabase(
         context: Context,
         sourceUri: Uri,
         kdbxPassword: String,
         keyFileUri: Uri?,
-        entryCount: Int
+        entryCount: Int,
+        creationOptions: KeePassDatabaseCreationOptions
     ): Long {
         val appDb = PasswordDatabase.getDatabase(context)
         val keepassDao = appDb.localKeePassDatabaseDao()
@@ -649,6 +160,7 @@ class KeePassWebDavViewModel {
                 ?: sourceUri.lastPathSegment?.substringAfterLast('/')
                 ?: "ImportedKeePass"
             ).removeSuffix(".kdbx")
+                .removeSuffix(".kdb")
         val existing = allDatabases.firstOrNull { it.filePath == uriPath }
 
         return if (existing != null) {
@@ -659,7 +171,13 @@ class KeePassWebDavViewModel {
                     keyFileUri = keyFileUri?.toString() ?: existing.keyFileUri,
                     storageLocation = KeePassStorageLocation.EXTERNAL,
                     lastAccessedAt = System.currentTimeMillis(),
-                    entryCount = entryCount
+                    entryCount = entryCount,
+                    kdbxMajorVersion = creationOptions.formatVersion.majorVersion,
+                    cipherAlgorithm = creationOptions.cipherAlgorithm.name,
+                    kdfAlgorithm = creationOptions.kdfAlgorithm.name,
+                    kdfTransformRounds = creationOptions.transformRounds,
+                    kdfMemoryBytes = creationOptions.memoryBytes,
+                    kdfParallelism = creationOptions.parallelism
                 )
             )
             KeePassKdbxService.invalidateProcessCache(existing.id)
@@ -674,53 +192,18 @@ class KeePassWebDavViewModel {
                     encryptedPassword = encryptedPassword,
                     description = "Imported local KDBX",
                     entryCount = entryCount,
+                    kdbxMajorVersion = creationOptions.formatVersion.majorVersion,
+                    cipherAlgorithm = creationOptions.cipherAlgorithm.name,
+                    kdfAlgorithm = creationOptions.kdfAlgorithm.name,
+                    kdfTransformRounds = creationOptions.transformRounds,
+                    kdfMemoryBytes = creationOptions.memoryBytes,
+                    kdfParallelism = creationOptions.parallelism,
                     isDefault = allDatabases.isEmpty()
                 )
             )
             KeePassKdbxService.invalidateProcessCache(newId)
             newId
         }
-    }
-    
-    /**
-     * 下载 .kdbx 文件流
-     * 
-     * @param file 要下载的文件信息
-     * @return 文件输入流
-     */
-    suspend fun downloadKdbxStream(file: KdbxFileInfo): Result<InputStream> = withContext(Dispatchers.IO) {
-        try {
-            if (sardine == null) {
-                return@withContext Result.failure(Exception("WebDAV not configured"))
-            }
-            
-            val remotePath = getKeepassFilePath(file.name)
-            val currentSardine = sardine ?: return@withContext Result.failure(Exception("WebDAV not configured"))
-            val inputStream = currentSardine.get(remotePath)
-            
-            Log.d(TAG, "Downloaded stream for: ${file.name}")
-            Result.success(inputStream)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to download stream", e)
-            Result.failure(e)
-        }
-    }
-
-    private fun normalizeServerUrl(url: String): String {
-        return url.trim().trimEnd('/')
-    }
-
-    private fun getKeepassFolderPath(): String {
-        val normalizedBase = normalizeServerUrl(serverUrl)
-        return if (normalizedBase.endsWith("/$KEEPASS_FOLDER", ignoreCase = true)) {
-            normalizedBase
-        } else {
-            "$normalizedBase/$KEEPASS_FOLDER"
-        }
-    }
-
-    private fun getKeepassFilePath(fileName: String): String {
-        return "${getKeepassFolderPath()}/$fileName"
     }
     
     // ==================== KDBX 导出和导入实现 ====================
@@ -867,7 +350,7 @@ class KeePassWebDavViewModel {
         }
         
         // 7. 编码并写入输出流
-        keePassDatabase.encode(outputStream)
+        keePassDatabase.encode(outputStream, cipherProviders = KeePassCodecSupport.cipherProviders)
         
         Log.d(TAG, "KDBX export completed successfully with ${passwords.size} passwords and ${totpItems.size} TOTP entries")
     }
@@ -936,28 +419,55 @@ class KeePassWebDavViewModel {
         try {
             // 1. 读取 KDBX 数据和可选密钥文件
             val kdbxBytes = inputStream.readBytes()
+            KeePassFormatInspector.ensureKdbxSupported(
+                bytes = kdbxBytes,
+                sourceName = sourceUri.lastPathSegment ?: sourceUri.toString()
+            )
             val keyFileBytes = keyFileUri?.let { uri ->
                 context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                     ?: throw Exception(context.getString(R.string.import_data_error))
             }
 
-            // 2. 创建凭证并解码 KDBX（兼容旧版空密码+密钥文件）
-            val credentials = buildKdbxCredentials(kdbxPassword, keyFileBytes)
+            // 2. 创建凭据候选并解码 KDBX（兼容 XML/HEX/RAW keyfile 及历史空密码组合）
+            val candidates = KeePassCredentialSupport.buildCredentialCandidates(
+                password = kdbxPassword,
+                keyFileBytes = keyFileBytes
+            )
             val keePassDatabase = KeePassKdbxService.withGlobalDecodeLock {
-                try {
-                    KeePassDatabase.decode(kdbxBytes.inputStream(), credentials)
-                } catch (primaryError: Exception) {
-                    if (keyFileBytes != null && kdbxPassword.isBlank()) {
-                        val legacyCredentials = Credentials.from(
-                            EncryptedValue.fromString(""),
-                            keyFileBytes
+                var lastError: Throwable? = null
+                val attemptedLabels = mutableListOf<String>()
+                candidates.forEachIndexed { index, candidate ->
+                    val isLast = index == candidates.lastIndex
+                    attemptedLabels += candidate.label
+                    try {
+                        val decoded = KeePassDatabase.decode(
+                            kdbxBytes.inputStream(),
+                            candidate.credentials,
+                            cipherProviders = KeePassCodecSupport.cipherProviders
                         )
-                        Log.w(TAG, "Retry KDBX decode with legacy empty-password+keyfile credentials")
-                        KeePassDatabase.decode(kdbxBytes.inputStream(), legacyCredentials)
-                    } else {
-                        throw primaryError
+                        if (index > 0) {
+                            Log.w(TAG, "Decoded KDBX with credential fallback: ${candidate.label}")
+                        }
+                        return@withGlobalDecodeLock decoded
+                    } catch (decodeError: Throwable) {
+                        val mapped = decodeError.toKeePassOperationException()
+                        lastError = mapped
+                        val isInvalidCredential = mapped.code == KeePassErrorCode.INVALID_CREDENTIAL
+                        if (!isInvalidCredential || isLast) {
+                            throw mapped
+                        }
                     }
                 }
+                val allInvalidCredential = lastError is KeePassOperationException &&
+                    (lastError as KeePassOperationException).code == KeePassErrorCode.INVALID_CREDENTIAL
+                if (allInvalidCredential) {
+                    throw KeePassOperationException(
+                        code = KeePassErrorCode.INVALID_CREDENTIAL,
+                        message = KeePassCredentialSupport.buildInvalidCredentialMessage(attemptedLabels),
+                        cause = lastError
+                    )
+                }
+                throw (lastError ?: IllegalStateException("KDBX 解码失败"))
             }
             
             // 3. 获取所有条目（保留分组路径）
@@ -973,12 +483,14 @@ class KeePassWebDavViewModel {
             val keepassCredentialCount = allEntries.count { (entry, _) ->
                 isImportablePasswordEntry(entry, hasTotpPayload = hasTotpPayload(entry))
             }
+            val creationOptions = KeePassKdbxService.inferCreationOptions(keePassDatabase)
             val keepassDatabaseId = bindLocalDatabase(
                 context = context,
                 sourceUri = sourceUri,
                 kdbxPassword = kdbxPassword,
                 keyFileUri = keyFileUri,
-                entryCount = keepassCredentialCount
+                entryCount = keepassCredentialCount,
+                creationOptions = creationOptions
             )
             
             var passwordImportedCount = 0
@@ -1195,21 +707,7 @@ class KeePassWebDavViewModel {
             totalImported
         } catch (e: Exception) {
             Log.e(TAG, "KDBX parsing failed", e)
-            when {
-                e.message?.contains("Invalid credentials") == true ||
-                e.message?.contains("Wrong password") == true ||
-                e.message?.contains("InvalidKey") == true -> 
-                    throw Exception(context.getString(R.string.keepass_webdav_import_wrong_password))
-                e.message?.contains("Invalid database") == true ||
-                e.message?.contains("Not a valid KDBX") == true ->
-                    throw Exception(context.getString(R.string.keepass_webdav_import_invalid_database))
-                else -> throw Exception(
-                    context.getString(
-                        R.string.keepass_webdav_import_failed,
-                        e.message ?: context.getString(R.string.import_data_unknown_error)
-                    )
-                )
-            }
+            throw e.toKeePassOperationException()
         }
     }
     
@@ -1328,17 +826,6 @@ class KeePassWebDavViewModel {
         }
     }
 
-    private fun buildKdbxCredentials(password: String, keyFileBytes: ByteArray?): Credentials {
-        if (keyFileBytes == null) {
-            return Credentials.from(EncryptedValue.fromString(password))
-        }
-        return if (password.isBlank()) {
-            Credentials.from(keyFileBytes)
-        } else {
-            Credentials.from(EncryptedValue.fromString(password), keyFileBytes)
-        }
-    }
-    
     /**
      * 解析 otpauth:// URI 并返回 TotpData
      * 格式: otpauth://totp/LABEL?secret=SECRET&issuer=ISSUER&algorithm=SHA1&digits=6&period=30

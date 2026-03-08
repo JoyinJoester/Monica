@@ -852,7 +852,8 @@ fun AddEditPasswordScreen(
                             title = existingTotp?.title ?: currentTitle,
                             notes = existingTotp?.notes ?: "",
                             totpData = totpData,
-                            isFavorite = existingTotp?.isFavorite ?: false
+                            isFavorite = existingTotp?.isFavorite ?: false,
+                            keepassDatabaseId = keepassDatabaseId
                         )
                     } else if (currentAuthKey.isEmpty() && originalAuthenticatorKey.isNotEmpty() && firstPasswordId != null && totpViewModel != null) {
                         // 密码页清空密钥：只取消验证器绑定，不删除验证器
@@ -2713,15 +2714,17 @@ private fun VaultSelector(
     selectedCategoryId: Long?,
     onCategorySelected: (Long?) -> Unit
 ) {
+    val availableKeePassDatabases = keepassDatabases
+
     // 如果没有任何外部数据库，不显示选择器
-    if (keepassDatabases.isEmpty() && bitwardenVaults.isEmpty()) return
+    if (availableKeePassDatabases.isEmpty() && bitwardenVaults.isEmpty()) return
     
     var showBottomSheet by remember { mutableStateOf(false) }
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val context = LocalContext.current
     val database = remember { PasswordDatabase.getDatabase(context) }
     
-    val selectedKeePassDatabase = keepassDatabases.find { it.id == selectedKeePassDatabaseId }
+    val selectedKeePassDatabase = availableKeePassDatabases.find { it.id == selectedKeePassDatabaseId }
     val selectedBitwardenVault = bitwardenVaults.find { it.id == selectedBitwardenVaultId }
     
     // 判断当前选择的类型
@@ -2913,6 +2916,24 @@ private fun VaultSelector(
                     }
                 }
 
+                availableKeePassDatabases.forEach { database ->
+                    VaultOptionItem(
+                        title = database.name,
+                        subtitle = stringResource(R.string.vault_sync_hint),
+                        icon = Icons.Default.Key,
+                        isSelected = selectedKeePassDatabaseId == database.id,
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        iconColor = MaterialTheme.colorScheme.primary,
+                        onClick = {
+                            onCategorySelected(null)
+                            onBitwardenVaultSelected(null)
+                            onBitwardenFolderSelected(null)
+                            onKeePassDatabaseSelected(database.id)
+                        }
+                    )
+                }
+
                 bitwardenVaults.forEach { vault ->
                     val vaultExpanded = expandedBitwardenVaultId == vault.id
                     val folders by (
@@ -2973,28 +2994,6 @@ private fun VaultSelector(
                     }
                 }
 
-                keepassDatabases.forEach { database ->
-                    val storageText = if (database.storageLocation == takagi.ru.monica.data.KeePassStorageLocation.EXTERNAL)
-                        stringResource(R.string.external_storage)
-                    else
-                        stringResource(R.string.internal_storage)
-
-                    VaultOptionItem(
-                        title = database.name,
-                        subtitle = storageText,
-                        icon = Icons.Default.Key,
-                        isSelected = selectedKeePassDatabaseId == database.id,
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-                        iconColor = MaterialTheme.colorScheme.primary,
-                        onClick = {
-                            onKeePassDatabaseSelected(database.id)
-                            onBitwardenFolderSelected(null)
-                            expandedBitwardenVaultId = null
-                            localExpanded = false
-                        }
-                    )
-                }
             }
         }
     }

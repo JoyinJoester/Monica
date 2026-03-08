@@ -103,7 +103,7 @@ import takagi.ru.monica.ui.screens.MonicaPlusScreen
 import takagi.ru.monica.ui.screens.PaymentScreen
 import takagi.ru.monica.ui.screens.SupportAuthorScreen
 import takagi.ru.monica.ui.screens.WebDavBackupScreen
-import takagi.ru.monica.ui.screens.KeePassWebDavViewModel
+import takagi.ru.monica.ui.screens.KeePassKdbxViewModel
 import takagi.ru.monica.ui.theme.MonicaTheme
 import takagi.ru.monica.utils.LocaleHelper
 import takagi.ru.monica.viewmodel.BankCardViewModel
@@ -344,7 +344,7 @@ fun MonicaApp(
     }
     
     // KeePass KDBX 导出/导入
-    val keePassViewModel = remember { KeePassWebDavViewModel() }
+    val keePassViewModel = remember { KeePassKdbxViewModel() }
     
     // 本地 KeePass 数据库管理
     val localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel = viewModel {
@@ -454,7 +454,7 @@ fun MonicaContent(
     generatorViewModel: GeneratorViewModel,
     noteViewModel: takagi.ru.monica.viewmodel.NoteViewModel,
     passkeyViewModel: takagi.ru.monica.viewmodel.PasskeyViewModel,
-    keePassViewModel: KeePassWebDavViewModel,
+    keePassViewModel: KeePassKdbxViewModel,
     localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
     securityManager: SecurityManager,
     repository: PasswordRepository,
@@ -493,6 +493,7 @@ fun MonicaContent(
                     // 如果已禁用密码验证，跳过自动锁定
                     // 使用 currentSettings 和 currentIsFirstTime 确保访问最新值
                     if (currentSettings.disablePasswordVerification && !currentIsFirstTime) {
+                        viewModel.refreshKeePassFromSourceForCurrentContext()
                         lastBackgroundTimestamp = null
                         return@LifecycleEventObserver
                     }
@@ -520,6 +521,9 @@ fun MonicaContent(
                     } else if (timeoutMs == null) {
                         lastBackgroundTimestamp = null
                     }
+                    if (currentIsAuthenticated || (currentSettings.disablePasswordVerification && !currentIsFirstTime)) {
+                        viewModel.refreshKeePassFromSourceForCurrentContext()
+                    }
                 }
                 else -> Unit
             }
@@ -540,6 +544,7 @@ fun MonicaContent(
     // 当认证状态变化时处理导航
     LaunchedEffect(isAuthenticated) {
         if (isAuthenticated) {
+            viewModel.refreshKeePassFromSourceForCurrentContext()
             val currentRoute = navController.currentDestination?.route
             if (currentRoute == Screen.Login.route) {
                 navController.navigate(Screen.Main.createRoute()) {

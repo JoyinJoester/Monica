@@ -280,6 +280,13 @@ fun TotpListContent(
         is takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenVaultUncategorized -> filter.vaultId
         else -> null
     }
+    val selectedKeePassDatabaseId = when (val filter = currentFilter) {
+        is takagi.ru.monica.viewmodel.TotpCategoryFilter.KeePassDatabase -> filter.databaseId
+        is takagi.ru.monica.viewmodel.TotpCategoryFilter.KeePassGroupFilter -> filter.databaseId
+        is takagi.ru.monica.viewmodel.TotpCategoryFilter.KeePassDatabaseStarred -> filter.databaseId
+        is takagi.ru.monica.viewmodel.TotpCategoryFilter.KeePassDatabaseUncategorized -> filter.databaseId
+        else -> null
+    }
     val bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel()
     val bitwardenSyncStatusByVault by bitwardenViewModel.syncStatusByVault.collectAsState()
     val isTopBarSyncing = selectedBitwardenVaultId?.let { vaultId ->
@@ -559,6 +566,18 @@ fun TotpListContent(
                                         val vaultId = selectedBitwardenVaultId ?: return@DropdownMenuItem
                                         showTopActionsMenu = false
                                         bitwardenViewModel.requestManualSync(vaultId)
+                                    }
+                                )
+                            }
+                            if (selectedKeePassDatabaseId != null) {
+                                DropdownMenuItem(
+                                    text = {
+                                        Text("${stringResource(R.string.refresh)} ${stringResource(R.string.filter_keepass)}")
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Sync, contentDescription = null) },
+                                    onClick = {
+                                        showTopActionsMenu = false
+                                        viewModel.syncKeePassByDatabaseId(selectedKeePassDatabaseId)
                                     }
                                 )
                             }

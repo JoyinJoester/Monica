@@ -92,7 +92,6 @@ fun WebDavBackupScreen(
     var trashCount by remember { mutableStateOf(0) }
     var localKeePassCount by remember { mutableStateOf(0) }
     var passkeyCount by remember { mutableStateOf(0) }
-    var isKeePassWebDavConfigured by remember { mutableStateOf(false) }
     
     // 恢复设置
     var restoreOverwriteMode by remember { mutableStateOf(false) }
@@ -172,10 +171,6 @@ fun WebDavBackupScreen(
         } catch (e: Exception) {
             passkeyCount = 0
         }
-        
-        // 检查 KeePass WebDAV 是否已配置
-        // TODO: 当实现 KeePass WebDAV 时启用
-        isKeePassWebDavConfigured = false
         
         // 加载图片统计信息
         imageStats = imageCompressor.getImageStats()
@@ -637,8 +632,7 @@ fun WebDavBackupScreen(
                     trashCount = trashCount,
                     passkeyCount = passkeyCount,
                     localKeePassCount = localKeePassCount,
-                    isWebDavConfigured = isConfigured,
-                    isKeePassWebDavConfigured = isKeePassWebDavConfigured
+                    isWebDavConfigured = isConfigured
                 )
             }
             

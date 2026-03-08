@@ -4,35 +4,30 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import app.keemobile.kotpass.cryptography.EncryptedValue
+import app.keemobile.kotpass.cryptography.format.BaseCiphers
+import app.keemobile.kotpass.cryptography.format.TwofishCipher
 import app.keemobile.kotpass.database.Credentials
 import app.keemobile.kotpass.database.KeePassDatabase
 import app.keemobile.kotpass.database.decode
 import app.keemobile.kotpass.database.encode
+import app.keemobile.kotpass.database.header.KdfParameters
 import app.keemobile.kotpass.database.modifiers.modifyParentGroup
 import app.keemobile.kotpass.models.Entry
 import app.keemobile.kotpass.models.EntryFields
 import app.keemobile.kotpass.models.EntryValue
 import app.keemobile.kotpass.models.Group
 import app.keemobile.kotpass.models.Meta
-import com.thegrizzlylabs.sardineandroid.Sardine
-import com.thegrizzlylabs.sardineandroid.impl.OkHttpSardine
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import okhttp3.Credentials as HttpCredentials
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.data.KeePassStorageLocation
 import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.KeePassCipherAlgorithm
+import takagi.ru.monica.data.KeePassDatabaseCreationOptions
+import takagi.ru.monica.data.KeePassFormatVersion
+import takagi.ru.monica.data.KeePassKdfAlgorithm
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.PasswordEntry
@@ -43,7 +38,9 @@ import takagi.ru.monica.security.SecurityManager
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.FileNotFoundException
 import java.io.FileOutputStream
+import java.io.IOException
 import java.net.URI
 import java.net.URLDecoder
 import java.util.Date
@@ -75,6 +72,11 @@ data class KeePassSecureItemData(
     val isInRecycleBin: Boolean
 )
 
+data class KeePassDatabaseDiagnostics(
+    val entryCount: Int,
+    val creationOptions: KeePassDatabaseCreationOptions
+)
+
 private data class EntryTraversalContext(
     val entry: Entry,
     val groupPath: String?,
@@ -98,21 +100,11 @@ class KeePassKdbxService(
 ) {
     companion object {
         private const val TAG = "KeePassKdbxService"
-        const val WEBDAV_PATH_PREFIX = "webdav://"
         // Keep unknown-source cache short, but keep known internal files effectively "always warm".
         private const val UNKNOWN_SOURCE_CACHE_TTL_MS = 60_000L
-        private const val ASYNC_PERSIST_MAX_RETRY = 2
-        private const val ASYNC_PERSIST_RETRY_DELAY_MS = 250L
         // Disable post-write full decode verification for normal writes to reduce save latency.
         // The database is still encoded by the library and written atomically/with rollback paths.
         private const val ENABLE_POST_WRITE_DECODE_VERIFICATION = false
-        private const val KEEPASS_WEBDAV_PREFS_NAME = "keepass_webdav_config"
-        private const val KEY_KEEPASS_USERNAME = "username"
-        private const val KEY_KEEPASS_PASSWORD = "password"
-        private const val KEY_CONFLICT_PROTECTION_ENABLED = "conflict_protection_enabled"
-        private const val KEY_CONFLICT_PROTECTION_MODE = "conflict_protection_mode"
-        private const val CONFLICT_MODE_AUTO = "auto"
-        private const val CONFLICT_MODE_STRICT = "strict"
         private const val FIELD_MONICA_LOCAL_ID = "MonicaLocalId"
         private const val FIELD_MONICA_ITEM_ID = "MonicaSecureItemId"
         private const val FIELD_MONICA_ITEM_TYPE = "MonicaItemType"
@@ -121,31 +113,10 @@ class KeePassKdbxService(
         private const val FIELD_MONICA_IS_FAVORITE = "MonicaIsFavorite"
         // kotpass decode 在并发下可能触发 native 崩溃，必须跨实例串行化。
         private val globalDecodeMutex = Mutex()
-        // WebDAV 写入需要“读-改-写”原子化，避免同进程并发导致 ETag 冲突。
+        // 写入采用“读-改-写”原子化，避免同进程并发冲突。
         private val globalMutationMutex = Mutex()
-        // Global single-writer queue, shared across all service instances.
-        private val persistScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-        private val persistQueue = Channel<suspend () -> Unit>(Channel.UNLIMITED)
         // 跨实例缓存失效信号：某实例更新数据库绑定后，其他实例的本地缓存应立即失效。
         private val externallyInvalidatedDatabaseIds = mutableSetOf<Long>()
-        @Volatile
-        private var persistWorkerStarted = false
-
-        @Synchronized
-        private fun ensurePersistWorkerStarted() {
-            if (persistWorkerStarted) return
-            persistWorkerStarted = true
-            persistScope.launch {
-                for (task in persistQueue) {
-                    runCatching { task() }
-                        .onFailure { Log.e(TAG, "Async persist task failed", it) }
-                }
-            }
-        }
-
-        fun toWebDavFilePath(remotePath: String): String {
-            return WEBDAV_PATH_PREFIX + remotePath
-        }
 
         suspend fun <T> withGlobalDecodeLock(block: () -> T): T {
             return globalDecodeMutex.withLock { block() }
@@ -160,16 +131,56 @@ class KeePassKdbxService(
         private fun consumeProcessCacheInvalidation(databaseId: Long): Boolean {
             return externallyInvalidatedDatabaseIds.remove(databaseId)
         }
+
+        fun inferCreationOptions(keePassDatabase: KeePassDatabase): KeePassDatabaseCreationOptions {
+            val resolved = when (keePassDatabase) {
+                is KeePassDatabase.Ver3x -> KeePassDatabaseCreationOptions(
+                    formatVersion = KeePassFormatVersion.KDBX3,
+                    cipherAlgorithm = resolveCipherAlgorithm(keePassDatabase.header.cipherId),
+                    kdfAlgorithm = KeePassKdfAlgorithm.AES_KDF,
+                    transformRounds = keePassDatabase.header.transformRounds.toLong(),
+                    memoryBytes = KeePassDatabaseCreationOptions.DEFAULT_ARGON_MEMORY_BYTES,
+                    parallelism = 1
+                )
+                is KeePassDatabase.Ver4x -> {
+                    val kdf = keePassDatabase.header.kdfParameters
+                    when (kdf) {
+                        is KdfParameters.Aes -> KeePassDatabaseCreationOptions(
+                            formatVersion = KeePassFormatVersion.KDBX4,
+                            cipherAlgorithm = resolveCipherAlgorithm(keePassDatabase.header.cipherId),
+                            kdfAlgorithm = KeePassKdfAlgorithm.AES_KDF,
+                            transformRounds = kdf.rounds.toLong(),
+                            memoryBytes = KeePassDatabaseCreationOptions.DEFAULT_ARGON_MEMORY_BYTES,
+                            parallelism = 1
+                        )
+                        is KdfParameters.Argon2 -> KeePassDatabaseCreationOptions(
+                            formatVersion = KeePassFormatVersion.KDBX4,
+                            cipherAlgorithm = resolveCipherAlgorithm(keePassDatabase.header.cipherId),
+                            kdfAlgorithm = if (kdf.variant == KdfParameters.Argon2.Variant.Argon2id) {
+                                KeePassKdfAlgorithm.ARGON2ID
+                            } else {
+                                KeePassKdfAlgorithm.ARGON2D
+                            },
+                            transformRounds = kdf.iterations.toLong(),
+                            memoryBytes = kdf.memory.toLong(),
+                            parallelism = kdf.parallelism.toInt()
+                        )
+                    }
+                }
+            }
+            return resolved.normalized()
+        }
+
+        private fun resolveCipherAlgorithm(cipherId: UUID): KeePassCipherAlgorithm {
+            return when (cipherId) {
+                BaseCiphers.Aes.uuid -> KeePassCipherAlgorithm.AES
+                BaseCiphers.ChaCha20.uuid -> KeePassCipherAlgorithm.CHACHA20
+                TwofishCipher.uuid -> KeePassCipherAlgorithm.TWOFISH
+                else -> KeePassCipherAlgorithm.AES
+            }
+        }
     }
     
-    init {
-        ensurePersistWorkerStarted()
-    }
-
-    private fun ensureWebDavKeepassEnabled(): Nothing {
-        throw UnsupportedOperationException("KeePass WebDAV has been removed")
-    }
-
     private data class LoadedDatabase(
         val database: LocalKeePassDatabase,
         val credentials: Credentials,
@@ -199,30 +210,13 @@ class KeePassKdbxService(
     private data class MutationPlan<T>(
         val updatedDatabase: KeePassDatabase,
         val result: T,
-        val forceOverwriteWebDav: Boolean = false,
         val afterWrite: (suspend (LocalKeePassDatabase, KeePassDatabase) -> Unit)? = null
     )
 
     private data class CredentialsResolution(
-        val primary: Credentials,
-        val legacyEmptyPasswordWithKeyFallback: Credentials? = null
+        val candidates: List<KeePassCredentialCandidate>
     )
 
-    private class WebDavHttpException(
-        val statusCode: Int,
-        message: String
-    ) : Exception(message)
-
-    private enum class ConflictProtectionMode {
-        AUTO,
-        STRICT
-    }
-
-    private val httpClient: OkHttpClient by lazy {
-        OkHttpClient.Builder()
-            .retryOnConnectionFailure(true)
-            .build()
-    }
     private val loadedDatabaseCache = mutableMapOf<Long, CachedLoadedDatabase>()
 
     suspend fun verifyDatabase(
@@ -230,6 +224,50 @@ class KeePassKdbxService(
         passwordOverride: String? = null,
         keyFileUriOverride: Uri? = null
     ): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            val diagnostics = inspectDatabase(
+                databaseId = databaseId,
+                passwordOverride = passwordOverride,
+                keyFileUriOverride = keyFileUriOverride
+            ).getOrElse { throw it }
+            Result.success(diagnostics.entryCount)
+        } catch (e: Exception) {
+            val mapped = normalizeError(e)
+            val code = (mapped as? KeePassOperationException)?.code ?: KeePassErrorCode.IO_READ_WRITE_FAILED
+            Log.e(TAG, "verifyDatabase failed (databaseId=$databaseId, code=$code)", mapped)
+            Result.failure(mapped)
+        }
+    }
+
+    suspend fun verifyExternalDatabase(
+        fileUri: Uri,
+        password: String,
+        keyFileUri: Uri? = null
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            val diagnostics = inspectExternalDatabase(
+                fileUri = fileUri,
+                password = password,
+                keyFileUri = keyFileUri
+            ).getOrElse { throw it }
+            Result.success(diagnostics.entryCount)
+        } catch (e: Exception) {
+            val mapped = normalizeError(e)
+            val code = (mapped as? KeePassOperationException)?.code ?: KeePassErrorCode.IO_READ_WRITE_FAILED
+            Log.e(
+                TAG,
+                "verifyExternalDatabase failed (uri=$fileUri, keyFile=${keyFileUri != null}, code=$code)",
+                mapped
+            )
+            Result.failure(mapped)
+        }
+    }
+
+    suspend fun inspectDatabase(
+        databaseId: Long,
+        passwordOverride: String? = null,
+        keyFileUriOverride: Uri? = null
+    ): Result<KeePassDatabaseDiagnostics> = withContext(Dispatchers.IO) {
         try {
             val database = dao.getDatabaseById(databaseId) ?: throw Exception("数据库不存在")
             val credentials = buildCredentials(
@@ -241,7 +279,8 @@ class KeePassKdbxService(
             val (keePassDatabase, _) = decodeDatabaseWithFallback(
                 bytes = bytes,
                 credentialsResolution = credentials,
-                sourceLabel = "databaseId=$databaseId"
+                sourceLabel = "databaseId=$databaseId",
+                sourceName = database.filePath
             )
             val (entries, hasRecycleBinMeta) = collectEntryContexts(keePassDatabase)
             val count = entries.count { context ->
@@ -252,26 +291,30 @@ class KeePassKdbxService(
                     hasRecycleBinMeta = hasRecycleBinMeta
                 ) != null
             }
-            Result.success(count)
+            Result.success(
+                KeePassDatabaseDiagnostics(
+                    entryCount = count,
+                    creationOptions = inferCreationOptions(keePassDatabase)
+                )
+            )
         } catch (e: Exception) {
-            Log.e(TAG, "verifyDatabase failed (databaseId=$databaseId)", e)
-            Result.failure(e)
+            Result.failure(normalizeError(e))
         }
     }
 
-    suspend fun verifyExternalDatabase(
+    suspend fun inspectExternalDatabase(
         fileUri: Uri,
         password: String,
         keyFileUri: Uri? = null
-    ): Result<Int> = withContext(Dispatchers.IO) {
+    ): Result<KeePassDatabaseDiagnostics> = withContext(Dispatchers.IO) {
         try {
             val credentials = buildCredentialsFromRaw(password = password, keyFileUri = keyFileUri)
-            val bytes = context.contentResolver.openInputStream(fileUri)?.use { it.readBytes() }
-                ?: throw Exception("无法打开数据库文件")
+            val bytes = readBytesFromUri(fileUri, "无法打开数据库文件")
             val (keePassDatabase, _) = decodeDatabaseWithFallback(
                 bytes = bytes,
                 credentialsResolution = credentials,
-                sourceLabel = "uri=$fileUri"
+                sourceLabel = "uri=$fileUri",
+                sourceName = fileUri.lastPathSegment ?: fileUri.toString()
             )
             val (entries, hasRecycleBinMeta) = collectEntryContexts(keePassDatabase)
             val count = entries.count { context ->
@@ -282,14 +325,14 @@ class KeePassKdbxService(
                     hasRecycleBinMeta = hasRecycleBinMeta
                 ) != null
             }
-            Result.success(count)
-        } catch (e: Exception) {
-            Log.e(
-                TAG,
-                "verifyExternalDatabase failed (uri=$fileUri, keyFile=${keyFileUri != null})",
-                e
+            Result.success(
+                KeePassDatabaseDiagnostics(
+                    entryCount = count,
+                    creationOptions = inferCreationOptions(keePassDatabase)
+                )
             )
-            Result.failure(e)
+        } catch (e: Exception) {
+            Result.failure(normalizeError(e))
         }
     }
 
@@ -318,7 +361,7 @@ class KeePassKdbxService(
             }
             Result.success(groupInfo)
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(normalizeError(e))
         }
     }
 
@@ -350,7 +393,7 @@ class KeePassKdbxService(
             }
             Result.success(groupInfo)
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(normalizeError(e))
         }
     }
 
@@ -378,7 +421,7 @@ class KeePassKdbxService(
             }
             Result.success(Unit)
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(normalizeError(e))
         }
     }
 
@@ -397,7 +440,7 @@ class KeePassKdbxService(
             dao.updateEntryCount(database.id, data.size)
             Result.success(data)
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(normalizeError(e))
         }
     }
 
@@ -422,7 +465,7 @@ class KeePassKdbxService(
             }
             Result.success(groups.sortedBy { it.displayPath })
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(normalizeError(e))
         }
     }
 
@@ -464,7 +507,7 @@ class KeePassKdbxService(
             }
             Result.success(addedCount)
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(normalizeError(e))
         }
     }
 
@@ -487,7 +530,7 @@ class KeePassKdbxService(
             }
             Result.success(Unit)
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(normalizeError(e))
         }
     }
 
@@ -514,7 +557,7 @@ class KeePassKdbxService(
             }
             Result.success(Unit)
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(normalizeError(e))
         }
     }
 
@@ -547,7 +590,7 @@ class KeePassKdbxService(
             }
             Result.success(removedCount)
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(normalizeError(e))
         }
     }
 
@@ -615,7 +658,7 @@ class KeePassKdbxService(
             }
             Result.success(movedCount)
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(normalizeError(e))
         }
     }
 
@@ -638,7 +681,7 @@ class KeePassKdbxService(
             }
             Result.success(data)
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(normalizeError(e))
         }
     }
 
@@ -673,7 +716,7 @@ class KeePassKdbxService(
             }
             Result.success(addedCount)
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(normalizeError(e))
         }
     }
 
@@ -699,7 +742,7 @@ class KeePassKdbxService(
             }
             Result.success(Unit)
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(normalizeError(e))
         }
     }
 
@@ -730,7 +773,7 @@ class KeePassKdbxService(
             }
             Result.success(preferredGroupPath)
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(normalizeError(e))
         }
     }
 
@@ -758,7 +801,7 @@ class KeePassKdbxService(
                 )
             )
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(normalizeError(e))
         }
     }
 
@@ -786,7 +829,7 @@ class KeePassKdbxService(
                 )
             )
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(normalizeError(e))
         }
     }
 
@@ -811,7 +854,7 @@ class KeePassKdbxService(
             }
             Result.success(removedCount)
         } catch (e: Exception) {
-            Result.failure(e)
+            Result.failure(normalizeError(e))
         }
     }
 
@@ -874,57 +917,7 @@ class KeePassKdbxService(
             }
             Result.success(movedCount)
         } catch (e: Exception) {
-            Result.failure(e)
-        }
-    }
-
-    suspend fun forceOverwriteWebDavDatabaseFromLocal(
-        databaseId: Long,
-        passwordEntries: List<PasswordEntry>,
-        secureItems: List<SecureItem>,
-        resolvePassword: (PasswordEntry) -> String
-    ): Result<Int> = withContext(Dispatchers.IO) {
-        globalMutationMutex.withLock {
-            try {
-                val database = dao.getDatabaseById(databaseId) ?: throw Exception("数据库不存在")
-                if (!database.filePath.startsWith(WEBDAV_PATH_PREFIX)) {
-                    throw Exception("仅支持 WebDAV 数据库")
-                }
-
-                val credentials = buildCredentials(database).primary
-                val rootName = database.name.ifBlank { "Monica" }
-                var rebuilt: KeePassDatabase = KeePassDatabase.Ver4x.create(
-                    rootName = rootName,
-                    meta = Meta(generator = "Monica Password Manager", name = rootName),
-                    credentials = credentials
-                )
-                var rootGroup = rebuilt.content.group
-
-                passwordEntries.forEach { entry ->
-                    val plainPassword = resolvePassword(entry)
-                    val newEntry = buildEntry(entry, plainPassword)
-                    rootGroup = addEntryToGroupPath(rootGroup, entry.keepassGroupPath, newEntry)
-                }
-
-                secureItems.forEach { item ->
-                    val newEntry = buildSecureItemEntry(item)
-                    rootGroup = addEntryToGroupPath(rootGroup, item.keepassGroupPath, newEntry)
-                }
-
-                rebuilt = rebuilt.modifyParentGroup { rootGroup }
-                writeDatabase(
-                    database = database,
-                    credentials = credentials,
-                    keePassDatabase = rebuilt,
-                    sourceEtag = null,
-                    forceOverwriteWebDav = true
-                )
-                val total = passwordEntries.size + secureItems.size
-                dao.updateEntryCount(database.id, total)
-                Result.success(total)
-            } catch (e: Exception) {
-                Result.failure(e)
-            }
+            Result.failure(normalizeError(e))
         }
     }
 
@@ -1908,58 +1901,28 @@ class KeePassKdbxService(
 
     private suspend fun <T> mutateDatabase(
         databaseId: Long,
-        retryOnConflict: Boolean = true,
         forceSyncWrite: Boolean = false,
         mutation: (LoadedDatabase) -> MutationPlan<T>
     ): T {
-        // Legacy non-DX mode has been retired. KeePass mutations always use DX-like commit path.
-        val enableAsyncMutationCommit = true
         return globalMutationMutex.withLock {
-            if (enableAsyncMutationCommit) {
+            try {
+                if (forceSyncWrite) {
+                    invalidateLoadedDatabaseCache(databaseId)
+                }
                 val loaded = getCachedLoadedDatabase(databaseId) ?: loadDatabase(databaseId)
                 val plan = mutation(loaded)
-                val latestLoaded = LoadedDatabase(
+                writeDatabase(
                     database = loaded.database,
                     credentials = loaded.credentials,
                     keePassDatabase = plan.updatedDatabase,
                     sourceEtag = loaded.sourceEtag,
-                    sourceLastModified = loaded.sourceLastModified,
-                    sourceSignature = loaded.sourceSignature
+                    sourceLastModified = loaded.sourceLastModified
                 )
-                cacheLoadedDatabase(latestLoaded)
                 plan.afterWrite?.invoke(loaded.database, plan.updatedDatabase)
-                enqueueAsyncPersist(latestLoaded, plan.forceOverwriteWebDav)
                 return@withLock plan.result
-            } else {
-                var lastConflict: Exception? = null
-                val attempts = if (retryOnConflict) 2 else 1
-                repeat(attempts) { attempt ->
-                    try {
-                        val loaded = getCachedLoadedDatabase(databaseId) ?: loadDatabase(databaseId)
-                        val plan = mutation(loaded)
-                        writeDatabase(
-                            database = loaded.database,
-                            credentials = loaded.credentials,
-                            keePassDatabase = plan.updatedDatabase,
-                            sourceEtag = loaded.sourceEtag,
-                            sourceLastModified = loaded.sourceLastModified,
-                            forceOverwriteWebDav = plan.forceOverwriteWebDav
-                        )
-                        plan.afterWrite?.invoke(loaded.database, plan.updatedDatabase)
-                        return@withLock plan.result
-                    } catch (e: Exception) {
-                        val shouldRetry = retryOnConflict &&
-                            attempt == 0 &&
-                            isWebDavConflictError(e)
-                        if (shouldRetry) {
-                            lastConflict = e
-                        } else {
-                            invalidateLoadedDatabaseCache(databaseId)
-                            throw e
-                        }
-                    }
-                }
-                throw (lastConflict ?: Exception("KeePass 写入失败"))
+            } catch (e: Exception) {
+                invalidateLoadedDatabaseCache(databaseId)
+                throw e
             }
         }
     }
@@ -1972,7 +1935,8 @@ class KeePassKdbxService(
         val (keePassDatabase, resolvedCredentials) = decodeDatabaseWithFallback(
             bytes = snapshot.bytes,
             credentialsResolution = credentials,
-            sourceLabel = "databaseId=$databaseId"
+            sourceLabel = "databaseId=$databaseId",
+            sourceName = database.filePath
         )
         val loaded = LoadedDatabase(
             database = database,
@@ -1989,20 +1953,27 @@ class KeePassKdbxService(
     private suspend fun decodeDatabase(
         bytes: ByteArray,
         credentials: Credentials,
+        sourceName: String? = null,
         logFailure: Boolean = true
     ): KeePassDatabase {
         return withGlobalDecodeLock {
             try {
-                KeePassDatabase.decode(ByteArrayInputStream(bytes), credentials)
+                KeePassFormatInspector.ensureKdbxSupported(bytes = bytes, sourceName = sourceName)
+                KeePassDatabase.decode(
+                    ByteArrayInputStream(bytes),
+                    credentials,
+                    cipherProviders = KeePassCodecSupport.cipherProviders
+                )
             } catch (t: Throwable) {
+                val mapped = normalizeError(t)
                 if (logFailure) {
                     Log.e(
                         TAG,
-                        "KDBX decode failed. ${databaseHeaderSummary(bytes)}",
-                        t
+                        "KDBX decode failed code=${(mapped as? KeePassOperationException)?.code ?: KeePassErrorCode.IO_READ_WRITE_FAILED}. ${databaseHeaderSummary(bytes)}",
+                        mapped
                     )
                 }
-                throw t
+                throw mapped
             }
         }
     }
@@ -2010,32 +1981,59 @@ class KeePassKdbxService(
     private suspend fun decodeDatabaseWithFallback(
         bytes: ByteArray,
         credentialsResolution: CredentialsResolution,
-        sourceLabel: String
+        sourceLabel: String,
+        sourceName: String? = null
     ): Pair<KeePassDatabase, Credentials> {
-        val fallback = credentialsResolution.legacyEmptyPasswordWithKeyFallback
-        if (fallback == null) {
-            return decodeDatabase(bytes, credentialsResolution.primary) to credentialsResolution.primary
+        val candidates = credentialsResolution.candidates
+        if (candidates.isEmpty()) {
+            throw IllegalStateException("无可用凭据")
         }
 
-        return try {
-            decodeDatabase(
-                bytes = bytes,
-                credentials = credentialsResolution.primary,
-                logFailure = false
-            ) to credentialsResolution.primary
-        } catch (primaryError: Throwable) {
+        var lastError: Throwable? = null
+        val attemptedLabels = mutableListOf<String>()
+        candidates.forEachIndexed { index, candidate ->
+            val isLast = index == candidates.lastIndex
+            attemptedLabels += candidate.label
             try {
-                val database = decodeDatabase(bytes, fallback)
-                Log.w(
-                    TAG,
-                    "KDBX decoded using legacy empty-password+keyfile fallback ($sourceLabel)"
+                val database = decodeDatabase(
+                    bytes = bytes,
+                    credentials = candidate.credentials,
+                    sourceName = sourceName,
+                    logFailure = isLast
                 )
-                database to fallback
-            } catch (fallbackError: Throwable) {
-                fallbackError.addSuppressed(primaryError)
-                throw fallbackError
+                if (index > 0) {
+                    Log.w(
+                        TAG,
+                        "KDBX decoded using credential fallback ($sourceLabel, candidate=${candidate.label})"
+                    )
+                }
+                return database to candidate.credentials
+            } catch (error: Throwable) {
+                val mapped = normalizeError(error)
+                lastError = mapped
+                val isInvalidCredential =
+                    mapped is KeePassOperationException &&
+                        mapped.code == KeePassErrorCode.INVALID_CREDENTIAL
+                if (!isInvalidCredential || isLast) {
+                    throw mapped
+                }
             }
         }
+
+        val allInvalidCredential = lastError is KeePassOperationException &&
+            (lastError as KeePassOperationException).code == KeePassErrorCode.INVALID_CREDENTIAL
+        if (allInvalidCredential) {
+            throw KeePassOperationException(
+                code = KeePassErrorCode.INVALID_CREDENTIAL,
+                message = KeePassCredentialSupport.buildInvalidCredentialMessage(attemptedLabels),
+                cause = lastError
+            )
+        }
+
+        throw (lastError ?: KeePassOperationException(
+            code = KeePassErrorCode.IO_READ_WRITE_FAILED,
+            message = "KDBX 解码失败"
+        ))
     }
 
     private fun databaseHeaderSummary(bytes: ByteArray): String {
@@ -2072,33 +2070,24 @@ class KeePassKdbxService(
     }
 
     private fun readKeyFileBytes(uri: Uri): ByteArray {
-        return context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-            ?: throw Exception("无法读取密钥文件")
+        return readBytesFromUri(uri, "无法读取密钥文件")
+    }
+
+    private fun readBytesFromUri(uri: Uri, missingMessage: String): ByteArray {
+        return try {
+            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                ?: throw FileNotFoundException(missingMessage)
+        } catch (t: Throwable) {
+            throw normalizeError(t)
+        }
     }
 
     private fun resolveCredentials(password: String, keyFileBytes: ByteArray?): CredentialsResolution {
-        if (keyFileBytes == null) {
-            return CredentialsResolution(
-                primary = Credentials.from(EncryptedValue.fromString(password))
-            )
-        }
-
-        return if (password.isBlank()) {
-            CredentialsResolution(
-                primary = Credentials.from(keyFileBytes),
-                legacyEmptyPasswordWithKeyFallback = Credentials.from(
-                    EncryptedValue.fromString(""),
-                    keyFileBytes
-                )
-            )
-        } else {
-            CredentialsResolution(
-                primary = Credentials.from(
-                    EncryptedValue.fromString(password),
-                    keyFileBytes
-                )
-            )
-        }
+        val candidates = KeePassCredentialSupport.buildCredentialCandidates(
+            password = password,
+            keyFileBytes = keyFileBytes
+        )
+        return CredentialsResolution(candidates = candidates)
     }
 
     private fun readDatabaseBytes(database: LocalKeePassDatabase): ByteArray {
@@ -2106,22 +2095,27 @@ class KeePassKdbxService(
     }
 
     private fun readDatabaseSnapshot(database: LocalKeePassDatabase): DatabaseSnapshot {
-        if (database.filePath.startsWith(WEBDAV_PATH_PREFIX)) {
-            ensureWebDavKeepassEnabled()
-        }
-        return if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
-            val file = File(context.filesDir, database.filePath)
-            if (!file.exists()) throw Exception("数据库文件不存在")
-            val signature = DatabaseSourceSignature(
-                sizeBytes = file.length(),
-                lastModifiedEpochMs = file.lastModified()
-            )
-            DatabaseSnapshot(bytes = file.readBytes(), etag = null, lastModified = null, signature = signature)
-        } else {
-            val uri = Uri.parse(database.filePath)
-            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                ?.let { DatabaseSnapshot(bytes = it, etag = null, lastModified = null, signature = null) }
-                ?: throw Exception("无法打开数据库文件")
+        return try {
+            if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
+                val file = File(context.filesDir, database.filePath)
+                if (!file.exists()) throw FileNotFoundException("数据库文件不存在")
+                val signature = DatabaseSourceSignature(
+                    sizeBytes = file.length(),
+                    lastModifiedEpochMs = file.lastModified()
+                )
+                DatabaseSnapshot(
+                    bytes = file.readBytes(),
+                    etag = null,
+                    lastModified = null,
+                    signature = signature
+                )
+            } else {
+                val uri = Uri.parse(database.filePath)
+                val bytes = readBytesFromUri(uri, "无法打开数据库文件")
+                DatabaseSnapshot(bytes = bytes, etag = null, lastModified = null, signature = null)
+            }
+        } catch (t: Throwable) {
+            throw normalizeError(t)
         }
     }
 
@@ -2130,16 +2124,13 @@ class KeePassKdbxService(
         credentials: Credentials,
         keePassDatabase: KeePassDatabase,
         sourceEtag: String? = null,
-        sourceLastModified: String? = null,
-        forceOverwriteWebDav: Boolean = false
+        sourceLastModified: String? = null
     ) {
         val bytes = encodeDatabase(keePassDatabase)
         if (ENABLE_POST_WRITE_DECODE_VERIFICATION) {
             decodeDatabase(bytes, credentials)
         }
-        if (database.filePath.startsWith(WEBDAV_PATH_PREFIX)) {
-            ensureWebDavKeepassEnabled()
-        } else if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
+        if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
             writeInternal(database, bytes)
         } else {
             writeExternal(database, bytes)
@@ -2196,7 +2187,6 @@ class KeePassKdbxService(
     }
 
     private fun currentSourceSignature(database: LocalKeePassDatabase): DatabaseSourceSignature? {
-        if (database.filePath.startsWith(WEBDAV_PATH_PREFIX)) return null
         if (database.storageLocation != KeePassStorageLocation.INTERNAL) return null
         val file = File(context.filesDir, database.filePath)
         if (!file.exists()) return null
@@ -2221,239 +2211,68 @@ class KeePassKdbxService(
         }
     }
 
-    private suspend fun enqueueAsyncPersist(
-        loaded: LoadedDatabase,
-        forceOverwriteWebDav: Boolean
-    ) {
-        val db = loaded.database
-        val credentials = loaded.credentials
-        val updated = loaded.keePassDatabase
-        val etag = loaded.sourceEtag
-        val lastModified = loaded.sourceLastModified
-        persistQueue.send {
-            var attempts = 0
-            var lastError: Exception? = null
-            while (attempts < ASYNC_PERSIST_MAX_RETRY) {
-                attempts++
-                try {
-                    writeDatabase(
-                        database = db,
-                        credentials = credentials,
-                        keePassDatabase = updated,
-                        sourceEtag = etag,
-                        sourceLastModified = lastModified,
-                        forceOverwriteWebDav = forceOverwriteWebDav
-                    )
-                    return@send
-                } catch (e: Exception) {
-                    lastError = e
-                    if (attempts < ASYNC_PERSIST_MAX_RETRY) {
-                        delay(ASYNC_PERSIST_RETRY_DELAY_MS)
-                    }
-                }
-            }
-            Log.e(TAG, "Async persist failed for databaseId=${db.id}", lastError)
-        }
-    }
-
     private fun encodeDatabase(keePassDatabase: KeePassDatabase): ByteArray {
         return ByteArrayOutputStream().use { output ->
-            keePassDatabase.encode(output)
+            keePassDatabase.encode(output, cipherProviders = KeePassCodecSupport.cipherProviders)
             output.toByteArray()
         }
     }
 
     private fun writeInternal(database: LocalKeePassDatabase, bytes: ByteArray) {
-        val file = File(context.filesDir, database.filePath)
-        val parent = file.parentFile ?: throw Exception("无效的文件路径")
-        if (!parent.exists()) parent.mkdirs()
-        val tempFile = File(parent, "${file.name}.tmp")
-        val backupFile = File(parent, "${file.name}.bak")
-        FileOutputStream(tempFile).use { it.write(bytes) }
-        if (file.exists()) {
-            if (backupFile.exists()) backupFile.delete()
-            if (!file.renameTo(backupFile)) {
-                backupFile.delete()
+        try {
+            val file = File(context.filesDir, database.filePath)
+            val parent = file.parentFile ?: throw IOException("无效的文件路径")
+            if (!parent.exists()) parent.mkdirs()
+            val tempFile = File(parent, "${file.name}.tmp")
+            val backupFile = File(parent, "${file.name}.bak")
+            FileOutputStream(tempFile).use { it.write(bytes) }
+            if (file.exists()) {
+                if (backupFile.exists()) backupFile.delete()
+                if (!file.renameTo(backupFile)) {
+                    backupFile.delete()
+                }
             }
+            val renamed = tempFile.renameTo(file)
+            if (!renamed) {
+                file.writeBytes(bytes)
+                tempFile.delete()
+            }
+            if (backupFile.exists()) backupFile.delete()
+        } catch (t: Throwable) {
+            throw normalizeError(t)
         }
-        val renamed = tempFile.renameTo(file)
-        if (!renamed) {
-            file.writeBytes(bytes)
-            tempFile.delete()
-        }
-        if (backupFile.exists()) backupFile.delete()
     }
 
     private fun writeExternal(database: LocalKeePassDatabase, bytes: ByteArray) {
         val uri = Uri.parse(database.filePath)
         val originalBytes = runCatching { readDatabaseBytes(database) }.getOrNull()
         try {
-            context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) }
-                ?: throw Exception("无法写入数据库文件")
+            openExternalOutputStream(uri)?.use { it.write(bytes) }
+                ?: throw IOException("无法写入数据库文件")
         } catch (e: Exception) {
             if (originalBytes != null) {
                 runCatching {
-                    context.contentResolver.openOutputStream(uri, "wt")?.use { it.write(originalBytes) }
+                    openExternalOutputStream(uri)?.use { it.write(originalBytes) }
                 }
             }
-            throw e
+            throw normalizeError(e)
         }
     }
 
-    private fun readWebDavSnapshot(remotePath: String): DatabaseSnapshot {
-        val (username, password) = loadWebDavCredentials()
-        val request = Request.Builder()
-            .url(remotePath)
-            .get()
-            .header("Authorization", HttpCredentials.basic(username, password))
-            .build()
-        httpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                throw Exception("WebDAV 读取失败: HTTP ${response.code}")
-            }
-            val data = response.body?.bytes() ?: throw Exception("WebDAV 返回空内容")
-            val etag = response.header("ETag")
-            val lastModified = response.header("Last-Modified")
-            return DatabaseSnapshot(bytes = data, etag = etag, lastModified = lastModified, signature = null)
-        }
-    }
-
-    private fun writeWebDav(
-        remotePath: String,
-        bytes: ByteArray,
-        expectedEtag: String?,
-        expectedLastModified: String?,
-        forceOverwrite: Boolean = false
-    ) {
-        val sardine = buildWebDavClient()
-        val parentPath = remotePath.substringBeforeLast('/', "")
-        if (parentPath.isNotBlank()) {
-            runCatching {
-                if (!sardine.exists(parentPath)) {
-                    sardine.createDirectory(parentPath)
-                }
-            }
-        }
-        if (forceOverwrite) {
-            sardine.put(remotePath, bytes, "application/octet-stream")
-            return
+    private fun openExternalOutputStream(uri: Uri) =
+        try {
+            context.contentResolver.openOutputStream(uri, "wt")
+        } catch (e: FileNotFoundException) {
+            Log.w(TAG, "openOutputStream wt failed, retry with rwt: $uri", e)
+            context.contentResolver.openOutputStream(uri, "rwt")
         }
 
-        val conflictMode = getConflictProtectionMode()
-        if (!expectedEtag.isNullOrBlank()) {
-            putWithConditionalHeaders(
-                remotePath = remotePath,
-                bytes = bytes,
-                ifMatch = expectedEtag,
-                ifUnmodifiedSince = null
-            )
-            return
+    private fun normalizeError(throwable: Throwable): Throwable {
+        if (throwable is KeePassOperationException || throwable is IllegalArgumentException) {
+            return throwable
         }
-
-        if (conflictMode == ConflictProtectionMode.STRICT) {
-            throw Exception("服务器未返回 ETag，严格模式下已阻止写入。可切换为自动模式后重试")
-        }
-
-        // AUTO 模式：ETag 缺失时尽力使用 Last-Modified 保护，失败则降级为直接写入。
-        if (!expectedLastModified.isNullOrBlank()) {
-            runCatching {
-                putWithConditionalHeaders(
-                    remotePath = remotePath,
-                    bytes = bytes,
-                    ifMatch = null,
-                    ifUnmodifiedSince = expectedLastModified
-                )
-            }.onSuccess {
-                return
-            }.onFailure { error ->
-                if (isWebDavConflictError(error)) throw error
-                val httpStatus = (error as? WebDavHttpException)?.statusCode
-                // 仅在服务器明确不支持条件头时才降级到直接写入。
-                val serverDoesNotSupportHeader = httpStatus == 400 || httpStatus == 405 || httpStatus == 501
-                if (!serverDoesNotSupportHeader) throw error
-            }
-        }
-
-        sardine.put(remotePath, bytes, "application/octet-stream")
-    }
-
-    private fun putWithConditionalHeaders(
-        remotePath: String,
-        bytes: ByteArray,
-        ifMatch: String?,
-        ifUnmodifiedSince: String?
-    ) {
-        val (username, password) = loadWebDavCredentials()
-        val request = Request.Builder()
-            .url(remotePath)
-            .put(bytes.toRequestBody("application/octet-stream".toMediaType()))
-            .header("Authorization", HttpCredentials.basic(username, password))
-            .apply {
-                if (!ifMatch.isNullOrBlank()) {
-                    header("If-Match", ifMatch)
-                }
-                if (!ifUnmodifiedSince.isNullOrBlank()) {
-                    header("If-Unmodified-Since", ifUnmodifiedSince)
-                }
-            }
-            .build()
-        httpClient.newCall(request).execute().use { response ->
-            when {
-                response.code == 412 || response.code == 428 -> {
-                    throw Exception("远端数据库已变化，已阻止覆盖。请先刷新后重试")
-                }
-                !response.isSuccessful -> {
-                    throw WebDavHttpException(
-                        statusCode = response.code,
-                        message = "WebDAV 写入失败: HTTP ${response.code}"
-                    )
-                }
-                else -> Unit
-            }
-        }
-    }
-
-    private fun buildWebDavClient(): Sardine {
-        val (username, password) = loadWebDavCredentials()
-        return OkHttpSardine().apply {
-            setCredentials(username, password)
-        }
-    }
-
-    private fun loadWebDavCredentials(): Pair<String, String> {
-        val prefs = context.getSharedPreferences(KEEPASS_WEBDAV_PREFS_NAME, Context.MODE_PRIVATE)
-        val username = prefs.getString(KEY_KEEPASS_USERNAME, "") ?: ""
-        val password = prefs.getString(KEY_KEEPASS_PASSWORD, "") ?: ""
-        if (username.isBlank() || password.isBlank()) {
-            throw Exception("WebDAV 未配置或凭证已失效")
-        }
-        return username to password
-    }
-
-    private fun getConflictProtectionMode(): ConflictProtectionMode {
-        val prefs = context.getSharedPreferences(KEEPASS_WEBDAV_PREFS_NAME, Context.MODE_PRIVATE)
-        val rawMode = prefs.getString(KEY_CONFLICT_PROTECTION_MODE, null)?.lowercase(Locale.ROOT)
-        if (!rawMode.isNullOrBlank()) {
-            return if (rawMode == CONFLICT_MODE_STRICT) {
-                ConflictProtectionMode.STRICT
-            } else {
-                ConflictProtectionMode.AUTO
-            }
-        }
-        // Legacy boolean preference is ignored as default source.
-        // Without an explicit mode selection, AUTO provides better
-        // compatibility across WebDAV servers (closer to KeePassDX behavior).
-        return ConflictProtectionMode.AUTO
-    }
-
-    private fun isWebDavConflictError(error: Throwable): Boolean {
-        val message = error.message.orEmpty()
-        return message.contains("412") ||
-            message.contains("428") ||
-            message.contains("If-Match", ignoreCase = true) ||
-            message.contains("If-Unmodified-Since", ignoreCase = true) ||
-            message.contains("远端数据库已变化") ||
-            message.contains("已阻止覆盖")
+        return throwable.toKeePassOperationException()
     }
 }
+
 

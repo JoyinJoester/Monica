@@ -28,7 +28,7 @@ import takagi.ru.monica.data.bitwarden.*
         BitwardenConflictBackup::class,
         BitwardenPendingOperation::class
     ],
-    version = 45,
+    version = 46,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -1202,6 +1202,39 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Migration 45 -> 46:
+         * 为 local_keepass_databases 增加 KDBX 配置字段（版本/算法/KDF 参数）。
+         */
+        private val MIGRATION_45_46 = object : androidx.room.migration.Migration(45, 46) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 45→46: keepass kdbx config columns")
+                    database.execSQL(
+                        "ALTER TABLE local_keepass_databases ADD COLUMN kdbx_major_version INTEGER NOT NULL DEFAULT 4"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE local_keepass_databases ADD COLUMN cipher_algorithm TEXT NOT NULL DEFAULT 'AES'"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE local_keepass_databases ADD COLUMN kdf_algorithm TEXT NOT NULL DEFAULT 'ARGON2D'"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE local_keepass_databases ADD COLUMN kdf_transform_rounds INTEGER NOT NULL DEFAULT 8"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE local_keepass_databases ADD COLUMN kdf_memory_bytes INTEGER NOT NULL DEFAULT 33554432"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE local_keepass_databases ADD COLUMN kdf_parallelism INTEGER NOT NULL DEFAULT 2"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 45→46 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 45→46 failed: ${e.message}")
+                }
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -1253,7 +1286,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_41_42,  // Passkey 文件夹/分组字段
                         MIGRATION_42_43,  // 清理 legacy KeePass WebDAV 残余
                         MIGRATION_43_44,  // Bitwarden 多库去重与唯一约束
-                        MIGRATION_44_45   // 密码归档同步元信息
+                        MIGRATION_44_45,  // 密码归档同步元信息
+                        MIGRATION_45_46   // KeePass KDBX 配置字段
                     )
                     .build()
                 INSTANCE = instance

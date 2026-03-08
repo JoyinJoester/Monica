@@ -11,6 +11,61 @@ enum class KeePassStorageLocation {
     EXTERNAL   // 外部存储（用户选择的位置）
 }
 
+enum class KeePassFormatVersion(val majorVersion: Int) {
+    KDBX3(3),
+    KDBX4(4)
+}
+
+enum class KeePassCipherAlgorithm {
+    AES,
+    CHACHA20,
+    TWOFISH
+}
+
+enum class KeePassKdfAlgorithm {
+    AES_KDF,
+    ARGON2D,
+    ARGON2ID
+}
+
+data class KeePassDatabaseCreationOptions(
+    val formatVersion: KeePassFormatVersion = KeePassFormatVersion.KDBX4,
+    val cipherAlgorithm: KeePassCipherAlgorithm = KeePassCipherAlgorithm.AES,
+    val kdfAlgorithm: KeePassKdfAlgorithm = KeePassKdfAlgorithm.ARGON2D,
+    val transformRounds: Long = 8L,
+    val memoryBytes: Long = DEFAULT_ARGON_MEMORY_BYTES,
+    val parallelism: Int = 2
+) {
+    fun normalized(): KeePassDatabaseCreationOptions {
+        val normalizedVersion = formatVersion
+        val normalizedCipher = when (normalizedVersion) {
+            KeePassFormatVersion.KDBX3 -> when (cipherAlgorithm) {
+                KeePassCipherAlgorithm.CHACHA20 -> KeePassCipherAlgorithm.AES
+                else -> cipherAlgorithm
+            }
+            KeePassFormatVersion.KDBX4 -> cipherAlgorithm
+        }
+        val normalizedKdf = when (normalizedVersion) {
+            KeePassFormatVersion.KDBX3 -> KeePassKdfAlgorithm.AES_KDF
+            KeePassFormatVersion.KDBX4 -> kdfAlgorithm
+        }
+        return copy(
+            formatVersion = normalizedVersion,
+            cipherAlgorithm = normalizedCipher,
+            kdfAlgorithm = normalizedKdf,
+            transformRounds = transformRounds.coerceAtLeast(1L),
+            memoryBytes = memoryBytes.coerceIn(MIN_MEMORY_BYTES, MAX_MEMORY_BYTES),
+            parallelism = parallelism.coerceIn(1, 32)
+        )
+    }
+
+    companion object {
+        const val DEFAULT_ARGON_MEMORY_BYTES = 32L * 1024L * 1024L
+        const val MIN_MEMORY_BYTES = 1L * 1024L * 1024L
+        const val MAX_MEMORY_BYTES = 1024L * 1024L * 1024L
+    }
+}
+
 /**
  * 本地 KeePass 数据库信息
  */
@@ -64,9 +119,51 @@ data class LocalKeePassDatabase(
     
     /** 排序顺序 */
     @ColumnInfo(name = "sort_order")
-    val sortOrder: Int = 0
-) {
-    fun isWebDavDatabase(): Boolean = filePath.startsWith("webdav://")
+    val sortOrder: Int = 0,
+
+    /** KDBX 主版本（3 或 4） */
+    @ColumnInfo(name = "kdbx_major_version")
+    val kdbxMajorVersion: Int = KeePassFormatVersion.KDBX4.majorVersion,
+
+    /** 外层加密算法 */
+    @ColumnInfo(name = "cipher_algorithm")
+    val cipherAlgorithm: String = KeePassCipherAlgorithm.AES.name,
+
+    /** 密钥派生函数 */
+    @ColumnInfo(name = "kdf_algorithm")
+    val kdfAlgorithm: String = KeePassKdfAlgorithm.ARGON2D.name,
+
+    /** 转换次数（Argon2 Iterations 或 AES-KDF Rounds） */
+    @ColumnInfo(name = "kdf_transform_rounds")
+    val kdfTransformRounds: Long = 8L,
+
+    /** KDF 内存占用（字节） */
+    @ColumnInfo(name = "kdf_memory_bytes")
+    val kdfMemoryBytes: Long = KeePassDatabaseCreationOptions.DEFAULT_ARGON_MEMORY_BYTES,
+
+    /** KDF 并行度 */
+    @ColumnInfo(name = "kdf_parallelism")
+    val kdfParallelism: Int = 2
+)
+
+fun LocalKeePassDatabase.toCreationOptions(): KeePassDatabaseCreationOptions {
+    val parsedVersion = KeePassFormatVersion
+        .entries
+        .firstOrNull { it.majorVersion == kdbxMajorVersion }
+        ?: KeePassFormatVersion.KDBX4
+    val parsedCipher = runCatching { KeePassCipherAlgorithm.valueOf(cipherAlgorithm) }
+        .getOrDefault(KeePassCipherAlgorithm.AES)
+    val parsedKdf = runCatching { KeePassKdfAlgorithm.valueOf(kdfAlgorithm) }
+        .getOrDefault(KeePassKdfAlgorithm.ARGON2D)
+
+    return KeePassDatabaseCreationOptions(
+        formatVersion = parsedVersion,
+        cipherAlgorithm = parsedCipher,
+        kdfAlgorithm = parsedKdf,
+        transformRounds = kdfTransformRounds,
+        memoryBytes = kdfMemoryBytes,
+        parallelism = kdfParallelism
+    ).normalized()
 }
 
 /**

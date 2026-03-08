@@ -633,16 +633,54 @@ class PasswordViewModel(
         return current
     }
 
-    private fun syncKeePassDatabase(databaseId: Long) {
+    private fun syncKeePassDatabase(databaseId: Long, forceRefresh: Boolean = false) {
         val service = keepassService ?: return
         viewModelScope.launch {
             runCatching {
+                if (forceRefresh) {
+                    KeePassKdbxService.invalidateProcessCache(databaseId)
+                }
                 val result = service.readPasswordEntries(databaseId)
                 val data = result.getOrNull() ?: return@launch
                 upsertKeePassEntries(databaseId, data)
                 syncKeePassTotpEntries(databaseId)
             }.onFailure { error ->
                 Log.w("PasswordViewModel", "KeePass sync failed for databaseId=$databaseId", error)
+            }
+        }
+    }
+
+    fun refreshKeePassFromSourceForCurrentContext() {
+        val service = keepassService ?: return
+        val current = _categoryFilter.value
+        val activeDatabaseId = when (current) {
+            is CategoryFilter.KeePassDatabase -> current.databaseId
+            is CategoryFilter.KeePassGroupFilter -> current.databaseId
+            is CategoryFilter.KeePassDatabaseStarred -> current.databaseId
+            is CategoryFilter.KeePassDatabaseUncategorized -> current.databaseId
+            else -> null
+        }
+        if (activeDatabaseId != null) {
+            syncKeePassDatabase(activeDatabaseId, forceRefresh = true)
+            return
+        }
+
+        val dao = localKeePassDatabaseDao ?: return
+        viewModelScope.launch {
+            val databaseIds = runCatching { dao.getAllDatabasesSync().map { it.id } }.getOrDefault(emptyList())
+            databaseIds.forEach { databaseId ->
+                KeePassKdbxService.invalidateProcessCache(databaseId)
+                runCatching {
+                    val data = service.readPasswordEntries(databaseId).getOrNull() ?: return@forEach
+                    upsertKeePassEntries(databaseId, data)
+                    syncKeePassTotpEntries(databaseId)
+                }.onFailure { error ->
+                    Log.w(
+                        "PasswordViewModel",
+                        "Foreground KeePass refresh failed for databaseId=$databaseId",
+                        error
+                    )
+                }
             }
         }
     }
@@ -890,12 +928,7 @@ class PasswordViewModel(
         } ?: return filter
 
         val dao = localKeePassDatabaseDao ?: return CategoryFilter.All
-        val database = dao.getDatabaseById(keepassDatabaseId) ?: return CategoryFilter.All
-        return if (database.isWebDavDatabase()) {
-            CategoryFilter.All
-        } else {
-            filter
-        }
+        return if (dao.getDatabaseById(keepassDatabaseId) == null) CategoryFilter.All else filter
     }
 
     private fun observeInvalidCustomCategoryFilter() {

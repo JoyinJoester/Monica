@@ -206,16 +206,9 @@ fun UnifiedCategoryFilterBottomSheet(
         }
     }
     LaunchedEffect(keepassDatabases) {
-        val preferredId = keepassDatabases.firstOrNull { !it.isWebDavDatabase() }?.id
-            ?: keepassDatabases.firstOrNull()?.id
+        val preferredId = keepassDatabases.firstOrNull()?.id
         val isCurrentValid = keepassDatabases.any { it.id == selectedCreateKeePassDbId }
         if (!isCurrentValid) {
-            selectedCreateKeePassDbId = preferredId
-        } else if (
-            selectedCreateKeePassDbId != null &&
-            keepassDatabases.firstOrNull { it.id == selectedCreateKeePassDbId }?.isWebDavDatabase() == true &&
-            preferredId != null
-        ) {
             selectedCreateKeePassDbId = preferredId
         }
     }
@@ -252,12 +245,12 @@ fun UnifiedCategoryFilterBottomSheet(
 
     val canCreateLocal = onCreateCategoryWithName != null || onCreateCategory != null
     val canCreateBitwarden = onCreateBitwardenFolder != null && bitwardenVaults.isNotEmpty()
-    val canCreateKeePass = onCreateKeePassGroup != null && keepassDatabases.any { !it.isWebDavDatabase() }
-    val localKeePassDatabases = keepassDatabases.filterNot { it.isWebDavDatabase() }
+    val canCreateKeePass = onCreateKeePassGroup != null && keepassDatabases.isNotEmpty()
+    val localKeePassDatabases = keepassDatabases
     val localCategoryNodes = remember(categories) { buildLocalCategoryNodes(categories) }
 
     @Composable
-    fun KeePassDatabaseItems(databases: List<LocalKeePassDatabase>, forceWebDavBadge: Boolean) {
+    fun KeePassDatabaseItems(databases: List<LocalKeePassDatabase>) {
         databases.forEach { database ->
             val expanded = keepassExpanded[database.id] ?: false
             val groups by (
@@ -288,10 +281,10 @@ fun UnifiedCategoryFilterBottomSheet(
                     onClick = { onSelect(UnifiedCategoryFilterSelection.KeePassDatabaseFilter(database.id)) },
                     badge = {
                         Text(
-                            text = when {
-                                forceWebDavBadge || database.isWebDavDatabase() -> stringResource(R.string.keepass_webdav_database_badge)
-                                database.storageLocation == KeePassStorageLocation.EXTERNAL -> stringResource(R.string.external_storage)
-                                else -> stringResource(R.string.internal_storage)
+                            text = if (database.storageLocation == KeePassStorageLocation.EXTERNAL) {
+                                stringResource(R.string.external_storage)
+                            } else {
+                                stringResource(R.string.internal_storage)
                             },
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -779,7 +772,7 @@ fun UnifiedCategoryFilterBottomSheet(
                 if (localKeePassDatabases.isNotEmpty()) {
                     item {
                         StorageSectionCard(title = stringResource(R.string.local_keepass_database)) {
-                            KeePassDatabaseItems(localKeePassDatabases, forceWebDavBadge = false)
+                            KeePassDatabaseItems(localKeePassDatabases)
                         }
                     }
                 }

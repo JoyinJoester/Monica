@@ -107,7 +107,7 @@ fun UnifiedMoveToCategoryBottomSheet(
         dampingRatio = Spring.DampingRatioNoBouncy,
         stiffness = Spring.StiffnessMediumLow
     )
-    val localKeePassDatabases = keepassDatabases.filterNot { it.isWebDavDatabase() }
+    val localKeePassDatabases = keepassDatabases
     val monicaCategoryNodes = remember(categories) { buildMonicaCategoryNodes(categories) }
 
     ModalBottomSheet(

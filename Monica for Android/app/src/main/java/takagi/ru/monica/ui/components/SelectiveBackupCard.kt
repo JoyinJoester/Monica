@@ -95,14 +95,9 @@ fun SelectiveBackupCard(
     passkeyCount: Int = 0,  // ✅ 新增：验证密钥数量
     localKeePassCount: Int = 0,
     isWebDavConfigured: Boolean = false,
-    isKeePassWebDavConfigured: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
-    // KeePass WebDAV feature has been removed. Keep parameter for call-site compatibility.
-    if (isKeePassWebDavConfigured) {
-        // no-op
-    }
     
     Card(
         modifier = modifier.fillMaxWidth()

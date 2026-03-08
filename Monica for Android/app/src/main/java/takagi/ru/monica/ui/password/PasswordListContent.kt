@@ -563,6 +563,14 @@ fun PasswordListContent(
         is CategoryFilter.BitwardenVaultUncategorized -> filter.vaultId
         else -> null
     }
+    val selectedKeePassDatabaseId = when (val filter = currentFilter) {
+        is CategoryFilter.KeePassDatabase -> filter.databaseId
+        is CategoryFilter.KeePassGroupFilter -> filter.databaseId
+        is CategoryFilter.KeePassDatabaseStarred -> filter.databaseId
+        is CategoryFilter.KeePassDatabaseUncategorized -> filter.databaseId
+        else -> null
+    }
+    val isKeePassDatabaseView = selectedKeePassDatabaseId != null
     val bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel()
     val bitwardenSyncStatusByVault by bitwardenViewModel.syncStatusByVault.collectAsState()
     val isTopBarSyncing = selectedBitwardenVaultId?.let { vaultId ->
@@ -1533,6 +1541,18 @@ fun PasswordListContent(
                                         shape = RoundedCornerShape(20.dp)
                                     )
                             ) {
+                                if (isKeePassDatabaseView) {
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text("${stringResource(R.string.refresh)} ${stringResource(R.string.filter_keepass)}")
+                                        },
+                                        leadingIcon = { Icon(Icons.Default.Sync, contentDescription = null) },
+                                        onClick = {
+                                            topActionsMenuExpanded = false
+                                            viewModel.refreshKeePassFromSourceForCurrentContext()
+                                        }
+                                    )
+                                }
                                 if (selectedBitwardenVaultId != null) {
                                     DropdownMenuItem(
                                         text = { Text("同步bitwarden数据库") },

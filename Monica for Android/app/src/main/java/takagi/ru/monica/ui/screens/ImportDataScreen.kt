@@ -32,6 +32,8 @@ import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import takagi.ru.monica.util.DataExportImportManager
 import takagi.ru.monica.util.FileOperationHelper
+import takagi.ru.monica.utils.KeePassErrorCode
+import takagi.ru.monica.utils.KeePassOperationException
 import takagi.ru.monica.viewmodel.DataExportImportViewModel
 
 /**
@@ -60,6 +62,41 @@ private fun isPasswordRequiredError(errorMessage: String): Boolean {
     return normalized.contains("password required") ||
         normalized.contains("password needed") ||
         normalized.contains("need password")
+}
+
+private fun formatImportErrorMessage(error: Throwable, fallback: String): String {
+    return if (error is KeePassOperationException) {
+        val message = error.message.takeIf { !it.isNullOrBlank() } ?: fallback
+        "[${error.code.name}] $message"
+    } else {
+        error.message ?: fallback
+    }
+}
+
+private fun isLikelyLegacyKdbFile(fileName: String?, uri: Uri?): Boolean {
+    val candidate = (
+        fileName
+            ?: uri?.lastPathSegment?.substringAfterLast('/')
+            ?: ""
+        ).lowercase()
+    return candidate.endsWith(".kdb") && !candidate.endsWith(".kdbx")
+}
+
+private fun keepassImportSuggestion(context: android.content.Context, code: KeePassErrorCode): String {
+    return when (code) {
+        KeePassErrorCode.LEGACY_KDB_UNSUPPORTED ->
+            context.getString(R.string.import_data_keepass_tip_legacy_kdb)
+        KeePassErrorCode.INVALID_CREDENTIAL ->
+            context.getString(R.string.import_data_keepass_tip_invalid_credential)
+        KeePassErrorCode.URI_PERMISSION_DENIED ->
+            context.getString(R.string.import_data_keepass_tip_permission)
+        KeePassErrorCode.KDF_MEMORY_INSUFFICIENT ->
+            context.getString(R.string.import_data_keepass_tip_kdf_memory)
+        KeePassErrorCode.FORMAT_UNSUPPORTED ->
+            context.getString(R.string.import_data_keepass_tip_format_unsupported)
+        KeePassErrorCode.IO_READ_WRITE_FAILED ->
+            context.getString(R.string.import_data_keepass_tip_io_failed)
+    }
 }
 
 /**
@@ -182,6 +219,8 @@ fun ImportDataScreen(
     var kdbxPasswordVisible by remember { mutableStateOf(false) }
     var kdbxKeyFileUri by remember { mutableStateOf<Uri?>(null) }
     var kdbxKeyFileName by remember { mutableStateOf("") }
+    var keepassImportError by remember { mutableStateOf<KeePassOperationException?>(null) }
+    var showKeepassImportErrorDialog by remember { mutableStateOf(false) }
     val kdbxKeyFilePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { selectedUri: Uri? ->
@@ -486,6 +525,12 @@ fun ImportDataScreen(
                                                 }
                                                 "kdbx" -> {
                                                     // KDBX 导入需要密码
+                                                    if (isLikelyLegacyKdbFile(selectedFileName, uri)) {
+                                                        snackbarHostState.showSnackbar(
+                                                            context.getString(R.string.import_data_keepass_legacy_kdb_unsupported)
+                                                        )
+                                                        return@launch
+                                                    }
                                                     isImporting = false
                                                     showKdbxPasswordDialog = true
                                                     kdbxPassword = ""
@@ -1131,17 +1176,33 @@ fun ImportDataScreen(
                                         )
                                         onNavigateBack()
                                     }.onFailure { error ->
-                                        snackbarHostState.showSnackbar(
-                                            error.message ?: context.getString(R.string.import_data_error)
-                                        )
+                                        if (error is KeePassOperationException) {
+                                            keepassImportError = error
+                                            showKeepassImportErrorDialog = true
+                                        } else {
+                                            snackbarHostState.showSnackbar(
+                                                formatImportErrorMessage(
+                                                    error,
+                                                    context.getString(R.string.import_data_error)
+                                                )
+                                            )
+                                        }
                                     }
                                 } catch (e: Exception) {
-                                    snackbarHostState.showSnackbar(
-                                        context.getString(
-                                            R.string.import_data_error_exception,
-                                            e.message ?: context.getString(R.string.import_data_unknown_error)
+                                    if (e is KeePassOperationException) {
+                                        keepassImportError = e
+                                        showKeepassImportErrorDialog = true
+                                    } else {
+                                        snackbarHostState.showSnackbar(
+                                            formatImportErrorMessage(
+                                                e,
+                                                context.getString(
+                                                    R.string.import_data_error_exception,
+                                                    e.message ?: context.getString(R.string.import_data_unknown_error)
+                                                )
+                                            )
                                         )
-                                    )
+                                    }
                                 } finally {
                                     isImporting = false
                                     kdbxPassword = ""
@@ -1178,6 +1239,53 @@ fun ImportDataScreen(
             }
         )
     }
+
+    if (showKeepassImportErrorDialog && keepassImportError != null) {
+        val error = keepassImportError!!
+        AlertDialog(
+            onDismissRequest = {
+                showKeepassImportErrorDialog = false
+                keepassImportError = null
+            },
+            title = {
+                Text(stringResource(R.string.import_data_keepass_error_title))
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        stringResource(R.string.import_data_keepass_error_code_value, error.code.name),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        error.message ?: context.getString(R.string.import_data_error),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    HorizontalDivider()
+                    Text(
+                        stringResource(R.string.import_data_keepass_error_suggestion_label),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        keepassImportSuggestion(context, error.code),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showKeepassImportErrorDialog = false
+                        keepassImportError = null
+                    }
+                ) {
+                    Text(stringResource(R.string.ok))
+                }
+            }
+        )
+    }
 }
 
 // 处理导入结果的辅助函数
@@ -1199,7 +1307,7 @@ private suspend fun handleImportResult(
         onNavigateBack()
     }.onFailure { error ->
         snackbarHostState.showSnackbar(
-            error.message ?: context.getString(R.string.import_data_error)
+            formatImportErrorMessage(error, context.getString(R.string.import_data_error))
         )
     }
 }

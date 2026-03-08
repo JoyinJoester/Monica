@@ -275,6 +275,10 @@ class TotpViewModel(
         }
     }
 
+    fun syncKeePassByDatabaseId(databaseId: Long) {
+        syncKeePassTotp(databaseId)
+    }
+
     private fun persistCategoryFilter(filter: TotpCategoryFilter) {
         val manager = settingsManager ?: return
         viewModelScope.launch {
@@ -454,13 +458,28 @@ class TotpViewModel(
                 val previousBoundId = previousTotpData?.boundPasswordId
                 val previousSecret = previousTotpData?.secret ?: ""
 
-                // 将categoryId和keepassDatabaseId保存到TotpData中
+                val shouldFollowBoundPassword = totpData.boundPasswordId != null
+                val boundPassword = if (shouldFollowBoundPassword) {
+                    totpData.boundPasswordId?.let { passwordRepository.getPasswordEntryById(it) }
+                } else {
+                    null
+                }
+                val resolvedKeepassDatabaseId = if (shouldFollowBoundPassword) {
+                    boundPassword?.keepassDatabaseId ?: keepassDatabaseId
+                } else {
+                    keepassDatabaseId
+                }
+                val resolvedKeepassGroupPath = when {
+                    resolvedKeepassDatabaseId == null -> null
+                    shouldFollowBoundPassword -> boundPassword?.keepassGroupPath
+                    else -> existingItem?.keepassGroupPath
+                }
+                // TotpData 与 SecureItem 列字段保持同源，避免后续编辑把 KeePass 归属回写成“本地”。
                 val updatedTotpData = totpData.copy(
                     categoryId = categoryId,
-                    keepassDatabaseId = keepassDatabaseId
+                    keepassDatabaseId = resolvedKeepassDatabaseId
                 )
                 val itemDataJson = Json.encodeToString(updatedTotpData)
-                val shouldFollowBoundPassword = updatedTotpData.boundPasswordId != null
 
                 if (shouldFollowBoundPassword &&
                     existingItem != null &&
@@ -493,7 +512,8 @@ class TotpViewModel(
                         notes = notes,
                         itemData = itemDataJson,
                         categoryId = categoryId,
-                        keepassDatabaseId = keepassDatabaseId,
+                        keepassDatabaseId = resolvedKeepassDatabaseId,
+                        keepassGroupPath = resolvedKeepassGroupPath,
                         bitwardenVaultId = resolvedBitwardenVaultId,
                         bitwardenFolderId = resolvedBitwardenFolderId,
                         bitwardenCipherId = if (shouldFollowBoundPassword) null else existing.bitwardenCipherId,
@@ -521,7 +541,8 @@ class TotpViewModel(
                         itemData = itemDataJson,
                         isFavorite = isFavorite,
                         categoryId = categoryId,
-                        keepassDatabaseId = keepassDatabaseId,
+                        keepassDatabaseId = resolvedKeepassDatabaseId,
+                        keepassGroupPath = resolvedKeepassGroupPath,
                         bitwardenVaultId = resolvedBitwardenVaultId,
                         bitwardenFolderId = resolvedBitwardenFolderId,
                         syncStatus = if (resolvedBitwardenVaultId != null) "PENDING" else "NONE",
@@ -553,8 +574,11 @@ class TotpViewModel(
                     }
                 } else {
                     val newId = repository.insertItem(item)
-                    if (keepassDatabaseId != null) {
-                        val syncResult = keepassService?.updateSecureItem(keepassDatabaseId, item.copy(id = newId))
+                    if (resolvedKeepassDatabaseId != null) {
+                        val syncResult = keepassService?.updateSecureItem(
+                            resolvedKeepassDatabaseId,
+                            item.copy(id = newId)
+                        )
                         if (syncResult?.isFailure == true) {
                             Log.e("TotpViewModel", "KeePass write failed: ${syncResult.exceptionOrNull()?.message}")
                         }
