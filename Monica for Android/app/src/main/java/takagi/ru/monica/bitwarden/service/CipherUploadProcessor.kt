@@ -720,7 +720,8 @@ class CipherUploadProcessor(
             secureNote = secureNote,
             fields = fields,
             favorite = favorite,
-            reprompt = reprompt
+            reprompt = reprompt,
+            archivedDate = archivedDate
         )
     }
     

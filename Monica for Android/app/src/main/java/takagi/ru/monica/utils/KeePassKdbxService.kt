@@ -57,7 +57,8 @@ data class KeePassEntryData(
     val url: String,
     val notes: String,
     val monicaLocalId: Long?,
-    val groupPath: String?
+    val groupPath: String?,
+    val isInRecycleBin: Boolean
 )
 
 data class KeePassGroupInfo(
@@ -70,7 +71,24 @@ data class KeePassGroupInfo(
 
 data class KeePassSecureItemData(
     val item: SecureItem,
-    val sourceMonicaId: Long?
+    val sourceMonicaId: Long?,
+    val isInRecycleBin: Boolean
+)
+
+private data class EntryTraversalContext(
+    val entry: Entry,
+    val groupPath: String?,
+    val isInRecycleBinByMeta: Boolean
+)
+
+private data class GroupTraversalContext(
+    val pathKey: String?,
+    val isInRecycleBinByMeta: Boolean
+)
+
+private data class RemovedEntryContext(
+    val entry: Entry,
+    val previousParentUuid: UUID
 )
 
 class KeePassKdbxService(
@@ -83,8 +101,6 @@ class KeePassKdbxService(
         const val WEBDAV_PATH_PREFIX = "webdav://"
         // Keep unknown-source cache short, but keep known internal files effectively "always warm".
         private const val UNKNOWN_SOURCE_CACHE_TTL_MS = 60_000L
-        // DX-like strategy: apply mutation in memory first, persist to file asynchronously.
-        private const val ENABLE_ASYNC_MUTATION_COMMIT = true
         private const val ASYNC_PERSIST_MAX_RETRY = 2
         private const val ASYNC_PERSIST_RETRY_DELAY_MS = 250L
         // Disable post-write full decode verification for normal writes to reduce save latency.
@@ -227,9 +243,15 @@ class KeePassKdbxService(
                 credentialsResolution = credentials,
                 sourceLabel = "databaseId=$databaseId"
             )
-            val entries = mutableListOf<Pair<Entry, String?>>()
-            collectEntriesWithGroupPath(keePassDatabase.content.group, null, entries)
-            val count = entries.count { (entry, groupPath) -> entryToData(entry, groupPath) != null }
+            val (entries, hasRecycleBinMeta) = collectEntryContexts(keePassDatabase)
+            val count = entries.count { context ->
+                entryToData(
+                    entry = context.entry,
+                    groupPath = context.groupPath,
+                    isInRecycleBinByMeta = context.isInRecycleBinByMeta,
+                    hasRecycleBinMeta = hasRecycleBinMeta
+                ) != null
+            }
             Result.success(count)
         } catch (e: Exception) {
             Log.e(TAG, "verifyDatabase failed (databaseId=$databaseId)", e)
@@ -251,9 +273,15 @@ class KeePassKdbxService(
                 credentialsResolution = credentials,
                 sourceLabel = "uri=$fileUri"
             )
-            val entries = mutableListOf<Pair<Entry, String?>>()
-            collectEntriesWithGroupPath(keePassDatabase.content.group, null, entries)
-            val count = entries.count { (entry, groupPath) -> entryToData(entry, groupPath) != null }
+            val (entries, hasRecycleBinMeta) = collectEntryContexts(keePassDatabase)
+            val count = entries.count { context ->
+                entryToData(
+                    entry = context.entry,
+                    groupPath = context.groupPath,
+                    isInRecycleBinByMeta = context.isInRecycleBinByMeta,
+                    hasRecycleBinMeta = hasRecycleBinMeta
+                ) != null
+            }
             Result.success(count)
         } catch (e: Exception) {
             Log.e(
@@ -357,9 +385,15 @@ class KeePassKdbxService(
     suspend fun readPasswordEntries(databaseId: Long): Result<List<KeePassEntryData>> = withContext(Dispatchers.IO) {
         try {
             val (database, _, keePassDatabase) = loadDatabase(databaseId)
-            val entries = mutableListOf<Pair<Entry, String?>>()
-            collectEntriesWithGroupPath(keePassDatabase.content.group, null, entries)
-            val data = entries.mapNotNull { (entry, groupPath) -> entryToData(entry, groupPath) }
+            val (entries, hasRecycleBinMeta) = collectEntryContexts(keePassDatabase)
+            val data = entries.mapNotNull { context ->
+                entryToData(
+                    entry = context.entry,
+                    groupPath = context.groupPath,
+                    isInRecycleBinByMeta = context.isInRecycleBinByMeta,
+                    hasRecycleBinMeta = hasRecycleBinMeta
+                )
+            }
             dao.updateEntryCount(database.id, data.size)
             Result.success(data)
         } catch (e: Exception) {
@@ -367,12 +401,24 @@ class KeePassKdbxService(
         }
     }
 
-    suspend fun listGroups(databaseId: Long): Result<List<KeePassGroupInfo>> = withContext(Dispatchers.IO) {
+    suspend fun listGroups(
+        databaseId: Long,
+        includeRecycleBin: Boolean = false
+    ): Result<List<KeePassGroupInfo>> = withContext(Dispatchers.IO) {
         try {
             val (_, _, keePassDatabase) = loadDatabase(databaseId)
+            val recycleBinUuid = resolveRecycleBinUuid(keePassDatabase.content.meta)
             val groups = mutableListOf<KeePassGroupInfo>()
             keePassDatabase.content.group.groups.forEach { group ->
-                collectGroups(group, "", 0, groups)
+                collectGroups(
+                    group = group,
+                    parentPathKey = "",
+                    depth = 0,
+                    result = groups,
+                    recycleBinUuid = recycleBinUuid,
+                    includeRecycleBin = includeRecycleBin,
+                    parentInRecycleBin = false
+                )
             }
             Result.success(groups.sortedBy { it.displayPath })
         } catch (e: Exception) {
@@ -383,10 +429,14 @@ class KeePassKdbxService(
     suspend fun addOrUpdatePasswordEntries(
         databaseId: Long,
         entries: List<PasswordEntry>,
-        resolvePassword: (PasswordEntry) -> String
+        resolvePassword: (PasswordEntry) -> String,
+        forceSyncWrite: Boolean = false
     ): Result<Int> = withContext(Dispatchers.IO) {
         try {
-            val addedCount = mutateDatabase(databaseId) { loaded ->
+            val addedCount = mutateDatabase(
+                databaseId = databaseId,
+                forceSyncWrite = forceSyncWrite
+            ) { loaded ->
                 var updatedDatabase = loaded.keePassDatabase
                 var addedCount = 0
                 entries.forEach { entry ->
@@ -444,10 +494,14 @@ class KeePassKdbxService(
     suspend fun addPasswordEntry(
         databaseId: Long,
         entry: PasswordEntry,
-        resolvePassword: (PasswordEntry) -> String
+        resolvePassword: (PasswordEntry) -> String,
+        forceSyncWrite: Boolean = false
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            mutateDatabase(databaseId) { loaded ->
+            mutateDatabase(
+                databaseId = databaseId,
+                forceSyncWrite = forceSyncWrite
+            ) { loaded ->
                 val plainPassword = resolvePassword(entry)
                 val newEntry = buildEntry(entry, plainPassword)
                 val updatedRoot = addEntryToGroupPath(
@@ -466,10 +520,14 @@ class KeePassKdbxService(
 
     suspend fun deletePasswordEntries(
         databaseId: Long,
-        entries: List<PasswordEntry>
+        entries: List<PasswordEntry>,
+        forceSyncWrite: Boolean = false
     ): Result<Int> = withContext(Dispatchers.IO) {
         try {
-            val removedCount = mutateDatabase(databaseId) { loaded ->
+            val removedCount = mutateDatabase(
+                databaseId = databaseId,
+                forceSyncWrite = forceSyncWrite
+            ) { loaded ->
                 var updatedDatabase = loaded.keePassDatabase
                 var removedCount = 0
                 entries.forEach { entry ->
@@ -493,16 +551,90 @@ class KeePassKdbxService(
         }
     }
 
+    suspend fun movePasswordEntriesToRecycleBin(
+        databaseId: Long,
+        entries: List<PasswordEntry>,
+        forceSyncWrite: Boolean = false
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            val movedCount = mutateDatabase(
+                databaseId = databaseId,
+                forceSyncWrite = forceSyncWrite
+            ) { loaded ->
+                val recycleBinUuid = resolveRecycleBinUuid(loaded.keePassDatabase.content.meta)
+                    ?: throw IllegalStateException("KeePass recycle bin unavailable")
+                val recyclePath = findGroupPathByUuid(
+                    group = loaded.keePassDatabase.content.group,
+                    currentPathKey = null,
+                    targetUuid = recycleBinUuid
+                ) ?: throw IllegalStateException("KeePass recycle bin path unavailable")
+
+                var rootGroup = loaded.keePassDatabase.content.group
+                val removedContexts = mutableListOf<RemovedEntryContext>()
+                entries.forEach { entry ->
+                    val matcher: (Entry) -> Boolean = { existing ->
+                        val monicaId = getFieldValue(existing, FIELD_MONICA_LOCAL_ID).toLongOrNull()
+                        if (monicaId != null && entry.id > 0) {
+                            monicaId == entry.id
+                        } else {
+                            matchByKey(existing, entry)
+                        }
+                    }
+                    val removed = removeAndCollectEntriesInGroup(
+                        group = rootGroup,
+                        matcher = matcher,
+                        inRecycleBin = false,
+                        recycleBinUuid = recycleBinUuid,
+                        removedEntries = removedContexts
+                    )
+                    rootGroup = removed.first
+                }
+
+                var movedCount = 0
+                removedContexts.forEach { context ->
+                    val entryWithPreviousParent = runCatching {
+                        context.entry.copy(previousParentGroup = context.previousParentUuid)
+                    }.getOrDefault(context.entry)
+                    rootGroup = addEntryToGroupPath(
+                        rootGroup = rootGroup,
+                        groupPath = recyclePath,
+                        entry = entryWithPreviousParent
+                    )
+                    movedCount++
+                }
+
+                MutationPlan(
+                    updatedDatabase = loaded.keePassDatabase.modifyParentGroup { rootGroup },
+                    result = movedCount,
+                    afterWrite = { database, writtenDatabase ->
+                        val allEntries = mutableListOf<Entry>()
+                        collectEntries(writtenDatabase.content.group, allEntries)
+                        dao.updateEntryCount(database.id, allEntries.size)
+                    }
+                )
+            }
+            Result.success(movedCount)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun readSecureItems(
         databaseId: Long,
         allowedTypes: Set<ItemType>? = null
     ): Result<List<KeePassSecureItemData>> = withContext(Dispatchers.IO) {
         try {
             val (_, _, keePassDatabase) = loadDatabase(databaseId)
-            val entries = mutableListOf<Pair<Entry, String?>>()
-            collectEntriesWithGroupPath(keePassDatabase.content.group, null, entries)
-            val data = entries.mapNotNull { (entry, groupPath) ->
-                entryToSecureItemData(entry, databaseId, groupPath, allowedTypes)
+            val (entries, hasRecycleBinMeta) = collectEntryContexts(keePassDatabase)
+            val data = entries.mapNotNull { context ->
+                entryToSecureItemData(
+                    entry = context.entry,
+                    databaseId = databaseId,
+                    groupPath = context.groupPath,
+                    isInRecycleBinByMeta = context.isInRecycleBinByMeta,
+                    hasRecycleBinMeta = hasRecycleBinMeta,
+                    allowedTypes = allowedTypes
+                )
             }
             Result.success(data)
         } catch (e: Exception) {
@@ -512,10 +644,14 @@ class KeePassKdbxService(
 
     suspend fun addOrUpdateSecureItems(
         databaseId: Long,
-        items: List<SecureItem>
+        items: List<SecureItem>,
+        forceSyncWrite: Boolean = false
     ): Result<Int> = withContext(Dispatchers.IO) {
         try {
-            val addedCount = mutateDatabase(databaseId) { loaded ->
+            val addedCount = mutateDatabase(
+                databaseId = databaseId,
+                forceSyncWrite = forceSyncWrite
+            ) { loaded ->
                 var updatedDatabase = loaded.keePassDatabase
                 var addedCount = 0
                 items.forEach { item ->
@@ -524,9 +660,12 @@ class KeePassKdbxService(
                         updatedDatabase = updateResult.first
                     } else {
                         val newEntry = buildSecureItemEntry(item)
-                        updatedDatabase = updatedDatabase.modifyParentGroup {
-                            copy(entries = this.entries + newEntry)
-                        }
+                        val updatedRoot = addEntryToGroupPath(
+                            rootGroup = updatedDatabase.content.group,
+                            groupPath = item.keepassGroupPath,
+                            entry = newEntry
+                        )
+                        updatedDatabase = updatedDatabase.modifyParentGroup { updatedRoot }
                         addedCount++
                     }
                 }
@@ -549,9 +688,12 @@ class KeePassKdbxService(
                     updateResult.first
                 } else {
                     val newEntry = buildSecureItemEntry(item)
-                    loaded.keePassDatabase.modifyParentGroup {
-                        copy(entries = this.entries + newEntry)
-                    }
+                    val updatedRoot = addEntryToGroupPath(
+                        rootGroup = loaded.keePassDatabase.content.group,
+                        groupPath = item.keepassGroupPath,
+                        entry = newEntry
+                    )
+                    loaded.keePassDatabase.modifyParentGroup { updatedRoot }
                 }
                 MutationPlan(updatedDatabase = updatedDatabase, result = Unit)
             }
@@ -561,12 +703,103 @@ class KeePassKdbxService(
         }
     }
 
+    suspend fun resolveRestoreGroupPath(
+        databaseId: Long,
+        preferredGroupPath: String?
+    ): Result<String?> = withContext(Dispatchers.IO) {
+        try {
+            if (preferredGroupPath.isNullOrBlank()) {
+                return@withContext Result.success(null)
+            }
+            val (_, _, keePassDatabase) = loadDatabase(databaseId)
+            val recycleBinUuid = resolveRecycleBinUuid(keePassDatabase.content.meta)
+            if (recycleBinUuid != null) {
+                val inRecycleByMeta = isGroupPathInRecycleBinByMeta(
+                    group = keePassDatabase.content.group,
+                    currentPathKey = null,
+                    targetPathKey = preferredGroupPath,
+                    recycleBinUuid = recycleBinUuid,
+                    parentInRecycleBin = false
+                )
+                if (inRecycleByMeta != null) {
+                    return@withContext Result.success(if (inRecycleByMeta) null else preferredGroupPath)
+                }
+            }
+            if (isLikelyRecycleBinPath(preferredGroupPath)) {
+                return@withContext Result.success(null)
+            }
+            Result.success(preferredGroupPath)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun resolveRestoreGroupPathForPassword(
+        databaseId: Long,
+        target: PasswordEntry
+    ): Result<String?> = withContext(Dispatchers.IO) {
+        try {
+            val (_, _, keePassDatabase) = loadDatabase(databaseId)
+            val groupContextIndex = buildGroupTraversalContextIndex(keePassDatabase)
+            val (entries, hasRecycleBinMeta) = collectEntryContexts(keePassDatabase)
+            val matched = entries.firstOrNull { context ->
+                val monicaId = getFieldValue(context.entry, FIELD_MONICA_LOCAL_ID).toLongOrNull()
+                if (monicaId != null && target.id > 0) {
+                    monicaId == target.id
+                } else {
+                    matchByKey(context.entry, target)
+                }
+            } ?: return@withContext resolveRestoreGroupPath(databaseId, target.keepassGroupPath)
+            Result.success(
+                resolveRestorePathFromEntryContext(
+                    entryContext = matched,
+                    hasRecycleBinMeta = hasRecycleBinMeta,
+                    groupContextIndex = groupContextIndex
+                )
+            )
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun resolveRestoreGroupPathForSecureItem(
+        databaseId: Long,
+        target: SecureItem
+    ): Result<String?> = withContext(Dispatchers.IO) {
+        try {
+            val (_, _, keePassDatabase) = loadDatabase(databaseId)
+            val groupContextIndex = buildGroupTraversalContextIndex(keePassDatabase)
+            val (entries, hasRecycleBinMeta) = collectEntryContexts(keePassDatabase)
+            val matched = entries.firstOrNull { context ->
+                val monicaId = getFieldValue(context.entry, FIELD_MONICA_ITEM_ID).toLongOrNull()
+                if (monicaId != null && target.id > 0) {
+                    monicaId == target.id
+                } else {
+                    matchSecureItemByKey(context.entry, target)
+                }
+            } ?: return@withContext resolveRestoreGroupPath(databaseId, target.keepassGroupPath)
+            Result.success(
+                resolveRestorePathFromEntryContext(
+                    entryContext = matched,
+                    hasRecycleBinMeta = hasRecycleBinMeta,
+                    groupContextIndex = groupContextIndex
+                )
+            )
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun deleteSecureItems(
         databaseId: Long,
-        items: List<SecureItem>
+        items: List<SecureItem>,
+        forceSyncWrite: Boolean = false
     ): Result<Int> = withContext(Dispatchers.IO) {
         try {
-            val removedCount = mutateDatabase(databaseId) { loaded ->
+            val removedCount = mutateDatabase(
+                databaseId = databaseId,
+                forceSyncWrite = forceSyncWrite
+            ) { loaded ->
                 var updatedDatabase = loaded.keePassDatabase
                 var removedCount = 0
                 items.forEach { item ->
@@ -577,6 +810,69 @@ class KeePassKdbxService(
                 MutationPlan(updatedDatabase = updatedDatabase, result = removedCount)
             }
             Result.success(removedCount)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    suspend fun moveSecureItemsToRecycleBin(
+        databaseId: Long,
+        items: List<SecureItem>,
+        forceSyncWrite: Boolean = false
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            val movedCount = mutateDatabase(
+                databaseId = databaseId,
+                forceSyncWrite = forceSyncWrite
+            ) { loaded ->
+                val recycleBinUuid = resolveRecycleBinUuid(loaded.keePassDatabase.content.meta)
+                    ?: throw IllegalStateException("KeePass recycle bin unavailable")
+                val recyclePath = findGroupPathByUuid(
+                    group = loaded.keePassDatabase.content.group,
+                    currentPathKey = null,
+                    targetUuid = recycleBinUuid
+                ) ?: throw IllegalStateException("KeePass recycle bin path unavailable")
+
+                var rootGroup = loaded.keePassDatabase.content.group
+                val removedContexts = mutableListOf<RemovedEntryContext>()
+                items.forEach { item ->
+                    val matcher: (Entry) -> Boolean = { existing ->
+                        val monicaId = getFieldValue(existing, FIELD_MONICA_ITEM_ID).toLongOrNull()
+                        if (monicaId != null && item.id > 0) {
+                            monicaId == item.id
+                        } else {
+                            matchSecureItemByKey(existing, item)
+                        }
+                    }
+                    val removed = removeAndCollectEntriesInGroup(
+                        group = rootGroup,
+                        matcher = matcher,
+                        inRecycleBin = false,
+                        recycleBinUuid = recycleBinUuid,
+                        removedEntries = removedContexts
+                    )
+                    rootGroup = removed.first
+                }
+
+                var movedCount = 0
+                removedContexts.forEach { context ->
+                    val entryWithPreviousParent = runCatching {
+                        context.entry.copy(previousParentGroup = context.previousParentUuid)
+                    }.getOrDefault(context.entry)
+                    rootGroup = addEntryToGroupPath(
+                        rootGroup = rootGroup,
+                        groupPath = recyclePath,
+                        entry = entryWithPreviousParent
+                    )
+                    movedCount++
+                }
+
+                MutationPlan(
+                    updatedDatabase = loaded.keePassDatabase.modifyParentGroup { rootGroup },
+                    result = movedCount
+                )
+            }
+            Result.success(movedCount)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -814,6 +1110,45 @@ class KeePassKdbxService(
         return group.copy(entries = filteredEntries, groups = newGroups) to removedCount
     }
 
+    private fun removeAndCollectEntriesInGroup(
+        group: Group,
+        matcher: (Entry) -> Boolean,
+        inRecycleBin: Boolean,
+        recycleBinUuid: UUID?,
+        removedEntries: MutableList<RemovedEntryContext>
+    ): Pair<Group, Int> {
+        val currentInRecycle = inRecycleBin || (recycleBinUuid != null && group.uuid == recycleBinUuid)
+        var removedCount = 0
+
+        val keptEntries = mutableListOf<Entry>()
+        group.entries.forEach { entry ->
+            val shouldRemove = matcher(entry) && !currentInRecycle
+            if (shouldRemove) {
+                removedEntries += RemovedEntryContext(
+                    entry = entry,
+                    previousParentUuid = group.uuid
+                )
+                removedCount++
+            } else {
+                keptEntries += entry
+            }
+        }
+
+        val newGroups = group.groups.map { sub ->
+            val result = removeAndCollectEntriesInGroup(
+                group = sub,
+                matcher = matcher,
+                inRecycleBin = currentInRecycle,
+                recycleBinUuid = recycleBinUuid,
+                removedEntries = removedEntries
+            )
+            removedCount += result.second
+            result.first
+        }
+
+        return group.copy(entries = keptEntries, groups = newGroups) to removedCount
+    }
+
     private fun addEntryToGroupPath(
         rootGroup: Group,
         groupPath: String?,
@@ -874,7 +1209,12 @@ class KeePassKdbxService(
             itemType.equals(target.itemType.name, true)
     }
 
-    private fun entryToData(entry: Entry, groupPath: String?): KeePassEntryData? {
+    private fun entryToData(
+        entry: Entry,
+        groupPath: String?,
+        isInRecycleBinByMeta: Boolean,
+        hasRecycleBinMeta: Boolean
+    ): KeePassEntryData? {
         // Monica 安全项（TOTP/笔记/卡片等）会写入 MonicaItemType，不应进入密码列表。
         if (getFieldValue(entry, FIELD_MONICA_ITEM_TYPE).isNotBlank()) {
             return null
@@ -882,13 +1222,18 @@ class KeePassKdbxService(
 
         val title = getFieldValue(entry, "Title")
         val username = getFieldValue(entry, "UserName")
-        val password = getFieldValue(entry, "Password")
+        val password = resolveEntryPassword(entry)
         val url = getFieldValue(entry, "URL")
         val notes = getFieldValue(entry, "Notes")
         if (title.isEmpty() && username.isEmpty() && password.isEmpty() && url.isEmpty() && notes.isEmpty()) {
             return null
         }
         val monicaId = getFieldValue(entry, FIELD_MONICA_LOCAL_ID).toLongOrNull()
+        val inRecycleBin = resolveRecycleBinFlag(
+            groupPath = groupPath,
+            isInRecycleBinByMeta = isInRecycleBinByMeta,
+            hasRecycleBinMeta = hasRecycleBinMeta
+        )
         return KeePassEntryData(
             title = title,
             username = username,
@@ -896,7 +1241,8 @@ class KeePassKdbxService(
             url = url,
             notes = notes,
             monicaLocalId = monicaId,
-            groupPath = groupPath
+            groupPath = groupPath,
+            isInRecycleBin = inRecycleBin
         )
     }
 
@@ -904,6 +1250,8 @@ class KeePassKdbxService(
         entry: Entry,
         databaseId: Long,
         groupPath: String?,
+        isInRecycleBinByMeta: Boolean,
+        hasRecycleBinMeta: Boolean,
         allowedTypes: Set<ItemType>?
     ): KeePassSecureItemData? {
         val typeRaw = getFieldValue(entry, FIELD_MONICA_ITEM_TYPE)
@@ -920,6 +1268,11 @@ class KeePassKdbxService(
             val isFavorite = getFieldValue(entry, FIELD_MONICA_IS_FAVORITE).toBoolean()
             val sourceMonicaId = getFieldValue(entry, FIELD_MONICA_ITEM_ID).toLongOrNull()
             val now = Date()
+            val inRecycleBin = resolveRecycleBinFlag(
+                groupPath = groupPath,
+                isInRecycleBinByMeta = isInRecycleBinByMeta,
+                hasRecycleBinMeta = hasRecycleBinMeta
+            )
 
             return KeePassSecureItemData(
                 item = SecureItem(
@@ -933,9 +1286,12 @@ class KeePassKdbxService(
                     itemData = itemData,
                     imagePaths = imagePaths,
                     keepassDatabaseId = databaseId,
-                    keepassGroupPath = groupPath
+                    keepassGroupPath = groupPath,
+                    isDeleted = inRecycleBin,
+                    deletedAt = if (inRecycleBin) now else null
                 ),
-                sourceMonicaId = sourceMonicaId
+                sourceMonicaId = sourceMonicaId,
+                isInRecycleBin = inRecycleBin
             )
         }
 
@@ -946,6 +1302,11 @@ class KeePassKdbxService(
         val title = getFieldValue(entry, "Title")
         val notes = getFieldValue(entry, "Notes")
         val now = Date()
+        val inRecycleBin = resolveRecycleBinFlag(
+            groupPath = groupPath,
+            isInRecycleBinByMeta = isInRecycleBinByMeta,
+            hasRecycleBinMeta = hasRecycleBinMeta
+        )
         val fallbackTitle = parsedTotp.issuer.ifBlank { parsedTotp.accountName }.ifBlank { "Untitled" }
 
         return KeePassSecureItemData(
@@ -960,10 +1321,86 @@ class KeePassKdbxService(
                 itemData = Json.encodeToString(TotpData.serializer(), parsedTotp),
                 imagePaths = "",
                 keepassDatabaseId = databaseId,
-                keepassGroupPath = groupPath
+                keepassGroupPath = groupPath,
+                isDeleted = inRecycleBin,
+                deletedAt = if (inRecycleBin) now else null
             ),
-            sourceMonicaId = getFieldValue(entry, FIELD_MONICA_ITEM_ID).toLongOrNull()
+            sourceMonicaId = getFieldValue(entry, FIELD_MONICA_ITEM_ID).toLongOrNull(),
+            isInRecycleBin = inRecycleBin
         )
+    }
+
+    private fun isLikelyRecycleBinPath(groupPath: String?): Boolean {
+        if (groupPath.isNullOrBlank()) return false
+        val normalized = decodeKeePassPathForDisplay(groupPath)
+            .lowercase(Locale.ROOT)
+            .replace(" ", "")
+        return normalized.contains("recyclebin") ||
+            normalized.contains("trash") ||
+            normalized.contains("回收站")
+    }
+
+    private fun resolveRecycleBinUuid(meta: Meta): UUID? {
+        if (!meta.recycleBinEnabled) return null
+        return meta.recycleBinUuid
+    }
+
+    private fun resolveRecycleBinFlag(
+        groupPath: String?,
+        isInRecycleBinByMeta: Boolean,
+        hasRecycleBinMeta: Boolean
+    ): Boolean {
+        if (hasRecycleBinMeta) return isInRecycleBinByMeta
+        return isLikelyRecycleBinPath(groupPath)
+    }
+
+    /**
+     * 标准 Password 字段为空时，尝试从常见自定义受保护字段中提取密码。
+     */
+    private fun resolveEntryPassword(entry: Entry): String {
+        fun isLikelyLabelValue(value: String, key: String? = null): Boolean {
+            val normalized = value.trim().lowercase(Locale.ROOT)
+            if (normalized.isBlank()) return true
+            val labelTokens = setOf("password", "pass", "pwd", "pin", "密码", "口令")
+            if (normalized in labelTokens) return true
+            if (key != null && normalized == key.trim().lowercase(Locale.ROOT)) return true
+            return false
+        }
+
+        val standardPassword = getFieldValue(entry, "Password")
+        if (standardPassword.isNotBlank() && !isLikelyLabelValue(standardPassword, "Password")) {
+            return standardPassword
+        }
+        var fallback = standardPassword.takeIf { it.isNotBlank() }
+
+        val prioritizedKeys = listOf(
+            "密码", "口令", "PIN", "Pin", "pin", "pwd", "PWD", "pass", "Pass", "password", "Password"
+        )
+        prioritizedKeys.forEach { key ->
+            val value = getFieldValue(entry, key)
+            if (value.isBlank()) return@forEach
+            if (!isLikelyLabelValue(value, key)) return value
+            if (fallback.isNullOrBlank()) fallback = value
+        }
+
+        val standardFields = setOf(
+            "Title", "UserName", "Password", "URL", "Notes",
+            "otp", "TOTP Seed", "TOTP Settings",
+            FIELD_MONICA_LOCAL_ID, FIELD_MONICA_ITEM_ID,
+            FIELD_MONICA_ITEM_TYPE, FIELD_MONICA_ITEM_DATA,
+            FIELD_MONICA_IMAGE_PATHS, FIELD_MONICA_IS_FAVORITE
+        )
+        entry.fields.forEach { (key, value) ->
+            if (key in standardFields || key.startsWith("_etm_")) return@forEach
+            if (value is EntryValue.Encrypted) {
+                val content = runCatching { value.content }.getOrDefault("")
+                if (content.isBlank()) return@forEach
+                if (!isLikelyLabelValue(content, key)) return content
+                if (fallback.isNullOrBlank()) fallback = content
+            }
+        }
+
+        return fallback ?: ""
     }
 
     private fun getFieldValue(entry: Entry, key: String): String {
@@ -1138,17 +1575,146 @@ class KeePassKdbxService(
         group.groups.forEach { collectEntries(it, entries) }
     }
 
+    private fun buildGroupTraversalContextIndex(
+        keePassDatabase: KeePassDatabase
+    ): Map<UUID, GroupTraversalContext> {
+        val recycleBinUuid = resolveRecycleBinUuid(keePassDatabase.content.meta)
+        val result = mutableMapOf<UUID, GroupTraversalContext>()
+        collectGroupTraversalContext(
+            group = keePassDatabase.content.group,
+            currentPathKey = null,
+            recycleBinUuid = recycleBinUuid,
+            parentInRecycleBin = false,
+            result = result
+        )
+        return result
+    }
+
+    private fun collectGroupTraversalContext(
+        group: Group,
+        currentPathKey: String?,
+        recycleBinUuid: UUID?,
+        parentInRecycleBin: Boolean,
+        result: MutableMap<UUID, GroupTraversalContext>
+    ) {
+        val inRecycleBin = parentInRecycleBin || (recycleBinUuid != null && group.uuid == recycleBinUuid)
+        result[group.uuid] = GroupTraversalContext(
+            pathKey = currentPathKey,
+            isInRecycleBinByMeta = inRecycleBin
+        )
+        group.groups.forEach { child ->
+            val childPathKey = buildKeePassPathKey(currentPathKey, child.name)
+            collectGroupTraversalContext(
+                group = child,
+                currentPathKey = childPathKey,
+                recycleBinUuid = recycleBinUuid,
+                parentInRecycleBin = inRecycleBin,
+                result = result
+            )
+        }
+    }
+
+    private fun resolveRestorePathFromEntryContext(
+        entryContext: EntryTraversalContext,
+        hasRecycleBinMeta: Boolean,
+        groupContextIndex: Map<UUID, GroupTraversalContext>
+    ): String? {
+        val inRecycleBin = if (hasRecycleBinMeta) {
+            entryContext.isInRecycleBinByMeta
+        } else {
+            isLikelyRecycleBinPath(entryContext.groupPath)
+        }
+        if (!inRecycleBin) {
+            return entryContext.groupPath
+        }
+
+        val previousParentUuid = entryContext.entry.previousParentGroup
+        if (previousParentUuid != null) {
+            val previousParentContext = groupContextIndex[previousParentUuid]
+            if (previousParentContext != null) {
+                val previousInRecycleBin = if (hasRecycleBinMeta) {
+                    previousParentContext.isInRecycleBinByMeta
+                } else {
+                    isLikelyRecycleBinPath(previousParentContext.pathKey)
+                }
+                if (!previousInRecycleBin) {
+                    return previousParentContext.pathKey
+                }
+            }
+        }
+
+        return null
+    }
+
+    private fun isGroupPathInRecycleBinByMeta(
+        group: Group,
+        currentPathKey: String?,
+        targetPathKey: String,
+        recycleBinUuid: UUID,
+        parentInRecycleBin: Boolean
+    ): Boolean? {
+        val inRecycle = parentInRecycleBin || group.uuid == recycleBinUuid
+        if (currentPathKey == targetPathKey) {
+            return inRecycle
+        }
+        group.groups.forEach { child ->
+            val childPathKey = buildKeePassPathKey(currentPathKey, child.name)
+            val childResult = isGroupPathInRecycleBinByMeta(
+                group = child,
+                currentPathKey = childPathKey,
+                targetPathKey = targetPathKey,
+                recycleBinUuid = recycleBinUuid,
+                parentInRecycleBin = inRecycle
+            )
+            if (childResult != null) {
+                return childResult
+            }
+        }
+        return null
+    }
+
+    private fun collectEntryContexts(
+        keePassDatabase: KeePassDatabase
+    ): Pair<List<EntryTraversalContext>, Boolean> {
+        val recycleBinUuid = resolveRecycleBinUuid(keePassDatabase.content.meta)
+        val hasRecycleBinMeta = recycleBinUuid != null
+        val entries = mutableListOf<EntryTraversalContext>()
+        collectEntriesWithGroupPath(
+            group = keePassDatabase.content.group,
+            currentPathKey = null,
+            recycleBinUuid = recycleBinUuid,
+            parentInRecycleBin = false,
+            entries = entries
+        )
+        return entries to hasRecycleBinMeta
+    }
+
     private fun collectEntriesWithGroupPath(
         group: Group,
         currentPathKey: String?,
-        entries: MutableList<Pair<Entry, String?>>
+        recycleBinUuid: UUID?,
+        parentInRecycleBin: Boolean,
+        entries: MutableList<EntryTraversalContext>
     ) {
+        val inRecycleBin = parentInRecycleBin || (recycleBinUuid != null && group.uuid == recycleBinUuid)
         group.entries.forEach { entry ->
-            entries.add(entry to currentPathKey)
+            entries.add(
+                EntryTraversalContext(
+                    entry = entry,
+                    groupPath = currentPathKey,
+                    isInRecycleBinByMeta = inRecycleBin
+                )
+            )
         }
         group.groups.forEach { child ->
             val nextPathKey = buildKeePassPathKey(currentPathKey, child.name)
-            collectEntriesWithGroupPath(child, nextPathKey, entries)
+            collectEntriesWithGroupPath(
+                group = child,
+                currentPathKey = nextPathKey,
+                recycleBinUuid = recycleBinUuid,
+                parentInRecycleBin = inRecycleBin,
+                entries = entries
+            )
         }
     }
 
@@ -1156,8 +1722,15 @@ class KeePassKdbxService(
         group: Group,
         parentPathKey: String,
         depth: Int,
-        result: MutableList<KeePassGroupInfo>
+        result: MutableList<KeePassGroupInfo>,
+        recycleBinUuid: UUID?,
+        includeRecycleBin: Boolean,
+        parentInRecycleBin: Boolean
     ) {
+        val inRecycleBin = parentInRecycleBin || (recycleBinUuid != null && group.uuid == recycleBinUuid)
+        if (!includeRecycleBin && inRecycleBin) {
+            return
+        }
         val name = group.name.ifBlank { "(未命名)" }
         val currentPathKey = buildKeePassPathKey(parentPathKey, name)
         val currentDisplayPath = decodeKeePassPathForDisplay(currentPathKey)
@@ -1171,8 +1744,38 @@ class KeePassKdbxService(
             )
         )
         group.groups.forEach { child ->
-            collectGroups(child, currentPathKey, depth + 1, result)
+            collectGroups(
+                group = child,
+                parentPathKey = currentPathKey,
+                depth = depth + 1,
+                result = result,
+                recycleBinUuid = recycleBinUuid,
+                includeRecycleBin = includeRecycleBin,
+                parentInRecycleBin = inRecycleBin
+            )
         }
+    }
+
+    private fun findGroupPathByUuid(
+        group: Group,
+        currentPathKey: String?,
+        targetUuid: UUID
+    ): String? {
+        if (group.uuid == targetUuid) {
+            return currentPathKey
+        }
+        group.groups.forEach { child ->
+            val childPathKey = buildKeePassPathKey(currentPathKey, child.name)
+            val childResult = findGroupPathByUuid(
+                group = child,
+                currentPathKey = childPathKey,
+                targetUuid = targetUuid
+            )
+            if (childResult != null) {
+                return childResult
+            }
+        }
+        return null
     }
 
     private fun addGroupToPath(
@@ -1306,10 +1909,13 @@ class KeePassKdbxService(
     private suspend fun <T> mutateDatabase(
         databaseId: Long,
         retryOnConflict: Boolean = true,
+        forceSyncWrite: Boolean = false,
         mutation: (LoadedDatabase) -> MutationPlan<T>
     ): T {
+        // Legacy non-DX mode has been retired. KeePass mutations always use DX-like commit path.
+        val enableAsyncMutationCommit = true
         return globalMutationMutex.withLock {
-            if (ENABLE_ASYNC_MUTATION_COMMIT) {
+            if (enableAsyncMutationCommit) {
                 val loaded = getCachedLoadedDatabase(databaseId) ?: loadDatabase(databaseId)
                 val plan = mutation(loaded)
                 val latestLoaded = LoadedDatabase(

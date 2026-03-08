@@ -477,6 +477,9 @@ data class CipherApiResponse(
     @JsonNames("creationDate")
     @SerialName("CreationDate")
     val creationDate: String? = null,
+    @JsonNames("archivedDate")
+    @SerialName("ArchivedDate")
+    val archivedDate: String? = null,
     @JsonNames("deletedDate")
     @SerialName("DeletedDate")
     val deletedDate: String? = null
@@ -786,7 +789,9 @@ data class CipherCreateRequest(
     @SerialName("Favorite")
     val favorite: Boolean = false,
     @SerialName("Reprompt")
-    val reprompt: Int = 0
+    val reprompt: Int = 0,
+    @SerialName("ArchivedDate")
+    val archivedDate: String? = null
 )
 
 @Serializable
@@ -812,7 +817,9 @@ data class CipherUpdateRequest(
     @SerialName("Favorite")
     val favorite: Boolean = false,
     @SerialName("Reprompt")
-    val reprompt: Int = 0
+    val reprompt: Int = 0,
+    @SerialName("ArchivedDate")
+    val archivedDate: String? = null
 )
 
 @Serializable

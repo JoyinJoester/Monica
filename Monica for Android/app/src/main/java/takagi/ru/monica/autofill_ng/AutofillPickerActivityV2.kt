@@ -236,10 +236,49 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             finish()
             return
         }
+        val idCount = args.autofillIds?.size ?: 0
+        val hintCount = args.autofillHints?.size ?: 0
+        val suggestedCount = args.suggestedPasswordIds?.size ?: 0
+        val explicitManualMode = intent.getBooleanExtra("extra_manual_mode", false)
         AutofillLogger.i(
             "PICKER",
-            "Picker opened: saveMode=${args.isSaveMode}, responseAuth=${args.responseAuthMode}, ids=${args.autofillIds?.size ?: 0}, hints=${args.autofillHints?.size ?: 0}"
+            "Picker opened: saveMode=${args.isSaveMode}, responseAuth=${args.responseAuthMode}, ids=$idCount, hints=$hintCount",
+            metadata = mapOf(
+                "sdk" to Build.VERSION.SDK_INT,
+                "device" to "${Build.MANUFACTURER}/${Build.MODEL}",
+                "manualMode" to isManualMode,
+                "manualExtra" to explicitManualMode,
+                "idCount" to idCount,
+                "hintCount" to hintCount,
+                "suggestedCount" to suggestedCount,
+                "hintPreview" to (args.autofillHints?.take(6)?.joinToString(",") ?: "none"),
+                "applicationId" to (args.applicationId ?: "none"),
+                "webDomain" to (args.webDomain ?: "none"),
+                "responseAuth" to args.responseAuthMode,
+                "saveMode" to args.isSaveMode,
+                "interactionIdPresent" to !args.interactionIdentifier.isNullOrBlank(),
+                "fieldSignaturePresent" to !args.fieldSignatureKey.isNullOrBlank()
+            )
         )
+        if (!explicitManualMode && idCount == 0) {
+            AutofillLogger.w(
+                "PICKER",
+                "Opened without AutofillId in non-manual entry path",
+                metadata = mapOf(
+                    "hintCount" to hintCount,
+                    "responseAuth" to args.responseAuthMode,
+                    "applicationId" to (args.applicationId ?: "none"),
+                    "webDomain" to (args.webDomain ?: "none")
+                )
+            )
+        }
+        if (hintCount > 0 && idCount != hintCount) {
+            AutofillLogger.w(
+                "PICKER",
+                "Autofill IDs and hints size mismatch",
+                metadata = mapOf("idCount" to idCount, "hintCount" to hintCount)
+            )
+        }
         
         val database = PasswordDatabase.getDatabase(applicationContext)
         val repository = PasswordRepository(database.passwordEntryDao())
@@ -305,7 +344,23 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        AutofillLogger.w("PICKER", "onNewIntent received while picker is active; reusing current instance")
+        val newArgs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableExtra(EXTRA_ARGS, Args::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableExtra(EXTRA_ARGS)
+        }
+        AutofillLogger.w(
+            "PICKER",
+            "onNewIntent received while picker is active; reusing current instance",
+            metadata = mapOf(
+                "newIdCount" to (newArgs?.autofillIds?.size ?: 0),
+                "newHintCount" to (newArgs?.autofillHints?.size ?: 0),
+                "newSuggestedCount" to (newArgs?.suggestedPasswordIds?.size ?: 0),
+                "newSaveMode" to (newArgs?.isSaveMode ?: false),
+                "newResponseAuth" to (newArgs?.responseAuthMode ?: false)
+            )
+        )
     }
     
     private fun handleSmartCopy(password: PasswordEntry, usernameFirst: Boolean) {
@@ -796,7 +851,6 @@ private fun AutofillPickerContent(
     var selectedFolderId by remember { mutableStateOf<String?>(null) }
     var isFilterExpanded by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(true) }
-    var visibleMainPasswordCount by remember { mutableStateOf(AUTOFILL_INITIAL_PAGE_SIZE) }
     var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
     var foldersByVault by remember { mutableStateOf<Map<Long, List<BitwardenFolder>>>(emptyMap()) }
     val coroutineScope = rememberCoroutineScope()
@@ -877,19 +931,51 @@ private fun AutofillPickerContent(
     
     val bitwardenRepository = remember(context) { BitwardenRepository.getInstance(context) }
 
+    LaunchedEffect(Unit) {
+        AutofillLogger.i(
+            "PICKER_UI",
+            "Picker content mounted",
+            metadata = mapOf(
+                "manualMode" to isManualMode,
+                "canSkipVerification" to canSkipVerification,
+                "biometricEnabled" to biometricEnabled,
+                "iconCardsEnabled" to iconCardsEnabled,
+                "responseAuth" to args.responseAuthMode,
+                "idCount" to (args.autofillIds?.size ?: 0),
+                "hintCount" to (args.autofillHints?.size ?: 0),
+            )
+        )
+    }
+
     // 加载密码
     LaunchedEffect(Unit) {
+        val start = System.currentTimeMillis()
         try {
             // 筛选建议密码
             val suggestedIds = args.suggestedPasswordIds?.toList() ?: emptyList()
             if (suggestedIds.isNotEmpty()) {
                 suggestedPasswords = repository.getPasswordsByIds(suggestedIds)
             }
-            // 先展示推荐项，随后异步补齐全量列表，降低首屏等待感
-            isLoading = false
+            // 先完成全量数据读取，再切换到列表视图，避免首屏阶段性结构突变。
             allPasswords = repository.getAllPasswordEntries().first()
+            AutofillLogger.i(
+                "PICKER_UI",
+                "Picker data load complete",
+                metadata = mapOf(
+                    "suggestedRequested" to suggestedIds.size,
+                    "suggestedLoaded" to suggestedPasswords.size,
+                    "allLoaded" to allPasswords.size,
+                    "elapsedMs" to (System.currentTimeMillis() - start)
+                )
+            )
         } catch (e: Exception) {
             android.util.Log.e("AutofillPickerV2", "Error loading passwords", e)
+            AutofillLogger.e(
+                "PICKER_UI",
+                "Picker data load failed",
+                e,
+                metadata = mapOf("elapsedMs" to (System.currentTimeMillis() - start))
+            )
         } finally {
             isLoading = false
         }
@@ -1017,17 +1103,6 @@ private fun AutofillPickerContent(
         }
     }
 
-    LaunchedEffect(
-        searchQuery,
-        sourceFilter,
-        selectedKeePassDatabaseId,
-        selectedKeePassGroupPath,
-        selectedVaultId,
-        selectedFolderId
-    ) {
-        visibleMainPasswordCount = AUTOFILL_INITIAL_PAGE_SIZE
-    }
-
     val filteredPasswordIds = remember(filteredPasswords) { filteredPasswords.map { it.id }.toHashSet() }
     val filteredSuggestedPasswords by remember(suggestedPasswords, filteredPasswordIds) {
         derivedStateOf {
@@ -1106,6 +1181,40 @@ private fun AutofillPickerContent(
             }
         }
     }.filter { it.isNotBlank() }
+
+    LaunchedEffect(
+        isLoading,
+        isSearchLoading,
+        sourceFilter,
+        selectedKeePassDatabaseId,
+        selectedKeePassGroupPath,
+        selectedVaultId,
+        selectedFolderId,
+        searchQuery.length,
+        allPasswords.size,
+        suggestedPasswords.size,
+        filteredPasswords.size,
+        filteredSuggestedPasswords.size
+    ) {
+        AutofillLogger.d(
+            "PICKER_UI",
+            "UI state snapshot",
+            metadata = mapOf(
+                "isLoading" to isLoading,
+                "isSearchLoading" to isSearchLoading,
+                "queryLen" to searchQuery.length,
+                "sourceFilter" to sourceFilter.name,
+                "allCount" to allPasswords.size,
+                "suggestedCount" to suggestedPasswords.size,
+                "filteredCount" to filteredPasswords.size,
+                "filteredSuggestedCount" to filteredSuggestedPasswords.size,
+                "selectedKeePassDb" to (selectedKeePassDatabaseId ?: -1L),
+                "selectedKeePassGroupSet" to (selectedKeePassGroupPath != null),
+                "selectedVaultId" to (selectedVaultId ?: -1L),
+                "selectedFolderSet" to (selectedFolderId != null)
+            )
+        )
+    }
 
     val appDb = remember(context) { PasswordDatabase.getDatabase(context.applicationContext) }
     val secureItemRepository = remember(appDb) { SecureItemRepository(appDb.secureItemDao()) }
@@ -1289,16 +1398,7 @@ private fun AutofillPickerContent(
                             } else {
                                 filteredPasswords
                             }
-                            val displayedMainPasswords = if (searchQuery.isBlank()) {
-                                mainPasswords.take(
-                                    visibleMainPasswordCount.coerceAtLeast(AUTOFILL_INITIAL_PAGE_SIZE)
-                                )
-                            } else {
-                                // 搜索模式优先保证命中，直接展示搜索结果全集。
-                                mainPasswords
-                            }
-                            val canLoadMoreMainPasswords =
-                                searchQuery.isBlank() && displayedMainPasswords.size < mainPasswords.size
+                            val displayedMainPasswords = mainPasswords
                             val showNoSuggestionsHint = sourceFilter == AutofillStorageSourceFilter.ALL &&
                                 selectedKeePassDatabaseId == null &&
                                 selectedKeePassGroupPath == null &&
@@ -1471,27 +1571,6 @@ private fun AutofillPickerContent(
                                         }
                                     )
                                 }
-
-                                if (canLoadMoreMainPasswords) {
-                                    item(key = "load_more_main_${displayedMainPasswords.size}") {
-                                        LaunchedEffect(displayedMainPasswords.size, mainPasswords.size) {
-                                            visibleMainPasswordCount =
-                                                (visibleMainPasswordCount + AUTOFILL_PAGE_SIZE)
-                                                    .coerceAtMost(mainPasswords.size)
-                                        }
-                                        Box(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(vertical = 10.dp),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            CircularProgressIndicator(
-                                                modifier = Modifier.size(18.dp),
-                                                strokeWidth = 2.dp
-                                            )
-                                        }
-                                    }
-                                }
                                 
                                 item {
                                     Spacer(modifier = Modifier.height(80.dp))
@@ -1596,8 +1675,6 @@ private fun AutofillPreferences.AutofillDefaultSourceFilter.toUiFilter(): Autofi
 
 private const val KEEPASS_GROUP_UNCATEGORIZED = "__keepass_uncategorized__"
 private const val BITWARDEN_FOLDER_UNCATEGORIZED = "__bitwarden_uncategorized__"
-private const val AUTOFILL_INITIAL_PAGE_SIZE = 50
-private const val AUTOFILL_PAGE_SIZE = 50
 
 private fun AutofillStorageSourceFilter.labelResId(): Int = when (this) {
     AutofillStorageSourceFilter.ALL -> R.string.filter_all

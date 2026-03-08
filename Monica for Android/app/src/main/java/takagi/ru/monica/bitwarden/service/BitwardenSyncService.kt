@@ -13,6 +13,7 @@ import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.bitwarden.*
 import takagi.ru.monica.security.SecurityManager
+import java.time.Instant
 import java.util.Date
 
 /**
@@ -1021,7 +1022,8 @@ class BitwardenSyncService(
             notes = encryptedNotes,
             login = loginData,
             fields = buildEncryptedPasswordCustomFields(entry, symmetricKey),
-            favorite = entry.isFavorite
+            favorite = entry.isFavorite,
+            archivedDate = toBitwardenArchivedDate(entry)
         )
     }
     
@@ -1061,8 +1063,17 @@ class BitwardenSyncService(
             notes = encryptedNotes,
             login = loginData,
             fields = mergedFields ?: buildEncryptedPasswordCustomFields(entry, symmetricKey),
-            favorite = entry.isFavorite
+            favorite = entry.isFavorite,
+            archivedDate = toBitwardenArchivedDate(entry)
         )
+    }
+
+    private fun toBitwardenArchivedDate(entry: PasswordEntry): String? {
+        if (!entry.isArchived) return null
+        val archiveDate = entry.archivedAt ?: entry.updatedAt
+        return runCatching {
+            Instant.ofEpochMilli(archiveDate.time).toString()
+        }.getOrNull()
     }
 
     private fun mergeCipherFieldsPreservingUnknown(

@@ -410,6 +410,7 @@ data class AppSettings(
     val predictiveBackForPageNavigationEnabled: Boolean = false, // 页面级预见式返回（实验）
     val smartDeduplicationEnabled: Boolean = true, // 智能去重（在“所有”视图中合并显示相同密码）
     val separateUsernameAccountEnabled: Boolean = false, // 用户名/账号分离（实验）
+    val keepassDxLikeMutationEnabled: Boolean = false, // KeePass DX-like 写入管线（实验）
     val lastPasswordCategoryFilterType: String = "all", // 上次密码列表分类类型
     val lastPasswordCategoryFilterPrimaryId: Long? = null, // 上次分类主参数（分类ID/库ID等）
     val lastPasswordCategoryFilterSecondaryId: Long? = null, // 上次分类次参数（如 Bitwarden Vault ID）

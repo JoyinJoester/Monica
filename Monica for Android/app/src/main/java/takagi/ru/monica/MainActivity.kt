@@ -153,7 +153,8 @@ class MainActivity : BaseMonicaActivity() {
             database.categoryDao(),
             database.bitwardenFolderDao(),
             database.secureItemDao(),
-            database.passkeyDao()
+            database.passkeyDao(),
+            database.passwordArchiveSyncMetaDao()
         )
         val secureItemRepository = takagi.ru.monica.repository.SecureItemRepository(database.secureItemDao())
         val securityManager = SecurityManager(this)

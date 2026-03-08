@@ -1,6 +1,8 @@
 package takagi.ru.monica.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -306,7 +308,7 @@ fun UnifiedCategoryFilterBottomSheet(
                         }
                     }
                 )
-                AnimatedVisibility(
+                SafeAnimatedVisibility(
                     visible = expanded,
                     enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = expandCollapseSpec),
                     exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)
@@ -512,7 +514,7 @@ fun UnifiedCategoryFilterBottomSheet(
                                 }
                             }
                         )
-                        AnimatedVisibility(
+                        SafeAnimatedVisibility(
                             visible = monicaExpanded,
                             enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = expandCollapseSpec),
                             exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)
@@ -667,7 +669,7 @@ fun UnifiedCategoryFilterBottomSheet(
                                             }
                                         }
                                     )
-                                    AnimatedVisibility(
+                                    SafeAnimatedVisibility(
                                         visible = expanded,
                                         enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = expandCollapseSpec),
                                         exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)
@@ -1063,7 +1065,7 @@ fun UnifiedCategoryFilterBottomSheet(
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            AnimatedVisibility(
+                            SafeAnimatedVisibility(
                                 visible = createOptionsExpanded,
                                 enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = expandCollapseSpec),
                                 exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)
@@ -1690,6 +1692,24 @@ private fun HierarchyIndentedItem(
             content()
         }
     }
+}
+
+@Composable
+private fun SafeAnimatedVisibility(
+    visible: Boolean,
+    enter: EnterTransition,
+    exit: ExitTransition,
+    content: @Composable () -> Unit
+) {
+    if (Build.VERSION.SDK_INT >= 36) {
+        if (visible) content()
+        return
+    }
+    AnimatedVisibility(
+        visible = visible,
+        enter = enter,
+        exit = exit
+    ) { content() }
 }
 
 private enum class CreateTarget {

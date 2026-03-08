@@ -24,8 +24,9 @@ object BitwardenSendMapper {
         vaultKey: SymmetricCryptoKey
     ): BitwardenSend? {
         return try {
-            val keyBase64 = BitwardenCrypto.decryptToString(api.key, vaultKey)
-            val keyMaterial = Base64.decode(keyBase64, Base64.NO_WRAP)
+            val encryptedKeyBytes = BitwardenCrypto.decrypt(api.key, vaultKey)
+            val keyMaterial = decodeKeyMaterial(encryptedKeyBytes) ?: return null
+            val keyBase64 = Base64.encodeToString(keyMaterial, Base64.NO_WRAP)
             val sendKey = BitwardenCrypto.deriveSendKey(keyMaterial)
 
             val decryptedName = decryptString(api.name, sendKey) ?: "Untitled Send"
@@ -87,7 +88,8 @@ object BitwardenSendMapper {
         val keyBase64 = Base64.encodeToString(keyMaterial, Base64.NO_WRAP)
         val sendKey = BitwardenCrypto.deriveSendKey(keyMaterial)
 
-        val encryptedKey = BitwardenCrypto.encryptString(keyBase64, vaultKey)
+        // Bitwarden Send 协议要求 Key 字段加密原始 16 字节密钥，而不是 Base64 文本。
+        val encryptedKey = BitwardenCrypto.encrypt(keyMaterial, vaultKey)
         val encryptedName = BitwardenCrypto.encryptString(title, sendKey)
         val encryptedNotes = notes
             ?.takeIf { it.isNotBlank() }
@@ -158,5 +160,23 @@ object BitwardenSendMapper {
             null
         }
     }
-}
 
+    private fun decodeKeyMaterial(raw: ByteArray): ByteArray? {
+        // 正常格式：直接是 16 字节随机密钥（Bitwarden 官方实现）
+        if (raw.size == 16) return raw
+
+        // 兼容早期错误格式：将 Base64 文本作为字符串加密
+        val asText = runCatching { String(raw, Charsets.UTF_8).trim() }.getOrNull().orEmpty()
+        if (asText.isBlank()) return null
+
+        val standard = runCatching { Base64.decode(asText, Base64.NO_WRAP) }.getOrNull()
+        if (standard?.size == 16) return standard
+
+        val urlSafe = runCatching {
+            Base64.decode(asText, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+        }.getOrNull()
+        if (urlSafe?.size == 16) return urlSafe
+
+        return null
+    }
+}

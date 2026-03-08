@@ -4,6 +4,8 @@ import kotlinx.coroutines.flow.Flow
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.CategoryDao
 import takagi.ru.monica.data.PasskeyDao
+import takagi.ru.monica.data.PasswordArchiveSyncMeta
+import takagi.ru.monica.data.PasswordArchiveSyncMetaDao
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordEntryDao
 import takagi.ru.monica.data.SecureItemDao
@@ -20,7 +22,8 @@ class PasswordRepository(
     private val categoryDao: CategoryDao? = null,
     private val bitwardenFolderDao: BitwardenFolderDao? = null,
     private val secureItemDao: SecureItemDao? = null,
-    private val passkeyDao: PasskeyDao? = null
+    private val passkeyDao: PasskeyDao? = null,
+    private val passwordArchiveSyncMetaDao: PasswordArchiveSyncMetaDao? = null
 ) {
     
     fun getAllPasswordEntries(): Flow<List<PasswordEntry>> {
@@ -168,6 +171,18 @@ class PasswordRepository(
     suspend fun unarchivePasswordsByIds(ids: List<Long>) {
         if (ids.isEmpty()) return
         passwordEntryDao.unarchiveByIds(ids)
+    }
+
+    suspend fun getArchiveSyncMeta(entryId: Long): PasswordArchiveSyncMeta? {
+        return passwordArchiveSyncMetaDao?.getByEntryId(entryId)
+    }
+
+    suspend fun upsertArchiveSyncMeta(meta: PasswordArchiveSyncMeta) {
+        passwordArchiveSyncMetaDao?.upsert(meta)
+    }
+
+    suspend fun deleteArchiveSyncMeta(entryId: Long) {
+        passwordArchiveSyncMetaDao?.deleteByEntryId(entryId)
     }
     
     suspend fun toggleFavorite(id: Long, isFavorite: Boolean) {

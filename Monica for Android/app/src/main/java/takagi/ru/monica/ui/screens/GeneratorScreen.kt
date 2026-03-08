@@ -416,7 +416,9 @@ fun GeneratorScreen(
                 ) {
                     Text(
                         text = stringResource(R.string.generator_title),
-                        style = MaterialTheme.typography.headlineMedium
+                        style = MaterialTheme.typography.headlineLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground
                     )
 
                     IconButton(
@@ -526,8 +528,8 @@ fun GeneratorScreen(
                         Slider(
                             value = symbolLength.toFloat(),
                             onValueChange = { viewModel.updateSymbolLength(it.toInt()) },
-                            valueRange = 1f..30f,
-                            steps = 29,
+                            valueRange = 1f..32f,
+                            steps = 31,
                             modifier = Modifier.fillMaxWidth()
                         )
                         
@@ -864,8 +866,8 @@ fun GeneratorScreen(
                         Slider(
                             value = passwordLength.toFloat(),
                             onValueChange = { viewModel.updatePasswordLength(it.toInt()) },
-                            valueRange = 4f..30f,
-                            steps = 26,
+                            valueRange = 4f..32f,
+                            steps = 28,
                             modifier = Modifier.fillMaxWidth()
                         )
                         

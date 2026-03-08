@@ -1,5 +1,6 @@
 package takagi.ru.monica.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
@@ -14,6 +15,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
@@ -36,10 +38,14 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Note
 import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Sync
@@ -54,6 +60,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -65,13 +72,22 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import takagi.ru.monica.R
+import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.PasswordDatabase
+import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.TimelineBranch
 import takagi.ru.monica.data.model.TimelineEvent
 import takagi.ru.monica.ui.components.DiffComparisonSheet
+import takagi.ru.monica.ui.components.ExpressiveTopBar
+import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
+import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
 import takagi.ru.monica.ui.components.formatRelativeTime
 import takagi.ru.monica.ui.components.formatShortTime
 import takagi.ru.monica.viewmodel.TimelineViewModel
@@ -123,6 +139,9 @@ fun TimelineScreen(
     trashViewModel: TrashViewModel = viewModel(),
     onLogSelected: (TimelineEvent.StandardLog) -> Unit = {},
     splitPaneMode: Boolean = false,
+    initialTab: HistoryTab = HistoryTab.TIMELINE,
+    initialTrashScopeKey: String? = null,
+    enableTabSwitch: Boolean = true,
     showBackButton: Boolean = false,
     onNavigateBack: () -> Unit = {}
 ) {
@@ -144,7 +163,8 @@ fun TimelineScreen(
                 )
                 TimelineContent(
                     viewModel = viewModel,
-                    onLogSelected = onLogSelected
+                    onLogSelected = onLogSelected,
+                    embeddedInSplitPane = true
                 )
             }
 
@@ -165,27 +185,36 @@ fun TimelineScreen(
                 )
                 TrashContent(
                     viewModel = trashViewModel,
-                    embeddedInSplitPane = true
+                    embeddedInSplitPane = true,
+                    initialSelectedScopeKey = initialTrashScopeKey
                 )
             }
         }
         return
     }
 
-    var currentTab by rememberSaveable { mutableStateOf(HistoryTab.TIMELINE) }
+    var currentTab by rememberSaveable(initialTab) { mutableStateOf(initialTab) }
+    val hideLegacyTopBar = !enableTabSwitch
     
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // M3E 风格的顶部标题栏
-        HistoryTopBar(
-            currentTab = currentTab,
-            onTabSelected = { currentTab = it },
-            showBackButton = showBackButton,
-            onNavigateBack = onNavigateBack
-        )
+        if (!hideLegacyTopBar) {
+            // M3E 风格的顶部标题栏
+            HistoryTopBar(
+                currentTab = currentTab,
+                onTabSelected = { selectedTab ->
+                    if (enableTabSwitch) {
+                        currentTab = selectedTab
+                    }
+                },
+                enableTabSwitch = enableTabSwitch,
+                showBackButton = showBackButton,
+                onNavigateBack = onNavigateBack
+            )
+        }
         
         // 内容区域，带有切换动画
         AnimatedContent(
@@ -199,9 +228,15 @@ fun TimelineScreen(
             when (targetTab) {
                 HistoryTab.TIMELINE -> TimelineContent(
                     viewModel = viewModel,
-                    onLogSelected = onLogSelected
+                    onLogSelected = onLogSelected,
+                    onNavigateToPasswordPage = if (!enableTabSwitch) onNavigateBack else null
                 )
-                HistoryTab.TRASH -> TrashContent(viewModel = trashViewModel)
+                HistoryTab.TRASH -> TrashContent(
+                    viewModel = trashViewModel,
+                    onNavigateToPasswordPage = if (!enableTabSwitch) onNavigateBack else null,
+                    embeddedInSplitPane = false,
+                    initialSelectedScopeKey = initialTrashScopeKey
+                )
             }
         }
     }
@@ -269,6 +304,7 @@ private fun SplitPaneHeader(
 private fun HistoryTopBar(
     currentTab: HistoryTab,
     onTabSelected: (HistoryTab) -> Unit,
+    enableTabSwitch: Boolean,
     showBackButton: Boolean,
     onNavigateBack: () -> Unit
 ) {
@@ -296,29 +332,40 @@ private fun HistoryTopBar(
                 Spacer(modifier = Modifier.width(48.dp))
             }
 
-            // 右侧胶囊形切换器 - 更精致的设计
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = colorScheme.surfaceContainerHighest.copy(alpha = 0.7f),
-                tonalElevation = 0.dp
-            ) {
-                Row(
-                    modifier = Modifier.padding(4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+            if (enableTabSwitch) {
+                // 右侧胶囊形切换器 - 更精致的设计
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = colorScheme.surfaceContainerHighest.copy(alpha = 0.7f),
+                    tonalElevation = 0.dp
                 ) {
-                    HistoryPillTabItem(
-                        selected = currentTab == HistoryTab.TIMELINE,
-                        onClick = { onTabSelected(HistoryTab.TIMELINE) },
-                        icon = Icons.Default.History,
-                        contentDescription = stringResource(R.string.timeline_subtitle)
-                    )
-                    HistoryPillTabItem(
-                        selected = currentTab == HistoryTab.TRASH,
-                        onClick = { onTabSelected(HistoryTab.TRASH) },
-                        icon = Icons.Default.Delete,
-                        contentDescription = stringResource(R.string.timeline_trash_title)
-                    )
+                    Row(
+                        modifier = Modifier.padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        HistoryPillTabItem(
+                            selected = currentTab == HistoryTab.TIMELINE,
+                            onClick = { onTabSelected(HistoryTab.TIMELINE) },
+                            icon = Icons.Default.History,
+                            contentDescription = stringResource(R.string.timeline_subtitle)
+                        )
+                        HistoryPillTabItem(
+                            selected = currentTab == HistoryTab.TRASH,
+                            onClick = { onTabSelected(HistoryTab.TRASH) },
+                            icon = Icons.Default.Delete,
+                            contentDescription = stringResource(R.string.timeline_trash_title)
+                        )
+                    }
                 }
+            } else {
+                Text(
+                    text = when (currentTab) {
+                        HistoryTab.TIMELINE -> stringResource(R.string.timeline_title)
+                        HistoryTab.TRASH -> stringResource(R.string.timeline_trash_title)
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                    color = colorScheme.onSurface
+                )
             }
         }
     }
@@ -462,78 +509,199 @@ private fun groupAndAggregateEvents(events: List<TimelineEvent>): List<TimelineG
 @Composable
 private fun TimelineContent(
     viewModel: TimelineViewModel,
-    onLogSelected: (TimelineEvent.StandardLog) -> Unit
+    onLogSelected: (TimelineEvent.StandardLog) -> Unit,
+    embeddedInSplitPane: Boolean = false,
+    onNavigateToPasswordPage: (() -> Unit)? = null
 ) {
     val timelineEvents by viewModel.timelineEvents.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
-    
+    val context = LocalContext.current
+    val database = remember(context) { PasswordDatabase.getDatabase(context.applicationContext) }
+    val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
+    val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
+    val activePasswordEntries by database.passwordEntryDao().getAllPasswordEntries().collectAsState(initial = emptyList())
+    val deletedPasswordEntries by database.passwordEntryDao().getDeletedEntries().collectAsState(initial = emptyList())
+    val activeSecureItems by database.secureItemDao().getAllItems().collectAsState(initial = emptyList())
+    val deletedSecureItems by database.secureItemDao().getDeletedItems().collectAsState(initial = emptyList())
+
+    val localLabel = stringResource(R.string.filter_monica)
+    val bitwardenLabel = stringResource(R.string.filter_bitwarden)
+    val keepassLabel = stringResource(R.string.filter_keepass)
+
+    val scopeOptions = remember(localLabel, bitwardenLabel, keepassLabel, bitwardenVaults, keepassDatabases) {
+        buildList {
+            add(
+                TrashScopeFilterOption(
+                    key = TrashScopeFilter.Local.key,
+                    label = localLabel,
+                    scope = TrashScopeFilter.Local
+                )
+            )
+            bitwardenVaults.forEach { vault ->
+                val displayName = vault.displayName?.takeIf { it.isNotBlank() } ?: vault.email
+                add(
+                    TrashScopeFilterOption(
+                        key = TrashScopeFilter.BitwardenVaultScope(vault.id).key,
+                        label = "$bitwardenLabel · $displayName",
+                        scope = TrashScopeFilter.BitwardenVaultScope(vault.id)
+                    )
+                )
+            }
+            keepassDatabases.forEach { keepass ->
+                add(
+                    TrashScopeFilterOption(
+                        key = TrashScopeFilter.KeePassDatabaseScope(keepass.id).key,
+                        label = "$keepassLabel · ${keepass.name}",
+                        scope = TrashScopeFilter.KeePassDatabaseScope(keepass.id)
+                    )
+                )
+            }
+        }
+    }
+
+    var selectedScopeKey by rememberSaveable { mutableStateOf(TrashScopeFilter.Local.key) }
+    var showScopeSelectionSheet by remember { mutableStateOf(false) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
+
+    val selectedScope = scopeOptions.firstOrNull { it.key == selectedScopeKey }?.scope ?: TrashScopeFilter.Local
+
+    LaunchedEffect(scopeOptions) {
+        if (scopeOptions.none { it.key == selectedScopeKey }) {
+            selectedScopeKey = scopeOptions.firstOrNull()?.key ?: TrashScopeFilter.Local.key
+        }
+    }
+
+    val passwordScopeById = remember(activePasswordEntries, deletedPasswordEntries) {
+        buildMap<Long, TrashScopeFilter> {
+            (activePasswordEntries + deletedPasswordEntries).forEach { entry ->
+                put(entry.id, resolveScopeFilter(entry.bitwardenVaultId, entry.keepassDatabaseId))
+            }
+        }
+    }
+    val secureItemScopeById = remember(activeSecureItems, deletedSecureItems) {
+        buildMap<Long, TrashScopeFilter> {
+            (activeSecureItems + deletedSecureItems).forEach { item ->
+                put(item.id, resolveScopeFilter(item.bitwardenVaultId, item.keepassDatabaseId))
+            }
+        }
+    }
+
     var selectedBranch by remember { mutableStateOf<TimelineBranch?>(null) }
     var selectedLog by remember { mutableStateOf<TimelineEvent.StandardLog?>(null) }
-    
+
     val colorScheme = MaterialTheme.colorScheme
-    val groups = groupAndAggregateEvents(timelineEvents)
-    
-    Box(
+
+    val scopedTimelineEvents = remember(timelineEvents, selectedScope, passwordScopeById, secureItemScopeById) {
+        timelineEvents.filter { event ->
+            matchesTimelineScope(
+                event = event,
+                selectedScope = selectedScope,
+                passwordScopeById = passwordScopeById,
+                secureItemScopeById = secureItemScopeById
+            )
+        }
+    }
+    val visibleTimelineEvents = remember(scopedTimelineEvents, searchQuery) {
+        val keyword = searchQuery.trim()
+        if (keyword.isBlank()) {
+            scopedTimelineEvents
+        } else {
+            scopedTimelineEvents.filter { event -> matchesTimelineSearch(event, keyword) }
+        }
+    }
+    val groups = groupAndAggregateEvents(visibleTimelineEvents)
+
+    Column(
         modifier = Modifier
             .fillMaxSize()
             .background(colorScheme.background)
     ) {
-        if (timelineEvents.isEmpty()) {
-            EmptyTimelineState()
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    top = 8.dp,
-                    bottom = 100.dp,
-                    start = 16.dp,
-                    end = 16.dp
-                ),
-                verticalArrangement = Arrangement.spacedBy(0.dp)
-            ) {
-                groups.forEach { group ->
-                    // 日期分组标题
-                    item(key = "header_${group.dateLabel}") {
-                        DateSectionHeader(dateLabel = group.dateLabel)
+        if (!embeddedInSplitPane && onNavigateToPasswordPage != null) {
+            TimelineHeaderBar(
+                searchQuery = searchQuery,
+                onSearchQueryChange = { searchQuery = it },
+                isSearchExpanded = isSearchExpanded,
+                onSearchExpandedChange = { expanded ->
+                    isSearchExpanded = expanded
+                    if (!expanded) {
+                        searchQuery = ""
                     }
-                    
-                    // 组内条目
-                    items(
-                        items = group.items,
-                        key = { item ->
-                            when (item) {
-                                is TimelineDisplayItem.Single -> "single_${item.event.id}"
-                                is TimelineDisplayItem.Aggregated -> "agg_${item.itemType}_${item.firstTimestamp}"
-                                is TimelineDisplayItem.Conflict -> "conflict_${item.event.ancestor.id}"
-                            }
+                },
+                onOpenScopeSheet = { showScopeSelectionSheet = true },
+                onNavigateToPasswordPage = onNavigateToPasswordPage,
+                onRefreshClick = { viewModel.refresh() }
+            )
+        }
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .weight(1f)
+                .background(colorScheme.background)
+        ) {
+            if (isLoading && visibleTimelineEvents.isEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            } else if (visibleTimelineEvents.isEmpty()) {
+                EmptyTimelineState()
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        top = 8.dp,
+                        bottom = 100.dp,
+                        start = 16.dp,
+                        end = 16.dp
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(0.dp)
+                ) {
+                    groups.forEach { group ->
+                        item(key = "header_${group.dateLabel}") {
+                            DateSectionHeader(dateLabel = group.dateLabel)
                         }
-                    ) { item ->
-                        when (item) {
-                            is TimelineDisplayItem.Single -> {
-                                ModernLogItem(
-                                    log = item.event,
-                                    onClick = {
-                                        selectedLog = item.event
-                                        onLogSelected(item.event)
-                                    }
-                                )
+
+                        items(
+                            items = group.items,
+                            key = { item ->
+                                when (item) {
+                                    is TimelineDisplayItem.Single -> "single_${item.event.id}"
+                                    is TimelineDisplayItem.Aggregated -> "agg_${item.itemType}_${item.firstTimestamp}"
+                                    is TimelineDisplayItem.Conflict -> "conflict_${item.event.ancestor.id}"
+                                }
                             }
-                            is TimelineDisplayItem.Aggregated -> {
-                                AggregatedLogItem(
-                                    aggregated = item,
-                                    onItemClick = {
-                                        selectedLog = it
-                                        onLogSelected(it)
-                                    }
-                                )
-                            }
-                            is TimelineDisplayItem.Conflict -> {
-                                ConflictBranchItem(
-                                    conflict = item.event,
-                                    isFirst = false,
-                                    isLast = false,
-                                    onBranchClick = { selectedBranch = it }
-                                )
+                        ) { item ->
+                            when (item) {
+                                is TimelineDisplayItem.Single -> {
+                                    ModernLogItem(
+                                        log = item.event,
+                                        onClick = {
+                                            selectedLog = item.event
+                                            onLogSelected(item.event)
+                                        }
+                                    )
+                                }
+                                is TimelineDisplayItem.Aggregated -> {
+                                    AggregatedLogItem(
+                                        aggregated = item,
+                                        onItemClick = {
+                                            selectedLog = it
+                                            onLogSelected(it)
+                                        }
+                                    )
+                                }
+                                is TimelineDisplayItem.Conflict -> {
+                                    ConflictBranchItem(
+                                        conflict = item.event,
+                                        isFirst = false,
+                                        isLast = false,
+                                        onBranchClick = { selectedBranch = it }
+                                    )
+                                }
                             }
                         }
                     }
@@ -541,7 +709,49 @@ private fun TimelineContent(
             }
         }
     }
-    
+
+    val selectedUnifiedScope = remember(selectedScope) {
+        when (selectedScope) {
+            TrashScopeFilter.Local -> UnifiedCategoryFilterSelection.Local
+            is TrashScopeFilter.BitwardenVaultScope ->
+                UnifiedCategoryFilterSelection.BitwardenVaultFilter(selectedScope.vaultId)
+            is TrashScopeFilter.KeePassDatabaseScope ->
+                UnifiedCategoryFilterSelection.KeePassDatabaseFilter(selectedScope.databaseId)
+        }
+    }
+    UnifiedCategoryFilterBottomSheet(
+        visible = showScopeSelectionSheet,
+        onDismiss = { showScopeSelectionSheet = false },
+        selected = selectedUnifiedScope,
+        onSelect = { selection ->
+            selectedScopeKey = when (selection) {
+                is UnifiedCategoryFilterSelection.BitwardenVaultFilter ->
+                    TrashScopeFilter.BitwardenVaultScope(selection.vaultId).key
+                is UnifiedCategoryFilterSelection.BitwardenFolderFilter ->
+                    TrashScopeFilter.BitwardenVaultScope(selection.vaultId).key
+                is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter ->
+                    TrashScopeFilter.BitwardenVaultScope(selection.vaultId).key
+                is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter ->
+                    TrashScopeFilter.BitwardenVaultScope(selection.vaultId).key
+                is UnifiedCategoryFilterSelection.KeePassDatabaseFilter ->
+                    TrashScopeFilter.KeePassDatabaseScope(selection.databaseId).key
+                is UnifiedCategoryFilterSelection.KeePassGroupFilter ->
+                    TrashScopeFilter.KeePassDatabaseScope(selection.databaseId).key
+                is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter ->
+                    TrashScopeFilter.KeePassDatabaseScope(selection.databaseId).key
+                is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter ->
+                    TrashScopeFilter.KeePassDatabaseScope(selection.databaseId).key
+                else -> TrashScopeFilter.Local.key
+            }
+            showScopeSelectionSheet = false
+        },
+        categories = emptyList(),
+        keepassDatabases = keepassDatabases,
+        bitwardenVaults = bitwardenVaults,
+        getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+        getKeePassGroups = null
+    )
+
     // Diff 比较底部弹窗
     selectedBranch?.let { branch ->
         DiffComparisonSheet(
@@ -578,6 +788,93 @@ private fun TimelineContent(
             }
         )
     }
+}
+
+@Composable
+private fun TimelineHeaderBar(
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    isSearchExpanded: Boolean,
+    onSearchExpandedChange: (Boolean) -> Unit,
+    onOpenScopeSheet: () -> Unit,
+    onNavigateToPasswordPage: (() -> Unit)?,
+    onRefreshClick: () -> Unit
+) {
+    var topActionsMenuExpanded by remember { mutableStateOf(false) }
+
+    ExpressiveTopBar(
+        title = stringResource(R.string.timeline_title),
+        searchQuery = searchQuery,
+        onSearchQueryChange = onSearchQueryChange,
+        isSearchExpanded = isSearchExpanded,
+        onSearchExpandedChange = onSearchExpandedChange,
+        searchHint = stringResource(R.string.search_passwords_hint),
+        actions = {
+            if (onNavigateToPasswordPage != null) {
+                IconButton(onClick = onNavigateToPasswordPage) {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = stringResource(R.string.nav_passwords_short),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            IconButton(onClick = onOpenScopeSheet) {
+                Icon(
+                    imageVector = Icons.Default.Folder,
+                    contentDescription = stringResource(R.string.category),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            IconButton(onClick = { onSearchExpandedChange(true) }) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = stringResource(R.string.search),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Box {
+                IconButton(onClick = { topActionsMenuExpanded = true }) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = stringResource(R.string.more_options),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                MaterialTheme(
+                    shapes = MaterialTheme.shapes.copy(
+                        extraSmall = RoundedCornerShape(20.dp),
+                        small = RoundedCornerShape(20.dp)
+                    )
+                ) {
+                    DropdownMenu(
+                        expanded = topActionsMenuExpanded,
+                        onDismissRequest = { topActionsMenuExpanded = false },
+                        offset = DpOffset(x = 48.dp, y = 6.dp),
+                        modifier = Modifier
+                            .widthIn(min = 220.dp, max = 260.dp)
+                            .shadow(10.dp, RoundedCornerShape(20.dp))
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .border(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
+                                shape = RoundedCornerShape(20.dp)
+                            )
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.refresh)) },
+                            leadingIcon = { Icon(Icons.Default.Sync, contentDescription = null) },
+                            onClick = {
+                                topActionsMenuExpanded = false
+                                onRefreshClick()
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    )
 }
 
 /**
@@ -1629,33 +1926,224 @@ private fun TimelineAxis(
 
 // ================== 回收站相关组件 ==================
 
+private sealed interface TrashScopeFilter {
+    object Local : TrashScopeFilter
+    data class BitwardenVaultScope(val vaultId: Long) : TrashScopeFilter
+    data class KeePassDatabaseScope(val databaseId: Long) : TrashScopeFilter
+}
+
+private data class TrashScopeFilterOption(
+    val key: String,
+    val label: String,
+    val scope: TrashScopeFilter
+)
+
+private val TrashScopeFilter.key: String
+    get() = when (this) {
+        TrashScopeFilter.Local -> "local"
+        is TrashScopeFilter.BitwardenVaultScope -> "bitwarden_${this.vaultId}"
+        is TrashScopeFilter.KeePassDatabaseScope -> "keepass_${this.databaseId}"
+    }
+
+private fun resolveScopeFilter(
+    bitwardenVaultId: Long?,
+    keepassDatabaseId: Long?
+): TrashScopeFilter {
+    return when {
+        bitwardenVaultId != null -> TrashScopeFilter.BitwardenVaultScope(bitwardenVaultId)
+        keepassDatabaseId != null -> TrashScopeFilter.KeePassDatabaseScope(keepassDatabaseId)
+        else -> TrashScopeFilter.Local
+    }
+}
+
+private fun resolveTrashScope(item: takagi.ru.monica.viewmodel.TrashItem): TrashScopeFilter {
+    val bitwardenVaultId = when (val data = item.originalData) {
+        is PasswordEntry -> data.bitwardenVaultId
+        is SecureItem -> data.bitwardenVaultId
+        else -> null
+    }
+    val keepassDatabaseId = when (val data = item.originalData) {
+        is PasswordEntry -> data.keepassDatabaseId
+        is SecureItem -> data.keepassDatabaseId
+        else -> null
+    }
+
+    return resolveScopeFilter(
+        bitwardenVaultId = bitwardenVaultId,
+        keepassDatabaseId = keepassDatabaseId
+    )
+}
+
+private fun TrashScopeFilter.matches(item: takagi.ru.monica.viewmodel.TrashItem): Boolean {
+    return resolveTrashScope(item) == this
+}
+
+private fun matchesTimelineScope(
+    event: TimelineEvent,
+    selectedScope: TrashScopeFilter,
+    passwordScopeById: Map<Long, TrashScopeFilter>,
+    secureItemScopeById: Map<Long, TrashScopeFilter>
+): Boolean {
+    if (selectedScope == TrashScopeFilter.Local) {
+        return true
+    }
+    val scope = when (event) {
+        is TimelineEvent.StandardLog ->
+            resolveTimelineScope(event, passwordScopeById, secureItemScopeById)
+        is TimelineEvent.ConflictBranch ->
+            resolveTimelineScope(event.ancestor, passwordScopeById, secureItemScopeById)
+    }
+    return scope == selectedScope
+}
+
+private fun resolveTimelineScope(
+    log: TimelineEvent.StandardLog,
+    passwordScopeById: Map<Long, TrashScopeFilter>,
+    secureItemScopeById: Map<Long, TrashScopeFilter>
+): TrashScopeFilter {
+    return when (log.itemType) {
+        "PASSWORD" -> passwordScopeById[log.itemId] ?: TrashScopeFilter.Local
+        "TOTP", "BANK_CARD", "NOTE", "DOCUMENT" ->
+            secureItemScopeById[log.itemId] ?: TrashScopeFilter.Local
+        else -> TrashScopeFilter.Local
+    }
+}
+
+private fun matchesTimelineSearch(event: TimelineEvent, keyword: String): Boolean {
+    val query = keyword.trim().lowercase(Locale.getDefault())
+    if (query.isEmpty()) return true
+    return when (event) {
+        is TimelineEvent.StandardLog -> matchesTimelineSearch(event, query)
+        is TimelineEvent.ConflictBranch -> {
+            matchesTimelineSearch(event.ancestor, query) ||
+                event.branches.any { branch ->
+                    branch.deviceId.lowercase(Locale.getDefault()).contains(query) ||
+                        branch.deviceName.lowercase(Locale.getDefault()).contains(query)
+                }
+        }
+    }
+}
+
+private fun matchesTimelineSearch(
+    log: TimelineEvent.StandardLog,
+    query: String
+): Boolean {
+    if (log.summary.lowercase(Locale.getDefault()).contains(query)) return true
+    if (log.operationType.lowercase(Locale.getDefault()).contains(query)) return true
+    if (log.itemType.lowercase(Locale.getDefault()).contains(query)) return true
+    if (log.deviceId.lowercase(Locale.getDefault()).contains(query)) return true
+    return log.changes.any { change ->
+        change.fieldName.lowercase(Locale.getDefault()).contains(query) ||
+            change.oldValue.lowercase(Locale.getDefault()).contains(query) ||
+            change.newValue.lowercase(Locale.getDefault()).contains(query)
+    }
+}
+
 /**
  * 回收站内容 - 简化版设计，直接显示所有条目
  */
 @Composable
 private fun TrashContent(
     viewModel: TrashViewModel,
-    embeddedInSplitPane: Boolean = false
+    embeddedInSplitPane: Boolean = false,
+    onNavigateToPasswordPage: (() -> Unit)? = null,
+    initialSelectedScopeKey: String? = null
 ) {
+    val context = LocalContext.current
+    val database = remember(context) { PasswordDatabase.getDatabase(context.applicationContext) }
+    val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
+    val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
+
     val trashCategories by viewModel.trashCategories.collectAsState()
     val trashSettings by viewModel.trashSettings.collectAsState()
-    val totalCount by viewModel.totalTrashCount.collectAsState()
-    
+    val localLabel = stringResource(R.string.filter_monica)
+    val bitwardenLabel = stringResource(R.string.filter_bitwarden)
+    val keepassLabel = stringResource(R.string.filter_keepass)
+
+    val scopeOptions = remember(localLabel, bitwardenLabel, keepassLabel, bitwardenVaults, keepassDatabases) {
+        buildList {
+            add(
+                TrashScopeFilterOption(
+                    key = TrashScopeFilter.Local.key,
+                    label = localLabel,
+                    scope = TrashScopeFilter.Local
+                )
+            )
+            bitwardenVaults.forEach { vault ->
+                val displayName = vault.displayName?.takeIf { it.isNotBlank() } ?: vault.email
+                add(
+                    TrashScopeFilterOption(
+                        key = TrashScopeFilter.BitwardenVaultScope(vault.id).key,
+                        label = "$bitwardenLabel · $displayName",
+                        scope = TrashScopeFilter.BitwardenVaultScope(vault.id)
+                    )
+                )
+            }
+            keepassDatabases.forEach { keepass ->
+                add(
+                    TrashScopeFilterOption(
+                        key = TrashScopeFilter.KeePassDatabaseScope(keepass.id).key,
+                        label = "$keepassLabel · ${keepass.name}",
+                        scope = TrashScopeFilter.KeePassDatabaseScope(keepass.id)
+                    )
+                )
+            }
+        }
+    }
+
+    var selectedScopeKey by rememberSaveable { mutableStateOf(TrashScopeFilter.Local.key) }
+    var initialScopeApplied by remember(initialSelectedScopeKey) { mutableStateOf(false) }
+    var showScopeSelectionSheet by remember { mutableStateOf(false) }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showEmptyTrashDialog by remember { mutableStateOf(false) }
     var selectedItem by remember { mutableStateOf<takagi.ru.monica.viewmodel.TrashItem?>(null) }
-    
+
     // 多选模式状态
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedItems by remember { mutableStateOf(setOf<String>()) }
-    
+
     val colorScheme = MaterialTheme.colorScheme
-    
+
+    val selectedScope = scopeOptions.firstOrNull { it.key == selectedScopeKey }?.scope ?: TrashScopeFilter.Local
+
+    LaunchedEffect(scopeOptions, initialSelectedScopeKey, initialScopeApplied) {
+        val preferredScopeKey = initialSelectedScopeKey
+        if (!initialScopeApplied && !preferredScopeKey.isNullOrBlank()) {
+            val hasPreferredScope = scopeOptions.any { it.key == preferredScopeKey }
+            if (hasPreferredScope) {
+                selectedScopeKey = preferredScopeKey
+                initialScopeApplied = true
+                return@LaunchedEffect
+            }
+        }
+        if (scopeOptions.none { it.key == selectedScopeKey }) {
+            selectedScopeKey = scopeOptions.firstOrNull()?.key ?: TrashScopeFilter.Local.key
+        }
+    }
+
     // 扁平化所有条目，按删除时间排序
     val allItems = remember(trashCategories) {
         trashCategories.flatMap { it.items }.sortedByDescending { it.deletedAt.time }
     }
-    
+    val scopedItems = remember(allItems, selectedScope) {
+        allItems.filter { selectedScope.matches(it) }
+    }
+    val visibleItems = remember(scopedItems, searchQuery) {
+        val keyword = searchQuery.trim()
+        if (keyword.isBlank()) {
+            scopedItems
+        } else {
+            scopedItems.filter { item -> matchesTrashSearch(item, keyword) }
+        }
+    }
+
+    LaunchedEffect(selectedScopeKey, searchQuery) {
+        isSelectionMode = false
+        selectedItems = emptySet()
+    }
+
     // 选择/取消选择条目
     fun toggleItemSelection(item: takagi.ru.monica.viewmodel.TrashItem) {
         val key = "${item.itemType.name}_${item.id}"
@@ -1675,11 +2163,12 @@ private fun TrashContent(
     }
     
     fun toggleSelectAll() {
-        if (selectedItems.size == allItems.size) {
+        val scopedKeys = visibleItems.map { "${it.itemType.name}_${it.id}" }.toSet()
+        if (scopedKeys.isNotEmpty() && selectedItems.containsAll(scopedKeys)) {
             selectedItems = emptySet()
             isSelectionMode = false
         } else {
-            selectedItems = allItems.map { "${it.itemType.name}_${it.id}" }.toSet()
+            selectedItems = scopedKeys
         }
     }
     
@@ -1687,9 +2176,13 @@ private fun TrashContent(
         isSelectionMode = false
         selectedItems = emptySet()
     }
+
+    BackHandler(enabled = isSelectionMode) {
+        exitSelectionMode()
+    }
     
     fun restoreSelectedItems() {
-        val itemsToRestore = allItems.filter { isItemSelected(it) }
+        val itemsToRestore = visibleItems.filter { isItemSelected(it) }
         itemsToRestore.forEach { item ->
             viewModel.restoreItem(item) { _ -> }
         }
@@ -1697,7 +2190,7 @@ private fun TrashContent(
     }
     
     fun deleteSelectedItems() {
-        val itemsToDelete = allItems.filter { isItemSelected(it) }
+        val itemsToDelete = visibleItems.filter { isItemSelected(it) }
         itemsToDelete.forEach { item ->
             viewModel.permanentlyDeleteItem(item) { _ -> }
         }
@@ -1711,61 +2204,79 @@ private fun TrashContent(
     ) {
         if (!trashSettings.enabled) {
             TrashDisabledView(onEnableClick = { showSettingsDialog = true })
-        } else if (allItems.isEmpty()) {
-            TrashEmptyView()
         } else {
             Column(modifier = Modifier.fillMaxSize()) {
                 // 顶部信息栏
                 TrashHeaderBar(
-                    totalCount = totalCount,
-                    autoDeleteDays = trashSettings.autoDeleteDays,
                     isSelectionMode = isSelectionMode,
                     selectedCount = selectedItems.size,
                     embeddedInSplitPane = embeddedInSplitPane,
+                    searchQuery = searchQuery,
+                    onSearchQueryChange = { searchQuery = it },
+                    isSearchExpanded = isSearchExpanded,
+                    onSearchExpandedChange = { expanded ->
+                        isSearchExpanded = expanded
+                        if (!expanded) {
+                            searchQuery = ""
+                        }
+                    },
+                    onOpenScopeSheet = { showScopeSelectionSheet = true },
+                    onNavigateToPasswordPage = onNavigateToPasswordPage,
                     onSettingsClick = { showSettingsDialog = true },
                     onEmptyTrashClick = { showEmptyTrashDialog = true },
+                    canEmptyTrash = scopedItems.isNotEmpty(),
                     onSelectAll = { toggleSelectAll() },
                     onExitSelection = { exitSelectionMode() }
                 )
                 
-                // 条目列表 - 直接平铺显示
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .weight(1f),
-                    contentPadding = PaddingValues(
-                        start = 16.dp,
-                        end = 16.dp,
-                        top = 8.dp,
-                        bottom = if (isSelectionMode) 100.dp else 16.dp
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(
-                        items = allItems,
-                        key = { "${it.itemType.name}_${it.id}" }
-                    ) { item ->
-                        TrashItemCard(
-                            item = item,
-                            isSelectionMode = isSelectionMode,
-                            isSelected = isItemSelected(item),
-                            onClick = {
-                                if (isSelectionMode) {
-                                    toggleItemSelection(item)
-                                } else {
-                                    selectedItem = item
+                if (visibleItems.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .weight(1f)
+                    ) {
+                        TrashEmptyView()
+                    }
+                } else {
+                    // 条目列表 - 直接平铺显示
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .weight(1f),
+                        contentPadding = PaddingValues(
+                            start = 16.dp,
+                            end = 16.dp,
+                            top = 8.dp,
+                            bottom = if (isSelectionMode) 100.dp else 16.dp
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(
+                            items = visibleItems,
+                            key = { "${it.itemType.name}_${it.id}" }
+                        ) { item ->
+                            TrashItemCard(
+                                item = item,
+                                isSelectionMode = isSelectionMode,
+                                isSelected = isItemSelected(item),
+                                onClick = {
+                                    if (isSelectionMode) {
+                                        toggleItemSelection(item)
+                                    } else {
+                                        selectedItem = item
+                                    }
+                                },
+                                onLongClick = {
+                                    if (!isSelectionMode) {
+                                        isSelectionMode = true
+                                        toggleItemSelection(item)
+                                    }
+                                },
+                                onRestore = {
+                                    viewModel.restoreItem(item) { _ -> }
                                 }
-                            },
-                            onLongClick = {
-                                if (!isSelectionMode) {
-                                    isSelectionMode = true
-                                    toggleItemSelection(item)
-                                }
-                            },
-                            onRestore = {
-                                viewModel.restoreItem(item) { _ -> }
-                            }
-                        )
+                            )
+                        }
                     }
                 }
             }
@@ -1784,6 +2295,48 @@ private fun TrashContent(
         }
     }
     
+    val selectedUnifiedScope = remember(selectedScope) {
+        when (selectedScope) {
+            TrashScopeFilter.Local -> UnifiedCategoryFilterSelection.Local
+            is TrashScopeFilter.BitwardenVaultScope ->
+                UnifiedCategoryFilterSelection.BitwardenVaultFilter(selectedScope.vaultId)
+            is TrashScopeFilter.KeePassDatabaseScope ->
+                UnifiedCategoryFilterSelection.KeePassDatabaseFilter(selectedScope.databaseId)
+        }
+    }
+    UnifiedCategoryFilterBottomSheet(
+        visible = showScopeSelectionSheet,
+        onDismiss = { showScopeSelectionSheet = false },
+        selected = selectedUnifiedScope,
+        onSelect = { selection ->
+            selectedScopeKey = when (selection) {
+                is UnifiedCategoryFilterSelection.BitwardenVaultFilter ->
+                    TrashScopeFilter.BitwardenVaultScope(selection.vaultId).key
+                is UnifiedCategoryFilterSelection.BitwardenFolderFilter ->
+                    TrashScopeFilter.BitwardenVaultScope(selection.vaultId).key
+                is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter ->
+                    TrashScopeFilter.BitwardenVaultScope(selection.vaultId).key
+                is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter ->
+                    TrashScopeFilter.BitwardenVaultScope(selection.vaultId).key
+                is UnifiedCategoryFilterSelection.KeePassDatabaseFilter ->
+                    TrashScopeFilter.KeePassDatabaseScope(selection.databaseId).key
+                is UnifiedCategoryFilterSelection.KeePassGroupFilter ->
+                    TrashScopeFilter.KeePassDatabaseScope(selection.databaseId).key
+                is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter ->
+                    TrashScopeFilter.KeePassDatabaseScope(selection.databaseId).key
+                is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter ->
+                    TrashScopeFilter.KeePassDatabaseScope(selection.databaseId).key
+                else -> TrashScopeFilter.Local.key
+            }
+            showScopeSelectionSheet = false
+        },
+        categories = emptyList(),
+        keepassDatabases = keepassDatabases,
+        bitwardenVaults = bitwardenVaults,
+        getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+        getKeePassGroups = null
+    )
+
     // 回收站设置对话框
     if (showSettingsDialog) {
         TrashSettingsSheet(
@@ -1802,13 +2355,14 @@ private fun TrashContent(
             onDismissRequest = { showEmptyTrashDialog = false },
             icon = { Icon(Icons.Default.DeleteSweep, contentDescription = null) },
             title = { Text(stringResource(R.string.timeline_empty_trash_title)) },
-            text = { Text(stringResource(R.string.timeline_empty_trash_message, totalCount)) },
+            text = { Text(stringResource(R.string.timeline_empty_trash_message, scopedItems.size)) },
             confirmButton = {
                 TextButton(
                     onClick = {
-                        viewModel.emptyTrash { success ->
-                            showEmptyTrashDialog = false
+                        scopedItems.forEach { item ->
+                            viewModel.permanentlyDeleteItem(item) { _ -> }
                         }
+                        showEmptyTrashDialog = false
                     },
                     colors = ButtonDefaults.textButtonColors(contentColor = colorScheme.error)
                 ) {
@@ -1843,30 +2397,32 @@ private fun TrashContent(
  */
 @Composable
 private fun TrashHeaderBar(
-    totalCount: Int,
-    autoDeleteDays: Int,
     isSelectionMode: Boolean,
     selectedCount: Int,
     embeddedInSplitPane: Boolean,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    isSearchExpanded: Boolean,
+    onSearchExpandedChange: (Boolean) -> Unit,
+    onOpenScopeSheet: () -> Unit,
+    onNavigateToPasswordPage: (() -> Unit)?,
     onSettingsClick: () -> Unit,
     onEmptyTrashClick: () -> Unit,
+    canEmptyTrash: Boolean,
     onSelectAll: () -> Unit,
     onExitSelection: () -> Unit
 ) {
-    val colorScheme = MaterialTheme.colorScheme
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(
-                horizontal = 16.dp,
-                vertical = if (embeddedInSplitPane) 8.dp else 12.dp
-            ),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (isSelectionMode) {
-            // 选择模式
+    if (isSelectionMode) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = 16.dp,
+                    vertical = if (embeddedInSplitPane) 8.dp else 12.dp
+                ),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1884,41 +2440,120 @@ private fun TrashHeaderBar(
             TextButton(onClick = onSelectAll) {
                 Text(stringResource(R.string.select_all))
             }
-        } else {
-            // 普通模式
-            Column {
-                Text(
-                    text = stringResource(R.string.timeline_deleted_items_count, totalCount),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Medium,
-                    color = colorScheme.onSurface
-                )
-                Text(
-                    text = if (autoDeleteDays > 0) stringResource(R.string.timeline_auto_clear_in_days, autoDeleteDays) else stringResource(R.string.timeline_auto_clear_never),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = colorScheme.onSurfaceVariant
-                )
-            }
+        }
+        return
+    }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                IconButton(onClick = onSettingsClick) {
-                    Icon(
-                        Icons.Default.Settings,
-                        contentDescription = stringResource(R.string.settings),
-                        tint = colorScheme.onSurfaceVariant
-                    )
-                }
-                if (totalCount > 0) {
-                    IconButton(onClick = onEmptyTrashClick) {
+    var topActionsMenuExpanded by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = if (embeddedInSplitPane) 2.dp else 0.dp)
+    ) {
+        ExpressiveTopBar(
+            title = stringResource(R.string.timeline_trash_title),
+            searchQuery = searchQuery,
+            onSearchQueryChange = onSearchQueryChange,
+            isSearchExpanded = isSearchExpanded,
+            onSearchExpandedChange = onSearchExpandedChange,
+            searchHint = stringResource(R.string.search_passwords_hint),
+            actions = {
+                if (onNavigateToPasswordPage != null) {
+                    IconButton(onClick = onNavigateToPasswordPage) {
                         Icon(
-                            Icons.Default.DeleteSweep,
-                            contentDescription = stringResource(R.string.timeline_empty_action),
-                            tint = colorScheme.error
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = stringResource(R.string.nav_passwords_short),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
+                IconButton(onClick = onOpenScopeSheet) {
+                    Icon(
+                        imageVector = Icons.Default.Folder,
+                        contentDescription = stringResource(R.string.category),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                IconButton(onClick = { onSearchExpandedChange(true) }) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = stringResource(R.string.search),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Box {
+                    IconButton(onClick = { topActionsMenuExpanded = true }) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = stringResource(R.string.more_options),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    MaterialTheme(
+                        shapes = MaterialTheme.shapes.copy(
+                            extraSmall = RoundedCornerShape(20.dp),
+                            small = RoundedCornerShape(20.dp)
+                        )
+                    ) {
+                        DropdownMenu(
+                            expanded = topActionsMenuExpanded,
+                            onDismissRequest = { topActionsMenuExpanded = false },
+                            offset = DpOffset(x = 48.dp, y = 6.dp),
+                            modifier = Modifier
+                                .widthIn(min = 220.dp, max = 260.dp)
+                                .shadow(10.dp, RoundedCornerShape(20.dp))
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                                .border(
+                                    width = 1.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
+                                    shape = RoundedCornerShape(20.dp)
+                                )
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.timeline_empty_action)) },
+                                leadingIcon = { Icon(Icons.Default.DeleteSweep, contentDescription = null) },
+                                enabled = canEmptyTrash,
+                                onClick = {
+                                    topActionsMenuExpanded = false
+                                    onEmptyTrashClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.trash_settings)) },
+                                leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                                onClick = {
+                                    topActionsMenuExpanded = false
+                                    onSettingsClick()
+                                }
+                            )
+                        }
+                    }
+                }
             }
+        )
+    }
+}
+
+private fun matchesTrashSearch(
+    item: takagi.ru.monica.viewmodel.TrashItem,
+    keyword: String
+): Boolean {
+    val query = keyword.trim().lowercase(Locale.getDefault())
+    if (query.isEmpty()) return true
+    val titleMatched = item.title.lowercase(Locale.getDefault()).contains(query)
+    if (titleMatched) return true
+    return when (val data = item.originalData) {
+        is PasswordEntry -> {
+            data.username.lowercase(Locale.getDefault()).contains(query) ||
+                data.website.lowercase(Locale.getDefault()).contains(query) ||
+                data.notes.lowercase(Locale.getDefault()).contains(query)
         }
+        is SecureItem -> {
+            data.notes.lowercase(Locale.getDefault()).contains(query)
+        }
+        else -> false
     }
 }
 

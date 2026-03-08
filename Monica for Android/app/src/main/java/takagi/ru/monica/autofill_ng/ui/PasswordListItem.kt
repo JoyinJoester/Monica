@@ -84,6 +84,9 @@ fun PasswordListItem(
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val displayTitle = password.title.ifEmpty { password.username }.toSafeComposeText()
+    val displayUsername = password.username.toSafeComposeText()
+
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -118,7 +121,7 @@ fun PasswordListItem(
             ) {
                 // 标题 (优先显示title,其次username)
                 Text(
-                    text = password.title.ifEmpty { password.username },
+                    text = displayTitle,
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -140,7 +143,7 @@ fun PasswordListItem(
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = password.username,
+                            text = displayUsername,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
@@ -189,7 +192,7 @@ fun PasswordListItem(
                             Column {
                                 Text(stringResource(R.string.copy_username))
                                 Text(
-                                    text = password.username,
+                                    text = displayUsername,
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -275,96 +278,95 @@ private fun AppIconOrFallback(
     ) {
         if (!iconCardsEnabled) {
             DefaultKeyIcon()
-            return@Box
-        }
+        } else {
+            val simpleIcon = if (password.customIconType == PASSWORD_ICON_TYPE_SIMPLE) {
+                rememberSimpleIconBitmap(
+                    slug = password.customIconValue,
+                    tintColor = MaterialTheme.colorScheme.primary,
+                    enabled = true
+                )
+            } else {
+                null
+            }
 
-        val simpleIcon = if (password.customIconType == PASSWORD_ICON_TYPE_SIMPLE) {
-            rememberSimpleIconBitmap(
-                slug = password.customIconValue,
+            val uploadedIcon = if (password.customIconType == PASSWORD_ICON_TYPE_UPLOADED) {
+                rememberUploadedPasswordIcon(password.customIconValue)
+            } else {
+                null
+            }
+
+            val autoMatchedSimpleIcon = rememberAutoMatchedSimpleIcon(
+                website = password.website,
+                title = password.title,
+                appPackageName = password.appPackageName,
                 tintColor = MaterialTheme.colorScheme.primary,
-                enabled = true
+                enabled = password.customIconType == PASSWORD_ICON_TYPE_NONE
             )
-        } else {
-            null
-        }
 
-        val uploadedIcon = if (password.customIconType == PASSWORD_ICON_TYPE_UPLOADED) {
-            rememberUploadedPasswordIcon(password.customIconValue)
-        } else {
-            null
-        }
+            val favicon = if (password.website.isNotBlank()) {
+                rememberFavicon(
+                    url = password.website,
+                    enabled = autoMatchedSimpleIcon.resolved && autoMatchedSimpleIcon.slug == null
+                )
+            } else {
+                null
+            }
 
-        val autoMatchedSimpleIcon = rememberAutoMatchedSimpleIcon(
-            website = password.website,
-            title = password.title,
-            appPackageName = password.appPackageName,
-            tintColor = MaterialTheme.colorScheme.primary,
-            enabled = password.customIconType == PASSWORD_ICON_TYPE_NONE
-        )
+            val appIcon = if (password.appPackageName.isNotBlank()) {
+                rememberAppIcon(password.appPackageName)
+            } else {
+                null
+            }
 
-        val favicon = if (password.website.isNotBlank()) {
-            rememberFavicon(
-                url = password.website,
-                enabled = autoMatchedSimpleIcon.resolved && autoMatchedSimpleIcon.slug == null
-            )
-        } else {
-            null
-        }
-
-        val appIcon = if (password.appPackageName.isNotBlank()) {
-            rememberAppIcon(password.appPackageName)
-        } else {
-            null
-        }
-
-        when {
-            simpleIcon != null -> {
-                Image(
-                    bitmap = simpleIcon,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(RoundedCornerShape(12.dp))
-                )
-            }
-            uploadedIcon != null -> {
-                Image(
-                    bitmap = uploadedIcon,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(RoundedCornerShape(12.dp))
-                )
-            }
-            autoMatchedSimpleIcon.bitmap != null -> {
-                Image(
-                    bitmap = autoMatchedSimpleIcon.bitmap,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(RoundedCornerShape(12.dp))
-                )
-            }
-            favicon != null -> {
-                Image(
-                    bitmap = favicon,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(RoundedCornerShape(12.dp))
-                )
-            }
-            appIcon != null -> {
-                Image(
-                    bitmap = appIcon,
-                    contentDescription = null,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .clip(RoundedCornerShape(12.dp))
-                )
-            }
-            else -> {
-                DefaultKeyIcon()
+            when {
+                simpleIcon != null -> {
+                    Image(
+                        bitmap = simpleIcon,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(12.dp))
+                    )
+                }
+                uploadedIcon != null -> {
+                    Image(
+                        bitmap = uploadedIcon,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(12.dp))
+                    )
+                }
+                autoMatchedSimpleIcon.bitmap != null -> {
+                    Image(
+                        bitmap = autoMatchedSimpleIcon.bitmap,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(12.dp))
+                    )
+                }
+                favicon != null -> {
+                    Image(
+                        bitmap = favicon,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(12.dp))
+                    )
+                }
+                appIcon != null -> {
+                    Image(
+                        bitmap = appIcon,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(12.dp))
+                    )
+                }
+                else -> {
+                    DefaultKeyIcon()
+                }
             }
         }
     }
@@ -440,6 +442,8 @@ fun SuggestedPasswordListItem(
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val displayTitle = password.title.ifEmpty { password.username }.toSafeComposeText()
+    val displayUsername = password.username.toSafeComposeText()
     
     Card(
         modifier = modifier
@@ -472,7 +476,7 @@ fun SuggestedPasswordListItem(
                     verticalArrangement = Arrangement.Center
                 ) {
                     Text(
-                        text = password.title.ifEmpty { password.username },
+                        text = displayTitle,
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -483,7 +487,7 @@ fun SuggestedPasswordListItem(
                     if (password.title.isNotEmpty() && password.username.isNotEmpty()) {
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = password.username,
+                            text = displayUsername,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
                             maxLines = 1,
@@ -526,7 +530,7 @@ fun SuggestedPasswordListItem(
                         Column {
                             Text(stringResource(R.string.copy_username))
                             Text(
-                                text = password.username,
+                                text = displayUsername,
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

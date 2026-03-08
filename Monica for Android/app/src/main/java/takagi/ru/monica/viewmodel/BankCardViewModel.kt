@@ -72,6 +72,7 @@ class BankCardViewModel(
                 if (existing == null) {
                     repository.insertItem(incoming)
                 } else {
+                    val isInRecycleBin = snapshot.isInRecycleBin
                     repository.updateItem(
                         existing.copy(
                             title = incoming.title,
@@ -81,8 +82,8 @@ class BankCardViewModel(
                             imagePaths = incoming.imagePaths,
                             keepassDatabaseId = incoming.keepassDatabaseId,
                             keepassGroupPath = incoming.keepassGroupPath,
-                            isDeleted = false,
-                            deletedAt = null,
+                            isDeleted = isInRecycleBin,
+                            deletedAt = if (isInRecycleBin) (existing.deletedAt ?: Date()) else null,
                             updatedAt = Date()
                         )
                     )
@@ -325,9 +326,14 @@ class BankCardViewModel(
                 }
 
                 if (item.keepassDatabaseId != null) {
-                    val deleteResult = keepassService?.deleteSecureItems(item.keepassDatabaseId, listOf(item))
-                    if (deleteResult?.isFailure == true) {
-                        Log.e("BankCardViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
+                    val keepassResult = if (softDelete || isBitwardenCipher) {
+                        keepassService?.moveSecureItemsToRecycleBin(item.keepassDatabaseId, listOf(item))
+                    } else {
+                        keepassService?.deleteSecureItems(item.keepassDatabaseId, listOf(item))
+                    }
+                    if (keepassResult?.isFailure == true) {
+                        val action = if (softDelete || isBitwardenCipher) "move to recycle bin" else "delete"
+                        Log.e("BankCardViewModel", "KeePass $action failed: ${keepassResult.exceptionOrNull()?.message}")
                         return@launch
                     }
                 }

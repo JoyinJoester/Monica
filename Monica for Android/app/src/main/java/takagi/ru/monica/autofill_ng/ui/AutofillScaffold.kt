@@ -204,7 +204,7 @@ fun AutofillHeader(
             if (!username.isNullOrEmpty()) {
                 TwoColumnRow(
                     title = stringResource(R.string.autofill_username),
-                    value = username
+                    value = username.toSafeComposeText()
                 )
             }
             
@@ -212,7 +212,7 @@ fun AutofillHeader(
             if (!password.isNullOrEmpty()) {
                 TwoColumnRow(
                     title = stringResource(R.string.autofill_password),
-                    value = colorizePassword(password)
+                    value = colorizePassword(password.toSafeComposeText())
                 )
             }
         }
@@ -258,7 +258,7 @@ private fun TwoColumnRow(
         
         when (value) {
             is String -> Text(
-                text = value,
+                text = value.toSafeComposeText(),
                 style = textStyle,
                 color = contentColor,
                 overflow = TextOverflow.Ellipsis,
@@ -359,7 +359,10 @@ fun AppInfo(
         } else {
             // 首字母头像
             // 优先使用 webDomain 的首字母
-            val displayText = webDomain ?: resolvedName ?: packageName?.substringAfterLast('.') ?: stringResource(R.string.app_name)
+            val displayText = (webDomain
+                ?: resolvedName
+                ?: packageName?.substringAfterLast('.')
+                ?: stringResource(R.string.app_name)).toSafeComposeText()
             val initial = displayText.firstOrNull()?.uppercaseChar() ?: 'M'
             
             Surface(
@@ -389,7 +392,10 @@ fun AppInfo(
             )
             
             // 标题优先级：WebDomain > AppName > PackageName
-            val mainTitle = webDomain ?: resolvedName ?: packageName?.substringAfterLast('.')?.replaceFirstChar { it.uppercaseChar() } ?: stringResource(R.string.app_name)
+            val mainTitle = (webDomain
+                ?: resolvedName
+                ?: packageName?.substringAfterLast('.')?.replaceFirstChar { it.uppercaseChar() }
+                ?: stringResource(R.string.app_name)).toSafeComposeText()
             
             // 应用名称
             Text(
@@ -406,7 +412,10 @@ fun AppInfo(
                 val subTitle = resolvedName ?: packageName
                 if (subTitle != null) {
                     Text(
-                        text = stringResource(R.string.autofill_source_with_value, subTitle),
+                        text = stringResource(
+                            R.string.autofill_source_with_value,
+                            subTitle.toSafeComposeText()
+                        ),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                         overflow = TextOverflow.Ellipsis,
@@ -415,7 +424,7 @@ fun AppInfo(
                 }
             } else if (packageName != null && resolvedName != null && packageName != resolvedName) {
                 Text(
-                    text = packageName,
+                    text = packageName.toSafeComposeText(),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
                     overflow = TextOverflow.Ellipsis,

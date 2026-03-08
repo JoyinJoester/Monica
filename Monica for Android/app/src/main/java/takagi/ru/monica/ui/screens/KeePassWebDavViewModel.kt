@@ -998,7 +998,7 @@ class KeePassWebDavViewModel {
                     
                     val title = getFieldValue("Title")
                     val username = getFieldValue("UserName")
-                    val password = getFieldValue("Password")
+                    val password = resolveEntryPassword(entry)
                     val url = getFieldValue("URL")
                     val notes = getFieldValue("Notes")
                     val monicaItemType = getFieldValue("MonicaItemType")
@@ -1064,22 +1064,25 @@ class KeePassWebDavViewModel {
 
                         passwordIdForBinding = insertedPasswordId
 
-                        // 导入自定义字段（KeePass 中的非标准字段）
-                        if (isNewPasswordEntry && insertedPasswordId > 0) {
+                        // 导入/更新自定义字段（KeePass 中的非标准字段）
+                        if (insertedPasswordId > 0) {
                             val customFieldDao = database.customFieldDao()
                             val standardFields = setOf(
                                 "Title", "UserName", "Password", "URL", "Notes",
-                                "otp", "TOTP Seed", "TOTP Settings", "MonicaItemType"
+                                "otp", "TOTP Seed", "TOTP Settings", "MonicaItemType",
+                                // 非标准密码别名：已用于主密码提取，不再作为自定义字段重复导入
+                                "密码", "口令", "PIN", "Pin", "pin", "pwd", "PWD", "pass", "Pass", "password"
                             )
 
+                            val importedCustomFields = mutableListOf<CustomField>()
                             var sortOrder = 0
                             entry.fields.forEach { (fieldKey, fieldValue) ->
-                                if (fieldKey !in standardFields) {
+                                if (fieldKey !in standardFields && !fieldKey.startsWith("_etm_")) {
                                     try {
                                         val fieldContent = fieldValue.content
                                         if (fieldContent.isNotEmpty()) {
                                             val isProtected = fieldValue is EntryValue.Encrypted
-                                            val customField = CustomField(
+                                            importedCustomFields += CustomField(
                                                 id = 0,
                                                 entryId = insertedPasswordId,
                                                 title = fieldKey,
@@ -1087,11 +1090,32 @@ class KeePassWebDavViewModel {
                                                 isProtected = isProtected,
                                                 sortOrder = sortOrder++
                                             )
-                                            customFieldDao.insert(customField)
-                                            Log.d(TAG, "Imported custom field '$fieldKey' for password: $title")
                                         }
                                     } catch (e: Exception) {
                                         Log.w(TAG, "Failed to import custom field '$fieldKey': ${e.message}")
+                                    }
+                                }
+                            }
+
+                            if (importedCustomFields.isNotEmpty()) {
+                                if (isNewPasswordEntry) {
+                                    importedCustomFields.forEach { customFieldDao.insert(it) }
+                                } else {
+                                    val existingFields = customFieldDao.getFieldsByEntryIdSync(insertedPasswordId)
+                                    val existingByTitle = existingFields.associateBy { it.title.lowercase(Locale.ROOT) }
+                                    importedCustomFields.forEach { imported ->
+                                        val existing = existingByTitle[imported.title.lowercase(Locale.ROOT)]
+                                        if (existing != null) {
+                                            customFieldDao.update(
+                                                existing.copy(
+                                                    value = imported.value,
+                                                    isProtected = imported.isProtected,
+                                                    sortOrder = imported.sortOrder
+                                                )
+                                            )
+                                        } else {
+                                            customFieldDao.insert(imported)
+                                        }
                                     }
                                 }
                             }
@@ -1220,6 +1244,54 @@ class KeePassWebDavViewModel {
     private fun hasTotpPayload(entry: Entry): Boolean {
         fun field(key: String): String = runCatching { entry.fields[key]?.content ?: "" }.getOrDefault("")
         return field("otp").isNotBlank() || field("TOTP Seed").isNotBlank()
+    }
+
+    /**
+     * 某些数据库会把密码存在自定义受保护字段（例如“密码”/“PIN”），
+     * 标准 Password 字段为空时做一次兜底提取，避免导入后密码为空。
+     */
+    private fun resolveEntryPassword(entry: Entry): String {
+        fun contentOf(key: String): String = runCatching { entry.fields[key]?.content ?: "" }.getOrDefault("")
+        fun isLikelyLabelValue(value: String, key: String? = null): Boolean {
+            val normalized = value.trim().lowercase(Locale.ROOT)
+            if (normalized.isBlank()) return true
+            val labelTokens = setOf("password", "pass", "pwd", "pin", "密码", "口令")
+            if (normalized in labelTokens) return true
+            if (key != null && normalized == key.trim().lowercase(Locale.ROOT)) return true
+            return false
+        }
+
+        val standardPassword = contentOf("Password")
+        if (standardPassword.isNotBlank() && !isLikelyLabelValue(standardPassword, "Password")) {
+            return standardPassword
+        }
+        var fallback = standardPassword.takeIf { it.isNotBlank() }
+
+        val prioritizedKeys = listOf(
+            "密码", "口令", "PIN", "Pin", "pin", "pwd", "PWD", "pass", "Pass", "password", "Password"
+        )
+        prioritizedKeys.forEach { key ->
+            val value = contentOf(key)
+            if (value.isBlank()) return@forEach
+            if (!isLikelyLabelValue(value, key)) return value
+            if (fallback.isNullOrBlank()) fallback = value
+        }
+
+        val standardFields = setOf(
+            "Title", "UserName", "Password", "URL", "Notes",
+            "otp", "TOTP Seed", "TOTP Settings", "MonicaItemType"
+        )
+        entry.fields.forEach { (key, value) ->
+            if (key in standardFields || key.startsWith("_etm_")) return@forEach
+            if (value is EntryValue.Encrypted) {
+                val content = runCatching { value.content }.getOrDefault("")
+                if (content.isBlank()) return@forEach
+                if (!isLikelyLabelValue(content, key)) return content
+                if (fallback.isNullOrBlank()) fallback = content
+            }
+        }
+
+        return fallback ?: ""
     }
 
     private fun isImportablePasswordEntry(entry: Entry, hasTotpPayload: Boolean = false): Boolean {

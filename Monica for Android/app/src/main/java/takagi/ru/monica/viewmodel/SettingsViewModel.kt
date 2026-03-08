@@ -400,6 +400,12 @@ class SettingsViewModel(
         }
     }
 
+    fun updateKeepassDxLikeMutationEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateKeepassDxLikeMutationEnabled(enabled)
+        }
+    }
+
     fun updateBitwardenUploadAll(enabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updateBitwardenUploadAll(enabled)

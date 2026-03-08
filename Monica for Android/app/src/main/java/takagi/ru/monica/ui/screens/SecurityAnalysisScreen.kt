@@ -1,5 +1,6 @@
 package takagi.ru.monica.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -617,6 +618,8 @@ private fun SecurityIssueDetailScreen(
     onNavigateBack: () -> Unit,
     onNavigateToPassword: (Long) -> Unit
 ) {
+    BackHandler(onBack = onNavigateBack)
+
     Scaffold(
         topBar = {
             TopAppBar(

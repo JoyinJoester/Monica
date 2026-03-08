@@ -19,6 +19,7 @@ import takagi.ru.monica.data.bitwarden.*
         LocalKeePassDatabase::class,
         KeepassGroupSyncConfig::class,
         CustomField::class,  // 自定义字段表
+        PasswordArchiveSyncMeta::class, // 归档同步元信息
         PasskeyEntry::class,  // Passkey 通行密钥表
         // Bitwarden 集成表
         BitwardenVault::class,
@@ -27,7 +28,7 @@ import takagi.ru.monica.data.bitwarden.*
         BitwardenConflictBackup::class,
         BitwardenPendingOperation::class
     ],
-    version = 44,
+    version = 45,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -40,6 +41,7 @@ abstract class PasswordDatabase : RoomDatabase() {
     abstract fun localKeePassDatabaseDao(): LocalKeePassDatabaseDao
     abstract fun keepassGroupSyncConfigDao(): KeepassGroupSyncConfigDao
     abstract fun customFieldDao(): CustomFieldDao  // 自定义字段 DAO
+    abstract fun passwordArchiveSyncMetaDao(): PasswordArchiveSyncMetaDao
     abstract fun passkeyDao(): PasskeyDao  // Passkey DAO
     
     // Bitwarden DAOs
@@ -1161,6 +1163,45 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Migration 44 -> 45:
+         * 增加密码归档同步元信息表（统一归档视图 + 分数据源适配）。
+         */
+        private val MIGRATION_44_45 = object : androidx.room.migration.Migration(44, 45) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 44→45: password archive sync metadata")
+
+                    database.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS password_archive_sync_meta (
+                            entry_id INTEGER NOT NULL,
+                            provider_type TEXT NOT NULL DEFAULT 'LOCAL',
+                            origin_keepass_database_id INTEGER DEFAULT NULL,
+                            origin_keepass_group_path TEXT DEFAULT NULL,
+                            origin_bitwarden_folder_id TEXT DEFAULT NULL,
+                            sync_status TEXT NOT NULL DEFAULT 'SYNCED',
+                            last_error TEXT DEFAULT NULL,
+                            updated_at INTEGER NOT NULL DEFAULT 0,
+                            PRIMARY KEY(entry_id),
+                            FOREIGN KEY(entry_id) REFERENCES password_entries(id) ON DELETE CASCADE
+                        )
+                        """.trimIndent()
+                    )
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_password_archive_sync_meta_provider_type ON password_archive_sync_meta(provider_type)"
+                    )
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_password_archive_sync_meta_sync_status ON password_archive_sync_meta(sync_status)"
+                    )
+
+                    android.util.Log.i("PasswordDatabase", "Migration 44→45 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 44→45 failed: ${e.message}")
+                }
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -1211,7 +1252,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_40_41,  // 密码归档字段
                         MIGRATION_41_42,  // Passkey 文件夹/分组字段
                         MIGRATION_42_43,  // 清理 legacy KeePass WebDAV 残余
-                        MIGRATION_43_44   // Bitwarden 多库去重与唯一约束
+                        MIGRATION_43_44,  // Bitwarden 多库去重与唯一约束
+                        MIGRATION_44_45   // 密码归档同步元信息
                     )
                     .build()
                 INSTANCE = instance

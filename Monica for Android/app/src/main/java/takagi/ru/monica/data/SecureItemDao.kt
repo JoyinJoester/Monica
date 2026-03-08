@@ -169,6 +169,12 @@ interface SecureItemDao {
      */
     @Update
     suspend fun update(item: SecureItem)
+
+    /**
+     * 批量更新项目（用于回收站批量恢复等场景）
+     */
+    @Update
+    suspend fun updateAll(items: List<SecureItem>)
     
     /**
      * 删除项目

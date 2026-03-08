@@ -470,7 +470,7 @@ fun TotpListContent(
     Column {
         // M3E Top Bar with integrated search - 根据当前分类过滤器动态显示标题
         val title = when (val filter = currentFilter) {
-            is takagi.ru.monica.viewmodel.TotpCategoryFilter.All -> stringResource(R.string.nav_passkey)
+            is takagi.ru.monica.viewmodel.TotpCategoryFilter.All -> stringResource(R.string.nav_authenticator)
             is takagi.ru.monica.viewmodel.TotpCategoryFilter.Local -> stringResource(R.string.filter_monica)
             is takagi.ru.monica.viewmodel.TotpCategoryFilter.Starred -> stringResource(R.string.filter_starred)
             is takagi.ru.monica.viewmodel.TotpCategoryFilter.Uncategorized -> stringResource(R.string.filter_uncategorized)

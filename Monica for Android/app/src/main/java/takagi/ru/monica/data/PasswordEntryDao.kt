@@ -361,6 +361,12 @@ interface PasswordEntryDao {
      */
     @Update
     suspend fun update(entry: PasswordEntry)
+
+    /**
+     * 批量更新条目（用于回收站批量恢复等场景）
+     */
+    @Update
+    suspend fun updateAll(entries: List<PasswordEntry>)
     
     /**
      * 删除条目

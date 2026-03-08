@@ -8,6 +8,7 @@ import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.CustomField
 import takagi.ru.monica.data.CustomFieldDraft
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
+import takagi.ru.monica.data.PasswordArchiveSyncMeta
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordHistoryManager
 import takagi.ru.monica.data.SecureItem
@@ -20,6 +21,7 @@ import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.utils.KeePassEntryData
 import takagi.ru.monica.utils.KeePassKdbxService
+import takagi.ru.monica.utils.buildKeePassPathKey
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.flow.*
@@ -86,6 +88,8 @@ class PasswordViewModel(
         private const val SAVED_FILTER_BITWARDEN_VAULT_UNCATEGORIZED = "bitwarden_vault_uncategorized"
         private const val MONICA_MANUAL_STACK_GROUP_FIELD_TITLE = "__monica_manual_stack_group"
         private const val MONICA_NO_STACK_FIELD_TITLE = "__monica_no_stack"
+        private const val MONICA_KEEPASS_ARCHIVE_ROOT_GROUP_NAME = ".Monica"
+        private const val MONICA_KEEPASS_ARCHIVE_GROUP_NAME = "Archive"
     }
 
     enum class ManualStackMode {
@@ -679,6 +683,7 @@ class PasswordViewModel(
                 securityManager.encryptData(normalizedPassword)
             }
             if (existing != null) {
+                val isInRecycleBin = item.isInRecycleBin
                 val updated = existing.copy(
                     title = item.title,
                     username = item.username,
@@ -687,12 +692,13 @@ class PasswordViewModel(
                     notes = item.notes,
                     keepassDatabaseId = databaseId,
                     keepassGroupPath = item.groupPath,
-                    isDeleted = false,
-                    deletedAt = null,
+                    isDeleted = isInRecycleBin,
+                    deletedAt = if (isInRecycleBin) (existing.deletedAt ?: Date()) else null,
                     updatedAt = Date()
                 )
                 repository.updatePasswordEntry(updated)
             } else {
+                val isInRecycleBin = item.isInRecycleBin
                 val newEntry = PasswordEntry(
                     title = item.title,
                     username = item.username,
@@ -702,7 +708,9 @@ class PasswordViewModel(
                     createdAt = Date(),
                     updatedAt = Date(),
                     keepassDatabaseId = databaseId,
-                    keepassGroupPath = item.groupPath
+                    keepassGroupPath = item.groupPath,
+                    isDeleted = isInRecycleBin,
+                    deletedAt = if (isInRecycleBin) Date() else null
                 )
                 repository.insertPasswordEntry(newEntry)
             }
@@ -735,24 +743,25 @@ class PasswordViewModel(
                     it.title == incoming.title
             }
 
-            if (existing == null) {
-                secureRepo.insertItem(incoming)
-            } else {
-                secureRepo.updateItem(
-                    existing.copy(
-                        title = incoming.title,
-                        notes = incoming.notes,
-                        itemData = incoming.itemData,
-                        isFavorite = incoming.isFavorite,
-                        imagePaths = incoming.imagePaths,
-                        keepassDatabaseId = incoming.keepassDatabaseId,
-                        keepassGroupPath = incoming.keepassGroupPath,
-                        isDeleted = false,
-                        deletedAt = null,
-                        updatedAt = Date()
+                if (existing == null) {
+                    secureRepo.insertItem(incoming)
+                } else {
+                    val isInRecycleBin = snapshot.isInRecycleBin
+                    secureRepo.updateItem(
+                        existing.copy(
+                            title = incoming.title,
+                            notes = incoming.notes,
+                            itemData = incoming.itemData,
+                            isFavorite = incoming.isFavorite,
+                            imagePaths = incoming.imagePaths,
+                            keepassDatabaseId = incoming.keepassDatabaseId,
+                            keepassGroupPath = incoming.keepassGroupPath,
+                            isDeleted = isInRecycleBin,
+                            deletedAt = if (isInRecycleBin) (existing.deletedAt ?: Date()) else null,
+                            updatedAt = Date()
+                        )
                     )
-                )
-            }
+                }
         }
     }
 
@@ -1282,7 +1291,10 @@ class PasswordViewModel(
         val newKeepassId = entryToUpdate.keepassDatabaseId
         if (service != null) {
             if (oldKeepassId != null && oldKeepassId != newKeepassId) {
-                val deleteResult = service.deletePasswordEntries(oldKeepassId, listOf(entryToUpdate.copy(keepassDatabaseId = oldKeepassId)))
+                val deleteResult = service.deletePasswordEntries(
+                    databaseId = oldKeepassId,
+                    entries = listOf(entryToUpdate.copy(keepassDatabaseId = oldKeepassId))
+                )
                 if (deleteResult.isFailure) {
                     Log.e("PasswordViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
                 }
@@ -1345,6 +1357,10 @@ class PasswordViewModel(
             val bitwardenVaultId = entry.bitwardenVaultId
             val bitwardenCipherId = entry.bitwardenCipherId
             val isBitwardenCipher = bitwardenVaultId != null && !bitwardenCipherId.isNullOrBlank()
+            Log.i(
+                "PasswordViewModel",
+                "Delete requested: id=${entry.id}, title=${entry.title}, keepassId=$keepassId, trashEnabled=$trashEnabled, bitwardenCipher=$isBitwardenCipher"
+            )
 
             if (isBitwardenCipher) {
                 val queueResult = bitwardenRepository?.queueCipherDelete(
@@ -1361,9 +1377,12 @@ class PasswordViewModel(
                 }
 
                 if (service != null && keepassId != null) {
-                    val deleteResult = service.deletePasswordEntries(keepassId, listOf(entry))
+                    val deleteResult = service.movePasswordEntriesToRecycleBin(
+                        databaseId = keepassId,
+                        entries = listOf(entry)
+                    )
                     if (deleteResult.isFailure) {
-                        Log.e("PasswordViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
+                        Log.e("PasswordViewModel", "KeePass move to recycle bin failed: ${deleteResult.exceptionOrNull()?.message}")
                         return@launch
                     }
                 }
@@ -1378,20 +1397,25 @@ class PasswordViewModel(
                     bitwardenLocalModified = true
                 )
                 repository.updatePasswordEntry(softDeletedEntry)
+                repository.deleteArchiveSyncMeta(entry.id)
                 takagi.ru.monica.utils.OperationLogger.logDelete(
                     itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
                     itemId = entry.id,
                     itemTitle = entry.title,
                     detail = "移入回收站（待同步删除）"
                 )
+                Log.i("PasswordViewModel", "Delete queued as tombstone: id=${entry.id}")
                 return@launch
             }
-             
+              
             if (trashEnabled) {
                 if (service != null && keepassId != null) {
-                    val deleteResult = service.deletePasswordEntries(keepassId, listOf(entry))
+                    val deleteResult = service.movePasswordEntriesToRecycleBin(
+                        databaseId = keepassId,
+                        entries = listOf(entry)
+                    )
                     if (deleteResult.isFailure) {
-                        Log.e("PasswordViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
+                        Log.e("PasswordViewModel", "KeePass move to recycle bin failed: ${deleteResult.exceptionOrNull()?.message}")
                         return@launch
                     }
                 }
@@ -1404,6 +1428,7 @@ class PasswordViewModel(
                     updatedAt = Date()
                 )
                 repository.updatePasswordEntry(softDeletedEntry)
+                repository.deleteArchiveSyncMeta(entry.id)
                 // 记录移入回收站操作
                 takagi.ru.monica.utils.OperationLogger.logDelete(
                     itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
@@ -1411,9 +1436,13 @@ class PasswordViewModel(
                     itemTitle = entry.title,
                     detail = "移入回收站"
                 )
+                Log.i("PasswordViewModel", "Delete moved to trash: id=${entry.id}")
             } else {
                 if (service != null && keepassId != null) {
-                    val deleteResult = service.deletePasswordEntries(keepassId, listOf(entry))
+                    val deleteResult = service.deletePasswordEntries(
+                        databaseId = keepassId,
+                        entries = listOf(entry)
+                    )
                     if (deleteResult.isFailure) {
                         Log.e("PasswordViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
                         return@launch
@@ -1421,12 +1450,14 @@ class PasswordViewModel(
                 }
                 // 直接永久删除
                 repository.deletePasswordEntry(entry)
+                repository.deleteArchiveSyncMeta(entry.id)
                 // 记录删除操作
                 takagi.ru.monica.utils.OperationLogger.logDelete(
                     itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
                     itemId = entry.id,
                     itemTitle = entry.title
                 )
+                Log.i("PasswordViewModel", "Delete permanently removed: id=${entry.id}")
             }
         }
     }
@@ -1439,25 +1470,239 @@ class PasswordViewModel(
 
     fun archivePassword(id: Long) {
         viewModelScope.launch {
-            repository.archivePasswordById(id)
+            archivePasswordsInternal(listOf(id))
         }
     }
 
     fun archivePasswords(ids: List<Long>) {
         viewModelScope.launch {
-            repository.archivePasswordsByIds(ids)
+            archivePasswordsInternal(ids)
         }
     }
 
     fun unarchivePassword(id: Long) {
         viewModelScope.launch {
-            repository.unarchivePasswordById(id)
+            unarchivePasswordsInternal(listOf(id))
         }
     }
 
     fun unarchivePasswords(ids: List<Long>) {
         viewModelScope.launch {
-            repository.unarchivePasswordsByIds(ids)
+            unarchivePasswordsInternal(ids)
+        }
+    }
+
+    private suspend fun archivePasswordsInternal(ids: List<Long>) {
+        if (ids.isEmpty()) return
+        val entries = repository.getPasswordsByIds(ids)
+            .filter { !it.isDeleted }
+        entries.forEach { entry ->
+            archiveSingleEntry(entry)
+        }
+    }
+
+    private suspend fun unarchivePasswordsInternal(ids: List<Long>) {
+        if (ids.isEmpty()) return
+        val entries = repository.getPasswordsByIds(ids)
+            .filter { !it.isDeleted }
+        entries.forEach { entry ->
+            unarchiveSingleEntry(entry)
+        }
+    }
+
+    private suspend fun archiveSingleEntry(entry: PasswordEntry) {
+        if (entry.isArchived || entry.isDeleted) return
+
+        val now = Date()
+        val providerType = resolveArchiveProviderType(entry)
+        val keepassDatabaseId = entry.keepassDatabaseId
+
+        var archivedEntry = entry.copy(
+            isArchived = true,
+            archivedAt = entry.archivedAt ?: now,
+            updatedAt = now,
+            bitwardenLocalModified = if (entry.bitwardenVaultId != null) true else entry.bitwardenLocalModified
+        )
+        repository.updatePasswordEntry(archivedEntry)
+
+        var syncStatus = when (providerType) {
+            PasswordArchiveSyncMeta.PROVIDER_LOCAL -> PasswordArchiveSyncMeta.STATUS_SYNCED
+            else -> PasswordArchiveSyncMeta.STATUS_PENDING
+        }
+        var lastError: String? = null
+
+        if (providerType == PasswordArchiveSyncMeta.PROVIDER_KEEPASS_GROUP) {
+            val targetArchivePath = ensureKeePassArchiveGroupPath(keepassDatabaseId)
+            if (targetArchivePath == null) {
+                syncStatus = PasswordArchiveSyncMeta.STATUS_FAILED
+                lastError = "KeePass archive group unavailable"
+            } else {
+                val moveResult = moveKeePassEntryGroupPath(
+                    entry = archivedEntry,
+                    targetGroupPath = targetArchivePath
+                )
+                if (moveResult.isSuccess) {
+                    archivedEntry = archivedEntry.copy(
+                        keepassGroupPath = targetArchivePath,
+                        updatedAt = Date()
+                    )
+                    repository.updatePasswordEntry(archivedEntry)
+                    syncStatus = PasswordArchiveSyncMeta.STATUS_SYNCED
+                    lastError = null
+                } else {
+                    syncStatus = PasswordArchiveSyncMeta.STATUS_FAILED
+                    lastError = moveResult.exceptionOrNull()?.message ?: "KeePass archive move failed"
+                }
+            }
+        }
+
+        repository.upsertArchiveSyncMeta(
+            PasswordArchiveSyncMeta(
+                entryId = entry.id,
+                providerType = providerType,
+                originKeePassDatabaseId = keepassDatabaseId,
+                originKeePassGroupPath = entry.keepassGroupPath,
+                originBitwardenFolderId = entry.bitwardenFolderId,
+                syncStatus = syncStatus,
+                lastError = lastError,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    private suspend fun unarchiveSingleEntry(entry: PasswordEntry) {
+        if (!entry.isArchived || entry.isDeleted) return
+
+        val now = Date()
+        val archiveMeta = repository.getArchiveSyncMeta(entry.id)
+        val providerType = archiveMeta?.providerType ?: resolveArchiveProviderType(entry)
+        val keepassDatabaseId = entry.keepassDatabaseId
+
+        var unarchivedEntry = entry.copy(
+            isArchived = false,
+            archivedAt = null,
+            updatedAt = now,
+            bitwardenLocalModified = if (entry.bitwardenVaultId != null) true else entry.bitwardenLocalModified
+        )
+        repository.updatePasswordEntry(unarchivedEntry)
+
+        var syncStatus = when (providerType) {
+            PasswordArchiveSyncMeta.PROVIDER_LOCAL -> PasswordArchiveSyncMeta.STATUS_SYNCED
+            else -> PasswordArchiveSyncMeta.STATUS_PENDING
+        }
+        var lastError: String? = null
+
+        if (providerType == PasswordArchiveSyncMeta.PROVIDER_KEEPASS_GROUP) {
+            val preferredPath = archiveMeta?.originKeePassGroupPath
+            val restorePath = resolveKeePassRestorePathOrRoot(keepassDatabaseId, preferredPath)
+            val moveResult = moveKeePassEntryGroupPath(
+                entry = unarchivedEntry,
+                targetGroupPath = restorePath
+            )
+            if (moveResult.isSuccess) {
+                unarchivedEntry = unarchivedEntry.copy(
+                    keepassGroupPath = restorePath,
+                    updatedAt = Date()
+                )
+                repository.updatePasswordEntry(unarchivedEntry)
+                syncStatus = PasswordArchiveSyncMeta.STATUS_SYNCED
+                lastError = if (preferredPath != null && preferredPath != restorePath) {
+                    "Origin group missing, restored to root"
+                } else {
+                    null
+                }
+            } else {
+                syncStatus = PasswordArchiveSyncMeta.STATUS_FAILED
+                lastError = moveResult.exceptionOrNull()?.message ?: "KeePass unarchive move failed"
+            }
+        }
+
+        repository.upsertArchiveSyncMeta(
+            PasswordArchiveSyncMeta(
+                entryId = entry.id,
+                providerType = providerType,
+                originKeePassDatabaseId = archiveMeta?.originKeePassDatabaseId ?: keepassDatabaseId,
+                originKeePassGroupPath = archiveMeta?.originKeePassGroupPath,
+                originBitwardenFolderId = archiveMeta?.originBitwardenFolderId ?: entry.bitwardenFolderId,
+                syncStatus = syncStatus,
+                lastError = lastError,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    private suspend fun moveKeePassEntryGroupPath(
+        entry: PasswordEntry,
+        targetGroupPath: String?
+    ): Result<Unit> {
+        val databaseId = entry.keepassDatabaseId
+            ?: return Result.failure(IllegalStateException("No KeePass database bound"))
+        val service = keepassService
+            ?: return Result.failure(IllegalStateException("KeePass service unavailable"))
+
+        return service.updatePasswordEntry(
+            databaseId = databaseId,
+            entry = entry.copy(keepassGroupPath = targetGroupPath),
+            resolvePassword = { resolvePlainPasswordForKeePass(it.password) }
+        )
+    }
+
+    private suspend fun ensureKeePassArchiveGroupPath(databaseId: Long?): String? {
+        val resolvedDatabaseId = databaseId ?: return null
+        val service = keepassService ?: return null
+
+        val rootPath = buildKeePassPathKey(null, MONICA_KEEPASS_ARCHIVE_ROOT_GROUP_NAME)
+        val archivePath = buildKeePassPathKey(rootPath, MONICA_KEEPASS_ARCHIVE_GROUP_NAME)
+
+        var groups = service.listGroups(resolvedDatabaseId).getOrElse { return null }
+
+        if (groups.none { it.path == rootPath }) {
+            val rootResult = service.createGroup(
+                databaseId = resolvedDatabaseId,
+                groupName = MONICA_KEEPASS_ARCHIVE_ROOT_GROUP_NAME
+            )
+            if (rootResult.isFailure) return null
+            groups = service.listGroups(resolvedDatabaseId).getOrElse { return null }
+        }
+
+        if (groups.none { it.path == archivePath }) {
+            val archiveResult = service.createGroup(
+                databaseId = resolvedDatabaseId,
+                groupName = MONICA_KEEPASS_ARCHIVE_GROUP_NAME,
+                parentPath = rootPath
+            )
+            if (archiveResult.isFailure) return null
+        }
+
+        return archivePath
+    }
+
+    private suspend fun resolveKeePassRestorePathOrRoot(
+        databaseId: Long?,
+        preferredPath: String?
+    ): String? {
+        if (databaseId == null) return preferredPath
+        if (preferredPath.isNullOrBlank()) return null
+        val service = keepassService ?: return null
+
+        val groups = service.listGroups(databaseId).getOrNull() ?: return null
+        return groups.firstOrNull { it.path == preferredPath }?.path
+    }
+
+    private fun resolveArchiveProviderType(entry: PasswordEntry): String {
+        return when {
+            entry.keepassDatabaseId != null -> PasswordArchiveSyncMeta.PROVIDER_KEEPASS_GROUP
+            entry.bitwardenVaultId != null -> PasswordArchiveSyncMeta.PROVIDER_BITWARDEN_NATIVE
+            else -> PasswordArchiveSyncMeta.PROVIDER_LOCAL
+        }
+    }
+
+    private fun resolvePlainPasswordForKeePass(storedPassword: String): String {
+        if (storedPassword.isBlank()) return ""
+        return try {
+            decryptForDisplay(storedPassword)
+        } catch (_: Exception) {
+            storedPassword
         }
     }
     

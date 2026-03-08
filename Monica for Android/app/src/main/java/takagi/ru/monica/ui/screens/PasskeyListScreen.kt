@@ -882,7 +882,7 @@ fun PasskeyListScreen(
         }
         
         // 版本兼容性警告
-        AnimatedVisibility(
+        SafeAnimatedVisibility(
             visible = showVersionWarning && !isFullySupported,
             enter = expandVertically() + fadeIn(),
             exit = shrinkVertically() + fadeOut()
@@ -1955,7 +1955,7 @@ private fun PasskeyListItem(
             }
             
             // 展开内容
-            AnimatedVisibility(
+            SafeAnimatedVisibility(
                 visible = expanded,
                 enter = expandVertically() + fadeIn(),
                 exit = shrinkVertically() + fadeOut()
@@ -2249,6 +2249,24 @@ private fun DetailRow(
             )
         }
     }
+}
+
+@Composable
+private fun SafeAnimatedVisibility(
+    visible: Boolean,
+    enter: EnterTransition,
+    exit: ExitTransition,
+    content: @Composable () -> Unit
+) {
+    if (Build.VERSION.SDK_INT >= 36) {
+        if (visible) content()
+        return
+    }
+    AnimatedVisibility(
+        visible = visible,
+        enter = enter,
+        exit = exit
+    ) { content() }
 }
 
 private class PasskeyBitwardenMoveBlockedException :

@@ -531,6 +531,7 @@ fun PasswordListContent(
     onBackToTopVisibilityChange: (Boolean) -> Unit = {},
     scrollToTopRequestKey: Int = 0,
     onOpenHistory: () -> Unit = {},
+    onOpenTrash: () -> Unit = {},
     onOpenCommonAccountTemplates: () -> Unit = {}
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -567,6 +568,7 @@ fun PasswordListContent(
     val isTopBarSyncing = selectedBitwardenVaultId?.let { vaultId ->
         bitwardenSyncStatusByVault[vaultId]?.isRunning == true
     } == true
+    val isArchiveView = currentFilter is CategoryFilter.Archived
     val effectiveGroupMode = if (isLocalOnlyView) "none" else groupMode
     val effectiveStackCardMode = if (isLocalOnlyView) StackCardMode.ALWAYS_EXPANDED else stackCardMode
     
@@ -611,9 +613,20 @@ fun PasswordListContent(
         isSelectionMode = false
         selectedPasswords = setOf()
     }
+
+    // 在归档页按返回键时，先退出归档回到密码主列表
+    BackHandler(enabled = isArchiveView && !isSelectionMode && !isSearchExpanded) {
+        viewModel.setCategoryFilter(CategoryFilter.All)
+    }
     // Category sheet state
     var isCategorySheetVisible by rememberSaveable { mutableStateOf(false) }
     var categoryPillBoundsInWindow by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+
+    LaunchedEffect(isArchiveView) {
+        if (isArchiveView && isCategorySheetVisible) {
+            isCategorySheetVisible = false
+        }
+    }
     
     // 添加触觉反馈
     val haptic = rememberHapticFeedback()
@@ -1458,15 +1471,27 @@ fun PasswordListContent(
                 isSearchExpanded = isSearchExpanded,
                 onSearchExpandedChange = { isSearchExpanded = it },
                 searchHint = stringResource(R.string.search_passwords_hint),
-                onActionPillBoundsChanged = { bounds -> categoryPillBoundsInWindow = bounds },
+                onActionPillBoundsChanged = if (isArchiveView) null else { bounds -> categoryPillBoundsInWindow = bounds },
                 actions = {
-                    // 1. Category Folder Trigger
-                    IconButton(onClick = { isCategorySheetVisible = true }) {
-                         Icon(
-                            imageVector = Icons.Default.Folder, // Or CreateNewFolder
-                            contentDescription = stringResource(R.string.category),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    if (isArchiveView) {
+                        IconButton(onClick = { viewModel.setCategoryFilter(CategoryFilter.All) }) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = stringResource(R.string.nav_passwords_short),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    if (!isArchiveView) {
+                        // 1. Category Folder Trigger
+                        IconButton(onClick = { isCategorySheetVisible = true }) {
+                             Icon(
+                                imageVector = Icons.Default.Folder, // Or CreateNewFolder
+                                contentDescription = stringResource(R.string.category),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
 
                     // 3. Search Trigger (放在最右边)
@@ -1538,11 +1563,19 @@ fun PasswordListContent(
                                     }
                                 )
                                 DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.timeline_and_trash_title)) },
+                                    text = { Text(stringResource(R.string.timeline_title)) },
                                     leadingIcon = { Icon(Icons.Default.History, contentDescription = null) },
                                     onClick = {
                                         topActionsMenuExpanded = false
                                         onOpenHistory()
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.timeline_trash_title)) },
+                                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                                    onClick = {
+                                        topActionsMenuExpanded = false
+                                        onOpenTrash()
                                     }
                                 )
                                 DropdownMenuItem(
@@ -1578,7 +1611,7 @@ fun PasswordListContent(
                 is CategoryFilter.KeePassDatabaseStarred -> UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter(filter.databaseId)
                 is CategoryFilter.KeePassDatabaseUncategorized -> UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter(filter.databaseId)
             }
-            if (isCategorySheetVisible) {
+            if (isCategorySheetVisible && !isArchiveView) {
                 UnifiedCategoryFilterBottomSheet(
                     visible = true,
                 onDismiss = { isCategorySheetVisible = false },
@@ -2413,7 +2446,6 @@ fun PasswordListContent(
                                 // 左滑删除
                                 haptic.performWarning()
                                 itemToDelete = password
-                                deletedItemIds = deletedItemIds + password.id
                             }
                         },
                         onSwipeRight = { password ->
@@ -2732,8 +2764,6 @@ fun PasswordListContent(
             itemType = stringResource(R.string.item_type_password),
             biometricEnabled = appSettings.biometricEnabled,
             onDismiss = {
-                // 取消删除，恢复卡片显示
-                deletedItemIds = deletedItemIds - item.id
                 itemToDelete = null
             },
             onConfirmWithPassword = { password ->
@@ -2770,14 +2800,11 @@ fun PasswordListContent(
                     Toast.LENGTH_SHORT
                 ).show()
                 
-                // 清理状态（保持在 deletedItemIds 中，因为已真实删除）
+                // 清理状态
                 itemToDelete = null
                 singleItemPasswordInput = ""
                 showSingleItemPasswordVerify = false
             } else {
-                // 密码错误，恢复卡片显示
-                deletedItemIds = deletedItemIds - pendingDeleteItem.id
-                
                 Toast.makeText(
                     context,
                     context.getString(R.string.current_password_incorrect),

@@ -955,6 +955,8 @@
     <string name="hide_fab_on_scroll_description">向下滑动列表时隐藏右下角的添加按钮</string>
     <string name="predictive_back_for_pages_title">页面预见式返回</string>
     <string name="predictive_back_for_pages_description">为有上级页面的详情/编辑页启用系统预见式返回动画</string>
+    <string name="keepass_dx_like_mutation_title">KeePass DX 类引擎</string>
+    <string name="keepass_dx_like_mutation_description">实验功能：KeePass 操作使用内存变更 + 异步落盘（默认关闭）</string>
     
     <!-- 验证器震动 -->
     <string name="validator_vibration">验证器震动</string>

@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -846,6 +847,7 @@ fun SettingsScreen(
     
     // 预览功能对话框
     if (previewFeaturesExpanded) {
+        val previewDialogContentMaxHeight = (LocalConfiguration.current.screenHeightDp * 0.58f).dp
         AlertDialog(
             onDismissRequest = { previewFeaturesExpanded = false },
             icon = {
@@ -860,7 +862,10 @@ fun SettingsScreen(
             },
             text = {
                 Column(
-                    modifier = Modifier.verticalScroll(rememberScrollState())
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = previewDialogContentMaxHeight)
+                        .verticalScroll(rememberScrollState())
                 ) {
                     Text(
                         stringResource(R.string.preview_features_description),
@@ -876,7 +881,7 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
-                    
+
                     // 可拖拽底部导航栏开关
                     Row(
                         modifier = Modifier
@@ -1050,6 +1055,8 @@ fun SettingsScreen(
                             onCheckedChange = { viewModel.updatePredictiveBackForPageNavigationEnabled(it) }
                         )
                     }
+
+                    Spacer(modifier = Modifier.height(8.dp))
                 }
             },
             confirmButton = {

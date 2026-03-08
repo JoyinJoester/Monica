@@ -993,6 +993,8 @@
     <string name="hide_fab_on_scroll_description">Hide the floating action button when scrolling down</string>
     <string name="predictive_back_for_pages_title">Predictive back for pages</string>
     <string name="predictive_back_for_pages_description">Enable system predictive back animation on detail/edit pages with parent navigation</string>
+    <string name="keepass_dx_like_mutation_title">KeePass DX-like engine</string>
+    <string name="keepass_dx_like_mutation_description">Experimental: use in-memory mutation + async persist for KeePass operations (off by default)</string>
     <string name="bitwarden_bottom_status_bar_title">Bitwarden bottom status bar</string>
     <string name="bitwarden_bottom_status_bar_description">Show sync state above the bottom area on Bitwarden pages</string>
     <string name="bitwarden_status_auth_required">Re-login required</string>

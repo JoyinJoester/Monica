@@ -18,6 +18,7 @@ import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.passkey.PasskeyCredentialIdCodec
 import takagi.ru.monica.security.SecurityManager
+import java.time.Instant
 import java.util.Date
 
 /**
@@ -61,16 +62,14 @@ class CipherSyncProcessor(
         cipher: CipherApiResponse,
         symmetricKey: SymmetricCryptoKey
     ): CipherSyncResult {
-        // 跳过已删除的 Cipher
-        if (cipher.deletedDate != null) {
-            return CipherSyncResult.Skipped("Cipher is deleted")
-        }
-        
+        val serverDeletedAt = parseBitwardenDeletedAt(cipher.deletedDate)
+        val serverArchivedAt = parseBitwardenArchivedAt(cipher.archivedDate)
+
         return when (cipher.type) {
-            1 -> syncLoginCipher(vault, cipher, symmetricKey)
-            2 -> syncSecureNoteCipher(vault, cipher, symmetricKey)
-            3 -> syncCardCipher(vault, cipher, symmetricKey)
-            4 -> syncIdentityCipher(vault, cipher, symmetricKey)
+            1 -> syncLoginCipher(vault, cipher, symmetricKey, serverDeletedAt, serverArchivedAt)
+            2 -> syncSecureNoteCipher(vault, cipher, symmetricKey, serverDeletedAt)
+            3 -> syncCardCipher(vault, cipher, symmetricKey, serverDeletedAt)
+            4 -> syncIdentityCipher(vault, cipher, symmetricKey, serverDeletedAt)
             else -> CipherSyncResult.Skipped("Unknown cipher type: ${cipher.type}")
         }
     }
@@ -82,18 +81,20 @@ class CipherSyncProcessor(
     private suspend fun syncLoginCipher(
         vault: BitwardenVault,
         cipher: CipherApiResponse,
-        symmetricKey: SymmetricCryptoKey
+        symmetricKey: SymmetricCryptoKey,
+        serverDeletedAt: Date?,
+        serverArchivedAt: Date?
     ): CipherSyncResult {
         return when {
             PasskeyMapper.isPasskeyCipher(cipher) -> {
                 syncPasskeyCipher(vault, cipher, symmetricKey)
             }
             TotpMapper.isStandaloneTotpCipher(cipher) -> {
-                syncTotpCipher(vault, cipher, symmetricKey)
+                syncTotpCipher(vault, cipher, symmetricKey, serverDeletedAt)
             }
             else -> {
                 // 标准密码条目 - 使用现有逻辑
-                syncPasswordCipher(vault, cipher, symmetricKey)
+                syncPasswordCipher(vault, cipher, symmetricKey, serverDeletedAt, serverArchivedAt)
             }
         }
     }
@@ -104,9 +105,12 @@ class CipherSyncProcessor(
     private suspend fun syncPasswordCipher(
         vault: BitwardenVault,
         cipher: CipherApiResponse,
-        symmetricKey: SymmetricCryptoKey
+        symmetricKey: SymmetricCryptoKey,
+        serverDeletedAt: Date?,
+        serverArchivedAt: Date?
     ): CipherSyncResult {
         val login = cipher.login ?: return CipherSyncResult.Skipped("No login data")
+        val isServerDeleted = serverDeletedAt != null
 
         // 先按 cipherId 收敛历史重复副本，避免“同一条目异常膨胀”。
         val existing = resolveCanonicalPasswordEntry(vault.id, cipher.id)
@@ -152,7 +156,7 @@ class CipherSyncProcessor(
         val encryptedPassword = securityManager.encryptData(password)
         
         if (existing == null) {
-            if (hasPendingDelete) {
+            if (hasPendingDelete && !isServerDeleted) {
                 return CipherSyncResult.Skipped("Pending local delete")
             }
             // 创建新条目（不吞并本地同名条目，保持数据源独立）
@@ -181,13 +185,50 @@ class CipherSyncProcessor(
                 bitwardenFolderId = cipher.folderId,
                 bitwardenRevisionDate = cipher.revisionDate,
                 bitwardenCipherType = 1,
-                bitwardenLocalModified = false
+                bitwardenLocalModified = false,
+                isDeleted = isServerDeleted,
+                deletedAt = serverDeletedAt,
+                isArchived = serverArchivedAt != null,
+                archivedAt = serverArchivedAt
             )
             passwordEntryDao.insert(newEntry)
             return CipherSyncResult.Added
         } else {
-            if (existing.isDeleted || hasPendingDelete) {
+            if (hasPendingDelete && !isServerDeleted) {
                 return CipherSyncResult.Skipped("Local delete wins")
+            }
+            if (isServerDeleted) {
+                passwordEntryDao.update(
+                    existing.copy(
+                        title = name,
+                        website = parsedUris.website.ifBlank { existing.website },
+                        username = username,
+                        password = encryptedPassword,
+                        notes = notes,
+                        authenticatorKey = totp,
+                        appPackageName = remoteAppPackage.ifBlank { existing.appPackageName },
+                        appName = remoteAppName.ifBlank { existing.appName },
+                        email = remoteEmail.ifBlank { existing.email },
+                        phone = remotePhone.ifBlank { existing.phone },
+                        addressLine = remoteAddress.ifBlank { existing.addressLine },
+                        city = remoteCity.ifBlank { existing.city },
+                        state = remoteState.ifBlank { existing.state },
+                        zipCode = remoteZip.ifBlank { existing.zipCode },
+                        country = remoteCountry.ifBlank { existing.country },
+                        passkeyBindings = remotePasskeyBindings.ifBlank { existing.passkeyBindings },
+                        isFavorite = cipher.favorite == true,
+                        isDeleted = true,
+                        deletedAt = serverDeletedAt,
+                        isArchived = false,
+                        archivedAt = null,
+                        updatedAt = Date(),
+                        bitwardenVaultId = vault.id,
+                        bitwardenFolderId = cipher.folderId,
+                        bitwardenRevisionDate = cipher.revisionDate,
+                        bitwardenLocalModified = false
+                    )
+                )
+                return CipherSyncResult.Updated
             }
             // 更新现有条目
             if (existing.bitwardenLocalModified) {
@@ -224,6 +265,10 @@ class CipherSyncProcessor(
                 country = remoteCountry.ifBlank { existing.country },
                 passkeyBindings = remotePasskeyBindings.ifBlank { existing.passkeyBindings },
                 isFavorite = cipher.favorite == true,
+                isDeleted = false,
+                deletedAt = null,
+                isArchived = serverArchivedAt != null || existing.isArchived,
+                archivedAt = serverArchivedAt ?: existing.archivedAt,
                 updatedAt = Date(),
                 bitwardenVaultId = vault.id,
                 bitwardenFolderId = cipher.folderId,
@@ -275,9 +320,11 @@ class CipherSyncProcessor(
     private suspend fun syncTotpCipher(
         vault: BitwardenVault,
         cipher: CipherApiResponse,
-        symmetricKey: SymmetricCryptoKey
+        symmetricKey: SymmetricCryptoKey,
+        serverDeletedAt: Date?
     ): CipherSyncResult {
         val login = cipher.login ?: return CipherSyncResult.Skipped("No login data")
+        val isServerDeleted = serverDeletedAt != null
         
         // 解密 TOTP 密钥
         val totpSecret = decryptString(login.totp, symmetricKey) ?: ""
@@ -313,11 +360,32 @@ class CipherSyncProcessor(
                 bitwardenCipherId = cipher.id,
                 bitwardenFolderId = cipher.folderId,
                 bitwardenRevisionDate = cipher.revisionDate,
-                syncStatus = "SYNCED"
+                syncStatus = "SYNCED",
+                isDeleted = isServerDeleted,
+                deletedAt = serverDeletedAt
             )
             secureItemDao.insert(newItem)
             return CipherSyncResult.Added
         } else {
+            if (isServerDeleted) {
+                secureItemDao.update(
+                    existing.copy(
+                        title = name,
+                        notes = notes,
+                        itemData = itemData,
+                        isFavorite = cipher.favorite == true,
+                        isDeleted = true,
+                        deletedAt = serverDeletedAt,
+                        updatedAt = Date(),
+                        bitwardenVaultId = vault.id,
+                        bitwardenFolderId = cipher.folderId,
+                        bitwardenRevisionDate = cipher.revisionDate,
+                        bitwardenLocalModified = false,
+                        syncStatus = "SYNCED"
+                    )
+                )
+                return CipherSyncResult.Updated
+            }
             if (existing.bitwardenLocalModified == true) {
                 if (existing.bitwardenVaultId != vault.id || existing.bitwardenFolderId != cipher.folderId) {
                     secureItemDao.update(
@@ -339,6 +407,8 @@ class CipherSyncProcessor(
                 notes = notes,
                 itemData = itemData,
                 isFavorite = cipher.favorite == true,
+                isDeleted = false,
+                deletedAt = null,
                 updatedAt = Date(),
                 bitwardenVaultId = vault.id,
                 bitwardenFolderId = cipher.folderId,
@@ -357,10 +427,12 @@ class CipherSyncProcessor(
     private suspend fun syncSecureNoteCipher(
         vault: BitwardenVault,
         cipher: CipherApiResponse,
-        symmetricKey: SymmetricCryptoKey
+        symmetricKey: SymmetricCryptoKey,
+        serverDeletedAt: Date?
     ): CipherSyncResult {
+        val isServerDeleted = serverDeletedAt != null
         val hasPendingDelete = pendingOpDao.hasActiveDeleteByCipher(vault.id, cipher.id)
-        if (hasPendingDelete) {
+        if (hasPendingDelete && !isServerDeleted) {
             return CipherSyncResult.Skipped("Pending local delete")
         }
 
@@ -386,11 +458,32 @@ class CipherSyncProcessor(
                 bitwardenCipherId = cipher.id,
                 bitwardenFolderId = cipher.folderId,
                 bitwardenRevisionDate = cipher.revisionDate,
-                syncStatus = "SYNCED"
+                syncStatus = "SYNCED",
+                isDeleted = isServerDeleted,
+                deletedAt = serverDeletedAt
             )
             secureItemDao.insert(newItem)
             return CipherSyncResult.Added
         } else {
+            if (isServerDeleted) {
+                secureItemDao.update(
+                    existing.copy(
+                        title = name,
+                        notes = notes,
+                        itemData = itemData,
+                        isFavorite = cipher.favorite == true,
+                        isDeleted = true,
+                        deletedAt = serverDeletedAt,
+                        updatedAt = Date(),
+                        bitwardenVaultId = vault.id,
+                        bitwardenFolderId = cipher.folderId,
+                        bitwardenRevisionDate = cipher.revisionDate,
+                        bitwardenLocalModified = false,
+                        syncStatus = "SYNCED"
+                    )
+                )
+                return CipherSyncResult.Updated
+            }
             if (existing.bitwardenLocalModified == true) {
                 if (existing.bitwardenVaultId != vault.id || existing.bitwardenFolderId != cipher.folderId) {
                     secureItemDao.update(
@@ -412,6 +505,8 @@ class CipherSyncProcessor(
                 notes = notes,
                 itemData = itemData,
                 isFavorite = cipher.favorite == true,
+                isDeleted = false,
+                deletedAt = null,
                 updatedAt = Date(),
                 bitwardenVaultId = vault.id,
                 bitwardenFolderId = cipher.folderId,
@@ -430,9 +525,11 @@ class CipherSyncProcessor(
     private suspend fun syncCardCipher(
         vault: BitwardenVault,
         cipher: CipherApiResponse,
-        symmetricKey: SymmetricCryptoKey
+        symmetricKey: SymmetricCryptoKey,
+        serverDeletedAt: Date?
     ): CipherSyncResult {
         val card = cipher.card ?: return CipherSyncResult.Skipped("No card data")
+        val isServerDeleted = serverDeletedAt != null
         
         val name = decryptString(cipher.name, symmetricKey) ?: "Card"
         val notes = decryptString(cipher.notes, symmetricKey) ?: ""
@@ -472,11 +569,32 @@ class CipherSyncProcessor(
                 bitwardenCipherId = cipher.id,
                 bitwardenFolderId = cipher.folderId,
                 bitwardenRevisionDate = cipher.revisionDate,
-                syncStatus = "SYNCED"
+                syncStatus = "SYNCED",
+                isDeleted = isServerDeleted,
+                deletedAt = serverDeletedAt
             )
             secureItemDao.insert(newItem)
             return CipherSyncResult.Added
         } else {
+            if (isServerDeleted) {
+                secureItemDao.update(
+                    existing.copy(
+                        title = name,
+                        notes = notes,
+                        itemData = itemData,
+                        isFavorite = cipher.favorite == true,
+                        isDeleted = true,
+                        deletedAt = serverDeletedAt,
+                        updatedAt = Date(),
+                        bitwardenVaultId = vault.id,
+                        bitwardenFolderId = cipher.folderId,
+                        bitwardenRevisionDate = cipher.revisionDate,
+                        bitwardenLocalModified = false,
+                        syncStatus = "SYNCED"
+                    )
+                )
+                return CipherSyncResult.Updated
+            }
             if (existing.bitwardenLocalModified == true) {
                 if (existing.bitwardenVaultId != vault.id || existing.bitwardenFolderId != cipher.folderId) {
                     secureItemDao.update(
@@ -498,6 +616,8 @@ class CipherSyncProcessor(
                 notes = notes,
                 itemData = itemData,
                 isFavorite = cipher.favorite == true,
+                isDeleted = false,
+                deletedAt = null,
                 updatedAt = Date(),
                 bitwardenVaultId = vault.id,
                 bitwardenFolderId = cipher.folderId,
@@ -516,9 +636,11 @@ class CipherSyncProcessor(
     private suspend fun syncIdentityCipher(
         vault: BitwardenVault,
         cipher: CipherApiResponse,
-        symmetricKey: SymmetricCryptoKey
+        symmetricKey: SymmetricCryptoKey,
+        serverDeletedAt: Date?
     ): CipherSyncResult {
         val identity = cipher.identity ?: return CipherSyncResult.Skipped("No identity data")
+        val isServerDeleted = serverDeletedAt != null
         
         val name = decryptString(cipher.name, symmetricKey) ?: "Identity"
         val notes = decryptString(cipher.notes, symmetricKey) ?: ""
@@ -572,11 +694,32 @@ class CipherSyncProcessor(
                 bitwardenCipherId = cipher.id,
                 bitwardenFolderId = cipher.folderId,
                 bitwardenRevisionDate = cipher.revisionDate,
-                syncStatus = "SYNCED"
+                syncStatus = "SYNCED",
+                isDeleted = isServerDeleted,
+                deletedAt = serverDeletedAt
             )
             secureItemDao.insert(newItem)
             return CipherSyncResult.Added
         } else {
+            if (isServerDeleted) {
+                secureItemDao.update(
+                    existing.copy(
+                        title = name,
+                        notes = notes,
+                        itemData = itemData,
+                        isFavorite = cipher.favorite == true,
+                        isDeleted = true,
+                        deletedAt = serverDeletedAt,
+                        updatedAt = Date(),
+                        bitwardenVaultId = vault.id,
+                        bitwardenFolderId = cipher.folderId,
+                        bitwardenRevisionDate = cipher.revisionDate,
+                        bitwardenLocalModified = false,
+                        syncStatus = "SYNCED"
+                    )
+                )
+                return CipherSyncResult.Updated
+            }
             if (existing.bitwardenLocalModified == true) {
                 if (existing.bitwardenVaultId != vault.id || existing.bitwardenFolderId != cipher.folderId) {
                     secureItemDao.update(
@@ -598,6 +741,8 @@ class CipherSyncProcessor(
                 notes = notes,
                 itemData = itemData,
                 isFavorite = cipher.favorite == true,
+                isDeleted = false,
+                deletedAt = null,
                 updatedAt = Date(),
                 bitwardenVaultId = vault.id,
                 bitwardenFolderId = cipher.folderId,
@@ -984,6 +1129,20 @@ class CipherSyncProcessor(
             "OTHER" -> DocumentType.OTHER
             else -> null
         }
+    }
+
+    private fun parseBitwardenDeletedAt(raw: String?): Date? {
+        if (raw.isNullOrBlank()) return null
+        return runCatching {
+            Date.from(Instant.parse(raw))
+        }.getOrNull() ?: Date()
+    }
+
+    private fun parseBitwardenArchivedAt(raw: String?): Date? {
+        if (raw.isNullOrBlank()) return null
+        return runCatching {
+            Date.from(Instant.parse(raw))
+        }.getOrNull()
     }
 }
 

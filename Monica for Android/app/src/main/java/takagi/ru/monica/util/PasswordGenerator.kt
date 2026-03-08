@@ -116,8 +116,8 @@ class PasswordGenerator {
             val avgLength = passwords.map { it.password.length }
                 .average()
                 .toInt()
-                .coerceIn(4, 30)
-            val mixedLength = ((targetLength * (1 - weight)) + (avgLength * weight)).toInt().coerceIn(4, 30)
+                .coerceIn(4, 32)
+            val mixedLength = ((targetLength * (1 - weight)) + (avgLength * weight)).toInt().coerceIn(4, 32)
 
             // 2) 字符集：尊重用户复选框，历史仅作参考
             val historyUse = analyzeCharUsage(passwords)
