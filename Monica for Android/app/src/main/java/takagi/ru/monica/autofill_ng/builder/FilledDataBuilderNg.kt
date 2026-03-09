@@ -10,6 +10,7 @@ import takagi.ru.monica.autofill_ng.model.FilledData
 import takagi.ru.monica.autofill_ng.model.FilledItem
 import takagi.ru.monica.autofill_ng.model.FilledPartition
 import takagi.ru.monica.autofill_ng.model.toAutofillCipherLogin
+import takagi.ru.monica.autofill_ng.AutofillSecretResolver
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.security.SessionManager
@@ -39,12 +40,18 @@ class FilledDataBuilderNg(
                 null
             }?.also { inlineSuggestionsAdded += 1 }
 
-        val ciphers = passwords.map { entry ->
-            entry.toAutofillCipherLogin(
-                fallbackWebsite = request.uri.orEmpty(),
-                usernameValue = decryptIfPossible(entry.username),
-                passwordValue = decryptIfPossible(entry.password)
-            )
+        val ciphers = passwords.mapNotNull { entry ->
+            val usernameValue = decryptForAutofill(entry.username)
+            val passwordValue = decryptForAutofill(entry.password)
+            if (usernameValue.isNullOrBlank() && passwordValue.isNullOrBlank()) {
+                null
+            } else {
+                entry.toAutofillCipherLogin(
+                    fallbackWebsite = request.uri.orEmpty(),
+                    usernameValue = usernameValue.orEmpty(),
+                    passwordValue = passwordValue.orEmpty()
+                )
+            }
         }
 
         val filledPartitions = ciphers
@@ -101,10 +108,13 @@ class FilledDataBuilderNg(
         )
     }
 
-    private fun decryptIfPossible(value: String): String {
-        if (value.isBlank()) return value
-        return runCatching { securityManager.decryptData(value) }
-            .getOrElse { value }
+    private fun decryptForAutofill(value: String): String? {
+        if (value.isBlank()) return ""
+        return AutofillSecretResolver.decryptPasswordOrNull(
+            securityManager = securityManager,
+            encryptedOrPlain = value,
+            logTag = "FilledDataBuilderNg",
+        )
     }
 }
 

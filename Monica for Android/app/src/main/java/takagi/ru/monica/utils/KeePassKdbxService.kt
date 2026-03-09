@@ -34,6 +34,7 @@ import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.security.SecurityManager
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -952,12 +953,18 @@ class KeePassKdbxService(
 
     private fun buildSecureItemFields(item: SecureItem): EntryFields {
         val monicaId = if (item.id > 0) item.id.toString() else ""
+        val noteForExternal = if (item.itemType == ItemType.NOTE) {
+            val decoded = NoteContentCodec.decodeFromItem(item)
+            NoteContentCodec.toExternalReadableContent(decoded.content)
+        } else {
+            item.notes
+        }
         val pairs = mutableListOf<Pair<String, EntryValue>>(
             "Title" to EntryValue.Plain(item.title),
             "UserName" to EntryValue.Plain(""),
             "Password" to EntryValue.Encrypted(EncryptedValue.fromString("")),
             "URL" to EntryValue.Plain(""),
-            "Notes" to EntryValue.Plain(item.notes),
+            "Notes" to EntryValue.Plain(noteForExternal),
             FIELD_MONICA_ITEM_TYPE to EntryValue.Plain(item.itemType.name),
             FIELD_MONICA_ITEM_DATA to EntryValue.Encrypted(EncryptedValue.fromString(item.itemData)),
             FIELD_MONICA_IMAGE_PATHS to EntryValue.Plain(item.imagePaths),

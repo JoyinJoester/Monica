@@ -531,7 +531,10 @@ class KeePassKdbxViewModel {
                     var passwordIdForBinding: Long? = null
                     if (shouldImportPassword) {
                         val normalizedPassword = normalizeImportedPassword(password, securityManager)
-                        val encryptedPassword = securityManager.encryptData(normalizedPassword)
+                        val encryptedPassword = encryptImportedPasswordForDisplay(
+                            plainPassword = normalizedPassword,
+                            securityManager = securityManager
+                        )
                         val existingEntry = passwordDao.findDuplicateEntryInKeePass(
                             databaseId = keepassDatabaseId,
                             title = title,
@@ -922,5 +925,40 @@ class KeePassKdbxViewModel {
             current = candidate
         }
         return current
+    }
+
+    /**
+     * Prefer default encryption, but guarantee same-session readability for imported secrets.
+     * This avoids first-import blank password when MDK auth state is temporarily unavailable.
+     */
+    private fun encryptImportedPasswordForDisplay(
+        plainPassword: String,
+        securityManager: SecurityManager
+    ): String {
+        if (plainPassword.isEmpty()) {
+            return securityManager.encryptData(plainPassword)
+        }
+
+        val primaryEncrypted = securityManager.encryptData(plainPassword)
+        val primaryReadable = runCatching { securityManager.decryptData(primaryEncrypted) }
+            .getOrNull()
+            ?.let { it == plainPassword }
+            ?: false
+        if (primaryReadable) {
+            return primaryEncrypted
+        }
+
+        Log.w(TAG, "Imported password encrypted payload is not immediately readable; fallback to legacy V1")
+        val legacyEncrypted = securityManager.encryptDataLegacyCompat(plainPassword)
+        val legacyReadable = runCatching { securityManager.decryptData(legacyEncrypted) }
+            .getOrNull()
+            ?.let { it == plainPassword }
+            ?: false
+        return if (legacyReadable) {
+            legacyEncrypted
+        } else {
+            Log.w(TAG, "Legacy fallback is still unreadable; keep primary encrypted payload")
+            primaryEncrypted
+        }
     }
 }

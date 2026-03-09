@@ -156,6 +156,9 @@ dependencies {
 
     // Markdown rendering
     implementation libs.commonmark
+    implementation 'org.commonmark:commonmark-ext-gfm-tables:0.22.0'
+    implementation 'org.commonmark:commonmark-ext-gfm-strikethrough:0.22.0'
+    implementation 'org.commonmark:commonmark-ext-task-list-items:0.22.0'
     
     // Charts for ledger analytics
     // TODO: Re-enable after resolving Kotlin version compatibility

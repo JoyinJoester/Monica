@@ -624,7 +624,11 @@ fun MonicaContent(
                     navController.navigate(Screen.AddEditDocument.createRoute(documentId))
                 },
                 onNavigateToAddNote = { noteId ->
-                    navController.navigate(Screen.AddEditNote.createRoute(noteId))
+                    if (noteId == null) {
+                        navController.navigate(Screen.AddEditNote.createRoute())
+                    } else {
+                        navController.navigate(Screen.NoteDetail.createRoute(noteId))
+                    }
                 },
                 onNavigateToPasswordDetail = { passwordId ->
                     navController.navigate(Screen.PasswordDetail.createRoute(passwordId)) {
@@ -1013,6 +1017,29 @@ fun MonicaContent(
                 },
                 viewModel = noteViewModel
             )
+        }
+
+        composable(
+            route = Screen.NoteDetail.route,
+            enterTransition = { rightSlideEnterTransition() },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { rightSlidePopExitTransition() }
+        ) { backStackEntry ->
+            val noteId = backStackEntry.arguments?.getString("noteId")?.toLongOrNull() ?: -1L
+
+            if (noteId > 0) {
+                takagi.ru.monica.ui.screens.NoteDetailScreen(
+                    viewModel = noteViewModel,
+                    noteId = noteId,
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    },
+                    onEditNote = { id ->
+                        navController.navigate(Screen.AddEditNote.createRoute(id))
+                    }
+                )
+            }
         }
 
         composable(

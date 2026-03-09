@@ -16,6 +16,7 @@ import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.DocumentType
 import takagi.ru.monica.data.model.NoteData
 import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.notes.domain.NoteContentCodec
 import java.util.Date
 import java.security.KeyFactory
 import java.security.KeyStore
@@ -526,13 +527,14 @@ class CipherUploadProcessor(
         symmetricKey: SymmetricCryptoKey
     ): CipherCreateRequest {
         val noteData = parseNoteData(item)
+        val externalContent = NoteContentCodec.toExternalReadableContent(noteData.content)
         
         val crypto = BitwardenCrypto
         
         return CipherCreateRequest(
             type = 2,  // SecureNote
             name = crypto.encryptString(item.title, symmetricKey),
-            notes = crypto.encryptString(noteData.content, symmetricKey),
+            notes = crypto.encryptString(externalContent, symmetricKey),
             folderId = item.bitwardenFolderId,
             favorite = item.isFavorite,
             secureNote = CipherSecureNoteApiData(type = 0)

@@ -65,6 +65,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.TextRange
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
@@ -80,9 +82,6 @@ import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.encodeToString
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.LocalKeePassDatabase
@@ -90,7 +89,7 @@ import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
-import takagi.ru.monica.data.model.NoteData
+import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.components.ImageDialog
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
@@ -123,7 +122,11 @@ fun AddEditNoteScreen(
 
     // 重构: 显式区分 Title 和 Content
     var title by rememberSaveable { mutableStateOf("") }
-    var content by rememberSaveable { mutableStateOf("") }
+    var contentField by rememberSaveable(stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(""))
+    }
+    var isMarkdownPreview by rememberSaveable { mutableStateOf(false) }
+    var tagsText by rememberSaveable { mutableStateOf("") }
     var isFavorite by rememberSaveable { mutableStateOf(false) }
     
     // 重构: 支持多图
@@ -154,14 +157,18 @@ fun AddEditNoteScreen(
     var masterPassword by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf(false) }
     var showAddImageDialog by remember { mutableStateOf(false) }
+    var pendingImageInsertionCursor by rememberSaveable { mutableStateOf(-1) }
 
     val scope = rememberCoroutineScope()
     val imageManager = remember { ImageManager(context) }
     val activity = remember(context) { context as? Activity }
     val isEditing = noteId != -1L
+    val isBitwardenNoteTarget = bitwardenVaultId != null
+    val isMarkdown = true
     
+    val inlineImageIds = remember(contentField.text) { NoteContentCodec.extractInlineImageIds(contentField.text) }
     // 只要有标题、内容或者有图片就可以保存
-    val canSave = title.isNotBlank() || content.isNotBlank() || noteImagePaths.isNotEmpty()
+    val canSave = title.isNotBlank() || contentField.text.isNotBlank() || inlineImageIds.isNotEmpty()
     
     val database = remember { PasswordDatabase.getDatabase(context) }
     val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList())
@@ -176,39 +183,25 @@ fun AddEditNoteScreen(
         if (!isEditing) return@LaunchedEffect
         val note = viewModel.getNoteById(noteId)
         note?.let {
+            val draft = it.toNoteEditDraft()
             currentNote = it
-            
-            // 重构: 显式加载 Title 和 Content
-            title = it.title
-            
-            content = try {
-                val noteData = Json.decodeFromString<NoteData>(it.itemData)
-                noteData.content
-            } catch (_: Exception) {
-                it.notes
-            }
-            
-            isFavorite = it.isFavorite
-            selectedCategoryId = it.categoryId
-            keepassDatabaseId = it.keepassDatabaseId
-            bitwardenVaultId = it.bitwardenVaultId
-            bitwardenFolderId = it.bitwardenFolderId
-            
-            // 重构: 解析多图 JSON
-            try {
-                if (it.imagePaths.isNotBlank()) {
-                    val paths = Json.decodeFromString<List<String>>(it.imagePaths)
-                    noteImagePaths.clear()
-                    noteImagePaths.addAll(paths.filter { path -> path.isNotBlank() })
-                }
-            } catch (_: Exception) {
-                // 兼容旧数据（如果是单字符串）或解析失败
-                if (it.imagePaths.isNotBlank() && !it.imagePaths.startsWith("[")) {
-                     noteImagePaths.clear()
-                     noteImagePaths.add(it.imagePaths)
-                }
-            }
-            createdAt = it.createdAt
+
+            title = draft.title
+            val hydratedContent = NoteContentCodec.appendInlineImageRefs(
+                content = draft.content.trimEnd(),
+                imageIds = draft.imagePaths
+            )
+            contentField = TextFieldValue(hydratedContent)
+            isMarkdownPreview = false
+            tagsText = draft.tags.joinToString(", ")
+            isFavorite = draft.isFavorite
+            selectedCategoryId = draft.categoryId
+            keepassDatabaseId = draft.keepassDatabaseId
+            bitwardenVaultId = draft.bitwardenVaultId
+            bitwardenFolderId = draft.bitwardenFolderId
+            noteImagePaths.clear()
+            noteImagePaths.addAll(NoteContentCodec.extractInlineImageIds(contentField.text))
+            createdAt = draft.createdAt
         }
     }
 
@@ -231,6 +224,27 @@ fun AddEditNoteScreen(
         hasAppliedInitialStorage = true
     }
 
+    LaunchedEffect(contentField.text) {
+        val inlineImagePaths = NoteContentCodec.extractInlineImageIds(contentField.text)
+        val currentPaths = noteImagePaths.toList()
+        val removed = currentPaths.filterNot { inlineImagePaths.contains(it) }
+        if (removed.isNotEmpty()) {
+            removed.forEach { removedPath ->
+                if (!deletedImagePaths.contains(removedPath)) {
+                    deletedImagePaths.add(removedPath)
+                }
+            }
+        }
+        val reAdded = deletedImagePaths.filter { inlineImagePaths.contains(it) }
+        if (reAdded.isNotEmpty()) {
+            deletedImagePaths.removeAll(reAdded.toSet())
+        }
+        if (inlineImagePaths != currentPaths) {
+            noteImagePaths.clear()
+            noteImagePaths.addAll(inlineImagePaths)
+        }
+    }
+
     // 重构: 加载图片列表
     LaunchedEffect(noteImagePaths.toList()) {
         noteImagePaths.forEach { fileName ->
@@ -249,6 +263,14 @@ fun AddEditNoteScreen(
                 imagePath?.let { path ->
                     scope.launch {
                         try {
+                            if (isBitwardenNoteTarget) {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.note_bitwarden_inline_image_disabled_toast),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                return@launch
+                            }
                             val file = java.io.File(path)
                             if (!file.exists() || file.length() == 0L) {
                                 Toast.makeText(context, context.getString(R.string.photo_file_missing_or_empty), Toast.LENGTH_SHORT).show()
@@ -257,8 +279,14 @@ fun AddEditNoteScreen(
 
                             val fileName = imageManager.saveImageFromUri(Uri.fromFile(file))
                             if (fileName != null) {
-                                // 添加到列表而不是替换
-                                noteImagePaths.add(fileName)
+                                isMarkdownPreview = false
+                                contentField = insertInlineImageAtSelection(
+                                    current = contentField,
+                                    imageId = fileName,
+                                    insertionIndex = pendingImageInsertionCursor.takeIf { it >= 0 }
+                                )
+                                pendingImageInsertionCursor = -1
+                                deletedImagePaths.remove(fileName)
                                 file.delete()
                             } else {
                                 Toast.makeText(context, context.getString(R.string.photo_save_failed), Toast.LENGTH_SHORT).show()
@@ -275,6 +303,7 @@ fun AddEditNoteScreen(
             }
 
             override fun onError(error: String) {
+                pendingImageInsertionCursor = -1
                 Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
             }
         })
@@ -283,50 +312,44 @@ fun AddEditNoteScreen(
     fun saveNote() {
         if (isSaving || !canSave) return
         isSaving = true
-        
-        val normalizedContent = content.trimEnd()
-        
-        // 如果标题为空，尝试从内容第一行提取作为标题（仅用于列表显示，不修改内容本身）
-        val finalTitle = if (title.isNotBlank()) {
-            title.trim()
-        } else {
-            normalizedContent.lines().firstOrNull()?.take(100)?.trim() ?: ""
-        }
-        
-        // 重构: 序列化多图列表
-        val imagePathsJson = Json.encodeToString(noteImagePaths.toList())
-        
-        // 执行真正的文件删除
-        scope.launch {
-            if (deletedImagePaths.isNotEmpty()) {
-                imageManager.deleteImages(deletedImagePaths)
-            }
-        }
+        val payload = buildNoteSavePayload(
+            title = title,
+            content = contentField.text,
+            isMarkdown = isMarkdown,
+            tagsText = tagsText
+        )
         
         if (isEditing) {
             viewModel.updateNote(
                 id = noteId,
-                content = normalizedContent,
-                title = finalTitle,
+                content = payload.content,
+                title = payload.title,
+                tags = payload.tags,
+                isMarkdown = payload.isMarkdown,
                 isFavorite = isFavorite,
                 createdAt = createdAt,
                 categoryId = selectedCategoryId,
-                imagePaths = imagePathsJson,
+                imagePaths = payload.imagePathsJson,
                 keepassDatabaseId = keepassDatabaseId,
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenFolderId = bitwardenFolderId
             )
         } else {
             viewModel.addNote(
-                content = normalizedContent,
-                title = finalTitle,
+                content = payload.content,
+                title = payload.title,
+                tags = payload.tags,
+                isMarkdown = payload.isMarkdown,
                 isFavorite = isFavorite,
                 categoryId = selectedCategoryId,
-                imagePaths = imagePathsJson,
+                imagePaths = payload.imagePathsJson,
                 keepassDatabaseId = keepassDatabaseId,
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenFolderId = bitwardenFolderId
             )
+        }
+        if (deletedImagePaths.isNotEmpty()) {
+            viewModel.cleanupUnreferencedNoteImages(deletedImagePaths.toList())
         }
         scope.launch {
             settingsManager.updateRememberedStorageTarget(
@@ -452,171 +475,50 @@ fun AddEditNoteScreen(
                 }
             )
 
-            // Content Area (Moved Up)
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-                tonalElevation = 1.dp
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    // Title Field
-                    OutlinedTextField(
-                        value = title,
-                        onValueChange = { title = it },
-                        modifier = Modifier.fillMaxWidth(),
-                        placeholder = { 
-                            Text(
-                                stringResource(R.string.title), 
-                                style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                            ) 
-                        },
-                        textStyle = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                            unfocusedBorderColor = Color.Transparent,
-                            focusedBorderColor = Color.Transparent
-                        )
-                    )
-                    
-                    // Content Field
-                    OutlinedTextField(
-                        value = content,
-                        onValueChange = { content = it },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 220.dp),
-                        placeholder = { Text(stringResource(R.string.note_placeholder)) },
-                        minLines = 8,
-                        maxLines = 100, // Allow more lines
-                        shape = RoundedCornerShape(12.dp),
-                        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                            unfocusedBorderColor = Color.Transparent,
-                            focusedBorderColor = Color.Transparent
-                        )
-                    )
-                }
-            }
-            
-            // Images Area (Moved Down & Refactored for Multi-image)
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerLow,
-                tonalElevation = 1.dp
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = stringResource(R.string.section_photos),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        
-                        // Add Image Button (Icon style)
-                        IconButton(
-                            onClick = { showAddImageDialog = true }
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = "Add Image")
-                        }
-                    }
+            NoteEditorSection(
+                title = title,
+                onTitleChange = { title = it },
+                content = contentField,
+                onContentChange = { contentField = it },
+                isMarkdownPreview = isMarkdownPreview,
+                onMarkdownPreviewModeChange = { isMarkdownPreview = it },
+                inlineImageBitmaps = noteImageBitmaps,
+                onPreviewInlineImage = { fileName -> showNoteImageDialog = fileName },
+                tagsText = tagsText,
+                onTagsTextChange = { tagsText = it }
+            )
 
-                    if (noteImagePaths.isNotEmpty()) {
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            contentPadding = PaddingValues(vertical = 4.dp)
-                        ) {
-                            items(noteImagePaths) { fileName ->
-                                val bitmap = noteImageBitmaps[fileName]
-                                Box(
-                                    modifier = Modifier
-                                        .size(100.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                                ) {
-                                    if (bitmap != null) {
-                                        Image(
-                                            bitmap = bitmap.asImageBitmap(),
-                                            contentDescription = null,
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .clickable { showNoteImageDialog = fileName },
-                                            contentScale = ContentScale.Crop
-                                        )
-                                    } else {
-                                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                            CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                                        }
-                                    }
-                                    
-                                    // Delete Button Overlay
-                                    IconButton(
-                                        onClick = { 
-                                            noteImagePaths.remove(fileName) 
-                                            deletedImagePaths.add(fileName)
-                                        },
-                                        modifier = Modifier
-                                            .align(Alignment.TopEnd)
-                                            .size(24.dp)
-                                            .background(
-                                                MaterialTheme.colorScheme.scrim.copy(alpha = 0.5f),
-                                                RoundedCornerShape(bottomStart = 8.dp)
-                                            )
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Close, 
-                                            contentDescription = "Remove",
-                                            tint = MaterialTheme.colorScheme.onPrimary,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
+            NoteImagesSection(
+                noteImagePaths = noteImagePaths,
+                noteImageBitmaps = noteImageBitmaps,
+                imageActionsEnabled = !isBitwardenNoteTarget,
+                disabledReason = if (isBitwardenNoteTarget) {
+                    stringResource(R.string.note_bitwarden_inline_image_disabled_reason)
+                } else {
+                    null
+                },
+                onAddImageClick = {
+                    if (isBitwardenNoteTarget) {
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.note_bitwarden_inline_image_disabled_toast),
+                            Toast.LENGTH_SHORT
+                        ).show()
                     } else {
-                        // Empty State
-                         Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(80.dp)
-                                .background(
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                                    shape = RoundedCornerShape(12.dp)
-                                )
-                                .clickable { showAddImageDialog = true },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Add,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "添加图片",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
+                        pendingImageInsertionCursor = contentField.selection.start.coerceIn(0, contentField.text.length)
+                        showAddImageDialog = true
                     }
+                },
+                onPreviewImage = { fileName -> showNoteImageDialog = fileName },
+                onRemoveImage = { fileName ->
+                    if (isBitwardenNoteTarget) return@NoteImagesSection
+                    val updated = NoteContentCodec.removeInlineImageRef(contentField.text, fileName)
+                    contentField = contentField.copy(
+                        text = updated,
+                        selection = TextRange(updated.length)
+                    )
                 }
-            }
+            )
         }
     }
 
@@ -643,7 +545,7 @@ fun AddEditNoteScreen(
                 Column(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Text("选择图片来源", style = MaterialTheme.typography.bodyMedium)
+                    Text(stringResource(R.string.note_image_source_title), style = MaterialTheme.typography.bodyMedium)
                     
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -653,6 +555,7 @@ fun AddEditNoteScreen(
                             onClick = {
                                 showAddImageDialog = false
                                 if (activity != null) {
+                                    pendingImageInsertionCursor = contentField.selection.start.coerceIn(0, contentField.text.length)
                                     PhotoPickerHelper.currentTag = "note"
                                     PhotoPickerHelper.pickFromGallery(activity)
                                 } else {
@@ -669,6 +572,7 @@ fun AddEditNoteScreen(
                             onClick = {
                                 showAddImageDialog = false
                                 if (activity != null) {
+                                    pendingImageInsertionCursor = contentField.selection.start.coerceIn(0, contentField.text.length)
                                     PhotoPickerHelper.currentTag = "note"
                                     PhotoPickerHelper.takePhoto(activity)
                                 } else {
@@ -686,7 +590,10 @@ fun AddEditNoteScreen(
             },
             confirmButton = {},
             dismissButton = {
-                TextButton(onClick = { showAddImageDialog = false }) {
+                TextButton(onClick = {
+                    showAddImageDialog = false
+                    pendingImageInsertionCursor = -1
+                }) {
                     Text(stringResource(R.string.cancel))
                 }
             }
@@ -787,4 +694,92 @@ fun AddEditNoteScreen(
             }
         )
     }
+}
+
+private data class NoteEditDraft(
+    val title: String,
+    val content: String,
+    val isMarkdown: Boolean,
+    val tags: List<String>,
+    val isFavorite: Boolean,
+    val categoryId: Long?,
+    val keepassDatabaseId: Long?,
+    val bitwardenVaultId: Long?,
+    val bitwardenFolderId: String?,
+    val imagePaths: List<String>,
+    val createdAt: java.util.Date
+)
+
+private data class NoteSavePayload(
+    val title: String,
+    val content: String,
+    val imagePathsJson: String,
+    val isMarkdown: Boolean,
+    val tags: List<String>
+)
+
+private fun SecureItem.toNoteEditDraft(): NoteEditDraft {
+    val decoded = NoteContentCodec.decodeFromItem(this)
+    return NoteEditDraft(
+        title = title,
+        content = decoded.content,
+        isMarkdown = decoded.isMarkdown,
+        tags = decoded.tags,
+        isFavorite = isFavorite,
+        categoryId = categoryId,
+        keepassDatabaseId = keepassDatabaseId,
+        bitwardenVaultId = bitwardenVaultId,
+        bitwardenFolderId = bitwardenFolderId,
+        imagePaths = NoteContentCodec.decodeImagePaths(imagePaths),
+        createdAt = createdAt
+    )
+}
+
+private fun buildNoteSavePayload(
+    title: String,
+    content: String,
+    isMarkdown: Boolean,
+    tagsText: String
+): NoteSavePayload {
+    val tags = tagsText
+        .split(',', '\n')
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .distinct()
+    val normalizedContent = content.trimEnd()
+    val finalTitle = if (title.isNotBlank()) {
+        title.trim()
+    } else {
+        normalizedContent.lines().firstOrNull()?.take(100)?.trim() ?: ""
+    }
+    val imagePaths = NoteContentCodec.extractInlineImageIds(normalizedContent)
+    return NoteSavePayload(
+        title = finalTitle,
+        content = normalizedContent,
+        imagePathsJson = NoteContentCodec.encodeImagePaths(imagePaths),
+        isMarkdown = isMarkdown,
+        tags = tags
+    )
+}
+
+private fun insertInlineImageAtSelection(
+    current: TextFieldValue,
+    imageId: String,
+    insertionIndex: Int? = null
+): TextFieldValue {
+    val markdownRef = NoteContentCodec.buildInlineImageMarkdown(imageId)
+    if (markdownRef.isBlank()) return current
+
+    val explicitIndex = insertionIndex?.coerceIn(0, current.text.length)
+    val selectionStart = explicitIndex ?: current.selection.start.coerceIn(0, current.text.length)
+    val selectionEnd = explicitIndex ?: current.selection.end.coerceIn(0, current.text.length)
+    val prefix = current.text.substring(0, selectionStart)
+    val suffix = current.text.substring(selectionEnd)
+
+    val separatorBefore = if (prefix.isNotBlank() && !prefix.endsWith("\n")) "\n\n" else ""
+    val separatorAfter = if (suffix.isNotBlank() && !suffix.startsWith("\n")) "\n\n" else ""
+    val insertion = "$separatorBefore$markdownRef$separatorAfter"
+    val updatedText = prefix + insertion + suffix
+    val cursor = (prefix.length + insertion.length).coerceAtMost(updatedText.length)
+    return current.copy(text = updatedText, selection = TextRange(cursor))
 }

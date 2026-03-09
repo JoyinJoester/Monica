@@ -12,14 +12,13 @@ import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
+import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.repository.SecureItemRepository
-import takagi.ru.monica.data.model.NoteData
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.util.ImageManager
 import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.utils.FieldChange
 import takagi.ru.monica.utils.KeePassKdbxService
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.encodeToString
 import java.util.Date
 
 data class NoteDraftStorageTarget(
@@ -45,6 +44,7 @@ class NoteViewModel(
     } else {
         null
     }
+    private val imageManager = context?.let { ImageManager(it.applicationContext) }
 
     private val bitwardenRepository = context?.let { BitwardenRepository.getInstance(it.applicationContext) }
 
@@ -132,6 +132,13 @@ class NoteViewModel(
     suspend fun getNoteById(id: Long): SecureItem? {
         return repository.getItemById(id)
     }
+
+    fun observeNoteById(id: Long): Flow<SecureItem?> {
+        return repository.observeItemById(id)
+            .map { item ->
+                item?.takeIf { it.itemType == ItemType.NOTE }
+            }
+    }
     
     /**
      * 快速添加笔记（从底部导航栏快速添加）
@@ -156,6 +163,7 @@ class NoteViewModel(
         content: String,
         title: String? = null,
         tags: List<String> = emptyList(),
+        isMarkdown: Boolean = false,
         isFavorite: Boolean = false,
         categoryId: Long? = null,
         imagePaths: String = "",
@@ -165,29 +173,19 @@ class NoteViewModel(
         bitwardenFolderId: String? = null
     ) {
         viewModelScope.launch {
-            val noteData = NoteData(
+            val (itemData, notesCache) = NoteContentCodec.encode(
                 content = content,
                 tags = tags,
-                isMarkdown = false
+                isMarkdown = isMarkdown
             )
-            
-            // 显式标题优先；为空时保持旧逻辑自动生成标题
-            val resolvedTitle = if (!title.isNullOrBlank()) {
-                title.trim()
-            } else {
-                if (content.length > 20) {
-                    content.take(20) + "..."
-                } else {
-                    content.ifEmpty { "New Note" }
-                }
-            }
+            val resolvedTitle = NoteContentCodec.resolveTitle(title = title, content = content)
             
             val item = SecureItem(
                 id = 0,
                 itemType = ItemType.NOTE,
                 title = resolvedTitle,
-                notes = content, // 将内容同时也保存在 notes 字段以便搜索
-                itemData = Json.encodeToString(noteData),
+                notes = notesCache, // 保留 notes 搜索兼容
+                itemData = itemData,
                 isFavorite = isFavorite,
                 imagePaths = imagePaths,
                 categoryId = categoryId,
@@ -222,6 +220,7 @@ class NoteViewModel(
         content: String,
         title: String? = null,
         tags: List<String> = emptyList(),
+        isMarkdown: Boolean = false,
         isFavorite: Boolean,
         createdAt: Date,
         categoryId: Long? = null,
@@ -246,29 +245,19 @@ class NoteViewModel(
                 return@launch
             }
             
-            val noteData = NoteData(
+            val (itemData, notesCache) = NoteContentCodec.encode(
                 content = content,
                 tags = tags,
-                isMarkdown = false
+                isMarkdown = isMarkdown
             )
-            
-            // 显式标题优先；为空时保持旧逻辑自动生成标题
-            val resolvedTitle = if (!title.isNullOrBlank()) {
-                title.trim()
-            } else {
-                if (content.length > 20) {
-                    content.take(20) + "..."
-                } else {
-                    content.ifEmpty { "New Note" }
-                }
-            }
+            val resolvedTitle = NoteContentCodec.resolveTitle(title = title, content = content)
             
             val item = SecureItem(
                 id = id,
                 itemType = ItemType.NOTE,
                 title = resolvedTitle,
-                notes = content,
-                itemData = Json.encodeToString(noteData),
+                notes = notesCache,
+                itemData = itemData,
                 isFavorite = isFavorite,
                 imagePaths = imagePaths,
                 categoryId = categoryId,
@@ -284,14 +273,17 @@ class NoteViewModel(
                 updatedAt = Date()
             )
             repository.updateItem(item)
+            val removedImageIds = existingItem
+                ?.let { extractImageRefs(it) - extractImageRefs(item) }
+                .orEmpty()
+            cleanupUnreferencedNoteImagesInternal(removedImageIds)
             val oldKeepassId = existingItem?.keepassDatabaseId
             val newKeepassId = item.keepassDatabaseId
             if (oldKeepassId != null && oldKeepassId != newKeepassId) {
-                existingItem?.let { oldItem ->
-                    val deleteResult = keepassService?.deleteSecureItems(oldKeepassId, listOf(oldItem))
-                    if (deleteResult?.isFailure == true) {
-                        Log.e("NoteViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
-                    }
+                val oldItem = requireNotNull(existingItem)
+                val deleteResult = keepassService?.deleteSecureItems(oldKeepassId, listOf(oldItem))
+                if (deleteResult?.isFailure == true) {
+                    Log.e("NoteViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
                 }
             }
             if (newKeepassId != null) {
@@ -429,6 +421,7 @@ class NoteViewModel(
                     itemTitle = item.title
                 )
                 repository.deleteItem(item)
+                cleanupUnreferencedNoteImagesInternal(extractImageRefs(item))
             }
         }
     }
@@ -503,9 +496,42 @@ class NoteViewModel(
                         itemTitle = item.title
                     )
                     repository.deleteItem(item)
+                    cleanupUnreferencedNoteImagesInternal(extractImageRefs(item))
                 }
             }
         }
+    }
+
+    fun cleanupUnreferencedNoteImages(candidateImageIds: List<String>) {
+        viewModelScope.launch {
+            cleanupUnreferencedNoteImagesInternal(
+                candidateImageIds
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+                    .toSet()
+            )
+        }
+    }
+
+    private suspend fun cleanupUnreferencedNoteImagesInternal(candidateImageIds: Set<String>) {
+        if (candidateImageIds.isEmpty()) return
+        val manager = imageManager ?: return
+
+        val activeNotes = repository.getItemsByType(ItemType.NOTE).first()
+        val deletedNotes = repository.getDeletedItems().first().filter { it.itemType == ItemType.NOTE }
+        val allNotes = activeNotes + deletedNotes
+        val referencedImageIds = allNotes.flatMap { extractImageRefs(it) }.toSet()
+        val shouldDelete = candidateImageIds.filterNot { referencedImageIds.contains(it) }
+        if (shouldDelete.isNotEmpty()) {
+            manager.deleteImages(shouldDelete)
+        }
+    }
+
+    private fun extractImageRefs(item: SecureItem): Set<String> {
+        val decoded = NoteContentCodec.decodeFromItem(item)
+        val fromContent = NoteContentCodec.extractInlineImageIds(decoded.content)
+        val fromLegacyPaths = NoteContentCodec.decodeImagePaths(item.imagePaths)
+        return (fromContent + fromLegacyPaths).toSet()
     }
 
     private suspend fun resolveBitwardenTransition(
@@ -524,7 +550,7 @@ class NoteViewModel(
             val queueResult = bitwardenRepository?.queueCipherDelete(
                 vaultId = previousVaultId!!,
                 cipherId = previousCipherId!!,
-                entryId = existingItem?.id,
+                entryId = existingItem.id,
                 itemType = BitwardenPendingOperation.ITEM_TYPE_NOTE
             )
             if (queueResult?.isSuccess != true) {

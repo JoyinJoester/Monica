@@ -4,6 +4,7 @@ import kotlinx.serialization.json.Json
 import takagi.ru.monica.bitwarden.api.*
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.notes.domain.NoteContentCodec
 import java.util.Date
 
 /**
@@ -28,7 +29,7 @@ class SecureNoteMapper : BitwardenMapper<SecureItem> {
         // 合并标题内容和笔记内容
         val fullContent = buildString {
             if (noteData.content.isNotBlank()) {
-                append(noteData.content)
+                append(NoteContentCodec.toExternalReadableContent(noteData.content))
             }
             if (item.notes.isNotBlank()) {
                 if (isNotEmpty()) append("\n\n---\n\n")

@@ -532,6 +532,14 @@ class SecurityManager(private val context: Context) {
         return encryptDataV1(data)
     }
 
+    /**
+     * Compatibility helper: force legacy V1 payload for scenarios where
+     * immediate readability is required under unstable MDK auth state.
+     */
+    fun encryptDataLegacyCompat(data: String): String {
+        return encryptDataV1(data)
+    }
+
     private fun encryptDataV2(data: String): String {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         val secretKey = getOrGenerateSecureKey()
