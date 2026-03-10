@@ -2,6 +2,7 @@ package takagi.ru.monica.utils
 
 import android.content.Context
 import android.net.Uri
+import android.os.ParcelFileDescriptor
 import android.util.Log
 import app.keemobile.kotpass.cryptography.EncryptedValue
 import app.keemobile.kotpass.cryptography.format.BaseCiphers
@@ -18,6 +19,7 @@ import app.keemobile.kotpass.models.EntryValue
 import app.keemobile.kotpass.models.Group
 import app.keemobile.kotpass.models.Meta
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -47,6 +49,7 @@ import java.net.URLDecoder
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.Executors
 
 data class KeePassEntryData(
     val title: String,
@@ -55,7 +58,9 @@ data class KeePassEntryData(
     val url: String,
     val notes: String,
     val monicaLocalId: Long?,
+    val entryUuid: String?,
     val groupPath: String?,
+    val groupUuid: String?,
     val isInRecycleBin: Boolean
 )
 
@@ -78,14 +83,21 @@ data class KeePassDatabaseDiagnostics(
     val creationOptions: KeePassDatabaseCreationOptions
 )
 
+data class KeePassRestoreTarget(
+    val groupPath: String?,
+    val groupUuid: String?
+)
+
 private data class EntryTraversalContext(
     val entry: Entry,
     val groupPath: String?,
+    val groupUuid: UUID?,
     val isInRecycleBinByMeta: Boolean
 )
 
 private data class GroupTraversalContext(
     val pathKey: String?,
+    val groupUuid: UUID,
     val isInRecycleBinByMeta: Boolean
 )
 
@@ -114,6 +126,11 @@ class KeePassKdbxService(
         private const val FIELD_MONICA_IS_FAVORITE = "MonicaIsFavorite"
         // kotpass decode 在并发下可能触发 native 崩溃，必须跨实例串行化。
         private val globalDecodeMutex = Mutex()
+        // 部分设备/ABI 下 decode 在不同工作线程切换时更易触发 native 崩溃，固定到单线程执行更稳。
+        private val decodeExecutor = Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "KeePassDecodeThread").apply { isDaemon = true }
+        }
+        private val decodeDispatcher = decodeExecutor.asCoroutineDispatcher()
         // 写入采用“读-改-写”原子化，避免同进程并发冲突。
         private val globalMutationMutex = Mutex()
         // 跨实例缓存失效信号：某实例更新数据库绑定后，其他实例的本地缓存应立即失效。
@@ -288,6 +305,7 @@ class KeePassKdbxService(
                 entryToData(
                     entry = context.entry,
                     groupPath = context.groupPath,
+                    groupUuid = context.groupUuid,
                     isInRecycleBinByMeta = context.isInRecycleBinByMeta,
                     hasRecycleBinMeta = hasRecycleBinMeta
                 ) != null
@@ -322,6 +340,7 @@ class KeePassKdbxService(
                 entryToData(
                     entry = context.entry,
                     groupPath = context.groupPath,
+                    groupUuid = context.groupUuid,
                     isInRecycleBinByMeta = context.isInRecycleBinByMeta,
                     hasRecycleBinMeta = hasRecycleBinMeta
                 ) != null
@@ -434,6 +453,7 @@ class KeePassKdbxService(
                 entryToData(
                     entry = context.entry,
                     groupPath = context.groupPath,
+                    groupUuid = context.groupUuid,
                     isInRecycleBinByMeta = context.isInRecycleBinByMeta,
                     hasRecycleBinMeta = hasRecycleBinMeta
                 )
@@ -616,14 +636,7 @@ class KeePassKdbxService(
                 var rootGroup = loaded.keePassDatabase.content.group
                 val removedContexts = mutableListOf<RemovedEntryContext>()
                 entries.forEach { entry ->
-                    val matcher: (Entry) -> Boolean = { existing ->
-                        val monicaId = getFieldValue(existing, FIELD_MONICA_LOCAL_ID).toLongOrNull()
-                        if (monicaId != null && entry.id > 0) {
-                            monicaId == entry.id
-                        } else {
-                            matchByKey(existing, entry)
-                        }
-                    }
+                    val matcher: (Entry) -> Boolean = { existing -> matchesPasswordEntry(existing, entry) }
                     val removed = removeAndCollectEntriesInGroup(
                         group = rootGroup,
                         matcher = matcher,
@@ -675,6 +688,7 @@ class KeePassKdbxService(
                     entry = context.entry,
                     databaseId = databaseId,
                     groupPath = context.groupPath,
+                    groupUuid = context.groupUuid,
                     isInRecycleBinByMeta = context.isInRecycleBinByMeta,
                     hasRecycleBinMeta = hasRecycleBinMeta,
                     allowedTypes = allowedTypes
@@ -747,15 +761,32 @@ class KeePassKdbxService(
         }
     }
 
-    suspend fun resolveRestoreGroupPath(
+    suspend fun resolveRestoreTarget(
         databaseId: Long,
-        preferredGroupPath: String?
-    ): Result<String?> = withContext(Dispatchers.IO) {
+        preferredGroupPath: String?,
+        preferredGroupUuid: String? = null
+    ): Result<KeePassRestoreTarget> = withContext(Dispatchers.IO) {
         try {
-            if (preferredGroupPath.isNullOrBlank()) {
-                return@withContext Result.success(null)
-            }
             val (_, _, keePassDatabase) = loadDatabase(databaseId)
+            val groupContextIndex = buildGroupTraversalContextIndex(keePassDatabase)
+            val preferredUuid = parseUuid(preferredGroupUuid)
+            if (preferredUuid != null) {
+                val preferredContext = groupContextIndex[preferredUuid]
+                if (preferredContext != null) {
+                    val preferredInRecycle = preferredContext.isInRecycleBinByMeta
+                    if (!preferredInRecycle) {
+                        return@withContext Result.success(
+                            KeePassRestoreTarget(
+                                groupPath = preferredContext.pathKey,
+                                groupUuid = preferredContext.groupUuid.toString()
+                            )
+                        )
+                    }
+                }
+            }
+            if (preferredGroupPath.isNullOrBlank()) {
+                return@withContext Result.success(KeePassRestoreTarget(groupPath = null, groupUuid = null))
+            }
             val recycleBinUuid = resolveRecycleBinUuid(keePassDatabase.content.meta)
             if (recycleBinUuid != null) {
                 val inRecycleByMeta = isGroupPathInRecycleBinByMeta(
@@ -766,13 +797,61 @@ class KeePassKdbxService(
                     parentInRecycleBin = false
                 )
                 if (inRecycleByMeta != null) {
-                    return@withContext Result.success(if (inRecycleByMeta) null else preferredGroupPath)
+                    val resolvedPath = if (inRecycleByMeta) null else preferredGroupPath
+                    val resolvedUuid = resolvedPath?.let {
+                        findGroupUuidByPath(
+                            group = keePassDatabase.content.group,
+                            currentPathKey = null,
+                            targetPathKey = it
+                        )?.toString()
+                    }
+                    return@withContext Result.success(
+                        KeePassRestoreTarget(
+                            groupPath = resolvedPath,
+                            groupUuid = resolvedUuid
+                        )
+                    )
                 }
             }
             if (isLikelyRecycleBinPath(preferredGroupPath)) {
-                return@withContext Result.success(null)
+                return@withContext Result.success(KeePassRestoreTarget(groupPath = null, groupUuid = null))
             }
-            Result.success(preferredGroupPath)
+            Result.success(
+                KeePassRestoreTarget(
+                    groupPath = preferredGroupPath,
+                    groupUuid = findGroupUuidByPath(
+                        group = keePassDatabase.content.group,
+                        currentPathKey = null,
+                        targetPathKey = preferredGroupPath
+                    )?.toString()
+                )
+            )
+        } catch (e: Exception) {
+            Result.failure(normalizeError(e))
+        }
+    }
+
+    suspend fun resolveRestoreTargetForPassword(
+        databaseId: Long,
+        target: PasswordEntry
+    ): Result<KeePassRestoreTarget> = withContext(Dispatchers.IO) {
+        try {
+            val (_, _, keePassDatabase) = loadDatabase(databaseId)
+            val groupContextIndex = buildGroupTraversalContextIndex(keePassDatabase)
+            val (entries, hasRecycleBinMeta) = collectEntryContexts(keePassDatabase)
+            val matched = entries.firstOrNull { context -> matchesPasswordEntry(context.entry, target) }
+                ?: return@withContext resolveRestoreTarget(
+                    databaseId = databaseId,
+                    preferredGroupPath = target.keepassGroupPath,
+                    preferredGroupUuid = target.keepassGroupUuid
+                )
+            Result.success(
+                resolveRestoreTargetFromEntryContext(
+                    entryContext = matched,
+                    hasRecycleBinMeta = hasRecycleBinMeta,
+                    groupContextIndex = groupContextIndex
+                )
+            )
         } catch (e: Exception) {
             Result.failure(normalizeError(e))
         }
@@ -782,20 +861,25 @@ class KeePassKdbxService(
         databaseId: Long,
         target: PasswordEntry
     ): Result<String?> = withContext(Dispatchers.IO) {
+        resolveRestoreTargetForPassword(databaseId, target).map { it.groupPath }
+    }
+
+    suspend fun resolveRestoreTargetForSecureItem(
+        databaseId: Long,
+        target: SecureItem
+    ): Result<KeePassRestoreTarget> = withContext(Dispatchers.IO) {
         try {
             val (_, _, keePassDatabase) = loadDatabase(databaseId)
             val groupContextIndex = buildGroupTraversalContextIndex(keePassDatabase)
             val (entries, hasRecycleBinMeta) = collectEntryContexts(keePassDatabase)
-            val matched = entries.firstOrNull { context ->
-                val monicaId = getFieldValue(context.entry, FIELD_MONICA_LOCAL_ID).toLongOrNull()
-                if (monicaId != null && target.id > 0) {
-                    monicaId == target.id
-                } else {
-                    matchByKey(context.entry, target)
-                }
-            } ?: return@withContext resolveRestoreGroupPath(databaseId, target.keepassGroupPath)
+            val matched = entries.firstOrNull { context -> matchesSecureItemEntry(context.entry, target) }
+                ?: return@withContext resolveRestoreTarget(
+                    databaseId = databaseId,
+                    preferredGroupPath = target.keepassGroupPath,
+                    preferredGroupUuid = target.keepassGroupUuid
+                )
             Result.success(
-                resolveRestorePathFromEntryContext(
+                resolveRestoreTargetFromEntryContext(
                     entryContext = matched,
                     hasRecycleBinMeta = hasRecycleBinMeta,
                     groupContextIndex = groupContextIndex
@@ -810,28 +894,7 @@ class KeePassKdbxService(
         databaseId: Long,
         target: SecureItem
     ): Result<String?> = withContext(Dispatchers.IO) {
-        try {
-            val (_, _, keePassDatabase) = loadDatabase(databaseId)
-            val groupContextIndex = buildGroupTraversalContextIndex(keePassDatabase)
-            val (entries, hasRecycleBinMeta) = collectEntryContexts(keePassDatabase)
-            val matched = entries.firstOrNull { context ->
-                val monicaId = getFieldValue(context.entry, FIELD_MONICA_ITEM_ID).toLongOrNull()
-                if (monicaId != null && target.id > 0) {
-                    monicaId == target.id
-                } else {
-                    matchSecureItemByKey(context.entry, target)
-                }
-            } ?: return@withContext resolveRestoreGroupPath(databaseId, target.keepassGroupPath)
-            Result.success(
-                resolveRestorePathFromEntryContext(
-                    entryContext = matched,
-                    hasRecycleBinMeta = hasRecycleBinMeta,
-                    groupContextIndex = groupContextIndex
-                )
-            )
-        } catch (e: Exception) {
-            Result.failure(normalizeError(e))
-        }
+        resolveRestoreTargetForSecureItem(databaseId, target).map { it.groupPath }
     }
 
     suspend fun deleteSecureItems(
@@ -880,14 +943,7 @@ class KeePassKdbxService(
                 var rootGroup = loaded.keePassDatabase.content.group
                 val removedContexts = mutableListOf<RemovedEntryContext>()
                 items.forEach { item ->
-                    val matcher: (Entry) -> Boolean = { existing ->
-                        val monicaId = getFieldValue(existing, FIELD_MONICA_ITEM_ID).toLongOrNull()
-                        if (monicaId != null && item.id > 0) {
-                            monicaId == item.id
-                        } else {
-                            matchSecureItemByKey(existing, item)
-                        }
-                    }
+                    val matcher: (Entry) -> Boolean = { existing -> matchesSecureItemEntry(existing, item) }
                     val removed = removeAndCollectEntriesInGroup(
                         group = rootGroup,
                         matcher = matcher,
@@ -924,7 +980,7 @@ class KeePassKdbxService(
 
     private fun buildEntry(entry: PasswordEntry, plainPassword: String): Entry {
         return Entry(
-            uuid = UUID.randomUUID(),
+            uuid = parseUuid(entry.keepassEntryUuid) ?: UUID.randomUUID(),
             fields = buildEntryFields(entry, plainPassword)
         )
     }
@@ -946,7 +1002,7 @@ class KeePassKdbxService(
 
     private fun buildSecureItemEntry(item: SecureItem): Entry {
         return Entry(
-            uuid = UUID.randomUUID(),
+            uuid = parseUuid(item.keepassEntryUuid) ?: UUID.randomUUID(),
             fields = buildSecureItemFields(item)
         )
     }
@@ -981,14 +1037,7 @@ class KeePassKdbxService(
         entry: PasswordEntry,
         plainPassword: String
     ): Pair<KeePassDatabase, Boolean> {
-        val matcher: (Entry) -> Boolean = { existing ->
-            val monicaId = getFieldValue(existing, FIELD_MONICA_LOCAL_ID).toLongOrNull()
-            if (monicaId != null && monicaId == entry.id) {
-                true
-            } else {
-                matchByKey(existing, entry)
-            }
-        }
+        val matcher: (Entry) -> Boolean = { existing -> matchesPasswordEntry(existing, entry) }
         val rootGroup = keePassDatabase.content.group
         val removeResult = removeEntryInGroup(rootGroup, matcher)
         val removedCount = removeResult.second
@@ -1010,14 +1059,7 @@ class KeePassKdbxService(
         keePassDatabase: KeePassDatabase,
         item: SecureItem
     ): Pair<KeePassDatabase, Boolean> {
-        val matcher: (Entry) -> Boolean = { existing ->
-            val monicaId = getFieldValue(existing, FIELD_MONICA_ITEM_ID).toLongOrNull()
-            if (monicaId != null && item.id > 0) {
-                monicaId == item.id
-            } else {
-                matchSecureItemByKey(existing, item)
-            }
-        }
+        val matcher: (Entry) -> Boolean = { existing -> matchesSecureItemEntry(existing, item) }
         val updater: (Entry) -> Entry = { existing ->
             existing.copy(fields = buildSecureItemFields(item))
         }
@@ -1034,14 +1076,7 @@ class KeePassKdbxService(
         keePassDatabase: KeePassDatabase,
         entry: PasswordEntry
     ): Pair<KeePassDatabase, Int> {
-        val matcher: (Entry) -> Boolean = { existing ->
-            val monicaId = getFieldValue(existing, FIELD_MONICA_LOCAL_ID).toLongOrNull()
-            if (monicaId != null && entry.id > 0) {
-                monicaId == entry.id
-            } else {
-                matchByKey(existing, entry)
-            }
-        }
+        val matcher: (Entry) -> Boolean = { existing -> matchesPasswordEntry(existing, entry) }
         val result = removeEntryInGroup(keePassDatabase.content.group, matcher)
         val updatedDatabase = if (result.second > 0) {
             keePassDatabase.modifyParentGroup { result.first }
@@ -1055,14 +1090,7 @@ class KeePassKdbxService(
         keePassDatabase: KeePassDatabase,
         item: SecureItem
     ): Pair<KeePassDatabase, Int> {
-        val matcher: (Entry) -> Boolean = { existing ->
-            val monicaId = getFieldValue(existing, FIELD_MONICA_ITEM_ID).toLongOrNull()
-            if (monicaId != null && item.id > 0) {
-                monicaId == item.id
-            } else {
-                matchSecureItemByKey(existing, item)
-            }
-        }
+        val matcher: (Entry) -> Boolean = { existing -> matchesSecureItemEntry(existing, item) }
         val result = removeEntryInGroup(keePassDatabase.content.group, matcher)
         val updatedDatabase = if (result.second > 0) {
             keePassDatabase.modifyParentGroup { result.first }
@@ -1202,6 +1230,18 @@ class KeePassKdbxService(
             url.equals(target.website, true)
     }
 
+    private fun matchesPasswordEntry(entry: Entry, target: PasswordEntry): Boolean {
+        val targetUuid = parseUuid(target.keepassEntryUuid)
+        if (targetUuid != null && entry.uuid == targetUuid) {
+            return true
+        }
+        val monicaId = getFieldValue(entry, FIELD_MONICA_LOCAL_ID).toLongOrNull()
+        if (monicaId != null && target.id > 0 && monicaId == target.id) {
+            return true
+        }
+        return matchByKey(entry, target)
+    }
+
     private fun matchSecureItemByKey(entry: Entry, target: SecureItem): Boolean {
         val title = getFieldValue(entry, "Title")
         val itemType = getFieldValue(entry, FIELD_MONICA_ITEM_TYPE)
@@ -1209,9 +1249,22 @@ class KeePassKdbxService(
             itemType.equals(target.itemType.name, true)
     }
 
+    private fun matchesSecureItemEntry(entry: Entry, target: SecureItem): Boolean {
+        val targetUuid = parseUuid(target.keepassEntryUuid)
+        if (targetUuid != null && entry.uuid == targetUuid) {
+            return true
+        }
+        val monicaId = getFieldValue(entry, FIELD_MONICA_ITEM_ID).toLongOrNull()
+        if (monicaId != null && target.id > 0 && monicaId == target.id) {
+            return true
+        }
+        return matchSecureItemByKey(entry, target)
+    }
+
     private fun entryToData(
         entry: Entry,
         groupPath: String?,
+        groupUuid: UUID?,
         isInRecycleBinByMeta: Boolean,
         hasRecycleBinMeta: Boolean
     ): KeePassEntryData? {
@@ -1241,7 +1294,9 @@ class KeePassKdbxService(
             url = url,
             notes = notes,
             monicaLocalId = monicaId,
+            entryUuid = entry.uuid.toString(),
             groupPath = groupPath,
+            groupUuid = groupUuid?.toString(),
             isInRecycleBin = inRecycleBin
         )
     }
@@ -1250,6 +1305,7 @@ class KeePassKdbxService(
         entry: Entry,
         databaseId: Long,
         groupPath: String?,
+        groupUuid: UUID?,
         isInRecycleBinByMeta: Boolean,
         hasRecycleBinMeta: Boolean,
         allowedTypes: Set<ItemType>?
@@ -1287,6 +1343,8 @@ class KeePassKdbxService(
                     imagePaths = imagePaths,
                     keepassDatabaseId = databaseId,
                     keepassGroupPath = groupPath,
+                    keepassEntryUuid = entry.uuid.toString(),
+                    keepassGroupUuid = groupUuid?.toString(),
                     isDeleted = inRecycleBin,
                     deletedAt = if (inRecycleBin) now else null
                 ),
@@ -1322,6 +1380,8 @@ class KeePassKdbxService(
                 imagePaths = "",
                 keepassDatabaseId = databaseId,
                 keepassGroupPath = groupPath,
+                keepassEntryUuid = entry.uuid.toString(),
+                keepassGroupUuid = groupUuid?.toString(),
                 isDeleted = inRecycleBin,
                 deletedAt = if (inRecycleBin) now else null
             ),
@@ -1343,6 +1403,11 @@ class KeePassKdbxService(
     private fun resolveRecycleBinUuid(meta: Meta): UUID? {
         if (!meta.recycleBinEnabled) return null
         return meta.recycleBinUuid
+    }
+
+    private fun parseUuid(value: String?): UUID? {
+        if (value.isNullOrBlank()) return null
+        return runCatching { UUID.fromString(value) }.getOrNull()
     }
 
     private fun resolveRecycleBinFlag(
@@ -1600,6 +1665,7 @@ class KeePassKdbxService(
         val inRecycleBin = parentInRecycleBin || (recycleBinUuid != null && group.uuid == recycleBinUuid)
         result[group.uuid] = GroupTraversalContext(
             pathKey = currentPathKey,
+            groupUuid = group.uuid,
             isInRecycleBinByMeta = inRecycleBin
         )
         group.groups.forEach { child ->
@@ -1614,18 +1680,21 @@ class KeePassKdbxService(
         }
     }
 
-    private fun resolveRestorePathFromEntryContext(
+    private fun resolveRestoreTargetFromEntryContext(
         entryContext: EntryTraversalContext,
         hasRecycleBinMeta: Boolean,
         groupContextIndex: Map<UUID, GroupTraversalContext>
-    ): String? {
+    ): KeePassRestoreTarget {
         val inRecycleBin = if (hasRecycleBinMeta) {
             entryContext.isInRecycleBinByMeta
         } else {
             isLikelyRecycleBinPath(entryContext.groupPath)
         }
         if (!inRecycleBin) {
-            return entryContext.groupPath
+            return KeePassRestoreTarget(
+                groupPath = entryContext.groupPath,
+                groupUuid = entryContext.groupUuid?.toString()
+            )
         }
 
         val previousParentUuid = entryContext.entry.previousParentGroup
@@ -1638,12 +1707,15 @@ class KeePassKdbxService(
                     isLikelyRecycleBinPath(previousParentContext.pathKey)
                 }
                 if (!previousInRecycleBin) {
-                    return previousParentContext.pathKey
+                    return KeePassRestoreTarget(
+                        groupPath = previousParentContext.pathKey,
+                        groupUuid = previousParentContext.groupUuid.toString()
+                    )
                 }
             }
         }
 
-        return null
+        return KeePassRestoreTarget(groupPath = null, groupUuid = null)
     }
 
     private fun isGroupPathInRecycleBinByMeta(
@@ -1702,6 +1774,7 @@ class KeePassKdbxService(
                 EntryTraversalContext(
                     entry = entry,
                     groupPath = currentPathKey,
+                    groupUuid = group.uuid,
                     isInRecycleBinByMeta = inRecycleBin
                 )
             )
@@ -1774,6 +1847,26 @@ class KeePassKdbxService(
             if (childResult != null) {
                 return childResult
             }
+        }
+        return null
+    }
+
+    private fun findGroupUuidByPath(
+        group: Group,
+        currentPathKey: String?,
+        targetPathKey: String
+    ): UUID? {
+        if (currentPathKey == targetPathKey) {
+            return group.uuid
+        }
+        group.groups.forEach { child ->
+            val childPathKey = buildKeePassPathKey(currentPathKey, child.name)
+            val childResult = findGroupUuidByPath(
+                group = child,
+                currentPathKey = childPathKey,
+                targetPathKey = targetPathKey
+            )
+            if (childResult != null) return childResult
         }
         return null
     }
@@ -1963,24 +2056,26 @@ class KeePassKdbxService(
         sourceName: String? = null,
         logFailure: Boolean = true
     ): KeePassDatabase {
-        return withGlobalDecodeLock {
-            try {
-                KeePassFormatInspector.ensureKdbxSupported(bytes = bytes, sourceName = sourceName)
-                KeePassDatabase.decode(
-                    ByteArrayInputStream(bytes),
-                    credentials,
-                    cipherProviders = KeePassCodecSupport.cipherProviders
-                )
-            } catch (t: Throwable) {
-                val mapped = normalizeError(t)
-                if (logFailure) {
-                    Log.e(
-                        TAG,
-                        "KDBX decode failed code=${(mapped as? KeePassOperationException)?.code ?: KeePassErrorCode.IO_READ_WRITE_FAILED}. ${databaseHeaderSummary(bytes)}",
-                        mapped
+        return withContext(decodeDispatcher) {
+            withGlobalDecodeLock {
+                try {
+                    KeePassFormatInspector.ensureKdbxSupported(bytes = bytes, sourceName = sourceName)
+                    KeePassDatabase.decode(
+                        ByteArrayInputStream(bytes),
+                        credentials,
+                        cipherProviders = KeePassCodecSupport.cipherProviders
                     )
+                } catch (t: Throwable) {
+                    val mapped = normalizeError(t)
+                    if (logFailure) {
+                        Log.e(
+                            TAG,
+                            "KDBX decode failed code=${(mapped as? KeePassOperationException)?.code ?: KeePassErrorCode.IO_READ_WRITE_FAILED}. ${databaseHeaderSummary(bytes)}",
+                            mapped
+                        )
+                    }
+                    throw mapped
                 }
-                throw mapped
             }
         }
     }
@@ -2232,7 +2327,11 @@ class KeePassKdbxService(
             if (!parent.exists()) parent.mkdirs()
             val tempFile = File(parent, "${file.name}.tmp")
             val backupFile = File(parent, "${file.name}.bak")
-            FileOutputStream(tempFile).use { it.write(bytes) }
+            FileOutputStream(tempFile).use {
+                it.write(bytes)
+                it.flush()
+                it.fd.sync()
+            }
             if (file.exists()) {
                 if (backupFile.exists()) backupFile.delete()
                 if (!file.renameTo(backupFile)) {
@@ -2241,7 +2340,11 @@ class KeePassKdbxService(
             }
             val renamed = tempFile.renameTo(file)
             if (!renamed) {
-                file.writeBytes(bytes)
+                FileOutputStream(file).use {
+                    it.write(bytes)
+                    it.flush()
+                    it.fd.sync()
+                }
                 tempFile.delete()
             }
             if (backupFile.exists()) backupFile.delete()
@@ -2254,17 +2357,34 @@ class KeePassKdbxService(
         val uri = Uri.parse(database.filePath)
         val originalBytes = runCatching { readDatabaseBytes(database) }.getOrNull()
         try {
-            openExternalOutputStream(uri)?.use { it.write(bytes) }
-                ?: throw IOException("无法写入数据库文件")
+            writeExternalBytes(uri, bytes)
         } catch (e: Exception) {
             if (originalBytes != null) {
                 runCatching {
-                    openExternalOutputStream(uri)?.use { it.write(originalBytes) }
+                    writeExternalBytes(uri, originalBytes)
                 }
             }
             throw normalizeError(e)
         }
     }
+
+    private fun writeExternalBytes(uri: Uri, bytes: ByteArray) {
+        openExternalFileDescriptor(uri)?.use { descriptor ->
+            ParcelFileDescriptor.AutoCloseOutputStream(descriptor).use { output ->
+                output.write(bytes)
+                output.flush()
+                output.fd.sync()
+            }
+        } ?: throw IOException("无法写入数据库文件")
+    }
+
+    private fun openExternalFileDescriptor(uri: Uri): ParcelFileDescriptor? =
+        try {
+            context.contentResolver.openFileDescriptor(uri, "rwt")
+        } catch (e: FileNotFoundException) {
+            Log.w(TAG, "openFileDescriptor rwt failed, retry with wt: $uri", e)
+            context.contentResolver.openFileDescriptor(uri, "wt")
+        }
 
     private fun openExternalOutputStream(uri: Uri) =
         try {

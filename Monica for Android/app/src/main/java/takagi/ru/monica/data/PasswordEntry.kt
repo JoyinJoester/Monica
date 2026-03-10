@@ -17,6 +17,7 @@ import java.util.Date
     indices = [
         Index(value = ["isDeleted"]),
         Index(value = ["isArchived"]),
+        Index(value = ["keepass_entry_uuid"], name = "index_password_entries_keepass_entry_uuid"),
         Index(
             value = ["bitwarden_vault_id", "bitwarden_cipher_id"],
             unique = true,
@@ -64,6 +65,10 @@ data class PasswordEntry(
     val keepassDatabaseId: Long? = null, // 归属的 KeePass 数据库ID
     @ColumnInfo(defaultValue = "NULL")
     val keepassGroupPath: String? = null, // 归属的 KeePass 分组路径
+    @ColumnInfo(name = "keepass_entry_uuid", defaultValue = "NULL")
+    val keepassEntryUuid: String? = null, // KeePass 原生条目 UUID
+    @ColumnInfo(name = "keepass_group_uuid", defaultValue = "NULL")
+    val keepassGroupUuid: String? = null, // KeePass 当前分组 UUID
     
     // 关联的验证器密钥 (TOTP Secret)
     val authenticatorKey: String = "",  // 用于存储绑定的TOTP验证器密钥

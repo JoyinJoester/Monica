@@ -22,6 +22,7 @@ import takagi.ru.monica.data.PasswordListQuickFilterItem
 import takagi.ru.monica.data.PasswordListQuickFolderStyle
 import takagi.ru.monica.data.PasswordListTopModule
 import takagi.ru.monica.data.PresetCustomField
+import takagi.ru.monica.data.NoteCodeBlockCollapseMode
 import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.data.AutofillSource
 
@@ -30,6 +31,7 @@ private val Context.dataStore by preferencesDataStore("settings")
 data class RememberedStorageTarget(
     val categoryId: Long? = null,
     val keepassDatabaseId: Long? = null,
+    val keepassGroupPath: String? = null,
     val bitwardenVaultId: Long? = null,
     val bitwardenFolderId: String? = null
 )
@@ -108,6 +110,7 @@ class SettingsManager(private val context: Context) {
         private val HIDE_FAB_ON_SCROLL_KEY = booleanPreferencesKey("hide_fab_on_scroll") // 滚动隐藏 FAB
         private val SECURITY_ANALYSIS_AUTO_ENABLED_KEY = booleanPreferencesKey("security_analysis_auto_enabled") // 安全分析自动分析
         private val NOTE_GRID_LAYOUT_KEY = booleanPreferencesKey("note_grid_layout") // 笔记网格布局
+        private val NOTE_CODE_BLOCK_COLLAPSE_MODE_KEY = stringPreferencesKey("note_code_block_collapse_mode") // 笔记代码块折叠模式
         private val AUTOFILL_AUTH_REQUIRED_KEY = booleanPreferencesKey("autofill_auth_required") // 自动填充验证
         
         // 密码页面字段可见性
@@ -164,6 +167,7 @@ class SettingsManager(private val context: Context) {
 
     private fun storageCategoryKey(scope: String) = longPreferencesKey("last_storage_${scope}_category_id")
     private fun storageKeePassKey(scope: String) = longPreferencesKey("last_storage_${scope}_keepass_database_id")
+    private fun storageKeePassGroupPathKey(scope: String) = stringPreferencesKey("last_storage_${scope}_keepass_group_path")
     private fun storageBitwardenVaultKey(scope: String) = longPreferencesKey("last_storage_${scope}_bitwarden_vault_id")
     private fun storageBitwardenFolderKey(scope: String) = stringPreferencesKey("last_storage_${scope}_bitwarden_folder_id")
 
@@ -383,6 +387,12 @@ class SettingsManager(private val context: Context) {
             passwordListQuickAccessEnabled = preferences[PASSWORD_LIST_QUICK_ACCESS_ENABLED_KEY] ?: true,
             passwordListTopModulesOrder = parsedTopModulesOrder,
             noteGridLayout = preferences[NOTE_GRID_LAYOUT_KEY] ?: true,
+            noteCodeBlockCollapseMode = runCatching {
+                NoteCodeBlockCollapseMode.valueOf(
+                    preferences[NOTE_CODE_BLOCK_COLLAPSE_MODE_KEY]
+                        ?: NoteCodeBlockCollapseMode.BALANCED.name
+                )
+            }.getOrDefault(NoteCodeBlockCollapseMode.BALANCED),
             autofillAuthRequired = preferences[AUTOFILL_AUTH_REQUIRED_KEY] ?: true,
             passwordFieldVisibility = takagi.ru.monica.data.PasswordFieldVisibility(
                 securityVerification = preferences[FIELD_SECURITY_VERIFICATION_KEY] ?: true,
@@ -738,6 +748,12 @@ class SettingsManager(private val context: Context) {
         }
     }
 
+    suspend fun updateNoteCodeBlockCollapseMode(mode: NoteCodeBlockCollapseMode) {
+        dataStore.edit { preferences ->
+            preferences[NOTE_CODE_BLOCK_COLLAPSE_MODE_KEY] = mode.name
+        }
+    }
+
     suspend fun updateAutofillAuthRequired(required: Boolean) {
         dataStore.edit { preferences ->
             preferences[AUTOFILL_AUTH_REQUIRED_KEY] = required
@@ -900,6 +916,7 @@ class SettingsManager(private val context: Context) {
         RememberedStorageTarget(
             categoryId = preferences[storageCategoryKey(scope)],
             keepassDatabaseId = preferences[storageKeePassKey(scope)],
+            keepassGroupPath = preferences[storageKeePassGroupPathKey(scope)],
             bitwardenVaultId = preferences[storageBitwardenVaultKey(scope)],
             bitwardenFolderId = preferences[storageBitwardenFolderKey(scope)]
         )
@@ -909,11 +926,13 @@ class SettingsManager(private val context: Context) {
         dataStore.edit { preferences ->
             val categoryKey = storageCategoryKey(scope)
             val keepassKey = storageKeePassKey(scope)
+            val keepassGroupPathKey = storageKeePassGroupPathKey(scope)
             val bitwardenVaultKey = storageBitwardenVaultKey(scope)
             val bitwardenFolderKey = storageBitwardenFolderKey(scope)
 
             if (target.categoryId != null) preferences[categoryKey] = target.categoryId else preferences.remove(categoryKey)
             if (target.keepassDatabaseId != null) preferences[keepassKey] = target.keepassDatabaseId else preferences.remove(keepassKey)
+            if (target.keepassGroupPath.isNullOrBlank()) preferences.remove(keepassGroupPathKey) else preferences[keepassGroupPathKey] = target.keepassGroupPath
             if (target.bitwardenVaultId != null) preferences[bitwardenVaultKey] = target.bitwardenVaultId else preferences.remove(bitwardenVaultKey)
             if (target.bitwardenFolderId.isNullOrBlank()) preferences.remove(bitwardenFolderKey) else preferences[bitwardenFolderKey] = target.bitwardenFolderId
         }

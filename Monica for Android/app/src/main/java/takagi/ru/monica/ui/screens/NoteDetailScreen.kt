@@ -26,8 +26,10 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -36,10 +38,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
+import takagi.ru.monica.data.NoteCodeBlockCollapseMode
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.ui.components.ActionStrip
 import takagi.ru.monica.ui.components.ActionStripItem
-import takagi.ru.monica.ui.components.MarkdownSpannedText
+import takagi.ru.monica.ui.components.ImageDialog
+import takagi.ru.monica.ui.components.MarkdownPreviewText
 import takagi.ru.monica.util.ImageManager
 import takagi.ru.monica.viewmodel.NoteViewModel
 import java.text.DateFormat
@@ -56,6 +60,7 @@ fun NoteDetailScreen(
     val context = LocalContext.current
     val imageManager = remember { ImageManager(context) }
     val noteItem by viewModel.observeNoteById(noteId).collectAsState(initial = null)
+    var showNoteImageDialog by remember { mutableStateOf<String?>(null) }
     val decodedNote = remember(noteItem) {
         noteItem?.let { NoteContentCodec.decodeFromItem(it) }
     }
@@ -180,9 +185,35 @@ fun NoteDetailScreen(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             } else {
-                MarkdownSpannedText(
+                MarkdownPreviewText(
                     markdown = markdownSource,
                     imageBitmaps = imageBitmaps,
+                    codeBlockCollapseMode = NoteCodeBlockCollapseMode.COMPACT,
+                    onInlineImageClick = { imageId -> showNoteImageDialog = imageId },
+                    onTaskItemToggle = { lineIndex, checked ->
+                        val updatedContent = toggleTaskLine(
+                            content = decodedNote.content,
+                            lineIndex = lineIndex,
+                            checked = checked
+                        )
+                        if (updatedContent != null && updatedContent != decodedNote.content) {
+                            viewModel.updateNote(
+                                id = currentNote.id,
+                                content = updatedContent,
+                                title = currentNote.title,
+                                tags = decodedNote.tags,
+                                isMarkdown = decodedNote.isMarkdown,
+                                isFavorite = currentNote.isFavorite,
+                                createdAt = currentNote.createdAt,
+                                categoryId = currentNote.categoryId,
+                                imagePaths = currentNote.imagePaths,
+                                keepassDatabaseId = currentNote.keepassDatabaseId,
+                                keepassGroupPath = currentNote.keepassGroupPath,
+                                bitwardenVaultId = currentNote.bitwardenVaultId,
+                                bitwardenFolderId = currentNote.bitwardenFolderId
+                            )
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -207,4 +238,32 @@ fun NoteDetailScreen(
             Spacer(modifier = Modifier.height(80.dp))
         }
     }
+
+    if (showNoteImageDialog != null) {
+        val bitmap = imageBitmaps[showNoteImageDialog!!]
+        if (bitmap != null) {
+            ImageDialog(
+                bitmap = bitmap,
+                onDismiss = { showNoteImageDialog = null }
+            )
+        } else {
+            showNoteImageDialog = null
+        }
+    }
+}
+
+private fun toggleTaskLine(content: String, lineIndex: Int, checked: Boolean): String? {
+    if (lineIndex < 0) return null
+    val lines = content.lines().toMutableList()
+    if (lineIndex >= lines.size) return null
+
+    val pattern = Regex("^(\\s*(?:[-*+]\\s+)?)\\[([ xX])](\\s?.*)$")
+    val target = lines[lineIndex]
+    val match = pattern.find(target) ?: return null
+
+    val prefix = match.groupValues[1]
+    val suffix = match.groupValues[3]
+    val marker = if (checked) "[x]" else "[ ]"
+    lines[lineIndex] = prefix + marker + suffix
+    return lines.joinToString("\n")
 }

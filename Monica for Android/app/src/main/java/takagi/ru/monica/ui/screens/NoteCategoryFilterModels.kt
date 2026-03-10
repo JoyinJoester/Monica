@@ -37,7 +37,10 @@ internal fun NoteCategoryFilter.toDraftStorageTarget(): NoteDraftStorageTarget =
     is NoteCategoryFilter.BitwardenVaultStarred -> NoteDraftStorageTarget(bitwardenVaultId = vaultId)
     is NoteCategoryFilter.BitwardenVaultUncategorized -> NoteDraftStorageTarget(bitwardenVaultId = vaultId)
     is NoteCategoryFilter.KeePassDatabase -> NoteDraftStorageTarget(keepassDatabaseId = databaseId)
-    is NoteCategoryFilter.KeePassGroupFilter -> NoteDraftStorageTarget(keepassDatabaseId = databaseId)
+    is NoteCategoryFilter.KeePassGroupFilter -> NoteDraftStorageTarget(
+        keepassDatabaseId = databaseId,
+        keepassGroupPath = groupPath
+    )
     is NoteCategoryFilter.KeePassDatabaseStarred -> NoteDraftStorageTarget(keepassDatabaseId = databaseId)
     is NoteCategoryFilter.KeePassDatabaseUncategorized -> NoteDraftStorageTarget(keepassDatabaseId = databaseId)
 }

@@ -66,6 +66,8 @@ import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.PasskeyBinding
 import takagi.ru.monica.data.model.PasskeyBindingCodec
+import takagi.ru.monica.repository.KeePassCompatibilityBridge
+import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.components.PullActionVisualState
@@ -81,7 +83,6 @@ import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
 import takagi.ru.monica.ui.gestures.SwipeActions
 import takagi.ru.monica.ui.haptic.rememberHapticFeedback
 import takagi.ru.monica.utils.BiometricHelper
-import takagi.ru.monica.utils.KeePassKdbxService
 import takagi.ru.monica.utils.SavedCategoryFilterState
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
@@ -134,11 +135,13 @@ fun PasskeyListScreen(
     val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
     val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
     val securityManager = remember { takagi.ru.monica.security.SecurityManager(context) }
-    val keePassService = remember {
-        KeePassKdbxService(
-            context,
-            database.localKeePassDatabaseDao(),
-            securityManager
+    val keepassBridge = remember {
+        KeePassCompatibilityBridge(
+            KeePassWorkspaceRepository(
+                context,
+                database.localKeePassDatabaseDao(),
+                securityManager
+            )
         )
     }
     val keepassGroupFlows = remember {
@@ -151,7 +154,7 @@ fun PasskeyListScreen(
             }
             if (flow.value.isEmpty()) {
                 scope.launch {
-                    flow.value = keePassService.listGroups(databaseId).getOrDefault(emptyList())
+                    flow.value = keepassBridge.listLegacyGroups(databaseId).getOrDefault(emptyList())
                 }
             }
             flow

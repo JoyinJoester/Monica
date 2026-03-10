@@ -7,6 +7,9 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import takagi.ru.monica.keepass.KeePassSecureItemCreateExecutor
+import takagi.ru.monica.keepass.KeePassSecureItemDeleteExecutor
+import takagi.ru.monica.keepass.KeePassSecureItemUpdateExecutor
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.ItemType
@@ -15,8 +18,10 @@ import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
+import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.repository.PasswordRepository
+import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.utils.FieldChange
@@ -25,6 +30,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 import takagi.ru.monica.utils.SavedCategoryFilterState
 import takagi.ru.monica.utils.SettingsManager
 
@@ -59,6 +65,12 @@ class TotpViewModel(
     localKeePassDatabaseDao: LocalKeePassDatabaseDao? = null,
     securityManager: SecurityManager? = null
 ) : ViewModel() {
+    private data class KeePassMutationIdentity(
+        val groupPath: String?,
+        val entryUuid: String?,
+        val groupUuid: String?
+    )
+
     companion object {
         private const val FILTER_ALL = "all"
         private const val FILTER_LOCAL = "local"
@@ -77,11 +89,20 @@ class TotpViewModel(
         private const val FILTER_BITWARDEN_VAULT_UNCATEGORIZED = "bitwarden_vault_uncategorized"
     }
 
-    private val keepassService = if (context != null && localKeePassDatabaseDao != null && securityManager != null) {
-        KeePassKdbxService(context.applicationContext, localKeePassDatabaseDao, securityManager)
+    private val keepassBridge = if (context != null && localKeePassDatabaseDao != null && securityManager != null) {
+        KeePassCompatibilityBridge(
+            KeePassWorkspaceRepository(
+                context = context.applicationContext,
+                dao = localKeePassDatabaseDao,
+                securityManager = securityManager
+            )
+        )
     } else {
         null
     }
+    private val keepassSecureItemCreateExecutor = KeePassSecureItemCreateExecutor(keepassBridge)
+    private val keepassSecureItemDeleteExecutor = KeePassSecureItemDeleteExecutor(keepassBridge)
+    private val keepassSecureItemUpdateExecutor = KeePassSecureItemUpdateExecutor(keepassBridge)
     private val bitwardenRepository = context?.let { BitwardenRepository.getInstance(it.applicationContext) }
     private val settingsManager = context?.let { SettingsManager(it.applicationContext) }
     
@@ -349,20 +370,23 @@ class TotpViewModel(
 
     private fun syncKeePassTotp(databaseId: Long) {
         viewModelScope.launch {
-            val snapshots = keepassService
-                ?.readSecureItems(databaseId, setOf(ItemType.TOTP))
+            val snapshots = keepassBridge
+                ?.readLegacySecureItems(databaseId, setOf(ItemType.TOTP))
                 ?.getOrNull()
                 ?: return@launch
 
             val existingTotp = repository.getItemsByType(ItemType.TOTP).first()
             snapshots.forEach { snapshot ->
                 val incoming = snapshot.item
+                val existingByUuid = incoming.keepassEntryUuid
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { repository.getItemByKeePassUuid(databaseId, it) }
                 val existingBySource = snapshot.sourceMonicaId
                     ?.takeIf { it > 0 }
                     ?.let { sourceId -> repository.getItemById(sourceId) }
                     ?.takeIf { it.itemType == ItemType.TOTP }
 
-                val existing = existingBySource ?: existingTotp.firstOrNull {
+                val existing = existingByUuid ?: existingBySource ?: existingTotp.firstOrNull {
                     it.itemType == ItemType.TOTP &&
                         it.keepassDatabaseId == databaseId &&
                         it.keepassGroupPath == incoming.keepassGroupPath &&
@@ -382,6 +406,8 @@ class TotpViewModel(
                             imagePaths = incoming.imagePaths,
                             keepassDatabaseId = incoming.keepassDatabaseId,
                             keepassGroupPath = incoming.keepassGroupPath,
+                            keepassEntryUuid = incoming.keepassEntryUuid,
+                            keepassGroupUuid = incoming.keepassGroupUuid,
                             isDeleted = isInRecycleBin,
                             deletedAt = if (isInRecycleBin) (existing.deletedAt ?: Date()) else null,
                             updatedAt = Date()
@@ -442,6 +468,7 @@ class TotpViewModel(
         isFavorite: Boolean = false,
         categoryId: Long? = null,
         keepassDatabaseId: Long? = null,
+        keepassGroupPath: String? = null,
         bitwardenVaultId: Long? = null,
         bitwardenFolderId: String? = null
     ) {
@@ -472,8 +499,13 @@ class TotpViewModel(
                 val resolvedKeepassGroupPath = when {
                     resolvedKeepassDatabaseId == null -> null
                     shouldFollowBoundPassword -> boundPassword?.keepassGroupPath
-                    else -> existingItem?.keepassGroupPath
+                    else -> keepassGroupPath ?: existingItem?.keepassGroupPath
                 }
+                val keepassIdentity = resolveKeePassMutationIdentity(
+                    existingItem = existingItem,
+                    targetDatabaseId = resolvedKeepassDatabaseId,
+                    requestedGroupPath = resolvedKeepassGroupPath
+                )
                 // TotpData 与 SecureItem 列字段保持同源，避免后续编辑把 KeePass 归属回写成“本地”。
                 val updatedTotpData = totpData.copy(
                     categoryId = categoryId,
@@ -506,27 +538,28 @@ class TotpViewModel(
                  
                 val item = if (id != null && id > 0) {
                     // 更新现有项目
-                    val existing = repository.getItemById(id)
-                    existing?.copy(
+                    existingItem?.copy(
                         title = title,
                         notes = notes,
                         itemData = itemDataJson,
                         categoryId = categoryId,
                         keepassDatabaseId = resolvedKeepassDatabaseId,
-                        keepassGroupPath = resolvedKeepassGroupPath,
+                        keepassGroupPath = keepassIdentity.groupPath,
+                        keepassEntryUuid = keepassIdentity.entryUuid,
+                        keepassGroupUuid = keepassIdentity.groupUuid,
                         bitwardenVaultId = resolvedBitwardenVaultId,
                         bitwardenFolderId = resolvedBitwardenFolderId,
-                        bitwardenCipherId = if (shouldFollowBoundPassword) null else existing.bitwardenCipherId,
-                        bitwardenRevisionDate = if (shouldFollowBoundPassword) null else existing.bitwardenRevisionDate,
+                        bitwardenCipherId = if (shouldFollowBoundPassword) null else existingItem.bitwardenCipherId,
+                        bitwardenRevisionDate = if (shouldFollowBoundPassword) null else existingItem.bitwardenRevisionDate,
                         bitwardenLocalModified = if (shouldFollowBoundPassword) {
                             false
                         } else {
-                            existing.bitwardenCipherId != null && resolvedBitwardenVaultId != null
+                            existingItem.bitwardenCipherId != null && resolvedBitwardenVaultId != null
                         },
                         syncStatus = if (shouldFollowBoundPassword) {
                             "NONE"
                         } else if (resolvedBitwardenVaultId != null) {
-                            if (existing.bitwardenCipherId != null) "PENDING" else existing.syncStatus
+                            if (existingItem.bitwardenCipherId != null) "PENDING" else existingItem.syncStatus
                         } else {
                             "NONE"
                         },
@@ -542,7 +575,9 @@ class TotpViewModel(
                         isFavorite = isFavorite,
                         categoryId = categoryId,
                         keepassDatabaseId = resolvedKeepassDatabaseId,
-                        keepassGroupPath = resolvedKeepassGroupPath,
+                        keepassGroupPath = keepassIdentity.groupPath,
+                        keepassEntryUuid = keepassIdentity.entryUuid,
+                        keepassGroupUuid = keepassIdentity.groupUuid,
                         bitwardenVaultId = resolvedBitwardenVaultId,
                         bitwardenFolderId = resolvedBitwardenFolderId,
                         syncStatus = if (resolvedBitwardenVaultId != null) "PENDING" else "NONE",
@@ -573,16 +608,11 @@ class TotpViewModel(
                         )
                     }
                 } else {
-                    val newId = repository.insertItem(item)
-                    if (resolvedKeepassDatabaseId != null) {
-                        val syncResult = keepassService?.updateSecureItem(
-                            resolvedKeepassDatabaseId,
-                            item.copy(id = newId)
-                        )
-                        if (syncResult?.isFailure == true) {
-                            Log.e("TotpViewModel", "KeePass write failed: ${syncResult.exceptionOrNull()?.message}")
-                        }
-                    }
+                    val newId = keepassSecureItemCreateExecutor.create(
+                        item = item,
+                        insertItem = repository::insertItem,
+                        rollbackItem = repository::deleteItemById
+                    ) ?: return@launch
                     // 创建操作 - 记录日志
                     OperationLogger.logCreate(
                         itemType = OperationLogItemType.TOTP,
@@ -609,22 +639,7 @@ class TotpViewModel(
                 if (id != null && id > 0) {
                     val current = repository.getItemById(id)
                     if (current != null) {
-                        val oldKeepassId = existingItem?.keepassDatabaseId
-                        val newKeepassId = current.keepassDatabaseId
-                        if (oldKeepassId != null && oldKeepassId != newKeepassId) {
-                            existingItem?.let { oldItem ->
-                                val deleteResult = keepassService?.deleteSecureItems(oldKeepassId, listOf(oldItem))
-                                if (deleteResult?.isFailure == true) {
-                                    Log.e("TotpViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
-                                }
-                            }
-                        }
-                        if (newKeepassId != null) {
-                            val updateResult = keepassService?.updateSecureItem(newKeepassId, current)
-                            if (updateResult?.isFailure == true) {
-                                Log.e("TotpViewModel", "KeePass update failed: ${updateResult.exceptionOrNull()?.message}")
-                            }
-                        }
+                        keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = existingItem, updatedItem = current)
                     }
                 }
             } catch (e: Exception) {
@@ -632,6 +647,34 @@ class TotpViewModel(
                 // TODO: 处理错误
             }
         }
+    }
+
+    private fun resolveKeePassMutationIdentity(
+        existingItem: SecureItem?,
+        targetDatabaseId: Long?,
+        requestedGroupPath: String?
+    ): KeePassMutationIdentity {
+        if (targetDatabaseId == null) {
+            return KeePassMutationIdentity(
+                groupPath = null,
+                entryUuid = null,
+                groupUuid = null
+            )
+        }
+
+        val sameDatabase = existingItem?.keepassDatabaseId == targetDatabaseId
+        val resolvedGroupPath = requestedGroupPath ?: if (sameDatabase) existingItem?.keepassGroupPath else null
+        val groupUnchanged = sameDatabase && resolvedGroupPath == existingItem?.keepassGroupPath
+
+        return KeePassMutationIdentity(
+            groupPath = resolvedGroupPath,
+            entryUuid = if (sameDatabase) {
+                existingItem?.keepassEntryUuid ?: UUID.randomUUID().toString()
+            } else {
+                UUID.randomUUID().toString()
+            },
+            groupUuid = if (groupUnchanged) existingItem?.keepassGroupUuid else null
+        )
     }
 
     /**
@@ -683,7 +726,7 @@ class TotpViewModel(
 
             if (totpData?.boundPasswordId != null && totpData.secret.isNotBlank()) {
                 val boundId = totpData.boundPasswordId
-                val password = boundId?.let { passwordRepository.getPasswordEntryById(it) }
+                val password = passwordRepository.getPasswordEntryById(boundId)
                 if (password?.authenticatorKey == totpData.secret) {
                     if (password.bitwardenVaultId != null && password.bitwardenCipherId != null) {
                         // For Bitwarden-linked passwords, mark as locally modified so sync can clear remote login.totp.
@@ -722,15 +765,9 @@ class TotpViewModel(
                 }
             }
 
-            if (item.keepassDatabaseId != null) {
-                val keepassResult = if (softDelete || isBitwardenCipher) {
-                    keepassService?.moveSecureItemsToRecycleBin(item.keepassDatabaseId, listOf(item))
-                } else {
-                    keepassService?.deleteSecureItems(item.keepassDatabaseId, listOf(item))
-                }
-                if (keepassResult?.isFailure == true) {
-                    val action = if (softDelete || isBitwardenCipher) "move to recycle bin" else "delete"
-                    Log.e("TotpViewModel", "KeePass $action failed: ${keepassResult.exceptionOrNull()?.message}")
+            if (!softDelete || isBitwardenCipher) {
+                if (!keepassSecureItemDeleteExecutor.delete(item, useRecycleBin = softDelete || isBitwardenCipher)) {
+                    Log.e("TotpViewModel", "KeePass delete failed for totp id=${item.id}")
                     return@launch
                 }
             }
@@ -763,6 +800,18 @@ class TotpViewModel(
                     itemTitle = item.title,
                     detail = "移入回收站"
                 )
+
+                if (!isBitwardenCipher && item.keepassDatabaseId != null) {
+                    viewModelScope.launch keepassDeleteSync@{
+                        if (keepassSecureItemDeleteExecutor.delete(item, useRecycleBin = true)) {
+                            Log.i("TotpViewModel", "KeePass trash delete synced for totp id=${item.id}")
+                            return@keepassDeleteSync
+                        }
+
+                        Log.e("TotpViewModel", "KeePass trash delete failed, reverting local trash state for totp id=${item.id}")
+                        repository.updateItem(item.copy(updatedAt = Date()))
+                    }
+                }
             } else {
                 // 永久删除
                 repository.deleteItem(item)
@@ -867,10 +916,17 @@ class TotpViewModel(
                     val item = repository.getItemById(id) ?: return@forEach
                     val totpData = runCatching { Json.decodeFromString<TotpData>(item.itemData) }.getOrNull() ?: return@forEach
                     val updatedData = totpData.copy(keepassDatabaseId = databaseId)
+                    val keepassIdentity = resolveKeePassMutationIdentity(
+                        existingItem = item,
+                        targetDatabaseId = databaseId,
+                        requestedGroupPath = null
+                    )
                     val updatedItem = item.copy(
                         itemData = Json.encodeToString(updatedData),
                         keepassDatabaseId = databaseId,
-                        keepassGroupPath = null,
+                        keepassGroupPath = keepassIdentity.groupPath,
+                        keepassEntryUuid = keepassIdentity.entryUuid,
+                        keepassGroupUuid = keepassIdentity.groupUuid,
                         bitwardenVaultId = null,
                         bitwardenFolderId = null,
                         bitwardenLocalModified = false,
@@ -878,9 +934,7 @@ class TotpViewModel(
                         updatedAt = Date()
                     )
                     repository.updateItem(updatedItem)
-                    if (databaseId != null) {
-                        keepassService?.updateSecureItem(databaseId, updatedItem)
-                    }
+                    keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = item, updatedItem = updatedItem)
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
@@ -895,10 +949,17 @@ class TotpViewModel(
                     val item = repository.getItemById(id) ?: return@forEach
                     val totpData = runCatching { Json.decodeFromString<TotpData>(item.itemData) }.getOrNull() ?: return@forEach
                     val updatedData = totpData.copy(keepassDatabaseId = databaseId)
+                    val keepassIdentity = resolveKeePassMutationIdentity(
+                        existingItem = item,
+                        targetDatabaseId = databaseId,
+                        requestedGroupPath = groupPath
+                    )
                     val updatedItem = item.copy(
                         itemData = Json.encodeToString(updatedData),
                         keepassDatabaseId = databaseId,
-                        keepassGroupPath = groupPath,
+                        keepassGroupPath = keepassIdentity.groupPath,
+                        keepassEntryUuid = keepassIdentity.entryUuid,
+                        keepassGroupUuid = keepassIdentity.groupUuid,
                         bitwardenVaultId = null,
                         bitwardenFolderId = null,
                         bitwardenLocalModified = false,
@@ -906,7 +967,7 @@ class TotpViewModel(
                         updatedAt = Date()
                     )
                     repository.updateItem(updatedItem)
-                    keepassService?.updateSecureItem(databaseId, updatedItem)
+                    keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = item, updatedItem = updatedItem)
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
@@ -919,9 +980,19 @@ class TotpViewModel(
             ids.forEach { id ->
                 try {
                     val item = repository.getItemById(id) ?: return@forEach
+                    val totpData = runCatching { Json.decodeFromString<TotpData>(item.itemData) }.getOrNull() ?: return@forEach
+                    val updatedData = totpData.copy(keepassDatabaseId = null)
+                    val keepassIdentity = resolveKeePassMutationIdentity(
+                        existingItem = item,
+                        targetDatabaseId = null,
+                        requestedGroupPath = null
+                    )
                     val updatedItem = item.copy(
+                        itemData = Json.encodeToString(updatedData),
                         keepassDatabaseId = null,
-                        keepassGroupPath = null,
+                        keepassGroupPath = keepassIdentity.groupPath,
+                        keepassEntryUuid = keepassIdentity.entryUuid,
+                        keepassGroupUuid = keepassIdentity.groupUuid,
                         bitwardenVaultId = vaultId,
                         bitwardenFolderId = folderId,
                         bitwardenLocalModified = item.bitwardenCipherId != null,
@@ -929,6 +1000,7 @@ class TotpViewModel(
                         updatedAt = Date()
                     )
                     repository.updateItem(updatedItem)
+                    keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = item, updatedItem = updatedItem)
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }

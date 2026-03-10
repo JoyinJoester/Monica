@@ -86,12 +86,13 @@ fun AddEditTotpScreen(
     initialNotes: String,
     initialCategoryId: Long? = null,
     initialKeePassDatabaseId: Long? = null,
+    initialKeePassGroupPath: String? = null,
     initialBitwardenVaultId: Long? = null,
     initialBitwardenFolderId: String? = null,
     categories: List<Category> = emptyList(),
     passwordViewModel: PasswordViewModel? = null,
     localKeePassViewModel: LocalKeePassViewModel? = null,
-    onSave: (title: String, notes: String, totpData: TotpData, categoryId: Long?, keepassDatabaseId: Long?, bitwardenVaultId: Long?, bitwardenFolderId: String?) -> Unit,
+    onSave: (title: String, notes: String, totpData: TotpData, categoryId: Long?, keepassDatabaseId: Long?, keepassGroupPath: String?, bitwardenVaultId: Long?, bitwardenFolderId: String?) -> Unit,
     onNavigateBack: () -> Unit,
     onScanQrCode: () -> Unit,
     modifier: Modifier = Modifier
@@ -107,6 +108,7 @@ fun AddEditTotpScreen(
     var counter by rememberSaveable { mutableStateOf(initialData?.counter?.toString() ?: "0") }
     var pin by rememberSaveable { mutableStateOf(initialData?.pin ?: "") }
     var selectedCategoryId by rememberSaveable { mutableStateOf(initialCategoryId) }
+    var keepassGroupPath by rememberSaveable { mutableStateOf(initialKeePassGroupPath) }
     
     var link by rememberSaveable { mutableStateOf(initialData?.link ?: "") }
     var associatedApp by rememberSaveable { mutableStateOf(initialData?.associatedApp ?: "") }
@@ -268,6 +270,7 @@ fun AddEditTotpScreen(
         val remembered = rememberedStorageTarget ?: return@LaunchedEffect
         selectedCategoryId = initialCategoryId ?: remembered.categoryId
         keepassDatabaseId = initialKeePassDatabaseId ?: remembered.keepassDatabaseId
+        keepassGroupPath = initialKeePassGroupPath ?: remembered.keepassGroupPath
         bitwardenVaultId = initialBitwardenVaultId ?: remembered.bitwardenVaultId
         bitwardenFolderId = initialBitwardenFolderId ?: remembered.bitwardenFolderId
         hasAppliedInitialStorage = true
@@ -374,13 +377,14 @@ fun AddEditTotpScreen(
             PasswordCustomIconStore.deleteIconFile(context, originalUploaded)
         }
         hasSavedSuccessfully = true
-        onSave(title, notes, totpData, selectedCategoryId, keepassDatabaseId, bitwardenVaultId, bitwardenFolderId)
+        onSave(title, notes, totpData, selectedCategoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId)
         coroutineScope.launch {
             settingsManager.updateRememberedStorageTarget(
                 scope = SettingsManager.StorageTargetScope.TOTP,
                 target = RememberedStorageTarget(
                     categoryId = selectedCategoryId,
                     keepassDatabaseId = keepassDatabaseId,
+                    keepassGroupPath = keepassGroupPath,
                     bitwardenVaultId = bitwardenVaultId,
                     bitwardenFolderId = bitwardenFolderId
                 )
@@ -447,17 +451,24 @@ fun AddEditTotpScreen(
                     keepassDatabases = keepassDatabases,
                     selectedKeePassDatabaseId = keepassDatabaseId,
                     onKeePassDatabaseSelected = {
+                        val previousKeepassDatabaseId = keepassDatabaseId
                         keepassDatabaseId = it
                         if (it != null) {
+                            if (it != previousKeepassDatabaseId) keepassGroupPath = null
                             bitwardenVaultId = null
                             bitwardenFolderId = null
+                        } else {
+                            keepassGroupPath = null
                         }
                     },
                     bitwardenVaults = bitwardenVaults,
                     selectedBitwardenVaultId = bitwardenVaultId,
                     onBitwardenVaultSelected = {
                         bitwardenVaultId = it
-                        if (it != null) keepassDatabaseId = null
+                        if (it != null) {
+                            keepassDatabaseId = null
+                            keepassGroupPath = null
+                        }
                     },
                     categories = categories,
                     selectedCategoryId = selectedCategoryId,
@@ -465,7 +476,10 @@ fun AddEditTotpScreen(
                     selectedBitwardenFolderId = bitwardenFolderId,
                     onBitwardenFolderSelected = { folderId ->
                         bitwardenFolderId = folderId
-                        if (bitwardenVaultId != null) keepassDatabaseId = null
+                        if (bitwardenVaultId != null) {
+                            keepassDatabaseId = null
+                            keepassGroupPath = null
+                        }
                     }
                 )
             }

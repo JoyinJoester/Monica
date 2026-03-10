@@ -218,7 +218,7 @@ class MainActivity : BaseMonicaActivity() {
                     Log.d(TAG, "Auto backup not needed")
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "Failed to initialize auto backup", e)
+                Log.w(TAG, "Auto backup init skipped: ${e.message}")
             }
         }
     }
@@ -788,6 +788,7 @@ fun MonicaContent(
             var initialData by remember { mutableStateOf<takagi.ru.monica.data.model.TotpData?>(null) }
             var initialTitle by remember { mutableStateOf("") }
             var initialNotes by remember { mutableStateOf("") }
+            var initialKeePassGroupPath by remember { mutableStateOf<String?>(null) }
             var initialBitwardenVaultId by remember { mutableStateOf<Long?>(null) }
             var initialBitwardenFolderId by remember { mutableStateOf<String?>(null) }
             var isLoading by remember { mutableStateOf(true) }
@@ -848,6 +849,7 @@ fun MonicaContent(
                     if (item != null) {
                         initialTitle = item.title
                         initialNotes = item.notes
+                        initialKeePassGroupPath = item.keepassGroupPath
                         initialBitwardenVaultId = item.bitwardenVaultId
                         initialBitwardenFolderId = item.bitwardenFolderId
                         initialData = try {
@@ -865,6 +867,7 @@ fun MonicaContent(
                 data class TotpStorageDefaults(
                     val categoryId: Long? = null,
                     val keepassDatabaseId: Long? = null,
+                    val keepassGroupPath: String? = null,
                     val bitwardenVaultId: Long? = null,
                     val bitwardenFolderId: String? = null
                 )
@@ -883,7 +886,10 @@ fun MonicaContent(
                             TotpStorageDefaults(keepassDatabaseId = filter.databaseId)
                         }
                         is takagi.ru.monica.viewmodel.TotpCategoryFilter.KeePassGroupFilter -> {
-                            TotpStorageDefaults(keepassDatabaseId = filter.databaseId)
+                            TotpStorageDefaults(
+                                keepassDatabaseId = filter.databaseId,
+                                keepassGroupPath = filter.groupPath
+                            )
                         }
                         is takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenVault -> {
                             TotpStorageDefaults(bitwardenVaultId = filter.vaultId)
@@ -905,6 +911,7 @@ fun MonicaContent(
                 }
                 val initialCategoryId = initialData?.categoryId ?: filterDefaults.categoryId
                 val initialKeePassDatabaseId = initialData?.keepassDatabaseId ?: filterDefaults.keepassDatabaseId
+                val resolvedInitialKeePassGroupPath = initialKeePassGroupPath ?: filterDefaults.keepassGroupPath
                 val initialVaultId = initialBitwardenVaultId ?: filterDefaults.bitwardenVaultId
                 val initialFolderId = initialBitwardenFolderId ?: filterDefaults.bitwardenFolderId
                 takagi.ru.monica.ui.screens.AddEditTotpScreen(
@@ -914,12 +921,13 @@ fun MonicaContent(
                     initialNotes = initialNotes,
                     initialCategoryId = initialCategoryId,
                     initialKeePassDatabaseId = initialKeePassDatabaseId,
+                    initialKeePassGroupPath = resolvedInitialKeePassGroupPath,
                     initialBitwardenVaultId = initialVaultId,
                     initialBitwardenFolderId = initialFolderId,
                     categories = totpCategories,
                     passwordViewModel = viewModel,
                     localKeePassViewModel = localKeePassViewModel,
-                    onSave = { title, notes, totpData, categoryId, keepassDatabaseId, bitwardenVaultId, bitwardenFolderId ->
+                    onSave = { title, notes, totpData, categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
                         totpViewModel.saveTotpItem(
                             id = if (totpId > 0) totpId else null,
                             title = title,
@@ -927,6 +935,7 @@ fun MonicaContent(
                             totpData = totpData,
                             categoryId = categoryId,
                             keepassDatabaseId = keepassDatabaseId,
+                            keepassGroupPath = keepassGroupPath,
                             bitwardenVaultId = bitwardenVaultId,
                             bitwardenFolderId = bitwardenFolderId
                         )

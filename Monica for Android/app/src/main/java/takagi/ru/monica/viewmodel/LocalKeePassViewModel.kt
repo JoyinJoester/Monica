@@ -27,6 +27,8 @@ import takagi.ru.monica.data.KeePassStorageLocation
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.repository.KeePassCompatibilityBridge
+import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.KeePassCodecSupport
 import takagi.ru.monica.utils.KeePassOperationException
@@ -77,6 +79,8 @@ class LocalKeePassViewModel(
     val verificationStates: StateFlow<Map<Long, VerificationState>> = _verificationStates.asStateFlow()
 
     private val kdbxService = KeePassKdbxService(context, dao, securityManager)
+    private val workspaceRepository = KeePassWorkspaceRepository(kdbxService)
+    private val compatibilityBridge = KeePassCompatibilityBridge(workspaceRepository)
 
     fun getGroups(databaseId: Long): Flow<List<KeePassGroupInfo>> {
         return _groupsByDatabase
@@ -86,7 +90,7 @@ class LocalKeePassViewModel(
 
     fun refreshGroups(databaseId: Long) {
         viewModelScope.launch(Dispatchers.IO) {
-            val groups = kdbxService.listGroups(databaseId).getOrDefault(emptyList())
+            val groups = workspaceRepository.listGroups(databaseId).getOrDefault(emptyList())
             _groupsByDatabase.update { current -> current + (databaseId to groups) }
         }
     }
@@ -114,7 +118,7 @@ class LocalKeePassViewModel(
             }
 
             val startedAt = SystemClock.elapsedRealtime()
-            val verifyResult = kdbxService.verifyDatabase(databaseId)
+            val verifyResult = workspaceRepository.verifyDatabase(databaseId)
             val elapsedMs = SystemClock.elapsedRealtime() - startedAt
             _verificationStates.update { current ->
                 current + (
@@ -152,7 +156,7 @@ class LocalKeePassViewModel(
                         database.encryptedPassword?.let { securityManager.decryptData(it) } ?: ""
                     }
                     val verifyStart = SystemClock.elapsedRealtime()
-                    val verifyResult = kdbxService.inspectDatabase(
+                    val verifyResult = workspaceRepository.inspectDatabase(
                         databaseId = databaseId,
                         passwordOverride = passwordToUse,
                         keyFileUriOverride = keyFileUri
@@ -210,7 +214,7 @@ class LocalKeePassViewModel(
         onResult: (Result<KeePassGroupInfo>) -> Unit = {}
     ) {
         viewModelScope.launch(Dispatchers.IO) {
-            val result = kdbxService.createGroup(
+            val result = workspaceRepository.createGroup(
                 databaseId = databaseId,
                 groupName = groupName,
                 parentPath = parentPath
@@ -231,7 +235,7 @@ class LocalKeePassViewModel(
         onResult: (Result<KeePassGroupInfo>) -> Unit = {}
     ) {
         viewModelScope.launch(Dispatchers.IO) {
-            val result = kdbxService.renameGroup(
+            val result = workspaceRepository.renameGroup(
                 databaseId = databaseId,
                 groupPath = groupPath,
                 newName = newName
@@ -251,7 +255,7 @@ class LocalKeePassViewModel(
         onResult: (Result<Unit>) -> Unit = {}
     ) {
         viewModelScope.launch(Dispatchers.IO) {
-            val result = kdbxService.deleteGroup(
+            val result = workspaceRepository.deleteGroup(
                 databaseId = databaseId,
                 groupPath = groupPath
             )
@@ -446,7 +450,7 @@ class LocalKeePassViewModel(
                         ?: throw Exception("无法访问文件")
 
                     val verifyStart = SystemClock.elapsedRealtime()
-                    val verifyResult = kdbxService.inspectExternalDatabase(
+                    val verifyResult = workspaceRepository.inspectExternalDatabase(
                         fileUri = uri,
                         password = password,
                         keyFileUri = keyFileUri
@@ -752,7 +756,7 @@ class LocalKeePassViewModel(
                     val database = dao.getDatabaseById(databaseId)
                         ?: throw Exception("数据库不存在")
                     val verifyStart = SystemClock.elapsedRealtime()
-                    val verifyResult = kdbxService.inspectDatabase(
+                    val verifyResult = workspaceRepository.inspectDatabase(
                         databaseId = databaseId,
                         passwordOverride = newPassword
                     )
@@ -818,7 +822,7 @@ class LocalKeePassViewModel(
         entries: List<PasswordEntry>,
         decryptPassword: (String) -> String
     ): Result<Int> = withContext(Dispatchers.IO) {
-        kdbxService.addOrUpdatePasswordEntries(
+        compatibilityBridge.upsertLegacyPasswordEntries(
             databaseId = databaseId,
             entries = entries,
             resolvePassword = { entry ->

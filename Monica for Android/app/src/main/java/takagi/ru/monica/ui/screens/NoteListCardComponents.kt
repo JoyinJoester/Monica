@@ -1,5 +1,6 @@
 package takagi.ru.monica.ui.screens
 
+import android.graphics.Bitmap
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -27,7 +28,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,7 +45,9 @@ import takagi.ru.monica.bitwarden.sync.SyncStatus
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.notes.ui.model.NoteListItemUiModel
+import takagi.ru.monica.ui.components.MarkdownPreviewText
 import takagi.ru.monica.ui.components.SyncStatusIcon
+import takagi.ru.monica.util.ImageManager
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -53,6 +60,34 @@ fun ExpressiveNoteCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
+    val context = LocalContext.current
+    val imageManager = remember(context) { ImageManager(context) }
+    val cardImageBitmaps = remember(note.id) { mutableStateMapOf<String, Bitmap>() }
+    val markdownForCard = remember(note.rawContent, note.inlineImageIds, note.isMarkdown, note.previewText, isGridMode) {
+        if (isGridMode && note.isMarkdown) {
+            NoteContentCodec.appendInlineImageRefs(
+                content = note.rawContent.trimEnd(),
+                imageIds = note.inlineImageIds
+            )
+        } else {
+            note.previewText
+        }
+    }
+
+    LaunchedEffect(note.id, note.inlineImageIds, isGridMode) {
+        if (!isGridMode) {
+            cardImageBitmaps.clear()
+            return@LaunchedEffect
+        }
+        note.inlineImageIds.take(3).forEach { imageId ->
+            if (!cardImageBitmaps.containsKey(imageId)) {
+                imageManager.loadImage(imageId)?.let { bitmap ->
+                    cardImageBitmaps[imageId] = bitmap
+                }
+            }
+        }
+    }
+
     val hasImageAttachment = note.hasImageAttachment
 
     val containerColor = if (isSelected) {
@@ -168,14 +203,31 @@ fun ExpressiveNoteCard(
 
             if (note.previewText.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = note.previewText,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = if (isGridMode) 6 else 3,
-                    overflow = TextOverflow.Ellipsis,
-                    color = secondaryContentColor,
-                    lineHeight = MaterialTheme.typography.bodyMedium.lineHeight
-                )
+                if (isGridMode) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(120.dp)
+                    ) {
+                        MarkdownPreviewText(
+                            markdown = markdownForCard,
+                            imageBitmaps = cardImageBitmaps,
+                            onInlineImageClick = { onClick() },
+                            renderImages = true,
+                            maxElements = 5,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                } else {
+                    Text(
+                        text = note.previewText,
+                        style = MaterialTheme.typography.bodyMedium,
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
+                        color = secondaryContentColor,
+                        lineHeight = MaterialTheme.typography.bodyMedium.lineHeight
+                    )
+                }
             }
 
             if (note.tags.isNotEmpty()) {
@@ -270,6 +322,12 @@ internal fun SecureItem.toNoteListItemUiModel(): NoteListItemUiModel {
     return NoteListItemUiModel(
         id = id,
         title = title,
+        rawContent = decoded.content,
+        isMarkdown = decoded.isMarkdown,
+        inlineImageIds = (
+            NoteContentCodec.extractInlineImageIds(decoded.content) +
+                NoteContentCodec.decodeImagePaths(imagePaths)
+            ).distinct(),
         previewText = NoteContentCodec.toPlainPreview(decoded.content, decoded.isMarkdown),
         tags = decoded.tags,
         updatedAt = updatedAt,

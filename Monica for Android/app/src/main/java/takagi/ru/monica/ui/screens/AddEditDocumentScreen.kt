@@ -75,6 +75,7 @@ fun AddEditDocumentScreen(
     var backImageFileName by rememberSaveable { mutableStateOf<String?>(null) }
     var selectedCategoryId by rememberSaveable { mutableStateOf<Long?>(null) }
     var keepassDatabaseId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var keepassGroupPath by rememberSaveable { mutableStateOf<String?>(null) }
     var bitwardenVaultId by rememberSaveable { mutableStateOf<Long?>(null) }
     var bitwardenFolderId by rememberSaveable { mutableStateOf<String?>(null) }
     var hasAppliedInitialStorage by rememberSaveable { mutableStateOf(false) }
@@ -85,14 +86,29 @@ fun AddEditDocumentScreen(
     val rememberedStorageTarget by settingsManager
         .rememberedStorageTargetFlow(SettingsManager.StorageTargetScope.DOCUMENT)
         .collectAsState(initial = null as RememberedStorageTarget?)
+    val cardWalletCategoryFilterState by settingsManager
+        .categoryFilterStateFlow(SettingsManager.CategoryFilterScope.CARD_WALLET)
+        .collectAsState(initial = null)
 
-    LaunchedEffect(documentId, hasAppliedInitialStorage, rememberedStorageTarget) {
+    LaunchedEffect(documentId, hasAppliedInitialStorage, rememberedStorageTarget, cardWalletCategoryFilterState) {
         if (documentId != null || hasAppliedInitialStorage) return@LaunchedEffect
-        val remembered = rememberedStorageTarget ?: return@LaunchedEffect
-        selectedCategoryId = remembered.categoryId
-        keepassDatabaseId = remembered.keepassDatabaseId
-        bitwardenVaultId = remembered.bitwardenVaultId
-        bitwardenFolderId = remembered.bitwardenFolderId
+        val remembered = rememberedStorageTarget
+        val filterKeepassDatabaseId = when (cardWalletCategoryFilterState?.type) {
+            "keepass_database", "keepass_group", "keepass_database_starred", "keepass_database_uncategorized" ->
+                cardWalletCategoryFilterState?.primaryId
+            else -> null
+        }
+        val filterKeepassGroupPath = if (cardWalletCategoryFilterState?.type == "keepass_group") {
+            cardWalletCategoryFilterState?.text
+        } else {
+            null
+        }
+        if (remembered == null && filterKeepassDatabaseId == null && filterKeepassGroupPath == null) return@LaunchedEffect
+        selectedCategoryId = remembered?.categoryId
+        keepassDatabaseId = filterKeepassDatabaseId ?: remembered?.keepassDatabaseId
+        keepassGroupPath = filterKeepassGroupPath ?: remembered?.keepassGroupPath
+        bitwardenVaultId = remembered?.bitwardenVaultId
+        bitwardenFolderId = remembered?.bitwardenFolderId
         hasAppliedInitialStorage = true
     }
     
@@ -105,6 +121,7 @@ fun AddEditDocumentScreen(
                 isFavorite = item.isFavorite
                 selectedCategoryId = item.categoryId
                 keepassDatabaseId = item.keepassDatabaseId
+                keepassGroupPath = item.keepassGroupPath
                 bitwardenVaultId = item.bitwardenVaultId
                 bitwardenFolderId = item.bitwardenFolderId
                 
@@ -175,6 +192,7 @@ fun AddEditDocumentScreen(
                 imagePaths = imagePathsJson,
                 categoryId = selectedCategoryId,
                 keepassDatabaseId = keepassDatabaseId,
+                keepassGroupPath = keepassGroupPath,
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenFolderId = bitwardenFolderId
             )
@@ -206,6 +224,7 @@ fun AddEditDocumentScreen(
                 target = RememberedStorageTarget(
                     categoryId = selectedCategoryId,
                     keepassDatabaseId = keepassDatabaseId,
+                    keepassGroupPath = keepassGroupPath,
                     bitwardenVaultId = bitwardenVaultId,
                     bitwardenFolderId = bitwardenFolderId
                 )
@@ -240,17 +259,24 @@ fun AddEditDocumentScreen(
                 keepassDatabases = keepassDatabases,
                 selectedKeePassDatabaseId = keepassDatabaseId,
                 onKeePassDatabaseSelected = {
+                    val previousKeepassDatabaseId = keepassDatabaseId
                     keepassDatabaseId = it
                     if (it != null) {
+                        if (it != previousKeepassDatabaseId) keepassGroupPath = null
                         bitwardenVaultId = null
                         bitwardenFolderId = null
+                    } else {
+                        keepassGroupPath = null
                     }
                 },
                 bitwardenVaults = bitwardenVaults,
                 selectedBitwardenVaultId = bitwardenVaultId,
                 onBitwardenVaultSelected = {
                     bitwardenVaultId = it
-                    if (it != null) keepassDatabaseId = null
+                    if (it != null) {
+                        keepassDatabaseId = null
+                        keepassGroupPath = null
+                    }
                 },
                 categories = categories,
                 selectedCategoryId = selectedCategoryId,
@@ -258,7 +284,10 @@ fun AddEditDocumentScreen(
                 selectedBitwardenFolderId = bitwardenFolderId,
                 onBitwardenFolderSelected = { folderId ->
                     bitwardenFolderId = folderId
-                    if (bitwardenVaultId != null) keepassDatabaseId = null
+                    if (bitwardenVaultId != null) {
+                        keepassDatabaseId = null
+                        keepassGroupPath = null
+                    }
                 }
             )
 

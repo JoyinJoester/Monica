@@ -8,12 +8,17 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import takagi.ru.monica.keepass.KeePassSecureItemCreateExecutor
+import takagi.ru.monica.keepass.KeePassSecureItemDeleteExecutor
+import takagi.ru.monica.keepass.KeePassSecureItemUpdateExecutor
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
+import takagi.ru.monica.repository.KeePassCompatibilityBridge
+import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.security.SecurityManager
@@ -23,6 +28,7 @@ import takagi.ru.monica.utils.KeePassKdbxService
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.encodeToString
 import java.util.Date
+import java.util.UUID
 
 class DocumentViewModel(
     private val repository: SecureItemRepository,
@@ -30,13 +36,28 @@ class DocumentViewModel(
     private val localKeePassDatabaseDao: LocalKeePassDatabaseDao? = null,
     securityManager: SecurityManager? = null
 ) : ViewModel() {
+    private data class KeePassMutationIdentity(
+        val groupPath: String?,
+        val entryUuid: String?,
+        val groupUuid: String?
+    )
+
     private val bitwardenRepository = context?.let { BitwardenRepository.getInstance(it.applicationContext) }
 
-    private val keepassService = if (context != null && localKeePassDatabaseDao != null && securityManager != null) {
-        KeePassKdbxService(context.applicationContext, localKeePassDatabaseDao, securityManager)
+    private val keepassBridge = if (context != null && localKeePassDatabaseDao != null && securityManager != null) {
+        KeePassCompatibilityBridge(
+            KeePassWorkspaceRepository(
+                context = context.applicationContext,
+                dao = localKeePassDatabaseDao,
+                securityManager = securityManager
+            )
+        )
     } else {
         null
     }
+    private val keepassSecureItemCreateExecutor = KeePassSecureItemCreateExecutor(keepassBridge)
+    private val keepassSecureItemDeleteExecutor = KeePassSecureItemDeleteExecutor(keepassBridge)
+    private val keepassSecureItemUpdateExecutor = KeePassSecureItemUpdateExecutor(keepassBridge)
     
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -66,20 +87,23 @@ class DocumentViewModel(
 
     fun syncKeePassDocuments(databaseId: Long) {
         viewModelScope.launch {
-            val snapshots = keepassService
-                ?.readSecureItems(databaseId, setOf(ItemType.DOCUMENT))
+            val snapshots = keepassBridge
+                ?.readLegacySecureItems(databaseId, setOf(ItemType.DOCUMENT))
                 ?.getOrNull()
                 ?: return@launch
 
             val existingDocs = repository.getItemsByType(ItemType.DOCUMENT).first()
             snapshots.forEach { snapshot ->
                 val incoming = snapshot.item
+                val existingByUuid = incoming.keepassEntryUuid
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { repository.getItemByKeePassUuid(databaseId, it) }
                 val existingBySource = snapshot.sourceMonicaId
                     ?.takeIf { it > 0 }
                     ?.let { sourceId -> repository.getItemById(sourceId) }
                     ?.takeIf { it.itemType == ItemType.DOCUMENT }
 
-                val existing = existingBySource ?: existingDocs.firstOrNull {
+                val existing = existingByUuid ?: existingBySource ?: existingDocs.firstOrNull {
                     it.itemType == ItemType.DOCUMENT &&
                         it.keepassDatabaseId == databaseId &&
                         it.keepassGroupPath == incoming.keepassGroupPath &&
@@ -99,6 +123,8 @@ class DocumentViewModel(
                             imagePaths = incoming.imagePaths,
                             keepassDatabaseId = incoming.keepassDatabaseId,
                             keepassGroupPath = incoming.keepassGroupPath,
+                            keepassEntryUuid = incoming.keepassEntryUuid,
+                            keepassGroupUuid = incoming.keepassGroupUuid,
                             isDeleted = isInRecycleBin,
                             deletedAt = if (isInRecycleBin) (existing.deletedAt ?: Date()) else null,
                             updatedAt = Date()
@@ -123,6 +149,11 @@ class DocumentViewModel(
         bitwardenFolderId: String? = null
     ) {
         viewModelScope.launch {
+            val keepassIdentity = resolveKeePassMutationIdentity(
+                existingItem = null,
+                targetDatabaseId = keepassDatabaseId,
+                requestedGroupPath = keepassGroupPath
+            )
             val item = SecureItem(
                 id = 0,
                 itemType = ItemType.DOCUMENT,
@@ -132,7 +163,9 @@ class DocumentViewModel(
                 isFavorite = isFavorite,
                 categoryId = categoryId,
                 keepassDatabaseId = keepassDatabaseId,
-                keepassGroupPath = keepassGroupPath,
+                keepassGroupPath = keepassIdentity.groupPath,
+                keepassEntryUuid = keepassIdentity.entryUuid,
+                keepassGroupUuid = keepassIdentity.groupUuid,
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenFolderId = bitwardenFolderId,
                 syncStatus = if (bitwardenVaultId != null) "PENDING" else "NONE",
@@ -140,13 +173,11 @@ class DocumentViewModel(
                 updatedAt = Date(),
                 imagePaths = imagePaths
             )
-            val newId = repository.insertItem(item)
-            if (keepassDatabaseId != null) {
-                val syncResult = keepassService?.updateSecureItem(keepassDatabaseId, item.copy(id = newId))
-                if (syncResult?.isFailure == true) {
-                    Log.e("DocumentViewModel", "KeePass write failed: ${syncResult.exceptionOrNull()?.message}")
-                }
-            }
+            val newId = keepassSecureItemCreateExecutor.create(
+                item = item,
+                insertItem = repository::insertItem,
+                rollbackItem = repository::deleteItemById
+            ) ?: return@launch
             
             // 记录创建操作
             OperationLogger.logCreate(
@@ -172,6 +203,11 @@ class DocumentViewModel(
     ) {
         viewModelScope.launch {
             repository.getItemById(id)?.let { existingItem ->
+                val keepassIdentity = resolveKeePassMutationIdentity(
+                    existingItem = existingItem,
+                    targetDatabaseId = keepassDatabaseId,
+                    requestedGroupPath = null
+                )
                 val oldDocData = parseDocumentData(existingItem.itemData)
                 val changes = mutableListOf<FieldChange>()
                 
@@ -199,6 +235,9 @@ class DocumentViewModel(
                     isFavorite = isFavorite,
                     categoryId = categoryId,
                     keepassDatabaseId = keepassDatabaseId,
+                    keepassGroupPath = keepassIdentity.groupPath,
+                    keepassEntryUuid = keepassIdentity.entryUuid,
+                    keepassGroupUuid = keepassIdentity.groupUuid,
                     bitwardenVaultId = bitwardenVaultId,
                     bitwardenFolderId = bitwardenFolderId,
                     bitwardenLocalModified = existingItem.bitwardenCipherId != null && bitwardenVaultId != null,
@@ -211,20 +250,7 @@ class DocumentViewModel(
                     imagePaths = imagePaths
                 )
                 repository.updateItem(updatedItem)
-                val oldKeepassId = existingItem.keepassDatabaseId
-                val newKeepassId = updatedItem.keepassDatabaseId
-                if (oldKeepassId != null && oldKeepassId != newKeepassId) {
-                    val deleteResult = keepassService?.deleteSecureItems(oldKeepassId, listOf(existingItem))
-                    if (deleteResult?.isFailure == true) {
-                        Log.e("DocumentViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
-                    }
-                }
-                if (newKeepassId != null) {
-                    val updateResult = keepassService?.updateSecureItem(newKeepassId, updatedItem)
-                    if (updateResult?.isFailure == true) {
-                        Log.e("DocumentViewModel", "KeePass update failed: ${updateResult.exceptionOrNull()?.message}")
-                    }
-                }
+                keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = existingItem, updatedItem = updatedItem)
                 
                 // 记录更新操作 - 始终记录，即使没有检测到字段变更
                 OperationLogger.logUpdate(
@@ -247,10 +273,17 @@ class DocumentViewModel(
     ) {
         viewModelScope.launch {
             repository.getItemById(id)?.let { existingItem ->
+                val keepassIdentity = resolveKeePassMutationIdentity(
+                    existingItem = existingItem,
+                    targetDatabaseId = keepassDatabaseId,
+                    requestedGroupPath = keepassGroupPath
+                )
                 val updatedItem = existingItem.copy(
                     categoryId = categoryId,
                     keepassDatabaseId = keepassDatabaseId,
-                    keepassGroupPath = keepassGroupPath,
+                    keepassGroupPath = keepassIdentity.groupPath,
+                    keepassEntryUuid = keepassIdentity.entryUuid,
+                    keepassGroupUuid = keepassIdentity.groupUuid,
                     bitwardenVaultId = bitwardenVaultId,
                     bitwardenFolderId = bitwardenFolderId,
                     bitwardenLocalModified = existingItem.bitwardenCipherId != null && bitwardenVaultId != null,
@@ -262,23 +295,37 @@ class DocumentViewModel(
                     updatedAt = Date()
                 )
                 repository.updateItem(updatedItem)
-
-                val oldKeepassId = existingItem.keepassDatabaseId
-                val newKeepassId = updatedItem.keepassDatabaseId
-                if (oldKeepassId != null && oldKeepassId != newKeepassId) {
-                    val deleteResult = keepassService?.deleteSecureItems(oldKeepassId, listOf(existingItem))
-                    if (deleteResult?.isFailure == true) {
-                        Log.e("DocumentViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
-                    }
-                }
-                if (newKeepassId != null) {
-                    val updateResult = keepassService?.updateSecureItem(newKeepassId, updatedItem)
-                    if (updateResult?.isFailure == true) {
-                        Log.e("DocumentViewModel", "KeePass update failed: ${updateResult.exceptionOrNull()?.message}")
-                    }
-                }
+                keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = existingItem, updatedItem = updatedItem)
             }
         }
+    }
+
+    private fun resolveKeePassMutationIdentity(
+        existingItem: SecureItem?,
+        targetDatabaseId: Long?,
+        requestedGroupPath: String?
+    ): KeePassMutationIdentity {
+        if (targetDatabaseId == null) {
+            return KeePassMutationIdentity(
+                groupPath = null,
+                entryUuid = null,
+                groupUuid = null
+            )
+        }
+
+        val sameDatabase = existingItem?.keepassDatabaseId == targetDatabaseId
+        val resolvedGroupPath = requestedGroupPath ?: if (sameDatabase) existingItem?.keepassGroupPath else null
+        val groupUnchanged = sameDatabase && resolvedGroupPath == existingItem?.keepassGroupPath
+
+        return KeePassMutationIdentity(
+            groupPath = resolvedGroupPath,
+            entryUuid = if (sameDatabase) {
+                existingItem?.keepassEntryUuid ?: UUID.randomUUID().toString()
+            } else {
+                UUID.randomUUID().toString()
+            },
+            groupUuid = if (groupUnchanged) existingItem?.keepassGroupUuid else null
+        )
     }
     
     // 删除证件
@@ -303,15 +350,9 @@ class DocumentViewModel(
                     }
                 }
 
-                if (item.keepassDatabaseId != null) {
-                    val keepassResult = if (softDelete || isBitwardenCipher) {
-                        keepassService?.moveSecureItemsToRecycleBin(item.keepassDatabaseId, listOf(item))
-                    } else {
-                        keepassService?.deleteSecureItems(item.keepassDatabaseId, listOf(item))
-                    }
-                    if (keepassResult?.isFailure == true) {
-                        val action = if (softDelete || isBitwardenCipher) "move to recycle bin" else "delete"
-                        Log.e("DocumentViewModel", "KeePass $action failed: ${keepassResult.exceptionOrNull()?.message}")
+                if (!softDelete || isBitwardenCipher) {
+                    if (!keepassSecureItemDeleteExecutor.delete(item, useRecycleBin = softDelete || isBitwardenCipher)) {
+                        Log.e("DocumentViewModel", "KeePass delete failed for document id=${item.id}")
                         return@launch
                     }
                 }
@@ -343,6 +384,18 @@ class DocumentViewModel(
                         itemTitle = item.title,
                         detail = "移入回收站"
                     )
+
+                    if (!isBitwardenCipher && item.keepassDatabaseId != null) {
+                        viewModelScope.launch keepassDeleteSync@{
+                            if (keepassSecureItemDeleteExecutor.delete(item, useRecycleBin = true)) {
+                                Log.i("DocumentViewModel", "KeePass trash delete synced for document id=${item.id}")
+                                return@keepassDeleteSync
+                            }
+
+                            Log.e("DocumentViewModel", "KeePass trash delete failed, reverting local trash state for document id=${item.id}")
+                            repository.updateItem(item.copy(updatedAt = Date()))
+                        }
+                    }
                 } else {
                     // 永久删除
                     OperationLogger.logDelete(

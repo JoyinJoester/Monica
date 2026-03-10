@@ -4,6 +4,9 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import takagi.ru.monica.keepass.KeePassPasswordCreateExecutor
+import takagi.ru.monica.keepass.KeePassPasswordUpdateExecutor
+import takagi.ru.monica.keepass.KeePassPasswordDeleteExecutor
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.CustomField
 import takagi.ru.monica.data.CustomFieldDraft
@@ -12,6 +15,8 @@ import takagi.ru.monica.data.PasswordArchiveSyncMeta
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordHistoryManager
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.repository.KeePassCompatibilityBridge
+import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.repository.CustomFieldRepository
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
@@ -101,11 +106,20 @@ class PasswordViewModel(
     private val passwordHistoryManager: PasswordHistoryManager? = context?.let { PasswordHistoryManager(it) }
     private val settingsManager: takagi.ru.monica.utils.SettingsManager? = context?.let { takagi.ru.monica.utils.SettingsManager(it) }
     private val bitwardenRepository: BitwardenRepository? = context?.let { BitwardenRepository.getInstance(it.applicationContext) }
-    private val keepassService = if (context != null && localKeePassDatabaseDao != null) {
-        KeePassKdbxService(context.applicationContext, localKeePassDatabaseDao, securityManager)
+    private val keepassBridge = if (context != null && localKeePassDatabaseDao != null) {
+        KeePassCompatibilityBridge(
+            KeePassWorkspaceRepository(
+                context = context.applicationContext,
+                dao = localKeePassDatabaseDao,
+                securityManager = securityManager
+            )
+        )
     } else {
         null
     }
+    private val keepassPasswordDeleteExecutor = KeePassPasswordDeleteExecutor(keepassBridge)
+    private val keepassPasswordCreateExecutor = KeePassPasswordCreateExecutor(keepassBridge)
+    private val keepassPasswordUpdateExecutor = KeePassPasswordUpdateExecutor(keepassBridge)
     
     // Trash settings
     private val trashSettings = settingsManager?.settingsFlow?.map { 
@@ -634,13 +648,13 @@ class PasswordViewModel(
     }
 
     private fun syncKeePassDatabase(databaseId: Long, forceRefresh: Boolean = false) {
-        val service = keepassService ?: return
+        val bridge = keepassBridge ?: return
         viewModelScope.launch {
             runCatching {
                 if (forceRefresh) {
                     KeePassKdbxService.invalidateProcessCache(databaseId)
                 }
-                val result = service.readPasswordEntries(databaseId)
+                val result = bridge.readLegacyPasswordEntries(databaseId)
                 val data = result.getOrNull() ?: return@launch
                 upsertKeePassEntries(databaseId, data)
                 syncKeePassTotpEntries(databaseId)
@@ -651,7 +665,7 @@ class PasswordViewModel(
     }
 
     fun refreshKeePassFromSourceForCurrentContext() {
-        val service = keepassService ?: return
+        val bridge = keepassBridge ?: return
         val current = _categoryFilter.value
         val activeDatabaseId = when (current) {
             is CategoryFilter.KeePassDatabase -> current.databaseId
@@ -671,7 +685,7 @@ class PasswordViewModel(
             databaseIds.forEach { databaseId ->
                 KeePassKdbxService.invalidateProcessCache(databaseId)
                 runCatching {
-                    val data = service.readPasswordEntries(databaseId).getOrNull() ?: return@forEach
+                    val data = bridge.readLegacyPasswordEntries(databaseId).getOrNull() ?: return@forEach
                     upsertKeePassEntries(databaseId, data)
                     syncKeePassTotpEntries(databaseId)
                 }.onFailure { error ->
@@ -689,15 +703,18 @@ class PasswordViewModel(
         val incomingEntries = entries.filter { shouldImportKeePassPasswordEntry(it) }
         val incomingKeys = incomingEntries
             .asSequence()
-            .map { buildKeePassSyncKey(it.title, it.username, it.url, it.groupPath) }
+            .map { buildKeePassSyncKey(it) }
             .toSet()
 
         incomingEntries.forEach { item ->
+            val existingByUuid = item.entryUuid
+                ?.takeIf { it.isNotBlank() }
+                ?.let { repository.getPasswordEntryByKeePassUuid(databaseId, it) }
             val existingById = item.monicaLocalId?.let { repository.getPasswordEntryById(it) }
-            val existing = if (existingById != null && existingById.keepassDatabaseId == databaseId) {
-                existingById
-            } else {
-                repository.getDuplicateEntryInKeePass(
+            val existing = when {
+                existingByUuid != null -> existingByUuid
+                existingById != null && existingById.keepassDatabaseId == databaseId -> existingById
+                else -> repository.getDuplicateEntryInKeePass(
                     databaseId = databaseId,
                     title = item.title,
                     username = item.username,
@@ -730,6 +747,8 @@ class PasswordViewModel(
                     notes = item.notes,
                     keepassDatabaseId = databaseId,
                     keepassGroupPath = item.groupPath,
+                    keepassEntryUuid = item.entryUuid,
+                    keepassGroupUuid = item.groupUuid,
                     isDeleted = isInRecycleBin,
                     deletedAt = if (isInRecycleBin) (existing.deletedAt ?: Date()) else null,
                     updatedAt = Date()
@@ -747,6 +766,8 @@ class PasswordViewModel(
                     updatedAt = Date(),
                     keepassDatabaseId = databaseId,
                     keepassGroupPath = item.groupPath,
+                    keepassEntryUuid = item.entryUuid,
+                    keepassGroupUuid = item.groupUuid,
                     isDeleted = isInRecycleBin,
                     deletedAt = if (isInRecycleBin) Date() else null
                 )
@@ -758,11 +779,11 @@ class PasswordViewModel(
     }
 
     private suspend fun syncKeePassTotpEntries(databaseId: Long) {
-        val service = keepassService ?: return
+        val bridge = keepassBridge ?: return
         val secureRepo = secureItemRepository ?: return
 
-        val snapshots = service
-            .readSecureItems(databaseId, setOf(ItemType.TOTP))
+        val snapshots = bridge
+            .readLegacySecureItems(databaseId, setOf(ItemType.TOTP))
             .getOrNull()
             ?: return
 
@@ -841,13 +862,27 @@ class PasswordViewModel(
         return "$normalizedGroup|$normalizedTitle|$normalizedUsername|$normalizedWebsite"
     }
 
+    private fun buildKeePassSyncKey(item: KeePassEntryData): String {
+        val entryUuid = item.entryUuid?.trim().orEmpty()
+        if (entryUuid.isNotEmpty()) {
+            return "uuid:${entryUuid.lowercase(Locale.ROOT)}"
+        }
+        return buildKeePassSyncKey(item.title, item.username, item.url, item.groupPath)
+    }
+
+    private fun buildKeePassSyncKey(entry: PasswordEntry): String {
+        val entryUuid = entry.keepassEntryUuid?.trim().orEmpty()
+        if (entryUuid.isNotEmpty()) {
+            return "uuid:${entryUuid.lowercase(Locale.ROOT)}"
+        }
+        return buildKeePassSyncKey(entry.title, entry.username, entry.website, entry.keepassGroupPath)
+    }
+
     private suspend fun reconcileKeePassEntries(databaseId: Long, incomingKeys: Set<String>) {
         val localEntries = repository.getPasswordEntriesByKeePassDatabaseSync(databaseId)
         if (localEntries.isEmpty()) return
 
-        val grouped = localEntries.groupBy { entry ->
-            buildKeePassSyncKey(entry.title, entry.username, entry.website, entry.keepassGroupPath)
-        }
+        val grouped = localEntries.groupBy { entry -> buildKeePassSyncKey(entry) }
 
         val keepIds = mutableSetOf<Long>()
         grouped.forEach { (key, candidates) ->
@@ -861,7 +896,7 @@ class PasswordViewModel(
         }
 
         val stale = localEntries.filter { entry ->
-            val key = buildKeePassSyncKey(entry.title, entry.username, entry.website, entry.keepassGroupPath)
+            val key = buildKeePassSyncKey(entry)
             key !in incomingKeys || entry.id !in keepIds
         }
 
@@ -1214,37 +1249,25 @@ class PasswordViewModel(
         entry: PasswordEntry,
         includeDetailedLog: Boolean
     ): Long? {
-        val boundEntry = applyCategoryBinding(entry)
+        val boundEntry = applyCategoryBinding(entry).let { candidate ->
+            if (candidate.keepassDatabaseId != null && candidate.keepassEntryUuid.isNullOrBlank()) {
+                candidate.copy(keepassEntryUuid = UUID.randomUUID().toString())
+            } else {
+                candidate
+            }
+        }
         val encryptedEntry = boundEntry.copy(
             password = securityManager.encryptData(boundEntry.password),
             createdAt = Date(),
             updatedAt = Date()
         )
-        val id = repository.insertPasswordEntry(encryptedEntry)
-
-        val keepassId = boundEntry.keepassDatabaseId
-        if (keepassId != null) {
-            Log.d(
-                "PasswordViewModel",
-                "Create entry id=$id will sync to KeePass db=$keepassId group=${boundEntry.keepassGroupPath ?: "<root>"}"
-            )
-            val service = keepassService
-            if (service != null) {
-                val syncResult = service.addPasswordEntry(
-                    databaseId = keepassId,
-                    entry = boundEntry.copy(id = id),
-                    resolvePassword = { it.password }
-                )
-                if (syncResult.isFailure) {
-                    repository.deletePasswordEntryById(id)
-                    Log.e("PasswordViewModel", "KeePass write failed: ${syncResult.exceptionOrNull()?.message}")
-                    return null
-                }
-                Log.d("PasswordViewModel", "KeePass write success for entry id=$id db=$keepassId")
-            }
-        } else {
-            Log.w("PasswordViewModel", "Create entry id=$id skipped KeePass sync because keepassDatabaseId is null")
-        }
+        val id = keepassPasswordCreateExecutor.create(
+            localEntry = encryptedEntry,
+            syncEntry = boundEntry,
+            insertEntry = repository::insertPasswordEntry,
+            rollbackEntry = repository::deletePasswordEntryById,
+            resolvePassword = { it.password }
+        ) ?: return null
 
         if (includeDetailedLog) {
             val createDetails = mutableListOf<takagi.ru.monica.utils.FieldChange>()
@@ -1319,30 +1342,11 @@ class PasswordViewModel(
             )
         )
 
-        val service = keepassService
-        val oldKeepassId = oldEntry?.keepassDatabaseId
-        val newKeepassId = entryToUpdate.keepassDatabaseId
-        if (service != null) {
-            if (oldKeepassId != null && oldKeepassId != newKeepassId) {
-                val deleteResult = service.deletePasswordEntries(
-                    databaseId = oldKeepassId,
-                    entries = listOf(entryToUpdate.copy(keepassDatabaseId = oldKeepassId))
-                )
-                if (deleteResult.isFailure) {
-                    Log.e("PasswordViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
-                }
-            }
-            if (newKeepassId != null) {
-                val updateResult = service.updatePasswordEntry(
-                    databaseId = newKeepassId,
-                    entry = entryToUpdate,
-                    resolvePassword = { it.password }
-                )
-                if (updateResult.isFailure) {
-                    Log.e("PasswordViewModel", "KeePass update failed: ${updateResult.exceptionOrNull()?.message}")
-                }
-            }
-        }
+        keepassPasswordUpdateExecutor.syncUpdatedEntry(
+            existingEntry = oldEntry,
+            updatedEntry = entryToUpdate,
+            resolvePassword = { it.password }
+        )
         
         // 记录更新操作
         val changes = takagi.ru.monica.utils.OperationLogger.compareAndGetChanges(
@@ -1385,7 +1389,6 @@ class PasswordViewModel(
     fun deletePasswordEntry(entry: PasswordEntry) {
         viewModelScope.launch {
             val trashEnabled = trashSettings?.value?.first ?: true
-            val service = keepassService
             val keepassId = entry.keepassDatabaseId
             val bitwardenVaultId = entry.bitwardenVaultId
             val bitwardenCipherId = entry.bitwardenCipherId
@@ -1409,15 +1412,8 @@ class PasswordViewModel(
                     return@launch
                 }
 
-                if (service != null && keepassId != null) {
-                    val deleteResult = service.movePasswordEntriesToRecycleBin(
-                        databaseId = keepassId,
-                        entries = listOf(entry)
-                    )
-                    if (deleteResult.isFailure) {
-                        Log.e("PasswordViewModel", "KeePass move to recycle bin failed: ${deleteResult.exceptionOrNull()?.message}")
-                        return@launch
-                    }
+                if (!keepassPasswordDeleteExecutor.delete(entry, useRecycleBin = true)) {
+                    return@launch
                 }
 
                 // Bitwarden 删除采用 tombstone，防止下一次拉取把条目复活。
@@ -1442,16 +1438,6 @@ class PasswordViewModel(
             }
               
             if (trashEnabled) {
-                if (service != null && keepassId != null) {
-                    val deleteResult = service.movePasswordEntriesToRecycleBin(
-                        databaseId = keepassId,
-                        entries = listOf(entry)
-                    )
-                    if (deleteResult.isFailure) {
-                        Log.e("PasswordViewModel", "KeePass move to recycle bin failed: ${deleteResult.exceptionOrNull()?.message}")
-                        return@launch
-                    }
-                }
                 // 软删除：移动到回收站
                 val softDeletedEntry = entry.copy(
                     isDeleted = true,
@@ -1470,16 +1456,25 @@ class PasswordViewModel(
                     detail = "移入回收站"
                 )
                 Log.i("PasswordViewModel", "Delete moved to trash: id=${entry.id}")
-            } else {
-                if (service != null && keepassId != null) {
-                    val deleteResult = service.deletePasswordEntries(
-                        databaseId = keepassId,
-                        entries = listOf(entry)
-                    )
-                    if (deleteResult.isFailure) {
-                        Log.e("PasswordViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
-                        return@launch
+
+                if (keepassId != null) {
+                    viewModelScope.launch keepassDeleteSync@{
+                        if (keepassPasswordDeleteExecutor.delete(entry, useRecycleBin = true)) {
+                            Log.i("PasswordViewModel", "KeePass trash delete synced: id=${entry.id}")
+                            return@keepassDeleteSync
+                        }
+
+                        Log.e("PasswordViewModel", "KeePass trash delete failed, reverting local trash state: id=${entry.id}")
+                        repository.updatePasswordEntry(
+                            entry.copy(
+                                updatedAt = Date()
+                            )
+                        )
                     }
+                }
+            } else {
+                if (!keepassPasswordDeleteExecutor.delete(entry, useRecycleBin = false)) {
+                    return@launch
                 }
                 // 直接永久删除
                 repository.deletePasswordEntry(entry)
@@ -1670,10 +1665,10 @@ class PasswordViewModel(
     ): Result<Unit> {
         val databaseId = entry.keepassDatabaseId
             ?: return Result.failure(IllegalStateException("No KeePass database bound"))
-        val service = keepassService
-            ?: return Result.failure(IllegalStateException("KeePass service unavailable"))
+        val bridge = keepassBridge
+            ?: return Result.failure(IllegalStateException("KeePass bridge unavailable"))
 
-        return service.updatePasswordEntry(
+        return bridge.updateLegacyPasswordEntry(
             databaseId = databaseId,
             entry = entry.copy(keepassGroupPath = targetGroupPath),
             resolvePassword = { resolvePlainPasswordForKeePass(it.password) }
@@ -1682,24 +1677,24 @@ class PasswordViewModel(
 
     private suspend fun ensureKeePassArchiveGroupPath(databaseId: Long?): String? {
         val resolvedDatabaseId = databaseId ?: return null
-        val service = keepassService ?: return null
+        val bridge = keepassBridge ?: return null
 
         val rootPath = buildKeePassPathKey(null, MONICA_KEEPASS_ARCHIVE_ROOT_GROUP_NAME)
         val archivePath = buildKeePassPathKey(rootPath, MONICA_KEEPASS_ARCHIVE_GROUP_NAME)
 
-        var groups = service.listGroups(resolvedDatabaseId).getOrElse { return null }
+        var groups = bridge.listLegacyGroups(resolvedDatabaseId).getOrElse { return null }
 
         if (groups.none { it.path == rootPath }) {
-            val rootResult = service.createGroup(
+            val rootResult = bridge.createLegacyGroup(
                 databaseId = resolvedDatabaseId,
                 groupName = MONICA_KEEPASS_ARCHIVE_ROOT_GROUP_NAME
             )
             if (rootResult.isFailure) return null
-            groups = service.listGroups(resolvedDatabaseId).getOrElse { return null }
+            groups = bridge.listLegacyGroups(resolvedDatabaseId).getOrElse { return null }
         }
 
         if (groups.none { it.path == archivePath }) {
-            val archiveResult = service.createGroup(
+            val archiveResult = bridge.createLegacyGroup(
                 databaseId = resolvedDatabaseId,
                 groupName = MONICA_KEEPASS_ARCHIVE_GROUP_NAME,
                 parentPath = rootPath
@@ -1716,9 +1711,9 @@ class PasswordViewModel(
     ): String? {
         if (databaseId == null) return preferredPath
         if (preferredPath.isNullOrBlank()) return null
-        val service = keepassService ?: return null
+        val bridge = keepassBridge ?: return null
 
-        val groups = service.listGroups(databaseId).getOrNull() ?: return null
+        val groups = bridge.listLegacyGroups(databaseId).getOrNull() ?: return null
         return groups.firstOrNull { it.path == preferredPath }?.path
     }
 

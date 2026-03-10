@@ -84,6 +84,8 @@ import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.bitwarden.BitwardenVault
+import takagi.ru.monica.repository.KeePassCompatibilityBridge
+import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.ui.components.BankCardCard
 import takagi.ru.monica.ui.components.DocumentCard
 import takagi.ru.monica.ui.components.EmptyState
@@ -100,7 +102,6 @@ import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.KeePassGroupInfo
-import takagi.ru.monica.utils.KeePassKdbxService
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
 import takagi.ru.monica.utils.SavedCategoryFilterState
 import takagi.ru.monica.utils.SettingsManager
@@ -145,11 +146,13 @@ fun CardWalletScreen(
     val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList<Category>())
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
     val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
-    val keePassService = remember {
-        KeePassKdbxService(
-            context,
-            database.localKeePassDatabaseDao(),
-            securityManager
+    val keepassBridge = remember {
+        KeePassCompatibilityBridge(
+            KeePassWorkspaceRepository(
+                context,
+                database.localKeePassDatabaseDao(),
+                securityManager
+            )
         )
     }
     val keepassGroupFlows = remember {
@@ -162,7 +165,7 @@ fun CardWalletScreen(
             }
             if (flow.value.isEmpty()) {
                 scope.launch {
-                    flow.value = keePassService.listGroups(databaseId).getOrDefault(emptyList())
+                    flow.value = keepassBridge.listLegacyGroups(databaseId).getOrDefault(emptyList())
                 }
             }
             flow

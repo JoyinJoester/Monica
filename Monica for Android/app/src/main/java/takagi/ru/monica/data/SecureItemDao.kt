@@ -36,6 +36,16 @@ interface SecureItemDao {
     @Query("SELECT * FROM secure_items WHERE id = :id")
     suspend fun getItemById(id: Long): SecureItem?
 
+    @Query(
+        """
+        SELECT * FROM secure_items
+        WHERE keepass_database_id = :databaseId
+          AND keepass_entry_uuid = :entryUuid
+        LIMIT 1
+        """
+    )
+    suspend fun findByKeePassEntryUuid(databaseId: Long, entryUuid: String): SecureItem?
+
     // 监听指定ID的项目变化
     @Query("SELECT * FROM secure_items WHERE id = :id")
     fun observeItemById(id: Long): Flow<SecureItem?>

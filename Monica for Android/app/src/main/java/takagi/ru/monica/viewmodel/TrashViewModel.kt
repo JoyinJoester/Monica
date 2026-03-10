@@ -11,10 +11,12 @@ import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
+import takagi.ru.monica.repository.KeePassCompatibilityBridge
+import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.security.SecurityManager
-import takagi.ru.monica.utils.KeePassKdbxService
+import takagi.ru.monica.utils.KeePassRestoreTarget
 import takagi.ru.monica.utils.SettingsManager
 import java.util.Date
 import java.util.concurrent.TimeUnit
@@ -51,7 +53,9 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
     private val secureItemRepository = SecureItemRepository(database.secureItemDao())
     private val bitwardenRepository = BitwardenRepository.getInstance(application)
     private val securityManager = SecurityManager(application)
-    private val keepassService = KeePassKdbxService(application, database.localKeePassDatabaseDao(), securityManager)
+    private val keepassBridge = KeePassCompatibilityBridge(
+        KeePassWorkspaceRepository(application, database.localKeePassDatabaseDao(), securityManager)
+    )
     private val settingsManager = SettingsManager(application)
     
     // 回收站设置
@@ -246,34 +250,26 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
                     onResult(false)
                     return@launch
                 }
-                val keepassRestorePath = restoreKeepassIfNeeded(item.originalData).getOrElse {
-                    onResult(false)
+                applyLocalRestore(item.originalData)
+                onResult(true)
+
+                if (!needsKeepassRestore(item.originalData)) {
                     return@launch
                 }
-                when (item.originalData) {
-                    is PasswordEntry -> {
-                        val restoredPath = if (item.originalData.keepassDatabaseId != null) {
-                            keepassRestorePath
-                        } else {
-                            item.originalData.keepassGroupPath
-                        }
-                        val restored = buildRestoredPasswordEntry(item.originalData, restoredPath)
-                        database.passwordEntryDao().update(restored)
-                    }
-                    is SecureItem -> {
-                        val restoredPath = if (item.originalData.keepassDatabaseId != null) {
-                            keepassRestorePath
-                        } else {
-                            item.originalData.keepassGroupPath
-                        }
-                        val restored = buildRestoredSecureItem(item.originalData, restoredPath)
-                        database.secureItemDao().update(restored)
-                    }
-                }
-                onResult(true)
             } catch (e: Exception) {
                 android.util.Log.e("TrashViewModel", "Failed to restore item", e)
                 onResult(false)
+                return@launch
+            }
+
+            viewModelScope.launch keepassRestoreSync@{
+                val keepassRestoreTarget = restoreKeepassIfNeeded(item.originalData).getOrElse {
+                    android.util.Log.e("TrashViewModel", "KeePass restore failed for item id=${item.id}, rolling back local restore", it)
+                    rollbackLocalRestore(item.originalData)
+                    return@keepassRestoreSync
+                }
+                applyLocalRestore(item.originalData, keepassRestoreTarget)
+                android.util.Log.i("TrashViewModel", "KeePass restore synced: id=${item.id}, type=${item.itemType}")
             }
         }
     }
@@ -301,11 +297,13 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun restoreCategory(category: TrashCategory, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
-            try {
-                val queuedPasswords = mutableListOf<PasswordEntry>()
-                val queuedSecureItems = mutableListOf<SecureItem>()
-                val failedItemIds = mutableSetOf<Long>()
+            val queuedPasswords = mutableListOf<PasswordEntry>()
+            val queuedSecureItems = mutableListOf<SecureItem>()
+            val failedItemIds = mutableSetOf<Long>()
+            var keepassPasswords: List<PasswordEntry> = emptyList()
+            var keepassSecureItems: List<SecureItem> = emptyList()
 
+            try {
                 category.items.forEach { item ->
                     if (!queueRemoteRestoreIfNeeded(item.originalData)) {
                         failedItemIds += item.id
@@ -317,86 +315,55 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                val keepassBatchResult = restoreKeepassBatchIfNeeded(
-                    passwords = queuedPasswords,
-                    secureItems = queuedSecureItems
-                )
-                failedItemIds += keepassBatchResult.failedIds
-
-                val restoredPasswordUpdates = mutableListOf<PasswordEntry>()
-                queuedPasswords.forEach { entry ->
-                    if (entry.id in failedItemIds) return@forEach
-                    val restoredPath = if (entry.keepassDatabaseId != null) {
-                        keepassBatchResult.passwordGroupPaths[entry.id]
-                    } else {
-                        entry.keepassGroupPath
-                    }
-                    if (entry.keepassDatabaseId != null && !keepassBatchResult.passwordGroupPaths.containsKey(entry.id)) {
-                        failedItemIds += entry.id
-                        return@forEach
-                    }
-                    restoredPasswordUpdates += buildRestoredPasswordEntry(entry, restoredPath)
-                }
-
-                if (restoredPasswordUpdates.isNotEmpty()) {
-                    runCatching {
-                        database.passwordEntryDao().updateAll(restoredPasswordUpdates)
-                    }.onFailure { batchError ->
-                        android.util.Log.e(
-                            "TrashViewModel",
-                            "Batch update restored passwords failed, fallback to per-item update",
-                            batchError
-                        )
-                        restoredPasswordUpdates.forEach { restored ->
-                            runCatching {
-                                database.passwordEntryDao().update(restored)
-                            }.onFailure {
-                                android.util.Log.e("TrashViewModel", "Failed to update restored password id=${restored.id}", it)
-                                failedItemIds += restored.id
-                            }
-                        }
-                    }
-                }
-
-                val restoredSecureItemUpdates = mutableListOf<SecureItem>()
-                queuedSecureItems.forEach { item ->
-                    if (item.id in failedItemIds) return@forEach
-                    val restoredPath = if (item.keepassDatabaseId != null) {
-                        keepassBatchResult.secureItemGroupPaths[item.id]
-                    } else {
-                        item.keepassGroupPath
-                    }
-                    if (item.keepassDatabaseId != null && !keepassBatchResult.secureItemGroupPaths.containsKey(item.id)) {
-                        failedItemIds += item.id
-                        return@forEach
-                    }
-                    restoredSecureItemUpdates += buildRestoredSecureItem(item, restoredPath)
-                }
-
-                if (restoredSecureItemUpdates.isNotEmpty()) {
-                    runCatching {
-                        database.secureItemDao().updateAll(restoredSecureItemUpdates)
-                    }.onFailure { batchError ->
-                        android.util.Log.e(
-                            "TrashViewModel",
-                            "Batch update restored secure items failed, fallback to per-item update",
-                            batchError
-                        )
-                        restoredSecureItemUpdates.forEach { restored ->
-                            runCatching {
-                                database.secureItemDao().update(restored)
-                            }.onFailure {
-                                android.util.Log.e("TrashViewModel", "Failed to update restored secure item id=${restored.id}", it)
-                                failedItemIds += restored.id
-                            }
-                        }
-                    }
-                }
+                queuedPasswords
+                    .filterNot { it.id in failedItemIds }
+                    .forEach { applyLocalRestore(it) }
+                queuedSecureItems
+                    .filterNot { it.id in failedItemIds }
+                    .forEach { applyLocalRestore(it) }
 
                 onResult(failedItemIds.isEmpty())
+
+                keepassPasswords = queuedPasswords.filterNot { it.id in failedItemIds || it.keepassDatabaseId == null }
+                keepassSecureItems = queuedSecureItems.filterNot { it.id in failedItemIds || it.keepassDatabaseId == null }
+                if (keepassPasswords.isEmpty() && keepassSecureItems.isEmpty()) {
+                    return@launch
+                }
             } catch (e: Exception) {
                 android.util.Log.e("TrashViewModel", "Failed to restore category", e)
                 onResult(false)
+                return@launch
+            }
+
+            viewModelScope.launch keepassBatchRestoreSync@{
+                val keepassBatchResult = restoreKeepassBatchIfNeeded(
+                    passwords = keepassPasswords,
+                    secureItems = keepassSecureItems
+                )
+                keepassBatchResult.failedIds.forEach { failedId ->
+                    queuedPasswords.firstOrNull { it.id == failedId }?.let { failedEntry ->
+                        android.util.Log.e("TrashViewModel", "KeePass restore failed for password id=$failedId, rolling back local restore")
+                        rollbackLocalRestore(failedEntry)
+                    }
+                    queuedSecureItems.firstOrNull { it.id == failedId }?.let { failedItem ->
+                        android.util.Log.e("TrashViewModel", "KeePass restore failed for secure item id=$failedId, rolling back local restore")
+                        rollbackLocalRestore(failedItem)
+                    }
+                }
+
+                keepassPasswords.forEach { entry ->
+                    if (entry.id in keepassBatchResult.failedIds) return@forEach
+                    val restoreTarget = keepassBatchResult.passwordTargets[entry.id]
+                    applyLocalRestore(entry, restoreTarget)
+                    android.util.Log.i("TrashViewModel", "KeePass restore synced: id=${entry.id}, type=${ItemType.PASSWORD}")
+                }
+
+                keepassSecureItems.forEach { item ->
+                    if (item.id in keepassBatchResult.failedIds) return@forEach
+                    val restoreTarget = keepassBatchResult.secureItemTargets[item.id]
+                    applyLocalRestore(item, restoreTarget)
+                    android.util.Log.i("TrashViewModel", "KeePass restore synced: id=${item.id}, type=${item.itemType}")
+                }
             }
         }
     }
@@ -463,39 +430,72 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun buildRestoredPasswordEntry(entry: PasswordEntry, restoredKeepassGroupPath: String?): PasswordEntry {
+    private fun buildRestoredPasswordEntry(entry: PasswordEntry, restoreTarget: KeePassRestoreTarget?): PasswordEntry {
         return entry.copy(
             isDeleted = false,
             deletedAt = null,
             updatedAt = Date(),
             bitwardenLocalModified = false,
-            keepassGroupPath = restoredKeepassGroupPath
+            keepassGroupPath = restoreTarget?.groupPath,
+            keepassGroupUuid = restoreTarget?.groupUuid
         )
     }
 
-    private fun buildRestoredSecureItem(item: SecureItem, restoredKeepassGroupPath: String?): SecureItem {
+    private fun buildRestoredSecureItem(item: SecureItem, restoreTarget: KeePassRestoreTarget?): SecureItem {
         return item.copy(
             isDeleted = false,
             deletedAt = null,
             updatedAt = Date(),
             bitwardenLocalModified = false,
-            keepassGroupPath = restoredKeepassGroupPath
+            keepassGroupPath = restoreTarget?.groupPath,
+            keepassGroupUuid = restoreTarget?.groupUuid
         )
     }
 
-    private suspend fun restoreKeepassIfNeeded(data: Any): Result<String?> {
+    private suspend fun applyLocalRestore(data: Any, restoreTarget: KeePassRestoreTarget? = null) {
+        when (data) {
+            is PasswordEntry -> {
+                val resolvedTarget = restoreTarget ?: KeePassRestoreTarget(data.keepassGroupPath, data.keepassGroupUuid)
+                database.passwordEntryDao().update(buildRestoredPasswordEntry(data, resolvedTarget))
+            }
+            is SecureItem -> {
+                val resolvedTarget = restoreTarget ?: KeePassRestoreTarget(data.keepassGroupPath, data.keepassGroupUuid)
+                database.secureItemDao().update(buildRestoredSecureItem(data, resolvedTarget))
+            }
+        }
+    }
+
+    private suspend fun rollbackLocalRestore(data: Any) {
+        when (data) {
+            is PasswordEntry -> database.passwordEntryDao().update(data.copy(updatedAt = Date()))
+            is SecureItem -> database.secureItemDao().update(data.copy(updatedAt = Date()))
+        }
+    }
+
+    private fun needsKeepassRestore(data: Any): Boolean = when (data) {
+        is PasswordEntry -> data.keepassDatabaseId != null
+        is SecureItem -> data.keepassDatabaseId != null
+        else -> false
+    }
+
+    private suspend fun restoreKeepassIfNeeded(data: Any): Result<KeePassRestoreTarget?> {
         return when (data) {
             is PasswordEntry -> {
-                val keepassId = data.keepassDatabaseId ?: return Result.success(data.keepassGroupPath)
-                val restoredGroupPath = keepassService.resolveRestoreGroupPathForPassword(
+                val keepassId = data.keepassDatabaseId
+                if (keepassId == null) {
+                    val localTarget = KeePassRestoreTarget(data.keepassGroupPath, data.keepassGroupUuid)
+                    return Result.success(localTarget)
+                }
+                val restoreTarget = keepassBridge.resolveLegacyRestoreTargetForPassword(
                     databaseId = keepassId,
-                    target = data.copy(keepassDatabaseId = keepassId)
+                    entry = data.copy(keepassDatabaseId = keepassId)
                 ).getOrElse { return Result.failure(it) }
-                val restoredForKeepass = buildRestoredPasswordEntry(data, restoredGroupPath).copy(
+                val restoredForKeepass = buildRestoredPasswordEntry(data, restoreTarget).copy(
                     keepassDatabaseId = keepassId,
-                    keepassGroupPath = restoredGroupPath
+                    keepassGroupPath = restoreTarget.groupPath,
+                    keepassGroupUuid = restoreTarget.groupUuid
                 )
-                val addResult = keepassService.addOrUpdatePasswordEntries(
+                val addResult = keepassBridge.upsertLegacyPasswordEntries(
                     databaseId = keepassId,
                     entries = listOf(restoredForKeepass),
                     resolvePassword = { entry ->
@@ -504,32 +504,37 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 )
                 if (addResult.isFailure) return Result.failure(addResult.exceptionOrNull() ?: IllegalStateException("KeePass add restore failed"))
-                Result.success(restoredGroupPath)
+                Result.success(restoreTarget)
             }
             is SecureItem -> {
-                val keepassId = data.keepassDatabaseId ?: return Result.success(data.keepassGroupPath)
-                val restoredGroupPath = keepassService.resolveRestoreGroupPathForSecureItem(
+                val keepassId = data.keepassDatabaseId
+                if (keepassId == null) {
+                    val localTarget = KeePassRestoreTarget(data.keepassGroupPath, data.keepassGroupUuid)
+                    return Result.success(localTarget)
+                }
+                val restoreTarget = keepassBridge.resolveLegacyRestoreTargetForSecureItem(
                     databaseId = keepassId,
-                    target = data.copy(keepassDatabaseId = keepassId)
+                    item = data.copy(keepassDatabaseId = keepassId)
                 ).getOrElse { return Result.failure(it) }
-                val restoredForKeepass = buildRestoredSecureItem(data, restoredGroupPath).copy(
+                val restoredForKeepass = buildRestoredSecureItem(data, restoreTarget).copy(
                     keepassDatabaseId = keepassId,
-                    keepassGroupPath = restoredGroupPath
+                    keepassGroupPath = restoreTarget.groupPath,
+                    keepassGroupUuid = restoreTarget.groupUuid
                 )
-                val addResult = keepassService.addOrUpdateSecureItems(
-                    keepassId,
-                    listOf(restoredForKeepass)
+                val addResult = keepassBridge.upsertLegacySecureItems(
+                    databaseId = keepassId,
+                    items = listOf(restoredForKeepass)
                 )
                 if (addResult.isFailure) return Result.failure(addResult.exceptionOrNull() ?: IllegalStateException("KeePass add restore failed"))
-                Result.success(restoredGroupPath)
+                Result.success(restoreTarget)
             }
             else -> Result.success(null)
         }
     }
 
     private data class KeepassBatchRestoreResult(
-        val passwordGroupPaths: Map<Long, String?>,
-        val secureItemGroupPaths: Map<Long, String?>,
+        val passwordTargets: Map<Long, KeePassRestoreTarget?>,
+        val secureItemTargets: Map<Long, KeePassRestoreTarget?>,
         val failedIds: Set<Long>
     )
 
@@ -537,13 +542,17 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
         passwords: List<PasswordEntry>,
         secureItems: List<SecureItem>
     ): KeepassBatchRestoreResult {
-        val restoredPasswordPaths = mutableMapOf<Long, String?>()
-        val restoredSecurePaths = mutableMapOf<Long, String?>()
+        val restoredPasswordTargets = mutableMapOf<Long, KeePassRestoreTarget?>()
+        val restoredSecureTargets = mutableMapOf<Long, KeePassRestoreTarget?>()
         val failedIds = mutableSetOf<Long>()
 
         // Local-only items are considered restored in place.
-        passwords.filter { it.keepassDatabaseId == null }.forEach { restoredPasswordPaths[it.id] = it.keepassGroupPath }
-        secureItems.filter { it.keepassDatabaseId == null }.forEach { restoredSecurePaths[it.id] = it.keepassGroupPath }
+        passwords.filter { it.keepassDatabaseId == null }.forEach {
+            restoredPasswordTargets[it.id] = KeePassRestoreTarget(it.keepassGroupPath, it.keepassGroupUuid)
+        }
+        secureItems.filter { it.keepassDatabaseId == null }.forEach {
+            restoredSecureTargets[it.id] = KeePassRestoreTarget(it.keepassGroupPath, it.keepassGroupUuid)
+        }
 
         val groupedPasswords = passwords
             .filter { it.keepassDatabaseId != null }
@@ -551,9 +560,9 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
         groupedPasswords.forEach { (databaseId, entries) ->
             val restoredEntries = mutableListOf<PasswordEntry>()
             entries.forEach entryLoop@{ entry ->
-                val restorePath = keepassService.resolveRestoreGroupPathForPassword(
+                val restoreTarget = keepassBridge.resolveLegacyRestoreTargetForPassword(
                     databaseId = databaseId,
-                    target = entry.copy(keepassDatabaseId = databaseId)
+                    entry = entry.copy(keepassDatabaseId = databaseId)
                 ).getOrElse {
                     android.util.Log.e(
                         "TrashViewModel",
@@ -563,15 +572,16 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
                     failedIds += entry.id
                     return@entryLoop
                 }
-                restoredEntries += buildRestoredPasswordEntry(entry, restorePath).copy(
+                restoredEntries += buildRestoredPasswordEntry(entry, restoreTarget).copy(
                     keepassDatabaseId = databaseId,
-                    keepassGroupPath = restorePath
+                    keepassGroupPath = restoreTarget.groupPath,
+                    keepassGroupUuid = restoreTarget.groupUuid
                 )
             }
 
             if (restoredEntries.isEmpty()) return@forEach
 
-            val addResult = keepassService.addOrUpdatePasswordEntries(
+            val addResult = keepassBridge.upsertLegacyPasswordEntries(
                 databaseId = databaseId,
                 entries = restoredEntries,
                 resolvePassword = { entry ->
@@ -590,7 +600,10 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             restoredEntries.forEach { restored ->
-                restoredPasswordPaths[restored.id] = restored.keepassGroupPath
+                restoredPasswordTargets[restored.id] = KeePassRestoreTarget(
+                    restored.keepassGroupPath,
+                    restored.keepassGroupUuid
+                )
             }
         }
 
@@ -600,9 +613,9 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
         groupedSecureItems.forEach { (databaseId, items) ->
             val restoredItems = mutableListOf<SecureItem>()
             items.forEach itemLoop@{ item ->
-                val restorePath = keepassService.resolveRestoreGroupPathForSecureItem(
+                val restoreTarget = keepassBridge.resolveLegacyRestoreTargetForSecureItem(
                     databaseId = databaseId,
-                    target = item.copy(keepassDatabaseId = databaseId)
+                    item = item.copy(keepassDatabaseId = databaseId)
                 ).getOrElse {
                     android.util.Log.e(
                         "TrashViewModel",
@@ -612,15 +625,16 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
                     failedIds += item.id
                     return@itemLoop
                 }
-                restoredItems += buildRestoredSecureItem(item, restorePath).copy(
+                restoredItems += buildRestoredSecureItem(item, restoreTarget).copy(
                     keepassDatabaseId = databaseId,
-                    keepassGroupPath = restorePath
+                    keepassGroupPath = restoreTarget.groupPath,
+                    keepassGroupUuid = restoreTarget.groupUuid
                 )
             }
 
             if (restoredItems.isEmpty()) return@forEach
 
-            val addResult = keepassService.addOrUpdateSecureItems(
+            val addResult = keepassBridge.upsertLegacySecureItems(
                 databaseId = databaseId,
                 items = restoredItems
             )
@@ -635,13 +649,16 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             restoredItems.forEach { restored ->
-                restoredSecurePaths[restored.id] = restored.keepassGroupPath
+                restoredSecureTargets[restored.id] = KeePassRestoreTarget(
+                    restored.keepassGroupPath,
+                    restored.keepassGroupUuid
+                )
             }
         }
 
         return KeepassBatchRestoreResult(
-            passwordGroupPaths = restoredPasswordPaths,
-            secureItemGroupPaths = restoredSecurePaths,
+            passwordTargets = restoredPasswordTargets,
+            secureItemTargets = restoredSecureTargets,
             failedIds = failedIds
         )
     }
@@ -650,16 +667,16 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
         return when (data) {
             is PasswordEntry -> {
                 val keepassId = data.keepassDatabaseId ?: return true
-                keepassService.deletePasswordEntries(
-                    keepassId,
-                    listOf(data.copy(keepassDatabaseId = keepassId))
+                keepassBridge.deleteLegacyPasswordEntries(
+                    databaseId = keepassId,
+                    entries = listOf(data.copy(keepassDatabaseId = keepassId))
                 ).isSuccess
             }
             is SecureItem -> {
                 val keepassId = data.keepassDatabaseId ?: return true
-                keepassService.deleteSecureItems(
-                    keepassId,
-                    listOf(data.copy(keepassDatabaseId = keepassId))
+                keepassBridge.deleteLegacySecureItems(
+                    databaseId = keepassId,
+                    items = listOf(data.copy(keepassDatabaseId = keepassId))
                 ).isSuccess
             }
             else -> true

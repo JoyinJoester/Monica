@@ -6,6 +6,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import takagi.ru.monica.keepass.KeePassSecureItemCreateExecutor
+import takagi.ru.monica.keepass.KeePassSecureItemDeleteExecutor
+import takagi.ru.monica.keepass.KeePassSecureItemUpdateExecutor
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
@@ -13,6 +16,8 @@ import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
 import takagi.ru.monica.notes.domain.NoteContentCodec
+import takagi.ru.monica.repository.KeePassCompatibilityBridge
+import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.util.ImageManager
@@ -20,10 +25,12 @@ import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.utils.FieldChange
 import takagi.ru.monica.utils.KeePassKdbxService
 import java.util.Date
+import java.util.UUID
 
 data class NoteDraftStorageTarget(
     val categoryId: Long? = null,
     val keepassDatabaseId: Long? = null,
+    val keepassGroupPath: String? = null,
     val bitwardenVaultId: Long? = null,
     val bitwardenFolderId: String? = null
 )
@@ -39,11 +46,20 @@ class NoteViewModel(
         private const val TAG = "NoteViewModel"
     }
 
-    private val keepassService = if (context != null && localKeePassDatabaseDao != null && securityManager != null) {
-        KeePassKdbxService(context.applicationContext, localKeePassDatabaseDao, securityManager)
+    private val keepassBridge = if (context != null && localKeePassDatabaseDao != null && securityManager != null) {
+        KeePassCompatibilityBridge(
+            KeePassWorkspaceRepository(
+                context = context.applicationContext,
+                dao = localKeePassDatabaseDao,
+                securityManager = securityManager
+            )
+        )
     } else {
         null
     }
+    private val keepassSecureItemCreateExecutor = KeePassSecureItemCreateExecutor(keepassBridge)
+    private val keepassSecureItemDeleteExecutor = KeePassSecureItemDeleteExecutor(keepassBridge)
+    private val keepassSecureItemUpdateExecutor = KeePassSecureItemUpdateExecutor(keepassBridge)
     private val imageManager = context?.let { ImageManager(it.applicationContext) }
 
     private val bitwardenRepository = context?.let { BitwardenRepository.getInstance(it.applicationContext) }
@@ -53,6 +69,12 @@ class NoteViewModel(
         val revisionDate: String?,
         val localModified: Boolean,
         val syncStatus: String
+    )
+
+    private data class KeePassMutationIdentity(
+        val groupPath: String?,
+        val entryUuid: String?,
+        val groupUuid: String?
     )
     
     private val _isLoading = MutableStateFlow(false)
@@ -75,20 +97,23 @@ class NoteViewModel(
 
     fun syncKeePassNotes(databaseId: Long) {
         viewModelScope.launch {
-            val snapshots = keepassService
-                ?.readSecureItems(databaseId, setOf(ItemType.NOTE))
+            val snapshots = keepassBridge
+                ?.readLegacySecureItems(databaseId, setOf(ItemType.NOTE))
                 ?.getOrNull()
                 ?: return@launch
 
             val existingNotes = repository.getItemsByType(ItemType.NOTE).first()
             snapshots.forEach { snapshot ->
                 val incoming = snapshot.item
+                val existingByUuid = incoming.keepassEntryUuid
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { repository.getItemByKeePassUuid(databaseId, it) }
                 val existingBySource = snapshot.sourceMonicaId
                     ?.takeIf { it > 0 }
                     ?.let { sourceId -> repository.getItemById(sourceId) }
                     ?.takeIf { it.itemType == ItemType.NOTE }
 
-                val existing = existingBySource ?: existingNotes.firstOrNull {
+                val existing = existingByUuid ?: existingBySource ?: existingNotes.firstOrNull {
                     it.itemType == ItemType.NOTE &&
                         it.keepassDatabaseId == databaseId &&
                         it.keepassGroupPath == incoming.keepassGroupPath &&
@@ -108,6 +133,8 @@ class NoteViewModel(
                             imagePaths = incoming.imagePaths,
                             keepassDatabaseId = incoming.keepassDatabaseId,
                             keepassGroupPath = incoming.keepassGroupPath,
+                            keepassEntryUuid = incoming.keepassEntryUuid,
+                            keepassGroupUuid = incoming.keepassGroupUuid,
                             isDeleted = isInRecycleBin,
                             deletedAt = if (isInRecycleBin) (existing.deletedAt ?: Date()) else null,
                             updatedAt = Date()
@@ -179,6 +206,11 @@ class NoteViewModel(
                 isMarkdown = isMarkdown
             )
             val resolvedTitle = NoteContentCodec.resolveTitle(title = title, content = content)
+            val keepassIdentity = resolveKeePassMutationIdentity(
+                existingItem = null,
+                targetDatabaseId = keepassDatabaseId,
+                requestedGroupPath = keepassGroupPath
+            )
             
             val item = SecureItem(
                 id = 0,
@@ -190,20 +222,20 @@ class NoteViewModel(
                 imagePaths = imagePaths,
                 categoryId = categoryId,
                 keepassDatabaseId = keepassDatabaseId,
-                keepassGroupPath = keepassGroupPath,
+                keepassGroupPath = keepassIdentity.groupPath,
+                keepassEntryUuid = keepassIdentity.entryUuid,
+                keepassGroupUuid = keepassIdentity.groupUuid,
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenFolderId = bitwardenFolderId,
                 syncStatus = if (bitwardenVaultId != null) "PENDING" else "NONE",
                 createdAt = Date(),
                 updatedAt = Date()
             )
-            val newId = repository.insertItem(item)
-            if (keepassDatabaseId != null) {
-                val syncResult = keepassService?.updateSecureItem(keepassDatabaseId, item.copy(id = newId))
-                if (syncResult?.isFailure == true) {
-                    Log.e("NoteViewModel", "KeePass write failed: ${syncResult.exceptionOrNull()?.message}")
-                }
-            }
+            val newId = keepassSecureItemCreateExecutor.create(
+                item = item,
+                insertItem = repository::insertItem,
+                rollbackItem = repository::deleteItemById
+            ) ?: return@launch
             
             // 记录创建操作
             OperationLogger.logCreate(
@@ -251,6 +283,11 @@ class NoteViewModel(
                 isMarkdown = isMarkdown
             )
             val resolvedTitle = NoteContentCodec.resolveTitle(title = title, content = content)
+            val keepassIdentity = resolveKeePassMutationIdentity(
+                existingItem = existingItem,
+                targetDatabaseId = keepassDatabaseId,
+                requestedGroupPath = keepassGroupPath
+            )
             
             val item = SecureItem(
                 id = id,
@@ -262,7 +299,9 @@ class NoteViewModel(
                 imagePaths = imagePaths,
                 categoryId = categoryId,
                 keepassDatabaseId = keepassDatabaseId,
-                keepassGroupPath = keepassGroupPath ?: existingItem?.keepassGroupPath,
+                keepassGroupPath = keepassIdentity.groupPath,
+                keepassEntryUuid = keepassIdentity.entryUuid,
+                keepassGroupUuid = keepassIdentity.groupUuid,
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenCipherId = transition.cipherId,
                 bitwardenFolderId = bitwardenFolderId,
@@ -277,21 +316,7 @@ class NoteViewModel(
                 ?.let { extractImageRefs(it) - extractImageRefs(item) }
                 .orEmpty()
             cleanupUnreferencedNoteImagesInternal(removedImageIds)
-            val oldKeepassId = existingItem?.keepassDatabaseId
-            val newKeepassId = item.keepassDatabaseId
-            if (oldKeepassId != null && oldKeepassId != newKeepassId) {
-                val oldItem = requireNotNull(existingItem)
-                val deleteResult = keepassService?.deleteSecureItems(oldKeepassId, listOf(oldItem))
-                if (deleteResult?.isFailure == true) {
-                    Log.e("NoteViewModel", "KeePass delete failed: ${deleteResult.exceptionOrNull()?.message}")
-                }
-            }
-            if (newKeepassId != null) {
-                val updateResult = keepassService?.updateSecureItem(newKeepassId, item)
-                if (updateResult?.isFailure == true) {
-                    Log.e("NoteViewModel", "KeePass update failed: ${updateResult.exceptionOrNull()?.message}")
-                }
-            }
+            keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = existingItem, updatedItem = item)
             
             // 记录更新操作 - 始终记录，即使没有检测到字段变更
             val changes = mutableListOf<FieldChange>()
@@ -335,10 +360,18 @@ class NoteViewModel(
             abortOnQueueFailure = true
         ) ?: return false
 
+        val keepassIdentity = resolveKeePassMutationIdentity(
+            existingItem = item,
+            targetDatabaseId = keepassDatabaseId,
+            requestedGroupPath = keepassGroupPath
+        )
+
         val updated = item.copy(
             categoryId = categoryId,
             keepassDatabaseId = keepassDatabaseId,
-            keepassGroupPath = keepassGroupPath,
+            keepassGroupPath = keepassIdentity.groupPath,
+            keepassEntryUuid = keepassIdentity.entryUuid,
+            keepassGroupUuid = keepassIdentity.groupUuid,
             bitwardenVaultId = bitwardenVaultId,
             bitwardenFolderId = bitwardenFolderId,
             bitwardenCipherId = transition.cipherId,
@@ -348,7 +381,36 @@ class NoteViewModel(
             updatedAt = Date()
         )
         repository.updateItem(updated)
+        keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = item, updatedItem = updated)
         return true
+    }
+
+    private fun resolveKeePassMutationIdentity(
+        existingItem: SecureItem?,
+        targetDatabaseId: Long?,
+        requestedGroupPath: String?
+    ): KeePassMutationIdentity {
+        if (targetDatabaseId == null) {
+            return KeePassMutationIdentity(
+                groupPath = null,
+                entryUuid = null,
+                groupUuid = null
+            )
+        }
+
+        val sameDatabase = existingItem?.keepassDatabaseId == targetDatabaseId
+        val resolvedGroupPath = requestedGroupPath ?: if (sameDatabase) existingItem?.keepassGroupPath else null
+        val groupUnchanged = sameDatabase && resolvedGroupPath == existingItem?.keepassGroupPath
+
+        return KeePassMutationIdentity(
+            groupPath = resolvedGroupPath,
+            entryUuid = if (sameDatabase) {
+                existingItem?.keepassEntryUuid ?: UUID.randomUUID().toString()
+            } else {
+                UUID.randomUUID().toString()
+            },
+            groupUuid = if (groupUnchanged) existingItem?.keepassGroupUuid else null
+        )
     }
     
     // 删除笔记
@@ -372,15 +434,9 @@ class NoteViewModel(
                 }
             }
 
-            if (item.keepassDatabaseId != null) {
-                val keepassResult = if (softDelete || isBitwardenCipher) {
-                    keepassService?.moveSecureItemsToRecycleBin(item.keepassDatabaseId, listOf(item))
-                } else {
-                    keepassService?.deleteSecureItems(item.keepassDatabaseId, listOf(item))
-                }
-                if (keepassResult?.isFailure == true) {
-                    val action = if (softDelete || isBitwardenCipher) "move to recycle bin" else "delete"
-                    Log.e("NoteViewModel", "KeePass $action failed: ${keepassResult.exceptionOrNull()?.message}")
+            if (!softDelete || isBitwardenCipher) {
+                if (!keepassSecureItemDeleteExecutor.delete(item, useRecycleBin = softDelete || isBitwardenCipher)) {
+                    Log.e("NoteViewModel", "KeePass delete failed for note id=${item.id}")
                     return@launch
                 }
             }
@@ -413,6 +469,18 @@ class NoteViewModel(
                     itemTitle = item.title,
                     detail = "移入回收站"
                 )
+
+                if (!isBitwardenCipher && item.keepassDatabaseId != null) {
+                    viewModelScope.launch keepassDeleteSync@{
+                        if (keepassSecureItemDeleteExecutor.delete(item, useRecycleBin = true)) {
+                            Log.i(TAG, "KeePass trash delete synced for note id=${item.id}")
+                            return@keepassDeleteSync
+                        }
+
+                        Log.e(TAG, "KeePass trash delete failed, reverting local trash state for note id=${item.id}")
+                        repository.updateItem(item.copy(updatedAt = Date()))
+                    }
+                }
             } else {
                 // 永久删除
                 OperationLogger.logDelete(
@@ -448,15 +516,9 @@ class NoteViewModel(
                     }
                 }
 
-                if (item.keepassDatabaseId != null) {
-                    val keepassResult = if (softDelete || isBitwardenCipher) {
-                        keepassService?.moveSecureItemsToRecycleBin(item.keepassDatabaseId, listOf(item))
-                    } else {
-                        keepassService?.deleteSecureItems(item.keepassDatabaseId, listOf(item))
-                    }
-                    if (keepassResult?.isFailure == true) {
-                        val action = if (softDelete || isBitwardenCipher) "move to recycle bin" else "delete"
-                        Log.e("NoteViewModel", "KeePass $action failed: ${keepassResult.exceptionOrNull()?.message}")
+                if (!softDelete || isBitwardenCipher) {
+                    if (!keepassSecureItemDeleteExecutor.delete(item, useRecycleBin = softDelete || isBitwardenCipher)) {
+                        Log.e("NoteViewModel", "KeePass delete failed for note id=${item.id}")
                         return@forEach
                     }
                 }
@@ -488,6 +550,18 @@ class NoteViewModel(
                         itemTitle = item.title,
                         detail = "移入回收站"
                     )
+
+                    if (!isBitwardenCipher && item.keepassDatabaseId != null) {
+                        viewModelScope.launch keepassDeleteSync@{
+                            if (keepassSecureItemDeleteExecutor.delete(item, useRecycleBin = true)) {
+                                Log.i(TAG, "KeePass trash delete synced for note id=${item.id}")
+                                return@keepassDeleteSync
+                            }
+
+                            Log.e(TAG, "KeePass trash delete failed, reverting local trash state for note id=${item.id}")
+                            repository.updateItem(item.copy(updatedAt = Date()))
+                        }
+                    }
                 } else {
                     // 永久删除
                     OperationLogger.logDelete(

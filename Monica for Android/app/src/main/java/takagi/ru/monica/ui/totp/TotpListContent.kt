@@ -102,6 +102,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import takagi.ru.monica.R
+import takagi.ru.monica.repository.KeePassCompatibilityBridge
+import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.model.PasskeyBindingCodec
@@ -219,11 +221,13 @@ fun TotpListContent(
     val scope = rememberCoroutineScope()
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
     val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
-    val keePassService = remember {
-        takagi.ru.monica.utils.KeePassKdbxService(
-            context,
-            database.localKeePassDatabaseDao(),
-            SecurityManager(context)
+    val keepassBridge = remember {
+        KeePassCompatibilityBridge(
+            KeePassWorkspaceRepository(
+                context,
+                database.localKeePassDatabaseDao(),
+                SecurityManager(context)
+            )
         )
     }
     val keepassGroupFlows = remember {
@@ -236,7 +240,7 @@ fun TotpListContent(
             }
             if (flow.value.isEmpty()) {
                 scope.launch {
-                    flow.value = keePassService.listGroups(databaseId).getOrDefault(emptyList())
+                    flow.value = keepassBridge.listLegacyGroups(databaseId).getOrDefault(emptyList())
                 }
             }
             flow
@@ -701,7 +705,7 @@ fun TotpListContent(
             },
             onCreateKeePassGroup = { databaseId, parentPath, name ->
                 scope.launch {
-                    val result = keePassService.createGroup(
+                    val result = keepassBridge.createLegacyGroup(
                         databaseId = databaseId,
                         groupName = name,
                         parentPath = parentPath
@@ -710,7 +714,7 @@ fun TotpListContent(
                         val flow = keepassGroupFlows.getOrPut(databaseId) {
                             kotlinx.coroutines.flow.MutableStateFlow(emptyList())
                         }
-                        flow.value = keePassService.listGroups(databaseId).getOrDefault(emptyList())
+                        flow.value = keepassBridge.listLegacyGroups(databaseId).getOrDefault(emptyList())
                     } else {
                         Toast.makeText(
                             context,
@@ -725,7 +729,7 @@ fun TotpListContent(
             },
             onRenameKeePassGroup = { databaseId, groupPath, newName ->
                 scope.launch {
-                    val result = keePassService.renameGroup(
+                    val result = keepassBridge.renameLegacyGroup(
                         databaseId = databaseId,
                         groupPath = groupPath,
                         newName = newName
@@ -734,7 +738,7 @@ fun TotpListContent(
                         val flow = keepassGroupFlows.getOrPut(databaseId) {
                             kotlinx.coroutines.flow.MutableStateFlow(emptyList())
                         }
-                        flow.value = keePassService.listGroups(databaseId).getOrDefault(emptyList())
+                        flow.value = keepassBridge.listLegacyGroups(databaseId).getOrDefault(emptyList())
                     } else {
                         Toast.makeText(
                             context,
@@ -749,7 +753,7 @@ fun TotpListContent(
             },
             onDeleteKeePassGroup = { databaseId, groupPath ->
                 scope.launch {
-                    val result = keePassService.deleteGroup(
+                    val result = keepassBridge.deleteLegacyGroup(
                         databaseId = databaseId,
                         groupPath = groupPath
                     )
@@ -757,7 +761,7 @@ fun TotpListContent(
                         val flow = keepassGroupFlows.getOrPut(databaseId) {
                             kotlinx.coroutines.flow.MutableStateFlow(emptyList())
                         }
-                        flow.value = keePassService.listGroups(databaseId).getOrDefault(emptyList())
+                        flow.value = keepassBridge.listLegacyGroups(databaseId).getOrDefault(emptyList())
                     } else {
                         Toast.makeText(
                             context,

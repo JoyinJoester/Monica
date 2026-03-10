@@ -28,7 +28,7 @@ import takagi.ru.monica.data.bitwarden.*
         BitwardenConflictBackup::class,
         BitwardenPendingOperation::class
     ],
-    version = 46,
+    version = 47,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -1235,6 +1235,31 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Migration 46 -> 47:
+         * 为 KeePass 映射增加原生条目 UUID / 分组 UUID 字段。
+         */
+        private val MIGRATION_46_47 = object : androidx.room.migration.Migration(46, 47) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 46→47: keepass native uuid columns")
+                    database.execSQL("ALTER TABLE password_entries ADD COLUMN keepass_entry_uuid TEXT DEFAULT NULL")
+                    database.execSQL("ALTER TABLE password_entries ADD COLUMN keepass_group_uuid TEXT DEFAULT NULL")
+                    database.execSQL("ALTER TABLE secure_items ADD COLUMN keepass_entry_uuid TEXT DEFAULT NULL")
+                    database.execSQL("ALTER TABLE secure_items ADD COLUMN keepass_group_uuid TEXT DEFAULT NULL")
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_password_entries_keepass_entry_uuid ON password_entries(keepass_entry_uuid)"
+                    )
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_secure_items_keepass_entry_uuid ON secure_items(keepass_entry_uuid)"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 46→47 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 46→47 failed: ${e.message}")
+                }
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -1287,7 +1312,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_42_43,  // 清理 legacy KeePass WebDAV 残余
                         MIGRATION_43_44,  // Bitwarden 多库去重与唯一约束
                         MIGRATION_44_45,  // 密码归档同步元信息
-                        MIGRATION_45_46   // KeePass KDBX 配置字段
+                        MIGRATION_45_46,  // KeePass KDBX 配置字段
+                        MIGRATION_46_47   // KeePass 原生 UUID 字段
                     )
                     .build()
                 INSTANCE = instance

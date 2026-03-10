@@ -20,9 +20,13 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.net.HttpURLConnection
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.net.URL
 import java.security.MessageDigest
+import javax.net.ssl.SSLException
 
 /**
  * Favicon cache for fetching and storing website icons.
@@ -72,7 +76,7 @@ object FaviconCache {
                             return@withContext imageBitmap
                         }
                     } catch (e: Exception) {
-                        Log.e(TAG, "Error reading from disk cache", e)
+                        Log.w(TAG, "Error reading favicon disk cache: ${e.message}")
                     }
                 }
 
@@ -95,7 +99,7 @@ object FaviconCache {
                                 out.flush()
                                 out.close()
                             } catch (e: Exception) {
-                                Log.e(TAG, "Error saving to disk cache", e)
+                                Log.w(TAG, "Error saving favicon disk cache: ${e.message}")
                             }
 
                             // Save to memory
@@ -116,7 +120,17 @@ object FaviconCache {
             // Composable left composition; this is expected during fast list updates/navigation.
             return null
         } catch (e: Exception) {
-            Log.e(TAG, "Error fetching favicon for $domain", e)
+            val commonNetworkIssue = e is UnknownHostException ||
+                e is SocketTimeoutException ||
+                e is SSLException ||
+                e is IOException
+
+            if (commonNetworkIssue) {
+                // Non-fatal and common on unstable networks/captive portals; avoid noisy red logs.
+                Log.w(TAG, "Favicon fetch skipped for $domain: ${e.javaClass.simpleName}")
+            } else {
+                Log.w(TAG, "Unexpected favicon fetch failure for $domain", e)
+            }
             return null
         }
     }

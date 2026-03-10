@@ -41,6 +41,16 @@ interface PasswordEntryDao {
     
     @Query("SELECT * FROM password_entries WHERE id = :id")
     suspend fun getPasswordEntryById(id: Long): PasswordEntry?
+
+        @Query(
+                """
+                SELECT * FROM password_entries
+                WHERE keepassDatabaseId = :databaseId
+                    AND keepass_entry_uuid = :entryUuid
+                LIMIT 1
+                """
+        )
+        suspend fun findByKeePassEntryUuid(databaseId: Long, entryUuid: String): PasswordEntry?
     
     @Query("SELECT * FROM password_entries WHERE id IN (:ids)")
     suspend fun getPasswordsByIds(ids: List<Long>): List<PasswordEntry>

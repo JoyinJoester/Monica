@@ -130,6 +130,10 @@ class PasswordRepository(
     suspend fun getPasswordEntryById(id: Long): PasswordEntry? {
         return passwordEntryDao.getPasswordEntryById(id)
     }
+
+    suspend fun getPasswordEntryByKeePassUuid(databaseId: Long, entryUuid: String): PasswordEntry? {
+        return passwordEntryDao.findByKeePassEntryUuid(databaseId, entryUuid)
+    }
     
     suspend fun getPasswordsByIds(ids: List<Long>): List<PasswordEntry> {
         return passwordEntryDao.getPasswordsByIds(ids)

@@ -358,6 +358,7 @@ private fun UnifiedWalletAddScreen(
 private data class NewItemStorageDefaults(
     val categoryId: Long? = null,
     val keepassDatabaseId: Long? = null,
+    val keepassGroupPath: String? = null,
     val bitwardenVaultId: Long? = null,
     val bitwardenFolderId: String? = null
 )
@@ -371,7 +372,10 @@ private fun defaultsFromTotpFilter(filter: takagi.ru.monica.viewmodel.TotpCatego
             NewItemStorageDefaults(keepassDatabaseId = filter.databaseId)
         }
         is takagi.ru.monica.viewmodel.TotpCategoryFilter.KeePassGroupFilter -> {
-            NewItemStorageDefaults(keepassDatabaseId = filter.databaseId)
+            NewItemStorageDefaults(
+                keepassDatabaseId = filter.databaseId,
+                keepassGroupPath = filter.groupPath
+            )
         }
         is takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenVault -> {
             NewItemStorageDefaults(bitwardenVaultId = filter.vaultId)
@@ -2316,12 +2320,13 @@ private fun AuthenticatorTabPane(
                         initialNotes = "",
                         initialCategoryId = totpNewItemDefaults.categoryId,
                         initialKeePassDatabaseId = totpNewItemDefaults.keepassDatabaseId,
+                        initialKeePassGroupPath = totpNewItemDefaults.keepassGroupPath,
                         initialBitwardenVaultId = totpNewItemDefaults.bitwardenVaultId,
                         initialBitwardenFolderId = totpNewItemDefaults.bitwardenFolderId,
                         categories = totpCategories,
                         passwordViewModel = passwordViewModel,
                         localKeePassViewModel = localKeePassViewModel,
-                        onSave = { title, notes, totpData, categoryId, keepassDatabaseId, bitwardenVaultId, bitwardenFolderId ->
+                        onSave = { title, notes, totpData, categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
                             totpViewModel.saveTotpItem(
                                 id = null,
                                 title = title,
@@ -2329,6 +2334,7 @@ private fun AuthenticatorTabPane(
                                 totpData = totpData,
                                 categoryId = categoryId,
                                 keepassDatabaseId = keepassDatabaseId,
+                                keepassGroupPath = keepassGroupPath,
                                 bitwardenVaultId = bitwardenVaultId,
                                 bitwardenFolderId = bitwardenFolderId
                             )
@@ -2367,12 +2373,13 @@ private fun AuthenticatorTabPane(
                         initialTitle = selectedTotpItem.title,
                         initialNotes = selectedTotpItem.notes,
                         initialCategoryId = selectedTotpData.categoryId,
+                        initialKeePassGroupPath = selectedTotpItem.keepassGroupPath,
                         initialBitwardenVaultId = selectedTotpItem.bitwardenVaultId,
                         initialBitwardenFolderId = selectedTotpItem.bitwardenFolderId,
                         categories = totpCategories,
                         passwordViewModel = passwordViewModel,
                         localKeePassViewModel = localKeePassViewModel,
-                        onSave = { title, notes, totpData, categoryId, keepassDatabaseId, bitwardenVaultId, bitwardenFolderId ->
+                        onSave = { title, notes, totpData, categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
                             totpViewModel.saveTotpItem(
                                 id = selectedTotpItem.id,
                                 title = title,
@@ -2380,6 +2387,7 @@ private fun AuthenticatorTabPane(
                                 totpData = totpData,
                                 categoryId = categoryId,
                                 keepassDatabaseId = keepassDatabaseId,
+                                keepassGroupPath = keepassGroupPath,
                                 bitwardenVaultId = bitwardenVaultId,
                                 bitwardenFolderId = bitwardenFolderId
                             )
@@ -2830,12 +2838,13 @@ private fun MainScreenAddFab(
                             initialNotes = "",
                             initialCategoryId = totpNewItemDefaults.categoryId,
                             initialKeePassDatabaseId = totpNewItemDefaults.keepassDatabaseId,
+                            initialKeePassGroupPath = totpNewItemDefaults.keepassGroupPath,
                             initialBitwardenVaultId = totpNewItemDefaults.bitwardenVaultId,
                             initialBitwardenFolderId = totpNewItemDefaults.bitwardenFolderId,
                             categories = totpCategories,
                             passwordViewModel = passwordViewModel,
                             localKeePassViewModel = localKeePassViewModel,
-                            onSave = { title, notes, totpData, categoryId, keepassDatabaseId, bitwardenVaultId, bitwardenFolderId ->
+                            onSave = { title, notes, totpData, categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
                                 totpViewModel.saveTotpItem(
                                     id = null,
                                     title = title,
@@ -2843,6 +2852,7 @@ private fun MainScreenAddFab(
                                     totpData = totpData,
                                     categoryId = categoryId,
                                     keepassDatabaseId = keepassDatabaseId,
+                                    keepassGroupPath = keepassGroupPath,
                                     bitwardenVaultId = bitwardenVaultId,
                                     bitwardenFolderId = bitwardenFolderId
                                 )

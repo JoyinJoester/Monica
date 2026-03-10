@@ -52,6 +52,10 @@ class SecureItemRepository(
         return secureItemDao.getItemById(id)
     }
 
+    suspend fun getItemByKeePassUuid(databaseId: Long, entryUuid: String): SecureItem? {
+        return secureItemDao.findByKeePassEntryUuid(databaseId, entryUuid)
+    }
+
     fun observeItemById(id: Long): Flow<SecureItem?> {
         return secureItemDao.observeItemById(id)
     }

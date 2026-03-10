@@ -37,6 +37,12 @@ enum class ProgressBarStyle {
     WAVE     // 波浪形进度条
 }
 
+enum class NoteCodeBlockCollapseMode {
+    COMPACT,
+    BALANCED,
+    EXPANDED
+}
+
 /**
  * 统一进度条模式
  */
@@ -404,6 +410,7 @@ data class AppSettings(
     val passwordListQuickAccessEnabled: Boolean = true, // 密码列表“最近打开/经常打开”快捷入口开关
     val passwordListTopModulesOrder: List<PasswordListTopModule> = PasswordListTopModule.DEFAULT_ORDER, // 密码列表顶部模块顺序
     val noteGridLayout: Boolean = true, // 笔记列表使用网格布局 (true = 网格, false = 列表)
+    val noteCodeBlockCollapseMode: NoteCodeBlockCollapseMode = NoteCodeBlockCollapseMode.BALANCED, // 笔记代码块折叠模式
     val autofillAuthRequired: Boolean = true, // 自动填充验证 - 默认开启
     val passwordFieldVisibility: PasswordFieldVisibility = PasswordFieldVisibility(), // 添加密码页面字段定制
     val reduceAnimations: Boolean = false, // 减少动画 - 解决部分设备（如 HyperOS 2/Android 15）动画卡顿问题

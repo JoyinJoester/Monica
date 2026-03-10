@@ -14,6 +14,7 @@ import java.util.Date
     tableName = "secure_items",
     indices = [
         Index(value = ["isDeleted"]),
+        Index(value = ["keepass_entry_uuid"], name = "index_secure_items_keepass_entry_uuid"),
         Index(
             value = ["bitwarden_vault_id", "bitwarden_cipher_id"],
             unique = true,
@@ -49,6 +50,10 @@ data class SecureItem(
     val keepassDatabaseId: Long? = null,
     @ColumnInfo(name = "keepass_group_path", defaultValue = "NULL")
     val keepassGroupPath: String? = null,
+    @ColumnInfo(name = "keepass_entry_uuid", defaultValue = "NULL")
+    val keepassEntryUuid: String? = null,
+    @ColumnInfo(name = "keepass_group_uuid", defaultValue = "NULL")
+    val keepassGroupUuid: String? = null,
     
     // 回收站功能 - 软删除字段
     @ColumnInfo(defaultValue = "0")
