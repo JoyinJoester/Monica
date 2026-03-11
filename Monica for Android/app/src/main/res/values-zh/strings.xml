@@ -111,6 +111,8 @@
     <!-- Password List Screen -->
     <string name="search_passwords">搜索密码...</string>
     <string name="no_passwords_saved">还没有保存任何密码</string>
+    <string name="password_list_quick_folder_root_empty">当前根目录没有可显示条目</string>
+    <string name="password_list_quick_folder_root_empty_hint">请点击上方快捷文件夹查看目录内容</string>
     <string name="no_passwords_found">没有找到匹配的密码</string>
     <string name="add_password">添加密码</string>
     <string name="clear_search">清除搜索</string>

@@ -580,6 +580,11 @@ fun PasswordListContent(
     val isKeePassDatabaseView = selectedKeePassDatabaseId != null
     val bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel()
     val bitwardenSyncStatusByVault by bitwardenViewModel.syncStatusByVault.collectAsState()
+    val selectedBitwardenFoldersFlow = remember(selectedBitwardenVaultId, viewModel) {
+        selectedBitwardenVaultId?.let(viewModel::getBitwardenFolders)
+            ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    }
+    val selectedBitwardenFolders by selectedBitwardenFoldersFlow.collectAsState(initial = emptyList())
     val isTopBarSyncing = selectedBitwardenVaultId?.let { vaultId ->
         bitwardenSyncStatusByVault[vaultId]?.isRunning == true
     } == true
@@ -806,13 +811,21 @@ fun PasswordListContent(
     }
     val quickFolderPasswordCountByCategoryId = remember(
         allPasswords,
+        passwordEntries,
+        searchQuery,
         appSettings.passwordListQuickFoldersEnabled,
         currentFilter
     ) {
         if (!quickFoldersEnabledForCurrentFilter || !currentFilter.supportsQuickFolders()) {
             emptyMap()
         } else {
-            allPasswords
+            val quickFolderSourceEntries = if (searchQuery.isNotBlank()) {
+                passwordEntries
+            } else {
+                allPasswords
+            }
+
+            quickFolderSourceEntries
                 .asSequence()
                 .mapNotNull { entry ->
                     val isLocalEntry = entry.keepassDatabaseId == null && entry.bitwardenVaultId == null
@@ -836,9 +849,12 @@ fun PasswordListContent(
         quickFolderRootFilter,
         quickFolderPasswordCountByCategoryId,
         allPasswords,
+        passwordEntries,
+        searchQuery,
         keepassDatabases,
         keepassGroupsForSelectedDb,
         bitwardenVaults,
+        selectedBitwardenFolders,
         categories
     ) {
         buildQuickFolderShortcuts(
@@ -852,9 +868,12 @@ fun PasswordListContent(
             quickFolderRootFilter = quickFolderRootFilter,
             quickFolderPasswordCountByCategoryId = quickFolderPasswordCountByCategoryId,
             allPasswords = allPasswords,
+            searchScopedPasswords = passwordEntries,
+            isSearchActive = searchQuery.isNotBlank(),
             keepassDatabases = keepassDatabases,
             keepassGroupsForSelectedDb = keepassGroupsForSelectedDb,
             bitwardenVaults = bitwardenVaults,
+            selectedBitwardenFolders = selectedBitwardenFolders,
             categories = categories
         )
     }
@@ -867,6 +886,7 @@ fun PasswordListContent(
         quickFolderRootFilter,
         keepassDatabases,
         bitwardenVaults,
+        selectedBitwardenFolders,
         categories
     ) {
         buildQuickFolderBreadcrumbs(
@@ -879,6 +899,7 @@ fun PasswordListContent(
             quickFolderRootFilter = quickFolderRootFilter,
             keepassDatabases = keepassDatabases,
             bitwardenVaults = bitwardenVaults,
+            selectedBitwardenFolders = selectedBitwardenFolders,
             categories = categories
         )
     }
@@ -886,6 +907,17 @@ fun PasswordListContent(
     val shouldLoadManualStackMetadata = quickFilterManualStackOnly ||
         quickFilterNeverStack ||
         quickFilterUnstacked
+    val emptyStateMessage = remember(
+        currentFilter,
+        quickFoldersEnabledForCurrentFilter,
+        quickFolderShortcuts
+    ) {
+        resolvePasswordListEmptyStateMessage(
+            currentFilter = currentFilter,
+            quickFoldersEnabledForCurrentFilter = quickFoldersEnabledForCurrentFilter,
+            hasQuickFolderShortcuts = quickFolderShortcuts.isNotEmpty()
+        )
+    }
     val effectiveManualStackGroupByEntryId =
         if (shouldLoadManualStackMetadata) manualStackGroupByEntryId else emptyMap()
     val effectiveNoStackEntryIds =
@@ -999,6 +1031,8 @@ fun PasswordListContent(
     val visiblePasswordEntries = remember(
         passwordEntries,
         deletedItemIds,
+        quickFoldersEnabledForCurrentFilter,
+        currentFilter,
         appSettings.passwordListQuickFiltersEnabled,
         configuredQuickFilterItems,
         quickFilterFavorite,
@@ -1014,6 +1048,14 @@ fun PasswordListContent(
         effectiveNoStackEntryIds
     ) {
         var filtered = passwordEntries.filter { it.id !in deletedItemIds }
+
+        if (quickFoldersEnabledForCurrentFilter) {
+            filtered = applyQuickFolderRootVisibility(
+                entries = filtered,
+                currentFilter = currentFilter
+            )
+        }
+
         if (appSettings.passwordListQuickFiltersEnabled) {
             if (quickFilterFavorite && takagi.ru.monica.data.PasswordListQuickFilterItem.FAVORITE in configuredQuickFilterItems) {
                 filtered = filtered.filter { it.isFavorite }
@@ -1411,22 +1453,7 @@ fun PasswordListContent(
                             },
                         contentAlignment = Alignment.Center
                     ) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Icon(
-                                Icons.Default.Lock,
-                                contentDescription = null,
-                                modifier = Modifier.size(64.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                             Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = stringResource(R.string.no_passwords_saved),
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        PasswordListEmptyState(message = emptyStateMessage)
                     }
                 } else {
                     LazyColumn(
@@ -1581,22 +1608,7 @@ fun PasswordListContent(
                                     .padding(top = 84.dp, bottom = 24.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    Icon(
-                                        Icons.Default.Lock,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(64.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Spacer(modifier = Modifier.height(16.dp))
-                                    Text(
-                                        text = stringResource(R.string.no_passwords_saved),
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
+                                PasswordListEmptyState(message = emptyStateMessage)
                             }
                         }
                     } else {
@@ -2947,9 +2959,12 @@ private fun buildQuickFolderShortcuts(
     quickFolderRootFilter: CategoryFilter,
     quickFolderPasswordCountByCategoryId: Map<Long, Int>,
     allPasswords: List<takagi.ru.monica.data.PasswordEntry>,
+    searchScopedPasswords: List<takagi.ru.monica.data.PasswordEntry>,
+    isSearchActive: Boolean,
     keepassDatabases: List<takagi.ru.monica.data.LocalKeePassDatabase>,
     keepassGroupsForSelectedDb: List<takagi.ru.monica.utils.KeePassGroupInfo>,
     bitwardenVaults: List<takagi.ru.monica.data.bitwarden.BitwardenVault>,
+    selectedBitwardenFolders: List<takagi.ru.monica.data.bitwarden.BitwardenFolder>,
     categories: List<Category>
 ): List<PasswordQuickFolderShortcut> {
     if (!quickFoldersEnabledForCurrentFilter || !currentFilter.supportsQuickFolders()) {
@@ -2957,6 +2972,11 @@ private fun buildQuickFolderShortcuts(
     }
 
     val shortcuts = mutableListOf<PasswordQuickFolderShortcut>()
+    val quickFolderSourceEntries = if (isSearchActive) {
+        searchScopedPasswords
+    } else {
+        allPasswords
+    }
     if (quickFolderStyle == takagi.ru.monica.data.PasswordListQuickFolderStyle.CLASSIC &&
         currentFilter is CategoryFilter.Custom
     ) {
@@ -2995,13 +3015,17 @@ private fun buildQuickFolderShortcuts(
             node.parentPath == targetParentPath
         }
         children.forEach { node ->
+            val passwordCount = quickFolderPasswordCountByCategoryId[node.category.id] ?: 0
+            if (isSearchActive && passwordCount <= 0) {
+                return@forEach
+            }
             shortcuts += PasswordQuickFolderShortcut(
                 key = "folder_${node.category.id}_${node.path}",
                 title = node.displayName,
                 subtitle = "Monica",
                 isBack = false,
                 targetFilter = CategoryFilter.Custom(node.category.id),
-                passwordCount = quickFolderPasswordCountByCategoryId[node.category.id] ?: 0
+                passwordCount = passwordCount
             )
         }
     }
@@ -3012,7 +3036,8 @@ private fun buildQuickFolderShortcuts(
             shortcuts += buildKeePassDatabaseQuickFolderShortcuts(
                 databaseId = databaseId,
                 keepassGroups = keepassGroupsForSelectedDb,
-                allPasswords = allPasswords
+                allPasswords = quickFolderSourceEntries,
+                isSearchActive = isSearchActive
             )
         }
 
@@ -3040,12 +3065,18 @@ private fun buildQuickFolderShortcuts(
                 databaseId = databaseId,
                 currentPath = currentPath,
                 keepassGroups = keepassGroupsForSelectedDb,
-                allPasswords = allPasswords
+                allPasswords = quickFolderSourceEntries,
+                isSearchActive = isSearchActive
             )
         }
 
         is CategoryFilter.BitwardenVault -> {
             val vaultId = filter.vaultId
+            val syncedFolderNameById = selectedBitwardenFolders
+                .asSequence()
+                .map { it.bitwardenFolderId.trim() to it.name.trim() }
+                .filter { (folderId, folderName) -> folderId.isNotBlank() && folderName.isNotBlank() }
+                .toMap()
             val linkedFolderNameByKey = categories
                 .asSequence()
                 .mapNotNull { category ->
@@ -3059,7 +3090,7 @@ private fun buildQuickFolderShortcuts(
                 }
                 .toMap()
 
-            val folderCountById = allPasswords
+            val folderCountById = quickFolderSourceEntries
                 .asSequence()
                 .mapNotNull { entry ->
                     val entryVaultId = entry.bitwardenVaultId
@@ -3072,12 +3103,18 @@ private fun buildQuickFolderShortcuts(
                 }
                 .groupingBy { it }
                 .eachCount()
-            val knownFolderIds = (folderCountById.keys + linkedFolderNameByKey.keys)
-                .toSet()
-                .sorted()
+            val knownFolderIds = if (isSearchActive) {
+                folderCountById.keys.sorted()
+            } else {
+                (folderCountById.keys + linkedFolderNameByKey.keys + syncedFolderNameById.keys)
+                    .toSet()
+                    .sorted()
+            }
 
             knownFolderIds.forEach { folderId ->
-                val folderName = linkedFolderNameByKey[folderId] ?: "Folder ${folderId.take(8)}"
+                val folderName = syncedFolderNameById[folderId]
+                    ?: linkedFolderNameByKey[folderId]
+                    ?: "Folder ${folderId.take(8)}"
                 shortcuts += PasswordQuickFolderShortcut(
                     key = "bitwarden_${vaultId}_${folderId}",
                     title = folderName,
@@ -3106,7 +3143,7 @@ private fun buildQuickFolderShortcuts(
     }
 
     if (currentFilter is CategoryFilter.All && quickFolderCurrentPath == null) {
-        val keepassGroups = allPasswords
+        val keepassGroups = quickFolderSourceEntries
             .asSequence()
             .mapNotNull { entry ->
                 val databaseId = entry.keepassDatabaseId
@@ -3149,7 +3186,7 @@ private fun buildQuickFolderShortcuts(
             }
             .toMap()
 
-        val folderCountByKey = allPasswords
+        val folderCountByKey = quickFolderSourceEntries
             .asSequence()
             .mapNotNull { entry ->
                 val vaultId = entry.bitwardenVaultId
@@ -3162,9 +3199,13 @@ private fun buildQuickFolderShortcuts(
             }
             .groupingBy { it }
             .eachCount()
-        val knownFolderKeys = (folderCountByKey.keys + linkedFolderNameByKey.keys)
-            .toSet()
-            .sortedWith(compareBy({ it.first }, { it.second }))
+        val knownFolderKeys = if (isSearchActive) {
+            folderCountByKey.keys.sortedWith(compareBy({ it.first }, { it.second }))
+        } else {
+            (folderCountByKey.keys + linkedFolderNameByKey.keys)
+                .toSet()
+                .sortedWith(compareBy({ it.first }, { it.second }))
+        }
 
         knownFolderKeys.forEach { key ->
             val vaultId = key.first
@@ -3196,6 +3237,7 @@ private fun buildQuickFolderBreadcrumbs(
     quickFolderRootFilter: CategoryFilter,
     keepassDatabases: List<takagi.ru.monica.data.LocalKeePassDatabase>,
     bitwardenVaults: List<takagi.ru.monica.data.bitwarden.BitwardenVault>,
+    selectedBitwardenFolders: List<takagi.ru.monica.data.bitwarden.BitwardenFolder>,
     categories: List<Category>
 ): List<PasswordQuickFolderBreadcrumb> {
     if (!quickFoldersEnabledForCurrentFilter ||
@@ -3312,10 +3354,14 @@ private fun buildQuickFolderBreadcrumbs(
         is CategoryFilter.BitwardenVault -> Unit
 
         is CategoryFilter.BitwardenFolderFilter -> {
-            val folderName = categories.firstOrNull {
-                it.bitwardenVaultId == filter.vaultId &&
-                    it.bitwardenFolderId?.trim() == filter.folderId
-            }?.name ?: "Folder ${filter.folderId.take(8)}"
+            val folderName = selectedBitwardenFolders.firstOrNull {
+                it.bitwardenFolderId.trim() == filter.folderId
+            }?.name?.takeIf { it.isNotBlank() }
+                ?: categories.firstOrNull {
+                    it.bitwardenVaultId == filter.vaultId &&
+                        it.bitwardenFolderId?.trim() == filter.folderId
+                }?.name
+                ?: "Folder ${filter.folderId.take(8)}"
             crumbs += PasswordQuickFolderBreadcrumb(
                 key = "bitwarden_folder_${filter.vaultId}_${filter.folderId}",
                 title = folderName,
@@ -3554,7 +3600,8 @@ private fun PasswordQuickFolderShortcutsSection(
 private fun buildKeePassDatabaseQuickFolderShortcuts(
     databaseId: Long,
     keepassGroups: List<takagi.ru.monica.utils.KeePassGroupInfo>,
-    allPasswords: List<takagi.ru.monica.data.PasswordEntry>
+    allPasswords: List<takagi.ru.monica.data.PasswordEntry>,
+    isSearchActive: Boolean
 ): List<PasswordQuickFolderShortcut> {
     val groupNameByPath = keepassGroups
         .asSequence()
@@ -3570,12 +3617,15 @@ private fun buildKeePassDatabaseQuickFolderShortcuts(
         .toSet()
         .sorted()
 
-    return directChildPaths.map { childPath ->
+    return directChildPaths.mapNotNull { childPath ->
         val subtreeCount = allPasswords.count { entry ->
             entry.keepassDatabaseId == databaseId &&
                 entry.keepassGroupPath?.trim()?.let { groupPath ->
                     groupPath == childPath || groupPath.startsWith("$childPath/")
                 } == true
+        }
+        if (isSearchActive && subtreeCount <= 0) {
+            return@mapNotNull null
         }
         PasswordQuickFolderShortcut(
             key = "keepass_${databaseId}_${childPath}",
@@ -3594,7 +3644,8 @@ private fun buildKeePassGroupQuickFolderShortcuts(
     databaseId: Long,
     currentPath: String,
     keepassGroups: List<takagi.ru.monica.utils.KeePassGroupInfo>,
-    allPasswords: List<takagi.ru.monica.data.PasswordEntry>
+    allPasswords: List<takagi.ru.monica.data.PasswordEntry>,
+    isSearchActive: Boolean
 ): List<PasswordQuickFolderShortcut> {
     val groupNameByPath = keepassGroups
         .asSequence()
@@ -3613,12 +3664,15 @@ private fun buildKeePassGroupQuickFolderShortcuts(
         .toSet()
         .sorted()
 
-    return directChildPaths.map { childPath ->
+    return directChildPaths.mapNotNull { childPath ->
         val subtreeCount = allPasswords.count { entry ->
             entry.keepassDatabaseId == databaseId &&
                 entry.keepassGroupPath?.trim()?.let { groupPath ->
                     groupPath == childPath || groupPath.startsWith("$childPath/")
                 } == true
+        }
+        if (isSearchActive && subtreeCount <= 0) {
+            return@mapNotNull null
         }
         PasswordQuickFolderShortcut(
             key = "keepass_${databaseId}_${childPath}",
@@ -3656,6 +3710,94 @@ private fun CategoryFilter.supportsQuickFolderBreadcrumbs(): Boolean = when (thi
     is CategoryFilter.BitwardenFolderFilter -> true
 
     else -> supportsQuickFolders()
+}
+
+private data class PasswordListEmptyStateMessage(
+    val titleRes: Int,
+    val subtitleRes: Int? = null
+)
+
+@Composable
+private fun PasswordListEmptyState(message: PasswordListEmptyStateMessage) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(
+            Icons.Default.Lock,
+            contentDescription = null,
+            modifier = Modifier.size(64.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = stringResource(message.titleRes),
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        message.subtitleRes?.let { subtitleRes ->
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = stringResource(subtitleRes),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.82f)
+            )
+        }
+    }
+}
+
+private fun resolvePasswordListEmptyStateMessage(
+    currentFilter: CategoryFilter,
+    quickFoldersEnabledForCurrentFilter: Boolean,
+    hasQuickFolderShortcuts: Boolean
+): PasswordListEmptyStateMessage {
+    val isQuickFolderRootDatabaseView = quickFoldersEnabledForCurrentFilter && when (currentFilter) {
+        is CategoryFilter.Local,
+        is CategoryFilter.KeePassDatabase,
+        is CategoryFilter.BitwardenVault -> true
+        else -> false
+    }
+
+    return if (isQuickFolderRootDatabaseView) {
+        PasswordListEmptyStateMessage(
+            titleRes = R.string.password_list_quick_folder_root_empty,
+            subtitleRes = if (hasQuickFolderShortcuts) {
+                R.string.password_list_quick_folder_root_empty_hint
+            } else {
+                null
+            }
+        )
+    } else {
+        PasswordListEmptyStateMessage(titleRes = R.string.no_passwords_saved)
+    }
+}
+
+private fun applyQuickFolderRootVisibility(
+    entries: List<takagi.ru.monica.data.PasswordEntry>,
+    currentFilter: CategoryFilter
+): List<takagi.ru.monica.data.PasswordEntry> = when (currentFilter) {
+    is CategoryFilter.Local -> {
+        entries.filter { entry ->
+            entry.keepassDatabaseId == null &&
+                entry.bitwardenVaultId == null &&
+                entry.categoryId == null
+        }
+    }
+
+    is CategoryFilter.KeePassDatabase -> {
+        entries.filter { entry ->
+            entry.keepassDatabaseId == currentFilter.databaseId &&
+                entry.keepassGroupPath?.trim().isNullOrBlank()
+        }
+    }
+
+    is CategoryFilter.BitwardenVault -> {
+        entries.filter { entry ->
+            entry.bitwardenVaultId == currentFilter.vaultId &&
+                entry.bitwardenFolderId?.trim().isNullOrBlank()
+        }
+    }
+
+    else -> entries
 }
 
 private fun CategoryFilter.toQuickFolderRootKeyOrNull(): String? = when (this) {

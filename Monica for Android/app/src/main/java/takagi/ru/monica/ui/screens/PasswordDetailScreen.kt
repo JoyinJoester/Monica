@@ -43,6 +43,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
 import androidx.fragment.app.FragmentActivity
 import takagi.ru.monica.utils.BiometricHelper
+import takagi.ru.monica.utils.decodeKeePassPathForDisplay
 import takagi.ru.monica.ui.components.ActionStrip
 import takagi.ru.monica.ui.components.ActionStripItem
 import takagi.ru.monica.ui.icons.MonicaIcons
@@ -53,6 +54,7 @@ import takagi.ru.monica.data.UnmatchedIconHandlingStrategy
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.utils.FieldValidation
 import takagi.ru.monica.utils.SettingsManager
+import takagi.ru.monica.viewmodel.CategoryFilter
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.PasskeyViewModel
 import takagi.ru.monica.util.TotpGenerator
@@ -62,6 +64,8 @@ import takagi.ru.monica.data.model.PasskeyBindingCodec
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import takagi.ru.monica.ui.components.InfoField
 import takagi.ru.monica.ui.components.InfoFieldWithCopy
 import takagi.ru.monica.ui.components.PasswordField
@@ -70,6 +74,7 @@ import takagi.ru.monica.ui.components.CustomFieldDetailCard
 import takagi.ru.monica.data.CustomField
 import takagi.ru.monica.data.LoginType
 import takagi.ru.monica.data.SsoProvider
+import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.ui.icons.UnmatchedIconFallback
 import takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon
 import takagi.ru.monica.ui.icons.rememberSimpleIconBitmap
@@ -86,6 +91,14 @@ private const val MONICA_USERNAME_ALIAS_META_FIELD_TITLE = "__monica_username_al
 private const val MONICA_USERNAME_ALIAS_META_VALUE = "migrated_v1"
 private const val MONICA_MANUAL_STACK_GROUP_FIELD_TITLE = "__monica_manual_stack_group"
 private const val MONICA_NO_STACK_FIELD_TITLE = "__monica_no_stack"
+
+private data class PasswordStorageInfo(
+    val entryId: Long,
+    val containerKey: String,
+    val source: String,
+    val database: String,
+    val folderPath: String
+)
 
 /**
  * 密码详情页 (Password Detail Screen)
@@ -125,6 +138,7 @@ fun PasswordDetailScreen(
     val scrollState = rememberScrollState()
     val settingsManager = remember { SettingsManager(context) }
     val settings by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
+    val currentFilter by viewModel.categoryFilter.collectAsState()
     val database = remember { PasswordDatabase.getDatabase(context.applicationContext) }
     val categories by viewModel.categories.collectAsState(initial = emptyList())
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
@@ -133,18 +147,12 @@ fun PasswordDetailScreen(
     // 密码条目状态
     var passwordEntry by remember { mutableStateOf<PasswordEntry?>(null) }
     var groupPasswords by remember { mutableStateOf<List<PasswordEntry>>(emptyList()) }
-    val selectedBitwardenVaultId = passwordEntry?.bitwardenVaultId
-    val bitwardenFoldersFlow = remember(database, selectedBitwardenVaultId) {
-        selectedBitwardenVaultId?.let { vaultId ->
-            database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId)
-        } ?: flowOf(emptyList())
+    var bitwardenFoldersByVault by remember {
+        mutableStateOf<Map<Long, List<BitwardenFolder>>>(emptyMap())
     }
-    val bitwardenFolders by bitwardenFoldersFlow.collectAsState(initial = emptyList())
 
     var showDeleteDialog by remember { mutableStateOf(false) }
-    var showMultiDeleteDialog by remember { mutableStateOf(false) } // 新增：多选删除对话框状态
     var itemToDelete by remember { mutableStateOf<PasswordEntry?>(null) } // For specific password deletion
-    var multiDeleteSelectedIds by remember { mutableStateOf(setOf<Long>()) } // 新增：多选删除选中的ID集合
     
     // Verification State
     var showMasterPasswordDialog by remember { mutableStateOf(false) }
@@ -196,22 +204,6 @@ fun PasswordDetailScreen(
         if (itemToDelete != null) {
             // Delete specific password
             viewModel.deletePasswordEntry(itemToDelete!!)
-        } else if (multiDeleteSelectedIds.isNotEmpty()) {
-            // Batch delete
-            val passwordsToDelete = groupPasswords.filter { it.id in multiDeleteSelectedIds }
-            passwordsToDelete.forEach { 
-                viewModel.deletePasswordEntry(it)
-            }
-            
-            if (passwordsToDelete.size == groupPasswords.size) {
-                 // All deleted
-                 onNavigateBack()
-            } else {
-                 // Partial delete - UI will update via Flow
-                 // Reset selection
-                 multiDeleteSelectedIds = setOf()
-            }
-            showMultiDeleteDialog = false
         } else {
             // Fallback: Delete current main entry
             passwordEntry?.let { entry ->
@@ -309,7 +301,17 @@ fun PasswordDetailScreen(
                 groupPasswords = allPasswords.filter { 
                     val itKey = buildPasswordSiblingGroupKey(it)
                     itKey == key
-                }.sortedBy { it.id }
+                }.sortedWith(
+                    compareBy<PasswordEntry> {
+                        when {
+                            it.isLocalOnlyEntry() -> 0
+                            it.isKeePassEntry() -> 1
+                            else -> 2
+                        }
+                    }.thenBy { it.keepassDatabaseId ?: Long.MAX_VALUE }
+                        .thenBy { it.bitwardenVaultId ?: Long.MAX_VALUE }
+                        .thenBy { it.id }
+                )
                 
                 // 加载自定义字段 (添加错误处理)
                 try {
@@ -330,6 +332,19 @@ fun PasswordDetailScreen(
                 // If groupPasswords was not empty, maybe we switched to another sibling? 
                 // But passwordId is fixed param.
                 // onNavigateBack() // Only if we want to auto-close
+            }
+        }
+    }
+
+    LaunchedEffect(groupPasswords) {
+        val vaultIds = groupPasswords.mapNotNull { it.bitwardenVaultId }.distinct()
+        if (vaultIds.isEmpty()) {
+            bitwardenFoldersByVault = emptyMap()
+        } else {
+            bitwardenFoldersByVault = withContext(Dispatchers.IO) {
+                vaultIds.associateWith { vaultId ->
+                    database.bitwardenFolderDao().getFoldersByVault(vaultId)
+                }
             }
         }
     }
@@ -412,16 +427,7 @@ fun PasswordDetailScreen(
                     ActionStripItem(
                         icon = MonicaIcons.Action.delete,
                         contentDescription = stringResource(R.string.delete),
-                        onClick = { 
-                            if (groupPasswords.size > 1) {
-                                // 如果有多个密码，显示多选删除对话框
-                                multiDeleteSelectedIds = setOf() // 重置选择
-                                showMultiDeleteDialog = true
-                            } else {
-                                // 只有一个密码，直接显示确认删除对话框
-                                showDeleteDialog = true 
-                            }
-                        },
+                        onClick = { showDeleteDialog = true },
                         tint = MaterialTheme.colorScheme.error
                     )
                 ),
@@ -448,35 +454,62 @@ fun PasswordDetailScreen(
                     unmatchedIconHandlingStrategy = unmatchedIconHandlingStrategy
                 )
 
-                val categoryPath = categories.firstOrNull { it.id == entry.categoryId }?.name
-                val keepassDatabaseName = keepassDatabases.firstOrNull { it.id == entry.keepassDatabaseId }?.name
-                val bitwardenVaultName = bitwardenVaults
-                    .firstOrNull { it.id == entry.bitwardenVaultId }
-                    ?.let { vault -> vault.displayName?.takeIf { it.isNotBlank() } ?: vault.email }
-                val bitwardenFolderName = bitwardenFolders
-                    .firstOrNull { it.bitwardenFolderId == entry.bitwardenFolderId }
-                    ?.name
-                val sourceName = when {
-                    entry.isBitwardenEntry() -> stringResource(R.string.filter_bitwarden)
-                    entry.isKeePassEntry() -> stringResource(R.string.database_source_keepass)
-                    else -> stringResource(R.string.database_source_local)
-                }
-                val databaseName = when {
-                    entry.isBitwardenEntry() -> bitwardenVaultName
-                        ?: stringResource(R.string.v2_bitwarden_not_connected)
-                    entry.isKeePassEntry() -> keepassDatabaseName
-                        ?: stringResource(R.string.local_keepass_database)
-                    else -> stringResource(R.string.database_source_local)
-                }
-                val folderPath = when {
-                    entry.isBitwardenEntry() -> bitwardenFolderName
-                        ?: stringResource(R.string.folder_no_folder_root)
-                    entry.isKeePassEntry() -> entry.keepassGroupPath
-                        ?.takeIf { it.isNotBlank() }
-                        ?: stringResource(R.string.folder_no_folder_root)
-                    else -> categoryPath
-                        ?.takeIf { it.isNotBlank() }
-                        ?: stringResource(R.string.folder_no_folder_root)
+                val storageInfoEntries = remember(
+                    currentFilter,
+                    groupPasswords,
+                    entry,
+                    categories,
+                    keepassDatabases,
+                    bitwardenVaults,
+                    bitwardenFoldersByVault,
+                    settings,
+                    context
+                ) {
+                    val entries = if (currentFilter is CategoryFilter.All) {
+                        groupPasswords.ifEmpty { listOf(entry) }
+                    } else {
+                        listOf(entry)
+                    }
+                    val infos = entries.map { candidate ->
+                        buildPasswordStorageInfo(
+                            entry = candidate,
+                            categories = categories,
+                            keepassDatabases = keepassDatabases,
+                            bitwardenVaults = bitwardenVaults,
+                            bitwardenFoldersByVault = bitwardenFoldersByVault,
+                            localSourceLabel = context.getString(R.string.database_source_local),
+                            keepassSourceLabel = context.getString(R.string.database_source_keepass),
+                            bitwardenSourceLabel = context.getString(R.string.filter_bitwarden),
+                            rootLabel = context.getString(R.string.folder_no_folder_root)
+                        )
+                    }
+
+                    val shouldExpandMultiSource = currentFilter is CategoryFilter.All &&
+                        infos.map { it.containerKey }.distinct().size > 1
+
+                    if (shouldExpandMultiSource) {
+                        infos.groupBy { it.containerKey }
+                            .map { (_, containerInfos) ->
+                                containerInfos.firstOrNull { it.entryId == entry.id }
+                                    ?: containerInfos.minByOrNull { it.entryId }
+                                    ?: containerInfos.first()
+                            }
+                    } else {
+                        listOf(
+                            infos.firstOrNull { it.entryId == entry.id }
+                                ?: buildPasswordStorageInfo(
+                                    entry = entry,
+                                    categories = categories,
+                                    keepassDatabases = keepassDatabases,
+                                    bitwardenVaults = bitwardenVaults,
+                                    bitwardenFoldersByVault = bitwardenFoldersByVault,
+                                    localSourceLabel = context.getString(R.string.database_source_local),
+                                    keepassSourceLabel = context.getString(R.string.database_source_keepass),
+                                    bitwardenSourceLabel = context.getString(R.string.filter_bitwarden),
+                                    rootLabel = context.getString(R.string.folder_no_folder_root)
+                                )
+                        )
+                    }
                 }
                 val dateFormatter = remember { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT) }
                 val createdAtText = remember(entry.createdAt) { dateFormatter.format(entry.createdAt) }
@@ -520,26 +553,14 @@ fun PasswordDetailScreen(
                 // ==========================================
                 // 🔑 密码列表
                 // ==========================================
-                if (groupPasswords.isNotEmpty()) {
-                    PasswordListCard(
-                        passwords = groupPasswords,
-                        onDelete = { item ->
-                            itemToDelete = item
-                            showDeleteDialog = true
-                        },
-                        context = context
-                    )
-                } else {
-                     // Fallback
-                     PasswordListCard(
-                        passwords = listOf(entry),
-                        onDelete = { 
-                            itemToDelete = entry
-                            showDeleteDialog = true
-                        },
-                        context = context
-                     )
-                }
+                PasswordListCard(
+                    passwords = listOf(entry),
+                    onDelete = {
+                        itemToDelete = entry
+                        showDeleteDialog = true
+                    },
+                    context = context
+                )
 
                 if (entry.website.isNotBlank()) {
                     WebsiteCard(
@@ -549,9 +570,8 @@ fun PasswordDetailScreen(
                 }
 
                 StorageInfoCard(
-                    source = sourceName,
-                    database = databaseName,
-                    folderPath = folderPath
+                    storageInfos = storageInfoEntries,
+                    onEditPassword = onEditPassword
                 )
 
                 TimeInfoCard(
@@ -744,33 +764,6 @@ fun PasswordDetailScreen(
             containerColor = MaterialTheme.colorScheme.surface,
             titleContentColor = MaterialTheme.colorScheme.onSurface,
             textContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-
-    // 多选删除对话框
-    if (showMultiDeleteDialog) {
-        MultiDeleteConfirmDialog(
-            passwords = groupPasswords,
-            selectedIds = multiDeleteSelectedIds,
-            onSelectionChange = { id, selected ->
-                multiDeleteSelectedIds = if (selected) {
-                    multiDeleteSelectedIds + id
-                } else {
-                    multiDeleteSelectedIds - id
-                }
-            },
-            onSelectAll = { selected ->
-                multiDeleteSelectedIds = if (selected) {
-                    groupPasswords.map { it.id }.toSet()
-                } else {
-                    setOf()
-                }
-            },
-            onDismiss = { showMultiDeleteDialog = false },
-            onConfirm = {
-                showMultiDeleteDialog = false
-                startVerificationForDeletion()
-            }
         )
     }
 
@@ -1026,9 +1019,8 @@ private fun WebsiteCard(
 
 @Composable
 private fun StorageInfoCard(
-    source: String,
-    database: String,
-    folderPath: String
+    storageInfos: List<PasswordStorageInfo>,
+    onEditPassword: (Long) -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1057,18 +1049,41 @@ private fun StorageInfoCard(
                     color = MaterialTheme.colorScheme.primary
                 )
             }
-            DetailInfoRow(
-                label = stringResource(R.string.database_source_label),
-                value = source
-            )
-            DetailInfoRow(
-                label = stringResource(R.string.password_picker_filter_database),
-                value = database
-            )
-            DetailInfoRow(
-                label = stringResource(R.string.password_picker_filter_folder),
-                value = folderPath
-            )
+            storageInfos.forEachIndexed { index, info ->
+                if (index > 0) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onEditPassword(info.entryId) },
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    DetailInfoRow(
+                        label = stringResource(R.string.database_source_label),
+                        value = info.source
+                    )
+                    DetailInfoRow(
+                        label = stringResource(R.string.password_picker_filter_database),
+                        value = info.database
+                    )
+                    DetailInfoRow(
+                        label = stringResource(R.string.password_picker_filter_folder),
+                        value = info.folderPath
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Text(
+                            text = stringResource(R.string.edit),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -1869,21 +1884,71 @@ private fun normalizeWebsiteUrl(input: String): String? {
 }
 
 private fun buildPasswordSiblingGroupKey(entry: PasswordEntry): String {
-    val sourceKey = when {
-        !entry.bitwardenCipherId.isNullOrBlank() ->
-            "bw:${entry.bitwardenVaultId}:${entry.bitwardenCipherId}"
-        entry.bitwardenVaultId != null ->
-            "bw-local:${entry.bitwardenVaultId}:${entry.bitwardenFolderId.orEmpty()}"
-        entry.keepassDatabaseId != null ->
-            "kp:${entry.keepassDatabaseId}:${entry.keepassGroupPath.orEmpty()}"
-        else -> "local"
-    }
-
     val title = entry.title.trim().lowercase(Locale.ROOT)
     val username = entry.username.trim().lowercase(Locale.ROOT)
     val website = normalizeWebsiteForSiblingGroupKey(entry.website)
 
-    return "$sourceKey|$title|$website|$username"
+    return "$title|$website|$username"
+}
+
+private fun buildPasswordStorageInfo(
+    entry: PasswordEntry,
+    categories: List<takagi.ru.monica.data.Category>,
+    keepassDatabases: List<takagi.ru.monica.data.LocalKeePassDatabase>,
+    bitwardenVaults: List<takagi.ru.monica.data.bitwarden.BitwardenVault>,
+    bitwardenFoldersByVault: Map<Long, List<BitwardenFolder>>,
+    localSourceLabel: String,
+    keepassSourceLabel: String,
+    bitwardenSourceLabel: String,
+    rootLabel: String
+): PasswordStorageInfo {
+    val containerKey = when {
+        entry.bitwardenVaultId != null -> "bw:${entry.bitwardenVaultId}"
+        entry.keepassDatabaseId != null -> "kp:${entry.keepassDatabaseId}"
+        else -> "local"
+    }
+    val categoryPath = categories.firstOrNull { it.id == entry.categoryId }?.name
+    val keepassDatabaseName = keepassDatabases.firstOrNull { it.id == entry.keepassDatabaseId }?.name
+    val bitwardenVaultName = bitwardenVaults
+        .firstOrNull { it.id == entry.bitwardenVaultId }
+        ?.let { vault -> vault.displayName?.takeIf { it.isNotBlank() } ?: vault.email }
+    val bitwardenFolderName = entry.bitwardenVaultId
+        ?.let { vaultId ->
+            bitwardenFoldersByVault[vaultId]
+                ?.firstOrNull { it.bitwardenFolderId == entry.bitwardenFolderId }
+                ?.name
+        }
+
+    val sourceName = when {
+        entry.isBitwardenEntry() -> bitwardenSourceLabel
+        entry.isKeePassEntry() -> keepassSourceLabel
+        else -> localSourceLabel
+    }
+    val databaseName = when {
+        entry.isBitwardenEntry() -> bitwardenVaultName ?: bitwardenSourceLabel
+        entry.isKeePassEntry() -> keepassDatabaseName ?: keepassSourceLabel
+        else -> localSourceLabel
+    }
+    val folderPath = when {
+        entry.isBitwardenEntry() -> bitwardenFolderName
+            ?: entry.bitwardenFolderId
+            ?: rootLabel
+        entry.isKeePassEntry() -> entry.keepassGroupPath
+            ?.takeIf { it.isNotBlank() }
+            ?.let(::decodeKeePassPathForDisplay)
+            ?: rootLabel
+        else -> categoryPath
+            ?.takeIf { it.isNotBlank() }
+            ?: rootLabel
+    }
+
+    return PasswordStorageInfo(
+        entryId = entry.id,
+        containerKey = containerKey,
+        source = sourceName,
+        database = databaseName,
+        folderPath = folderPath
+    )
 }
 
 private fun normalizeWebsiteForSiblingGroupKey(value: String): String {

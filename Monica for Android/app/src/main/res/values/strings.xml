@@ -83,6 +83,8 @@
     <!-- Password List Screen -->
     <string name="search_passwords">Search passwords...</string>
     <string name="no_passwords_saved">No passwords saved yet</string>
+    <string name="password_list_quick_folder_root_empty">No entries are available in the current root directory</string>
+    <string name="password_list_quick_folder_root_empty_hint">Open a folder from the quick folder cards above to view its contents</string>
     <string name="no_passwords_found">No passwords found</string>
     <string name="add_password">Add Password</string>
     <string name="clear_search">Clear search</string>
