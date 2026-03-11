@@ -53,6 +53,9 @@ interface KeepassGroupSyncConfigDao {
     @Query("DELETE FROM keepass_group_sync_configs WHERE keepassDatabaseId = :databaseId AND groupPath = :groupPath")
     suspend fun deleteByPath(databaseId: Long, groupPath: String)
 
+    @Query("DELETE FROM keepass_group_sync_configs WHERE keepassDatabaseId = :databaseId")
+    suspend fun deleteByDatabaseId(databaseId: Long)
+
     @Query("UPDATE keepass_group_sync_configs SET bitwarden_vault_id = NULL, bitwarden_folder_id = NULL, sync_item_types = NULL, updated_at = :updatedAt WHERE keepassDatabaseId = :databaseId AND groupPath = :groupPath")
     suspend fun unlink(databaseId: Long, groupPath: String, updatedAt: Long = System.currentTimeMillis())
 

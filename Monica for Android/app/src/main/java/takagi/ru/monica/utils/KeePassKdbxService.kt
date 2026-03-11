@@ -301,13 +301,15 @@ class KeePassKdbxService(
                 sourceName = database.filePath
             )
             val (entries, hasRecycleBinMeta) = collectEntryContexts(keePassDatabase)
+            val resolutionContext = KeePassFieldReferenceResolver.buildContext(entries.map { it.entry })
             val count = entries.count { context ->
                 entryToData(
                     entry = context.entry,
                     groupPath = context.groupPath,
                     groupUuid = context.groupUuid,
                     isInRecycleBinByMeta = context.isInRecycleBinByMeta,
-                    hasRecycleBinMeta = hasRecycleBinMeta
+                    hasRecycleBinMeta = hasRecycleBinMeta,
+                    resolutionContext = resolutionContext
                 ) != null
             }
             Result.success(
@@ -336,13 +338,15 @@ class KeePassKdbxService(
                 sourceName = fileUri.lastPathSegment ?: fileUri.toString()
             )
             val (entries, hasRecycleBinMeta) = collectEntryContexts(keePassDatabase)
+            val resolutionContext = KeePassFieldReferenceResolver.buildContext(entries.map { it.entry })
             val count = entries.count { context ->
                 entryToData(
                     entry = context.entry,
                     groupPath = context.groupPath,
                     groupUuid = context.groupUuid,
                     isInRecycleBinByMeta = context.isInRecycleBinByMeta,
-                    hasRecycleBinMeta = hasRecycleBinMeta
+                    hasRecycleBinMeta = hasRecycleBinMeta,
+                    resolutionContext = resolutionContext
                 ) != null
             }
             Result.success(
@@ -449,13 +453,15 @@ class KeePassKdbxService(
         try {
             val (database, _, keePassDatabase) = loadDatabase(databaseId)
             val (entries, hasRecycleBinMeta) = collectEntryContexts(keePassDatabase)
+            val resolutionContext = KeePassFieldReferenceResolver.buildContext(entries.map { it.entry })
             val data = entries.mapNotNull { context ->
                 entryToData(
                     entry = context.entry,
                     groupPath = context.groupPath,
                     groupUuid = context.groupUuid,
                     isInRecycleBinByMeta = context.isInRecycleBinByMeta,
-                    hasRecycleBinMeta = hasRecycleBinMeta
+                    hasRecycleBinMeta = hasRecycleBinMeta,
+                    resolutionContext = resolutionContext
                 )
             }
             dao.updateEntryCount(database.id, data.size)
@@ -627,6 +633,7 @@ class KeePassKdbxService(
             ) { loaded ->
                 val recycleBinUuid = resolveRecycleBinUuid(loaded.keePassDatabase.content.meta)
                     ?: throw IllegalStateException("KeePass recycle bin unavailable")
+                val resolutionContext = buildResolutionContext(loaded.keePassDatabase)
                 val recyclePath = findGroupPathByUuid(
                     group = loaded.keePassDatabase.content.group,
                     currentPathKey = null,
@@ -636,7 +643,9 @@ class KeePassKdbxService(
                 var rootGroup = loaded.keePassDatabase.content.group
                 val removedContexts = mutableListOf<RemovedEntryContext>()
                 entries.forEach { entry ->
-                    val matcher: (Entry) -> Boolean = { existing -> matchesPasswordEntry(existing, entry) }
+                    val matcher: (Entry) -> Boolean = { existing ->
+                        matchesPasswordEntry(existing, entry, resolutionContext)
+                    }
                     val removed = removeAndCollectEntriesInGroup(
                         group = rootGroup,
                         matcher = matcher,
@@ -683,6 +692,7 @@ class KeePassKdbxService(
         try {
             val (_, _, keePassDatabase) = loadDatabase(databaseId)
             val (entries, hasRecycleBinMeta) = collectEntryContexts(keePassDatabase)
+            val resolutionContext = KeePassFieldReferenceResolver.buildContext(entries.map { it.entry })
             val data = entries.mapNotNull { context ->
                 entryToSecureItemData(
                     entry = context.entry,
@@ -691,7 +701,8 @@ class KeePassKdbxService(
                     groupUuid = context.groupUuid,
                     isInRecycleBinByMeta = context.isInRecycleBinByMeta,
                     hasRecycleBinMeta = hasRecycleBinMeta,
-                    allowedTypes = allowedTypes
+                    allowedTypes = allowedTypes,
+                    resolutionContext = resolutionContext
                 )
             }
             Result.success(data)
@@ -839,7 +850,10 @@ class KeePassKdbxService(
             val (_, _, keePassDatabase) = loadDatabase(databaseId)
             val groupContextIndex = buildGroupTraversalContextIndex(keePassDatabase)
             val (entries, hasRecycleBinMeta) = collectEntryContexts(keePassDatabase)
-            val matched = entries.firstOrNull { context -> matchesPasswordEntry(context.entry, target) }
+            val resolutionContext = KeePassFieldReferenceResolver.buildContext(entries.map { it.entry })
+            val matched = entries.firstOrNull { context ->
+                matchesPasswordEntry(context.entry, target, resolutionContext)
+            }
                 ?: return@withContext resolveRestoreTarget(
                     databaseId = databaseId,
                     preferredGroupPath = target.keepassGroupPath,
@@ -872,7 +886,10 @@ class KeePassKdbxService(
             val (_, _, keePassDatabase) = loadDatabase(databaseId)
             val groupContextIndex = buildGroupTraversalContextIndex(keePassDatabase)
             val (entries, hasRecycleBinMeta) = collectEntryContexts(keePassDatabase)
-            val matched = entries.firstOrNull { context -> matchesSecureItemEntry(context.entry, target) }
+            val resolutionContext = KeePassFieldReferenceResolver.buildContext(entries.map { it.entry })
+            val matched = entries.firstOrNull { context ->
+                matchesSecureItemEntry(context.entry, target, resolutionContext)
+            }
                 ?: return@withContext resolveRestoreTarget(
                     databaseId = databaseId,
                     preferredGroupPath = target.keepassGroupPath,
@@ -934,6 +951,7 @@ class KeePassKdbxService(
             ) { loaded ->
                 val recycleBinUuid = resolveRecycleBinUuid(loaded.keePassDatabase.content.meta)
                     ?: throw IllegalStateException("KeePass recycle bin unavailable")
+                val resolutionContext = buildResolutionContext(loaded.keePassDatabase)
                 val recyclePath = findGroupPathByUuid(
                     group = loaded.keePassDatabase.content.group,
                     currentPathKey = null,
@@ -943,7 +961,9 @@ class KeePassKdbxService(
                 var rootGroup = loaded.keePassDatabase.content.group
                 val removedContexts = mutableListOf<RemovedEntryContext>()
                 items.forEach { item ->
-                    val matcher: (Entry) -> Boolean = { existing -> matchesSecureItemEntry(existing, item) }
+                    val matcher: (Entry) -> Boolean = { existing ->
+                        matchesSecureItemEntry(existing, item, resolutionContext)
+                    }
                     val removed = removeAndCollectEntriesInGroup(
                         group = rootGroup,
                         matcher = matcher,
@@ -1037,7 +1057,10 @@ class KeePassKdbxService(
         entry: PasswordEntry,
         plainPassword: String
     ): Pair<KeePassDatabase, Boolean> {
-        val matcher: (Entry) -> Boolean = { existing -> matchesPasswordEntry(existing, entry) }
+        val resolutionContext = buildResolutionContext(keePassDatabase)
+        val matcher: (Entry) -> Boolean = { existing ->
+            matchesPasswordEntry(existing, entry, resolutionContext)
+        }
         val rootGroup = keePassDatabase.content.group
         val removeResult = removeEntryInGroup(rootGroup, matcher)
         val removedCount = removeResult.second
@@ -1059,7 +1082,10 @@ class KeePassKdbxService(
         keePassDatabase: KeePassDatabase,
         item: SecureItem
     ): Pair<KeePassDatabase, Boolean> {
-        val matcher: (Entry) -> Boolean = { existing -> matchesSecureItemEntry(existing, item) }
+        val resolutionContext = buildResolutionContext(keePassDatabase)
+        val matcher: (Entry) -> Boolean = { existing ->
+            matchesSecureItemEntry(existing, item, resolutionContext)
+        }
         val updater: (Entry) -> Entry = { existing ->
             existing.copy(fields = buildSecureItemFields(item))
         }
@@ -1076,7 +1102,10 @@ class KeePassKdbxService(
         keePassDatabase: KeePassDatabase,
         entry: PasswordEntry
     ): Pair<KeePassDatabase, Int> {
-        val matcher: (Entry) -> Boolean = { existing -> matchesPasswordEntry(existing, entry) }
+        val resolutionContext = buildResolutionContext(keePassDatabase)
+        val matcher: (Entry) -> Boolean = { existing ->
+            matchesPasswordEntry(existing, entry, resolutionContext)
+        }
         val result = removeEntryInGroup(keePassDatabase.content.group, matcher)
         val updatedDatabase = if (result.second > 0) {
             keePassDatabase.modifyParentGroup { result.first }
@@ -1090,7 +1119,10 @@ class KeePassKdbxService(
         keePassDatabase: KeePassDatabase,
         item: SecureItem
     ): Pair<KeePassDatabase, Int> {
-        val matcher: (Entry) -> Boolean = { existing -> matchesSecureItemEntry(existing, item) }
+        val resolutionContext = buildResolutionContext(keePassDatabase)
+        val matcher: (Entry) -> Boolean = { existing ->
+            matchesSecureItemEntry(existing, item, resolutionContext)
+        }
         val result = removeEntryInGroup(keePassDatabase.content.group, matcher)
         val updatedDatabase = if (result.second > 0) {
             keePassDatabase.modifyParentGroup { result.first }
@@ -1221,44 +1253,60 @@ class KeePassKdbxService(
         return group.copy(groups = updatedGroups)
     }
 
-    private fun matchByKey(entry: Entry, target: PasswordEntry): Boolean {
-        val title = getFieldValue(entry, "Title")
-        val username = getFieldValue(entry, "UserName")
-        val url = getFieldValue(entry, "URL")
+    private fun matchByKey(
+        entry: Entry,
+        target: PasswordEntry,
+        resolutionContext: KeePassEntryResolutionContext? = null
+    ): Boolean {
+        val title = getFieldValue(entry, "Title", resolutionContext)
+        val username = getFieldValue(entry, "UserName", resolutionContext)
+        val url = getFieldValue(entry, "URL", resolutionContext)
         return title.equals(target.title, true) &&
             username.equals(target.username, true) &&
             url.equals(target.website, true)
     }
 
-    private fun matchesPasswordEntry(entry: Entry, target: PasswordEntry): Boolean {
+    private fun matchesPasswordEntry(
+        entry: Entry,
+        target: PasswordEntry,
+        resolutionContext: KeePassEntryResolutionContext? = null
+    ): Boolean {
         val targetUuid = parseUuid(target.keepassEntryUuid)
         if (targetUuid != null && entry.uuid == targetUuid) {
             return true
         }
-        val monicaId = getFieldValue(entry, FIELD_MONICA_LOCAL_ID).toLongOrNull()
+        val monicaId = getFieldValue(entry, FIELD_MONICA_LOCAL_ID, resolutionContext).toLongOrNull()
         if (monicaId != null && target.id > 0 && monicaId == target.id) {
             return true
         }
-        return matchByKey(entry, target)
+        return matchByKey(entry, target, resolutionContext)
     }
 
-    private fun matchSecureItemByKey(entry: Entry, target: SecureItem): Boolean {
-        val title = getFieldValue(entry, "Title")
-        val itemType = getFieldValue(entry, FIELD_MONICA_ITEM_TYPE)
+    private fun matchSecureItemByKey(
+        entry: Entry,
+        target: SecureItem,
+        resolutionContext: KeePassEntryResolutionContext? = null
+    ): Boolean {
+        val title = getFieldValue(entry, "Title", resolutionContext)
+        val itemType = getFieldValue(entry, FIELD_MONICA_ITEM_TYPE, resolutionContext)
         return title.equals(target.title, true) &&
             itemType.equals(target.itemType.name, true)
     }
 
-    private fun matchesSecureItemEntry(entry: Entry, target: SecureItem): Boolean {
+    private fun matchesSecureItemEntry(
+        entry: Entry,
+        target: SecureItem,
+        resolutionContext: KeePassEntryResolutionContext? = null
+    ): Boolean {
         val targetUuid = parseUuid(target.keepassEntryUuid)
         if (targetUuid != null && entry.uuid == targetUuid) {
             return true
         }
-        val monicaId = getFieldValue(entry, FIELD_MONICA_ITEM_ID).toLongOrNull()
+        val monicaId = getFieldValue(entry, FIELD_MONICA_ITEM_ID, resolutionContext).toLongOrNull()
         if (monicaId != null && target.id > 0 && monicaId == target.id) {
             return true
         }
-        return matchSecureItemByKey(entry, target)
+        return matchSecureItemByKey(entry, target, resolutionContext)
     }
 
     private fun entryToData(
@@ -1266,22 +1314,23 @@ class KeePassKdbxService(
         groupPath: String?,
         groupUuid: UUID?,
         isInRecycleBinByMeta: Boolean,
-        hasRecycleBinMeta: Boolean
+        hasRecycleBinMeta: Boolean,
+        resolutionContext: KeePassEntryResolutionContext? = null
     ): KeePassEntryData? {
         // Monica 安全项（TOTP/笔记/卡片等）会写入 MonicaItemType，不应进入密码列表。
-        if (getFieldValue(entry, FIELD_MONICA_ITEM_TYPE).isNotBlank()) {
+        if (getFieldValue(entry, FIELD_MONICA_ITEM_TYPE, resolutionContext).isNotBlank()) {
             return null
         }
 
-        val title = getFieldValue(entry, "Title")
-        val username = getFieldValue(entry, "UserName")
-        val password = resolveEntryPassword(entry)
-        val url = getFieldValue(entry, "URL")
-        val notes = getFieldValue(entry, "Notes")
+        val title = getFieldValue(entry, "Title", resolutionContext)
+        val username = getFieldValue(entry, "UserName", resolutionContext)
+        val password = resolveEntryPassword(entry, resolutionContext)
+        val url = getFieldValue(entry, "URL", resolutionContext)
+        val notes = getFieldValue(entry, "Notes", resolutionContext)
         if (title.isEmpty() && username.isEmpty() && password.isEmpty() && url.isEmpty() && notes.isEmpty()) {
             return null
         }
-        val monicaId = getFieldValue(entry, FIELD_MONICA_LOCAL_ID).toLongOrNull()
+        val monicaId = getFieldValue(entry, FIELD_MONICA_LOCAL_ID, resolutionContext).toLongOrNull()
         val inRecycleBin = resolveRecycleBinFlag(
             groupPath = groupPath,
             isInRecycleBinByMeta = isInRecycleBinByMeta,
@@ -1308,21 +1357,22 @@ class KeePassKdbxService(
         groupUuid: UUID?,
         isInRecycleBinByMeta: Boolean,
         hasRecycleBinMeta: Boolean,
-        allowedTypes: Set<ItemType>?
+        allowedTypes: Set<ItemType>?,
+        resolutionContext: KeePassEntryResolutionContext? = null
     ): KeePassSecureItemData? {
-        val typeRaw = getFieldValue(entry, FIELD_MONICA_ITEM_TYPE)
+        val typeRaw = getFieldValue(entry, FIELD_MONICA_ITEM_TYPE, resolutionContext)
         if (typeRaw.isNotBlank()) {
             val itemType = runCatching { ItemType.valueOf(typeRaw) }.getOrNull() ?: return null
             if (allowedTypes != null && itemType !in allowedTypes) return null
 
-            val itemData = getFieldValue(entry, FIELD_MONICA_ITEM_DATA)
+            val itemData = getFieldValue(entry, FIELD_MONICA_ITEM_DATA, resolutionContext)
             if (itemData.isBlank()) return null
 
-            val title = getFieldValue(entry, "Title")
-            val notes = getFieldValue(entry, "Notes")
-            val imagePaths = getFieldValue(entry, FIELD_MONICA_IMAGE_PATHS)
-            val isFavorite = getFieldValue(entry, FIELD_MONICA_IS_FAVORITE).toBoolean()
-            val sourceMonicaId = getFieldValue(entry, FIELD_MONICA_ITEM_ID).toLongOrNull()
+            val title = getFieldValue(entry, "Title", resolutionContext)
+            val notes = getFieldValue(entry, "Notes", resolutionContext)
+            val imagePaths = getFieldValue(entry, FIELD_MONICA_IMAGE_PATHS, resolutionContext)
+            val isFavorite = getFieldValue(entry, FIELD_MONICA_IS_FAVORITE, resolutionContext).toBoolean()
+            val sourceMonicaId = getFieldValue(entry, FIELD_MONICA_ITEM_ID, resolutionContext).toLongOrNull()
             val now = Date()
             val inRecycleBin = resolveRecycleBinFlag(
                 groupPath = groupPath,
@@ -1356,9 +1406,9 @@ class KeePassKdbxService(
         val allowTotp = allowedTypes == null || allowedTypes.contains(ItemType.TOTP)
         if (!allowTotp) return null
 
-        val parsedTotp = parseStandardTotpFromEntry(entry) ?: return null
-        val title = getFieldValue(entry, "Title")
-        val notes = getFieldValue(entry, "Notes")
+        val parsedTotp = parseStandardTotpFromEntry(entry, resolutionContext) ?: return null
+        val title = getFieldValue(entry, "Title", resolutionContext)
+        val notes = getFieldValue(entry, "Notes", resolutionContext)
         val now = Date()
         val inRecycleBin = resolveRecycleBinFlag(
             groupPath = groupPath,
@@ -1385,7 +1435,7 @@ class KeePassKdbxService(
                 isDeleted = inRecycleBin,
                 deletedAt = if (inRecycleBin) now else null
             ),
-            sourceMonicaId = getFieldValue(entry, FIELD_MONICA_ITEM_ID).toLongOrNull(),
+            sourceMonicaId = getFieldValue(entry, FIELD_MONICA_ITEM_ID, resolutionContext).toLongOrNull(),
             isInRecycleBin = inRecycleBin
         )
     }
@@ -1422,7 +1472,10 @@ class KeePassKdbxService(
     /**
      * 标准 Password 字段为空时，尝试从常见自定义受保护字段中提取密码。
      */
-    private fun resolveEntryPassword(entry: Entry): String {
+    private fun resolveEntryPassword(
+        entry: Entry,
+        resolutionContext: KeePassEntryResolutionContext? = null
+    ): String {
         fun isLikelyLabelValue(value: String, key: String? = null): Boolean {
             val normalized = value.trim().lowercase(Locale.ROOT)
             if (normalized.isBlank()) return true
@@ -1432,7 +1485,7 @@ class KeePassKdbxService(
             return false
         }
 
-        val standardPassword = getFieldValue(entry, "Password")
+        val standardPassword = getFieldValue(entry, "Password", resolutionContext)
         if (standardPassword.isNotBlank() && !isLikelyLabelValue(standardPassword, "Password")) {
             return standardPassword
         }
@@ -1442,7 +1495,7 @@ class KeePassKdbxService(
             "密码", "口令", "PIN", "Pin", "pin", "pwd", "PWD", "pass", "Pass", "password", "Password"
         )
         prioritizedKeys.forEach { key ->
-            val value = getFieldValue(entry, key)
+            val value = getFieldValue(entry, key, resolutionContext)
             if (value.isBlank()) return@forEach
             if (!isLikelyLabelValue(value, key)) return value
             if (fallback.isNullOrBlank()) fallback = value
@@ -1458,7 +1511,11 @@ class KeePassKdbxService(
         entry.fields.forEach { (key, value) ->
             if (key in standardFields || key.startsWith("_etm_")) return@forEach
             if (value is EntryValue.Encrypted) {
-                val content = runCatching { value.content }.getOrDefault("")
+                val content = KeePassFieldReferenceResolver.resolveValue(
+                    rawValue = runCatching { value.content }.getOrDefault(""),
+                    currentEntry = entry,
+                    context = resolutionContext
+                )
                 if (content.isBlank()) return@forEach
                 if (!isLikelyLabelValue(content, key)) return content
                 if (fallback.isNullOrBlank()) fallback = content
@@ -1468,31 +1525,38 @@ class KeePassKdbxService(
         return fallback ?: ""
     }
 
-    private fun getFieldValue(entry: Entry, key: String): String {
-        val value = entry.fields[key]
-        return if (value == null) "" else value.content
+    private fun getFieldValue(
+        entry: Entry,
+        key: String,
+        resolutionContext: KeePassEntryResolutionContext? = null
+    ): String {
+        return KeePassFieldReferenceResolver.getFieldValue(entry, key, resolutionContext)
     }
 
-    private fun getFieldValueIgnoreCase(entry: Entry, vararg keys: String): String {
-        if (keys.isEmpty()) return ""
-        val direct = keys.firstNotNullOfOrNull { key ->
-            entry.fields[key]?.content?.takeIf { it.isNotBlank() }
-        }
-        if (direct != null) return direct
-        return entry.fields.entries.firstOrNull { (fieldKey, _) ->
-            keys.any { it.equals(fieldKey, ignoreCase = true) }
-        }?.value?.content.orEmpty()
+    private fun getFieldValueIgnoreCase(
+        entry: Entry,
+        resolutionContext: KeePassEntryResolutionContext? = null,
+        vararg keys: String
+    ): String {
+        return KeePassFieldReferenceResolver.getFieldValueIgnoreCase(
+            entry = entry,
+            context = resolutionContext,
+            *keys
+        )
     }
 
-    private fun parseStandardTotpFromEntry(entry: Entry): TotpData? {
-        val otpField = getFieldValueIgnoreCase(entry, "otp")
-        val seedField = getFieldValueIgnoreCase(entry, "TOTP Seed", "TOTPSeed")
-        val settingsField = getFieldValueIgnoreCase(entry, "TOTP Settings", "TOTPSettings")
+    private fun parseStandardTotpFromEntry(
+        entry: Entry,
+        resolutionContext: KeePassEntryResolutionContext? = null
+    ): TotpData? {
+        val otpField = getFieldValueIgnoreCase(entry, resolutionContext, "otp")
+        val seedField = getFieldValueIgnoreCase(entry, resolutionContext, "TOTP Seed", "TOTPSeed")
+        val settingsField = getFieldValueIgnoreCase(entry, resolutionContext, "TOTP Settings", "TOTPSettings")
         if (otpField.isBlank() && seedField.isBlank()) return null
 
-        val title = getFieldValue(entry, "Title")
-        val username = getFieldValue(entry, "UserName")
-        val url = getFieldValue(entry, "URL")
+        val title = getFieldValue(entry, "Title", resolutionContext)
+        val username = getFieldValue(entry, "UserName", resolutionContext)
+        val url = getFieldValue(entry, "URL", resolutionContext)
 
         parseOtpAuthUri(otpField, title, username, url)?.let { return it }
 
@@ -1638,6 +1702,12 @@ class KeePassKdbxService(
     private fun collectEntries(group: Group, entries: MutableList<Entry>) {
         entries.addAll(group.entries)
         group.groups.forEach { collectEntries(it, entries) }
+    }
+
+    private fun buildResolutionContext(keePassDatabase: KeePassDatabase): KeePassEntryResolutionContext {
+        val entries = mutableListOf<Entry>()
+        collectEntries(keePassDatabase.content.group, entries)
+        return KeePassFieldReferenceResolver.buildContext(entries)
     }
 
     private fun buildGroupTraversalContextIndex(

@@ -111,6 +111,7 @@ fun MarkdownPreviewText(
                         ) {
                             MarkdownInlineText(
                                 text = element.text,
+                                completedTask = element.checked,
                                 onOpenExternalLink = { raw ->
                                     openLink(raw, linkCallback.value, context)
                                 }
@@ -288,9 +289,10 @@ fun MarkdownPreviewText(
 private fun MarkdownInlineText(
     text: String,
     modifier: Modifier = Modifier,
+    completedTask: Boolean = false,
     onOpenExternalLink: (String) -> Unit
 ) {
-    val annotated = remember(text) { buildInlineAnnotatedText(text) }
+    val annotated = remember(text, completedTask) { buildInlineAnnotatedText(text, completedTask) }
     ClickableText(
         text = annotated,
         style = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
@@ -302,12 +304,12 @@ private fun MarkdownInlineText(
     }
 }
 
-private fun buildInlineAnnotatedText(input: String): AnnotatedString {
+private fun buildInlineAnnotatedText(input: String, completedTask: Boolean = false): AnnotatedString {
     val baseStyle = SpanStyle(color = Color.Unspecified)
     val urlRegex = Regex("(https?://[\\w-]+(\\.[\\w-]+)+[\\w.,@?^=%&:/~+#-]*[\\w@?^=%&/~+#-])")
 
     val builder = buildAnnotatedString {
-        appendStyledTextWithoutMarkers(input, baseStyle)
+        appendStyledTextWithoutMarkers(input, baseStyle, completedTask)
     }
 
     val mutable = AnnotatedString.Builder(builder)
@@ -332,7 +334,8 @@ private fun buildInlineAnnotatedText(input: String): AnnotatedString {
 
 private fun AnnotatedString.Builder.appendStyledTextWithoutMarkers(
     text: String,
-    baseStyle: SpanStyle
+    baseStyle: SpanStyle,
+    completedTask: Boolean = false
 ) {
     var index = 0
     var bold = false
@@ -378,7 +381,7 @@ private fun AnnotatedString.Builder.appendStyledTextWithoutMarkers(
                     SpanStyle(
                         fontWeight = if (bold) FontWeight.Bold else FontWeight.Normal,
                         fontStyle = if (italic) FontStyle.Italic else FontStyle.Normal,
-                        textDecoration = buildTextDecoration(strike, underline),
+                        textDecoration = buildTextDecoration(strike || completedTask, underline),
                         background = if (highlight) Color(0x33E6E45B) else Color.Unspecified,
                         fontFamily = if (inlineCode) FontFamily.Monospace else null
                     )

@@ -1692,9 +1692,21 @@ private fun GeneratorHistorySheet(
 ) {
     if (!visible) return
 
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    fun dismissHistorySheet(afterDismiss: (() -> Unit)? = null) {
+        scope.launch {
+            if (sheetState.isVisible) {
+                sheetState.hide()
+            }
+            onDismiss()
+            afterDismiss?.invoke()
+        }
+    }
+
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        onDismissRequest = { dismissHistorySheet() },
+        sheetState = sheetState
     ) {
         Column(
             modifier = Modifier
@@ -1715,7 +1727,7 @@ private fun GeneratorHistorySheet(
                 )
 
                 IconButton(
-                    onClick = onShowFilter
+                    onClick = { dismissHistorySheet(onShowFilter) }
                 ) {
                     Icon(
                         imageVector = Icons.Default.FilterList,

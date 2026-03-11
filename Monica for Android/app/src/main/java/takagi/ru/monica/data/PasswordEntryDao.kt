@@ -150,6 +150,18 @@ interface PasswordEntryDao {
     @Query(
         """
         UPDATE password_entries
+        SET keepassDatabaseId = NULL,
+            keepassGroupPath = NULL,
+            keepass_entry_uuid = NULL,
+            keepass_group_uuid = NULL
+        WHERE keepassDatabaseId = :databaseId
+        """
+    )
+    suspend fun clearKeePassBindingForDatabase(databaseId: Long)
+
+    @Query(
+        """
+        UPDATE password_entries
         SET bitwarden_vault_id = NULL,
             bitwarden_folder_id = NULL,
             bitwarden_local_modified = 0

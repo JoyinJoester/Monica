@@ -1077,12 +1077,19 @@ fun SettingsScreen(
         var clearGeneratorHistory by remember { mutableStateOf(true) }
         
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        fun dismissClearDataSheet(afterDismiss: (() -> Unit)? = null) {
+            coroutineScope.launch {
+                if (sheetState.isVisible) {
+                    sheetState.hide()
+                }
+                showClearDataDialog = false
+                clearDataPasswordInput = ""
+                afterDismiss?.invoke()
+            }
+        }
         
         ModalBottomSheet(
-            onDismissRequest = { 
-                showClearDataDialog = false 
-                clearDataPasswordInput = ""
-            },
+            onDismissRequest = { dismissClearDataSheet() },
             sheetState = sheetState,
             containerColor = MaterialTheme.colorScheme.surface,
             tonalElevation = 0.dp
@@ -1266,10 +1273,7 @@ fun SettingsScreen(
                 ) {
                     // Cancel
                     OutlinedButton(
-                        onClick = { 
-                            showClearDataDialog = false 
-                            clearDataPasswordInput = ""
-                        },
+                        onClick = { dismissClearDataSheet() },
                         modifier = Modifier
                             .weight(1f)
                             .height(48.dp),
@@ -1284,17 +1288,17 @@ fun SettingsScreen(
                             coroutineScope.launch {
                                 val securityManager = takagi.ru.monica.security.SecurityManager(context)
                                 if (securityManager.verifyMasterPassword(clearDataPasswordInput)) {
-                                    showClearDataDialog = false
-                                    clearDataPasswordInput = ""
-                                    onClearAllData(
-                                        clearPasswords, 
-                                        clearTotp,
-                                        clearNotes, 
-                                        clearDocuments, 
-                                        clearBankCards, 
-                                        clearGeneratorHistory
-                                    )
-                                    Toast.makeText(context, context.getString(R.string.clearing_data), Toast.LENGTH_SHORT).show()
+                                    dismissClearDataSheet {
+                                        onClearAllData(
+                                            clearPasswords,
+                                            clearTotp,
+                                            clearNotes,
+                                            clearDocuments,
+                                            clearBankCards,
+                                            clearGeneratorHistory
+                                        )
+                                        Toast.makeText(context, context.getString(R.string.clearing_data), Toast.LENGTH_SHORT).show()
+                                    }
                                 } else {
                                     Toast.makeText(context, context.getString(R.string.password_incorrect), Toast.LENGTH_SHORT).show()
                                 }

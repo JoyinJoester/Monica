@@ -411,8 +411,22 @@ private fun PasskeyDetailBottomSheet(
     onDismiss: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val scope = rememberCoroutineScope()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    fun dismissSheet(afterDismiss: (() -> Unit)? = null) {
+        scope.launch {
+            if (sheetState.isVisible) {
+                sheetState.hide()
+            }
+            onDismiss()
+            afterDismiss?.invoke()
+        }
+    }
+
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { dismissSheet() },
+        sheetState = sheetState,
         containerColor = MaterialTheme.colorScheme.surface
     ) {
         Column(
@@ -502,7 +516,7 @@ private fun PasskeyDetailBottomSheet(
             
             // 删除按钮
             Button(
-                onClick = onDelete,
+                onClick = { dismissSheet(onDelete) },
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = MaterialTheme.colorScheme.errorContainer,

@@ -1,6 +1,5 @@
 package takagi.ru.monica.ui.components
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,7 +24,6 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.ModalBottomSheetProperties
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -34,8 +32,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -48,6 +48,7 @@ import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordEntry
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.launch
 
 enum class PasswordQuickAccessMode {
     RECENT,
@@ -80,19 +81,29 @@ fun PasswordQuickAccessSheet(
     }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val coroutineScope = rememberCoroutineScope()
+
+    fun dismissSheet(afterDismiss: (() -> Unit)? = null) {
+        coroutineScope.launch {
+            if (sheetState.isVisible) {
+                sheetState.hide()
+            }
+            onDismiss()
+            afterDismiss?.invoke()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (!sheetState.isVisible) {
+            sheetState.show()
+        }
+    }
 
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { dismissSheet() },
         sheetState = sheetState,
-        properties = ModalBottomSheetProperties(
-            shouldDismissOnBackPress = false
-        ),
         dragHandle = { BottomSheetDefaults.DragHandle() }
     ) {
-        BackHandler(enabled = true) {
-            onDismiss()
-        }
-
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -184,8 +195,9 @@ fun PasswordQuickAccessSheet(
                         PasswordQuickAccessRow(
                             item = item,
                             onClick = {
-                                onOpenPassword(item.entry.id)
-                                onDismiss()
+                                dismissSheet {
+                                    onOpenPassword(item.entry.id)
+                                }
                             }
                         )
                     }

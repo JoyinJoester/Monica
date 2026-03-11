@@ -190,7 +190,7 @@ class PasswordViewModel(
                                 Log.w("PasswordViewModel", "Failed to fetch custom field matched entries", e)
                                 emptyList()
                             }
-                            baseResults + additionalEntries
+                            (baseResults + additionalEntries).distinctBy { it.id }
                         }
                     }
                 }
@@ -295,7 +295,8 @@ class PasswordViewModel(
                 } else {
                     entries
                 }
-                val decrypted = filtered.map { entry ->
+                val exactDeduped = dedupeExactEntries(filtered)
+                val decrypted = exactDeduped.map { entry ->
                     entry.copy(password = decryptForDisplay(entry.password))
                 }
                 filterGhostEntriesForDisplay(decrypted)
@@ -452,6 +453,38 @@ class PasswordViewModel(
 
         if (ghostIds.isEmpty()) return entries
         return entries.filterNot { it.id in ghostIds }
+    }
+
+    /**
+     * Collapse exact duplicated entries caused by repeated sync/import records.
+     * We keep one best row for each identical source+account+password signature.
+     */
+    private fun dedupeExactEntries(entries: List<PasswordEntry>): List<PasswordEntry> {
+        if (entries.size <= 1) return entries
+
+        val indexById = entries.mapIndexed { index, entry -> entry.id to index }.toMap()
+        val deduped = entries
+            .groupBy { buildExactDisplayKey(it) }
+            .values
+            .mapNotNull { pickBestEntry(it) }
+
+        return deduped.sortedBy { indexById[it.id] ?: Int.MAX_VALUE }
+    }
+
+    private fun buildExactDisplayKey(entry: PasswordEntry): String {
+        val sourceKey = when {
+            entry.keepassDatabaseId != null -> "kp:${entry.keepassDatabaseId}:${entry.keepassEntryUuid.orEmpty()}:${entry.keepassGroupPath.orEmpty()}"
+            entry.bitwardenVaultId != null -> "bw:${entry.bitwardenVaultId}:${entry.bitwardenCipherId.orEmpty()}:${entry.bitwardenFolderId.orEmpty()}"
+            else -> "local:${entry.categoryId ?: -1}"
+        }
+
+        return listOf(
+            sourceKey,
+            normalizeComparableText(entry.title),
+            normalizeComparableText(entry.username),
+            normalizeWebsiteForGhostGrouping(entry.website),
+            entry.password
+        ).joinToString("|")
     }
 
     private fun buildGhostGroupKey(entry: PasswordEntry): String {

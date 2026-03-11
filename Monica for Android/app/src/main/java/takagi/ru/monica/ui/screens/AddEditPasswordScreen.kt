@@ -1886,12 +1886,19 @@ fun AddEditPasswordScreen(
             }
         }
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-        ModalBottomSheet(
-            onDismissRequest = {
+        fun dismissCommonAccountSelector(afterDismiss: (() -> Unit)? = null) {
+            coroutineScope.launch {
+                if (sheetState.isVisible) {
+                    sheetState.hide()
+                }
                 showCommonAccountSelector = false
                 commonAccountSelectorTargetIndex = -1
-            },
+                afterDismiss?.invoke()
+            }
+        }
+
+        ModalBottomSheet(
+            onDismissRequest = { dismissCommonAccountSelector() },
             sheetState = sheetState,
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
@@ -1922,10 +1929,7 @@ fun AddEditPasswordScreen(
                         )
                     }
                     TextButton(
-                        onClick = {
-                            showCommonAccountSelector = false
-                            commonAccountSelectorTargetIndex = -1
-                        }
+                        onClick = { dismissCommonAccountSelector() }
                     ) {
                         Text(stringResource(R.string.close))
                     }
@@ -1977,9 +1981,9 @@ fun AddEditPasswordScreen(
 
                             Surface(
                                 onClick = {
-                                    applyCommonAccountSelection(commonAccountSelectorField, option.content)
-                                    showCommonAccountSelector = false
-                                    commonAccountSelectorTargetIndex = -1
+                                    dismissCommonAccountSelector {
+                                        applyCommonAccountSelection(commonAccountSelectorField, option.content)
+                                    }
                                 },
                                 shape = RoundedCornerShape(18.dp),
                                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -2715,6 +2719,7 @@ private fun VaultSelector(
     onCategorySelected: (Long?) -> Unit
 ) {
     val availableKeePassDatabases = keepassDatabases
+    val coroutineScope = rememberCoroutineScope()
 
     // 如果没有任何外部数据库，不显示选择器
     if (availableKeePassDatabases.isEmpty() && bitwardenVaults.isEmpty()) return
@@ -2837,9 +2842,18 @@ private fun VaultSelector(
     if (showBottomSheet) {
         var localExpanded by remember { mutableStateOf(false) }
         var expandedBitwardenVaultId by remember { mutableStateOf<Long?>(null) }
+        fun dismissStorageTargetSheet(afterDismiss: (() -> Unit)? = null) {
+            coroutineScope.launch {
+                if (sheetState.isVisible) {
+                    sheetState.hide()
+                }
+                showBottomSheet = false
+                afterDismiss?.invoke()
+            }
+        }
 
         ModalBottomSheet(
-            onDismissRequest = { showBottomSheet = false },
+            onDismissRequest = { dismissStorageTargetSheet() },
             sheetState = sheetState,
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
             containerColor = MaterialTheme.colorScheme.surface,
@@ -2874,9 +2888,11 @@ private fun VaultSelector(
                             localExpanded = true
                             expandedBitwardenVaultId = null
                         } else {
-                            onKeePassDatabaseSelected(null)
-                            onBitwardenVaultSelected(null)
-                            onBitwardenFolderSelected(null)
+                            dismissStorageTargetSheet {
+                                onKeePassDatabaseSelected(null)
+                                onBitwardenVaultSelected(null)
+                                onBitwardenFolderSelected(null)
+                            }
                         }
                     }
                 )
@@ -2898,7 +2914,11 @@ private fun VaultSelector(
                             containerColor = MaterialTheme.colorScheme.surfaceVariant,
                             contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             iconColor = MaterialTheme.colorScheme.outline,
-                            onClick = { onCategorySelected(null) }
+                            onClick = {
+                                dismissStorageTargetSheet {
+                                    onCategorySelected(null)
+                                }
+                            }
                         )
 
                         categories.forEach { category ->
@@ -2910,7 +2930,11 @@ private fun VaultSelector(
                                 containerColor = MaterialTheme.colorScheme.surfaceVariant,
                                 contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                 iconColor = MaterialTheme.colorScheme.primary,
-                                onClick = { onCategorySelected(category.id) }
+                                onClick = {
+                                    dismissStorageTargetSheet {
+                                        onCategorySelected(category.id)
+                                    }
+                                }
                             )
                         }
                     }
@@ -2926,10 +2950,12 @@ private fun VaultSelector(
                         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                         iconColor = MaterialTheme.colorScheme.primary,
                         onClick = {
-                            onCategorySelected(null)
-                            onBitwardenVaultSelected(null)
-                            onBitwardenFolderSelected(null)
-                            onKeePassDatabaseSelected(database.id)
+                            dismissStorageTargetSheet {
+                                onCategorySelected(null)
+                                onBitwardenVaultSelected(null)
+                                onBitwardenFolderSelected(null)
+                                onKeePassDatabaseSelected(database.id)
+                            }
                         }
                     )
                 }
@@ -2959,8 +2985,10 @@ private fun VaultSelector(
                                 expandedBitwardenVaultId = vault.id
                                 localExpanded = false
                             } else {
-                                onBitwardenVaultSelected(vault.id)
-                                onBitwardenFolderSelected(null)
+                                dismissStorageTargetSheet {
+                                    onBitwardenVaultSelected(vault.id)
+                                    onBitwardenFolderSelected(null)
+                                }
                             }
                         }
                     )
@@ -2985,8 +3013,10 @@ private fun VaultSelector(
                                     contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
                                     iconColor = MaterialTheme.colorScheme.tertiary,
                                     onClick = {
-                                        onBitwardenVaultSelected(vault.id)
-                                        onBitwardenFolderSelected(folder.bitwardenFolderId)
+                                        dismissStorageTargetSheet {
+                                            onBitwardenVaultSelected(vault.id)
+                                            onBitwardenFolderSelected(folder.bitwardenFolderId)
+                                        }
                                     }
                                 )
                             }

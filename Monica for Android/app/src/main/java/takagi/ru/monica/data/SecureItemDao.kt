@@ -97,6 +97,18 @@ interface SecureItemDao {
     @Query("SELECT * FROM secure_items WHERE isDeleted = 0 AND keepass_database_id = :databaseId ORDER BY updatedAt DESC")
     suspend fun getByKeePassDatabaseIdSync(databaseId: Long): List<SecureItem>
 
+    @Query(
+      """
+      UPDATE secure_items
+      SET keepass_database_id = NULL,
+        keepass_group_path = NULL,
+        keepass_entry_uuid = NULL,
+        keepass_group_uuid = NULL
+      WHERE keepass_database_id = :databaseId
+      """
+    )
+    suspend fun clearKeePassBindingForDatabase(databaseId: Long)
+
     @Query("""
         SELECT * FROM secure_items
         WHERE itemType = :itemType

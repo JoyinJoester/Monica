@@ -242,6 +242,16 @@ interface PasskeyDao {
 
     @Query("UPDATE passkeys SET category_id = NULL WHERE category_id = :categoryId")
     suspend fun removeCategoryFromPasskeys(categoryId: Long)
+
+    @Query(
+        """
+        UPDATE passkeys
+        SET keepass_database_id = NULL,
+            keepass_group_path = NULL
+        WHERE keepass_database_id = :databaseId
+        """
+    )
+    suspend fun clearKeePassBindingForDatabase(databaseId: Long)
     
     /**
      * 获取待上传到 Bitwarden 的 Passkeys

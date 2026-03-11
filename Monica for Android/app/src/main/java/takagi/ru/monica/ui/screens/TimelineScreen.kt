@@ -76,6 +76,7 @@ import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.PasswordDatabase
@@ -2801,6 +2802,7 @@ private fun TrashItemActionSheet(
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val sheetState = rememberModalBottomSheetState()
+    val coroutineScope = rememberCoroutineScope()
     val dateFormat = remember { SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()) }
     
     val (icon, iconColor) = when (item.itemType) {
@@ -2820,9 +2822,25 @@ private fun TrashItemActionSheet(
     }
     
     var showDeleteConfirm by remember { mutableStateOf(false) }
+
+    fun dismissSheet(afterDismiss: (() -> Unit)? = null) {
+        coroutineScope.launch {
+            if (sheetState.isVisible) {
+                sheetState.hide()
+            }
+            onDismiss()
+            afterDismiss?.invoke()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (!sheetState.isVisible) {
+            sheetState.show()
+        }
+    }
     
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { dismissSheet() },
         sheetState = sheetState,
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
     ) {
@@ -2910,7 +2928,7 @@ private fun TrashItemActionSheet(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 // 恢复按钮
                 Button(
-                    onClick = onRestore,
+                    onClick = { dismissSheet(onRestore) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 ) {
@@ -2948,7 +2966,7 @@ private fun TrashItemActionSheet(
                 TextButton(
                     onClick = {
                         showDeleteConfirm = false
-                        onPermanentDelete()
+                        dismissSheet(onPermanentDelete)
                     },
                     colors = ButtonDefaults.textButtonColors(contentColor = colorScheme.error)
                 ) {

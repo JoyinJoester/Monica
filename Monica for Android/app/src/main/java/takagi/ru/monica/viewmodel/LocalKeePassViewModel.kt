@@ -26,6 +26,7 @@ import takagi.ru.monica.data.KeePassKdfAlgorithm
 import takagi.ru.monica.data.KeePassStorageLocation
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
+import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
@@ -724,6 +725,7 @@ class LocalKeePassViewModel(
                 withContext(Dispatchers.IO) {
                     val database = dao.getDatabaseById(databaseId)
                         ?: throw Exception("数据库不存在")
+                    val appDatabase = PasswordDatabase.getDatabase(context)
                     
                     if (deleteFile) {
                         if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
@@ -734,9 +736,19 @@ class LocalKeePassViewModel(
                         }
                         // 外部文件不删除，只移除引用
                     }
+
+                    appDatabase.passwordEntryDao().clearKeePassBindingForDatabase(databaseId)
+                    appDatabase.secureItemDao().clearKeePassBindingForDatabase(databaseId)
+                    appDatabase.passkeyDao().clearKeePassBindingForDatabase(databaseId)
+                    appDatabase.keepassGroupSyncConfigDao().deleteByDatabaseId(databaseId)
+                    KeePassKdbxService.invalidateProcessCache(databaseId)
                     
                     dao.deleteDatabaseById(databaseId)
                 }
+
+                _groupsByDatabase.update { current -> current - databaseId }
+                _verificationStates.update { current -> current - databaseId }
+                _selectedDatabase.update { current -> current?.takeUnless { it.id == databaseId } }
                 
                 _operationState.value = OperationState.Success("已删除")
             } catch (e: Exception) {

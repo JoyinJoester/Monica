@@ -31,7 +31,9 @@ import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.KeePassCodecSupport
 import takagi.ru.monica.utils.KeePassCredentialSupport
+import takagi.ru.monica.utils.KeePassEntryResolutionContext
 import takagi.ru.monica.utils.KeePassErrorCode
+import takagi.ru.monica.utils.KeePassFieldReferenceResolver
 import takagi.ru.monica.utils.KeePassOperationException
 import takagi.ru.monica.utils.KeePassFormatInspector
 import takagi.ru.monica.utils.KeePassKdbxService
@@ -473,6 +475,7 @@ class KeePassKdbxViewModel {
             // 3. 获取所有条目（保留分组路径）
             val allEntries = mutableListOf<Pair<Entry, String?>>()
             collectEntriesWithGroupPath(keePassDatabase.content.group, null, allEntries)
+            val resolutionContext = KeePassFieldReferenceResolver.buildContext(allEntries.map { it.first })
             Log.d(TAG, "Found ${allEntries.size} entries in KDBX file")
             
             // 4. 准备数据库和安全管理器
@@ -481,7 +484,11 @@ class KeePassKdbxViewModel {
             val secureItemDao = database.secureItemDao()
             val securityManager = takagi.ru.monica.security.SecurityManager(context)
             val keepassCredentialCount = allEntries.count { (entry, _) ->
-                isImportablePasswordEntry(entry, hasTotpPayload = hasTotpPayload(entry))
+                isImportablePasswordEntry(
+                    entry = entry,
+                    resolutionContext = resolutionContext,
+                    hasTotpPayload = hasTotpPayload(entry, resolutionContext)
+                )
             }
             val creationOptions = KeePassKdbxService.inferCreationOptions(keePassDatabase)
             val keepassDatabaseId = bindLocalDatabase(
@@ -501,7 +508,7 @@ class KeePassKdbxViewModel {
                     // 安全获取字段值的辅助函数
                     fun getFieldValue(key: String): String {
                         return try {
-                            entry.fields[key]?.content ?: ""
+                            KeePassFieldReferenceResolver.getFieldValue(entry, key, resolutionContext)
                         } catch (e: Exception) {
                             Log.w(TAG, "Failed to get field '$key': ${e.message}")
                             ""
@@ -510,7 +517,7 @@ class KeePassKdbxViewModel {
                     
                     val title = getFieldValue("Title")
                     val username = getFieldValue("UserName")
-                    val password = resolveEntryPassword(entry)
+                    val password = resolveEntryPassword(entry, resolutionContext)
                     val url = getFieldValue("URL")
                     val notes = getFieldValue("Notes")
                     val monicaItemType = getFieldValue("MonicaItemType")
@@ -525,7 +532,7 @@ class KeePassKdbxViewModel {
                     val totpSeed = getFieldValue("TOTP Seed")
                     val totpSettings = getFieldValue("TOTP Settings")
                     val hasTotpPayload = otpField.isNotEmpty() || totpSeed.isNotEmpty()
-                    val shouldImportPassword = isImportablePasswordEntry(entry, hasTotpPayload)
+                    val shouldImportPassword = isImportablePasswordEntry(entry, resolutionContext, hasTotpPayload)
 
                     // 先导入密码，便于后续 TOTP 绑定到同一账号。
                     var passwordIdForBinding: Long? = null
@@ -742,17 +749,23 @@ class KeePassKdbxViewModel {
         }
     }
 
-    private fun hasTotpPayload(entry: Entry): Boolean {
-        fun field(key: String): String = runCatching { entry.fields[key]?.content ?: "" }.getOrDefault("")
-        return field("otp").isNotBlank() || field("TOTP Seed").isNotBlank()
+    private fun hasTotpPayload(
+        entry: Entry,
+        resolutionContext: KeePassEntryResolutionContext? = null
+    ): Boolean {
+        return KeePassFieldReferenceResolver.getFieldValue(entry, "otp", resolutionContext).isNotBlank() ||
+            KeePassFieldReferenceResolver.getFieldValue(entry, "TOTP Seed", resolutionContext).isNotBlank()
     }
 
     /**
      * 某些数据库会把密码存在自定义受保护字段（例如“密码”/“PIN”），
      * 标准 Password 字段为空时做一次兜底提取，避免导入后密码为空。
      */
-    private fun resolveEntryPassword(entry: Entry): String {
-        fun contentOf(key: String): String = runCatching { entry.fields[key]?.content ?: "" }.getOrDefault("")
+    private fun resolveEntryPassword(
+        entry: Entry,
+        resolutionContext: KeePassEntryResolutionContext? = null
+    ): String {
+        fun contentOf(key: String): String = KeePassFieldReferenceResolver.getFieldValue(entry, key, resolutionContext)
         fun isLikelyLabelValue(value: String, key: String? = null): Boolean {
             val normalized = value.trim().lowercase(Locale.ROOT)
             if (normalized.isBlank()) return true
@@ -785,7 +798,11 @@ class KeePassKdbxViewModel {
         entry.fields.forEach { (key, value) ->
             if (key in standardFields || key.startsWith("_etm_")) return@forEach
             if (value is EntryValue.Encrypted) {
-                val content = runCatching { value.content }.getOrDefault("")
+                val content = KeePassFieldReferenceResolver.resolveValue(
+                    rawValue = runCatching { value.content }.getOrDefault(""),
+                    currentEntry = entry,
+                    context = resolutionContext
+                )
                 if (content.isBlank()) return@forEach
                 if (!isLikelyLabelValue(content, key)) return content
                 if (fallback.isNullOrBlank()) fallback = content
@@ -795,8 +812,12 @@ class KeePassKdbxViewModel {
         return fallback ?: ""
     }
 
-    private fun isImportablePasswordEntry(entry: Entry, hasTotpPayload: Boolean = false): Boolean {
-        fun field(key: String): String = runCatching { entry.fields[key]?.content ?: "" }.getOrDefault("")
+    private fun isImportablePasswordEntry(
+        entry: Entry,
+        resolutionContext: KeePassEntryResolutionContext? = null,
+        hasTotpPayload: Boolean = false
+    ): Boolean {
+        fun field(key: String): String = KeePassFieldReferenceResolver.getFieldValue(entry, key, resolutionContext)
 
         // 带 Monica 安全项标记的条目不是密码项（避免计数虚高）。
         if (field("MonicaItemType").isNotBlank()) return false

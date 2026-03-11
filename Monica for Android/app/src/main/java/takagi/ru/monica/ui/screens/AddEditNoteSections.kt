@@ -61,6 +61,19 @@ import takagi.ru.monica.R
 import takagi.ru.monica.data.NoteCodeBlockCollapseMode
 import takagi.ru.monica.ui.components.MarkdownPreviewText
 
+private val NoteEditorFieldColors
+    @Composable
+    get() = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+        focusedBorderColor = Color.Transparent,
+        unfocusedBorderColor = Color.Transparent,
+        disabledBorderColor = Color.Transparent,
+        errorBorderColor = Color.Transparent,
+        focusedContainerColor = Color.Transparent,
+        unfocusedContainerColor = Color.Transparent,
+        disabledContainerColor = Color.Transparent,
+        errorContainerColor = Color.Transparent
+    )
+
 @Composable
 internal fun NoteEditorSection(
     title: String,
@@ -73,18 +86,25 @@ internal fun NoteEditorSection(
     codeBlockCollapseMode: NoteCodeBlockCollapseMode,
     inlineImageBitmaps: Map<String, Bitmap>,
     onPreviewInlineImage: (String) -> Unit,
+    onTaskItemToggle: ((lineIndex: Int, checked: Boolean) -> Unit)? = null,
     tagsText: String,
-    onTagsTextChange: (String) -> Unit
+    onTagsTextChange: (String) -> Unit,
+    borderless: Boolean = false,
+    showTags: Boolean = true,
+    editorTakesRemainingSpace: Boolean = false
 ) {
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
-        tonalElevation = 1.dp
-    ) {
+    val containerModifier = if (borderless) {
+        if (editorTakesRemainingSpace) Modifier.fillMaxSize() else Modifier.fillMaxWidth()
+    } else {
+        Modifier
+            .fillMaxWidth()
+            .padding(14.dp)
+    }
+
+    @Composable
+    fun EditorContent() {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
+            modifier = containerModifier,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             if (showModeSwitcher) {
@@ -123,50 +143,46 @@ internal fun NoteEditorSection(
                 textStyle = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                    unfocusedBorderColor = Color.Transparent,
-                    focusedBorderColor = Color.Transparent
-                )
+                colors = NoteEditorFieldColors
             )
 
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 220.dp)
+                modifier = if (editorTakesRemainingSpace) {
+                    Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                } else {
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 220.dp)
+                }
             ) {
                 if (!isMarkdownPreview) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 220.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = content,
-                            onValueChange = onContentChange,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .weight(1f, fill = false),
-                            placeholder = { Text(stringResource(R.string.note_placeholder)) },
-                            minLines = 8,
-                            maxLines = 100,
-                            shape = RoundedCornerShape(12.dp),
-                            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                                unfocusedBorderColor = Color.Transparent,
-                                focusedBorderColor = Color.Transparent
-                            )
-                        )
-                    }
+                    OutlinedTextField(
+                        value = content,
+                        onValueChange = onContentChange,
+                        modifier = if (editorTakesRemainingSpace) {
+                            Modifier.fillMaxSize()
+                        } else {
+                            Modifier.fillMaxWidth()
+                        },
+                        placeholder = { Text(stringResource(R.string.note_placeholder)) },
+                        minLines = if (editorTakesRemainingSpace) 1 else 8,
+                        maxLines = Int.MAX_VALUE,
+                        shape = RoundedCornerShape(if (borderless) 0.dp else 12.dp),
+                        colors = NoteEditorFieldColors
+                    )
                 } else {
                     Surface(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 220.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surface
+                            .fillMaxSize(),
+                        shape = if (borderless) RoundedCornerShape(0.dp) else RoundedCornerShape(12.dp),
+                        color = if (borderless) Color.Transparent else MaterialTheme.colorScheme.surface,
+                        tonalElevation = 0.dp,
+                        shadowElevation = 0.dp
                     ) {
                         Column(
-                            modifier = Modifier.padding(12.dp),
+                            modifier = Modifier.padding(if (borderless) 0.dp else 12.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             if (content.text.isBlank()) {
@@ -181,6 +197,7 @@ internal fun NoteEditorSection(
                                     imageBitmaps = inlineImageBitmaps,
                                     codeBlockCollapseMode = codeBlockCollapseMode,
                                     onInlineImageClick = onPreviewInlineImage,
+                                    onTaskItemToggle = onTaskItemToggle,
                                     modifier = Modifier.fillMaxWidth()
                                 )
                             }
@@ -189,17 +206,28 @@ internal fun NoteEditorSection(
                 }
             }
 
-            OutlinedTextField(
-                value = tagsText,
-                onValueChange = onTagsTextChange,
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text(stringResource(R.string.note_tags_placeholder)) },
-                singleLine = true,
-                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                    unfocusedBorderColor = Color.Transparent,
-                    focusedBorderColor = Color.Transparent
+            if (showTags) {
+                OutlinedTextField(
+                    value = tagsText,
+                    onValueChange = onTagsTextChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text(stringResource(R.string.note_tags_placeholder)) },
+                    singleLine = true,
+                    colors = NoteEditorFieldColors
                 )
-            )
+            }
+        }
+    }
+
+    if (borderless) {
+        EditorContent()
+    } else {
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            tonalElevation = 1.dp
+        ) {
+            EditorContent()
         }
     }
 }

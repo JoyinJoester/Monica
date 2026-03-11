@@ -44,6 +44,7 @@ import takagi.ru.monica.data.toCreationOptions
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlinx.coroutines.launch
 
 /**
  * 本地 KeePass 数据库管理页面
@@ -1588,10 +1589,21 @@ private fun DatabaseDetailBottomSheet(
             verifyKeyFileName = it.lastPathSegment?.substringAfterLast("/") ?: "keyfile"
         }
     }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val coroutineScope = rememberCoroutineScope()
+    fun dismissSheet(afterDismiss: (() -> Unit)? = null) {
+        coroutineScope.launch {
+            if (sheetState.isVisible) {
+                sheetState.hide()
+            }
+            onDismiss()
+            afterDismiss?.invoke()
+        }
+    }
     
     ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        onDismissRequest = { dismissSheet() },
+        sheetState = sheetState
     ) {
         val detailSheetScrollState = rememberScrollState()
         Column(
@@ -1832,8 +1844,9 @@ private fun DatabaseDetailBottomSheet(
                     icon = Icons.Default.Star,
                     text = stringResource(R.string.set_as_default),
                     onClick = {
-                        onSetDefault(database)
-                        onDismiss()
+                        dismissSheet {
+                            onSetDefault(database)
+                        }
                     }
                 )
             }
@@ -1843,7 +1856,11 @@ private fun DatabaseDetailBottomSheet(
                 ActionButton(
                     icon = Icons.Default.Upload,
                     text = stringResource(R.string.export_to_external),
-                    onClick = { onExport(database) }
+                    onClick = {
+                        dismissSheet {
+                            onExport(database)
+                        }
+                    }
                 )
                 
                 // 转移到外部存储
@@ -1851,8 +1868,9 @@ private fun DatabaseDetailBottomSheet(
                     icon = Icons.Default.DriveFileMove,
                     text = stringResource(R.string.transfer_to_external),
                     onClick = {
-                        onTransferToExternal(database)
-                        onDismiss()
+                        dismissSheet {
+                            onTransferToExternal(database)
+                        }
                     }
                 )
             }
@@ -1863,8 +1881,9 @@ private fun DatabaseDetailBottomSheet(
                     icon = Icons.Default.MoveToInbox,
                     text = stringResource(R.string.transfer_to_internal),
                     onClick = {
-                        onTransferToInternal(database)
-                        onDismiss()
+                        dismissSheet {
+                            onTransferToInternal(database)
+                        }
                     }
                 )
             }
@@ -1905,9 +1924,10 @@ private fun DatabaseDetailBottomSheet(
             confirmButton = {
                 Button(
                     onClick = {
-                        onDelete(database)
                         showDeleteConfirm = false
-                        onDismiss()
+                        dismissSheet {
+                            onDelete(database)
+                        }
                     },
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error

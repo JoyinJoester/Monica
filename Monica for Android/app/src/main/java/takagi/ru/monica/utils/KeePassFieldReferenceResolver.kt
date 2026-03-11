@@ -1,0 +1,192 @@
+package takagi.ru.monica.utils
+
+import app.keemobile.kotpass.models.Entry
+import app.keemobile.kotpass.models.EntryValue
+import java.util.Locale
+
+internal data class KeePassEntryResolutionContext(
+    val entries: List<Entry>,
+    val entriesByNormalizedUuid: Map<String, List<Entry>>
+)
+
+internal object KeePassFieldReferenceResolver {
+    private const val MAX_DEPTH = 8
+    private val refPattern = Regex("""\{REF:([A-Z])@([A-Z]):([^}]+)\}""", RegexOption.IGNORE_CASE)
+    private val standardFieldByCode = mapOf(
+        'T' to "Title",
+        'U' to "UserName",
+        'P' to "Password",
+        'A' to "URL",
+        'N' to "Notes"
+    )
+    private val standardFieldNames = standardFieldByCode.values.toSet()
+
+    fun buildContext(entries: Iterable<Entry>): KeePassEntryResolutionContext {
+        val entryList = entries.toList()
+        return KeePassEntryResolutionContext(
+            entries = entryList,
+            entriesByNormalizedUuid = entryList.groupBy { normalizeUuid(it.uuid.toString()) }
+        )
+    }
+
+    fun getRawFieldValue(entry: Entry, key: String): String {
+        return extractContent(entry.fields[key])
+    }
+
+    fun getFieldValue(
+        entry: Entry,
+        key: String,
+        context: KeePassEntryResolutionContext? = null
+    ): String {
+        return resolveValue(getRawFieldValue(entry, key), entry, context)
+    }
+
+    fun getFieldValueIgnoreCase(
+        entry: Entry,
+        context: KeePassEntryResolutionContext? = null,
+        vararg keys: String
+    ): String {
+        if (keys.isEmpty()) return ""
+        val direct = keys.firstNotNullOfOrNull { key ->
+            entry.fields[key]?.let { value ->
+                resolveValue(extractContent(value), entry, context).takeIf { it.isNotBlank() }
+            }
+        }
+        if (direct != null) return direct
+
+        val matched = entry.fields.entries.firstOrNull { (fieldKey, _) ->
+            keys.any { it.equals(fieldKey, ignoreCase = true) }
+        } ?: return ""
+        return resolveValue(extractContent(matched.value), entry, context)
+    }
+
+    fun resolveValue(
+        rawValue: String,
+        currentEntry: Entry,
+        context: KeePassEntryResolutionContext? = null
+    ): String {
+        return resolveValueInternal(rawValue, currentEntry, context, emptySet(), 0)
+    }
+
+    private fun resolveValueInternal(
+        rawValue: String,
+        currentEntry: Entry,
+        context: KeePassEntryResolutionContext?,
+        visited: Set<String>,
+        depth: Int
+    ): String {
+        if (rawValue.isBlank() || context == null || depth >= MAX_DEPTH || !rawValue.contains("{REF:", ignoreCase = true)) {
+            return rawValue
+        }
+
+        return refPattern.replace(rawValue) { match ->
+            val tokenKey = "${currentEntry.uuid}:${match.value.uppercase(Locale.ROOT)}"
+            if (tokenKey in visited) {
+                return@replace match.value
+            }
+            resolveReferenceToken(
+                currentEntry = currentEntry,
+                matchValue = match,
+                context = context,
+                visited = visited + tokenKey,
+                depth = depth + 1
+            ) ?: match.value
+        }
+    }
+
+    private fun resolveReferenceToken(
+        currentEntry: Entry,
+        matchValue: MatchResult,
+        context: KeePassEntryResolutionContext,
+        visited: Set<String>,
+        depth: Int
+    ): String? {
+        val targetCode = matchValue.groupValues.getOrNull(1)?.uppercase(Locale.ROOT)?.firstOrNull() ?: return null
+        val searchCode = matchValue.groupValues.getOrNull(2)?.uppercase(Locale.ROOT)?.firstOrNull() ?: return null
+        val searchText = resolveValueInternal(
+            rawValue = matchValue.groupValues.getOrNull(3).orEmpty(),
+            currentEntry = currentEntry,
+            context = context,
+            visited = visited,
+            depth = depth
+        )
+        val matchedEntry = findReferencedEntry(searchCode, searchText, context, visited, depth) ?: return null
+        return resolveReferenceField(matchedEntry, targetCode, context, visited, depth)
+    }
+
+    private fun findReferencedEntry(
+        searchCode: Char,
+        searchText: String,
+        context: KeePassEntryResolutionContext,
+        visited: Set<String>,
+        depth: Int
+    ): Entry? {
+        if (searchText.isBlank()) return null
+        return when (searchCode) {
+            'I' -> context.entriesByNormalizedUuid[normalizeUuid(searchText)]?.firstOrNull()
+            'T', 'U', 'P', 'A', 'N', 'O' -> context.entries.firstOrNull { entry ->
+                resolveSearchValues(entry, searchCode, context, visited, depth).any { candidateValue ->
+                    candidateValue.equals(searchText, ignoreCase = true)
+                }
+            }
+            else -> null
+        }
+    }
+
+    private fun resolveReferenceField(
+        entry: Entry,
+        targetCode: Char,
+        context: KeePassEntryResolutionContext,
+        visited: Set<String>,
+        depth: Int
+    ): String? {
+        return when (targetCode) {
+            'I' -> entry.uuid.toString()
+            'O' -> entry.fields.entries.firstNotNullOfOrNull { (key, value) ->
+                if (key in standardFieldNames || key.startsWith("_etm_")) {
+                    null
+                } else {
+                    resolveValueInternal(extractContent(value), entry, context, visited, depth)
+                        .takeIf { it.isNotBlank() }
+                }
+            }
+            else -> {
+                val fieldName = standardFieldByCode[targetCode] ?: return null
+                resolveValueInternal(getRawFieldValue(entry, fieldName), entry, context, visited, depth)
+            }
+        }
+    }
+
+    private fun resolveSearchValues(
+        entry: Entry,
+        code: Char,
+        context: KeePassEntryResolutionContext,
+        visited: Set<String>,
+        depth: Int
+    ): List<String> {
+        return when (code) {
+            'I' -> listOf(entry.uuid.toString())
+            'O' -> entry.fields.entries.mapNotNull { (key, value) ->
+                if (key in standardFieldNames || key.startsWith("_etm_")) {
+                    null
+                } else {
+                    resolveValueInternal(extractContent(value), entry, context, visited, depth)
+                        .takeIf { it.isNotBlank() }
+                }
+            }
+            else -> {
+                val fieldName = standardFieldByCode[code] ?: return emptyList()
+                listOf(resolveValueInternal(getRawFieldValue(entry, fieldName), entry, context, visited, depth))
+                    .filter { it.isNotBlank() }
+            }
+        }
+    }
+
+    private fun normalizeUuid(value: String): String {
+        return value.trim().trim('{', '}').replace("-", "").lowercase(Locale.ROOT)
+    }
+
+    private fun extractContent(value: EntryValue?): String {
+        return runCatching { value?.content.orEmpty() }.getOrDefault("")
+    }
+}
