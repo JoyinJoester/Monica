@@ -5,6 +5,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,9 +47,16 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -57,6 +66,8 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.data.NoteCodeBlockCollapseMode
 import takagi.ru.monica.ui.components.MarkdownPreviewText
@@ -74,8 +85,10 @@ private val NoteEditorFieldColors
         errorContainerColor = Color.Transparent
     )
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun NoteEditorSection(
+    modifier: Modifier = Modifier,
     title: String,
     onTitleChange: (String) -> Unit,
     content: TextFieldValue,
@@ -93,6 +106,35 @@ internal fun NoteEditorSection(
     showTags: Boolean = true,
     editorTakesRemainingSpace: Boolean = false
 ) {
+    val scope = rememberCoroutineScope()
+    val titleBringIntoViewRequester = remember { BringIntoViewRequester() }
+    val contentBringIntoViewRequester = remember { BringIntoViewRequester() }
+    val tagsBringIntoViewRequester = remember { BringIntoViewRequester() }
+    var titleFocused by remember { mutableStateOf(false) }
+    var contentFocused by remember { mutableStateOf(false) }
+    var tagsFocused by remember { mutableStateOf(false) }
+
+    LaunchedEffect(titleFocused) {
+        if (titleFocused) {
+            delay(120)
+            titleBringIntoViewRequester.bringIntoView()
+        }
+    }
+
+    LaunchedEffect(contentFocused, content.selection, content.text, isMarkdownPreview) {
+        if (contentFocused && !isMarkdownPreview) {
+            delay(120)
+            contentBringIntoViewRequester.bringIntoView()
+        }
+    }
+
+    LaunchedEffect(tagsFocused) {
+        if (tagsFocused) {
+            delay(120)
+            tagsBringIntoViewRequester.bringIntoView()
+        }
+    }
+
     val containerModifier = if (borderless) {
         if (editorTakesRemainingSpace) Modifier.fillMaxSize() else Modifier.fillMaxWidth()
     } else {
@@ -102,9 +144,9 @@ internal fun NoteEditorSection(
     }
 
     @Composable
-    fun EditorContent() {
+    fun EditorContent(modifier: Modifier = Modifier) {
         Column(
-            modifier = containerModifier,
+            modifier = modifier.then(containerModifier),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             if (showModeSwitcher) {
@@ -131,7 +173,12 @@ internal fun NoteEditorSection(
             OutlinedTextField(
                 value = title,
                 onValueChange = onTitleChange,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .bringIntoViewRequester(titleBringIntoViewRequester)
+                    .onFocusChanged { focusState ->
+                        titleFocused = focusState.isFocused
+                    },
                 placeholder = {
                     Text(
                         stringResource(R.string.title),
@@ -162,9 +209,31 @@ internal fun NoteEditorSection(
                         value = content,
                         onValueChange = onContentChange,
                         modifier = if (editorTakesRemainingSpace) {
-                            Modifier.fillMaxSize()
+                            Modifier
+                                .fillMaxSize()
+                                .bringIntoViewRequester(contentBringIntoViewRequester)
+                                .onFocusChanged { focusState ->
+                                    contentFocused = focusState.isFocused
+                                    if (focusState.isFocused) {
+                                        scope.launch {
+                                            delay(120)
+                                            contentBringIntoViewRequester.bringIntoView()
+                                        }
+                                    }
+                                }
                         } else {
-                            Modifier.fillMaxWidth()
+                            Modifier
+                                .fillMaxWidth()
+                                .bringIntoViewRequester(contentBringIntoViewRequester)
+                                .onFocusChanged { focusState ->
+                                    contentFocused = focusState.isFocused
+                                    if (focusState.isFocused) {
+                                        scope.launch {
+                                            delay(120)
+                                            contentBringIntoViewRequester.bringIntoView()
+                                        }
+                                    }
+                                }
                         },
                         placeholder = { Text(stringResource(R.string.note_placeholder)) },
                         minLines = if (editorTakesRemainingSpace) 1 else 8,
@@ -210,7 +279,12 @@ internal fun NoteEditorSection(
                 OutlinedTextField(
                     value = tagsText,
                     onValueChange = onTagsTextChange,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .bringIntoViewRequester(tagsBringIntoViewRequester)
+                        .onFocusChanged { focusState ->
+                            tagsFocused = focusState.isFocused
+                        },
                     placeholder = { Text(stringResource(R.string.note_tags_placeholder)) },
                     singleLine = true,
                     colors = NoteEditorFieldColors
@@ -220,9 +294,10 @@ internal fun NoteEditorSection(
     }
 
     if (borderless) {
-        EditorContent()
+        EditorContent(modifier = modifier)
     } else {
         Surface(
+            modifier = modifier,
             shape = RoundedCornerShape(20.dp),
             color = MaterialTheme.colorScheme.surfaceContainerLow,
             tonalElevation = 1.dp

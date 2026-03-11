@@ -455,72 +455,7 @@ fun AddEditNoteScreen(
                 }
             }
         },
-        bottomBar = {
-            val bottomBarAlpha = when {
-                isEditorModeAnimating && !transitionFromFullScreen && transitionToFullScreen -> {
-                    (1f - editorModeProgress.value * 1.2f).coerceIn(0f, 1f)
-                }
-
-                isEditorModeAnimating && transitionFromFullScreen && !transitionToFullScreen -> {
-                    ((editorModeProgress.value - 0.2f) / 0.8f).coerceIn(0f, 1f)
-                }
-
-                !isFullScreenEditor && !editorState.isMarkdownPreview -> 1f
-                else -> 0f
-            }
-
-            if (bottomBarAlpha > 0.01f && !editorState.isMarkdownPreview) {
-                val toolbarContent: @Composable () -> Unit = {
-                    MarkdownQuickToolbar(
-                        onAction = { action ->
-                            when (action) {
-                                MarkdownEditorAction.Image -> {
-                                    if (isBitwardenNoteTarget) {
-                                        Toast.makeText(
-                                            context,
-                                            context.getString(R.string.note_bitwarden_inline_image_disabled_toast),
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                    } else {
-                                        pendingImageInsertionCursor = editorState.contentField.selection.start
-                                            .coerceIn(0, editorState.contentField.text.length)
-                                        showAddImageDialog = true
-                                    }
-                                }
-
-                                else -> {
-                                    editorViewModel.updateContent(
-                                        applyMarkdownAction(editorState.contentField, action)
-                                    )
-                                }
-                            }
-                        }
-                    )
-                }
-
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .navigationBarsPadding()
-                        .imePadding(),
-                    color = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 2.dp,
-                    shadowElevation = 2.dp
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .graphicsLayer {
-                                alpha = bottomBarAlpha
-                                scaleX = 0.96f + (0.04f * bottomBarAlpha)
-                                scaleY = 0.96f + (0.04f * bottomBarAlpha)
-                            }
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
-                    ) {
-                        toolbarContent()
-                    }
-                }
-            }
-        }
+        bottomBar = {}
     ) { paddingValues ->
         val toolbarContent: @Composable () -> Unit = {
             MarkdownQuickToolbar(
@@ -993,13 +928,17 @@ private fun NoteEditorModeBody(
             }
     ) {
         if (fullScreen) {
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .imePadding()
                     .padding(horizontal = 16.dp)
+                    .padding(bottom = 12.dp)
             ) {
                 NoteEditorSection(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
                     title = editorState.title,
                     onTitleChange = onTitleChange,
                     content = editorState.contentField,
@@ -1021,10 +960,8 @@ private fun NoteEditorModeBody(
                 if (!editorState.isMarkdownPreview) {
                     Row(
                         modifier = Modifier
-                            .align(androidx.compose.ui.Alignment.BottomCenter)
                             .fillMaxWidth()
-                            .navigationBarsPadding()
-                            .padding(horizontal = 4.dp, vertical = 12.dp),
+                            .padding(top = 12.dp, bottom = 4.dp),
                         horizontalArrangement = Arrangement.Center
                     ) {
                         Surface(
@@ -1046,58 +983,89 @@ private fun NoteEditorModeBody(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(normalEditorScrollState)
+                    .imePadding()
                     .padding(horizontal = 16.dp, vertical = 12.dp)
-                    .padding(bottom = if (!editorState.isMarkdownPreview) 84.dp else 0.dp),
+                    .padding(bottom = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)
             ) {
-                StorageTargetSelectorCard(
-                    keepassDatabases = keepassDatabases,
-                    selectedKeePassDatabaseId = editorState.keepassDatabaseId,
-                    onKeePassDatabaseSelected = onKeePassDatabaseSelected,
-                    bitwardenVaults = bitwardenVaults,
-                    selectedBitwardenVaultId = editorState.bitwardenVaultId,
-                    onBitwardenVaultSelected = onBitwardenVaultSelected,
-                    categories = categories,
-                    selectedCategoryId = editorState.selectedCategoryId,
-                    onCategorySelected = onCategorySelected,
-                    selectedBitwardenFolderId = editorState.bitwardenFolderId,
-                    onBitwardenFolderSelected = onBitwardenFolderSelected
-                )
-
-                NoteEditorSection(
-                    title = editorState.title,
-                    onTitleChange = onTitleChange,
-                    content = editorState.contentField,
-                    onContentChange = onContentChange,
-                    isMarkdownPreview = editorState.isMarkdownPreview,
-                    onMarkdownPreviewModeChange = onPreviewModeChange,
-                    showModeSwitcher = true,
-                    codeBlockCollapseMode = NoteCodeBlockCollapseMode.COMPACT,
-                    inlineImageBitmaps = noteImageBitmaps,
-                    onPreviewInlineImage = onPreviewInlineImage,
-                    onTaskItemToggle = onTaskItemToggle,
-                    tagsText = editorState.tagsText,
-                    onTagsTextChange = onTagsTextChange,
-                    borderless = false,
-                    showTags = true,
-                    editorTakesRemainingSpace = false
-                )
-
-                if (isEditing) {
-                    NoteImagesSection(
-                        noteImagePaths = editorState.noteImagePaths,
-                        noteImageBitmaps = noteImageBitmaps,
-                        imageActionsEnabled = !isBitwardenNoteTarget,
-                        disabledReason = if (isBitwardenNoteTarget) {
-                            stringResource(R.string.note_bitwarden_inline_image_disabled_reason)
-                        } else {
-                            null
-                        },
-                        onAddImageClick = onAddImageClick,
-                        onPreviewImage = onPreviewInlineImage,
-                        onRemoveImage = onRemoveImage
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .verticalScroll(normalEditorScrollState),
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    StorageTargetSelectorCard(
+                        keepassDatabases = keepassDatabases,
+                        selectedKeePassDatabaseId = editorState.keepassDatabaseId,
+                        onKeePassDatabaseSelected = onKeePassDatabaseSelected,
+                        bitwardenVaults = bitwardenVaults,
+                        selectedBitwardenVaultId = editorState.bitwardenVaultId,
+                        onBitwardenVaultSelected = onBitwardenVaultSelected,
+                        categories = categories,
+                        selectedCategoryId = editorState.selectedCategoryId,
+                        onCategorySelected = onCategorySelected,
+                        selectedBitwardenFolderId = editorState.bitwardenFolderId,
+                        onBitwardenFolderSelected = onBitwardenFolderSelected
                     )
+
+                    NoteEditorSection(
+                        modifier = Modifier.fillMaxWidth(),
+                        title = editorState.title,
+                        onTitleChange = onTitleChange,
+                        content = editorState.contentField,
+                        onContentChange = onContentChange,
+                        isMarkdownPreview = editorState.isMarkdownPreview,
+                        onMarkdownPreviewModeChange = onPreviewModeChange,
+                        showModeSwitcher = true,
+                        codeBlockCollapseMode = NoteCodeBlockCollapseMode.COMPACT,
+                        inlineImageBitmaps = noteImageBitmaps,
+                        onPreviewInlineImage = onPreviewInlineImage,
+                        onTaskItemToggle = onTaskItemToggle,
+                        tagsText = editorState.tagsText,
+                        onTagsTextChange = onTagsTextChange,
+                        borderless = false,
+                        showTags = true,
+                        editorTakesRemainingSpace = false
+                    )
+
+                    if (isEditing) {
+                        NoteImagesSection(
+                            noteImagePaths = editorState.noteImagePaths,
+                            noteImageBitmaps = noteImageBitmaps,
+                            imageActionsEnabled = !isBitwardenNoteTarget,
+                            disabledReason = if (isBitwardenNoteTarget) {
+                                stringResource(R.string.note_bitwarden_inline_image_disabled_reason)
+                            } else {
+                                null
+                            },
+                            onAddImageClick = onAddImageClick,
+                            onPreviewImage = onPreviewInlineImage,
+                            onRemoveImage = onRemoveImage
+                        )
+                    }
+                }
+
+                if (!editorState.isMarkdownPreview) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp)
+                            .navigationBarsPadding(),
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(20.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            tonalElevation = 6.dp,
+                            shadowElevation = 8.dp
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                            ) {
+                                toolbarContent()
+                            }
+                        }
+                    }
                 }
             }
         }

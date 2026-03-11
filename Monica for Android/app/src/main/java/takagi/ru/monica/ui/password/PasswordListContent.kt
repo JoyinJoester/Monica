@@ -2254,6 +2254,8 @@ private fun PasswordListTopSection(
             }
         )
 
+        Spacer(modifier = Modifier.height(6.dp))
+
         val unifiedSelectedFilter = when (val filter = currentFilter) {
             is CategoryFilter.All -> UnifiedCategoryFilterSelection.All
             is CategoryFilter.Archived -> UnifiedCategoryFilterSelection.All

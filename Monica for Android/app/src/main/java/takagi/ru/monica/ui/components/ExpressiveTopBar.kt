@@ -79,7 +79,7 @@ fun ExpressiveTopBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 88.dp, max = 88.dp)
+            .heightIn(min = 88.dp)
             .padding(horizontal = 24.dp, vertical = 16.dp),
         contentAlignment = Alignment.Center
     ) {
