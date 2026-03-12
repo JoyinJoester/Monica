@@ -46,6 +46,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -80,6 +81,7 @@ import takagi.ru.monica.data.bitwarden.BitwardenVault
 @Composable
 fun AutofillSettingsV2Screen(
     onNavigateBack: () -> Unit,
+    onNavigateToBlockedFields: () -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -109,6 +111,7 @@ fun AutofillSettingsV2Screen(
     val respectOffEnabled by preferences.isV2RespectAutofillOffEnabled.collectAsState(initial = true)
     val blacklistEnabled by preferences.isBlacklistEnabled.collectAsState(initial = true)
     val blacklistPackages by preferences.blacklistPackages.collectAsState(initial = emptySet())
+    val blockedFieldSignatureRecords by preferences.blockedFieldSignatureRecords.collectAsState(initial = emptyList())
     val defaultSourceFilter by preferences.v2DefaultSourceFilter.collectAsState(
         initial = AutofillPreferences.AutofillDefaultSourceFilter.ALL,
     )
@@ -656,6 +659,22 @@ fun AutofillSettingsV2Screen(
                     title = stringResource(R.string.autofill_blacklist_manage),
                     subtitle = stringResource(R.string.autofill_blacklist_manage_desc, blacklistPackages.size),
                     onClick = { showBlacklistDialog = true },
+                )
+            }
+
+            SectionCard(
+                title = stringResource(R.string.autofill_blocked_fields_title),
+                icon = Icons.Outlined.DoNotDisturb,
+                iconTint = MaterialTheme.colorScheme.secondary,
+            ) {
+                AutofillSettingItem(
+                    icon = Icons.Outlined.DoNotDisturb,
+                    title = stringResource(R.string.autofill_blocked_fields_manage),
+                    subtitle = stringResource(
+                        R.string.autofill_blocked_fields_manage_desc,
+                        blockedFieldSignatureRecords.size,
+                    ),
+                    onClick = onNavigateToBlockedFields,
                 )
             }
 

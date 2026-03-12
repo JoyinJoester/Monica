@@ -95,6 +95,9 @@ class AutofillPreferences(private val context: Context) {
         private val KEY_SUGGESTION_STAGE = intPreferencesKey("autofill_suggestion_stage")
         private val KEY_SUGGESTION_STAGE_AT = longPreferencesKey("autofill_suggestion_stage_at")
         private val KEY_LEARNED_FIELD_SIGNATURES = stringSetPreferencesKey("learned_field_signatures")
+        private val KEY_BLOCKED_FIELD_SIGNATURES = stringSetPreferencesKey("blocked_field_signatures")
+        private val KEY_BLOCKED_FIELD_SIGNATURE_RECORDS = stringSetPreferencesKey("blocked_field_signature_records")
+        private const val BLOCKED_FIELD_SIGNATURE_RECORD_DELIMITER = "\u001F"
         
         // 默认黑名单应用
         val DEFAULT_BLACKLIST_PACKAGES = setOf(
@@ -550,12 +553,53 @@ class AutofillPreferences(private val context: Context) {
         val lastFilledAt: Long
     )
 
+    data class BlockedFieldSignatureRecord(
+        val signatureKey: String,
+        val packageName: String?,
+        val webDomain: String?,
+        val hints: List<String>,
+        val blockedAt: Long,
+    )
+
     private fun normalizeIdentifier(identifier: String): String {
         return identifier.trim().lowercase()
     }
 
     private fun normalizeFieldSignatureKey(signatureKey: String): String {
         return signatureKey.trim().lowercase()
+    }
+
+    private fun encodeBlockedFieldSignatureRecord(record: BlockedFieldSignatureRecord): String {
+        return listOf(
+            record.signatureKey,
+            record.packageName.orEmpty(),
+            record.webDomain.orEmpty(),
+            record.hints.joinToString(","),
+            record.blockedAt.toString(),
+        ).joinToString(BLOCKED_FIELD_SIGNATURE_RECORD_DELIMITER) { value ->
+            Uri.encode(value)
+        }
+    }
+
+    private fun decodeBlockedFieldSignatureRecord(value: String): BlockedFieldSignatureRecord? {
+        val parts = value.split(BLOCKED_FIELD_SIGNATURE_RECORD_DELIMITER)
+        if (parts.size < 5) return null
+        val signatureKey = Uri.decode(parts[0]).trim().lowercase()
+        if (signatureKey.isBlank()) return null
+        val packageName = Uri.decode(parts[1]).trim().ifBlank { null }
+        val webDomain = Uri.decode(parts[2]).trim().ifBlank { null }
+        val hints = Uri.decode(parts[3])
+            .split(',')
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+        val blockedAt = Uri.decode(parts[4]).toLongOrNull() ?: 0L
+        return BlockedFieldSignatureRecord(
+            signatureKey = signatureKey,
+            packageName = packageName,
+            webDomain = webDomain,
+            hints = hints,
+            blockedAt = blockedAt,
+        )
     }
 
     suspend fun beginAutofillInteraction(identifier: String) {
@@ -716,6 +760,139 @@ class AutofillPreferences(private val context: Context) {
         val preferences = context.dataStore.data.first()
         val signatures = preferences[KEY_LEARNED_FIELD_SIGNATURES] ?: emptySet()
         return signatures.contains(normalized)
+    }
+
+    val blockedFieldSignatureRecords: Flow<List<BlockedFieldSignatureRecord>> = context.dataStore.data.map { preferences ->
+        (preferences[KEY_BLOCKED_FIELD_SIGNATURE_RECORDS] ?: emptySet())
+            .mapNotNull(::decodeBlockedFieldSignatureRecord)
+            .sortedByDescending { it.blockedAt }
+    }
+
+    suspend fun markFieldSignatureBlocked(
+        signatureKey: String,
+        packageName: String? = null,
+        webDomain: String? = null,
+        hints: List<String> = emptyList(),
+    ) {
+        val normalized = normalizeFieldSignatureKey(signatureKey)
+        if (normalized.isBlank()) return
+        val normalizedPackageName = packageName?.trim()?.takeIf { it.isNotBlank() }
+        val normalizedWebDomain = webDomain?.trim()?.takeIf { it.isNotBlank() }
+        val normalizedHints = hints
+            .map { it.trim().uppercase() }
+            .filter { it.isNotBlank() }
+            .distinct()
+        val record = BlockedFieldSignatureRecord(
+            signatureKey = normalized,
+            packageName = normalizedPackageName,
+            webDomain = normalizedWebDomain,
+            hints = normalizedHints,
+            blockedAt = System.currentTimeMillis(),
+        )
+        context.dataStore.edit { preferences ->
+            val current = preferences[KEY_BLOCKED_FIELD_SIGNATURES] ?: emptySet()
+            val updated = if (!current.contains(normalized) && current.size >= 256) {
+                (current - current.first()) + normalized
+            } else {
+                current + normalized
+            }
+            preferences[KEY_BLOCKED_FIELD_SIGNATURES] = updated
+            val currentRecords = preferences[KEY_BLOCKED_FIELD_SIGNATURE_RECORDS] ?: emptySet()
+            val filteredRecords = currentRecords.filterNot { stored ->
+                decodeBlockedFieldSignatureRecord(stored)?.signatureKey == normalized
+            }.toMutableSet()
+            filteredRecords += encodeBlockedFieldSignatureRecord(record)
+            preferences[KEY_BLOCKED_FIELD_SIGNATURE_RECORDS] = filteredRecords
+        }
+    }
+
+    suspend fun isFieldSignatureBlocked(signatureKey: String): Boolean {
+        val normalized = normalizeFieldSignatureKey(signatureKey)
+        if (normalized.isBlank()) return false
+        val preferences = context.dataStore.data.first()
+        val signatures = preferences[KEY_BLOCKED_FIELD_SIGNATURES] ?: emptySet()
+        return signatures.contains(normalized)
+    }
+
+    suspend fun removeBlockedFieldSignature(signatureKey: String) {
+        val normalized = normalizeFieldSignatureKey(signatureKey)
+        if (normalized.isBlank()) return
+        context.dataStore.edit { preferences ->
+            val current = preferences[KEY_BLOCKED_FIELD_SIGNATURES] ?: emptySet()
+            preferences[KEY_BLOCKED_FIELD_SIGNATURES] = current - normalized
+            val currentRecords = preferences[KEY_BLOCKED_FIELD_SIGNATURE_RECORDS] ?: emptySet()
+            preferences[KEY_BLOCKED_FIELD_SIGNATURE_RECORDS] = currentRecords.filterNot { stored ->
+                decodeBlockedFieldSignatureRecord(stored)?.signatureKey == normalized
+            }.toSet()
+        }
+    }
+
+    suspend fun clearBlockedFieldSignatures() {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_BLOCKED_FIELD_SIGNATURES] = emptySet()
+            preferences[KEY_BLOCKED_FIELD_SIGNATURE_RECORDS] = emptySet()
+        }
+    }
+
+    suspend fun importBlockedFieldSignatureRecords(
+        records: List<BlockedFieldSignatureRecord>,
+        replaceExisting: Boolean = false,
+    ) {
+        val normalizedIncoming = records.mapNotNull { record ->
+            val normalizedSignatureKey = normalizeFieldSignatureKey(record.signatureKey)
+            if (normalizedSignatureKey.isBlank()) {
+                null
+            } else {
+                BlockedFieldSignatureRecord(
+                    signatureKey = normalizedSignatureKey,
+                    packageName = record.packageName?.trim()?.takeIf { it.isNotBlank() },
+                    webDomain = record.webDomain?.trim()?.takeIf { it.isNotBlank() },
+                    hints = record.hints
+                        .map { it.trim().uppercase() }
+                        .filter { it.isNotBlank() }
+                        .distinct(),
+                    blockedAt = record.blockedAt.takeIf { it > 0L } ?: System.currentTimeMillis(),
+                )
+            }
+        }
+        if (normalizedIncoming.isEmpty()) return
+
+        context.dataStore.edit { preferences ->
+            val merged = linkedMapOf<String, BlockedFieldSignatureRecord>()
+
+            if (!replaceExisting) {
+                (preferences[KEY_BLOCKED_FIELD_SIGNATURE_RECORDS] ?: emptySet())
+                    .mapNotNull(::decodeBlockedFieldSignatureRecord)
+                    .forEach { record ->
+                        merged[record.signatureKey] = record
+                    }
+            }
+
+            normalizedIncoming.forEach { incoming ->
+                val existing = merged[incoming.signatureKey]
+                merged[incoming.signatureKey] = when {
+                    existing == null -> incoming
+                    incoming.blockedAt >= existing.blockedAt -> incoming.copy(
+                        packageName = incoming.packageName ?: existing.packageName,
+                        webDomain = incoming.webDomain ?: existing.webDomain,
+                        hints = (incoming.hints + existing.hints).distinct(),
+                    )
+                    else -> existing.copy(
+                        packageName = existing.packageName ?: incoming.packageName,
+                        webDomain = existing.webDomain ?: incoming.webDomain,
+                        hints = (existing.hints + incoming.hints).distinct(),
+                    )
+                }
+            }
+
+            val finalRecords = merged.values
+                .sortedByDescending { it.blockedAt }
+                .take(256)
+            preferences[KEY_BLOCKED_FIELD_SIGNATURES] = finalRecords.map { it.signatureKey }.toSet()
+            preferences[KEY_BLOCKED_FIELD_SIGNATURE_RECORDS] = finalRecords
+                .map(::encodeBlockedFieldSignatureRecord)
+                .toSet()
+        }
     }
 }
 

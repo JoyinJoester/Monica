@@ -152,6 +152,15 @@ interface PasskeyDao {
      */
     @Query("DELETE FROM passkeys")
     suspend fun deleteAllPasskeys()
+
+    @Query(
+        """
+        DELETE FROM passkeys
+        WHERE bitwarden_vault_id IS NULL
+          AND keepass_database_id IS NULL
+        """
+    )
+    suspend fun deleteAllLocalPasskeys()
     
     /**
      * 根据凭据 ID 删除 Passkey

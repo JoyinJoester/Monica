@@ -49,8 +49,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -133,6 +131,7 @@ fun AddEditNoteScreen(
     val isBitwardenNoteTarget = editorState.bitwardenVaultId != null
     val isMarkdown = true
     val canSave = editorViewModel.canSave()
+    val shouldLiftSaveFab = !isFullScreenEditor && !editorState.isMarkdownPreview
     
     val database = remember { PasswordDatabase.getDatabase(context) }
     val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList())
@@ -425,11 +424,14 @@ fun AddEditNoteScreen(
             if (fabAlpha > 0.01f) {
                 FloatingActionButton(
                     onClick = { saveNote() },
-                    modifier = Modifier.graphicsLayer {
-                        alpha = fabAlpha
-                        scaleX = 0.92f + (0.08f * fabAlpha)
-                        scaleY = 0.92f + (0.08f * fabAlpha)
-                    },
+                    modifier = Modifier
+                        .navigationBarsPadding()
+                        .padding(bottom = if (shouldLiftSaveFab) NoteEditorFabToolbarClearance else 0.dp)
+                        .graphicsLayer {
+                            alpha = fabAlpha
+                            scaleX = 0.92f + (0.08f * fabAlpha)
+                            scaleY = 0.92f + (0.08f * fabAlpha)
+                        },
                     containerColor = if (canSave && !editorState.isSaving) {
                         MaterialTheme.colorScheme.primaryContainer
                     } else {
@@ -834,26 +836,32 @@ private fun NoteEditorModeTopBar(
                 onSave = onSave
             )
         } else {
-            TopAppBar(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(NoteEditorTopBarHeight),
-                title = {
-                    Text(
-                        text = stringResource(
-                            if (isEditing) R.string.edit_note else R.string.new_note
-                        )
+                    .height(NoteEditorTopBarHeight)
+                    .padding(horizontal = 4.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+            ) {
+                IconButton(onClick = onNavigateBack, enabled = enabled) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = stringResource(R.string.back)
                     )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack, enabled = enabled) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.back)
-                        )
-                    }
-                },
-                actions = {
+                }
+                Text(
+                    text = stringResource(
+                        if (isEditing) R.string.edit_note else R.string.new_note
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(start = 4.dp),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Row(
+                    verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+                ) {
                     IconButton(onClick = onToggleFavorite, enabled = enabled) {
                         Icon(
                             imageVector = if (isFavorite) {
@@ -878,14 +886,8 @@ private fun NoteEditorModeTopBar(
                             contentDescription = "全屏编辑"
                         )
                     }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.Transparent,
-                    scrolledContainerColor = Color.Transparent,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
-                ),
-                windowInsets = WindowInsets(0.dp)
-            )
+                }
+            }
         }
     }
 }
@@ -1195,6 +1197,7 @@ private fun FullScreenNoteTopBar(
 }
 
 private val NoteEditorTopBarHeight = 64.dp
+private val NoteEditorFabToolbarClearance = 88.dp
 
 private fun toggleTaskLine(content: String, lineIndex: Int, checked: Boolean): String? {
     if (lineIndex < 0) return null

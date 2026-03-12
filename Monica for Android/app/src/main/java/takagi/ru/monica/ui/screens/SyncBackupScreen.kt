@@ -29,6 +29,7 @@ fun SyncBackupScreen(
     onNavigateToExportData: () -> Unit = {},
     onNavigateToImportData: () -> Unit = {},
     onNavigateToWebDav: () -> Unit = {},
+    onNavigateToDedupEngine: () -> Unit = {},
     onNavigateToLocalKeePass: () -> Unit = {},  // 本地 KeePass 数据库管理
     onNavigateToBitwarden: () -> Unit = {},  // Bitwarden 集成入口
     isPlusActivated: Boolean = false
@@ -131,6 +132,17 @@ fun SyncBackupScreen(
                     onClick = onNavigateToBitwarden,
                     enabled = isPlusActivated,
                     badge = if (!isPlusActivated) "Plus" else null
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            SyncBackupSection(title = stringResource(R.string.sync_backup_database_tools)) {
+                SyncBackupItem(
+                    icon = Icons.Default.Storage,
+                    title = stringResource(R.string.dedup_engine_title),
+                    description = stringResource(R.string.dedup_engine_entry_desc),
+                    onClick = onNavigateToDedupEngine
                 )
             }
 

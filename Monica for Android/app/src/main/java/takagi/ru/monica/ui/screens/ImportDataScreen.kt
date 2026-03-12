@@ -210,6 +210,7 @@ fun ImportDataScreen(
     var importType by remember { mutableStateOf("monica_zip") } // 默认选择 ZIP 备份
     var csvImportType by remember { mutableStateOf("normal") } // CSV子类型
     var showPasswordDialog by remember { mutableStateOf(false) }
+    var showZipRestoreConfirmDialog by remember { mutableStateOf(false) }
     var aegisPassword by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf<String?>(null) }
     
@@ -471,19 +472,9 @@ fun ImportDataScreen(
                                         try {
                                             when (effectiveImportType) {
                                                 "monica_zip" -> {
-                                                    val result = onImportZip(uri, null)
-                                                    result.onSuccess { count ->
-                                                        handleImportResult(Result.success(count), context, snackbarHostState, effectiveImportType, onNavigateBack)
-                                                    }.onFailure { error ->
-                                                        if (error is takagi.ru.monica.utils.WebDavHelper.PasswordRequiredException) {
-                                                            isImporting = false
-                                                            showPasswordDialog = true
-                                                            passwordError = null
-                                                            aegisPassword = ""
-                                                        } else {
-                                                            handleImportResult(Result.failure(error), context, snackbarHostState, effectiveImportType, onNavigateBack)
-                                                        }
-                                                    }
+                                                    isImporting = false
+                                                    showZipRestoreConfirmDialog = true
+                                                    return@launch
                                                 }
                                                 "aegis" -> {
                                                     // Aegis导入类型，先检查是否为加密文件
@@ -978,7 +969,81 @@ fun ImportDataScreen(
             }
         )
     }
-    
+
+    if (showZipRestoreConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showZipRestoreConfirmDialog = false },
+            title = { Text(stringResource(R.string.webdav_restore_backup_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.webdav_restore_backup_confirm_message,
+                        selectedFileName ?: context.getString(R.string.import_data_file_selected)
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val uri = selectedFileUri ?: return@TextButton
+                        showZipRestoreConfirmDialog = false
+                        scope.launch {
+                            isImporting = true
+                            try {
+                                val result = onImportZip(uri, null)
+                                result.onSuccess { count ->
+                                    handleImportResult(
+                                        Result.success(count),
+                                        context,
+                                        snackbarHostState,
+                                        effectiveImportType,
+                                        onNavigateBack
+                                    )
+                                }.onFailure { error ->
+                                    if (error is takagi.ru.monica.utils.WebDavHelper.PasswordRequiredException) {
+                                        isImporting = false
+                                        showPasswordDialog = true
+                                        passwordError = null
+                                        aegisPassword = ""
+                                    } else {
+                                        handleImportResult(
+                                            Result.failure(error),
+                                            context,
+                                            snackbarHostState,
+                                            effectiveImportType,
+                                            onNavigateBack
+                                        )
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                android.util.Log.e("ImportDataScreen", "ZIP导入异常", e)
+                                snackbarHostState.showSnackbar(
+                                    context.getString(
+                                        R.string.import_data_error_exception,
+                                        e.message ?: context.getString(R.string.import_data_unknown_error)
+                                    )
+                                )
+                            } finally {
+                                isImporting = false
+                            }
+                        }
+                    },
+                    enabled = !isImporting
+                ) {
+                    Text(stringResource(R.string.webdav_restore_action))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showZipRestoreConfirmDialog = false },
+                    enabled = !isImporting
+                ) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
     // 密码输入对话框
     if (showPasswordDialog) {
         AlertDialog(

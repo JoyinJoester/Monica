@@ -9,6 +9,8 @@ import com.thegrizzlylabs.sardineandroid.Sardine
 import com.thegrizzlylabs.sardineandroid.impl.OkHttpSardine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import takagi.ru.monica.autofill_ng.AutofillPreferences
+import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.PasswordHistoryManager
@@ -232,18 +234,114 @@ private data class CommonAccountBackupEntry(
 )
 
 /**
- * ✅ WebDAV 配置备份数据类
- * 用于备份 WebDAV 连接信息，便于新设备快速配置
+ * ✅ Monica 配置聚合备份数据类
+ * 仅用于兼容旧版 monica_config.json 备份结构
  * 注意：密码会被加密存储
  */
 @Serializable
-private data class WebDavConfigBackupEntry(
+private data class MonicaConfigBackupEntry(
     val serverUrl: String = "",
     val username: String = "",
     val encryptedPassword: String = "",  // 使用备份密码加密的 WebDAV 密码
     val enableEncryption: Boolean = false,
     val encryptedEncryptionPassword: String = "",  // 使用备份密码加密的加密密码
-    val autoBackupEnabled: Boolean = false
+    val autoBackupEnabled: Boolean = false,
+    val blockedFieldSignatures: List<AutofillBlockedFieldBackupEntry> = emptyList(),
+    val bitwardenVaults: List<BitwardenVaultBackupEntry> = emptyList(),
+)
+
+@Serializable
+private data class WebDavConnectionBackupEntry(
+    val serverUrl: String = "",
+    val username: String = "",
+    val encryptedPassword: String = "",
+    val enableEncryption: Boolean = false,
+    val encryptedEncryptionPassword: String = "",
+    val autoBackupEnabled: Boolean = false,
+)
+
+@Serializable
+private data class AutofillBlockedFieldsBackupEntry(
+    val blockedFieldSignatures: List<AutofillBlockedFieldBackupEntry> = emptyList(),
+)
+
+@Serializable
+private data class AutofillBlockedFieldBackupEntry(
+    val signatureKey: String = "",
+    val packageName: String? = null,
+    val webDomain: String? = null,
+    val hints: List<String> = emptyList(),
+    val blockedAt: Long = 0L,
+)
+
+@Serializable
+private data class PageAdjustmentPasswordFieldVisibilityBackupEntry(
+    val securityVerification: Boolean = true,
+    val categoryAndNotes: Boolean = true,
+    val appBinding: Boolean = true,
+    val personalInfo: Boolean = true,
+    val addressInfo: Boolean = true,
+    val paymentInfo: Boolean = true,
+)
+
+@Serializable
+private data class PageAdjustmentSettingsBackupEntry(
+    val passwordListQuickFiltersEnabled: Boolean = false,
+    val passwordListQuickFilterItems: List<String> = emptyList(),
+    val passwordListQuickFoldersEnabled: Boolean = false,
+    val passwordListQuickFolderStyle: String = "CLASSIC",
+    val passwordListQuickAccessEnabled: Boolean = true,
+    val passwordListTopModulesOrder: List<String> = emptyList(),
+    val passwordCardDisplayMode: String = "SHOW_ALL",
+    val passwordCardDisplayFields: List<String> = emptyList(),
+    val passwordCardShowAuthenticator: Boolean = false,
+    val passwordCardHideOtherContentWhenAuthenticator: Boolean = false,
+    val stackCardMode: String = "AUTO",
+    val passwordGroupMode: String = "smart",
+    val passwordWebsiteStackMatchMode: String = "strict",
+    val authenticatorCardDisplayFields: List<String> = emptyList(),
+    val iconCardsEnabled: Boolean = false,
+    val passwordPageIconEnabled: Boolean = false,
+    val authenticatorPageIconEnabled: Boolean = false,
+    val passkeyPageIconEnabled: Boolean = false,
+    val unmatchedIconHandlingStrategy: String = "DEFAULT_ICON",
+    val passwordFieldVisibility: PageAdjustmentPasswordFieldVisibilityBackupEntry =
+        PageAdjustmentPasswordFieldVisibilityBackupEntry(),
+)
+
+@Serializable
+private data class BitwardenVaultBackupEntry(
+    val id: Long = 0,
+    val email: String = "",
+    val userId: String? = null,
+    val displayName: String? = null,
+    val serverUrl: String = "",
+    val identityUrl: String = "",
+    val apiUrl: String = "",
+    val eventsUrl: String? = null,
+    val encryptedAccessToken: String? = null,
+    val encryptedRefreshToken: String? = null,
+    val accessTokenExpiresAt: Long? = null,
+    val encryptedMasterKey: String? = null,
+    val encryptedEncKey: String? = null,
+    val encryptedMacKey: String? = null,
+    val kdfType: Int = 0,
+    val kdfIterations: Int = 0,
+    val kdfMemory: Int? = null,
+    val kdfParallelism: Int? = null,
+    val lastSyncAt: Long? = null,
+    val lastFullSyncAt: Long? = null,
+    val revisionDate: String? = null,
+    val isDefault: Boolean = false,
+    val isConnected: Boolean = false,
+    val syncEnabled: Boolean = true,
+    val createdAt: Long = 0L,
+    val updatedAt: Long = 0L,
+)
+
+@Serializable
+private data class BitwardenVaultsBackupEntry(
+    val vaults: List<BitwardenVaultBackupEntry> = emptyList(),
 )
 
 /**
@@ -1230,12 +1328,13 @@ class WebDavHelper(
                                 templates = templateBackups
                             )
                             val json = Json { prettyPrint = false }
-                            val commonAccountFile = File(cacheBackupDir, "common_account.json")
+                            val monicaConfigDir = File(cacheBackupDir, "monica_config").apply { mkdirs() }
+                            val commonAccountFile = File(monicaConfigDir, "common_account.json")
                             commonAccountFile.writeText(
                                 json.encodeToString(CommonAccountBackupEntry.serializer(), commonAccountBackup),
                                 Charsets.UTF_8
                             )
-                            addFileToZip(zipOut, commonAccountFile, commonAccountFile.name)
+                            addFileToZip(zipOut, commonAccountFile, "monica_config/${commonAccountFile.name}")
                             commonAccountFile.delete()
                             android.util.Log.d("WebDavHelper", "Backup common account info (templates=${templateBackups.size})")
                         } else {
@@ -1246,9 +1345,26 @@ class WebDavHelper(
                         warnings.add("常用账号信息备份失败: ${e.message}")
                     }
                     
-                    // 7.8 ✅ 备份 WebDAV 配置信息
+                    // 7.8 ✅ 备份 Monica 配置（分文件存放）
                     if (preferences.includeWebDavConfig && isConfigured()) {
                         try {
+                            val autofillPreferences = AutofillPreferences(context)
+                            val blockedFieldSignatures = autofillPreferences.blockedFieldSignatureRecords.first()
+                                .map { record ->
+                                    AutofillBlockedFieldBackupEntry(
+                                        signatureKey = record.signatureKey,
+                                        packageName = record.packageName,
+                                        webDomain = record.webDomain,
+                                        hints = record.hints,
+                                        blockedAt = record.blockedAt,
+                                    )
+                                }
+                            val bitwardenVaults = PasswordDatabase.getDatabase(context)
+                                .bitwardenVaultDao()
+                                .getAllVaults()
+                            val pageAdjustmentSettingsSnapshot = SettingsManager(context)
+                                .exportPageAdjustmentSettings()
+
                             // 使用备份加密密码来加密 WebDAV 凭证
                             val backupEncryptPassword = if (enableEncryption && encryptionPassword.isNotEmpty()) {
                                 encryptionPassword
@@ -1263,28 +1379,154 @@ class WebDavHelper(
                             } else {
                                 ""
                             }
-                            
-                            val webDavConfigBackup = WebDavConfigBackupEntry(
+                            val bitwardenVaultBackups = bitwardenVaults.map { vault: takagi.ru.monica.data.bitwarden.BitwardenVault ->
+                                BitwardenVaultBackupEntry(
+                                    id = vault.id,
+                                    email = vault.email,
+                                    userId = vault.userId,
+                                    displayName = vault.displayName,
+                                    serverUrl = vault.serverUrl,
+                                    identityUrl = vault.identityUrl,
+                                    apiUrl = vault.apiUrl,
+                                    eventsUrl = vault.eventsUrl,
+                                    encryptedAccessToken = encryptSensitiveBackupValue(vault.encryptedAccessToken, backupEncryptPassword),
+                                    encryptedRefreshToken = encryptSensitiveBackupValue(vault.encryptedRefreshToken, backupEncryptPassword),
+                                    accessTokenExpiresAt = vault.accessTokenExpiresAt,
+                                    encryptedMasterKey = encryptSensitiveBackupValue(vault.encryptedMasterKey, backupEncryptPassword),
+                                    encryptedEncKey = encryptSensitiveBackupValue(vault.encryptedEncKey, backupEncryptPassword),
+                                    encryptedMacKey = encryptSensitiveBackupValue(vault.encryptedMacKey, backupEncryptPassword),
+                                    kdfType = vault.kdfType,
+                                    kdfIterations = vault.kdfIterations,
+                                    kdfMemory = vault.kdfMemory,
+                                    kdfParallelism = vault.kdfParallelism,
+                                    lastSyncAt = vault.lastSyncAt,
+                                    lastFullSyncAt = vault.lastFullSyncAt,
+                                    revisionDate = vault.revisionDate,
+                                    isDefault = vault.isDefault,
+                                    isConnected = vault.isConnected,
+                                    syncEnabled = vault.syncEnabled,
+                                    createdAt = vault.createdAt,
+                                    updatedAt = vault.updatedAt,
+                                )
+                            }
+
+                            val webDavConnectionBackup = WebDavConnectionBackupEntry(
                                 serverUrl = serverUrl,
                                 username = username,
                                 encryptedPassword = encryptedWebDavPassword,
                                 enableEncryption = this@WebDavHelper.enableEncryption,
                                 encryptedEncryptionPassword = encryptedEncPassword,
-                                autoBackupEnabled = isAutoBackupEnabled()
+                                autoBackupEnabled = isAutoBackupEnabled(),
                             )
-                            
+                            val autofillBlockedFieldsBackup = AutofillBlockedFieldsBackupEntry(
+                                blockedFieldSignatures = blockedFieldSignatures,
+                            )
+                            val bitwardenVaultsBackup = BitwardenVaultsBackupEntry(
+                                vaults = bitwardenVaultBackups,
+                            )
+                            val pageAdjustmentSettingsBackup = PageAdjustmentSettingsBackupEntry(
+                                passwordListQuickFiltersEnabled = pageAdjustmentSettingsSnapshot.passwordListQuickFiltersEnabled,
+                                passwordListQuickFilterItems = pageAdjustmentSettingsSnapshot.passwordListQuickFilterItems,
+                                passwordListQuickFoldersEnabled = pageAdjustmentSettingsSnapshot.passwordListQuickFoldersEnabled,
+                                passwordListQuickFolderStyle = pageAdjustmentSettingsSnapshot.passwordListQuickFolderStyle,
+                                passwordListQuickAccessEnabled = pageAdjustmentSettingsSnapshot.passwordListQuickAccessEnabled,
+                                passwordListTopModulesOrder = pageAdjustmentSettingsSnapshot.passwordListTopModulesOrder,
+                                passwordCardDisplayMode = pageAdjustmentSettingsSnapshot.passwordCardDisplayMode,
+                                passwordCardDisplayFields = pageAdjustmentSettingsSnapshot.passwordCardDisplayFields,
+                                passwordCardShowAuthenticator = pageAdjustmentSettingsSnapshot.passwordCardShowAuthenticator,
+                                passwordCardHideOtherContentWhenAuthenticator =
+                                    pageAdjustmentSettingsSnapshot.passwordCardHideOtherContentWhenAuthenticator,
+                                stackCardMode = pageAdjustmentSettingsSnapshot.stackCardMode,
+                                passwordGroupMode = pageAdjustmentSettingsSnapshot.passwordGroupMode,
+                                passwordWebsiteStackMatchMode =
+                                    pageAdjustmentSettingsSnapshot.passwordWebsiteStackMatchMode,
+                                authenticatorCardDisplayFields =
+                                    pageAdjustmentSettingsSnapshot.authenticatorCardDisplayFields,
+                                iconCardsEnabled = pageAdjustmentSettingsSnapshot.iconCardsEnabled,
+                                passwordPageIconEnabled = pageAdjustmentSettingsSnapshot.passwordPageIconEnabled,
+                                authenticatorPageIconEnabled =
+                                    pageAdjustmentSettingsSnapshot.authenticatorPageIconEnabled,
+                                passkeyPageIconEnabled = pageAdjustmentSettingsSnapshot.passkeyPageIconEnabled,
+                                unmatchedIconHandlingStrategy =
+                                    pageAdjustmentSettingsSnapshot.unmatchedIconHandlingStrategy,
+                                passwordFieldVisibility = PageAdjustmentPasswordFieldVisibilityBackupEntry(
+                                    securityVerification =
+                                        pageAdjustmentSettingsSnapshot.passwordFieldVisibility.securityVerification,
+                                    categoryAndNotes =
+                                        pageAdjustmentSettingsSnapshot.passwordFieldVisibility.categoryAndNotes,
+                                    appBinding =
+                                        pageAdjustmentSettingsSnapshot.passwordFieldVisibility.appBinding,
+                                    personalInfo =
+                                        pageAdjustmentSettingsSnapshot.passwordFieldVisibility.personalInfo,
+                                    addressInfo =
+                                        pageAdjustmentSettingsSnapshot.passwordFieldVisibility.addressInfo,
+                                    paymentInfo =
+                                        pageAdjustmentSettingsSnapshot.passwordFieldVisibility.paymentInfo,
+                                ),
+                            )
+
                             val json = Json { prettyPrint = false }
-                            val webDavConfigFile = File(cacheBackupDir, "webdav_config.json")
-                            webDavConfigFile.writeText(
-                                json.encodeToString(WebDavConfigBackupEntry.serializer(), webDavConfigBackup),
+                            val monicaConfigDir = File(cacheBackupDir, "monica_config").apply { mkdirs() }
+                            val webDavConnectionFile = File(monicaConfigDir, "webdav_connection.json")
+                            webDavConnectionFile.writeText(
+                                json.encodeToString(WebDavConnectionBackupEntry.serializer(), webDavConnectionBackup),
                                 Charsets.UTF_8
                             )
-                            addFileToZip(zipOut, webDavConfigFile, webDavConfigFile.name)
-                            webDavConfigFile.delete()
-                            android.util.Log.d("WebDavHelper", "Backup WebDAV config (server: $serverUrl)")
+                            addFileToZip(zipOut, webDavConnectionFile, "monica_config/${webDavConnectionFile.name}")
+                            webDavConnectionFile.delete()
+
+                            val autofillBlockedFieldsFile = File(monicaConfigDir, "autofill_blocked_fields.json")
+                            autofillBlockedFieldsFile.writeText(
+                                json.encodeToString(
+                                    AutofillBlockedFieldsBackupEntry.serializer(),
+                                    autofillBlockedFieldsBackup,
+                                ),
+                                Charsets.UTF_8
+                            )
+                            addFileToZip(
+                                zipOut,
+                                autofillBlockedFieldsFile,
+                                "monica_config/${autofillBlockedFieldsFile.name}"
+                            )
+                            autofillBlockedFieldsFile.delete()
+                            if (bitwardenVaultBackups.isNotEmpty()) {
+                                val bitwardenVaultsFile = File(monicaConfigDir, "bitwarden_vaults.json")
+                                bitwardenVaultsFile.writeText(
+                                    json.encodeToString(
+                                        BitwardenVaultsBackupEntry.serializer(),
+                                        bitwardenVaultsBackup,
+                                    ),
+                                    Charsets.UTF_8
+                                )
+                                addFileToZip(
+                                    zipOut,
+                                    bitwardenVaultsFile,
+                                    "monica_config/${bitwardenVaultsFile.name}"
+                                )
+                                bitwardenVaultsFile.delete()
+                            }
+                            val pageAdjustmentSettingsFile =
+                                File(monicaConfigDir, "page_adjustment_settings.json")
+                            pageAdjustmentSettingsFile.writeText(
+                                json.encodeToString(
+                                    PageAdjustmentSettingsBackupEntry.serializer(),
+                                    pageAdjustmentSettingsBackup,
+                                ),
+                                Charsets.UTF_8
+                            )
+                            addFileToZip(
+                                zipOut,
+                                pageAdjustmentSettingsFile,
+                                "monica_config/${pageAdjustmentSettingsFile.name}"
+                            )
+                            pageAdjustmentSettingsFile.delete()
+                            android.util.Log.d(
+                                "WebDavHelper",
+                                "Backup Monica config files (server: $serverUrl, blockedFields=${blockedFieldSignatures.size}, bitwardenVaults=${bitwardenVaultBackups.size}, pageAdjustmentSettings=true)"
+                            )
                         } catch (e: Exception) {
-                            android.util.Log.w("WebDavHelper", "Failed to backup WebDAV config: ${e.message}")
-                            warnings.add("WebDAV配置备份失败: ${e.message}")
+                            android.util.Log.w("WebDavHelper", "Failed to backup Monica config: ${e.message}")
+                            warnings.add("Monica配置备份失败: ${e.message}")
                         }
                     }
                     
@@ -1622,18 +1864,18 @@ class WebDavHelper(
             // P0修复: 如果需要覆盖，先执行清除操作
             if (overwrite) {
                 try {
-                    android.util.Log.d("WebDavHelper", "Overwrite mode enabled: clearing local data...")
+                    android.util.Log.d("WebDavHelper", "Overwrite mode enabled: clearing Monica local data only...")
                     val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
-                    database.passwordEntryDao().deleteAllPasswordEntries()
-                    database.secureItemDao().deleteAllItemsByType(takagi.ru.monica.data.ItemType.TOTP)
-                    database.secureItemDao().deleteAllItemsByType(takagi.ru.monica.data.ItemType.BANK_CARD)
-                    database.secureItemDao().deleteAllItemsByType(takagi.ru.monica.data.ItemType.DOCUMENT)
-                    database.secureItemDao().deleteAllItemsByType(takagi.ru.monica.data.ItemType.NOTE)
-                    database.passkeyDao().deleteAllPasskeys()
-                    android.util.Log.d("WebDavHelper", "Local data cleared successfully")
+                    database.passwordEntryDao().deleteAllLocalPasswordEntries()
+                    database.secureItemDao().deleteAllLocalItemsByType(takagi.ru.monica.data.ItemType.TOTP)
+                    database.secureItemDao().deleteAllLocalItemsByType(takagi.ru.monica.data.ItemType.BANK_CARD)
+                    database.secureItemDao().deleteAllLocalItemsByType(takagi.ru.monica.data.ItemType.DOCUMENT)
+                    database.secureItemDao().deleteAllLocalItemsByType(takagi.ru.monica.data.ItemType.NOTE)
+                    database.passkeyDao().deleteAllLocalPasskeys()
+                    android.util.Log.d("WebDavHelper", "Monica local data cleared successfully")
                 } catch (e: Exception) {
-                    android.util.Log.e("WebDavHelper", "Failed to clear local data: ${e.message}")
-                    return@withContext Result.failure(Exception("无法清除本地数据: ${e.message}"))
+                    android.util.Log.e("WebDavHelper", "Failed to clear Monica local data: ${e.message}")
+                    return@withContext Result.failure(Exception("无法清除 Monica 本地数据: ${e.message}"))
                 }
             }
 
@@ -2031,8 +2273,9 @@ class WebDavHelper(
                                         warnings.add("图片恢复失败: $entryName - ${e.message}")
                                     }
                                 }
-                                // ✅ 恢复常用账号信息（仅当本地为空时恢复，避免覆盖用户更新的数据）
-                                entryName.equals("common_account.json", ignoreCase = true) -> {
+                                // ✅ 恢复常用账号信息（兼容旧根目录与新的 monica_config 目录）
+                                normalizedEntryName == "monica_config/common_account.json" ||
+                                    entryName.equals("common_account.json", ignoreCase = true) -> {
                                     try {
                                         val commonAccountJson = tempFile.readText(Charsets.UTF_8)
                                         val json = Json { ignoreUnknownKeys = true }
@@ -2093,14 +2336,211 @@ class WebDavHelper(
                                         warnings.add("常用账号信息恢复失败: ${e.message}")
                                     }
                                 }
-                                // ✅ 恢复 WebDAV 配置信息（仅当本地未配置时恢复）
-                                entryName.equals("webdav_config.json", ignoreCase = true) -> {
+                                // ✅ 恢复 Monica 自动填充屏蔽字段配置
+                                normalizedEntryName == "monica_config/autofill_blocked_fields.json" -> {
+                                    try {
+                                        val autofillConfigJson = tempFile.readText(Charsets.UTF_8)
+                                        val json = Json { ignoreUnknownKeys = true }
+                                        val autofillConfigBackup = json.decodeFromString<AutofillBlockedFieldsBackupEntry>(autofillConfigJson)
+                                        val autofillBlockedFieldRecords = autofillConfigBackup.blockedFieldSignatures
+                                            .mapNotNull { backup ->
+                                                backup.signatureKey
+                                                    .trim()
+                                                    .takeIf { it.isNotBlank() }
+                                                    ?.let { signatureKey ->
+                                                        AutofillPreferences.BlockedFieldSignatureRecord(
+                                                            signatureKey = signatureKey,
+                                                            packageName = backup.packageName?.trim()?.ifBlank { null },
+                                                            webDomain = backup.webDomain?.trim()?.ifBlank { null },
+                                                            hints = backup.hints,
+                                                            blockedAt = backup.blockedAt,
+                                                        )
+                                                    }
+                                            }
+                                        if (autofillBlockedFieldRecords.isNotEmpty()) {
+                                            AutofillPreferences(context).importBlockedFieldSignatureRecords(autofillBlockedFieldRecords)
+                                            warnings.add("✓ 非自动填充字段已恢复: ${autofillBlockedFieldRecords.size}项")
+                                        }
+                                    } catch (e: Exception) {
+                                        android.util.Log.w("WebDavHelper", "Failed to restore blocked autofill fields: ${e.message}")
+                                        warnings.add("非自动填充字段恢复失败: ${e.message}")
+                                    }
+                                }
+                                normalizedEntryName == "monica_config/bitwarden_vaults.json" ||
+                                    entryName.equals("bitwarden_vaults.json", ignoreCase = true) -> {
+                                    try {
+                                        val bitwardenVaultsJson = tempFile.readText(Charsets.UTF_8)
+                                        val json = Json { ignoreUnknownKeys = true }
+                                        val bitwardenVaultsBackup = json.decodeFromString<BitwardenVaultsBackupEntry>(bitwardenVaultsJson)
+                                        val restoredCount = restoreBitwardenVaultBackups(
+                                            bitwardenVaultsBackup.vaults,
+                                            decryptPassword,
+                                        )
+                                        if (restoredCount > 0) {
+                                            warnings.add("✓ Bitwarden Vault已恢复: ${restoredCount}个（已锁定）")
+                                        }
+                                    } catch (e: Exception) {
+                                        android.util.Log.w("WebDavHelper", "Failed to restore Bitwarden vaults: ${e.message}")
+                                        warnings.add("Bitwarden Vault恢复失败: ${e.message}")
+                                    }
+                                }
+                                normalizedEntryName == "monica_config/page_adjustment_settings.json" -> {
+                                    try {
+                                        val pageAdjustmentSettingsJson = tempFile.readText(Charsets.UTF_8)
+                                        val json = Json { ignoreUnknownKeys = true }
+                                        val pageAdjustmentBackup =
+                                            json.decodeFromString<PageAdjustmentSettingsBackupEntry>(
+                                                pageAdjustmentSettingsJson
+                                            )
+                                        SettingsManager(context).importPageAdjustmentSettings(
+                                            PageAdjustmentSettingsSnapshot(
+                                                passwordListQuickFiltersEnabled =
+                                                    pageAdjustmentBackup.passwordListQuickFiltersEnabled,
+                                                passwordListQuickFilterItems =
+                                                    pageAdjustmentBackup.passwordListQuickFilterItems,
+                                                passwordListQuickFoldersEnabled =
+                                                    pageAdjustmentBackup.passwordListQuickFoldersEnabled,
+                                                passwordListQuickFolderStyle =
+                                                    pageAdjustmentBackup.passwordListQuickFolderStyle,
+                                                passwordListQuickAccessEnabled =
+                                                    pageAdjustmentBackup.passwordListQuickAccessEnabled,
+                                                passwordListTopModulesOrder =
+                                                    pageAdjustmentBackup.passwordListTopModulesOrder,
+                                                passwordCardDisplayMode =
+                                                    pageAdjustmentBackup.passwordCardDisplayMode,
+                                                passwordCardDisplayFields =
+                                                    pageAdjustmentBackup.passwordCardDisplayFields,
+                                                passwordCardShowAuthenticator =
+                                                    pageAdjustmentBackup.passwordCardShowAuthenticator,
+                                                passwordCardHideOtherContentWhenAuthenticator =
+                                                    pageAdjustmentBackup.passwordCardHideOtherContentWhenAuthenticator,
+                                                stackCardMode = pageAdjustmentBackup.stackCardMode,
+                                                passwordGroupMode = pageAdjustmentBackup.passwordGroupMode,
+                                                passwordWebsiteStackMatchMode =
+                                                    pageAdjustmentBackup.passwordWebsiteStackMatchMode,
+                                                authenticatorCardDisplayFields =
+                                                    pageAdjustmentBackup.authenticatorCardDisplayFields,
+                                                iconCardsEnabled = pageAdjustmentBackup.iconCardsEnabled,
+                                                passwordPageIconEnabled =
+                                                    pageAdjustmentBackup.passwordPageIconEnabled,
+                                                authenticatorPageIconEnabled =
+                                                    pageAdjustmentBackup.authenticatorPageIconEnabled,
+                                                passkeyPageIconEnabled =
+                                                    pageAdjustmentBackup.passkeyPageIconEnabled,
+                                                unmatchedIconHandlingStrategy =
+                                                    pageAdjustmentBackup.unmatchedIconHandlingStrategy,
+                                                passwordFieldVisibility =
+                                                    PageAdjustmentPasswordFieldVisibilitySnapshot(
+                                                        securityVerification =
+                                                            pageAdjustmentBackup.passwordFieldVisibility.securityVerification,
+                                                        categoryAndNotes =
+                                                            pageAdjustmentBackup.passwordFieldVisibility.categoryAndNotes,
+                                                        appBinding =
+                                                            pageAdjustmentBackup.passwordFieldVisibility.appBinding,
+                                                        personalInfo =
+                                                            pageAdjustmentBackup.passwordFieldVisibility.personalInfo,
+                                                        addressInfo =
+                                                            pageAdjustmentBackup.passwordFieldVisibility.addressInfo,
+                                                        paymentInfo =
+                                                            pageAdjustmentBackup.passwordFieldVisibility.paymentInfo,
+                                                    ),
+                                            )
+                                        )
+                                        warnings.add("✓ 页面调整自定义已恢复")
+                                    } catch (e: Exception) {
+                                        android.util.Log.w("WebDavHelper", "Failed to restore page adjustment settings: ${e.message}")
+                                        warnings.add("页面调整自定义恢复失败: ${e.message}")
+                                    }
+                                }
+                                // ✅ 恢复 Monica 旧版聚合配置（兼容 monica_config.json）
+                                normalizedEntryName == "monica_config/monica_config.json" -> {
+                                    try {
+                                        val monicaConfigJson = tempFile.readText(Charsets.UTF_8)
+                                        val json = Json { ignoreUnknownKeys = true }
+                                        val monicaConfigBackup = json.decodeFromString<MonicaConfigBackupEntry>(monicaConfigJson)
+
+                                        val autofillBlockedFieldRecords = monicaConfigBackup.blockedFieldSignatures
+                                            .mapNotNull { backup ->
+                                                backup.signatureKey
+                                                    .trim()
+                                                    .takeIf { it.isNotBlank() }
+                                                    ?.let { signatureKey ->
+                                                        AutofillPreferences.BlockedFieldSignatureRecord(
+                                                            signatureKey = signatureKey,
+                                                            packageName = backup.packageName?.trim()?.ifBlank { null },
+                                                            webDomain = backup.webDomain?.trim()?.ifBlank { null },
+                                                            hints = backup.hints,
+                                                            blockedAt = backup.blockedAt,
+                                                        )
+                                                    }
+                                            }
+                                        if (autofillBlockedFieldRecords.isNotEmpty()) {
+                                            AutofillPreferences(context).importBlockedFieldSignatureRecords(autofillBlockedFieldRecords)
+                                            warnings.add("✓ 非自动填充字段已恢复: ${autofillBlockedFieldRecords.size}项")
+                                        }
+
+                                        val restoredBitwardenVaultCount = restoreBitwardenVaultBackups(
+                                            monicaConfigBackup.bitwardenVaults,
+                                            decryptPassword,
+                                        )
+                                        if (restoredBitwardenVaultCount > 0) {
+                                            warnings.add("✓ Bitwarden Vault已恢复: ${restoredBitwardenVaultCount}个（已锁定）")
+                                        }
+
+                                        if (!isConfigured()) {
+                                            val backupEncryptPassword = if (decryptPassword != null && decryptPassword.isNotEmpty()) {
+                                                decryptPassword
+                                            } else {
+                                                "Monica_WebDAV_Config_Key"
+                                            }
+
+                                            try {
+                                                val decryptedWebDavPassword = if (monicaConfigBackup.encryptedPassword.isNotEmpty()) {
+                                                    EncryptionHelper.decryptString(monicaConfigBackup.encryptedPassword, backupEncryptPassword)
+                                                } else {
+                                                    ""
+                                                }
+
+                                                val decryptedEncPassword = if (monicaConfigBackup.encryptedEncryptionPassword.isNotEmpty()) {
+                                                    EncryptionHelper.decryptString(monicaConfigBackup.encryptedEncryptionPassword, backupEncryptPassword)
+                                                } else {
+                                                    ""
+                                                }
+
+                                                if (monicaConfigBackup.serverUrl.isNotEmpty() &&
+                                                    monicaConfigBackup.username.isNotEmpty() &&
+                                                    decryptedWebDavPassword.isNotEmpty()
+                                                ) {
+                                                    configure(monicaConfigBackup.serverUrl, monicaConfigBackup.username, decryptedWebDavPassword)
+                                                    if (monicaConfigBackup.enableEncryption && decryptedEncPassword.isNotEmpty()) {
+                                                        configureEncryption(true, decryptedEncPassword)
+                                                    }
+                                                    configureAutoBackup(monicaConfigBackup.autoBackupEnabled)
+                                                    android.util.Log.d("WebDavHelper", "Restored WebDAV config from legacy Monica config: ${monicaConfigBackup.serverUrl}")
+                                                    warnings.add("✓ WebDAV配置已恢复: ${monicaConfigBackup.serverUrl}")
+                                                }
+                                            } catch (e: Exception) {
+                                                android.util.Log.w("WebDavHelper", "Failed to decrypt legacy Monica config WebDAV credentials: ${e.message}")
+                                                warnings.add("WebDAV配置解密失败（可能密码不匹配）: ${e.message}")
+                                            }
+                                        } else {
+                                            android.util.Log.d("WebDavHelper", "WebDAV already configured, skipping legacy Monica connection restore")
+                                            warnings.add("WebDAV已配置，已跳过连接配置恢复")
+                                        }
+                                    } catch (e: Exception) {
+                                        android.util.Log.w("WebDavHelper", "Failed to restore legacy Monica config: ${e.message}")
+                                        warnings.add("Monica配置恢复失败: ${e.message}")
+                                    }
+                                }
+                                // ✅ 恢复 WebDAV 连接配置（新文件与旧版 webdav_config.json 均兼容）
+                                normalizedEntryName == "monica_config/webdav_connection.json" ||
+                                    entryName.equals("webdav_config.json", ignoreCase = true) -> {
                                     try {
                                         val webDavConfigJson = tempFile.readText(Charsets.UTF_8)
                                         val json = Json { ignoreUnknownKeys = true }
-                                        val webDavConfigBackup = json.decodeFromString<WebDavConfigBackupEntry>(webDavConfigJson)
-                                        
-                                        // 只有当本地未配置 WebDAV 时才恢复
+                                        val webDavConfigBackup = json.decodeFromString<WebDavConnectionBackupEntry>(webDavConfigJson)
+
+                                        // 只有当本地未配置 WebDAV 时才恢复连接信息
                                         if (!isConfigured()) {
                                             // 尝试解密 WebDAV 密码
                                             val backupEncryptPassword = if (decryptPassword != null && decryptPassword.isNotEmpty()) {
@@ -2146,7 +2586,7 @@ class WebDavHelper(
                                             }
                                         } else {
                                             android.util.Log.d("WebDavHelper", "WebDAV already configured, skipping restore")
-                                            warnings.add("WebDAV已配置，跳过恢复")
+                                            warnings.add("WebDAV已配置，已跳过连接配置恢复")
                                         }
                                     } catch (e: Exception) {
                                         android.util.Log.w("WebDavHelper", "Failed to restore WebDAV config: ${e.message}")
@@ -3329,6 +3769,124 @@ class WebDavHelper(
         enableEncryption = enabled
         encryptionPassword = password
         saveConfig()
+    }
+
+    private fun encryptSensitiveBackupValue(value: String?, backupEncryptPassword: String): String? {
+        val sanitizedValue = value?.takeIf { it.isNotBlank() } ?: return null
+        return EncryptionHelper.encryptString(sanitizedValue, backupEncryptPassword)
+    }
+
+    private fun decryptSensitiveBackupValue(value: String?, backupEncryptPassword: String): String? {
+        val sanitizedValue = value?.takeIf { it.isNotBlank() } ?: return null
+        return EncryptionHelper.decryptString(sanitizedValue, backupEncryptPassword)
+    }
+
+    private suspend fun restoreBitwardenVaultBackups(
+        backups: List<BitwardenVaultBackupEntry>,
+        decryptPassword: String?,
+    ): Int {
+        if (backups.isEmpty()) return 0
+
+        val backupEncryptPassword = if (!decryptPassword.isNullOrEmpty()) {
+            decryptPassword
+        } else {
+            "Monica_WebDAV_Config_Key"
+        }
+        val database = PasswordDatabase.getDatabase(context)
+        val vaultDao = database.bitwardenVaultDao()
+        val bitwardenRepository = takagi.ru.monica.bitwarden.repository.BitwardenRepository.getInstance(context)
+        var restoredCount = 0
+        var firstRestoredId: Long? = null
+        var defaultVaultId: Long? = null
+
+        backups.forEach { backup ->
+            val normalizedEmail = backup.email.trim()
+            if (normalizedEmail.isEmpty()) {
+                return@forEach
+            }
+
+            try {
+                val existingVault = vaultDao.getVaultByEmail(normalizedEmail)
+                val backupId = backup.id.takeIf { it > 0 }
+                val conflictingVault = backupId
+                    ?.let { candidateId -> vaultDao.getVaultById(candidateId) }
+                    ?.takeIf { candidateVault -> candidateVault.email != normalizedEmail }
+                val targetId = when {
+                    existingVault != null -> existingVault.id
+                    conflictingVault == null -> backupId ?: 0L
+                    else -> 0L
+                }
+                val defaultKdfIterations = when (backup.kdfType) {
+                    takagi.ru.monica.data.bitwarden.BitwardenVault.KDF_TYPE_ARGON2ID ->
+                        takagi.ru.monica.data.bitwarden.BitwardenVault.DEFAULT_ARGON2_ITERATIONS
+                    else -> takagi.ru.monica.data.bitwarden.BitwardenVault.DEFAULT_PBKDF2_ITERATIONS
+                }
+                val now = System.currentTimeMillis()
+                val restoredVault = takagi.ru.monica.data.bitwarden.BitwardenVault(
+                    id = targetId,
+                    email = normalizedEmail,
+                    userId = backup.userId?.trim()?.ifBlank { null },
+                    displayName = backup.displayName?.trim()?.ifBlank { null },
+                    serverUrl = backup.serverUrl.trim().ifEmpty { "https://vault.bitwarden.com" },
+                    identityUrl = backup.identityUrl.trim().ifEmpty { "https://identity.bitwarden.com" },
+                    apiUrl = backup.apiUrl.trim().ifEmpty { "https://api.bitwarden.com" },
+                    eventsUrl = backup.eventsUrl?.trim()?.ifBlank { null },
+                    encryptedAccessToken = decryptSensitiveBackupValue(backup.encryptedAccessToken, backupEncryptPassword),
+                    encryptedRefreshToken = decryptSensitiveBackupValue(backup.encryptedRefreshToken, backupEncryptPassword),
+                    accessTokenExpiresAt = backup.accessTokenExpiresAt,
+                    encryptedMasterKey = decryptSensitiveBackupValue(backup.encryptedMasterKey, backupEncryptPassword),
+                    encryptedEncKey = decryptSensitiveBackupValue(backup.encryptedEncKey, backupEncryptPassword),
+                    encryptedMacKey = decryptSensitiveBackupValue(backup.encryptedMacKey, backupEncryptPassword),
+                    kdfType = backup.kdfType,
+                    kdfIterations = backup.kdfIterations.takeIf { it > 0 } ?: defaultKdfIterations,
+                    kdfMemory = backup.kdfMemory,
+                    kdfParallelism = backup.kdfParallelism,
+                    lastSyncAt = backup.lastSyncAt,
+                    lastFullSyncAt = backup.lastFullSyncAt,
+                    revisionDate = backup.revisionDate?.trim()?.ifBlank { null },
+                    isDefault = false,
+                    isLocked = true,
+                    isConnected = backup.isConnected,
+                    syncEnabled = backup.syncEnabled,
+                    createdAt = backup.createdAt.takeIf { it > 0 } ?: existingVault?.createdAt ?: now,
+                    updatedAt = now,
+                )
+
+                val restoredId = if (existingVault != null) {
+                    vaultDao.update(restoredVault.copy(id = existingVault.id, createdAt = existingVault.createdAt))
+                    existingVault.id
+                } else {
+                    vaultDao.insert(
+                        if (targetId > 0) {
+                            restoredVault
+                        } else {
+                            restoredVault.copy(id = 0)
+                        }
+                    )
+                }
+
+                bitwardenRepository.forceLock(restoredId)
+                if (firstRestoredId == null) {
+                    firstRestoredId = restoredId
+                }
+                if (backup.isDefault) {
+                    defaultVaultId = restoredId
+                }
+                restoredCount++
+            } catch (e: Exception) {
+                android.util.Log.w(
+                    "WebDavHelper",
+                    "Failed to restore Bitwarden vault ${normalizedEmail}: ${e.message}"
+                )
+            }
+        }
+
+        when {
+            defaultVaultId != null -> vaultDao.setAsDefault(defaultVaultId!!)
+            firstRestoredId != null && vaultDao.getDefaultVault() == null -> vaultDao.setAsDefault(firstRestoredId!!)
+        }
+
+        return restoredCount
     }
 }
 

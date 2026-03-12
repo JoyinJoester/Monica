@@ -29,12 +29,14 @@ class AutofillProcessorNg(
         inlineRequest: InlineSuggestionsRequest?,
         isCompatMode: Boolean,
         passwords: List<PasswordEntry>,
+        fieldSignatureKey: String? = null,
     ): FillResponse? {
         val request = parser.parse(
             packageName = packageName,
             uri = uri,
             credentialTargets = credentialTargets,
             inlineRequest = inlineRequest,
+            fieldSignatureKey = fieldSignatureKey,
             isCompatMode = isCompatMode,
         )
 

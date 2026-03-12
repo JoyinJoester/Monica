@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import com.google.accompanist.drawablepainter.rememberDrawablePainter
 import takagi.ru.monica.R
+import takagi.ru.monica.autofill_ng.core.AutofillLogger
 
 /**
  * 自动填充布局骨架
@@ -326,7 +327,7 @@ fun AppInfo(
     
     // 尝试获取应用图标和名称
     val (resolvedIcon, resolvedName) = remember(packageName, appIcon, appName) {
-        if (appIcon != null && appName != null) {
+        if (appIcon != null || appName != null) {
             appIcon to appName
         } else if (packageName != null) {
             try {
@@ -341,6 +342,24 @@ fun AppInfo(
         } else {
             null to null
         }
+    }
+    val resolvedMainTitle = (webDomain
+        ?: resolvedName
+        ?: packageName?.substringAfterLast('.')?.replaceFirstChar { it.uppercaseChar() }
+        ?: context.getString(R.string.app_name))
+    LaunchedEffect(packageName, webDomain, appName, resolvedName, resolvedIcon, resolvedMainTitle) {
+        AutofillLogger.i(
+            "PICKER_UI",
+            "Header app info diagnostics",
+            metadata = mapOf(
+                "packageName" to (packageName ?: "none"),
+                "webDomain" to (webDomain ?: "none"),
+                "providedAppName" to (appName ?: "none"),
+                "resolvedAppName" to (resolvedName ?: "none"),
+                "hasResolvedIcon" to (resolvedIcon != null),
+                "resolvedMainTitle" to resolvedMainTitle,
+            )
+        )
     }
     
     Row(
@@ -392,10 +411,7 @@ fun AppInfo(
             )
             
             // 标题优先级：WebDomain > AppName > PackageName
-            val mainTitle = (webDomain
-                ?: resolvedName
-                ?: packageName?.substringAfterLast('.')?.replaceFirstChar { it.uppercaseChar() }
-                ?: stringResource(R.string.app_name)).toSafeComposeText()
+            val mainTitle = resolvedMainTitle.toSafeComposeText()
             
             // 应用名称
             Text(

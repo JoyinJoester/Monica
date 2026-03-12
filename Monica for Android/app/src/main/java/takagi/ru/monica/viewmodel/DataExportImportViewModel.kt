@@ -12,6 +12,7 @@ import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.repository.PasswordRepository
+import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.util.DataExportImportManager
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -29,6 +30,7 @@ class DataExportImportViewModel(
 
     private val exportManager = DataExportImportManager(context)
     private val steamLoginImportService = SteamLoginImportService()
+    private val securityManager by lazy { SecurityManager(context) }
 
     sealed class SteamLoginImportState {
         data class ChallengeRequired(
@@ -799,10 +801,21 @@ class DataExportImportViewModel(
             // 获取所有数据
             val passwordEntries = passwordRepository.getAllPasswordEntries().first()
             val secureItems = secureItemRepository.getAllItems().first()
+            val exportedPasswords = passwordEntries.map { entry ->
+                val exportedPassword = runCatching { securityManager.decryptData(entry.password) }
+                    .getOrElse { error ->
+                        android.util.Log.w(
+                            "DataExport",
+                            "Failed to decrypt password for ZIP export: ${entry.title} (${error.message})"
+                        )
+                        entry.password
+                    }
+                entry.copy(password = exportedPassword)
+            }
             
             // 创建ZIP备份，使用传入的偏好设置
             val result = webDavHelper.createBackupZip(
-                passwords = passwordEntries,
+                passwords = exportedPasswords,
                 secureItems = secureItems,
                 preferences = preferences
             )
@@ -880,6 +893,7 @@ class DataExportImportViewModel(
                         content.passwords.forEach { entry ->
                             try {
                                 val originalId = entry.id
+                                val encryptedImportedPassword = encryptImportedPasswordForDisplay(entry.password)
                                 val existingEntry = passwordRepository.getDuplicateEntry(
                                     entry.title,
                                     entry.username,
@@ -888,7 +902,10 @@ class DataExportImportViewModel(
                                 
                                 if (existingEntry == null) {
                                     // 重置ID为0以让数据库生成新ID
-                                    val newEntry = entry.copy(id = 0)
+                                    val newEntry = entry.copy(
+                                        id = 0,
+                                        password = encryptedImportedPassword
+                                    )
                                     val newId = passwordRepository.insertPasswordEntry(newEntry)
                                     if (originalId > 0) {
                                         passwordIdMap[originalId] = newId
@@ -917,7 +934,7 @@ class DataExportImportViewModel(
                                                 )
                                                 existingEntry.password
                                             } else {
-                                                entry.password
+                                                encryptedImportedPassword
                                             },
                                             categoryId = entry.categoryId ?: existingEntry.categoryId,
                                             isFavorite = existingEntry.isFavorite, // 保留收藏状态
@@ -1165,5 +1182,35 @@ class DataExportImportViewModel(
             } catch (e: Exception) { }
         }
         return Result.success(count)
+    }
+
+    private fun encryptImportedPasswordForDisplay(plainPassword: String): String {
+        val primaryEncrypted = securityManager.encryptData(plainPassword)
+        val primaryReadable = runCatching { securityManager.decryptData(primaryEncrypted) }
+            .getOrNull()
+            ?.let { it == plainPassword }
+            ?: false
+        if (primaryReadable) {
+            return primaryEncrypted
+        }
+
+        android.util.Log.w(
+            "DataImport",
+            "Imported password encrypted payload is not immediately readable; fallback to legacy V1"
+        )
+        val legacyEncrypted = securityManager.encryptDataLegacyCompat(plainPassword)
+        val legacyReadable = runCatching { securityManager.decryptData(legacyEncrypted) }
+            .getOrNull()
+            ?.let { it == plainPassword }
+            ?: false
+        return if (legacyReadable) {
+            legacyEncrypted
+        } else {
+            android.util.Log.w(
+                "DataImport",
+                "Legacy fallback is still unreadable; keep primary encrypted payload"
+            )
+            primaryEncrypted
+        }
     }
 }

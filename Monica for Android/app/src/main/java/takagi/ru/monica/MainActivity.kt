@@ -75,7 +75,10 @@ import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordHistoryManager
 import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.navigation.Screen
+import takagi.ru.monica.data.dedup.DedupEngine
+import takagi.ru.monica.data.dedup.DedupIgnoreStore
 import takagi.ru.monica.repository.PasswordRepository
+import takagi.ru.monica.repository.PasskeyRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.SimpleMainScreen
@@ -83,6 +86,7 @@ import takagi.ru.monica.ui.screens.AddEditBankCardScreen
 import takagi.ru.monica.ui.screens.AddEditDocumentScreen
 import takagi.ru.monica.ui.screens.AddEditPasswordScreen
 import takagi.ru.monica.ui.screens.AddEditTotpScreen
+import takagi.ru.monica.ui.screens.AutofillBlockedFieldsScreen
 import takagi.ru.monica.ui.screens.AutofillSettingsV2Screen
 import takagi.ru.monica.ui.screens.BankCardDetailScreen
 import takagi.ru.monica.ui.screens.BottomNavSettingsScreen
@@ -108,6 +112,7 @@ import takagi.ru.monica.ui.theme.MonicaTheme
 import takagi.ru.monica.utils.LocaleHelper
 import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
+import takagi.ru.monica.viewmodel.DedupEngineViewModel
 import takagi.ru.monica.viewmodel.GeneratorViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.SecurityAnalysisViewModel
@@ -1695,6 +1700,27 @@ fun MonicaContent(
                 AutofillSettingsV2Screen(
                     onNavigateBack = {
                         navController.popBackStack()
+                    },
+                    onNavigateToBlockedFields = {
+                        navController.navigate(Screen.AutofillBlockedFields.route)
+                    }
+                )
+            }
+        }
+
+        composable(
+            route = Screen.AutofillBlockedFields.route,
+            enterTransition = { rightSlideEnterTransition() },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { rightSlidePopExitTransition() }
+        ) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
+                AutofillBlockedFieldsScreen(
+                    onNavigateBack = {
+                        navController.popBackStack()
                     }
                 )
             }
@@ -1990,6 +2016,9 @@ fun MonicaContent(
                 onNavigateToWebDav = {
                     navController.navigate(Screen.WebDavBackup.route)
                 },
+                onNavigateToDedupEngine = {
+                    navController.navigate(Screen.DedupEngine.route)
+                },
                 onNavigateToLocalKeePass = {
                     navController.navigate(Screen.LocalKeePass.route)
                 },
@@ -1999,6 +2028,74 @@ fun MonicaContent(
                 isPlusActivated = settingsViewModel.settings.collectAsState().value.isPlusActivated
             )
             }
+        }
+
+        composable(
+            route = Screen.DedupEngine.route,
+            enterTransition = { rightSlideEnterTransition() },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { rightSlidePopExitTransition() }
+        ) {
+            val context = LocalContext.current
+            val passkeyRepository = remember(context.applicationContext) {
+                PasskeyRepository(database.passkeyDao())
+            }
+            val dedupViewModel: DedupEngineViewModel = viewModel {
+                DedupEngineViewModel(
+                    DedupEngine(
+                        passwordRepository = repository,
+                        secureItemRepository = secureItemRepository,
+                        passkeyRepository = passkeyRepository,
+                        securityManager = securityManager,
+                        ignoreStore = DedupIgnoreStore(context.applicationContext)
+                    )
+                )
+            }
+            val uiState by dedupViewModel.uiState.collectAsState()
+
+            takagi.ru.monica.ui.screens.DedupEngineScreen(
+                uiState = uiState,
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onRefresh = {
+                    dedupViewModel.refresh()
+                },
+                onPreferredSourceChange = { source ->
+                    dedupViewModel.updatePreferredSource(source)
+                },
+                onScopeChange = { scope ->
+                    dedupViewModel.updateScope(scope)
+                },
+                onTypeChange = { type ->
+                    dedupViewModel.updateType(type)
+                },
+                onClusterAction = { cluster, action ->
+                    dedupViewModel.performAction(cluster, action)
+                },
+                onEnterSelectionMode = {
+                    dedupViewModel.enterSelectionMode()
+                },
+                onExitSelectionMode = {
+                    dedupViewModel.exitSelectionMode()
+                },
+                onToggleClusterSelection = { clusterId ->
+                    dedupViewModel.toggleClusterSelection(clusterId)
+                },
+                onSelectAllVisible = { clusterIds ->
+                    dedupViewModel.selectAll(clusterIds)
+                },
+                onClearSelected = {
+                    dedupViewModel.clearSelected()
+                },
+                onBatchAction = { clusters, action ->
+                    dedupViewModel.performBatchAction(clusters, action)
+                },
+                onConsumeMessage = {
+                    dedupViewModel.consumeMessage()
+                }
+            )
         }
 
         composable(
@@ -2295,4 +2392,3 @@ private fun inflateViewSafely(
         }
     }
 }
-

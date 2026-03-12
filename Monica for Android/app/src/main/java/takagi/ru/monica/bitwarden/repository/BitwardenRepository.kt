@@ -405,36 +405,47 @@ class BitwardenRepository(private val context: Context) {
                     iterations = vault.kdfIterations
                 )
             }
-            
-            // 尝试从存储中恢复密钥
-            val storedEncKey = vault.encryptedEncKey?.let { decryptFromStorage(it) }
-            val storedMacKey = vault.encryptedMacKey?.let { decryptFromStorage(it) }
-            
-            if (storedEncKey != null && storedMacKey != null) {
-                try {
-                    val encKeyBytes = Base64.decode(storedEncKey, Base64.NO_WRAP)
-                    val macKeyBytes = Base64.decode(storedMacKey, Base64.NO_WRAP)
-                    val symmetricKey = SymmetricCryptoKey(encKeyBytes, macKeyBytes)
-                    
-                    // 缓存密钥
-                    symmetricKeyCache[vaultId] = symmetricKey
-                    
-                    // 尝试恢复访问令牌
-                    vault.encryptedAccessToken?.let { 
-                        accessTokenCache[vaultId] = decryptFromStorage(it)
-                    }
-                    
-                    // 更新状态
-                    vaultDao.setLocked(vaultId, false)
-                    
-                    return@withContext UnlockResult.Success
-                } catch (e: Exception) {
-                    Log.e(TAG, "密钥恢复失败，尝试重新登录", e)
+
+            try {
+                val storedMasterKey = vault.encryptedMasterKey?.let { decryptFromStorage(it) }
+                    ?: return@withContext UnlockResult.Error("需要重新登录")
+                val derivedMasterKey = Base64.encodeToString(masterKey, Base64.NO_WRAP)
+                if (storedMasterKey != derivedMasterKey) {
+                    return@withContext UnlockResult.Error("主密码错误")
                 }
-            }
             
-            // 密钥恢复失败，需要重新登录
-            UnlockResult.Error("需要重新登录")
+                // 尝试从存储中恢复密钥
+                val storedEncKey = vault.encryptedEncKey?.let { decryptFromStorage(it) }
+                val storedMacKey = vault.encryptedMacKey?.let { decryptFromStorage(it) }
+                
+                if (storedEncKey != null && storedMacKey != null) {
+                    try {
+                        val encKeyBytes = Base64.decode(storedEncKey, Base64.NO_WRAP)
+                        val macKeyBytes = Base64.decode(storedMacKey, Base64.NO_WRAP)
+                        val symmetricKey = SymmetricCryptoKey(encKeyBytes, macKeyBytes)
+                        
+                        // 缓存密钥
+                        symmetricKeyCache[vaultId] = symmetricKey
+                        
+                        // 尝试恢复访问令牌
+                        vault.encryptedAccessToken?.let {
+                            accessTokenCache[vaultId] = decryptFromStorage(it)
+                        }
+                        
+                        // 更新状态
+                        vaultDao.setLocked(vaultId, false)
+                        
+                        return@withContext UnlockResult.Success
+                    } catch (e: Exception) {
+                        Log.e(TAG, "密钥恢复失败，尝试重新登录", e)
+                    }
+                }
+                
+                // 密钥恢复失败，需要重新登录
+                UnlockResult.Error("需要重新登录")
+            } finally {
+                masterKey.fill(0)
+            }
         } catch (e: Exception) {
             Log.e(TAG, "解锁异常", e)
             UnlockResult.Error(e.message ?: "解锁失败")
@@ -465,6 +476,9 @@ class BitwardenRepository(private val context: Context) {
     suspend fun tryRestoreUnlockState(vaultId: Long): Boolean = withContext(Dispatchers.IO) {
         try {
             val vault = vaultDao.getVaultById(vaultId) ?: return@withContext false
+            if (vault.isLocked) {
+                return@withContext false
+            }
             
             // 尝试从存储中恢复密钥
             val storedEncKey = vault.encryptedEncKey?.let { decryptFromStorage(it) }
@@ -495,6 +509,13 @@ class BitwardenRepository(private val context: Context) {
             Log.e(TAG, "恢复解锁状态失败", e)
             false
         }
+    }
+
+    suspend fun forceLock(vaultId: Long) = withContext(Dispatchers.IO) {
+        symmetricKeyCache.remove(vaultId)
+        accessTokenCache.remove(vaultId)
+        vaultDao.setLocked(vaultId, true)
+        Log.d(TAG, "Vault 已强制锁定: $vaultId")
     }
     
     /**

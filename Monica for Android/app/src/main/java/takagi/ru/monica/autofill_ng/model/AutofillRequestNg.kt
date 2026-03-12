@@ -15,6 +15,7 @@ sealed class AutofillRequest {
         val packageName: String,
         val partition: AutofillPartition.Login,
         val uri: String?,
+        val fieldSignatureKey: String? = null,
     ) : AutofillRequest()
 
     data object Unfillable : AutofillRequest()

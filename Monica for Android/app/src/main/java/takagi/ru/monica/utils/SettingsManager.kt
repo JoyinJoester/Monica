@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.shareIn
 import takagi.ru.monica.data.AppSettings
@@ -41,6 +42,39 @@ data class SavedCategoryFilterState(
     val primaryId: Long? = null,
     val secondaryId: Long? = null,
     val text: String? = null
+)
+
+data class PageAdjustmentPasswordFieldVisibilitySnapshot(
+    val securityVerification: Boolean = true,
+    val categoryAndNotes: Boolean = true,
+    val appBinding: Boolean = true,
+    val personalInfo: Boolean = true,
+    val addressInfo: Boolean = true,
+    val paymentInfo: Boolean = true
+)
+
+data class PageAdjustmentSettingsSnapshot(
+    val passwordListQuickFiltersEnabled: Boolean = false,
+    val passwordListQuickFilterItems: List<String> = emptyList(),
+    val passwordListQuickFoldersEnabled: Boolean = false,
+    val passwordListQuickFolderStyle: String = takagi.ru.monica.data.PasswordListQuickFolderStyle.CLASSIC.name,
+    val passwordListQuickAccessEnabled: Boolean = true,
+    val passwordListTopModulesOrder: List<String> = emptyList(),
+    val passwordCardDisplayMode: String = takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL.name,
+    val passwordCardDisplayFields: List<String> = emptyList(),
+    val passwordCardShowAuthenticator: Boolean = false,
+    val passwordCardHideOtherContentWhenAuthenticator: Boolean = false,
+    val stackCardMode: String = "AUTO",
+    val passwordGroupMode: String = "smart",
+    val passwordWebsiteStackMatchMode: String = "strict",
+    val authenticatorCardDisplayFields: List<String> = emptyList(),
+    val iconCardsEnabled: Boolean = false,
+    val passwordPageIconEnabled: Boolean = false,
+    val authenticatorPageIconEnabled: Boolean = false,
+    val passkeyPageIconEnabled: Boolean = false,
+    val unmatchedIconHandlingStrategy: String = takagi.ru.monica.data.UnmatchedIconHandlingStrategy.DEFAULT_ICON.name,
+    val passwordFieldVisibility: PageAdjustmentPasswordFieldVisibilitySnapshot =
+        PageAdjustmentPasswordFieldVisibilitySnapshot(),
 )
 
 /**
@@ -770,6 +804,114 @@ class SettingsManager(private val context: Context) {
                 "addressInfo" -> preferences[FIELD_ADDRESS_INFO_KEY] = visible
                 "paymentInfo" -> preferences[FIELD_PAYMENT_INFO_KEY] = visible
             }
+        }
+    }
+
+    suspend fun exportPageAdjustmentSettings(): PageAdjustmentSettingsSnapshot {
+        val settings = settingsFlow.first()
+        return PageAdjustmentSettingsSnapshot(
+            passwordListQuickFiltersEnabled = settings.passwordListQuickFiltersEnabled,
+            passwordListQuickFilterItems = settings.passwordListQuickFilterItems.map { it.name },
+            passwordListQuickFoldersEnabled = settings.passwordListQuickFoldersEnabled,
+            passwordListQuickFolderStyle = settings.passwordListQuickFolderStyle.name,
+            passwordListQuickAccessEnabled = settings.passwordListQuickAccessEnabled,
+            passwordListTopModulesOrder = settings.passwordListTopModulesOrder.map { it.name },
+            passwordCardDisplayMode = settings.passwordCardDisplayMode.name,
+            passwordCardDisplayFields = settings.passwordCardDisplayFields.map { it.name },
+            passwordCardShowAuthenticator = settings.passwordCardShowAuthenticator,
+            passwordCardHideOtherContentWhenAuthenticator =
+                settings.passwordCardHideOtherContentWhenAuthenticator,
+            stackCardMode = settings.stackCardMode,
+            passwordGroupMode = settings.passwordGroupMode,
+            passwordWebsiteStackMatchMode = settings.passwordWebsiteStackMatchMode,
+            authenticatorCardDisplayFields = settings.authenticatorCardDisplayFields.map { it.name },
+            iconCardsEnabled = settings.iconCardsEnabled,
+            passwordPageIconEnabled = settings.passwordPageIconEnabled,
+            authenticatorPageIconEnabled = settings.authenticatorPageIconEnabled,
+            passkeyPageIconEnabled = settings.passkeyPageIconEnabled,
+            unmatchedIconHandlingStrategy = settings.unmatchedIconHandlingStrategy.name,
+            passwordFieldVisibility = PageAdjustmentPasswordFieldVisibilitySnapshot(
+                securityVerification = settings.passwordFieldVisibility.securityVerification,
+                categoryAndNotes = settings.passwordFieldVisibility.categoryAndNotes,
+                appBinding = settings.passwordFieldVisibility.appBinding,
+                personalInfo = settings.passwordFieldVisibility.personalInfo,
+                addressInfo = settings.passwordFieldVisibility.addressInfo,
+                paymentInfo = settings.passwordFieldVisibility.paymentInfo,
+            ),
+        )
+    }
+
+    suspend fun importPageAdjustmentSettings(snapshot: PageAdjustmentSettingsSnapshot) {
+        val parsedQuickFilterItems = PasswordListQuickFilterItem.sanitizeOrder(
+            snapshot.passwordListQuickFilterItems.mapNotNull { value ->
+                runCatching { PasswordListQuickFilterItem.valueOf(value.trim()) }.getOrNull()
+            }
+        )
+        val parsedTopModules = PasswordListTopModule.sanitizeOrder(
+            snapshot.passwordListTopModulesOrder.mapNotNull { value ->
+                runCatching { PasswordListTopModule.valueOf(value.trim()) }.getOrNull()
+            }
+        )
+        val parsedPasswordCardMode = runCatching {
+            takagi.ru.monica.data.PasswordCardDisplayMode.valueOf(snapshot.passwordCardDisplayMode.trim())
+        }.getOrDefault(takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL)
+        val parsedPasswordCardFields = snapshot.passwordCardDisplayFields.mapNotNull { value ->
+            runCatching { takagi.ru.monica.data.PasswordCardDisplayField.valueOf(value.trim()) }.getOrNull()
+        }.distinct()
+        val normalizedPasswordCardFields = parsedPasswordCardFields.ifEmpty {
+            fieldsFromMode(parsedPasswordCardMode)
+        }
+        val parsedAuthenticatorCardFields = snapshot.authenticatorCardDisplayFields.mapNotNull { value ->
+            runCatching { takagi.ru.monica.data.AuthenticatorCardDisplayField.valueOf(value.trim()) }.getOrNull()
+        }.distinct()
+        val normalizedAuthenticatorCardFields = if (parsedAuthenticatorCardFields.isEmpty()) {
+            takagi.ru.monica.data.AuthenticatorCardDisplayField.DEFAULT_ORDER
+        } else {
+            parsedAuthenticatorCardFields
+        }
+        val parsedQuickFolderStyle = runCatching {
+            PasswordListQuickFolderStyle.valueOf(snapshot.passwordListQuickFolderStyle.trim())
+        }.getOrDefault(PasswordListQuickFolderStyle.CLASSIC)
+        val parsedUnmatchedIconStrategy = runCatching {
+            takagi.ru.monica.data.UnmatchedIconHandlingStrategy.valueOf(
+                snapshot.unmatchedIconHandlingStrategy.trim()
+            )
+        }.getOrDefault(takagi.ru.monica.data.UnmatchedIconHandlingStrategy.DEFAULT_ICON)
+
+        dataStore.edit { preferences ->
+            preferences[PASSWORD_LIST_QUICK_FILTERS_ENABLED_KEY] = snapshot.passwordListQuickFiltersEnabled
+            preferences[PASSWORD_LIST_QUICK_FILTER_ITEMS_KEY] =
+                parsedQuickFilterItems.joinToString(",") { it.name }
+            preferences[PASSWORD_LIST_QUICK_FOLDERS_ENABLED_KEY] = snapshot.passwordListQuickFoldersEnabled
+            preferences[PASSWORD_LIST_QUICK_FOLDER_STYLE_KEY] = parsedQuickFolderStyle.name
+            preferences[PASSWORD_LIST_QUICK_ACCESS_ENABLED_KEY] = snapshot.passwordListQuickAccessEnabled
+            preferences[PASSWORD_LIST_TOP_MODULES_ORDER_KEY] =
+                parsedTopModules.joinToString(",") { it.name }
+            preferences[PASSWORD_CARD_DISPLAY_MODE_KEY] = parsedPasswordCardMode.name
+            preferences[PASSWORD_CARD_DISPLAY_FIELDS_KEY] =
+                normalizedPasswordCardFields.joinToString(",") { it.name }
+            preferences[PASSWORD_CARD_SHOW_AUTHENTICATOR_KEY] = snapshot.passwordCardShowAuthenticator
+            preferences[PASSWORD_CARD_HIDE_OTHER_CONTENT_WHEN_AUTHENTICATOR_KEY] =
+                snapshot.passwordCardHideOtherContentWhenAuthenticator
+            preferences[STACK_CARD_MODE_KEY] = snapshot.stackCardMode.ifBlank { "AUTO" }
+            preferences[PASSWORD_GROUP_MODE_KEY] = snapshot.passwordGroupMode.ifBlank { "smart" }
+            preferences[PASSWORD_WEBSITE_STACK_MATCH_MODE_KEY] =
+                snapshot.passwordWebsiteStackMatchMode.ifBlank { "strict" }
+            preferences[AUTHENTICATOR_CARD_DISPLAY_FIELDS_KEY] =
+                normalizedAuthenticatorCardFields.joinToString(",") { it.name }
+            preferences[ICON_CARDS_ENABLED_KEY] = snapshot.iconCardsEnabled
+            preferences[PASSWORD_PAGE_ICON_ENABLED_KEY] = snapshot.passwordPageIconEnabled
+            preferences[AUTHENTICATOR_PAGE_ICON_ENABLED_KEY] = snapshot.authenticatorPageIconEnabled
+            preferences[PASSKEY_PAGE_ICON_ENABLED_KEY] = snapshot.passkeyPageIconEnabled
+            preferences[UNMATCHED_ICON_HANDLING_STRATEGY_KEY] = parsedUnmatchedIconStrategy.name
+            preferences[FIELD_SECURITY_VERIFICATION_KEY] =
+                snapshot.passwordFieldVisibility.securityVerification
+            preferences[FIELD_CATEGORY_AND_NOTES_KEY] =
+                snapshot.passwordFieldVisibility.categoryAndNotes
+            preferences[FIELD_APP_BINDING_KEY] = snapshot.passwordFieldVisibility.appBinding
+            preferences[FIELD_PERSONAL_INFO_KEY] = snapshot.passwordFieldVisibility.personalInfo
+            preferences[FIELD_ADDRESS_INFO_KEY] = snapshot.passwordFieldVisibility.addressInfo
+            preferences[FIELD_PAYMENT_INFO_KEY] = snapshot.passwordFieldVisibility.paymentInfo
         }
     }
     

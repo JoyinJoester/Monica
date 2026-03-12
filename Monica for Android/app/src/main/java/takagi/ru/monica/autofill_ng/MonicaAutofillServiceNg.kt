@@ -36,6 +36,7 @@ import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.utils.DeviceUtils
+import java.security.MessageDigest
 
 /**
  * Autofill service (Bitwarden engine).
@@ -122,6 +123,24 @@ class MonicaAutofillServiceNg : AutofillService() {
             parsedApplicationId = parsed.applicationId,
             fallbackPackage = fallbackPackage,
         )
+        val isCompatMode = (request.flags or FillRequest.FLAG_COMPATIBILITY_MODE_REQUEST) == request.flags
+        AutofillLogger.i(
+            "AF",
+            "Autofill request source diagnostics",
+            metadata = mapOf(
+                "sdk" to Build.VERSION.SDK_INT,
+                "device" to "${Build.MANUFACTURER}/${Build.MODEL}",
+                "windowNodeCount" to structure.windowNodeCount,
+                "fallbackPackage" to if (fallbackPackage.isBlank()) "none" else fallbackPackage,
+                "parsedApplicationId" to (parsed.applicationId ?: "none"),
+                "resolvedPackageName" to if (packageName.isBlank()) "none" else packageName,
+                "parsedWebDomain" to (parsed.webDomain ?: "none"),
+                "parsedWebScheme" to (parsed.webScheme ?: "none"),
+                "parsedItemCount" to parsed.items.size,
+                "respectAutofillOff" to respectAutofillOff,
+                "compatMode" to isCompatMode,
+            )
+        )
         if (packageName.isBlank()) return null
 
         val credentialTargets = selectCredentialTargets(parsed.items)
@@ -131,6 +150,38 @@ class MonicaAutofillServiceNg : AutofillService() {
         }
 
         val webDomain = parsed.webDomain?.takeIf { it.isNotBlank() }
+        val fieldSignatureKey = buildFieldSignatureKey(
+            packageName = packageName,
+            webDomain = webDomain,
+            credentialTargets = credentialTargets,
+        )
+        AutofillLogger.i(
+            "AF",
+            "Autofill target diagnostics",
+            metadata = mapOf(
+                "packageName" to packageName,
+                "webDomain" to (webDomain ?: "none"),
+                "targetCount" to credentialTargets.size,
+                "fieldSignaturePresent" to !fieldSignatureKey.isNullOrBlank(),
+                "fieldSignatureKey" to (fieldSignatureKey ?: "none"),
+                "focusedTargetCount" to credentialTargets.count { it.isFocused },
+                "visibleTargetCount" to credentialTargets.count { it.isVisible },
+            )
+        )
+        if (!fieldSignatureKey.isNullOrBlank() &&
+            autofillPreferences.isFieldSignatureBlocked(fieldSignatureKey)
+        ) {
+            AutofillLogger.i(
+                "AF",
+                "Skip autofill request: blocked field signature",
+                metadata = mapOf(
+                    "packageName" to packageName,
+                    "webDomain" to (webDomain ?: "none"),
+                    "targetCount" to credentialTargets.size,
+                ),
+            )
+            return null
+        }
         val requestUri = webDomain?.let { "https://$it" } ?: "androidapp://$packageName"
         val appDisplayName = resolveAppDisplayName(packageName)
 
@@ -175,7 +226,6 @@ class MonicaAutofillServiceNg : AutofillService() {
         )
 
         val inlineRequest = getInlineRequest(request)
-        val isCompatMode = (request.flags or FillRequest.FLAG_COMPATIBILITY_MODE_REQUEST) == request.flags
         val response = bwCompatProcessor.process(
             packageName = packageName,
             uri = requestUri,
@@ -183,6 +233,7 @@ class MonicaAutofillServiceNg : AutofillService() {
             inlineRequest = inlineRequest,
             isCompatMode = isCompatMode,
             passwords = matchedPasswords,
+            fieldSignatureKey = fieldSignatureKey,
         )
 
         if (response == null) {
@@ -319,6 +370,41 @@ class MonicaAutofillServiceNg : AutofillService() {
         FieldHint.PASSWORD, FieldHint.NEW_PASSWORD -> 3
         FieldHint.USERNAME, FieldHint.EMAIL_ADDRESS, FieldHint.PHONE_NUMBER -> 2
         else -> 0
+    }
+
+    private fun buildFieldSignatureKey(
+        packageName: String,
+        webDomain: String?,
+        credentialTargets: List<ParsedItem>,
+    ): String? {
+        if (credentialTargets.isEmpty()) return null
+        val normalizedPackage = packageName.trim().lowercase()
+        if (normalizedPackage.isBlank()) return null
+        val normalizedDomain = webDomain?.trim()?.lowercase().orEmpty()
+        val targetSummary = credentialTargets
+            .sortedWith(compareBy<ParsedItem> { it.traversalIndex }.thenBy { it.hint.name })
+            .joinToString(separator = "|") { item ->
+                buildString {
+                    append(item.hint.name)
+                    append('@')
+                    append(item.traversalIndex)
+                    append('@')
+                    append(item.parentWebViewNodeId ?: -1)
+                    append('@')
+                    append(if (item.isVisible) '1' else '0')
+                }
+            }
+        if (targetSummary.isBlank()) return null
+        val rawSignature = buildString {
+            append(normalizedPackage)
+            append('|')
+            append(normalizedDomain)
+            append('|')
+            append(targetSummary)
+        }
+        val digest = MessageDigest.getInstance("SHA-256")
+            .digest(rawSignature.toByteArray(Charsets.UTF_8))
+        return digest.joinToString(separator = "") { byte -> "%02x".format(byte) }
     }
 
     override fun onSaveRequest(request: SaveRequest, callback: SaveCallback) {

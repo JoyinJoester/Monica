@@ -123,6 +123,16 @@ interface SecureItemDao {
      */
     @Query("DELETE FROM secure_items WHERE itemType = :type")
     suspend fun deleteAllItemsByType(type: ItemType)
+
+    @Query(
+        """
+        DELETE FROM secure_items
+        WHERE itemType = :type
+          AND bitwarden_vault_id IS NULL
+          AND keepass_database_id IS NULL
+        """
+    )
+    suspend fun deleteAllLocalItemsByType(type: ItemType)
     
     /**
      * 删除所有安全项目

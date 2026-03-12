@@ -18,8 +18,7 @@ type SourceFilter = 'all' | 'local' | 'keepass' | 'bitwarden';
 
 // ========== Styled Components ==========
 const Container = styled.div<{ $manager: boolean }>`
-  padding: 16px;
-  padding-bottom: 100px;
+  padding: 20px 16px 80px;
 
   ${({ $manager }) => $manager && `
     max-width: 980px;
@@ -30,8 +29,7 @@ const Container = styled.div<{ $manager: boolean }>`
   @media (max-width: 900px) {
     max-width: none;
     margin: 0;
-    padding: 16px;
-    padding-bottom: 100px;
+    padding: 20px 16px 80px;
   }
 `;
 
@@ -45,12 +43,12 @@ const SearchContainer = styled.div<{ $manager: boolean }>`
 
   svg {
     position: absolute;
-    right: 16px;
+    left: 14px;
     top: 50%;
     transform: translateY(-50%);
     color: ${({ theme, $manager }) => ($manager ? '#8d94bf' : theme.colors.onSurfaceVariant)};
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     pointer-events: none;
   }
 `;
@@ -76,9 +74,32 @@ const ManagerSearchInput = styled.input`
   }
 `;
 
+const PopupSearchInput = styled.input`
+  width: 100%;
+  padding: 12px 16px 12px 42px;
+  border-radius: 14px;
+  border: 1px solid ${({ theme }) => theme.colors.outlineVariant};
+  background: ${({ theme }) => theme.colors.surface};
+  color: ${({ theme }) => theme.colors.onSurface};
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+
+  &::placeholder {
+    color: ${({ theme }) => theme.colors.onSurfaceVariant};
+  }
+
+  &:focus {
+    border-color: ${({ theme }) => theme.colors.primary};
+    box-shadow: 0 0 0 3px ${({ theme }) => theme.colors.primary}22;
+  }
+`;
+
 const FAB = styled(Button)<{ $manager: boolean }>`
   position: fixed; bottom: 90px; right: 20px; width: 56px; height: 56px;
-  border-radius: 16px; padding: 0; box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+  border-radius: 18px; padding: 0; box-shadow: 0 6px 20px rgba(0,0,0,0.25);
   svg { width: 24px; height: 24px; }
 
   ${({ $manager }) => $manager && `
@@ -93,6 +114,33 @@ const FAB = styled(Button)<{ $manager: boolean }>`
 
 const CardActions = styled.div`
   display: flex; gap: 8px; margin-top: 12px;
+`;
+
+const PopupCard = styled(Card)`
+  border-radius: 14px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  margin-bottom: 0;
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  transition: box-shadow 0.2s ease, transform 0.2s ease, background-color 0.2s ease;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 10px;
+    bottom: 10px;
+    width: 3px;
+    border-radius: 3px;
+    background: ${({ theme }) => theme.colors.primary};
+    opacity: 0.9;
+  }
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+  }
 `;
 
 const IconButton = styled.button<{ $manager?: boolean }>`
@@ -137,8 +185,13 @@ const ButtonRow = styled.div`
 
 const EmptyState = styled.div<{ $manager: boolean }>`
   text-align: center;
-  padding: 48px 0;
+  padding: 60px 16px;
   color: ${({ theme, $manager }) => ($manager ? '#9ba2cd' : theme.colors.onSurfaceVariant)};
+  font-size: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
 `;
 
 const PasswordField = styled.div`
@@ -158,11 +211,12 @@ const PasswordActions = styled.div`
 
 const SectionHeader = styled.div<{ expanded: boolean }>`
   display: flex; justify-content: space-between; align-items: center;
-  padding: 12px; margin-top: 12px;
-  background: ${({ theme }) => theme.colors.surfaceVariant};
-  border-radius: 8px; cursor: pointer;
-  font-weight: 600; font-size: 14px;
+  padding: 10px 14px; margin-top: 12px;
+  background: ${({ theme }) => theme.colors.primary}0f;
+  border-radius: 12px; cursor: pointer;
+  font-weight: 600; font-size: 13px;
   color: ${({ theme }) => theme.colors.primary};
+  border-left: 3px solid ${({ theme }) => theme.colors.primary};
 
   transition: transform 0.15s ease, opacity 0.15s ease;
   &:active {
@@ -175,10 +229,20 @@ const SectionContent = styled.div`
 `;
 
 const CategoryBadge = styled.span`
-  display: inline-block; padding: 4px 10px; border-radius: 12px;
-  background: ${({ theme }) => theme.colors.secondaryContainer};
-  color: ${({ theme }) => theme.colors.onSecondaryContainer};
-  font-size: 11px; font-weight: 500; margin-right: 8px;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  margin-top: 6px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: ${({ theme }) => theme.colors.surfaceVariant};
+  color: ${({ theme }) => theme.colors.onSurfaceVariant};
+`;
+
+const SubtitleWebsite = styled(CardSubtitle)`
+  opacity: 0.6;
+  font-size: 12px;
 `;
 
 const FavoriteIcon = styled(Star) <{ active: boolean }>`
@@ -275,11 +339,11 @@ const FilterModalContent = styled(ModalContent)`
   max-height: min(86vh, 780px);
   padding: 0;
   overflow: hidden;
-  border-radius: 18px;
+  border-radius: 20px;
   background:
     radial-gradient(circle at 88% 6%, rgba(115, 94, 255, 0.2), rgba(115, 94, 255, 0) 34%),
     linear-gradient(170deg, rgba(22, 27, 54, 0.98), rgba(14, 19, 40, 0.98));
-  border: 1px solid rgba(125, 147, 209, 0.4);
+  border: 1px solid rgba(125, 147, 209, 0.45);
   box-shadow: 0 22px 52px rgba(5, 10, 30, 0.6);
 `;
 
@@ -490,7 +554,7 @@ const InteractionHint = styled.div<{ $show: boolean }>`
 const PasswordStack = styled.div<{ $manager: boolean }>`
   display: flex;
   flex-direction: column;
-  gap: ${({ $manager }) => ($manager ? '12px' : '0')};
+  gap: ${({ $manager }) => ($manager ? '12px' : '10px')};
 `;
 
 const ManagerDashboard = styled.section`
@@ -1855,7 +1919,7 @@ export const PasswordList = () => {
       ) : (
         <>
           <SearchContainer $manager={false}>
-            <Input placeholder={t('app.searchPlaceholder')} value={search} onChange={(e) => setSearch(e.target.value)} />
+            <PopupSearchInput placeholder={t('app.searchPlaceholder')} value={search} onChange={(e) => setSearch(e.target.value)} />
             <Search />
           </SearchContainer>
 
@@ -1882,10 +1946,9 @@ export const PasswordList = () => {
               const fallbackWebsite = isZh ? '无网址' : 'No Website';
 
               return (
-                <Card
+                <PopupCard
                   key={item.id}
                   onClick={() => handleEdit(item)}
-                  style={{ cursor: 'pointer' }}
                   initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
                   animate={prefersReducedMotion ? undefined : { opacity: 1, y: 0 }}
                   transition={prefersReducedMotion ? undefined : { duration: 0.2, ease: 'easeOut' }}
@@ -1894,7 +1957,7 @@ export const PasswordList = () => {
                     <div>
                       <CardTitle>{item.title}</CardTitle>
                       <CardSubtitle>{data.username || fallbackUsername}</CardSubtitle>
-                      <CardSubtitle style={{ opacity: 0.6, fontSize: 12 }}>{data.website || fallbackWebsite}</CardSubtitle>
+                      <SubtitleWebsite>{data.website || fallbackWebsite}</SubtitleWebsite>
                       {data.categoryId && (
                         <CategoryBadge>
                           {categories.find(c => c.id === data.categoryId)?.name || (isZh ? '未知分类' : 'Unknown')}
@@ -1919,7 +1982,7 @@ export const PasswordList = () => {
                       <Trash2 />
                     </IconButton>
                   </CardActions>
-                </Card>
+                </PopupCard>
               );
             })}
           </PasswordStack>

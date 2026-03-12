@@ -60,6 +60,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.TextRange
@@ -107,12 +108,14 @@ internal fun NoteEditorSection(
     editorTakesRemainingSpace: Boolean = false
 ) {
     val scope = rememberCoroutineScope()
+    val configuration = LocalConfiguration.current
     val titleBringIntoViewRequester = remember { BringIntoViewRequester() }
     val contentBringIntoViewRequester = remember { BringIntoViewRequester() }
     val tagsBringIntoViewRequester = remember { BringIntoViewRequester() }
     var titleFocused by remember { mutableStateOf(false) }
     var contentFocused by remember { mutableStateOf(false) }
     var tagsFocused by remember { mutableStateOf(false) }
+    val compactEditorViewportHeight = (configuration.screenHeightDp.dp * 0.38f).coerceIn(220.dp, 420.dp)
 
     LaunchedEffect(titleFocused) {
         if (titleFocused) {
@@ -201,7 +204,7 @@ internal fun NoteEditorSection(
                 } else {
                     Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 220.dp)
+                        .heightIn(min = 220.dp, max = compactEditorViewportHeight)
                 }
             ) {
                 if (!isMarkdownPreview) {

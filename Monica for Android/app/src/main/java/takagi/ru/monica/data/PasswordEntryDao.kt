@@ -214,6 +214,15 @@ interface PasswordEntryDao {
     
     @Query("DELETE FROM password_entries")
     suspend fun deleteAllPasswordEntries()
+
+    @Query(
+        """
+        DELETE FROM password_entries
+        WHERE bitwarden_vault_id IS NULL
+          AND keepassDatabaseId IS NULL
+        """
+    )
+    suspend fun deleteAllLocalPasswordEntries()
     
     /**
      * 检查是否存在相同的密码条目(根据title、username、website匹配)

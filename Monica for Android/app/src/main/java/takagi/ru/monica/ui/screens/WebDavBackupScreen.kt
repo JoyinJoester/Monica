@@ -1,8 +1,10 @@
 package takagi.ru.monica.ui.screens
 
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -15,13 +17,18 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.repository.PasswordRepository
@@ -49,6 +56,88 @@ import takagi.ru.monica.util.ImageCompressor
 private fun matchesAnyKeyword(message: String, vararg keywords: String): Boolean {
     val normalized = message.lowercase(Locale.ROOT)
     return keywords.any { keyword -> normalized.contains(keyword.lowercase(Locale.ROOT)) }
+}
+
+private enum class RestoreMode {
+    MERGE_LOCAL,
+    REPLACE_LOCAL,
+}
+
+@Composable
+private fun RestoreModeOptionCard(
+    title: String,
+    description: String,
+    icon: ImageVector,
+    selected: Boolean,
+    accentColor: androidx.compose.ui.graphics.Color,
+    onClick: () -> Unit,
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(
+                selected = selected,
+                onClick = onClick,
+                role = Role.RadioButton,
+            ),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) {
+                MaterialTheme.colorScheme.secondaryContainer
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerLow
+            }
+        ),
+        border = BorderStroke(
+            width = if (selected) 2.dp else 1.dp,
+            color = if (selected) accentColor else MaterialTheme.colorScheme.outlineVariant,
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                color = if (selected) accentColor.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surfaceContainerHighest,
+                shape = MaterialTheme.shapes.medium,
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = accentColor,
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            RadioButton(
+                selected = selected,
+                onClick = null,
+            )
+        }
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -92,9 +181,6 @@ fun WebDavBackupScreen(
     var trashCount by remember { mutableStateOf(0) }
     var localKeePassCount by remember { mutableStateOf(0) }
     var passkeyCount by remember { mutableStateOf(0) }
-    
-    // 恢复设置
-    var restoreOverwriteMode by remember { mutableStateOf(false) }
     
     // 备份进行中状态（防止重复点击）
     var isBackupInProgress by remember { mutableStateOf(false) }
@@ -1057,6 +1143,7 @@ fun WebDavBackupScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BackupItem(
     backup: BackupFile,
@@ -1075,12 +1162,19 @@ private fun BackupItem(
     var showRestoreDialog by remember { mutableStateOf(false) }
     var isRestoring by remember { mutableStateOf(false) }
     var menuExpanded by remember { mutableStateOf(false) }
-    var overwriteAll by remember { mutableStateOf(false) }
-    var restoreDedupLocalOnly by remember { mutableStateOf(false) }
+    var selectedRestoreMode by remember { mutableStateOf(RestoreMode.MERGE_LOCAL) }
+    var restoreGlobalDedup by remember { mutableStateOf(false) }
     
     // New state variables for smart decryption
     var showPasswordInputDialog by remember { mutableStateOf(false) }
     var tempPassword by remember { mutableStateOf("") }
+
+    fun resolveRestoreOverwrite(): Boolean = selectedRestoreMode == RestoreMode.REPLACE_LOCAL
+
+    fun resolveLocalOnlyDedup(): Boolean = when (selectedRestoreMode) {
+        RestoreMode.MERGE_LOCAL -> !restoreGlobalDedup
+        RestoreMode.REPLACE_LOCAL -> true
+    }
 
     suspend fun handleRestoreResult(result: Result<RestoreResult>, localOnlyDedup: Boolean) {
         if (result.isSuccess) {
@@ -1519,7 +1613,11 @@ private fun BackupItem(
             
             // 恢复按钮
             IconButton(
-                onClick = { showRestoreDialog = true },
+                onClick = {
+                    selectedRestoreMode = RestoreMode.MERGE_LOCAL
+                    restoreGlobalDedup = false
+                    showRestoreDialog = true
+                },
                 enabled = !isRestoring
             ) {
                 if (isRestoring) {
@@ -1609,64 +1707,199 @@ private fun BackupItem(
     
     // 恢复确认对话框
     if (showRestoreDialog) {
-        AlertDialog(
+        BasicAlertDialog(
             onDismissRequest = { showRestoreDialog = false },
-            title = { Text(stringResource(R.string.webdav_restore_backup_title)) },
-            text = { 
-                Column {
-                    Text(stringResource(R.string.webdav_restore_backup_confirm_message, backup.name))
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = overwriteAll, onCheckedChange = { overwriteAll = it })
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(stringResource(R.string.webdav_overwrite_local))
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = restoreDedupLocalOnly,
-                            onCheckedChange = { restoreDedupLocalOnly = it }
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(0.94f),
+                shape = MaterialTheme.shapes.extraLarge,
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                tonalElevation = 6.dp,
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 18.dp),
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = stringResource(R.string.webdav_restore_backup_title),
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.SemiBold,
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(stringResource(R.string.webdav_restore_local_only_dedup))
+                        Text(
+                            text = stringResource(R.string.webdav_restore_mode_title),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                     }
-                    Text(
-                        text = stringResource(R.string.webdav_restore_local_only_dedup_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showRestoreDialog = false
-                        isRestoring = true
-                        coroutineScope.launch {
-                            try {
-                                // 下载并恢复备份
-                                val result = webDavHelper.downloadAndRestoreBackup(backup, overwrite = overwriteAll)
-                                handleRestoreResult(result, localOnlyDedup = restoreDedupLocalOnly)
-                            } catch (e: Exception) {
-                                isRestoring = false
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.webdav_restore_failed, e.message),
-                                    Toast.LENGTH_LONG
-                                ).show()
+
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        shape = MaterialTheme.shapes.large,
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Surface(
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                shape = MaterialTheme.shapes.medium,
+                            ) {
+                                Box(
+                                    modifier = Modifier.size(36.dp),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CloudDownload,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                    )
+                                }
+                            }
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
+                                Text(
+                                    text = backup.name,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    text = "${dateFormat.format(backup.modified)} · ${webDavHelper.formatFileSize(backup.size)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
                             }
                         }
                     }
-                ) {
-                    Text(stringResource(R.string.webdav_restore_action))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showRestoreDialog = false }) {
-                    Text(context.getString(R.string.cancel))
+
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        RestoreModeOptionCard(
+                            title = stringResource(R.string.webdav_restore_mode_merge_title),
+                            description = stringResource(R.string.webdav_restore_mode_merge_desc),
+                            icon = Icons.Default.Sync,
+                            selected = selectedRestoreMode == RestoreMode.MERGE_LOCAL,
+                            accentColor = MaterialTheme.colorScheme.primary,
+                            onClick = { selectedRestoreMode = RestoreMode.MERGE_LOCAL },
+                        )
+
+                        RestoreModeOptionCard(
+                            title = stringResource(R.string.webdav_restore_mode_replace_title),
+                            description = stringResource(R.string.webdav_restore_mode_replace_desc),
+                            icon = Icons.Default.DeleteSweep,
+                            selected = selectedRestoreMode == RestoreMode.REPLACE_LOCAL,
+                            accentColor = MaterialTheme.colorScheme.error,
+                            onClick = { selectedRestoreMode = RestoreMode.REPLACE_LOCAL },
+                        )
+                    }
+
+                    if (selectedRestoreMode == RestoreMode.MERGE_LOCAL) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.tertiaryContainer,
+                            shape = MaterialTheme.shapes.large,
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.webdav_restore_mode_global_dedup),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        fontWeight = FontWeight.Medium,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.webdav_restore_mode_local_safe_desc),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer,
+                                    )
+                                    Text(
+                                        text = stringResource(R.string.webdav_restore_mode_global_dedup_desc),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.78f),
+                                    )
+                                }
+                                Switch(
+                                    checked = restoreGlobalDedup,
+                                    onCheckedChange = { restoreGlobalDedup = it },
+                                )
+                            }
+                        }
+                    } else {
+                        Surface(
+                            color = MaterialTheme.colorScheme.errorContainer,
+                            shape = MaterialTheme.shapes.large,
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Warning,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onErrorContainer,
+                                )
+                                Text(
+                                    text = stringResource(R.string.webdav_restore_mode_replace_warning),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                )
+                            }
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        TextButton(onClick = { showRestoreDialog = false }) {
+                            Text(context.getString(R.string.cancel))
+                        }
+                        TextButton(
+                            onClick = {
+                                showRestoreDialog = false
+                                isRestoring = true
+                                coroutineScope.launch {
+                                    try {
+                                        val result = webDavHelper.downloadAndRestoreBackup(
+                                            backup,
+                                            overwrite = resolveRestoreOverwrite()
+                                        )
+                                        handleRestoreResult(result, localOnlyDedup = resolveLocalOnlyDedup())
+                                    } catch (e: Exception) {
+                                        isRestoring = false
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.webdav_restore_failed, e.message),
+                                            Toast.LENGTH_LONG
+                                        ).show()
+                                    }
+                                }
+                            }
+                        ) {
+                            Text(stringResource(R.string.webdav_restore_action))
+                        }
+                    }
                 }
             }
-        )
+        }
     }
 
     // 密码输入对话框
@@ -1696,8 +1929,12 @@ private fun BackupItem(
                         isRestoring = true
                         coroutineScope.launch {
                             try {
-                                val result = webDavHelper.downloadAndRestoreBackup(backup, tempPassword, overwrite = overwriteAll)
-                                handleRestoreResult(result, localOnlyDedup = restoreDedupLocalOnly)
+                                val result = webDavHelper.downloadAndRestoreBackup(
+                                    backup,
+                                    tempPassword,
+                                    overwrite = resolveRestoreOverwrite()
+                                )
+                                handleRestoreResult(result, localOnlyDedup = resolveLocalOnlyDedup())
                             } catch (e: Exception) {
                                 isRestoring = false
                                 Toast.makeText(

@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -53,6 +54,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.core.app.NotificationManagerCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -217,9 +219,38 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         } ?: Args()
     }
     
-    // 手动模式：从磁贴启动，没有 AutofillId，选择密码后复制而不是回填
+    private val explicitManualMode by lazy {
+        intent.getBooleanExtra("extra_manual_mode", false)
+    }
+
+    private val manualModeReason by lazy {
+        when {
+            explicitManualMode -> "explicit_manual_extra"
+            !args.fieldSignatureKey.isNullOrBlank() -> "framework_context_field_signature"
+            !args.applicationId.isNullOrBlank() -> "framework_context_application_id"
+            !args.webDomain.isNullOrBlank() -> "framework_context_web_domain"
+            args.responseAuthMode -> "framework_context_response_auth"
+            args.isSaveMode -> "framework_context_save_mode"
+            args.autofillIds.isNullOrEmpty() -> "no_framework_context_and_no_ids"
+            else -> "autofill_ids_present"
+        }
+    }
+
+    // 手动模式：仅在明确的手动入口中启用。
+    // 某些系统/应用链路会丢失 AutofillId，但仍然属于真实的自动填充请求，
+    // 这类场景不能退化成手动模式，否则会导致来源显示错误且无法标记非自动填充。
     private val isManualMode by lazy {
-        intent.getBooleanExtra("extra_manual_mode", false) || args.autofillIds.isNullOrEmpty()
+        if (explicitManualMode) {
+            true
+        } else {
+            val hasFrameworkAutofillContext =
+                !args.fieldSignatureKey.isNullOrBlank() ||
+                    !args.applicationId.isNullOrBlank() ||
+                    !args.webDomain.isNullOrBlank() ||
+                    args.responseAuthMode ||
+                    args.isSaveMode
+            !hasFrameworkAutofillContext && args.autofillIds.isNullOrEmpty()
+        }
     }
     
 
@@ -239,7 +270,6 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         val idCount = args.autofillIds?.size ?: 0
         val hintCount = args.autofillHints?.size ?: 0
         val suggestedCount = args.suggestedPasswordIds?.size ?: 0
-        val explicitManualMode = intent.getBooleanExtra("extra_manual_mode", false)
         AutofillLogger.i(
             "PICKER",
             "Picker opened: saveMode=${args.isSaveMode}, responseAuth=${args.responseAuthMode}, ids=$idCount, hints=$hintCount",
@@ -247,7 +277,9 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                 "sdk" to Build.VERSION.SDK_INT,
                 "device" to "${Build.MANUFACTURER}/${Build.MODEL}",
                 "manualMode" to isManualMode,
+                "manualReason" to manualModeReason,
                 "manualExtra" to explicitManualMode,
+                "launchedFromFramework" to launchedFromAutofillFramework,
                 "idCount" to idCount,
                 "hintCount" to hintCount,
                 "suggestedCount" to suggestedCount,
@@ -268,7 +300,9 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                     "hintCount" to hintCount,
                     "responseAuth" to args.responseAuthMode,
                     "applicationId" to (args.applicationId ?: "none"),
-                    "webDomain" to (args.webDomain ?: "none")
+                    "webDomain" to (args.webDomain ?: "none"),
+                    "fieldSignaturePresent" to !args.fieldSignatureKey.isNullOrBlank(),
+                    "manualReason" to manualModeReason,
                 )
             )
         }
@@ -324,6 +358,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                     biometricEnabled = settings.biometricEnabled,
                     iconCardsEnabled = settings.iconCardsEnabled,
                     isManualMode = isManualMode,
+                    manualModeReason = manualModeReason,
                     onAuthenticationSuccess = { markAuthenticationSuccess() },
                     onAutofill = { password, forceAddUri ->
                         handleAutofill(password, forceAddUri)
@@ -333,11 +368,35 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                         setResult(Activity.RESULT_CANCELED)
                         finish()
                     },
+                    onMarkAsNonAutofill = { markCurrentFieldAsNonAutofill() },
                     onSmartCopy = { password, usernameFirst ->
                         handleSmartCopy(password, usernameFirst)
                     }
                 )
             }
+        }
+    }
+
+    private fun markCurrentFieldAsNonAutofill() {
+        val signatureKey = args.fieldSignatureKey?.trim()?.lowercase().orEmpty()
+        if (signatureKey.isBlank()) {
+            setResult(Activity.RESULT_CANCELED)
+            finish()
+            return
+        }
+        lifecycleScope.launch {
+            runCatching {
+                AutofillPreferences(applicationContext).markFieldSignatureBlocked(
+                    signatureKey = signatureKey,
+                    packageName = args.applicationId,
+                    webDomain = args.webDomain,
+                    hints = args.autofillHints?.toList().orEmpty(),
+                )
+            }.onFailure { error ->
+                AutofillLogger.e("PICKER", "Failed to block field signature", error)
+            }
+            setResult(Activity.RESULT_CANCELED)
+            finish()
         }
     }
 
@@ -829,10 +888,12 @@ private fun AutofillPickerContent(
     biometricEnabled: Boolean = false,
     iconCardsEnabled: Boolean = false,
     isManualMode: Boolean = false,
+    manualModeReason: String = "unknown",
     onAuthenticationSuccess: () -> Unit = {},
     onAutofill: (PasswordEntry, Boolean) -> Unit,
     onCopy: (String, String, Boolean) -> Unit,
     onClose: () -> Unit,
+    onMarkAsNonAutofill: () -> Unit,
     onSmartCopy: (PasswordEntry, Boolean) -> Unit
 ) {
     // 导航状态: "list", "detail", "add"
@@ -844,6 +905,7 @@ private fun AutofillPickerContent(
     var searchedPasswords by remember { mutableStateOf<List<PasswordEntry>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
     var isSearchLoading by remember { mutableStateOf(false) }
+    var showMarkAsNonAutofillDialog by remember { mutableStateOf(false) }
     var sourceFilter by remember { mutableStateOf(AutofillStorageSourceFilter.ALL) }
     var selectedKeePassDatabaseId by remember { mutableStateOf<Long?>(null) }
     var selectedKeePassGroupPath by remember { mutableStateOf<String?>(null) }
@@ -861,6 +923,7 @@ private fun AutofillPickerContent(
     val hasNotificationPermission = remember {
         NotificationManagerCompat.from(context).areNotificationsEnabled()
     }
+    val canMarkAsNonAutofill = !isManualMode && !args.isSaveMode && !args.fieldSignatureKey.isNullOrBlank()
     
     val autofillUsernameLabel = stringResource(R.string.autofill_username)
     val autofillPasswordLabel = stringResource(R.string.autofill_password)
@@ -928,6 +991,12 @@ private fun AutofillPickerContent(
             }
         } ?: (null to null)
     }
+    val markNonAutofillTargetLabel = remember(args.webDomain, appName, args.applicationId) {
+        args.webDomain?.takeIf { it.isNotBlank() }
+            ?: appName?.takeIf { it.isNotBlank() }
+            ?: args.applicationId?.takeIf { it.isNotBlank() }
+            ?: ""
+    }
     
     val bitwardenRepository = remember(context) { BitwardenRepository.getInstance(context) }
 
@@ -937,12 +1006,41 @@ private fun AutofillPickerContent(
             "Picker content mounted",
             metadata = mapOf(
                 "manualMode" to isManualMode,
+                "manualReason" to manualModeReason,
                 "canSkipVerification" to canSkipVerification,
                 "biometricEnabled" to biometricEnabled,
                 "iconCardsEnabled" to iconCardsEnabled,
                 "responseAuth" to args.responseAuthMode,
                 "idCount" to (args.autofillIds?.size ?: 0),
                 "hintCount" to (args.autofillHints?.size ?: 0),
+            )
+        )
+    }
+
+    LaunchedEffect(
+        isManualMode,
+        canMarkAsNonAutofill,
+        args.isSaveMode,
+        args.fieldSignatureKey,
+        args.applicationId,
+        args.webDomain,
+        appName,
+        markNonAutofillTargetLabel,
+    ) {
+        AutofillLogger.i(
+            "PICKER_UI",
+            "Picker source diagnostics",
+            metadata = mapOf(
+                "manualMode" to isManualMode,
+                "manualReason" to manualModeReason,
+                "canMarkAsNonAutofill" to canMarkAsNonAutofill,
+                "isSaveMode" to args.isSaveMode,
+                "fieldSignaturePresent" to !args.fieldSignatureKey.isNullOrBlank(),
+                "applicationId" to (args.applicationId ?: "none"),
+                "webDomain" to (args.webDomain ?: "none"),
+                "resolvedAppName" to (appName ?: "none"),
+                "markTargetLabel" to if (markNonAutofillTargetLabel.isBlank()) "none" else markNonAutofillTargetLabel,
+                "autofillIdCount" to (args.autofillIds?.size ?: 0),
             )
         )
     }
@@ -1257,6 +1355,42 @@ private fun AutofillPickerContent(
             }
         }
     )
+
+    if (showMarkAsNonAutofillDialog && canMarkAsNonAutofill) {
+        AlertDialog(
+            onDismissRequest = { showMarkAsNonAutofillDialog = false },
+            title = {
+                Text(text = stringResource(R.string.autofill_mark_not_field_dialog_title))
+            },
+            text = {
+                Text(
+                    text = if (markNonAutofillTargetLabel.isNotBlank()) {
+                        stringResource(
+                            R.string.autofill_mark_not_field_dialog_message_with_target,
+                            markNonAutofillTargetLabel,
+                        )
+                    } else {
+                        stringResource(R.string.autofill_mark_not_field_dialog_message)
+                    }
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showMarkAsNonAutofillDialog = false
+                        onMarkAsNonAutofill()
+                    }
+                ) {
+                    Text(text = stringResource(R.string.confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMarkAsNonAutofillDialog = false }) {
+                    Text(text = stringResource(R.string.cancel))
+                }
+            },
+        )
+    }
     
     // 根据当前屏幕显示内容 - 带动画过渡
     AnimatedContent(
@@ -1302,6 +1436,8 @@ private fun AutofillPickerContent(
                         AutofillExpressiveSearchBar(
                             query = searchQuery,
                             onQueryChange = { searchQuery = it },
+                            showMarkButton = canMarkAsNonAutofill,
+                            onMarkClick = { showMarkAsNonAutofillDialog = true },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(horizontal = 16.dp, vertical = 8.dp)
@@ -1725,45 +1861,64 @@ private fun NoSuggestionsHint() {
 private fun AutofillExpressiveSearchBar(
     query: String,
     onQueryChange: (String) -> Unit,
+    showMarkButton: Boolean,
+    onMarkClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    TextField(
-        value = query,
-        onValueChange = onQueryChange,
+    Row(
         modifier = modifier,
-        singleLine = true,
-        shape = RoundedCornerShape(22.dp),
-        placeholder = {
-            Text(
-                text = stringResource(R.string.search_passwords),
-                style = MaterialTheme.typography.bodyLarge
-            )
-        },
-        leadingIcon = {
-            Icon(
-                imageVector = Icons.Default.Search,
-                contentDescription = null
-            )
-        },
-        trailingIcon = {
-            if (query.isNotBlank()) {
-                IconButton(onClick = { onQueryChange("") }) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = stringResource(R.string.clear_search)
-                    )
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        TextField(
+            value = query,
+            onValueChange = onQueryChange,
+            modifier = Modifier.weight(1f),
+            singleLine = true,
+            shape = RoundedCornerShape(22.dp),
+            placeholder = {
+                Text(
+                    text = stringResource(R.string.search_passwords),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            },
+            leadingIcon = {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = null
+                )
+            },
+            trailingIcon = {
+                if (query.isNotBlank()) {
+                    IconButton(onClick = { onQueryChange("") }) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = stringResource(R.string.clear_search)
+                        )
+                    }
                 }
-            }
-        },
-        colors = TextFieldDefaults.colors(
-            focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-            focusedIndicatorColor = Color.Transparent,
-            unfocusedIndicatorColor = Color.Transparent,
-            disabledIndicatorColor = Color.Transparent
+            },
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
+                disabledIndicatorColor = Color.Transparent
+            )
         )
-    )
+        if (showMarkButton) {
+            FilledTonalIconButton(
+                onClick = onMarkClick,
+                modifier = Modifier.size(52.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Block,
+                    contentDescription = stringResource(R.string.autofill_mark_not_field_button)
+                )
+            }
+        }
+    }
 }
 
 @Composable

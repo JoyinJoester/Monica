@@ -16,6 +16,7 @@ class AutofillParserNg {
         uri: String?,
         credentialTargets: List<ParsedItem>,
         inlineRequest: InlineSuggestionsRequest?,
+        fieldSignatureKey: String? = null,
         isCompatMode: Boolean = false,
     ): AutofillRequest {
         val normalizedUri = uri?.trim().takeUnless { it.isNullOrBlank() } ?: "androidapp://$packageName"
@@ -38,7 +39,8 @@ class AutofillParserNg {
             isCompatMode = isCompatMode,
             packageName = packageName,
             partition = AutofillPartition.Login(loginViews),
-            uri = normalizedUri
+            uri = normalizedUri,
+            fieldSignatureKey = fieldSignatureKey,
         )
     }
 

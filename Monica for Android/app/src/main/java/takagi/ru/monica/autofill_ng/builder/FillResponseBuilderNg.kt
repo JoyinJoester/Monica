@@ -176,6 +176,7 @@ class FillResponseBuilderNg(
             autofillHints = ArrayList(autofillHints),
             suggestedPasswordIds = suggestedPasswordIds,
             isSaveMode = false,
+            fieldSignatureKey = request.fieldSignatureKey,
             responseAuthMode = false,
             rememberLastFilled = false,
         )
