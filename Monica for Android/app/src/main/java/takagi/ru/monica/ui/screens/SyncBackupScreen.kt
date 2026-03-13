@@ -30,6 +30,7 @@ fun SyncBackupScreen(
     onNavigateToImportData: () -> Unit = {},
     onNavigateToWebDav: () -> Unit = {},
     onNavigateToDedupEngine: () -> Unit = {},
+    onNavigateToQuickDatabaseMaintenance: () -> Unit = {},
     onNavigateToLocalKeePass: () -> Unit = {},  // 本地 KeePass 数据库管理
     onNavigateToBitwarden: () -> Unit = {},  // Bitwarden 集成入口
     isPlusActivated: Boolean = false
@@ -138,6 +139,18 @@ fun SyncBackupScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             SyncBackupSection(title = stringResource(R.string.sync_backup_database_tools)) {
+                SyncBackupItem(
+                    icon = Icons.Default.AutoFixHigh,
+                    title = stringResource(R.string.quick_database_maintenance_title),
+                    description = stringResource(R.string.quick_database_maintenance_entry_desc),
+                    onClick = onNavigateToQuickDatabaseMaintenance
+                )
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 72.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
+
                 SyncBackupItem(
                     icon = Icons.Default.Storage,
                     title = stringResource(R.string.dedup_engine_title),

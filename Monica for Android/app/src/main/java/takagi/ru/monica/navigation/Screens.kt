@@ -96,6 +96,7 @@ sealed class Screen(val route: String) {
     object PasskeySettings : Screen("passkey_settings")
     object SecurityAnalysis : Screen("security_analysis")
     object DedupEngine : Screen("dedup_engine")
+    object QuickDatabaseMaintenance : Screen("quick_database_maintenance")
     object BottomNavSettings : Screen("bottom_nav_settings")
     object ColorSchemeSelection : Screen("color_scheme_selection")
     object CustomColorSettings : Screen("custom_color_settings")

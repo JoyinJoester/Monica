@@ -1694,7 +1694,9 @@ private fun SafeAnimatedVisibility(
     exit: ExitTransition,
     content: @Composable () -> Unit
 ) {
-    if (Build.VERSION.SDK_INT >= 36) {
+    // Android 14+ ModalBottomSheet may hit a Lookahead placement race with AnimatedVisibility.
+    // Fall back to non-animated content on these versions to avoid runtime crash.
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
         if (visible) content()
         return
     }

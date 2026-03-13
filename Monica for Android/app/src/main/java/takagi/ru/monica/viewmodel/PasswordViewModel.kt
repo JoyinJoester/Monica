@@ -1200,12 +1200,14 @@ class PasswordViewModel(
     
     fun movePasswordsToKeePassDatabase(ids: List<Long>, databaseId: Long?) {
         viewModelScope.launch {
+            repository.clearBitwardenBindingForPasswords(ids)
             repository.updateKeePassDatabaseForPasswords(ids, databaseId)
         }
     }
 
     fun movePasswordsToKeePassGroup(ids: List<Long>, databaseId: Long, groupPath: String) {
         viewModelScope.launch {
+            repository.clearBitwardenBindingForPasswords(ids)
             repository.updateKeePassGroupForPasswords(ids, databaseId, groupPath)
         }
     }

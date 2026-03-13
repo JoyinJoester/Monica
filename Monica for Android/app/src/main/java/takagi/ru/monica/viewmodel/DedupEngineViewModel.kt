@@ -7,8 +7,14 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.LocalKeePassDatabaseDao
+import takagi.ru.monica.data.bitwarden.BitwardenVault
+import takagi.ru.monica.data.bitwarden.BitwardenVaultDao
 import takagi.ru.monica.data.dedup.DedupAction
 import takagi.ru.monica.data.dedup.DedupCluster
 import takagi.ru.monica.data.dedup.DedupClusterType
@@ -20,7 +26,13 @@ data class DedupEngineUiState(
     val isLoading: Boolean = true,
     val selectedScope: DedupScope = DedupScope.ALL,
     val preferredSource: DedupPreferredSource = DedupPreferredSource.MONICA_LOCAL,
+    val selectedKeepassDatabaseId: Long? = null,
+    val selectedBitwardenVaultId: Long? = null,
+    val preferredKeepassDatabaseId: Long? = null,
+    val preferredBitwardenVaultId: Long? = null,
     val selectedType: DedupClusterType? = null,
+    val keepassDatabases: List<LocalKeePassDatabase> = emptyList(),
+    val bitwardenVaults: List<BitwardenVault> = emptyList(),
     val clusters: List<DedupCluster> = emptyList(),
     val selectionMode: Boolean = false,
     val selectedClusterIds: Set<String> = emptySet(),
@@ -29,7 +41,9 @@ data class DedupEngineUiState(
 )
 
 class DedupEngineViewModel(
-    private val dedupEngine: DedupEngine
+    private val dedupEngine: DedupEngine,
+    private val localKeePassDatabaseDao: LocalKeePassDatabaseDao,
+    private val bitwardenVaultDao: BitwardenVaultDao
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(DedupEngineUiState())
     val uiState: StateFlow<DedupEngineUiState> = _uiState.asStateFlow()
@@ -37,6 +51,7 @@ class DedupEngineViewModel(
     private var activeRefreshJob: Job? = null
 
     init {
+        observeSourceCatalogs()
         refresh()
     }
 
@@ -92,6 +107,40 @@ class DedupEngineViewModel(
     fun updatePreferredSource(source: DedupPreferredSource) {
         if (_uiState.value.preferredSource == source) return
         _uiState.value = _uiState.value.copy(preferredSource = source)
+    }
+
+    fun updateSelectedKeepassDatabase(databaseId: Long?) {
+        if (_uiState.value.selectedKeepassDatabaseId == databaseId) return
+        _uiState.value = _uiState.value.copy(
+            selectedKeepassDatabaseId = databaseId,
+            isLoading = true,
+            error = null,
+            selectionMode = false,
+            selectedClusterIds = emptySet()
+        )
+        refresh()
+    }
+
+    fun updateSelectedBitwardenVault(vaultId: Long?) {
+        if (_uiState.value.selectedBitwardenVaultId == vaultId) return
+        _uiState.value = _uiState.value.copy(
+            selectedBitwardenVaultId = vaultId,
+            isLoading = true,
+            error = null,
+            selectionMode = false,
+            selectedClusterIds = emptySet()
+        )
+        refresh()
+    }
+
+    fun updatePreferredKeepassDatabase(databaseId: Long?) {
+        if (_uiState.value.preferredKeepassDatabaseId == databaseId) return
+        _uiState.value = _uiState.value.copy(preferredKeepassDatabaseId = databaseId)
+    }
+
+    fun updatePreferredBitwardenVault(vaultId: Long?) {
+        if (_uiState.value.preferredBitwardenVaultId == vaultId) return
+        _uiState.value = _uiState.value.copy(preferredBitwardenVaultId = vaultId)
     }
 
     fun enterSelectionMode() {
@@ -236,7 +285,11 @@ class DedupEngineViewModel(
 
     private suspend fun scanInBackground(scope: DedupScope): List<DedupCluster> {
         return withContext(Dispatchers.Default) {
-            dedupEngine.scan(scope)
+            dedupEngine.scan(
+                scope = scope,
+                keepassDatabaseId = _uiState.value.selectedKeepassDatabaseId,
+                bitwardenVaultId = _uiState.value.selectedBitwardenVaultId
+            )
         }
     }
 
@@ -245,7 +298,41 @@ class DedupEngineViewModel(
         action: DedupAction,
         preferredSource: DedupPreferredSource
     ) = withContext(Dispatchers.Default) {
-        dedupEngine.execute(cluster, action, preferredSource)
+        dedupEngine.execute(
+            cluster = cluster,
+            action = action,
+            preferredSource = preferredSource,
+            preferredKeepassDatabaseId = _uiState.value.preferredKeepassDatabaseId,
+            preferredBitwardenVaultId = _uiState.value.preferredBitwardenVaultId
+        )
+    }
+
+    private fun observeSourceCatalogs() {
+        viewModelScope.launch {
+            localKeePassDatabaseDao.getAllDatabases().collect { databases ->
+                _uiState.update { state ->
+                    val validIds = databases.map { it.id }.toSet()
+                    state.copy(
+                        keepassDatabases = databases,
+                        selectedKeepassDatabaseId = state.selectedKeepassDatabaseId?.takeIf { it in validIds },
+                        preferredKeepassDatabaseId = state.preferredKeepassDatabaseId?.takeIf { it in validIds }
+                    )
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            bitwardenVaultDao.getAllVaultsFlow().collect { vaults ->
+                _uiState.update { state ->
+                    val validIds = vaults.map { it.id }.toSet()
+                    state.copy(
+                        bitwardenVaults = vaults,
+                        selectedBitwardenVaultId = state.selectedBitwardenVaultId?.takeIf { it in validIds },
+                        preferredBitwardenVaultId = state.preferredBitwardenVaultId?.takeIf { it in validIds }
+                    )
+                }
+            }
+        }
     }
 
     private fun nextRequestId(): Long {

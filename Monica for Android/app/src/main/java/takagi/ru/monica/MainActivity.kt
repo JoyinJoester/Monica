@@ -2019,6 +2019,9 @@ fun MonicaContent(
                 onNavigateToDedupEngine = {
                     navController.navigate(Screen.DedupEngine.route)
                 },
+                onNavigateToQuickDatabaseMaintenance = {
+                    navController.navigate(Screen.QuickDatabaseMaintenance.route)
+                },
                 onNavigateToLocalKeePass = {
                     navController.navigate(Screen.LocalKeePass.route)
                 },
@@ -2043,13 +2046,17 @@ fun MonicaContent(
             }
             val dedupViewModel: DedupEngineViewModel = viewModel {
                 DedupEngineViewModel(
-                    DedupEngine(
+                    dedupEngine = DedupEngine(
                         passwordRepository = repository,
                         secureItemRepository = secureItemRepository,
                         passkeyRepository = passkeyRepository,
+                        localKeePassDatabaseDao = database.localKeePassDatabaseDao(),
+                        bitwardenVaultDao = database.bitwardenVaultDao(),
                         securityManager = securityManager,
                         ignoreStore = DedupIgnoreStore(context.applicationContext)
-                    )
+                    ),
+                    localKeePassDatabaseDao = database.localKeePassDatabaseDao(),
+                    bitwardenVaultDao = database.bitwardenVaultDao()
                 )
             }
             val uiState by dedupViewModel.uiState.collectAsState()
@@ -2065,8 +2072,20 @@ fun MonicaContent(
                 onPreferredSourceChange = { source ->
                     dedupViewModel.updatePreferredSource(source)
                 },
+                onPreferredKeepassDatabaseChange = { databaseId ->
+                    dedupViewModel.updatePreferredKeepassDatabase(databaseId)
+                },
+                onPreferredBitwardenVaultChange = { vaultId ->
+                    dedupViewModel.updatePreferredBitwardenVault(vaultId)
+                },
                 onScopeChange = { scope ->
                     dedupViewModel.updateScope(scope)
+                },
+                onScopeKeepassDatabaseChange = { databaseId ->
+                    dedupViewModel.updateSelectedKeepassDatabase(databaseId)
+                },
+                onScopeBitwardenVaultChange = { vaultId ->
+                    dedupViewModel.updateSelectedBitwardenVault(vaultId)
                 },
                 onTypeChange = { type ->
                     dedupViewModel.updateType(type)
@@ -2094,6 +2113,51 @@ fun MonicaContent(
                 },
                 onConsumeMessage = {
                     dedupViewModel.consumeMessage()
+                }
+            )
+        }
+
+        composable(
+            route = Screen.QuickDatabaseMaintenance.route,
+            enterTransition = { rightSlideEnterTransition() },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { rightSlidePopExitTransition() }
+        ) {
+            val context = LocalContext.current
+            val passkeyRepository = remember(context.applicationContext) {
+                PasskeyRepository(database.passkeyDao())
+            }
+            val quickMaintenanceViewModel: takagi.ru.monica.viewmodel.QuickDatabaseMaintenanceViewModel = viewModel {
+                takagi.ru.monica.viewmodel.QuickDatabaseMaintenanceViewModel(
+                    takagi.ru.monica.data.maintenance.createQuickDatabaseMaintenanceEngine(
+                        passwordRepository = repository,
+                        secureItemRepository = secureItemRepository,
+                        passkeyRepository = passkeyRepository,
+                        localKeePassDatabaseDao = database.localKeePassDatabaseDao(),
+                        bitwardenVaultDao = database.bitwardenVaultDao(),
+                        securityManager = securityManager,
+                        workspaceRepository = takagi.ru.monica.repository.KeePassWorkspaceRepository(
+                            context = context.applicationContext,
+                            dao = database.localKeePassDatabaseDao(),
+                            securityManager = securityManager
+                        )
+                    )
+                )
+            }
+            val uiState by quickMaintenanceViewModel.uiState.collectAsState()
+
+            takagi.ru.monica.ui.screens.QuickDatabaseMaintenanceScreen(
+                uiState = uiState,
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onIncludePasswordsChange = quickMaintenanceViewModel::updateIncludePasswords,
+                onIncludeAuthenticatorsChange = quickMaintenanceViewModel::updateIncludeAuthenticators,
+                onIncludeBankCardsChange = quickMaintenanceViewModel::updateIncludeBankCards,
+                onIncludePasskeysChange = quickMaintenanceViewModel::updateIncludePasskeys,
+                onRun = {
+                    quickMaintenanceViewModel.runMaintenance()
                 }
             )
         }

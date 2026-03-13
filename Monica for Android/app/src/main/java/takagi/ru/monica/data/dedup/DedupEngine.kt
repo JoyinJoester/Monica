@@ -10,9 +10,13 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.bitwarden.BitwardenVault
+import takagi.ru.monica.data.bitwarden.BitwardenVaultDao
 import takagi.ru.monica.repository.PasskeyRepository
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
@@ -22,32 +26,70 @@ class DedupEngine(
     private val passwordRepository: PasswordRepository,
     private val secureItemRepository: SecureItemRepository,
     private val passkeyRepository: PasskeyRepository,
+    private val localKeePassDatabaseDao: LocalKeePassDatabaseDao,
+    private val bitwardenVaultDao: BitwardenVaultDao,
     private val securityManager: SecurityManager,
     private val ignoreStore: DedupIgnoreStore
 ) {
     private val json = Json { ignoreUnknownKeys = true }
 
-    suspend fun scan(scope: DedupScope): List<DedupCluster> {
+    suspend fun scan(
+        scope: DedupScope,
+        keepassDatabaseId: Long? = null,
+        bitwardenVaultId: Long? = null
+    ): List<DedupCluster> {
+        val keepassLookup = localKeePassDatabaseDao.getAllDatabasesSync().associateBy { it.id }
+        val bitwardenLookup = bitwardenVaultDao.getAllVaults().associateBy { it.id }
         val passwordEntries = applyScopeToPasswords(
             passwordRepository.getAllPasswordEntries().first(),
-            scope
+            scope,
+            keepassDatabaseId,
+            bitwardenVaultId
         )
         val secureItems = applyScopeToSecureItems(
             secureItemRepository.getAllItems().first(),
-            scope
+            scope,
+            keepassDatabaseId,
+            bitwardenVaultId
         )
         val passkeys = applyScopeToPasskeys(
             passkeyRepository.getAllPasskeysSync(),
-            scope
+            scope,
+            keepassDatabaseId,
+            bitwardenVaultId
         )
 
         return buildList {
-            addAll(buildExactPasswordClusters(passwordEntries))
-            addAll(buildCrossSourcePasswordClusters(passwordEntries))
-            addAll(buildSecureItemClusters(secureItems, ItemType.TOTP, DedupClusterType.DUPLICATE_TOTP))
-            addAll(buildSecureItemClusters(secureItems, ItemType.BANK_CARD, DedupClusterType.DUPLICATE_BANK_CARD))
-            addAll(buildSecureItemClusters(secureItems, ItemType.DOCUMENT, DedupClusterType.DUPLICATE_DOCUMENT))
-            addAll(buildPasskeyClusters(passkeys))
+            addAll(buildExactPasswordClusters(passwordEntries, keepassLookup, bitwardenLookup))
+            addAll(buildCrossSourcePasswordClusters(passwordEntries, keepassLookup, bitwardenLookup))
+            addAll(
+                buildSecureItemClusters(
+                    secureItems,
+                    ItemType.TOTP,
+                    DedupClusterType.DUPLICATE_TOTP,
+                    keepassLookup,
+                    bitwardenLookup
+                )
+            )
+            addAll(
+                buildSecureItemClusters(
+                    secureItems,
+                    ItemType.BANK_CARD,
+                    DedupClusterType.DUPLICATE_BANK_CARD,
+                    keepassLookup,
+                    bitwardenLookup
+                )
+            )
+            addAll(
+                buildSecureItemClusters(
+                    secureItems,
+                    ItemType.DOCUMENT,
+                    DedupClusterType.DUPLICATE_DOCUMENT,
+                    keepassLookup,
+                    bitwardenLookup
+                )
+            )
+            addAll(buildPasskeyClusters(passkeys, keepassLookup, bitwardenLookup))
         }
             .filterNot { ignoreStore.isIgnored(it.id) }
             .sortedWith(
@@ -60,10 +102,17 @@ class DedupEngine(
     suspend fun execute(
         cluster: DedupCluster,
         action: DedupAction,
-        preferredSource: DedupPreferredSource
+        preferredSource: DedupPreferredSource,
+        preferredKeepassDatabaseId: Long? = null,
+        preferredBitwardenVaultId: Long? = null
     ): DedupActionResult {
         return when (action) {
-            DedupAction.APPLY_PASSWORD_PREFERENCE -> applyPasswordPreference(cluster, preferredSource)
+            DedupAction.APPLY_PASSWORD_PREFERENCE -> applyPasswordPreference(
+                cluster,
+                preferredSource,
+                preferredKeepassDatabaseId,
+                preferredBitwardenVaultId
+            )
             DedupAction.MOVE_LOCAL_SECURE_ITEM_COPIES_TO_TRASH -> moveLocalSecureItemCopiesToTrash(cluster)
             DedupAction.IGNORE_CLUSTER -> {
                 ignoreStore.ignore(cluster.id)
@@ -72,7 +121,11 @@ class DedupEngine(
         }
     }
 
-    private fun buildExactPasswordClusters(entries: List<PasswordEntry>): List<DedupCluster> {
+    private fun buildExactPasswordClusters(
+        entries: List<PasswordEntry>,
+        keepassLookup: Map<Long, LocalKeePassDatabase>,
+        bitwardenLookup: Map<Long, BitwardenVault>
+    ): List<DedupCluster> {
         val groups = entries.groupBy { entry ->
             listOf(
                 sourceIdentity(entry),
@@ -86,11 +139,14 @@ class DedupEngine(
         return groups.values.mapNotNull { group ->
             if (group.size <= 1) return@mapNotNull null
             val refs = group.map { entry ->
+                val descriptor = sourceDescriptorOf(entry, keepassLookup, bitwardenLookup)
                 DedupEntityRef.PasswordRef(
                     entryId = entry.id,
                     title = entry.title.ifBlank { entry.website.ifBlank { "Untitled" } },
                     subtitle = entry.username.ifBlank { entry.website },
-                    sourceKind = sourceKindOf(entry),
+                    sourceKind = descriptor.kind,
+                    sourceLabel = descriptor.label,
+                    sourceInstanceKey = descriptor.instanceKey,
                     isLocal = entry.isLocalOnlyEntry()
                 )
             }
@@ -103,7 +159,11 @@ class DedupEngine(
         }
     }
 
-    private fun buildCrossSourcePasswordClusters(entries: List<PasswordEntry>): List<DedupCluster> {
+    private fun buildCrossSourcePasswordClusters(
+        entries: List<PasswordEntry>,
+        keepassLookup: Map<Long, LocalKeePassDatabase>,
+        bitwardenLookup: Map<Long, BitwardenVault>
+    ): List<DedupCluster> {
         val groups = entries.groupBy { entry ->
             listOf(
                 normalizeText(entry.title),
@@ -114,15 +174,18 @@ class DedupEngine(
 
         return groups.values.mapNotNull { group ->
             if (group.size <= 1) return@mapNotNull null
-            val sourceKinds = group.map { sourceKindOf(it) }.toSet()
-            if (sourceKinds.size <= 1) return@mapNotNull null
+            val sourceInstances = group.map { sourceIdentity(it) }.toSet()
+            if (sourceInstances.size <= 1) return@mapNotNull null
 
             val refs = group.map { entry ->
+                val descriptor = sourceDescriptorOf(entry, keepassLookup, bitwardenLookup)
                 DedupEntityRef.PasswordRef(
                     entryId = entry.id,
                     title = entry.title.ifBlank { entry.website.ifBlank { "Untitled" } },
                     subtitle = entry.username.ifBlank { entry.website },
-                    sourceKind = sourceKindOf(entry),
+                    sourceKind = descriptor.kind,
+                    sourceLabel = descriptor.label,
+                    sourceInstanceKey = descriptor.instanceKey,
                     isLocal = entry.isLocalOnlyEntry()
                 )
             }
@@ -138,7 +201,9 @@ class DedupEngine(
     private fun buildSecureItemClusters(
         items: List<SecureItem>,
         type: ItemType,
-        clusterType: DedupClusterType
+        clusterType: DedupClusterType,
+        keepassLookup: Map<Long, LocalKeePassDatabase>,
+        bitwardenLookup: Map<Long, BitwardenVault>
     ): List<DedupCluster> {
         val filtered = items.filter { it.itemType == type }
         val groups = filtered.groupBy { buildSecureFingerprint(it) }
@@ -146,12 +211,15 @@ class DedupEngine(
         return groups.values.mapNotNull { group ->
             if (group.size <= 1) return@mapNotNull null
             val refs = group.map { item ->
+                val descriptor = sourceDescriptorOf(item, keepassLookup, bitwardenLookup)
                 DedupEntityRef.SecureItemRef(
                     itemId = item.id,
                     itemType = item.itemType,
                     title = item.title.ifBlank { secureItemFallbackTitle(item) },
                     subtitle = secureItemSubtitle(item),
-                    sourceKind = sourceKindOf(item),
+                    sourceKind = descriptor.kind,
+                    sourceLabel = descriptor.label,
+                    sourceInstanceKey = descriptor.instanceKey,
                     isLocal = isLocalItem(item)
                 )
             }
@@ -164,7 +232,11 @@ class DedupEngine(
         }
     }
 
-    private fun buildPasskeyClusters(passkeys: List<PasskeyEntry>): List<DedupCluster> {
+    private fun buildPasskeyClusters(
+        passkeys: List<PasskeyEntry>,
+        keepassLookup: Map<Long, LocalKeePassDatabase>,
+        bitwardenLookup: Map<Long, BitwardenVault>
+    ): List<DedupCluster> {
         val groups = passkeys.groupBy { passkey ->
             "${normalizeText(passkey.rpId)}|${normalizeText(passkey.userName)}"
         }
@@ -172,11 +244,14 @@ class DedupEngine(
         return groups.values.mapNotNull { group ->
             if (group.size <= 1) return@mapNotNull null
             val refs = group.map { passkey ->
+                val descriptor = sourceDescriptorOf(passkey, keepassLookup, bitwardenLookup)
                 DedupEntityRef.PasskeyRef(
                     credentialId = passkey.credentialId,
                     title = passkey.rpName.ifBlank { passkey.rpId },
                     subtitle = passkey.userName,
-                    sourceKind = sourceKindOf(passkey),
+                    sourceKind = descriptor.kind,
+                    sourceLabel = descriptor.label,
+                    sourceInstanceKey = descriptor.instanceKey,
                     isLocal = isLocalPasskey(passkey)
                 )
             }
@@ -196,14 +271,29 @@ class DedupEngine(
         refs: List<DedupEntityRef>
     ): DedupCluster {
         val sourceKinds = refs.map { it.sourceKind }.toSet()
+        val sourceDescriptors = refs
+            .map { ref ->
+                DedupSourceDescriptor(
+                    instanceKey = ref.sourceInstanceKey,
+                    kind = ref.sourceKind,
+                    label = ref.sourceLabel
+                )
+            }
+            .distinctBy { it.instanceKey }
+            .sortedWith(compareBy<DedupSourceDescriptor> { it.kind.ordinal }.thenBy { it.label })
         val supportedActions = buildSupportedActions(type, refs, sourceKinds)
         return DedupCluster(
             id = stableHash("$type|$key|${refs.joinToString("|") { it.stableId }}"),
             type = type,
             keyLabel = keyLabel,
             itemCount = refs.size,
-            items = refs.sortedWith(compareBy<DedupEntityRef> { it.sourceKind.ordinal }.thenBy { it.title }),
+            items = refs.sortedWith(
+                compareBy<DedupEntityRef> { it.sourceKind.ordinal }
+                    .thenBy { it.sourceLabel }
+                    .thenBy { it.title }
+            ),
             sources = sourceKinds,
+            sourceDescriptors = sourceDescriptors,
             supportedActions = supportedActions
         )
     }
@@ -242,7 +332,9 @@ class DedupEngine(
 
     private suspend fun applyPasswordPreference(
         cluster: DedupCluster,
-        preferredSource: DedupPreferredSource
+        preferredSource: DedupPreferredSource,
+        preferredKeepassDatabaseId: Long?,
+        preferredBitwardenVaultId: Long?
     ): DedupActionResult {
         val entries = cluster.items
             .filterIsInstance<DedupEntityRef.PasswordRef>()
@@ -254,7 +346,12 @@ class DedupEngine(
         }
 
         val keeper = if (cluster.type == DedupClusterType.CROSS_SOURCE_PASSWORD_MIRROR) {
-            selectPreferredPasswordKeeper(entries, preferredSource)
+            selectPreferredPasswordKeeper(
+                entries,
+                preferredSource,
+                preferredKeepassDatabaseId,
+                preferredBitwardenVaultId
+            )
         } else {
             selectBestPassword(entries)
         }
@@ -314,9 +411,21 @@ class DedupEngine(
 
     private fun selectPreferredPasswordKeeper(
         entries: List<PasswordEntry>,
-        preferredSource: DedupPreferredSource
+        preferredSource: DedupPreferredSource,
+        preferredKeepassDatabaseId: Long?,
+        preferredBitwardenVaultId: Long?
     ): PasswordEntry {
-        val preferredEntries = entries.filter { sourceKindOf(it) == preferredSource.toSourceKind() }
+        val preferredEntries = entries.filter { entry ->
+            when (preferredSource) {
+                DedupPreferredSource.MONICA_LOCAL -> entry.isLocalOnlyEntry()
+                DedupPreferredSource.KEEPASS -> preferredKeepassDatabaseId?.let { id ->
+                    entry.keepassDatabaseId == id
+                } ?: entry.keepassDatabaseId != null
+                DedupPreferredSource.BITWARDEN -> preferredBitwardenVaultId?.let { id ->
+                    entry.bitwardenVaultId == id
+                } ?: entry.bitwardenVaultId != null
+            }
+        }
         return selectBestPassword(preferredEntries.ifEmpty { entries })
     }
 
@@ -341,30 +450,57 @@ class DedupEngine(
         return items.filterNot { it.id == keeper.id }
     }
 
-    private fun applyScopeToPasswords(entries: List<PasswordEntry>, scope: DedupScope): List<PasswordEntry> {
+    private fun applyScopeToPasswords(
+        entries: List<PasswordEntry>,
+        scope: DedupScope,
+        keepassDatabaseId: Long?,
+        bitwardenVaultId: Long?
+    ): List<PasswordEntry> {
         return when (scope) {
             DedupScope.ALL -> entries
             DedupScope.MONICA_LOCAL -> entries.filter { it.isLocalOnlyEntry() }
-            DedupScope.KEEPASS -> entries.filter { it.isKeePassEntry() }
-            DedupScope.BITWARDEN -> entries.filter { it.isBitwardenEntry() || it.bitwardenVaultId != null }
+            DedupScope.KEEPASS -> keepassDatabaseId?.let { id ->
+                entries.filter { it.keepassDatabaseId == id }
+            } ?: entries.filter { it.isKeePassEntry() }
+            DedupScope.BITWARDEN -> bitwardenVaultId?.let { id ->
+                entries.filter { it.bitwardenVaultId == id }
+            } ?: entries.filter { it.isBitwardenEntry() || it.bitwardenVaultId != null }
         }
     }
 
-    private fun applyScopeToSecureItems(items: List<SecureItem>, scope: DedupScope): List<SecureItem> {
+    private fun applyScopeToSecureItems(
+        items: List<SecureItem>,
+        scope: DedupScope,
+        keepassDatabaseId: Long?,
+        bitwardenVaultId: Long?
+    ): List<SecureItem> {
         return when (scope) {
             DedupScope.ALL -> items
             DedupScope.MONICA_LOCAL -> items.filter { isLocalItem(it) }
-            DedupScope.KEEPASS -> items.filter { it.keepassDatabaseId != null }
-            DedupScope.BITWARDEN -> items.filter { it.bitwardenVaultId != null }
+            DedupScope.KEEPASS -> keepassDatabaseId?.let { id ->
+                items.filter { it.keepassDatabaseId == id }
+            } ?: items.filter { it.keepassDatabaseId != null }
+            DedupScope.BITWARDEN -> bitwardenVaultId?.let { id ->
+                items.filter { it.bitwardenVaultId == id }
+            } ?: items.filter { it.bitwardenVaultId != null }
         }
     }
 
-    private fun applyScopeToPasskeys(passkeys: List<PasskeyEntry>, scope: DedupScope): List<PasskeyEntry> {
+    private fun applyScopeToPasskeys(
+        passkeys: List<PasskeyEntry>,
+        scope: DedupScope,
+        keepassDatabaseId: Long?,
+        bitwardenVaultId: Long?
+    ): List<PasskeyEntry> {
         return when (scope) {
             DedupScope.ALL -> passkeys
             DedupScope.MONICA_LOCAL -> passkeys.filter { isLocalPasskey(it) }
-            DedupScope.KEEPASS -> passkeys.filter { it.keepassDatabaseId != null }
-            DedupScope.BITWARDEN -> passkeys.filter { it.bitwardenVaultId != null }
+            DedupScope.KEEPASS -> keepassDatabaseId?.let { id ->
+                passkeys.filter { it.keepassDatabaseId == id }
+            } ?: passkeys.filter { it.keepassDatabaseId != null }
+            DedupScope.BITWARDEN -> bitwardenVaultId?.let { id ->
+                passkeys.filter { it.bitwardenVaultId == id }
+            } ?: passkeys.filter { it.bitwardenVaultId != null }
         }
     }
 
@@ -398,6 +534,119 @@ class DedupEngine(
             entry.bitwardenVaultId != null -> "bitwarden:${entry.bitwardenVaultId}"
             else -> "monica"
         }
+    }
+
+    private fun sourceDescriptorOf(
+        entry: PasswordEntry,
+        keepassLookup: Map<Long, LocalKeePassDatabase>,
+        bitwardenLookup: Map<Long, BitwardenVault>
+    ): DedupSourceDescriptor {
+        return when {
+            entry.keepassDatabaseId != null -> {
+                val database = keepassLookup[entry.keepassDatabaseId]
+                DedupSourceDescriptor(
+                    instanceKey = "keepass:${entry.keepassDatabaseId}",
+                    kind = DedupSourceKind.KEEPASS,
+                    label = database?.name?.takeIf { it.isNotBlank() } ?: "KeePass database"
+                )
+            }
+            entry.bitwardenVaultId != null -> {
+                val vault = bitwardenLookup[entry.bitwardenVaultId]
+                val label = vault?.displayName
+                    ?.takeIf { it.isNotBlank() && !it.equals("Bitwarden", ignoreCase = true) }
+                    ?: vault?.email
+                    ?: vault?.serverUrl?.let(::compactServerLabel)
+                    ?: "Bitwarden"
+                DedupSourceDescriptor(
+                    instanceKey = "bitwarden:${entry.bitwardenVaultId}",
+                    kind = DedupSourceKind.BITWARDEN,
+                    label = label
+                )
+            }
+            else -> DedupSourceDescriptor(
+                instanceKey = "monica",
+                kind = DedupSourceKind.MONICA_LOCAL,
+                label = "Monica local"
+            )
+        }
+    }
+
+    private fun sourceDescriptorOf(
+        item: SecureItem,
+        keepassLookup: Map<Long, LocalKeePassDatabase>,
+        bitwardenLookup: Map<Long, BitwardenVault>
+    ): DedupSourceDescriptor {
+        return when {
+            item.keepassDatabaseId != null -> {
+                val database = keepassLookup[item.keepassDatabaseId]
+                DedupSourceDescriptor(
+                    instanceKey = "keepass:${item.keepassDatabaseId}",
+                    kind = DedupSourceKind.KEEPASS,
+                    label = database?.name?.takeIf { it.isNotBlank() } ?: "KeePass database"
+                )
+            }
+            item.bitwardenVaultId != null -> {
+                val vault = bitwardenLookup[item.bitwardenVaultId]
+                val label = vault?.displayName
+                    ?.takeIf { it.isNotBlank() && !it.equals("Bitwarden", ignoreCase = true) }
+                    ?: vault?.email
+                    ?: vault?.serverUrl?.let(::compactServerLabel)
+                    ?: "Bitwarden"
+                DedupSourceDescriptor(
+                    instanceKey = "bitwarden:${item.bitwardenVaultId}",
+                    kind = DedupSourceKind.BITWARDEN,
+                    label = label
+                )
+            }
+            else -> DedupSourceDescriptor(
+                instanceKey = "monica",
+                kind = DedupSourceKind.MONICA_LOCAL,
+                label = "Monica local"
+            )
+        }
+    }
+
+    private fun sourceDescriptorOf(
+        entry: PasskeyEntry,
+        keepassLookup: Map<Long, LocalKeePassDatabase>,
+        bitwardenLookup: Map<Long, BitwardenVault>
+    ): DedupSourceDescriptor {
+        return when {
+            entry.keepassDatabaseId != null -> {
+                val database = keepassLookup[entry.keepassDatabaseId]
+                DedupSourceDescriptor(
+                    instanceKey = "keepass:${entry.keepassDatabaseId}",
+                    kind = DedupSourceKind.KEEPASS,
+                    label = database?.name?.takeIf { it.isNotBlank() } ?: "KeePass database"
+                )
+            }
+            entry.bitwardenVaultId != null -> {
+                val vault = bitwardenLookup[entry.bitwardenVaultId]
+                val label = vault?.displayName
+                    ?.takeIf { it.isNotBlank() && !it.equals("Bitwarden", ignoreCase = true) }
+                    ?: vault?.email
+                    ?: vault?.serverUrl?.let(::compactServerLabel)
+                    ?: "Bitwarden"
+                DedupSourceDescriptor(
+                    instanceKey = "bitwarden:${entry.bitwardenVaultId}",
+                    kind = DedupSourceKind.BITWARDEN,
+                    label = label
+                )
+            }
+            else -> DedupSourceDescriptor(
+                instanceKey = "monica",
+                kind = DedupSourceKind.MONICA_LOCAL,
+                label = "Monica local"
+            )
+        }
+    }
+
+    private fun compactServerLabel(serverUrl: String): String {
+        return runCatching {
+            URI(serverUrl).host
+                ?.removePrefix("www.")
+                ?.takeIf { it.isNotBlank() }
+        }.getOrNull() ?: serverUrl
     }
 
     private fun decryptComparablePassword(value: String): String {

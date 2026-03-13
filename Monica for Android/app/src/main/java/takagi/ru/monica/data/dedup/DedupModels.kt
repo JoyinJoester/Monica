@@ -36,11 +36,19 @@ enum class DedupPreferredSource {
     BITWARDEN
 }
 
+data class DedupSourceDescriptor(
+    val instanceKey: String,
+    val kind: DedupSourceKind,
+    val label: String
+)
+
 sealed interface DedupEntityRef {
     val stableId: String
     val title: String
     val subtitle: String
     val sourceKind: DedupSourceKind
+    val sourceLabel: String
+    val sourceInstanceKey: String
     val isLocal: Boolean
 
     data class PasswordRef(
@@ -48,6 +56,8 @@ sealed interface DedupEntityRef {
         override val title: String,
         override val subtitle: String,
         override val sourceKind: DedupSourceKind,
+        override val sourceLabel: String,
+        override val sourceInstanceKey: String,
         override val isLocal: Boolean
     ) : DedupEntityRef {
         override val stableId: String = "password:$entryId"
@@ -59,6 +69,8 @@ sealed interface DedupEntityRef {
         override val title: String,
         override val subtitle: String,
         override val sourceKind: DedupSourceKind,
+        override val sourceLabel: String,
+        override val sourceInstanceKey: String,
         override val isLocal: Boolean
     ) : DedupEntityRef {
         override val stableId: String = "secure:${itemType.name}:$itemId"
@@ -69,6 +81,8 @@ sealed interface DedupEntityRef {
         override val title: String,
         override val subtitle: String,
         override val sourceKind: DedupSourceKind,
+        override val sourceLabel: String,
+        override val sourceInstanceKey: String,
         override val isLocal: Boolean
     ) : DedupEntityRef {
         override val stableId: String = "passkey:$credentialId"
@@ -82,6 +96,7 @@ data class DedupCluster(
     val itemCount: Int,
     val items: List<DedupEntityRef>,
     val sources: Set<DedupSourceKind>,
+    val sourceDescriptors: List<DedupSourceDescriptor>,
     val supportedActions: List<DedupAction>
 )
 

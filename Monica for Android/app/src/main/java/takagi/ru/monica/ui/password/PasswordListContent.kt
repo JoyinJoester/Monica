@@ -1943,15 +1943,10 @@ private fun PasswordBatchMoveSheet(
                     target is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> {
                         coroutineScope.launch {
                             try {
-                                val entriesForTargetDatabase = selectedEntries.map { entry ->
-                                    entry.copy(
-                                        keepassDatabaseId = target.databaseId,
-                                        keepassGroupPath = null
-                                    )
-                                }
-                                val result = localKeePassViewModel.addPasswordEntriesToKdbx(
+                                val result = localKeePassViewModel.movePasswordEntriesToKdbx(
                                     databaseId = target.databaseId,
-                                    entries = entriesForTargetDatabase,
+                                    groupPath = null,
+                                    entries = selectedEntries,
                                     decryptPassword = { encrypted -> securityManager.decryptData(encrypted) ?: "" }
                                 )
                                 if (result.isSuccess) {
@@ -1981,15 +1976,10 @@ private fun PasswordBatchMoveSheet(
                     target is UnifiedMoveCategoryTarget.KeePassGroupTarget -> {
                         coroutineScope.launch {
                             try {
-                                val entriesForTargetGroup = selectedEntries.map { entry ->
-                                    entry.copy(
-                                        keepassDatabaseId = target.databaseId,
-                                        keepassGroupPath = target.groupPath
-                                    )
-                                }
-                                val result = localKeePassViewModel.addPasswordEntriesToKdbx(
+                                val result = localKeePassViewModel.movePasswordEntriesToKdbx(
                                     databaseId = target.databaseId,
-                                    entries = entriesForTargetGroup,
+                                    groupPath = target.groupPath,
+                                    entries = selectedEntries,
                                     decryptPassword = { encrypted -> securityManager.decryptData(encrypted) ?: "" }
                                 )
                                 if (result.isSuccess) {

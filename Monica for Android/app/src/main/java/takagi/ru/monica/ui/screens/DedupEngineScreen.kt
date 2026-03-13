@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -73,6 +75,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
+import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.dedup.DedupAction
 import takagi.ru.monica.data.dedup.DedupCluster
 import takagi.ru.monica.data.dedup.DedupClusterType
@@ -89,7 +93,11 @@ fun DedupEngineScreen(
     onNavigateBack: () -> Unit,
     onRefresh: () -> Unit,
     onPreferredSourceChange: (DedupPreferredSource) -> Unit,
+    onPreferredKeepassDatabaseChange: (Long?) -> Unit,
+    onPreferredBitwardenVaultChange: (Long?) -> Unit,
     onScopeChange: (DedupScope) -> Unit,
+    onScopeKeepassDatabaseChange: (Long?) -> Unit,
+    onScopeBitwardenVaultChange: (Long?) -> Unit,
     onTypeChange: (DedupClusterType?) -> Unit,
     onClusterAction: (DedupCluster, DedupAction) -> Unit,
     onEnterSelectionMode: () -> Unit,
@@ -114,8 +122,25 @@ fun DedupEngineScreen(
     val actionableCount = filteredClusters.count {
         it.supportedActions.any { action -> action != DedupAction.IGNORE_CLUSTER }
     }
-    val sourceCount = filteredClusters.flatMap { it.sources }.distinct().size
+    val sourceCount = filteredClusters
+        .flatMap { cluster -> cluster.sourceDescriptors }
+        .distinctBy { descriptor -> descriptor.instanceKey }
+        .size
     val activeTypeCount = typeCounts.count { it.value > 0 }
+    val scopeSummary = scopeSummaryLabel(
+        scope = uiState.selectedScope,
+        keepassDatabaseId = uiState.selectedKeepassDatabaseId,
+        bitwardenVaultId = uiState.selectedBitwardenVaultId,
+        keepassDatabases = uiState.keepassDatabases,
+        bitwardenVaults = uiState.bitwardenVaults
+    )
+    val preferredSummary = preferredSourceSummaryLabel(
+        source = uiState.preferredSource,
+        keepassDatabaseId = uiState.preferredKeepassDatabaseId,
+        bitwardenVaultId = uiState.preferredBitwardenVaultId,
+        keepassDatabases = uiState.keepassDatabases,
+        bitwardenVaults = uiState.bitwardenVaults
+    )
 
     LaunchedEffect(uiState.message) {
         val message = uiState.message ?: return@LaunchedEffect
@@ -194,8 +219,8 @@ fun DedupEngineScreen(
                     sourceCount = sourceCount,
                     activeTypeCount = activeTypeCount,
                     isLoading = uiState.isLoading,
-                    selectedScope = uiState.selectedScope,
-                    preferredSource = uiState.preferredSource,
+                    selectedScopeLabel = scopeSummary,
+                    preferredSourceLabel = preferredSummary,
                     selectionMode = uiState.selectionMode,
                     selectedCount = uiState.selectedClusterIds.size,
                     onRefresh = onRefresh,
@@ -224,12 +249,17 @@ fun DedupEngineScreen(
 
             item {
                 DedupStrategyPanel(
+                    uiState = uiState,
                     preferredSource = uiState.preferredSource,
                     selectedScope = uiState.selectedScope,
                     selectedType = uiState.selectedType,
                     typeCounts = typeCounts,
                     onPreferredSourceChange = onPreferredSourceChange,
+                    onPreferredKeepassDatabaseChange = onPreferredKeepassDatabaseChange,
+                    onPreferredBitwardenVaultChange = onPreferredBitwardenVaultChange,
                     onScopeChange = onScopeChange,
+                    onScopeKeepassDatabaseChange = onScopeKeepassDatabaseChange,
+                    onScopeBitwardenVaultChange = onScopeBitwardenVaultChange,
                     onTypeChange = onTypeChange
                 )
             }
@@ -289,8 +319,8 @@ private fun DedupMissionPanel(
     sourceCount: Int,
     activeTypeCount: Int,
     isLoading: Boolean,
-    selectedScope: DedupScope,
-    preferredSource: DedupPreferredSource,
+    selectedScopeLabel: String,
+    preferredSourceLabel: String,
     selectionMode: Boolean,
     selectedCount: Int,
     onRefresh: () -> Unit,
@@ -343,11 +373,11 @@ private fun DedupMissionPanel(
             ) {
                 MissionTonePill(
                     icon = Icons.Default.Tune,
-                    text = scopeLabel(selectedScope)
+                    text = selectedScopeLabel
                 )
                 MissionTonePill(
                     icon = Icons.Default.CheckCircle,
-                    text = preferredSourceLabel(preferredSource)
+                    text = preferredSourceLabel
                 )
             }
 
@@ -452,7 +482,9 @@ private fun MissionTonePill(
             Text(
                 text = text,
                 style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
@@ -498,12 +530,17 @@ private fun InsightStatCard(
 
 @Composable
 private fun DedupStrategyPanel(
+    uiState: DedupEngineUiState,
     preferredSource: DedupPreferredSource,
     selectedScope: DedupScope,
     selectedType: DedupClusterType?,
     typeCounts: Map<DedupClusterType, Int>,
     onPreferredSourceChange: (DedupPreferredSource) -> Unit,
+    onPreferredKeepassDatabaseChange: (Long?) -> Unit,
+    onPreferredBitwardenVaultChange: (Long?) -> Unit,
     onScopeChange: (DedupScope) -> Unit,
+    onScopeKeepassDatabaseChange: (Long?) -> Unit,
+    onScopeBitwardenVaultChange: (Long?) -> Unit,
     onTypeChange: (DedupClusterType?) -> Unit
 ) {
     var advancedExpanded by rememberSaveable { mutableStateOf(false) }
@@ -527,56 +564,142 @@ private fun DedupStrategyPanel(
             )
 
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(
-                    text = stringResource(R.string.dedup_engine_preferred_source_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = stringResource(R.string.dedup_engine_preferred_source_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = stringResource(R.string.dedup_engine_preferred_source_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    DedupPreferredSource.entries.forEach { source ->
-                        SourceChoiceCard(
-                            modifier = Modifier.weight(1f),
+                    items(DedupPreferredSource.entries) { source ->
+                        CompactSegmentChip(
                             selected = preferredSource == source,
-                            title = preferredSourceLabel(source),
-                            subtitle = if (preferredSource == source) {
-                                stringResource(R.string.dedup_engine_overview_active_scope)
-                            } else {
-                                stringResource(R.string.dedup_engine_preferred_source_hint)
-                            },
+                            label = preferredSourceLabel(source),
                             accentColor = sourceAccentColor(source.toSourceKind()),
                             onClick = { onPreferredSourceChange(source) }
                         )
                     }
                 }
+
+                when (preferredSource) {
+                    DedupPreferredSource.KEEPASS -> {
+                        SpecificSourceRow(
+                            title = stringResource(R.string.dedup_engine_specific_source_title),
+                            description = stringResource(R.string.dedup_engine_specific_source_desc),
+                            allLabel = stringResource(R.string.dedup_engine_specific_keepass_all),
+                            selectedKey = uiState.preferredKeepassDatabaseId?.toString(),
+                            options = uiState.keepassDatabases.map { database ->
+                                SpecificSourceOption(
+                                    key = database.id.toString(),
+                                    title = database.name,
+                                    subtitle = null
+                                )
+                            },
+                            accentColor = sourceAccentColor(DedupSourceKind.KEEPASS),
+                            onSelect = { key ->
+                                onPreferredKeepassDatabaseChange(key?.toLongOrNull())
+                            }
+                        )
+                    }
+                    DedupPreferredSource.BITWARDEN -> {
+                        SpecificSourceRow(
+                            title = stringResource(R.string.dedup_engine_specific_source_title),
+                            description = stringResource(R.string.dedup_engine_specific_source_desc),
+                            allLabel = stringResource(R.string.dedup_engine_specific_bitwarden_all),
+                            selectedKey = uiState.preferredBitwardenVaultId?.toString(),
+                            options = uiState.bitwardenVaults.map { vault ->
+                                SpecificSourceOption(
+                                    key = vault.id.toString(),
+                                    title = vaultPrimaryLabel(vault),
+                                    subtitle = vaultSecondaryLabel(vault)
+                                )
+                            },
+                            accentColor = sourceAccentColor(DedupSourceKind.BITWARDEN),
+                            onSelect = { key ->
+                                onPreferredBitwardenVaultChange(key?.toLongOrNull())
+                            }
+                        )
+                    }
+                    DedupPreferredSource.MONICA_LOCAL -> Unit
+                }
             }
 
-            Surface(
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surfaceContainer
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    DedupSectionHeader(
-                        title = stringResource(R.string.dedup_engine_scope_title),
-                        subtitle = stringResource(R.string.dedup_engine_controls_scope_desc)
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = stringResource(R.string.dedup_engine_scope_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
                     )
-                    FlowRow(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        DedupScope.entries.forEach { scope ->
-                            FilterOptionButton(
-                                selected = selectedScope == scope,
-                                label = scopeLabel(scope),
-                                onClick = { onScopeChange(scope) }
-                            )
-                        }
+                    Text(
+                        text = stringResource(R.string.dedup_engine_controls_scope_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(DedupScope.entries) { scope ->
+                        CompactSegmentChip(
+                            selected = selectedScope == scope,
+                            label = scopeLabel(scope),
+                            accentColor = sourceAccentColor(scopeToSourceKind(scope)),
+                            onClick = { onScopeChange(scope) }
+                        )
                     }
+                }
+
+                when (selectedScope) {
+                    DedupScope.KEEPASS -> {
+                        SpecificSourceRow(
+                            title = stringResource(R.string.dedup_engine_specific_scope_title),
+                            description = stringResource(R.string.dedup_engine_specific_scope_desc),
+                            allLabel = stringResource(R.string.dedup_engine_specific_keepass_all),
+                            selectedKey = uiState.selectedKeepassDatabaseId?.toString(),
+                            options = uiState.keepassDatabases.map { database ->
+                                SpecificSourceOption(
+                                    key = database.id.toString(),
+                                    title = database.name,
+                                    subtitle = null
+                                )
+                            },
+                            accentColor = sourceAccentColor(DedupSourceKind.KEEPASS),
+                            onSelect = { key ->
+                                onScopeKeepassDatabaseChange(key?.toLongOrNull())
+                            }
+                        )
+                    }
+                    DedupScope.BITWARDEN -> {
+                        SpecificSourceRow(
+                            title = stringResource(R.string.dedup_engine_specific_scope_title),
+                            description = stringResource(R.string.dedup_engine_specific_scope_desc),
+                            allLabel = stringResource(R.string.dedup_engine_specific_bitwarden_all),
+                            selectedKey = uiState.selectedBitwardenVaultId?.toString(),
+                            options = uiState.bitwardenVaults.map { vault ->
+                                SpecificSourceOption(
+                                    key = vault.id.toString(),
+                                    title = vaultPrimaryLabel(vault),
+                                    subtitle = vaultSecondaryLabel(vault)
+                                )
+                            },
+                            accentColor = sourceAccentColor(DedupSourceKind.BITWARDEN),
+                            onSelect = { key ->
+                                onScopeBitwardenVaultChange(key?.toLongOrNull())
+                            }
+                        )
+                    }
+                    else -> Unit
                 }
             }
 
@@ -594,37 +717,40 @@ private fun DedupStrategyPanel(
             }
 
             if (advancedExpanded) {
-                Surface(
-                    shape = RoundedCornerShape(24.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHighest
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        DedupSectionHeader(
-                            title = stringResource(R.string.dedup_engine_type_title),
-                            subtitle = stringResource(R.string.dedup_engine_controls_type_desc)
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = stringResource(R.string.dedup_engine_type_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
                         )
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
+                        Text(
+                            text = stringResource(R.string.dedup_engine_controls_type_desc),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        item {
                             FilterOptionButton(
-                                selected = selectedType == null,
-                                label = stringResource(R.string.dedup_engine_type_all),
-                                trailing = typeCounts.values.sum().toString(),
-                                onClick = { onTypeChange(null) }
-                            )
-                            DedupClusterType.entries.forEach { type ->
-                                val count = typeCounts[type] ?: 0
-                                if (count <= 0) return@forEach
+                            selected = selectedType == null,
+                            label = stringResource(R.string.dedup_engine_type_all),
+                            trailing = typeCounts.values.sum().toString(),
+                            onClick = { onTypeChange(null) }
+                        )
+                        }
+                        DedupClusterType.entries.forEach { type ->
+                            val count = typeCounts[type] ?: 0
+                            if (count <= 0) return@forEach
+                            item {
                                 FilterOptionButton(
-                                    selected = selectedType == type,
-                                    label = typeLabel(type),
-                                    trailing = count.toString(),
-                                    onClick = { onTypeChange(type) }
-                                )
+                                selected = selectedType == type,
+                                label = typeLabel(type),
+                                trailing = count.toString(),
+                                onClick = { onTypeChange(type) }
+                            )
                             }
                         }
                     }
@@ -634,10 +760,95 @@ private fun DedupStrategyPanel(
     }
 }
 
+private data class SpecificSourceOption(
+    val key: String,
+    val title: String,
+    val subtitle: String?
+)
+
+@Composable
+private fun CompactSegmentChip(
+    selected: Boolean,
+    label: String,
+    accentColor: Color,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier.clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        color = if (selected) {
+            accentColor.copy(alpha = 0.16f)
+        } else {
+            MaterialTheme.colorScheme.surface
+        },
+        border = BorderStroke(
+            if (selected) 1.4.dp else 1.dp,
+            if (selected) accentColor else MaterialTheme.colorScheme.outlineVariant
+        )
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp),
+            style = MaterialTheme.typography.labelLarge,
+            color = if (selected) accentColor else MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.SemiBold
+        )
+    }
+}
+
+@Composable
+private fun SpecificSourceRow(
+    title: String,
+    description: String,
+    allLabel: String,
+    selectedKey: String?,
+    options: List<SpecificSourceOption>,
+    accentColor: Color,
+    onSelect: (String?) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            item {
+                SourceChoiceCard(
+                    modifier = Modifier.width(180.dp),
+                    title = allLabel,
+                    subtitle = null,
+                    accentColor = accentColor,
+                    selected = selectedKey == null,
+                    onClick = { onSelect(null) }
+                )
+            }
+            items(options, key = { it.key }) { option ->
+                SourceChoiceCard(
+                    modifier = Modifier.width(200.dp),
+                    title = option.title,
+                    subtitle = option.subtitle,
+                    accentColor = accentColor,
+                    selected = selectedKey == option.key,
+                    onClick = { onSelect(option.key) }
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun SourceChoiceCard(
     title: String,
-    subtitle: String,
+    subtitle: String?,
     accentColor: Color,
     selected: Boolean,
     onClick: () -> Unit,
@@ -666,7 +877,7 @@ private fun SourceChoiceCard(
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            verticalArrangement = Arrangement.Center
         ) {
             Text(
                 text = title,
@@ -675,13 +886,16 @@ private fun SourceChoiceCard(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
+            if (subtitle != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
@@ -823,25 +1037,28 @@ private fun DedupIssueRadar(
                 title = stringResource(R.string.dedup_engine_radar_title),
                 subtitle = stringResource(R.string.dedup_engine_radar_desc)
             )
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                RadarTypeCard(
-                    type = null,
-                    count = typeCounts.values.sum(),
-                    selected = selectedType == null,
-                    onClick = { onTypeChange(null) }
-                )
+                item {
+                    RadarTypeCard(
+                        type = null,
+                        count = typeCounts.values.sum(),
+                        selected = selectedType == null,
+                        onClick = { onTypeChange(null) }
+                    )
+                }
                 DedupClusterType.entries.forEach { type ->
                     val count = typeCounts[type] ?: 0
                     if (count <= 0) return@forEach
-                    RadarTypeCard(
-                        type = type,
-                        count = count,
-                        selected = selectedType == type,
-                        onClick = { onTypeChange(type) }
-                    )
+                    item {
+                        RadarTypeCard(
+                            type = type,
+                            count = count,
+                            selected = selectedType == type,
+                            onClick = { onTypeChange(type) }
+                        )
+                    }
                 }
             }
         }
@@ -1066,8 +1283,11 @@ private fun DedupClusterCard(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    cluster.sources.forEach { source ->
-                        SourcePill(sourceKind = source)
+                    cluster.sourceDescriptors.forEach { descriptor ->
+                        SourcePill(
+                            label = descriptor.label,
+                            sourceKind = descriptor.kind
+                        )
                     }
                 }
 
@@ -1186,7 +1406,10 @@ private fun ClusterItemPreview(ref: DedupEntityRef) {
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.Top
         ) {
-            SourcePill(sourceKind = ref.sourceKind)
+            SourcePill(
+                label = ref.sourceLabel,
+                sourceKind = ref.sourceKind
+            )
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = ref.title,
@@ -1210,18 +1433,23 @@ private fun ClusterItemPreview(ref: DedupEntityRef) {
 }
 
 @Composable
-private fun SourcePill(sourceKind: DedupSourceKind) {
+private fun SourcePill(
+    label: String,
+    sourceKind: DedupSourceKind
+) {
     val accentColor = sourceAccentColor(sourceKind)
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = accentColor.copy(alpha = 0.14f)
     ) {
         Text(
-            text = sourceLabel(sourceKind),
+            text = label,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
             style = MaterialTheme.typography.labelSmall,
             color = accentColor,
-            fontWeight = FontWeight.Bold
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }
@@ -1367,6 +1595,53 @@ private fun preferredSourceLabel(source: DedupPreferredSource): String {
 }
 
 @Composable
+private fun scopeSummaryLabel(
+    scope: DedupScope,
+    keepassDatabaseId: Long?,
+    bitwardenVaultId: Long?,
+    keepassDatabases: List<LocalKeePassDatabase>,
+    bitwardenVaults: List<BitwardenVault>
+): String {
+    return when (scope) {
+        DedupScope.ALL -> scopeLabel(scope)
+        DedupScope.MONICA_LOCAL -> scopeLabel(scope)
+        DedupScope.KEEPASS -> keepassDatabaseId?.let { id ->
+            keepassDatabases.find { it.id == id }?.name?.let { name ->
+                "${scopeLabel(scope)} · $name"
+            }
+        } ?: stringResource(R.string.dedup_engine_specific_keepass_all)
+        DedupScope.BITWARDEN -> bitwardenVaultId?.let { id ->
+            bitwardenVaults.find { it.id == id }?.let { vault ->
+                "${scopeLabel(scope)} · ${vaultPrimaryLabel(vault)}"
+            }
+        } ?: stringResource(R.string.dedup_engine_specific_bitwarden_all)
+    }
+}
+
+@Composable
+private fun preferredSourceSummaryLabel(
+    source: DedupPreferredSource,
+    keepassDatabaseId: Long?,
+    bitwardenVaultId: Long?,
+    keepassDatabases: List<LocalKeePassDatabase>,
+    bitwardenVaults: List<BitwardenVault>
+): String {
+    return when (source) {
+        DedupPreferredSource.MONICA_LOCAL -> preferredSourceLabel(source)
+        DedupPreferredSource.KEEPASS -> keepassDatabaseId?.let { id ->
+            keepassDatabases.find { it.id == id }?.name?.let { name ->
+                "${preferredSourceLabel(source)} · $name"
+            }
+        } ?: stringResource(R.string.dedup_engine_specific_keepass_all)
+        DedupPreferredSource.BITWARDEN -> bitwardenVaultId?.let { id ->
+            bitwardenVaults.find { it.id == id }?.let { vault ->
+                "${preferredSourceLabel(source)} · ${vaultPrimaryLabel(vault)}"
+            }
+        } ?: stringResource(R.string.dedup_engine_specific_bitwarden_all)
+    }
+}
+
+@Composable
 private fun batchActionLabel(
     action: DedupAction,
     preferredSource: DedupPreferredSource
@@ -1394,7 +1669,8 @@ private fun actionLabel(
             if (cluster.type == DedupClusterType.EXACT_PASSWORD_DUPLICATE) {
                 stringResource(
                     R.string.dedup_action_keep_one_source_password,
-                    sourceLabel(cluster.sources.firstOrNull() ?: DedupSourceKind.MONICA_LOCAL)
+                    cluster.sourceDescriptors.firstOrNull()?.label
+                        ?: sourceLabel(cluster.sources.firstOrNull() ?: DedupSourceKind.MONICA_LOCAL)
                 )
             } else {
                 stringResource(
@@ -1412,16 +1688,7 @@ private fun actionLabel(
 
 @Composable
 private fun clusterSupportingText(cluster: DedupCluster): String {
-    val localLabel = stringResource(R.string.dedup_source_local)
-    val keepassLabel = stringResource(R.string.dedup_source_keepass)
-    val bitwardenLabel = stringResource(R.string.dedup_source_bitwarden)
-    val sourceSummary = cluster.sources.joinToString(" / ") { source ->
-        when (source) {
-            DedupSourceKind.MONICA_LOCAL -> localLabel
-            DedupSourceKind.KEEPASS -> keepassLabel
-            DedupSourceKind.BITWARDEN -> bitwardenLabel
-        }
-    }
+    val sourceSummary = cluster.sourceDescriptors.joinToString(" / ") { descriptor -> descriptor.label }
 
     return when (cluster.type) {
         DedupClusterType.EXACT_PASSWORD_DUPLICATE -> stringResource(R.string.dedup_cluster_exact_password_desc, sourceSummary)
@@ -1441,7 +1708,8 @@ private fun clusterRecommendationText(
     return when (cluster.type) {
         DedupClusterType.EXACT_PASSWORD_DUPLICATE -> stringResource(
             R.string.dedup_cluster_exact_password_recommendation,
-            sourceLabel(cluster.sources.firstOrNull() ?: DedupSourceKind.MONICA_LOCAL)
+            cluster.sourceDescriptors.firstOrNull()?.label
+                ?: sourceLabel(cluster.sources.firstOrNull() ?: DedupSourceKind.MONICA_LOCAL)
         )
         DedupClusterType.CROSS_SOURCE_PASSWORD_MIRROR -> {
             val preferredLabel = preferredPasswordSourceLabel(cluster, preferredSource)
@@ -1502,4 +1770,21 @@ private fun DedupPreferredSource.toSourceKind(): DedupSourceKind {
         DedupPreferredSource.KEEPASS -> DedupSourceKind.KEEPASS
         DedupPreferredSource.BITWARDEN -> DedupSourceKind.BITWARDEN
     }
+}
+
+private fun scopeToSourceKind(scope: DedupScope): DedupSourceKind {
+    return when (scope) {
+        DedupScope.ALL -> DedupSourceKind.MONICA_LOCAL
+        DedupScope.MONICA_LOCAL -> DedupSourceKind.MONICA_LOCAL
+        DedupScope.KEEPASS -> DedupSourceKind.KEEPASS
+        DedupScope.BITWARDEN -> DedupSourceKind.BITWARDEN
+    }
+}
+
+private fun vaultPrimaryLabel(vault: BitwardenVault): String {
+    return vault.displayName?.takeIf { it.isNotBlank() } ?: vault.email
+}
+
+private fun vaultSecondaryLabel(vault: BitwardenVault): String? {
+    return vault.email.takeIf { vault.displayName?.isNotBlank() == true && it != vault.displayName }
 }

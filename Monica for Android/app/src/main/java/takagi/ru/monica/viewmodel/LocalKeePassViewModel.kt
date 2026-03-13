@@ -846,6 +846,82 @@ class LocalKeePassViewModel(
             }
         )
     }
+
+    suspend fun movePasswordEntriesToKdbx(
+        databaseId: Long,
+        groupPath: String?,
+        entries: List<PasswordEntry>,
+        decryptPassword: (String) -> String
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            entries.forEach { entry ->
+                val sourceDatabaseId = entry.keepassDatabaseId
+                val targetEntry = entry.copy(
+                    keepassDatabaseId = databaseId,
+                    keepassGroupPath = groupPath,
+                    bitwardenVaultId = null,
+                    bitwardenCipherId = null,
+                    bitwardenFolderId = null,
+                    bitwardenRevisionDate = null,
+                    bitwardenLocalModified = false
+                )
+
+                when {
+                    sourceDatabaseId == null -> {
+                        compatibilityBridge.upsertLegacyPasswordEntries(
+                            databaseId = databaseId,
+                            entries = listOf(targetEntry),
+                            resolvePassword = { item ->
+                                try {
+                                    decryptPassword(item.password)
+                                } catch (_: Exception) {
+                                    item.password
+                                }
+                            },
+                            forceSyncWrite = true
+                        ).getOrThrow()
+                    }
+                    sourceDatabaseId == databaseId -> {
+                        compatibilityBridge.updateLegacyPasswordEntry(
+                            databaseId = databaseId,
+                            entry = targetEntry,
+                            resolvePassword = { item ->
+                                try {
+                                    decryptPassword(item.password)
+                                } catch (_: Exception) {
+                                    item.password
+                                }
+                            }
+                        ).getOrThrow()
+                    }
+                    else -> {
+                        compatibilityBridge.upsertLegacyPasswordEntries(
+                            databaseId = databaseId,
+                            entries = listOf(targetEntry.copy(
+                                keepassEntryUuid = null,
+                                keepassGroupUuid = null
+                            )),
+                            resolvePassword = { item ->
+                                try {
+                                    decryptPassword(item.password)
+                                } catch (_: Exception) {
+                                    item.password
+                                }
+                            },
+                            forceSyncWrite = true
+                        ).getOrThrow()
+                        compatibilityBridge.deleteLegacyPasswordEntries(
+                            databaseId = sourceDatabaseId,
+                            entries = listOf(entry)
+                        ).getOrThrow()
+                    }
+                }
+            }
+            Result.success(entries.size)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
     
     /**
      * 清除操作状态

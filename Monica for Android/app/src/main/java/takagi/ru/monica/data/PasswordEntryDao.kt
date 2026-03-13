@@ -141,10 +141,38 @@ interface PasswordEntryDao {
     """)
     suspend fun bindCategoryToBitwarden(categoryId: Long, vaultId: Long, folderId: String)
     
-    @Query("UPDATE password_entries SET keepassDatabaseId = :databaseId, keepassGroupPath = NULL WHERE id IN (:ids)")
+    @Query(
+        """
+        UPDATE password_entries
+        SET keepassDatabaseId = :databaseId,
+            keepassGroupPath = NULL,
+            keepass_entry_uuid = NULL,
+            keepass_group_uuid = NULL,
+            bitwarden_vault_id = NULL,
+            bitwarden_folder_id = NULL,
+            bitwarden_cipher_id = NULL,
+            bitwarden_revision_date = NULL,
+            bitwarden_local_modified = 0
+        WHERE id IN (:ids)
+        """
+    )
     suspend fun updateKeePassDatabaseForPasswords(ids: List<Long>, databaseId: Long?)
 
-    @Query("UPDATE password_entries SET keepassDatabaseId = :databaseId, keepassGroupPath = :groupPath WHERE id IN (:ids)")
+    @Query(
+        """
+        UPDATE password_entries
+        SET keepassDatabaseId = :databaseId,
+            keepassGroupPath = :groupPath,
+            keepass_entry_uuid = NULL,
+            keepass_group_uuid = NULL,
+            bitwarden_vault_id = NULL,
+            bitwarden_folder_id = NULL,
+            bitwarden_cipher_id = NULL,
+            bitwarden_revision_date = NULL,
+            bitwarden_local_modified = 0
+        WHERE id IN (:ids)
+        """
+    )
     suspend fun updateKeePassGroupForPasswords(ids: List<Long>, databaseId: Long, groupPath: String)
 
     @Query(
