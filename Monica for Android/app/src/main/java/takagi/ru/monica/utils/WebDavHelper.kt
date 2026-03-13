@@ -3525,10 +3525,16 @@ class WebDavHelper(
                 sardine!!.createDirectory(backupDir)
             }
             
-            // 生成带时间戳的文件名
+            // 生成带时间戳的文件名，保留加密标识
             val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
             val suffix = if (isPermanent) PERMANENT_SUFFIX else ""
-            val fileName = "monica_backup_$timestamp$suffix.zip"
+            // 根据源文件名判断是否加密，保留 .enc.zip 后缀
+            val isEncrypted = file.name.endsWith(".enc.zip")
+            val fileName = if (isEncrypted) {
+                "monica_backup_$timestamp$suffix.enc.zip"
+            } else {
+                "monica_backup_$timestamp$suffix.zip"
+            }
             val remotePath = "$backupDir/$fileName"
             
             // 使用流式上传避免内存溢出
