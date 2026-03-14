@@ -31,11 +31,13 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -50,7 +52,6 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.animation.core.Animatable
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.pager.HorizontalPager
@@ -80,12 +81,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -97,6 +100,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.fragment.app.FragmentActivity
 import android.widget.Toast
@@ -409,6 +413,92 @@ private data class BitwardenBottomStatusUiState(
     val showProgress: Boolean = false
 )
 
+private data class BottomMiniHintMessage(
+    val id: Long,
+    val message: String
+)
+
+private data class MainScreenHandlers(
+    val passwordAddOpen: () -> Unit,
+    val passwordEditOpen: (Long) -> Unit,
+    val inlinePasswordEditorBack: () -> Unit,
+    val totpAddOpen: () -> Unit,
+    val inlineTotpEditorBack: () -> Unit,
+    val bankCardAddOpen: () -> Unit,
+    val bankCardEditOpen: (Long) -> Unit,
+    val inlineBankCardEditorBack: () -> Unit,
+    val documentAddOpen: () -> Unit,
+    val documentEditOpen: (Long) -> Unit,
+    val inlineDocumentEditorBack: () -> Unit,
+    val walletAddOpen: () -> Unit,
+    val noteOpen: (Long?) -> Unit,
+    val inlineNoteEditorBack: () -> Unit,
+    val passwordDetailOpen: (Long) -> Unit,
+    val totpOpen: (Long) -> Unit,
+    val bankCardOpen: (Long) -> Unit,
+    val documentOpen: (Long) -> Unit,
+    val passkeyOpen: (PasskeyEntry) -> Unit,
+    val passkeyUnbind: (PasskeyEntry) -> Unit,
+    val confirmPasskeyDelete: () -> Unit,
+    val sendOpen: (BitwardenSend) -> Unit,
+    val sendAddOpen: () -> Unit,
+    val inlineSendEditorBack: () -> Unit,
+    val timelineLogOpen: (TimelineEvent.StandardLog) -> Unit
+)
+
+private const val MAX_BOTTOM_MINI_HINTS = 2
+
+@Composable
+private fun BottomMiniHintBubble(
+    visible: Boolean,
+    text: String,
+    containerColor: Color,
+    textColor: Color
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = slideInVertically(
+            initialOffsetY = { it / 3 },
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMediumLow
+            )
+        ) + fadeIn(animationSpec = tween(180)) + scaleIn(
+            initialScale = 0.92f,
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMedium
+            )
+        ),
+        exit = slideOutVertically(
+            targetOffsetY = { it / 3 },
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMedium
+            )
+        ) + fadeOut(animationSpec = tween(160)) + scaleOut(
+            targetScale = 0.96f,
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMedium
+            )
+        )
+    ) {
+        Surface(
+            shape = RoundedCornerShape(14.dp),
+            tonalElevation = 2.dp,
+            color = containerColor
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelLarge,
+                color = textColor,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+            )
+        }
+    }
+}
+
 private fun isBitwardenPasswordFilter(filter: CategoryFilter): Boolean = when (filter) {
     is CategoryFilter.BitwardenVault,
     is CategoryFilter.BitwardenFolderFilter,
@@ -544,7 +634,6 @@ private fun TimelineDetailPane(
     ExperimentalMaterial3WindowSizeClassApi::class,
     androidx.compose.animation.ExperimentalSharedTransitionApi::class
 )
-@NonRestartableComposable
 @Composable
 fun SimpleMainScreen(
     passwordViewModel: PasswordViewModel,
@@ -779,10 +868,12 @@ fun SimpleMainScreen(
 
     // 监听 FAB 展开状态，展开时禁用隐藏逻辑
     var isFabExpanded by remember { mutableStateOf(false) }
+    var isFastScrollStripVisible by rememberSaveable(currentTab) { mutableStateOf(false) }
     // 使用 rememberUpdatedState 确保 currentTab 始终是最新的
     val currentTabState = rememberUpdatedState(currentTab)
     // 确保滚动监听器能获取到最新的设置值
     val hideFabOnScrollState = rememberUpdatedState(appSettings.hideFabOnScroll)
+    val fastScrollStripVisibleState = rememberUpdatedState(isFastScrollStripVisible)
 
     // 检测是否有任何选择模式处于激活状态
     var isNoteSelectionMode by remember { mutableStateOf(false) }
@@ -804,8 +895,8 @@ fun SimpleMainScreen(
                 // 如果功能未开启，直接返回
                 if (!hideFabOnScrollState.value) return Offset.Zero
 
-                // 如果 FAB 已展开，不要隐藏它（防止在添加页面滚动时误触导致页面关闭）
-                if (isFabExpanded) return Offset.Zero
+                // 如果 FAB 已展开，或当前正在使用快滑条，不要触发自动隐藏
+                if (isFabExpanded || fastScrollStripVisibleState.value) return Offset.Zero
 
                 val tab = currentTabState.value
                 if (tab == BottomNavItem.Passwords || 
@@ -930,254 +1021,310 @@ fun SimpleMainScreen(
     val wideNavigationRailWidth = 80.dp
     val wideFabHostWidth = wideNavigationRailWidth + wideListPaneWidth
 
-    val handlePasswordAddOpen: () -> Unit = {
-        if (isCompactWidth) {
-            onNavigateToAddPassword(null)
-        } else {
-            isAddingPasswordInline = true
-            inlinePasswordEditorId = null
-            selectedPasswordId = null
+    fun buildMainScreenHandlers(): MainScreenHandlers {
+        val handlePasswordAddOpen: () -> Unit = {
+            if (isCompactWidth) {
+                onNavigateToAddPassword(null)
+            } else {
+                isAddingPasswordInline = true
+                inlinePasswordEditorId = null
+                selectedPasswordId = null
+            }
         }
-    }
-    val handlePasswordEditOpen: (Long) -> Unit = { passwordId ->
-        if (isCompactWidth) {
-            onNavigateToAddPassword(passwordId)
-        } else {
+        val handlePasswordEditOpen: (Long) -> Unit = { passwordId ->
+            if (isCompactWidth) {
+                onNavigateToAddPassword(passwordId)
+            } else {
+                isAddingPasswordInline = false
+                inlinePasswordEditorId = passwordId
+            }
+        }
+        val handleInlinePasswordEditorBack: () -> Unit = {
             isAddingPasswordInline = false
-            inlinePasswordEditorId = passwordId
+            inlinePasswordEditorId = null
         }
-    }
-    val handleInlinePasswordEditorBack: () -> Unit = {
-        isAddingPasswordInline = false
-        inlinePasswordEditorId = null
-    }
-    val handleTotpAddOpen: () -> Unit = {
-        if (isCompactWidth) {
-            onNavigateToAddTotp(null)
-        } else {
-            isAddingTotpInline = true
+        val handleTotpAddOpen: () -> Unit = {
+            if (isCompactWidth) {
+                onNavigateToAddTotp(null)
+            } else {
+                isAddingTotpInline = true
+                selectedTotpId = null
+            }
+        }
+        val handleInlineTotpEditorBack: () -> Unit = {
+            isAddingTotpInline = false
             selectedTotpId = null
         }
-    }
-    val handleInlineTotpEditorBack: () -> Unit = {
-        isAddingTotpInline = false
-        selectedTotpId = null
-    }
-    val handleBankCardAddOpen: () -> Unit = {
-        if (isCompactWidth) {
-            onNavigateToAddBankCard(null)
-        } else {
-            isAddingBankCardInline = true
-            inlineBankCardEditorId = null
-            selectedBankCardId = null
-            isAddingDocumentInline = false
-            inlineDocumentEditorId = null
-            selectedDocumentId = null
-        }
-    }
-    val handleBankCardEditOpen: (Long) -> Unit = { cardId ->
-        if (isCompactWidth) {
-            onNavigateToAddBankCard(cardId)
-        } else {
-            isAddingBankCardInline = false
-            inlineBankCardEditorId = cardId
-            selectedBankCardId = null
-            isAddingDocumentInline = false
-            inlineDocumentEditorId = null
-            selectedDocumentId = null
-        }
-    }
-    val handleInlineBankCardEditorBack: () -> Unit = {
-        isAddingBankCardInline = false
-        inlineBankCardEditorId = null
-    }
-    val handleDocumentAddOpen: () -> Unit = {
-        if (isCompactWidth) {
-            onNavigateToAddDocument(null)
-        } else {
-            isAddingDocumentInline = true
-            inlineDocumentEditorId = null
-            selectedDocumentId = null
-            isAddingBankCardInline = false
-            inlineBankCardEditorId = null
-            selectedBankCardId = null
-        }
-    }
-    val handleDocumentEditOpen: (Long) -> Unit = { documentId ->
-        if (isCompactWidth) {
-            onNavigateToAddDocument(documentId)
-        } else {
-            isAddingDocumentInline = false
-            inlineDocumentEditorId = documentId
-            selectedDocumentId = null
-            isAddingBankCardInline = false
-            inlineBankCardEditorId = null
-            selectedBankCardId = null
-        }
-    }
-    val handleInlineDocumentEditorBack: () -> Unit = {
-        isAddingDocumentInline = false
-        inlineDocumentEditorId = null
-    }
-    val handleWalletAddOpen: () -> Unit = {
-        when (cardWalletSubTab) {
-            CardWalletTab.BANK_CARDS -> handleBankCardAddOpen()
-            CardWalletTab.DOCUMENTS -> handleDocumentAddOpen()
-            CardWalletTab.ALL -> Unit
-        }
-    }
-    val handleNoteOpen: (Long?) -> Unit = { noteId ->
-        if (isCompactWidth) {
-            onNavigateToAddNote(noteId)
-        } else {
-            if (noteId == null) {
-                isAddingNoteInline = true
-                inlineNoteEditorId = null
+        val handleBankCardAddOpen: () -> Unit = {
+            if (isCompactWidth) {
+                onNavigateToAddBankCard(null)
             } else {
-                isAddingNoteInline = false
-                inlineNoteEditorId = noteId
+                isAddingBankCardInline = true
+                inlineBankCardEditorId = null
+                selectedBankCardId = null
+                isAddingDocumentInline = false
+                inlineDocumentEditorId = null
+                selectedDocumentId = null
             }
         }
-    }
-    val handleInlineNoteEditorBack: () -> Unit = {
-        isAddingNoteInline = false
-        inlineNoteEditorId = null
-    }
-
-    val handlePasswordDetailOpen: (Long) -> Unit = { passwordId ->
-        if (appSettings.passwordListQuickAccessEnabled) {
-            scope.launch {
-                passwordQuickAccessManager.recordOpen(passwordId)
+        val handleBankCardEditOpen: (Long) -> Unit = { cardId ->
+            if (isCompactWidth) {
+                onNavigateToAddBankCard(cardId)
+            } else {
+                isAddingBankCardInline = false
+                inlineBankCardEditorId = cardId
+                selectedBankCardId = null
+                isAddingDocumentInline = false
+                inlineDocumentEditorId = null
+                selectedDocumentId = null
             }
         }
-        if (isCompactWidth) {
-            onNavigateToPasswordDetail(passwordId)
-        } else {
-            isAddingPasswordInline = false
-            inlinePasswordEditorId = null
-            selectedPasswordId = passwordId
-        }
-    }
-    val handleTotpOpen: (Long) -> Unit = { totpId ->
-        if (isCompactWidth) {
-            onNavigateToAddTotp(totpId)
-        } else {
-            isAddingTotpInline = false
-            selectedTotpId = totpId
-        }
-    }
-    val handleBankCardOpen: (Long) -> Unit = { cardId ->
-        if (isCompactWidth) {
-            onNavigateToBankCardDetail(cardId)
-        } else {
+        val handleInlineBankCardEditorBack: () -> Unit = {
             isAddingBankCardInline = false
             inlineBankCardEditorId = null
-            selectedBankCardId = cardId
-            isAddingDocumentInline = false
-            inlineDocumentEditorId = null
-            selectedDocumentId = null
         }
-    }
-    val handleDocumentOpen: (Long) -> Unit = { documentId ->
-        if (isCompactWidth) {
-            onNavigateToDocumentDetail(documentId)
-        } else {
-            isAddingDocumentInline = false
-            inlineDocumentEditorId = null
-            selectedDocumentId = documentId
-            isAddingBankCardInline = false
-            inlineBankCardEditorId = null
-            selectedBankCardId = null
-        }
-    }
-    val handlePasskeyOpen: (PasskeyEntry) -> Unit = { passkey ->
-        if (!isCompactWidth) {
-            selectedPasskey = passkey
-        }
-    }
-    val handlePasskeyUnbind: (PasskeyEntry) -> Unit = { passkey ->
-        val boundId = passkey.boundPasswordId
-        if (boundId != null) {
-            passwordById[boundId]?.let { entry ->
-                val updatedBindings = PasskeyBindingCodec.removeBinding(
-                    entry.passkeyBindings,
-                    passkey.credentialId
-                )
-                passwordViewModel.updatePasskeyBindings(boundId, updatedBindings)
+        val handleDocumentAddOpen: () -> Unit = {
+            if (isCompactWidth) {
+                onNavigateToAddDocument(null)
+            } else {
+                isAddingDocumentInline = true
+                inlineDocumentEditorId = null
+                selectedDocumentId = null
+                isAddingBankCardInline = false
+                inlineBankCardEditorId = null
+                selectedBankCardId = null
             }
         }
-        if (passkey.syncStatus != "REFERENCE") {
-            passkeyViewModel.updateBoundPassword(passkey.credentialId, null)
+        val handleDocumentEditOpen: (Long) -> Unit = { documentId ->
+            if (isCompactWidth) {
+                onNavigateToAddDocument(documentId)
+            } else {
+                isAddingDocumentInline = false
+                inlineDocumentEditorId = documentId
+                selectedDocumentId = null
+                isAddingBankCardInline = false
+                inlineBankCardEditorId = null
+                selectedBankCardId = null
+            }
         }
-        if (selectedPasskey?.credentialId == passkey.credentialId) {
-            selectedPasskey = selectedPasskey?.copy(boundPasswordId = null)
+        val handleInlineDocumentEditorBack: () -> Unit = {
+            isAddingDocumentInline = false
+            inlineDocumentEditorId = null
         }
-    }
-    val confirmPasskeyDelete: () -> Unit = {
-        val passkey = pendingPasskeyDelete
-        if (passkey != null) {
-            scope.launch {
-                val boundId = passkey.boundPasswordId
-                if (boundId != null) {
-                    passwordById[boundId]?.let { entry ->
-                        val updatedBindings = PasskeyBindingCodec.removeBinding(
-                            entry.passkeyBindings,
-                            passkey.credentialId
-                        )
-                        passwordViewModel.updatePasskeyBindings(boundId, updatedBindings)
-                    }
+        val handleWalletAddOpen: () -> Unit = {
+            when (cardWalletSubTab) {
+                CardWalletTab.BANK_CARDS -> handleBankCardAddOpen()
+                CardWalletTab.DOCUMENTS -> handleDocumentAddOpen()
+                CardWalletTab.ALL -> Unit
+            }
+        }
+        val handleNoteOpen: (Long?) -> Unit = { noteId ->
+            if (isCompactWidth) {
+                onNavigateToAddNote(noteId)
+            } else {
+                if (noteId == null) {
+                    isAddingNoteInline = true
+                    inlineNoteEditorId = null
+                } else {
+                    isAddingNoteInline = false
+                    inlineNoteEditorId = noteId
                 }
-
-                val isReferenceOnly = passkey.syncStatus == "REFERENCE" &&
-                    passkey.privateKeyAlias.isBlank() &&
-                    passkey.publicKey.isBlank()
-                if (!isReferenceOnly) {
-                    val vaultId = passkey.bitwardenVaultId
-                    val cipherId = passkey.bitwardenCipherId
-                    if (vaultId != null && !cipherId.isNullOrBlank()) {
-                        val queueResult = bitwardenRepository.queueCipherDelete(
-                            vaultId = vaultId,
-                            cipherId = cipherId,
-                            itemType = BitwardenPendingOperation.ITEM_TYPE_PASSKEY
-                        )
-                        if (queueResult.isFailure) {
-                            Toast.makeText(
-                                context,
-                                "Bitwarden 删除入队失败",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                            return@launch
+            }
+        }
+        val handleInlineNoteEditorBack: () -> Unit = {
+            isAddingNoteInline = false
+            inlineNoteEditorId = null
+        }
+        val handlePasswordDetailOpen: (Long) -> Unit = { passwordId ->
+            if (appSettings.passwordListQuickAccessEnabled) {
+                scope.launch {
+                    passwordQuickAccessManager.recordOpen(passwordId)
+                }
+            }
+            if (isCompactWidth) {
+                onNavigateToPasswordDetail(passwordId)
+            } else {
+                isAddingPasswordInline = false
+                inlinePasswordEditorId = null
+                selectedPasswordId = passwordId
+            }
+        }
+        val handleTotpOpen: (Long) -> Unit = { totpId ->
+            if (isCompactWidth) {
+                onNavigateToAddTotp(totpId)
+            } else {
+                isAddingTotpInline = false
+                selectedTotpId = totpId
+            }
+        }
+        val handleBankCardOpen: (Long) -> Unit = { cardId ->
+            if (isCompactWidth) {
+                onNavigateToBankCardDetail(cardId)
+            } else {
+                isAddingBankCardInline = false
+                inlineBankCardEditorId = null
+                selectedBankCardId = cardId
+                isAddingDocumentInline = false
+                inlineDocumentEditorId = null
+                selectedDocumentId = null
+            }
+        }
+        val handleDocumentOpen: (Long) -> Unit = { documentId ->
+            if (isCompactWidth) {
+                onNavigateToDocumentDetail(documentId)
+            } else {
+                isAddingDocumentInline = false
+                inlineDocumentEditorId = null
+                selectedDocumentId = documentId
+                isAddingBankCardInline = false
+                inlineBankCardEditorId = null
+                selectedBankCardId = null
+            }
+        }
+        val handlePasskeyOpen: (PasskeyEntry) -> Unit = { passkey ->
+            if (!isCompactWidth) {
+                selectedPasskey = passkey
+            }
+        }
+        val handlePasskeyUnbind: (PasskeyEntry) -> Unit = { passkey ->
+            val boundId = passkey.boundPasswordId
+            if (boundId != null) {
+                passwordById[boundId]?.let { entry ->
+                    val updatedBindings = PasskeyBindingCodec.removeBinding(
+                        entry.passkeyBindings,
+                        passkey.credentialId
+                    )
+                    passwordViewModel.updatePasskeyBindings(boundId, updatedBindings)
+                }
+            }
+            if (passkey.syncStatus != "REFERENCE") {
+                passkeyViewModel.updateBoundPassword(passkey.credentialId, null)
+            }
+            if (selectedPasskey?.credentialId == passkey.credentialId) {
+                selectedPasskey = selectedPasskey?.copy(boundPasswordId = null)
+            }
+        }
+        val confirmPasskeyDelete: () -> Unit = {
+            val passkey = pendingPasskeyDelete
+            if (passkey != null) {
+                scope.launch {
+                    val boundId = passkey.boundPasswordId
+                    if (boundId != null) {
+                        passwordById[boundId]?.let { entry ->
+                            val updatedBindings = PasskeyBindingCodec.removeBinding(
+                                entry.passkeyBindings,
+                                passkey.credentialId
+                            )
+                            passwordViewModel.updatePasskeyBindings(boundId, updatedBindings)
                         }
                     }
-                    passkeyViewModel.deletePasskey(passkey)
+
+                    val isReferenceOnly = passkey.syncStatus == "REFERENCE" &&
+                        passkey.privateKeyAlias.isBlank() &&
+                        passkey.publicKey.isBlank()
+                    if (!isReferenceOnly) {
+                        val vaultId = passkey.bitwardenVaultId
+                        val cipherId = passkey.bitwardenCipherId
+                        if (vaultId != null && !cipherId.isNullOrBlank()) {
+                            val queueResult = bitwardenRepository.queueCipherDelete(
+                                vaultId = vaultId,
+                                cipherId = cipherId,
+                                itemType = BitwardenPendingOperation.ITEM_TYPE_PASSKEY
+                            )
+                            if (queueResult.isFailure) {
+                                Toast.makeText(
+                                    context,
+                                    "Bitwarden 删除入队失败",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                return@launch
+                            }
+                        }
+                        passkeyViewModel.deletePasskey(passkey)
+                    }
+                    if (selectedPasskey?.credentialId == passkey.credentialId) {
+                        selectedPasskey = null
+                    }
+                    pendingPasskeyDelete = null
                 }
-                if (selectedPasskey?.credentialId == passkey.credentialId) {
-                    selectedPasskey = null
-                }
-                pendingPasskeyDelete = null
             }
         }
-    }
-    val handleSendOpen: (BitwardenSend) -> Unit = { send ->
-        if (!isCompactWidth) {
+        val handleSendOpen: (BitwardenSend) -> Unit = { send ->
+            if (!isCompactWidth) {
+                isAddingSendInline = false
+                selectedSend = send
+            }
+        }
+        val handleSendAddOpen: () -> Unit = {
+            if (!isCompactWidth) {
+                selectedSend = null
+                isAddingSendInline = true
+            }
+        }
+        val handleInlineSendEditorBack: () -> Unit = {
             isAddingSendInline = false
-            selectedSend = send
         }
-    }
-    val handleSendAddOpen: () -> Unit = {
-        if (!isCompactWidth) {
-            selectedSend = null
-            isAddingSendInline = true
+        val handleTimelineLogOpen: (TimelineEvent.StandardLog) -> Unit = { log ->
+            if (!isCompactWidth) {
+                selectedTimelineLog = log
+            }
         }
+
+        return MainScreenHandlers(
+            passwordAddOpen = handlePasswordAddOpen,
+            passwordEditOpen = handlePasswordEditOpen,
+            inlinePasswordEditorBack = handleInlinePasswordEditorBack,
+            totpAddOpen = handleTotpAddOpen,
+            inlineTotpEditorBack = handleInlineTotpEditorBack,
+            bankCardAddOpen = handleBankCardAddOpen,
+            bankCardEditOpen = handleBankCardEditOpen,
+            inlineBankCardEditorBack = handleInlineBankCardEditorBack,
+            documentAddOpen = handleDocumentAddOpen,
+            documentEditOpen = handleDocumentEditOpen,
+            inlineDocumentEditorBack = handleInlineDocumentEditorBack,
+            walletAddOpen = handleWalletAddOpen,
+            noteOpen = handleNoteOpen,
+            inlineNoteEditorBack = handleInlineNoteEditorBack,
+            passwordDetailOpen = handlePasswordDetailOpen,
+            totpOpen = handleTotpOpen,
+            bankCardOpen = handleBankCardOpen,
+            documentOpen = handleDocumentOpen,
+            passkeyOpen = handlePasskeyOpen,
+            passkeyUnbind = handlePasskeyUnbind,
+            confirmPasskeyDelete = confirmPasskeyDelete,
+            sendOpen = handleSendOpen,
+            sendAddOpen = handleSendAddOpen,
+            inlineSendEditorBack = handleInlineSendEditorBack,
+            timelineLogOpen = handleTimelineLogOpen
+        )
     }
-    val handleInlineSendEditorBack: () -> Unit = {
-        isAddingSendInline = false
-    }
-    val handleTimelineLogOpen: (TimelineEvent.StandardLog) -> Unit = { log ->
-        if (!isCompactWidth) {
-            selectedTimelineLog = log
-        }
-    }
+
+    val handlers = buildMainScreenHandlers()
+    val handlePasswordAddOpen = handlers.passwordAddOpen
+    val handlePasswordEditOpen = handlers.passwordEditOpen
+    val handleInlinePasswordEditorBack = handlers.inlinePasswordEditorBack
+    val handleTotpAddOpen = handlers.totpAddOpen
+    val handleInlineTotpEditorBack = handlers.inlineTotpEditorBack
+    val handleBankCardAddOpen = handlers.bankCardAddOpen
+    val handleBankCardEditOpen = handlers.bankCardEditOpen
+    val handleInlineBankCardEditorBack = handlers.inlineBankCardEditorBack
+    val handleDocumentAddOpen = handlers.documentAddOpen
+    val handleDocumentEditOpen = handlers.documentEditOpen
+    val handleInlineDocumentEditorBack = handlers.inlineDocumentEditorBack
+    val handleWalletAddOpen = handlers.walletAddOpen
+    val handleNoteOpen = handlers.noteOpen
+    val handleInlineNoteEditorBack = handlers.inlineNoteEditorBack
+    val handlePasswordDetailOpen = handlers.passwordDetailOpen
+    val handleTotpOpen = handlers.totpOpen
+    val handleBankCardOpen = handlers.bankCardOpen
+    val handleDocumentOpen = handlers.documentOpen
+    val handlePasskeyOpen = handlers.passkeyOpen
+    val handlePasskeyUnbind = handlers.passkeyUnbind
+    val confirmPasskeyDelete = handlers.confirmPasskeyDelete
+    val handleSendOpen = handlers.sendOpen
+    val handleSendAddOpen = handlers.sendAddOpen
+    val handleInlineSendEditorBack = handlers.inlineSendEditorBack
+    val handleTimelineLogOpen = handlers.timelineLogOpen
 
     MainScreenTabResetEffects(
         currentTab = currentTab,
@@ -1301,6 +1448,52 @@ fun SimpleMainScreen(
     val shouldShowBitwardenSyncIndicator =
         shouldHandleBitwardenStatusVisual && (bottomStatusUiState?.showProgress == true)
     var statusHintVisible by remember { mutableStateOf(false) }
+    val activeMiniHints = remember { mutableStateListOf<BottomMiniHintMessage>() }
+    val queuedMiniHints = remember { mutableStateListOf<BottomMiniHintMessage>() }
+    val dismissingHintIds = remember { mutableStateListOf<Long>() }
+    var sendHintSeed by remember { mutableLongStateOf(0L) }
+
+    val syncHintVisible = statusHintVisible && shouldHandleBitwardenStatusVisual && bottomStatusUiState?.messageRes != null
+    fun tryActivateQueuedMiniHints() {
+        val syncOccupiesSlot = syncHintVisible
+        val maxCustomHints = (MAX_BOTTOM_MINI_HINTS - if (syncOccupiesSlot) 1 else 0).coerceAtLeast(0)
+        while (activeMiniHints.size < maxCustomHints && queuedMiniHints.isNotEmpty()) {
+            val nextHint = queuedMiniHints.removeAt(0)
+            activeMiniHints += nextHint
+            scope.launch {
+                delay(2800L)
+                dismissingHintIds += nextHint.id
+                delay(280L)
+                activeMiniHints.removeAll { it.id == nextHint.id }
+                dismissingHintIds.removeAll { it == nextHint.id }
+                tryActivateQueuedMiniHints()
+            }
+        }
+    }
+
+    val enqueueMiniHint: (String) -> Unit = { message ->
+        val hintId = ++sendHintSeed
+        queuedMiniHints += BottomMiniHintMessage(
+            id = hintId,
+            message = message
+        )
+        tryActivateQueuedMiniHints()
+    }
+    val handleSendBitwardenEvent: (takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel.BitwardenEvent) -> Boolean = { event ->
+        when (event) {
+            is takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel.BitwardenEvent.SendCreated -> {
+                enqueueMiniHint(event.message)
+                true
+            }
+
+            is takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel.BitwardenEvent.SendDeleted -> {
+                enqueueMiniHint(event.message)
+                true
+            }
+
+            else -> false
+        }
+    }
     LaunchedEffect(shouldHandleBitwardenStatusVisual, bottomStatusUiState?.messageRes) {
         if (!shouldHandleBitwardenStatusVisual || bottomStatusUiState?.messageRes == null) {
             statusHintVisible = false
@@ -1310,7 +1503,12 @@ fun SimpleMainScreen(
         delay(if (bottomStatusUiState.showProgress) 2600L else 3600L)
         statusHintVisible = false
     }
+    LaunchedEffect(syncHintVisible, queuedMiniHints.size, activeMiniHints.size) {
+        tryActivateQueuedMiniHints()
+    }
 
+    @Composable
+    fun RenderMainSurface() {
     // 根据设置选择导航模式
     Box(
         modifier = Modifier
@@ -1392,6 +1590,7 @@ fun SimpleMainScreen(
                     passkeyViewModel = passkeyViewModel,
                     onNavigateToPasswordDetail = onNavigateToPasswordDetail,
                     bitwardenViewModel = bitwardenViewModel,
+                    onSendBitwardenEvent = handleSendBitwardenEvent,
                     onNavigateToChangePassword = onNavigateToChangePassword,
                     onNavigateToSecurityQuestion = onNavigateToSecurityQuestion,
                     onNavigateToSyncBackup = onNavigateToSyncBackup,
@@ -1693,7 +1892,8 @@ fun SimpleMainScreen(
                                 expireInDays = expireInDays
                             )
                             handleInlineSendEditorBack()
-                        }
+                        },
+                        onBitwardenEvent = handleSendBitwardenEvent
                     )
                 }
                 BottomNavItem.Settings -> {
@@ -1836,6 +2036,8 @@ fun SimpleMainScreen(
         isFabVisible = isFabVisible,
         isFabExpanded = isFabExpanded,
         onFabExpandedChange = { expanded -> isFabExpanded = expanded },
+        fastScrollStripVisible = isFastScrollStripVisible,
+        onFastScrollStripVisibleChange = { visible -> isFastScrollStripVisible = visible },
         passwordListShowBackToTop = passwordListShowBackToTop,
         onBackToTop = { passwordScrollToTopRequestKey++ },
         quickAccessEnabled = appSettings.passwordListQuickAccessEnabled,
@@ -1891,38 +2093,36 @@ fun SimpleMainScreen(
         BottomNavItem.CardWallet -> MaterialTheme.colorScheme.onPrimary
         else -> MaterialTheme.colorScheme.onPrimaryContainer
     }
-    AnimatedVisibility(
-        visible = statusHintVisible && shouldHandleBitwardenStatusVisual && bottomStatusUiState?.messageRes != null,
-        enter = slideInVertically(
-            initialOffsetY = { it / 2 },
+    Column(
+        modifier = hintModifier.animateContentSize(
             animationSpec = spring(
-                dampingRatio = Spring.DampingRatioMediumBouncy,
-                stiffness = Spring.StiffnessLow
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMediumLow
             )
-        ) + fadeIn(),
-        exit = slideOutVertically(
-            targetOffsetY = { it / 2 },
-            animationSpec = spring(
-                dampingRatio = Spring.DampingRatioMediumBouncy,
-                stiffness = Spring.StiffnessLow
-            )
-        ) + fadeOut(),
-        modifier = hintModifier
+        ),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Surface(
-            shape = RoundedCornerShape(14.dp),
-            tonalElevation = 2.dp,
-            color = statusHintContainerColor
-        ) {
-            Text(
-                text = stringResource(bottomStatusUiState?.messageRes ?: R.string.sync_status_syncing_short),
-                style = MaterialTheme.typography.labelLarge,
-                color = statusHintTextColor,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+        BottomMiniHintBubble(
+            visible = syncHintVisible,
+            text = stringResource(bottomStatusUiState?.messageRes ?: R.string.sync_status_syncing_short),
+            containerColor = statusHintContainerColor,
+            textColor = statusHintTextColor
+        )
+
+        activeMiniHints.forEach { hint ->
+            val hintVisible = hint.id !in dismissingHintIds
+            BottomMiniHintBubble(
+                visible = hintVisible,
+                text = hint.message,
+                containerColor = statusHintContainerColor,
+                textColor = statusHintTextColor
             )
         }
     }
     } // End Outer Box
+    }
+
+    RenderMainSurface()
 
     if (pendingPasskeyDelete != null) {
         val passkey = pendingPasskeyDelete!!
@@ -2314,6 +2514,7 @@ private fun CompactDraggableTabContent(
     passkeyViewModel: PasskeyViewModel,
     onNavigateToPasswordDetail: (Long) -> Unit,
     bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel,
+    onSendBitwardenEvent: (takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel.BitwardenEvent) -> Boolean,
     onNavigateToChangePassword: () -> Unit,
     onNavigateToSecurityQuestion: () -> Unit,
     onNavigateToSyncBackup: () -> Unit,
@@ -2468,7 +2669,8 @@ private fun CompactDraggableTabContent(
             }
             BottomNavItem.Send -> {
                 SendScreen(
-                    bitwardenViewModel = bitwardenViewModel
+                    bitwardenViewModel = bitwardenViewModel,
+                    onBitwardenEvent = onSendBitwardenEvent
                 )
             }
             BottomNavItem.Settings -> {
@@ -2623,6 +2825,8 @@ private fun BoxScope.MainScreenFabOverlay(
     isFabVisible: Boolean,
     isFabExpanded: Boolean,
     onFabExpandedChange: (Boolean) -> Unit,
+    fastScrollStripVisible: Boolean,
+    onFastScrollStripVisibleChange: (Boolean) -> Unit,
     passwordListShowBackToTop: Boolean,
     onBackToTop: () -> Unit,
     quickAccessEnabled: Boolean,
@@ -2652,6 +2856,8 @@ private fun BoxScope.MainScreenFabOverlay(
     sendState: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel.SendState,
     bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel,
 ) {
+    val fastScrollStripProgress by passwordViewModel.fastScrollProgress.collectAsState()
+
     val hasWideDetailSelection = !isCompactWidth && when (currentTab) {
         BottomNavItem.Passwords -> isAddingPasswordInline || inlinePasswordEditorId != null
         BottomNavItem.Authenticator -> isAddingTotpInline || selectedTotpId != null
@@ -2704,21 +2910,34 @@ private fun BoxScope.MainScreenFabOverlay(
             !isFabExpanded &&
             isVaultLikeTab &&
             !isAnySelectionMode &&
-            passwordListShowBackToTop
+            passwordListShowBackToTop &&
+            !fastScrollStripVisible
     val shouldShowQuickAccessFab =
         showFab &&
             isFabVisible &&
             !isFabExpanded &&
             isVaultLikeTab &&
             quickAccessEnabled &&
-            !isAnySelectionMode
+            !isAnySelectionMode &&
+            !fastScrollStripVisible
+
+    LaunchedEffect(showFab) {
+        if (!showFab) {
+            onFastScrollStripVisibleChange(false)
+        }
+    }
+
+    BackHandler(enabled = fastScrollStripVisible) {
+        onFastScrollStripVisibleChange(false)
+    }
 
     AnimatedVisibility(
-        visible = showFab && isFabVisible,
+        visible = showFab && (isFabVisible || fastScrollStripVisible),
         enter = slideInHorizontally(initialOffsetX = { it * 2 }) + fadeIn(),
         exit = slideOutHorizontally(targetOffsetX = { it * 2 }) + fadeOut(),
         modifier = fabOverlayModifier
     ) {
+        val backToTopInteractionSource = remember { MutableInteractionSource() }
         Box(modifier = Modifier.fillMaxSize()) {
             AnimatedVisibility(
                 visible = shouldShowQuickAccessFab,
@@ -2778,19 +2997,42 @@ private fun BoxScope.MainScreenFabOverlay(
                         bottom = fabBottomOffset + 16.dp
                     )
             ) {
-                SmallFloatingActionButton(
-                    onClick = onBackToTop,
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                Box(
+                    modifier = Modifier
+                        .combinedClickable(
+                            interactionSource = backToTopInteractionSource,
+                            indication = null,
+                            onClick = onBackToTop,
+                            onLongClick = {
+                                onFastScrollStripVisibleChange(true)
+                                if (showPasswordQuickAccessSheet) {
+                                    onShowPasswordQuickAccessSheetChange(false)
+                                }
+                                onFabExpandedChange(false)
+                            }
+                        )
+                        .clip(RoundedCornerShape(12.dp))
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.KeyboardArrowUp,
-                        contentDescription = stringResource(R.string.cd_back)
-                    )
+                    Surface(
+                        modifier = Modifier.size(40.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                        tonalElevation = 6.dp,
+                        shadowElevation = 4.dp
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.KeyboardArrowUp,
+                                contentDescription = stringResource(R.string.cd_back)
+                            )
+                        }
+                    }
                 }
             }
 
             MainScreenAddFab(
+                visible = !fastScrollStripVisible,
                 fabBottomOffset = fabBottomOffset,
                 fabContainerColor = fabContainerColor,
                 fabIconTint = fabIconTint,
@@ -2817,6 +3059,37 @@ private fun BoxScope.MainScreenFabOverlay(
                 noteViewModel = noteViewModel,
                 sendState = sendState,
                 bitwardenViewModel = bitwardenViewModel
+            )
+
+            AnimatedVisibility(
+                visible = fastScrollStripVisible,
+                enter = fadeIn(animationSpec = tween(durationMillis = 90)),
+                exit = fadeOut(animationSpec = tween(durationMillis = 90)),
+                modifier = Modifier.matchParentSize()
+            ) {
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .pointerInput(Unit) {
+                            val rightGuardPx = 112.dp.toPx()
+                            detectTapGestures(
+                                onTap = { offset ->
+                                    if (offset.x < size.width - rightGuardPx) {
+                                        onFastScrollStripVisibleChange(false)
+                                    }
+                                }
+                            )
+                        }
+                )
+            }
+
+            FastScrollPanel(
+                visible = fastScrollStripVisible,
+                progress = fastScrollStripProgress,
+                onProgressChange = passwordViewModel::requestFastScroll,
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .padding(end = 24.dp)
             )
         }
     }
@@ -2845,6 +3118,112 @@ private fun BoxScope.MainScreenFabOverlay(
         onOpenPassword = onOpenPasswordFromQuickAccess,
         onDismiss = { onShowPasswordQuickAccessSheetChange(false) }
     )
+}
+
+@Composable
+private fun FastScrollPanel(
+    visible: Boolean,
+    progress: Float,
+    onProgressChange: (Float) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = visible,
+        enter = slideInHorizontally(initialOffsetX = { it / 2 }) + fadeIn(),
+        exit = slideOutHorizontally(targetOffsetX = { it / 2 }) + fadeOut(),
+        modifier = modifier
+    ) {
+        val clampedProgress = progress.coerceIn(0f, 1f)
+        var gestureAreaHeightPx by remember { mutableStateOf(1) }
+        val activeTrackColor = MaterialTheme.colorScheme.tertiaryContainer
+        val inactiveTrackColor = MaterialTheme.colorScheme.secondaryContainer
+        val indicatorColor = MaterialTheme.colorScheme.tertiary
+        val dotColor = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.92f)
+
+        fun progressFromTouchY(y: Float): Float {
+            val height = gestureAreaHeightPx.coerceAtLeast(1).toFloat()
+            return (y / height).coerceIn(0f, 1f)
+        }
+
+        BoxWithConstraints(
+            modifier = Modifier
+                .width(52.dp)
+                .height(356.dp),
+            contentAlignment = Alignment.TopCenter
+        ) {
+            val sliderWidth = 40.dp
+            val separatorGap = 10.dp
+            val separatorThickness = 4.dp
+            val activeHeight = (maxHeight - separatorGap - separatorThickness) * clampedProgress
+            val inactiveHeight = (maxHeight - separatorGap - separatorThickness) - activeHeight
+
+            Box(
+                modifier = Modifier
+                    .width(sliderWidth)
+                    .fillMaxHeight()
+                    .onSizeChanged { size ->
+                        gestureAreaHeightPx = size.height.coerceAtLeast(1)
+                    }
+                    .pointerInput(Unit) {
+                        detectTapGestures { offset ->
+                            onProgressChange(progressFromTouchY(offset.y))
+                        }
+                    }
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures(
+                            onDragStart = { offset ->
+                                onProgressChange(progressFromTouchY(offset.y))
+                            },
+                            onVerticalDrag = { change, _ ->
+                                onProgressChange(progressFromTouchY(change.position.y))
+                            }
+                        )
+                    }
+            ) {
+                if (activeHeight > 0.dp) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .width(sliderWidth)
+                            .height(activeHeight)
+                            .clip(RoundedCornerShape(22.dp))
+                            .background(activeTrackColor)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(top = 8.dp)
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(dotColor)
+                        )
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset(y = activeHeight + (separatorGap / 2))
+                        .width(28.dp)
+                        .height(separatorThickness)
+                        .clip(RoundedCornerShape(999.dp))
+                        .background(indicatorColor)
+                )
+
+                if (inactiveHeight > 0.dp) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .offset(y = activeHeight + separatorGap + separatorThickness)
+                            .width(sliderWidth)
+                            .height(inactiveHeight)
+                            .clip(RoundedCornerShape(22.dp))
+                            .background(inactiveTrackColor)
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -2933,6 +3312,7 @@ private fun MainScreenSelectionBars(
 
 @Composable
 private fun MainScreenAddFab(
+    visible: Boolean,
     fabBottomOffset: Dp,
     fabContainerColor: Color,
     fabIconTint: Color,
@@ -2960,149 +3340,161 @@ private fun MainScreenAddFab(
     sendState: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel.SendState,
     bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel
 ) {
-    SwipeableAddFab(
-        // 通过内部参数控制 FAB 位置，确保容器本身是全屏的
-        // NavigationBar 高度约 80dp + 系统导航条高度 + 边距
-        fabBottomOffset = fabBottomOffset,
-        fabContainerColor = fabContainerColor,
-        modifier = Modifier,
-        onFabClickOverride = when (currentTab) {
-            BottomNavItem.VaultV2 -> if (isCompactWidth) null else ({ onPasswordAddOpen() })
-            BottomNavItem.Passwords -> if (isCompactWidth) null else ({ onPasswordAddOpen() })
-            BottomNavItem.Authenticator -> if (isCompactWidth) null else ({ onTotpAddOpen() })
-            BottomNavItem.CardWallet -> if (isCompactWidth || cardWalletSubTab == CardWalletTab.ALL) {
-                null
-            } else {
-                ({ onWalletAddOpen() })
-            }
-            BottomNavItem.Notes -> if (isCompactWidth) null else ({ onNoteAddOpen() })
-            BottomNavItem.Send -> if (isCompactWidth) null else ({ onSendAddOpen() })
-            BottomNavItem.Generator -> ({ onGeneratorRefresh() })
-            else -> null
-        },
-        onExpandStateChanged = onExpandStateChanged,
-        fabContent = {
-            when (currentTab) {
-                BottomNavItem.VaultV2,
-                BottomNavItem.Passwords,
-                BottomNavItem.Authenticator,
-                BottomNavItem.CardWallet,
-                BottomNavItem.Notes,
-                BottomNavItem.Send -> {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = stringResource(R.string.add),
-                        tint = fabIconTint
-                    )
+    AnimatedVisibility(
+        visible = visible,
+        enter = scaleIn(
+            initialScale = 0.85f,
+            animationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessLow
+            )
+        ) + fadeIn(),
+        exit = scaleOut(targetScale = 0.85f) + fadeOut()
+    ) {
+        SwipeableAddFab(
+            // 通过内部参数控制 FAB 位置，确保容器本身是全屏的
+            // NavigationBar 高度约 80dp + 系统导航条高度 + 边距
+            fabBottomOffset = fabBottomOffset,
+            fabContainerColor = fabContainerColor,
+            modifier = Modifier,
+            onFabClickOverride = when (currentTab) {
+                BottomNavItem.VaultV2 -> if (isCompactWidth) null else ({ onPasswordAddOpen() })
+                BottomNavItem.Passwords -> if (isCompactWidth) null else ({ onPasswordAddOpen() })
+                BottomNavItem.Authenticator -> if (isCompactWidth) null else ({ onTotpAddOpen() })
+                BottomNavItem.CardWallet -> if (isCompactWidth || cardWalletSubTab == CardWalletTab.ALL) {
+                    null
+                } else {
+                    ({ onWalletAddOpen() })
                 }
-                BottomNavItem.Generator -> {
-                    Icon(
-                        imageVector = Icons.Default.Refresh,
-                        contentDescription = stringResource(R.string.regenerate),
-                        tint = fabIconTint
-                    )
-                }
-                else -> { /* 不显示 */ }
-            }
-        },
-        expandedContent = { collapse ->
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.surface)
-            ) {
+                BottomNavItem.Notes -> if (isCompactWidth) null else ({ onNoteAddOpen() })
+                BottomNavItem.Send -> if (isCompactWidth) null else ({ onSendAddOpen() })
+                BottomNavItem.Generator -> ({ onGeneratorRefresh() })
+                else -> null
+            },
+            onExpandStateChanged = onExpandStateChanged,
+            fabContent = {
                 when (currentTab) {
                     BottomNavItem.VaultV2,
-                    BottomNavItem.Passwords -> {
-                        AddEditPasswordScreen(
-                            viewModel = passwordViewModel,
-                            totpViewModel = totpViewModel,
-                            bankCardViewModel = bankCardViewModel,
-                            localKeePassViewModel = localKeePassViewModel,
-                            passwordId = null,
-                            onNavigateBack = collapse
-                        )
-                    }
-                    BottomNavItem.Authenticator -> {
-                        val totpCategories by totpViewModel.categories.collectAsState()
-                        AddEditTotpScreen(
-                            totpId = null,
-                            initialData = null,
-                            initialTitle = "",
-                            initialNotes = "",
-                            initialCategoryId = totpNewItemDefaults.categoryId,
-                            initialKeePassDatabaseId = totpNewItemDefaults.keepassDatabaseId,
-                            initialKeePassGroupPath = totpNewItemDefaults.keepassGroupPath,
-                            initialBitwardenVaultId = totpNewItemDefaults.bitwardenVaultId,
-                            initialBitwardenFolderId = totpNewItemDefaults.bitwardenFolderId,
-                            categories = totpCategories,
-                            passwordViewModel = passwordViewModel,
-                            localKeePassViewModel = localKeePassViewModel,
-                            onSave = { title, notes, totpData, categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
-                                totpViewModel.saveTotpItem(
-                                    id = null,
-                                    title = title,
-                                    notes = notes,
-                                    totpData = totpData,
-                                    categoryId = categoryId,
-                                    keepassDatabaseId = keepassDatabaseId,
-                                    keepassGroupPath = keepassGroupPath,
-                                    bitwardenVaultId = bitwardenVaultId,
-                                    bitwardenFolderId = bitwardenFolderId
-                                )
-                                collapse()
-                            },
-                            onNavigateBack = collapse,
-                            onScanQrCode = {
-                                collapse()
-                                onNavigateToQuickTotpScan()
-                            }
-                        )
-                    }
-                    BottomNavItem.CardWallet -> {
-                        UnifiedWalletAddScreen(
-                            selectedType = walletUnifiedAddType,
-                            onTypeSelected = onWalletUnifiedAddTypeChange,
-                            onNavigateBack = collapse,
-                            bankCardViewModel = bankCardViewModel,
-                            documentViewModel = documentViewModel,
-                            stateHolder = walletAddSaveableStateHolder
-                        )
-                    }
-                    BottomNavItem.Notes -> {
-                        AddEditNoteScreen(
-                            noteId = -1L,
-                            onNavigateBack = collapse,
-                            viewModel = noteViewModel
-                        )
-                    }
+                    BottomNavItem.Passwords,
+                    BottomNavItem.Authenticator,
+                    BottomNavItem.CardWallet,
+                    BottomNavItem.Notes,
                     BottomNavItem.Send -> {
-                        AddEditSendScreen(
-                            sendState = sendState,
-                            onNavigateBack = collapse,
-                            onCreate = { title, text, notes, password, maxAccessCount, hideEmail, hiddenText, expireInDays ->
-                                bitwardenViewModel.createTextSend(
-                                    title = title,
-                                    text = text,
-                                    notes = notes,
-                                    password = password,
-                                    maxAccessCount = maxAccessCount,
-                                    hideEmail = hideEmail,
-                                    hiddenText = hiddenText,
-                                    expireInDays = expireInDays
-                                )
-                                collapse()
-                            }
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = stringResource(R.string.add),
+                            tint = fabIconTint
                         )
                     }
                     BottomNavItem.Generator -> {
-                        // Generator 使用全局 FAB 点击回调触发刷新，不走展开页面。
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = stringResource(R.string.regenerate),
+                            tint = fabIconTint
+                        )
                     }
-                    else -> { /* Should not happen */ }
+                    else -> { /* 不显示 */ }
+                }
+            },
+            expandedContent = { collapse ->
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surface)
+                ) {
+                    when (currentTab) {
+                        BottomNavItem.VaultV2,
+                        BottomNavItem.Passwords -> {
+                            AddEditPasswordScreen(
+                                viewModel = passwordViewModel,
+                                totpViewModel = totpViewModel,
+                                bankCardViewModel = bankCardViewModel,
+                                localKeePassViewModel = localKeePassViewModel,
+                                passwordId = null,
+                                onNavigateBack = collapse
+                            )
+                        }
+                        BottomNavItem.Authenticator -> {
+                            val totpCategories by totpViewModel.categories.collectAsState()
+                            AddEditTotpScreen(
+                                totpId = null,
+                                initialData = null,
+                                initialTitle = "",
+                                initialNotes = "",
+                                initialCategoryId = totpNewItemDefaults.categoryId,
+                                initialKeePassDatabaseId = totpNewItemDefaults.keepassDatabaseId,
+                                initialKeePassGroupPath = totpNewItemDefaults.keepassGroupPath,
+                                initialBitwardenVaultId = totpNewItemDefaults.bitwardenVaultId,
+                                initialBitwardenFolderId = totpNewItemDefaults.bitwardenFolderId,
+                                categories = totpCategories,
+                                passwordViewModel = passwordViewModel,
+                                localKeePassViewModel = localKeePassViewModel,
+                                onSave = { title, notes, totpData, categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
+                                    totpViewModel.saveTotpItem(
+                                        id = null,
+                                        title = title,
+                                        notes = notes,
+                                        totpData = totpData,
+                                        categoryId = categoryId,
+                                        keepassDatabaseId = keepassDatabaseId,
+                                        keepassGroupPath = keepassGroupPath,
+                                        bitwardenVaultId = bitwardenVaultId,
+                                        bitwardenFolderId = bitwardenFolderId
+                                    )
+                                    collapse()
+                                },
+                                onNavigateBack = collapse,
+                                onScanQrCode = {
+                                    collapse()
+                                    onNavigateToQuickTotpScan()
+                                }
+                            )
+                        }
+                        BottomNavItem.CardWallet -> {
+                            UnifiedWalletAddScreen(
+                                selectedType = walletUnifiedAddType,
+                                onTypeSelected = onWalletUnifiedAddTypeChange,
+                                onNavigateBack = collapse,
+                                bankCardViewModel = bankCardViewModel,
+                                documentViewModel = documentViewModel,
+                                stateHolder = walletAddSaveableStateHolder
+                            )
+                        }
+                        BottomNavItem.Notes -> {
+                            AddEditNoteScreen(
+                                noteId = -1L,
+                                onNavigateBack = collapse,
+                                viewModel = noteViewModel
+                            )
+                        }
+                        BottomNavItem.Send -> {
+                            AddEditSendScreen(
+                                sendState = sendState,
+                                onNavigateBack = collapse,
+                                onCreate = { title, text, notes, password, maxAccessCount, hideEmail, hiddenText, expireInDays ->
+                                    bitwardenViewModel.createTextSend(
+                                        title = title,
+                                        text = text,
+                                        notes = notes,
+                                        password = password,
+                                        maxAccessCount = maxAccessCount,
+                                        hideEmail = hideEmail,
+                                        hiddenText = hiddenText,
+                                        expireInDays = expireInDays
+                                    )
+                                    collapse()
+                                }
+                            )
+                        }
+                        BottomNavItem.Generator -> {
+                            // Generator 使用全局 FAB 点击回调触发刷新，不走展开页面。
+                        }
+                        else -> { /* Should not happen */ }
+                    }
                 }
             }
-        }
-    )
+        )
+    }
 }
 
 private val adaptivePreviewTabs = listOf(
@@ -3283,8 +3675,3 @@ private fun Stage3TwoPaneSelectedDetailPreview() {
         Stage3TwoPanePreviewContent(selectedPasswordId = 42L)
     }
 }
-
-
-
-
-

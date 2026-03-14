@@ -32,27 +32,33 @@ object KeePassCredentialSupport {
             if (password.isBlank()) {
                 val keyOnlySig = "key-only:$keyFingerprint"
                 if (seen.add(keyOnlySig)) {
-                    candidates += KeePassCredentialCandidate(
-                        label = "$label/key-only",
-                        credentials = Credentials.from(keyBytes)
-                    )
+                    runCatching {
+                        KeePassCredentialCandidate(
+                            label = "$label/key-only",
+                            credentials = Credentials.from(keyBytes)
+                        )
+                    }.getOrNull()?.let { candidates += it }
                 }
                 if (includeEmptyPasswordVariant) {
                     val comboSig = "empty-password+key:$keyFingerprint"
                     if (seen.add(comboSig)) {
-                        candidates += KeePassCredentialCandidate(
-                            label = "$label/empty-password+key",
-                            credentials = Credentials.from(EncryptedValue.fromString(""), keyBytes)
-                        )
+                        runCatching {
+                            KeePassCredentialCandidate(
+                                label = "$label/empty-password+key",
+                                credentials = Credentials.from(EncryptedValue.fromString(""), keyBytes)
+                            )
+                        }.getOrNull()?.let { candidates += it }
                     }
                 }
             } else {
                 val comboSig = "password+key:$keyFingerprint:${password.length}"
                 if (seen.add(comboSig)) {
-                    candidates += KeePassCredentialCandidate(
-                        label = "$label/password+key",
-                        credentials = Credentials.from(EncryptedValue.fromString(password), keyBytes)
-                    )
+                    runCatching {
+                        KeePassCredentialCandidate(
+                            label = "$label/password+key",
+                            credentials = Credentials.from(EncryptedValue.fromString(password), keyBytes)
+                        )
+                    }.getOrNull()?.let { candidates += it }
                 }
             }
         }

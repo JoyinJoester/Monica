@@ -50,11 +50,11 @@ fun PermissionManagementScreen(
     
     var sharedModifier: Modifier = Modifier
     if (false && sharedTransitionScope != null && animatedVisibilityScope != null) {
-        with(sharedTransitionScope) {
+        with(sharedTransitionScope!!) {
             sharedModifier = Modifier.sharedBounds(
                 sharedContentState = rememberSharedContentState(key = "permission_settings_card"),
-                animatedVisibilityScope = animatedVisibilityScope,
-                resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds()
+                animatedVisibilityScope = animatedVisibilityScope!!,
+                resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds
             )
         }
     }
@@ -168,4 +168,5 @@ private fun handlePermissionClick(context: Context, permission: PermissionInfo) 
         }
     }
 }
+
 

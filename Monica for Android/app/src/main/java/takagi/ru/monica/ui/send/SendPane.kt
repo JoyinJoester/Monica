@@ -37,10 +37,14 @@ internal fun SendPane(
         hideEmail: Boolean,
         hiddenText: Boolean,
         expireInDays: Int
-    ) -> Unit
+    ) -> Unit,
+    onBitwardenEvent: ((BitwardenViewModel.BitwardenEvent) -> Boolean)? = null
 ) {
     if (isCompactWidth) {
-        SendScreen(bitwardenViewModel = bitwardenViewModel)
+        SendScreen(
+            bitwardenViewModel = bitwardenViewModel,
+            onBitwardenEvent = onBitwardenEvent
+        )
     } else {
         Row(modifier = Modifier.fillMaxSize()) {
             ListPane(
@@ -51,7 +55,8 @@ internal fun SendPane(
                 SendScreen(
                     onSendClick = onSendClick,
                     selectedSendId = selectedSend?.bitwardenSendId,
-                    bitwardenViewModel = bitwardenViewModel
+                    bitwardenViewModel = bitwardenViewModel,
+                    onBitwardenEvent = onBitwardenEvent
                 )
             }
             DetailPane(

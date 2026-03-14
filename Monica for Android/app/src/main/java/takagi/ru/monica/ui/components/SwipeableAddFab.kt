@@ -263,7 +263,7 @@ fun SwipeableAddFab(
                 // 只有在开始展开后才渲染内容，优化性能
                 if (expandProgress.value > 0.01f) {
                     Box(modifier = Modifier.fillMaxSize()) {
-                        expandedContent(onCollapse = {
+                        expandedContent({
                             scope.launch {
                                 expandProgress.animateTo(
                                     targetValue = 0f,

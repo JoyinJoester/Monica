@@ -27,7 +27,8 @@ class PasswordRepository(
 ) {
     
     fun getAllPasswordEntries(): Flow<List<PasswordEntry>> {
-        return passwordEntryDao.getAllPasswordEntries()
+        // Keep semantic behavior the same but avoid the legacy generated callable index path.
+        return passwordEntryDao.getActiveEntries()
     }
     
     fun getPasswordEntriesByCategory(categoryId: Long): Flow<List<PasswordEntry>> {

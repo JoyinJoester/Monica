@@ -3,6 +3,7 @@ package takagi.ru.monica.ui
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.util.Log
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.runtime.rememberUpdatedState
@@ -106,6 +107,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
@@ -209,12 +214,15 @@ import takagi.ru.monica.ui.screens.AddEditSendScreen
 import takagi.ru.monica.ui.theme.MonicaTheme
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 private val stringSetSaver = Saver<Set<String>, ArrayList<String>>(
     save = { value -> ArrayList(value) },
     restore = { saved -> saved.toSet() }
 )
+
+private const val FAST_SCROLL_LOG_TAG = "PasswordFastScroll"
 
 private val timelineBatchJson = Json {
     ignoreUnknownKeys = true
@@ -544,6 +552,8 @@ fun PasswordListContent(
     val appSettings by settingsViewModel.settings.collectAsState()
     val listState = rememberLazyListState()
     val backToTopVisibilityCallback by rememberUpdatedState(onBackToTopVisibilityChange)
+    val fastScrollRequestKey by viewModel.fastScrollRequestKey.collectAsState()
+    val fastScrollProgress by viewModel.fastScrollProgress.collectAsState()
 
     // "仅本地" 的核心目标是给用户看待上传清单，不应该出现堆叠容器。
     // 因此这里强制扁平展示，仅在该筛选下生效，不影响其他页面。
@@ -723,7 +733,7 @@ fun PasswordListContent(
         val showThreshold = viewportHeight * 2
         val hideThreshold = (viewportHeight * 1.6f).toInt()
         shouldShowBackToTop = if (shouldShowBackToTop) {
-            backToTopEstimatedScrollPx >= hideThreshold
+            listState.firstVisibleItemIndex > 0 || backToTopEstimatedScrollPx >= hideThreshold
         } else {
             backToTopEstimatedScrollPx >= showThreshold
         }
@@ -743,6 +753,50 @@ fun PasswordListContent(
         if (scrollToTopRequestKey > 0) {
             listState.animateScrollToItem(index = 0)
         }
+    }
+
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            val totalItems = listState.layoutInfo.totalItemsCount
+            if (fastScrollRequestKey <= 0 || totalItems <= 0) {
+                null
+            } else {
+                val clampedProgress = fastScrollProgress.coerceIn(0f, 1f)
+                (clampedProgress * (totalItems - 1))
+                    .roundToInt()
+                    .coerceIn(0, totalItems - 1)
+            }
+        }
+            .filterNotNull()
+            .distinctUntilChanged()
+            .conflate()
+            .collectLatest { targetIndex ->
+                if (listState.firstVisibleItemIndex == targetIndex) return@collectLatest
+                runCatching {
+                    listState.scrollToItem(index = targetIndex)
+                }.onFailure { throwable ->
+                    Log.e(
+                        FAST_SCROLL_LOG_TAG,
+                        "scrollToItem failed: targetIndex=$targetIndex totalItems=${listState.layoutInfo.totalItemsCount}",
+                        throwable
+                    )
+                }
+            }
+    }
+
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            val totalItems = listState.layoutInfo.totalItemsCount
+            if (totalItems <= 1) {
+                0f
+            } else {
+                (listState.firstVisibleItemIndex.toFloat() / (totalItems - 1).toFloat()).coerceIn(0f, 1f)
+            }
+        }
+            .distinctUntilChanged()
+            .collect { progress: Float ->
+                viewModel.updateFastScrollProgress(progress)
+            }
     }
 
     LaunchedEffect(appSettings.passwordListQuickFiltersEnabled) {
@@ -1191,7 +1245,7 @@ fun PasswordListContent(
         }
     }
     
-    val favoriteSelected = {
+    val favoriteSelected: () -> Unit = {
         // 智能批量收藏/取消收藏
         coroutineScope.launch {
             val selectedEntries = passwordEntries.filter { selectedPasswords.contains(it.id) }
@@ -1223,6 +1277,7 @@ fun PasswordListContent(
             isSelectionMode = false
             selectedPasswords = setOf()
         }
+        Unit
     }
     
     val moveToCategory = {

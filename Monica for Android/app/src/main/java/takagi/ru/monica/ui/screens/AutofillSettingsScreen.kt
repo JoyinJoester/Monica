@@ -61,11 +61,11 @@ fun AutofillSettingsScreen(
     
     var scaffoldModifier: Modifier = Modifier
     if (false && sharedTransitionScope != null && animatedVisibilityScope != null) {
-        with(sharedTransitionScope) {
+        with(sharedTransitionScope!!) {
             scaffoldModifier = Modifier.sharedBounds(
                 sharedContentState = rememberSharedContentState(key = "autofill_settings_card"),
-                animatedVisibilityScope = animatedVisibilityScope,
-                resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds()
+                animatedVisibilityScope = animatedVisibilityScope!!,
+                resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds
             )
         }
     }
@@ -1051,6 +1051,7 @@ fun InfoCard() {
         }
     }
 }
+
 
 
 

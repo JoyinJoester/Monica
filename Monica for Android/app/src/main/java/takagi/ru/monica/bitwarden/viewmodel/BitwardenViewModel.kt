@@ -577,7 +577,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                     }
                     _sendState.value = SendState.Idle
                     requestLocalMutationSync()
-                    _events.emit(BitwardenEvent.ShowSuccess("Send 已创建"))
+                    _events.emit(BitwardenEvent.SendCreated("Send 已创建"))
                 }
                 is BitwardenRepository.SendMutationResult.Error -> {
                     _sendState.value = SendState.Error(result.message)
@@ -607,7 +607,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                     _sends.value = _sends.value.filterNot { it.bitwardenSendId == result.sendId }
                     _sendState.value = SendState.Idle
                     requestLocalMutationSync()
-                    _events.emit(BitwardenEvent.ShowSuccess("Send 已删除"))
+                    _events.emit(BitwardenEvent.SendDeleted("Send 已删除"))
                 }
                 is BitwardenRepository.SendMutationResult.Error -> {
                     _sendState.value = SendState.Error(result.message)
@@ -931,6 +931,8 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
         data class ShowSuccess(val message: String) : BitwardenEvent()
         data class ShowError(val message: String) : BitwardenEvent()
         data class ShowWarning(val message: String) : BitwardenEvent()
+        data class SendCreated(val message: String) : BitwardenEvent()
+        data class SendDeleted(val message: String) : BitwardenEvent()
         data class ShowTwoFactorDialog(val methods: List<Int>) : BitwardenEvent()
         data class ShowCaptchaDialog(
             val message: String,

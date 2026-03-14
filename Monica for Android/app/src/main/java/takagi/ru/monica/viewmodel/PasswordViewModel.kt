@@ -137,6 +137,11 @@ class PasswordViewModel(
     private val _categoryFilter = MutableStateFlow<CategoryFilter>(CategoryFilter.All)
     val categoryFilter = _categoryFilter.asStateFlow()
 
+    private val _fastScrollRequestKey = MutableStateFlow(0)
+    val fastScrollRequestKey: StateFlow<Int> = _fastScrollRequestKey.asStateFlow()
+    private val _fastScrollProgress = MutableStateFlow(0f)
+    val fastScrollProgress: StateFlow<Float> = _fastScrollProgress.asStateFlow()
+
     val categories = repository.getAllCategories()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     
@@ -151,6 +156,15 @@ class PasswordViewModel(
     
     fun getBitwardenFolders(vaultId: Long): Flow<List<BitwardenFolder>> {
         return repository.getBitwardenFoldersByVaultId(vaultId)
+    }
+
+    fun requestFastScroll(progress: Float) {
+        _fastScrollProgress.value = progress.coerceIn(0f, 1f)
+        _fastScrollRequestKey.value = _fastScrollRequestKey.value + 1
+    }
+
+    fun updateFastScrollProgress(progress: Float) {
+        _fastScrollProgress.value = progress.coerceIn(0f, 1f)
     }
     
     private val debouncedSearchQuery: Flow<String> = searchQuery

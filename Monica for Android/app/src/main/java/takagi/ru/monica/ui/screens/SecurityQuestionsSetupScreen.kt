@@ -61,11 +61,11 @@ fun SecurityQuestionsSetupScreen(
     
     var sharedModifier: Modifier = Modifier
     if (false && sharedTransitionScope != null && animatedVisibilityScope != null) {
-        with(sharedTransitionScope) {
+        with(sharedTransitionScope!!) {
             sharedModifier = Modifier.sharedBounds(
                 sharedContentState = rememberSharedContentState(key = "security_questions_card"),
-                animatedVisibilityScope = animatedVisibilityScope,
-                resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds()
+                animatedVisibilityScope = animatedVisibilityScope!!,
+                resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds
             )
         }
     }
@@ -321,3 +321,4 @@ fun SecurityQuestionsSetupScreen(
         }
     }
 }
+

@@ -65,7 +65,7 @@ fun PasswordEntryCard(
             sharedModifier = Modifier.sharedBounds(
                 sharedContentState = rememberSharedContentState(key = "password_card_${entry.id}"),
                 animatedVisibilityScope = animatedVisibilityScope,
-                resizeMode = androidx.compose.animation.SharedTransitionScope.ResizeMode.ScaleToBounds()
+                resizeMode = androidx.compose.animation.SharedTransitionScope.ResizeMode.RemeasureToBounds
             )
         }
     }

@@ -360,7 +360,7 @@ fun PasswordDetailScreen(
             sharedModifier = Modifier.sharedBounds(
                 sharedContentState = rememberSharedContentState(key = "password_card_${passwordId}"),
                 animatedVisibilityScope = animatedVisibilityScope,
-                resizeMode = SharedTransitionScope.ResizeMode.ScaleToBounds()
+                resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds
             )
         }
     }

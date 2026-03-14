@@ -214,35 +214,6 @@ fun StackedPasswordGroup(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .then(
-                if (effectiveExpanded && passwords.size > 1) {
-                    Modifier.pointerInput(Unit) {
-                        detectDragGesturesAfterLongPress(
-                            onDragStart = { 
-                                haptic.performLongPress()
-                            },
-                            onDrag = { change, dragAmount ->
-                                change.consume()
-                                // 只允许向下滑动
-                                if (dragAmount.y > 0) {
-                                    swipeOffset = (swipeOffset + dragAmount.y).coerceAtMost(150f)
-                                }
-                            },
-                            onDragEnd = {
-                                // 如果下滑超过阈值，收起卡片组
-                                if (swipeOffset > 80f) {
-                                    haptic.performSuccess()
-                                    onToggleExpand()
-                                }
-                                swipeOffset = 0f
-                            },
-                            onDragCancel = {
-                                swipeOffset = 0f
-                            }
-                        )
-                    }
-                } else Modifier
-            )
     ) {
         // 📚 堆叠背后的层级卡片 (仅在堆叠状态下可见，或动画过程中可见)
         val stackAlpha by animateFloatAsState(
@@ -316,9 +287,6 @@ fun StackedPasswordGroup(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .animateContentSize(
-                            animationSpec = tween(200)
-                        )
                         .then(
                             // 展开时的下滑手势
                             if (effectiveExpanded && passwords.size > 1) {
@@ -357,8 +325,15 @@ fun StackedPasswordGroup(
                     AnimatedContent(
                         targetState = effectiveExpanded,
                         transitionSpec = {
-                            fadeIn(animationSpec = tween(200)) togetherWith 
-                            fadeOut(animationSpec = tween(200))
+                            (fadeIn(animationSpec = tween(180)) togetherWith
+                                fadeOut(animationSpec = tween(140))).using(
+                                SizeTransform(clip = false) { initialSize, targetSize ->
+                                    tween(
+                                        durationMillis = if (targetSize.height < initialSize.height) 120 else 220,
+                                        easing = FastOutSlowInEasing
+                                    )
+                                }
+                            )
                         },
                         label = "content_switch"
                     ) { expanded ->
@@ -540,23 +515,7 @@ fun StackedPasswordGroup(
                                         val groupedByInfo = passwords.groupBy { getPasswordInfoKey(it) }
                                         
                                         groupedByInfo.values.forEachIndexed { groupIndex, passwordGroup ->
-                                            // 列表项动画
-                                            val itemEnterDelay = groupIndex * 30
-                                            var isVisible by remember { mutableStateOf(false) }
-                                            LaunchedEffect(Unit) {
-                                                isVisible = true
-                                            }
-                                            
-                                            AnimatedVisibility(
-                                                visible = isVisible,
-                                                enter = fadeIn(tween(300, delayMillis = itemEnterDelay)) + 
-                                                        androidx.compose.animation.slideInVertically(
-                                                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
-                                                            initialOffsetY = { 50 } 
-                                                        ),
-                                                modifier = Modifier.fillMaxWidth()
-                                            ) {
-                                                 takagi.ru.monica.ui.gestures.SwipeActions(
+                                            takagi.ru.monica.ui.gestures.SwipeActions(
                                                     onSwipeLeft = { onSwipeLeft(passwordGroup.first()) },
                                                     onSwipeRight = { onSwipeRight(passwordGroup.first()) },
                                                     enabled = true
@@ -626,7 +585,6 @@ fun StackedPasswordGroup(
                                                         )
                                                     }
                                                 }
-                                            }
                                         }
                                     }
                                     

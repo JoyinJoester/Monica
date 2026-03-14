@@ -91,7 +91,7 @@ Built by developers, for developers (and everyone else).
 
 *   **Language**: [Kotlin](https://kotlinlang.org/)
 *   **UI Framework**: [Jetpack Compose](https://developer.android.com/jetpack/compose)
-*   **UI Baseline**: Compose BOM `2024.10.01` + Material 3 (version aligned by BOM)
+*   **UI Baseline**: Compose BOM `2026.03.00` + Material 3 (version aligned by BOM)
 *   **Architecture**: MVVM + Clean Architecture
 *   **Database**: Room (SQLite) with SQLCipher support
 *   **Async**: Coroutines & Flow

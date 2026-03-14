@@ -129,7 +129,8 @@ fun SendScreen(
     onSendClick: (BitwardenSend) -> Unit = {},
     selectedSendId: String? = null,
     showTopBar: Boolean = true,
-    bitwardenViewModel: BitwardenViewModel = viewModel()
+    bitwardenViewModel: BitwardenViewModel = viewModel(),
+    onBitwardenEvent: ((BitwardenViewModel.BitwardenEvent) -> Boolean)? = null
 ) {
     val sends by bitwardenViewModel.sends.collectAsState()
     val activeVault by bitwardenViewModel.activeVault.collectAsState()
@@ -186,12 +187,16 @@ fun SendScreen(
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(bitwardenViewModel, onBitwardenEvent) {
         bitwardenViewModel.events.collect { event ->
+            val consumedByParent = onBitwardenEvent?.invoke(event) == true
+            if (consumedByParent) return@collect
             when (event) {
                 is BitwardenViewModel.BitwardenEvent.ShowSuccess -> snackbarHostState.showSnackbar(event.message)
                 is BitwardenViewModel.BitwardenEvent.ShowError -> snackbarHostState.showSnackbar(event.message)
                 is BitwardenViewModel.BitwardenEvent.ShowWarning -> snackbarHostState.showSnackbar(event.message)
+                is BitwardenViewModel.BitwardenEvent.SendCreated -> snackbarHostState.showSnackbar(event.message)
+                is BitwardenViewModel.BitwardenEvent.SendDeleted -> snackbarHostState.showSnackbar(event.message)
                 else -> Unit
             }
         }
