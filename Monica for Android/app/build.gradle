@@ -8,7 +8,7 @@ plugins {
 
 android {
     namespace 'takagi.ru.monica'
-    compileSdk 34
+    compileSdk 35
 
     defaultConfig {
         applicationId "takagi.ru.monica"
@@ -50,16 +50,32 @@ android {
         compose true
     }
     composeOptions {
-        kotlinCompilerExtensionVersion '1.5.1'
+        kotlinCompilerExtensionVersion libs.versions.composeCompiler.get()
     }
     packaging {
         resources {
             excludes += '/META-INF/{AL2.0,LGPL2.1}'
+            excludes += 'META-INF/versions/9/OSGI-INF/MANIFEST.MF'
         }
     }
 }
 
+configurations.configureEach {
+    resolutionStrategy.force(
+        "org.jetbrains.kotlinx:kotlinx-serialization-bom:1.6.0",
+        "org.jetbrains.kotlinx:kotlinx-serialization-core:1.6.0",
+        "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.6.0",
+        "org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0",
+        "org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.6.0"
+    )
+}
+
 dependencies {
+    constraints {
+        implementation("org.jetbrains.kotlinx:kotlinx-serialization-core:1.6.0")
+        implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.0")
+    }
+
     // Core Android libraries
     implementation libs.androidx.core.ktx
     implementation libs.androidx.core.splashscreen  // 添加splashscreen依赖

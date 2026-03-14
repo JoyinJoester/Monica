@@ -3597,41 +3597,43 @@ private fun buildKeePassDatabaseQuickFolderShortcuts(
     allPasswords: List<takagi.ru.monica.data.PasswordEntry>,
     isSearchActive: Boolean
 ): List<PasswordQuickFolderShortcut> {
-    val groupNameByPath = keepassGroups
-        .asSequence()
-        .map { info -> info.path.trim() to info.name.trim() }
-        .filter { (path, _) -> path.isNotBlank() }
-        .toMap()
-
-    val directChildPaths = keepassGroups
-        .asSequence()
-        .map { it.path.trim() }
-        .filter { it.isNotBlank() }
-        .filter { path -> path.substringBeforeLast('/', missingDelimiterValue = "").isBlank() }
-        .toSet()
-        .sorted()
-
-    return directChildPaths.mapNotNull { childPath ->
-        val subtreeCount = allPasswords.count { entry ->
-            entry.keepassDatabaseId == databaseId &&
-                entry.keepassGroupPath?.trim()?.let { groupPath ->
-                    groupPath == childPath || groupPath.startsWith("$childPath/")
-                } == true
+    val groupNameByPath = LinkedHashMap<String, String>()
+    val directChildPaths = linkedSetOf<String>()
+    for (group in keepassGroups) {
+        val path = group.path.trim()
+        if (path.isBlank()) continue
+        groupNameByPath[path] = group.name.trim()
+        if (path.substringBeforeLast('/', missingDelimiterValue = "").isBlank()) {
+            directChildPaths += path
         }
-        if (isSearchActive && subtreeCount <= 0) {
-            return@mapNotNull null
-        }
-        PasswordQuickFolderShortcut(
-            key = "keepass_${databaseId}_${childPath}",
-            title = groupNameByPath[childPath]
-                ?.takeIf { it.isNotBlank() }
-                ?: decodeKeePassPathForDisplay(childPath),
-            subtitle = "KeePass 组",
-            isBack = false,
-            targetFilter = CategoryFilter.KeePassGroupFilter(databaseId, childPath),
-            passwordCount = subtreeCount
-        )
     }
+
+    if (directChildPaths.isEmpty()) return emptyList()
+
+    val subtreeCountByPath = countKeePassSubtreePasswords(
+        databaseId = databaseId,
+        childPaths = directChildPaths,
+        allPasswords = allPasswords
+    )
+
+    return directChildPaths
+        .sorted()
+        .mapNotNull { childPath ->
+            val subtreeCount = subtreeCountByPath[childPath] ?: 0
+            if (isSearchActive && subtreeCount <= 0) {
+                return@mapNotNull null
+            }
+            PasswordQuickFolderShortcut(
+                key = "keepass_${databaseId}_${childPath}",
+                title = groupNameByPath[childPath]
+                    ?.takeIf { it.isNotBlank() }
+                    ?: decodeKeePassPathForDisplay(childPath),
+                subtitle = "KeePass 组",
+                isBack = false,
+                targetFilter = CategoryFilter.KeePassGroupFilter(databaseId, childPath),
+                passwordCount = subtreeCount
+            )
+        }
 }
 
 private fun buildKeePassGroupQuickFolderShortcuts(
@@ -3641,44 +3643,67 @@ private fun buildKeePassGroupQuickFolderShortcuts(
     allPasswords: List<takagi.ru.monica.data.PasswordEntry>,
     isSearchActive: Boolean
 ): List<PasswordQuickFolderShortcut> {
-    val groupNameByPath = keepassGroups
-        .asSequence()
-        .map { info -> info.path.trim() to info.name.trim() }
-        .filter { (path, _) -> path.isNotBlank() }
-        .toMap()
-
-    val directChildPaths = keepassGroups
-        .asSequence()
-        .map { it.path.trim() }
-        .filter { it.isNotBlank() }
-        .filter { path ->
-            val childParent = path.substringBeforeLast('/', missingDelimiterValue = "")
-            childParent == currentPath
+    val groupNameByPath = LinkedHashMap<String, String>()
+    val directChildPaths = linkedSetOf<String>()
+    for (group in keepassGroups) {
+        val path = group.path.trim()
+        if (path.isBlank()) continue
+        groupNameByPath[path] = group.name.trim()
+        val childParent = path.substringBeforeLast('/', missingDelimiterValue = "")
+        if (childParent == currentPath) {
+            directChildPaths += path
         }
-        .toSet()
-        .sorted()
-
-    return directChildPaths.mapNotNull { childPath ->
-        val subtreeCount = allPasswords.count { entry ->
-            entry.keepassDatabaseId == databaseId &&
-                entry.keepassGroupPath?.trim()?.let { groupPath ->
-                    groupPath == childPath || groupPath.startsWith("$childPath/")
-                } == true
-        }
-        if (isSearchActive && subtreeCount <= 0) {
-            return@mapNotNull null
-        }
-        PasswordQuickFolderShortcut(
-            key = "keepass_${databaseId}_${childPath}",
-            title = groupNameByPath[childPath]
-                ?.takeIf { it.isNotBlank() }
-                ?: decodeKeePassPathForDisplay(childPath),
-            subtitle = "KeePass 子组",
-            isBack = false,
-            targetFilter = CategoryFilter.KeePassGroupFilter(databaseId, childPath),
-            passwordCount = subtreeCount
-        )
     }
+
+    if (directChildPaths.isEmpty()) return emptyList()
+
+    val subtreeCountByPath = countKeePassSubtreePasswords(
+        databaseId = databaseId,
+        childPaths = directChildPaths,
+        allPasswords = allPasswords
+    )
+
+    return directChildPaths
+        .sorted()
+        .mapNotNull { childPath ->
+            val subtreeCount = subtreeCountByPath[childPath] ?: 0
+            if (isSearchActive && subtreeCount <= 0) {
+                return@mapNotNull null
+            }
+            PasswordQuickFolderShortcut(
+                key = "keepass_${databaseId}_${childPath}",
+                title = groupNameByPath[childPath]
+                    ?.takeIf { it.isNotBlank() }
+                    ?: decodeKeePassPathForDisplay(childPath),
+                subtitle = "KeePass 子组",
+                isBack = false,
+                targetFilter = CategoryFilter.KeePassGroupFilter(databaseId, childPath),
+                passwordCount = subtreeCount
+            )
+        }
+}
+
+private fun countKeePassSubtreePasswords(
+    databaseId: Long,
+    childPaths: Set<String>,
+    allPasswords: List<takagi.ru.monica.data.PasswordEntry>
+): Map<String, Int> {
+    val counts = childPaths.associateWith { 0 }.toMutableMap()
+    if (counts.isEmpty()) return counts
+
+    val sortedPaths = childPaths.sortedByDescending { it.length }
+    for (entry in allPasswords) {
+        if (entry.keepassDatabaseId != databaseId) continue
+        val groupPath = entry.keepassGroupPath?.trim().orEmpty()
+        if (groupPath.isBlank()) continue
+
+        val matchPath = sortedPaths.firstOrNull { childPath ->
+            groupPath == childPath || groupPath.startsWith("$childPath/")
+        } ?: continue
+        counts[matchPath] = (counts[matchPath] ?: 0) + 1
+    }
+
+    return counts
 }
 
 private fun CategoryFilter.supportsQuickFolders(): Boolean = when (this) {

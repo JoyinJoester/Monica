@@ -2,6 +2,7 @@ package takagi.ru.monica.ui.main.navigation
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Note
@@ -21,6 +22,7 @@ sealed class BottomNavItem(
 ) {
     val key: String = contentTab?.name ?: SETTINGS_TAB_KEY
 
+    object VaultV2 : BottomNavItem(BottomNavContentTab.VAULT_V2, Icons.Default.Home)
     object Passwords : BottomNavItem(BottomNavContentTab.PASSWORDS, Icons.Default.Lock)
     object Authenticator : BottomNavItem(BottomNavContentTab.AUTHENTICATOR, Icons.Default.Security)
     object CardWallet : BottomNavItem(BottomNavContentTab.CARD_WALLET, Icons.Default.Wallet)
@@ -32,6 +34,7 @@ sealed class BottomNavItem(
 }
 
 fun BottomNavContentTab.toBottomNavItem(): BottomNavItem = when (this) {
+    BottomNavContentTab.VAULT_V2 -> BottomNavItem.VaultV2
     BottomNavContentTab.PASSWORDS -> BottomNavItem.Passwords
     BottomNavContentTab.AUTHENTICATOR -> BottomNavItem.Authenticator
     BottomNavContentTab.CARD_WALLET -> BottomNavItem.CardWallet
@@ -42,6 +45,7 @@ fun BottomNavContentTab.toBottomNavItem(): BottomNavItem = when (this) {
 }
 
 fun BottomNavItem.fullLabelRes(): Int = when (this) {
+    BottomNavItem.VaultV2 -> R.string.nav_v2_vault
     BottomNavItem.Passwords -> R.string.nav_passwords
     BottomNavItem.Authenticator -> R.string.nav_authenticator
     BottomNavItem.CardWallet -> R.string.nav_card_wallet
@@ -53,6 +57,7 @@ fun BottomNavItem.fullLabelRes(): Int = when (this) {
 }
 
 fun BottomNavItem.shortLabelRes(): Int = when (this) {
+    BottomNavItem.VaultV2 -> R.string.nav_v2_vault_short
     BottomNavItem.Passwords -> R.string.nav_passwords_short
     BottomNavItem.Authenticator -> R.string.nav_authenticator_short
     BottomNavItem.CardWallet -> R.string.nav_card_wallet_short
@@ -64,11 +69,12 @@ fun BottomNavItem.shortLabelRes(): Int = when (this) {
 }
 
 fun indexToDefaultTabKey(index: Int): String = when (index) {
-    0 -> BottomNavContentTab.PASSWORDS.name
-    1 -> BottomNavContentTab.AUTHENTICATOR.name
-    2 -> BottomNavContentTab.CARD_WALLET.name
-    3 -> BottomNavContentTab.GENERATOR.name
-    4 -> BottomNavContentTab.NOTES.name
-    5 -> SETTINGS_TAB_KEY
-    else -> BottomNavContentTab.PASSWORDS.name
+    0 -> BottomNavContentTab.VAULT_V2.name
+    1 -> BottomNavContentTab.PASSWORDS.name
+    2 -> BottomNavContentTab.AUTHENTICATOR.name
+    3 -> BottomNavContentTab.CARD_WALLET.name
+    4 -> BottomNavContentTab.GENERATOR.name
+    5 -> BottomNavContentTab.NOTES.name
+    6 -> SETTINGS_TAB_KEY
+    else -> BottomNavContentTab.VAULT_V2.name
 }

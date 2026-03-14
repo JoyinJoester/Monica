@@ -73,6 +73,7 @@ import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSiz
 import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.*
+import androidx.compose.runtime.NonRestartableComposable
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
@@ -182,6 +183,7 @@ import takagi.ru.monica.ui.password.StackCardMode
 import takagi.ru.monica.ui.password.getGroupKeyForMode
 import takagi.ru.monica.ui.password.getPasswordGroupTitle
 import takagi.ru.monica.ui.password.getPasswordInfoKey
+import takagi.ru.monica.ui.vaultv2.VaultV2Pane
 import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
 import takagi.ru.monica.data.bitwarden.BitwardenSend
 import takagi.ru.monica.bitwarden.sync.SyncBlockReason
@@ -542,6 +544,7 @@ private fun TimelineDetailPane(
     ExperimentalMaterial3WindowSizeClassApi::class,
     androidx.compose.animation.ExperimentalSharedTransitionApi::class
 )
+@NonRestartableComposable
 @Composable
 fun SimpleMainScreen(
     passwordViewModel: PasswordViewModel,
@@ -1176,76 +1179,52 @@ fun SimpleMainScreen(
         }
     }
 
-    LaunchedEffect(currentTab.key, isCompactWidth) {
-        if (isCompactWidth || currentTab != BottomNavItem.Passwords) {
+    MainScreenTabResetEffects(
+        currentTab = currentTab,
+        isCompactWidth = isCompactWidth,
+        cardWalletSubTab = cardWalletSubTab,
+        passwordHistoryPageMode = passwordHistoryPageMode,
+        onResetPasswordPane = {
             selectedPasswordId = null
             inlinePasswordEditorId = null
             isAddingPasswordInline = false
             passwordHistoryPageMode = PasswordHistoryPageMode.NONE
-        }
-    }
-    LaunchedEffect(currentTab.key) {
-        if (currentTab != BottomNavItem.Passwords) {
-            passwordListShowBackToTop = false
-        }
-    }
-    LaunchedEffect(currentTab.key, isCompactWidth) {
-        if (isCompactWidth || currentTab != BottomNavItem.Authenticator) {
+        },
+        onHideBackToTop = { passwordListShowBackToTop = false },
+        onResetTotpPane = {
             selectedTotpId = null
             isAddingTotpInline = false
-        }
-    }
-    LaunchedEffect(currentTab.key, isCompactWidth, cardWalletSubTab) {
-        if (isCompactWidth || currentTab != BottomNavItem.CardWallet) {
+        },
+        onResetCardWalletPaneAll = {
             selectedBankCardId = null
             selectedDocumentId = null
             inlineBankCardEditorId = null
             isAddingBankCardInline = false
             inlineDocumentEditorId = null
             isAddingDocumentInline = false
-        } else {
-            when (cardWalletSubTab) {
-                CardWalletTab.BANK_CARDS -> {
-                    selectedDocumentId = null
-                    inlineDocumentEditorId = null
-                    isAddingDocumentInline = false
-                }
-                CardWalletTab.DOCUMENTS -> {
-                    selectedBankCardId = null
-                    inlineBankCardEditorId = null
-                    isAddingBankCardInline = false
-                }
-                CardWalletTab.ALL -> Unit
-            }
-        }
-    }
-    LaunchedEffect(cardWalletSubTab) {
-        if (cardWalletSubTab == CardWalletTab.BANK_CARDS || cardWalletSubTab == CardWalletTab.DOCUMENTS) {
-            walletUnifiedAddType = cardWalletSubTab
-        }
-    }
-    LaunchedEffect(currentTab.key, isCompactWidth) {
-        if (isCompactWidth || currentTab != BottomNavItem.Notes) {
+        },
+        onResetCardWalletDocumentPane = {
+            selectedDocumentId = null
+            inlineDocumentEditorId = null
+            isAddingDocumentInline = false
+        },
+        onResetCardWalletBankCardPane = {
+            selectedBankCardId = null
+            inlineBankCardEditorId = null
+            isAddingBankCardInline = false
+        },
+        onSyncWalletUnifiedAddType = { walletUnifiedAddType = it },
+        onResetNotePane = {
             inlineNoteEditorId = null
             isAddingNoteInline = false
-        }
-    }
-    LaunchedEffect(currentTab.key, isCompactWidth) {
-        if (isCompactWidth || currentTab != BottomNavItem.Passkey) {
-            selectedPasskey = null
-        }
-    }
-    LaunchedEffect(currentTab.key, isCompactWidth) {
-        if (isCompactWidth || currentTab != BottomNavItem.Send) {
+        },
+        onResetPasskeyPane = { selectedPasskey = null },
+        onResetSendPane = {
             selectedSend = null
             isAddingSendInline = false
-        }
-    }
-    LaunchedEffect(currentTab.key, isCompactWidth, passwordHistoryPageMode) {
-        if (isCompactWidth || currentTab != BottomNavItem.Passwords || !passwordHistoryPageMode.isVisible) {
-            selectedTimelineLog = null
-        }
-    }
+        },
+        onResetTimelineSelection = { selectedTimelineLog = null }
+    )
 
     val onCardWalletDocumentSelectionModeChange:
         (Boolean, Int, () -> Unit, () -> Unit, () -> Unit, () -> Unit) -> Unit =
@@ -1284,6 +1263,7 @@ fun SimpleMainScreen(
     )
     
     val isBitwardenPageContext = when (currentTab) {
+        BottomNavItem.VaultV2,
         BottomNavItem.Passwords -> isBitwardenPasswordFilter(currentFilter)
         BottomNavItem.Authenticator -> isBitwardenTotpFilter(totpFilter)
         BottomNavItem.CardWallet,
@@ -1459,7 +1439,7 @@ fun SimpleMainScreen(
                     onExitDocumentSelection = onExitDocumentSelection,
                     onSelectAllDocuments = onSelectAllDocuments,
                     onMoveToCategoryDocuments = onMoveToCategoryDocuments,
-                    onDeleteSelectedDocuments = onDeleteSelectedDocuments
+                    onDeleteSelectedDocuments = onDeleteSelectedDocuments,
                 )
             }
         )
@@ -1538,6 +1518,19 @@ fun SimpleMainScreen(
     ) { paddingValues ->
         val scaffoldBody: @Composable BoxScope.() -> Unit = {
             when (currentTab) {
+                BottomNavItem.VaultV2 -> {
+                    VaultV2Pane(
+                        passwordViewModel = passwordViewModel,
+                        totpViewModel = totpViewModel,
+                        onOpenPassword = handlePasswordDetailOpen,
+                        onOpenTotp = handleTotpOpen,
+                        onBackToTopVisibilityChange = { visible ->
+                            passwordListShowBackToTop = visible
+                        },
+                        scrollToTopRequestKey = passwordScrollToTopRequestKey,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
                 BottomNavItem.Passwords -> {
                     PasswordTabPane(
                         isCompactWidth = isCompactWidth,
@@ -1821,195 +1814,56 @@ fun SimpleMainScreen(
     }
     }
 
-    // 全局 FAB Overlay
-    // 放在最外层 Box 中，覆盖在 Scaffold 之上，确保能展开到全屏
-    // 仅在特定 Tab 显示，并且不在多选模式下显示
-    val hasWideDetailSelection = !isCompactWidth && when (currentTab) {
-        BottomNavItem.Passwords -> isAddingPasswordInline || inlinePasswordEditorId != null
-        BottomNavItem.Authenticator -> isAddingTotpInline || selectedTotpId != null
-        BottomNavItem.CardWallet -> isAddingBankCardInline ||
-            inlineBankCardEditorId != null ||
-            selectedBankCardId != null ||
-            isAddingDocumentInline ||
-            inlineDocumentEditorId != null ||
-            selectedDocumentId != null
-        BottomNavItem.Notes -> isAddingNoteInline || inlineNoteEditorId != null
-        BottomNavItem.Send -> isAddingSendInline
-        else -> false
-    }
-
-    val showFab = (
-        currentTab == BottomNavItem.Passwords ||
-            currentTab == BottomNavItem.Authenticator ||
-            currentTab == BottomNavItem.CardWallet ||
-            currentTab == BottomNavItem.Generator ||
-            currentTab == BottomNavItem.Notes ||
-            currentTab == BottomNavItem.Send
-        ) &&
-        !(currentTab == BottomNavItem.Passwords && passwordHistoryPageMode.isVisible) &&
-        !isAnySelectionMode &&
-        !hasWideDetailSelection
-
-    val fabOverlayModifier = if (isCompactWidth) {
-        Modifier.fillMaxSize().zIndex(5f)
-    } else {
-        Modifier
-            .fillMaxHeight()
-            .width(wideFabHostWidth)
-            .align(Alignment.TopStart)
-            .zIndex(5f)
-    }
-    val fabContainerColor = when (currentTab) {
-        BottomNavItem.CardWallet -> MaterialTheme.colorScheme.primary
-        else -> MaterialTheme.colorScheme.primaryContainer
-    }
-    val fabIconTint = when (currentTab) {
-        BottomNavItem.CardWallet -> MaterialTheme.colorScheme.onPrimary
-        else -> MaterialTheme.colorScheme.onPrimaryContainer
-    }
-    val fabBottomOffset = if (isCompactWidth) 116.dp else 24.dp
-    val shouldShowBackToTopFab =
-        showFab &&
-            isFabVisible &&
-            !isFabExpanded &&
-            currentTab == BottomNavItem.Passwords &&
-            !isAnySelectionMode &&
-            passwordListShowBackToTop
-    val shouldShowQuickAccessFab =
-        showFab &&
-            isFabVisible &&
-            !isFabExpanded &&
-            currentTab == BottomNavItem.Passwords &&
-            appSettings.passwordListQuickAccessEnabled &&
-            !isAnySelectionMode
-    
-    AnimatedVisibility(
-        visible = showFab && isFabVisible,
-        enter = slideInHorizontally(initialOffsetX = { it * 2 }) + fadeIn(),
-        exit = slideOutHorizontally(targetOffsetX = { it * 2 }) + fadeOut(),
-        modifier = fabOverlayModifier
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            AnimatedVisibility(
-                visible = shouldShowQuickAccessFab,
-                enter = scaleIn(
-                    initialScale = 0.25f,
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioMediumBouncy,
-                        stiffness = Spring.StiffnessLow
-                    )
-                ) + fadeIn(animationSpec = tween(durationMillis = 120)),
-                exit = scaleOut(
-                    targetScale = 0.25f,
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioLowBouncy,
-                        stiffness = Spring.StiffnessMedium
-                    )
-                ) + fadeOut(animationSpec = tween(durationMillis = 90)),
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(
-                        end = 16.dp,
-                        bottom = fabBottomOffset + 88.dp
-                    )
-            ) {
-                SmallFloatingActionButton(
-                    onClick = { showPasswordQuickAccessSheet = true },
-                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.History,
-                        contentDescription = stringResource(R.string.password_quick_access_title)
-                    )
-                }
-            }
-
-            AnimatedVisibility(
-                visible = shouldShowBackToTopFab,
-                enter = scaleIn(
-                    initialScale = 0.22f,
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioLowBouncy,
-                        stiffness = Spring.StiffnessMediumLow
-                    )
-                ) + fadeIn(animationSpec = tween(durationMillis = 120)),
-                exit = scaleOut(
-                    targetScale = 0.22f,
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioLowBouncy,
-                        stiffness = Spring.StiffnessMedium
-                    )
-                ) + fadeOut(animationSpec = tween(durationMillis = 90)),
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(
-                        end = 88.dp,
-                        bottom = fabBottomOffset + 16.dp
-                    )
-            ) {
-                SmallFloatingActionButton(
-                    onClick = { passwordScrollToTopRequestKey++ },
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.KeyboardArrowUp,
-                        contentDescription = stringResource(R.string.cd_back)
-                    )
-                }
-            }
-
-            MainScreenAddFab(
-                fabBottomOffset = fabBottomOffset,
-                fabContainerColor = fabContainerColor,
-                fabIconTint = fabIconTint,
-                currentTab = currentTab,
-                isCompactWidth = isCompactWidth,
-                cardWalletSubTab = cardWalletSubTab,
-                onPasswordAddOpen = handlePasswordAddOpen,
-                onTotpAddOpen = handleTotpAddOpen,
-                onWalletAddOpen = handleWalletAddOpen,
-                onNoteAddOpen = { handleNoteOpen(null) },
-                onSendAddOpen = handleSendAddOpen,
-                onGeneratorRefresh = { generatorRefreshRequestKey++ },
-                onExpandStateChanged = { expanded -> isFabExpanded = expanded },
-                passwordViewModel = passwordViewModel,
-                totpViewModel = totpViewModel,
-                bankCardViewModel = bankCardViewModel,
-                localKeePassViewModel = localKeePassViewModel,
-                totpNewItemDefaults = totpNewItemDefaults,
-                onNavigateToQuickTotpScan = onNavigateToQuickTotpScan,
-                walletUnifiedAddType = walletUnifiedAddType,
-                onWalletUnifiedAddTypeChange = { walletUnifiedAddType = it },
-                documentViewModel = documentViewModel,
-                walletAddSaveableStateHolder = walletAddSaveableStateHolder,
-                noteViewModel = noteViewModel,
-                sendState = sendState,
-                bitwardenViewModel = bitwardenViewModel
-            )
-        }
-    } // End if (showFab)
-
-    LaunchedEffect(currentTab, appSettings.passwordListQuickAccessEnabled, passwordHistoryPageMode) {
-        if (
-            (
-                currentTab != BottomNavItem.Passwords ||
-                    !appSettings.passwordListQuickAccessEnabled ||
-                    passwordHistoryPageMode.isVisible
-                ) &&
-            showPasswordQuickAccessSheet
-        ) {
-            showPasswordQuickAccessSheet = false
-        }
-    }
-
-    PasswordQuickAccessSheet(
-        visible = showPasswordQuickAccessSheet,
-        recentItems = recentOpenedPasswords,
-        frequentItems = frequentOpenedPasswords,
-        onOpenPassword = { passwordId -> handlePasswordDetailOpen(passwordId) },
-        onDismiss = { showPasswordQuickAccessSheet = false }
+    MainScreenFabOverlay(
+        currentTab = currentTab,
+        isCompactWidth = isCompactWidth,
+        wideFabHostWidth = wideFabHostWidth,
+        passwordHistoryPageMode = passwordHistoryPageMode,
+        isAnySelectionMode = isAnySelectionMode,
+        isAddingPasswordInline = isAddingPasswordInline,
+        inlinePasswordEditorId = inlinePasswordEditorId,
+        isAddingTotpInline = isAddingTotpInline,
+        selectedTotpId = selectedTotpId,
+        isAddingBankCardInline = isAddingBankCardInline,
+        inlineBankCardEditorId = inlineBankCardEditorId,
+        selectedBankCardId = selectedBankCardId,
+        isAddingDocumentInline = isAddingDocumentInline,
+        inlineDocumentEditorId = inlineDocumentEditorId,
+        selectedDocumentId = selectedDocumentId,
+        isAddingNoteInline = isAddingNoteInline,
+        inlineNoteEditorId = inlineNoteEditorId,
+        isAddingSendInline = isAddingSendInline,
+        isFabVisible = isFabVisible,
+        isFabExpanded = isFabExpanded,
+        onFabExpandedChange = { expanded -> isFabExpanded = expanded },
+        passwordListShowBackToTop = passwordListShowBackToTop,
+        onBackToTop = { passwordScrollToTopRequestKey++ },
+        quickAccessEnabled = appSettings.passwordListQuickAccessEnabled,
+        showPasswordQuickAccessSheet = showPasswordQuickAccessSheet,
+        onShowPasswordQuickAccessSheetChange = { showPasswordQuickAccessSheet = it },
+        recentOpenedPasswords = recentOpenedPasswords,
+        frequentOpenedPasswords = frequentOpenedPasswords,
+        onOpenPasswordFromQuickAccess = handlePasswordDetailOpen,
+        cardWalletSubTab = cardWalletSubTab,
+        onPasswordAddOpen = handlePasswordAddOpen,
+        onTotpAddOpen = handleTotpAddOpen,
+        onWalletAddOpen = handleWalletAddOpen,
+        onNoteAddOpen = { handleNoteOpen(null) },
+        onSendAddOpen = handleSendAddOpen,
+        onGeneratorRefresh = { generatorRefreshRequestKey++ },
+        passwordViewModel = passwordViewModel,
+        totpViewModel = totpViewModel,
+        bankCardViewModel = bankCardViewModel,
+        localKeePassViewModel = localKeePassViewModel,
+        totpNewItemDefaults = totpNewItemDefaults,
+        onNavigateToQuickTotpScan = onNavigateToQuickTotpScan,
+        walletUnifiedAddType = walletUnifiedAddType,
+        onWalletUnifiedAddTypeChange = { walletUnifiedAddType = it },
+        documentViewModel = documentViewModel,
+        walletAddSaveableStateHolder = walletAddSaveableStateHolder,
+        noteViewModel = noteViewModel,
+        sendState = sendState,
+        bitwardenViewModel = bitwardenViewModel
     )
 
     val navBarInsetBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -2028,6 +1882,14 @@ fun SimpleMainScreen(
             .align(Alignment.BottomStart)
             .padding(start = wideFabHostWidth + 16.dp, bottom = 24.dp + 12.dp)
             .zIndex(4f)
+    }
+    val statusHintContainerColor = when (currentTab) {
+        BottomNavItem.CardWallet -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.primaryContainer
+    }
+    val statusHintTextColor = when (currentTab) {
+        BottomNavItem.CardWallet -> MaterialTheme.colorScheme.onPrimary
+        else -> MaterialTheme.colorScheme.onPrimaryContainer
     }
     AnimatedVisibility(
         visible = statusHintVisible && shouldHandleBitwardenStatusVisual && bottomStatusUiState?.messageRes != null,
@@ -2050,12 +1912,12 @@ fun SimpleMainScreen(
         Surface(
             shape = RoundedCornerShape(14.dp),
             tonalElevation = 2.dp,
-            color = fabContainerColor
+            color = statusHintContainerColor
         ) {
             Text(
                 text = stringResource(bottomStatusUiState?.messageRes ?: R.string.sync_status_syncing_short),
                 style = MaterialTheme.typography.labelLarge,
-                color = fabIconTint,
+                color = statusHintTextColor,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
             )
         }
@@ -2507,6 +2369,17 @@ private fun CompactDraggableTabContent(
             .padding(paddingValues)
     ) {
         when (currentTab) {
+            BottomNavItem.VaultV2 -> {
+                VaultV2Pane(
+                    passwordViewModel = passwordViewModel,
+                    totpViewModel = totpViewModel,
+                    onOpenPassword = onPasswordOpen,
+                    onOpenTotp = onTotpOpen,
+                    onBackToTopVisibilityChange = onBackToTopVisibilityChange,
+                    scrollToTopRequestKey = passwordScrollToTopRequestKey,
+                    modifier = Modifier.fillMaxSize()
+                )
+            }
             BottomNavItem.Passwords -> {
                 if (passwordHistoryPageMode.isVisible) {
                     TimelineScreen(
@@ -2657,6 +2530,324 @@ private fun CompactDraggableTabContent(
 }
 
 @Composable
+private fun MainScreenTabResetEffects(
+    currentTab: BottomNavItem,
+    isCompactWidth: Boolean,
+    cardWalletSubTab: CardWalletTab,
+    passwordHistoryPageMode: PasswordHistoryPageMode,
+    onResetPasswordPane: () -> Unit,
+    onHideBackToTop: () -> Unit,
+    onResetTotpPane: () -> Unit,
+    onResetCardWalletPaneAll: () -> Unit,
+    onResetCardWalletDocumentPane: () -> Unit,
+    onResetCardWalletBankCardPane: () -> Unit,
+    onSyncWalletUnifiedAddType: (CardWalletTab) -> Unit,
+    onResetNotePane: () -> Unit,
+    onResetPasskeyPane: () -> Unit,
+    onResetSendPane: () -> Unit,
+    onResetTimelineSelection: () -> Unit,
+) {
+    LaunchedEffect(currentTab.key, isCompactWidth) {
+        if (isCompactWidth || currentTab != BottomNavItem.Passwords) {
+            onResetPasswordPane()
+        }
+    }
+    LaunchedEffect(currentTab.key) {
+        if (currentTab != BottomNavItem.Passwords && currentTab != BottomNavItem.VaultV2) {
+            onHideBackToTop()
+        }
+    }
+    LaunchedEffect(currentTab.key, isCompactWidth) {
+        if (isCompactWidth || currentTab != BottomNavItem.Authenticator) {
+            onResetTotpPane()
+        }
+    }
+    LaunchedEffect(currentTab.key, isCompactWidth, cardWalletSubTab) {
+        if (isCompactWidth || currentTab != BottomNavItem.CardWallet) {
+            onResetCardWalletPaneAll()
+        } else {
+            when (cardWalletSubTab) {
+                CardWalletTab.BANK_CARDS -> onResetCardWalletDocumentPane()
+                CardWalletTab.DOCUMENTS -> onResetCardWalletBankCardPane()
+                CardWalletTab.ALL -> Unit
+            }
+        }
+    }
+    LaunchedEffect(cardWalletSubTab) {
+        if (cardWalletSubTab == CardWalletTab.BANK_CARDS || cardWalletSubTab == CardWalletTab.DOCUMENTS) {
+            onSyncWalletUnifiedAddType(cardWalletSubTab)
+        }
+    }
+    LaunchedEffect(currentTab.key, isCompactWidth) {
+        if (isCompactWidth || currentTab != BottomNavItem.Notes) {
+            onResetNotePane()
+        }
+    }
+    LaunchedEffect(currentTab.key, isCompactWidth) {
+        if (isCompactWidth || currentTab != BottomNavItem.Passkey) {
+            onResetPasskeyPane()
+        }
+    }
+    LaunchedEffect(currentTab.key, isCompactWidth) {
+        if (isCompactWidth || currentTab != BottomNavItem.Send) {
+            onResetSendPane()
+        }
+    }
+    LaunchedEffect(currentTab.key, isCompactWidth, passwordHistoryPageMode) {
+        if (isCompactWidth || currentTab != BottomNavItem.Passwords || !passwordHistoryPageMode.isVisible) {
+            onResetTimelineSelection()
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.MainScreenFabOverlay(
+    currentTab: BottomNavItem,
+    isCompactWidth: Boolean,
+    wideFabHostWidth: Dp,
+    passwordHistoryPageMode: PasswordHistoryPageMode,
+    isAnySelectionMode: Boolean,
+    isAddingPasswordInline: Boolean,
+    inlinePasswordEditorId: Long?,
+    isAddingTotpInline: Boolean,
+    selectedTotpId: Long?,
+    isAddingBankCardInline: Boolean,
+    inlineBankCardEditorId: Long?,
+    selectedBankCardId: Long?,
+    isAddingDocumentInline: Boolean,
+    inlineDocumentEditorId: Long?,
+    selectedDocumentId: Long?,
+    isAddingNoteInline: Boolean,
+    inlineNoteEditorId: Long?,
+    isAddingSendInline: Boolean,
+    isFabVisible: Boolean,
+    isFabExpanded: Boolean,
+    onFabExpandedChange: (Boolean) -> Unit,
+    passwordListShowBackToTop: Boolean,
+    onBackToTop: () -> Unit,
+    quickAccessEnabled: Boolean,
+    showPasswordQuickAccessSheet: Boolean,
+    onShowPasswordQuickAccessSheetChange: (Boolean) -> Unit,
+    recentOpenedPasswords: List<PasswordQuickAccessItem>,
+    frequentOpenedPasswords: List<PasswordQuickAccessItem>,
+    onOpenPasswordFromQuickAccess: (Long) -> Unit,
+    cardWalletSubTab: CardWalletTab,
+    onPasswordAddOpen: () -> Unit,
+    onTotpAddOpen: () -> Unit,
+    onWalletAddOpen: () -> Unit,
+    onNoteAddOpen: () -> Unit,
+    onSendAddOpen: () -> Unit,
+    onGeneratorRefresh: () -> Unit,
+    passwordViewModel: PasswordViewModel,
+    totpViewModel: TotpViewModel,
+    bankCardViewModel: BankCardViewModel,
+    localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
+    totpNewItemDefaults: NewItemStorageDefaults,
+    onNavigateToQuickTotpScan: () -> Unit,
+    walletUnifiedAddType: CardWalletTab,
+    onWalletUnifiedAddTypeChange: (CardWalletTab) -> Unit,
+    documentViewModel: DocumentViewModel,
+    walletAddSaveableStateHolder: androidx.compose.runtime.saveable.SaveableStateHolder,
+    noteViewModel: NoteViewModel,
+    sendState: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel.SendState,
+    bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel,
+) {
+    val hasWideDetailSelection = !isCompactWidth && when (currentTab) {
+        BottomNavItem.Passwords -> isAddingPasswordInline || inlinePasswordEditorId != null
+        BottomNavItem.Authenticator -> isAddingTotpInline || selectedTotpId != null
+        BottomNavItem.CardWallet -> isAddingBankCardInline ||
+            inlineBankCardEditorId != null ||
+            selectedBankCardId != null ||
+            isAddingDocumentInline ||
+            inlineDocumentEditorId != null ||
+            selectedDocumentId != null
+        BottomNavItem.Notes -> isAddingNoteInline || inlineNoteEditorId != null
+        BottomNavItem.Send -> isAddingSendInline
+        else -> false
+    }
+
+    val showFab = (
+        currentTab == BottomNavItem.VaultV2 ||
+            currentTab == BottomNavItem.Passwords ||
+            currentTab == BottomNavItem.Authenticator ||
+            currentTab == BottomNavItem.CardWallet ||
+            currentTab == BottomNavItem.Generator ||
+            currentTab == BottomNavItem.Notes ||
+            currentTab == BottomNavItem.Send
+        ) &&
+        !(currentTab == BottomNavItem.Passwords && passwordHistoryPageMode.isVisible) &&
+        !isAnySelectionMode &&
+        !hasWideDetailSelection
+
+    val isVaultLikeTab = currentTab == BottomNavItem.Passwords || currentTab == BottomNavItem.VaultV2
+    val fabOverlayModifier = if (isCompactWidth) {
+        Modifier.fillMaxSize().zIndex(5f)
+    } else {
+        Modifier
+            .fillMaxHeight()
+            .width(wideFabHostWidth)
+            .align(Alignment.TopStart)
+            .zIndex(5f)
+    }
+    val fabContainerColor = when (currentTab) {
+        BottomNavItem.CardWallet -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.primaryContainer
+    }
+    val fabIconTint = when (currentTab) {
+        BottomNavItem.CardWallet -> MaterialTheme.colorScheme.onPrimary
+        else -> MaterialTheme.colorScheme.onPrimaryContainer
+    }
+    val fabBottomOffset = if (isCompactWidth) 116.dp else 24.dp
+    val shouldShowBackToTopFab =
+        showFab &&
+            isFabVisible &&
+            !isFabExpanded &&
+            isVaultLikeTab &&
+            !isAnySelectionMode &&
+            passwordListShowBackToTop
+    val shouldShowQuickAccessFab =
+        showFab &&
+            isFabVisible &&
+            !isFabExpanded &&
+            isVaultLikeTab &&
+            quickAccessEnabled &&
+            !isAnySelectionMode
+
+    AnimatedVisibility(
+        visible = showFab && isFabVisible,
+        enter = slideInHorizontally(initialOffsetX = { it * 2 }) + fadeIn(),
+        exit = slideOutHorizontally(targetOffsetX = { it * 2 }) + fadeOut(),
+        modifier = fabOverlayModifier
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            AnimatedVisibility(
+                visible = shouldShowQuickAccessFab,
+                enter = scaleIn(
+                    initialScale = 0.25f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessLow
+                    )
+                ) + fadeIn(animationSpec = tween(durationMillis = 120)),
+                exit = scaleOut(
+                    targetScale = 0.25f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioLowBouncy,
+                        stiffness = Spring.StiffnessMedium
+                    )
+                ) + fadeOut(animationSpec = tween(durationMillis = 90)),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(
+                        end = 16.dp,
+                        bottom = fabBottomOffset + 88.dp
+                    )
+            ) {
+                SmallFloatingActionButton(
+                    onClick = { onShowPasswordQuickAccessSheetChange(true) },
+                    containerColor = MaterialTheme.colorScheme.tertiaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.History,
+                        contentDescription = stringResource(R.string.password_quick_access_title)
+                    )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = shouldShowBackToTopFab,
+                enter = scaleIn(
+                    initialScale = 0.22f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioLowBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    )
+                ) + fadeIn(animationSpec = tween(durationMillis = 120)),
+                exit = scaleOut(
+                    targetScale = 0.22f,
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioLowBouncy,
+                        stiffness = Spring.StiffnessMedium
+                    )
+                ) + fadeOut(animationSpec = tween(durationMillis = 90)),
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(
+                        end = 88.dp,
+                        bottom = fabBottomOffset + 16.dp
+                    )
+            ) {
+                SmallFloatingActionButton(
+                    onClick = onBackToTop,
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowUp,
+                        contentDescription = stringResource(R.string.cd_back)
+                    )
+                }
+            }
+
+            MainScreenAddFab(
+                fabBottomOffset = fabBottomOffset,
+                fabContainerColor = fabContainerColor,
+                fabIconTint = fabIconTint,
+                currentTab = currentTab,
+                isCompactWidth = isCompactWidth,
+                cardWalletSubTab = cardWalletSubTab,
+                onPasswordAddOpen = onPasswordAddOpen,
+                onTotpAddOpen = onTotpAddOpen,
+                onWalletAddOpen = onWalletAddOpen,
+                onNoteAddOpen = onNoteAddOpen,
+                onSendAddOpen = onSendAddOpen,
+                onGeneratorRefresh = onGeneratorRefresh,
+                onExpandStateChanged = onFabExpandedChange,
+                passwordViewModel = passwordViewModel,
+                totpViewModel = totpViewModel,
+                bankCardViewModel = bankCardViewModel,
+                localKeePassViewModel = localKeePassViewModel,
+                totpNewItemDefaults = totpNewItemDefaults,
+                onNavigateToQuickTotpScan = onNavigateToQuickTotpScan,
+                walletUnifiedAddType = walletUnifiedAddType,
+                onWalletUnifiedAddTypeChange = onWalletUnifiedAddTypeChange,
+                documentViewModel = documentViewModel,
+                walletAddSaveableStateHolder = walletAddSaveableStateHolder,
+                noteViewModel = noteViewModel,
+                sendState = sendState,
+                bitwardenViewModel = bitwardenViewModel
+            )
+        }
+    }
+
+    LaunchedEffect(currentTab, quickAccessEnabled, passwordHistoryPageMode) {
+        val quickAccessTabAllowed =
+            currentTab == BottomNavItem.Passwords || currentTab == BottomNavItem.VaultV2
+        val shouldHideBecausePasswordHistory =
+            currentTab == BottomNavItem.Passwords && passwordHistoryPageMode.isVisible
+        if (
+            (
+                !quickAccessTabAllowed ||
+                    !quickAccessEnabled ||
+                    shouldHideBecausePasswordHistory
+                ) &&
+            showPasswordQuickAccessSheet
+        ) {
+            onShowPasswordQuickAccessSheetChange(false)
+        }
+    }
+
+    PasswordQuickAccessSheet(
+        visible = showPasswordQuickAccessSheet,
+        recentItems = recentOpenedPasswords,
+        frequentItems = frequentOpenedPasswords,
+        onOpenPassword = onOpenPasswordFromQuickAccess,
+        onDismiss = { onShowPasswordQuickAccessSheetChange(false) }
+    )
+}
+
+@Composable
 private fun MainScreenSelectionBars(
     modifier: Modifier,
     currentTab: BottomNavItem,
@@ -2776,6 +2967,7 @@ private fun MainScreenAddFab(
         fabContainerColor = fabContainerColor,
         modifier = Modifier,
         onFabClickOverride = when (currentTab) {
+            BottomNavItem.VaultV2 -> if (isCompactWidth) null else ({ onPasswordAddOpen() })
             BottomNavItem.Passwords -> if (isCompactWidth) null else ({ onPasswordAddOpen() })
             BottomNavItem.Authenticator -> if (isCompactWidth) null else ({ onTotpAddOpen() })
             BottomNavItem.CardWallet -> if (isCompactWidth || cardWalletSubTab == CardWalletTab.ALL) {
@@ -2791,6 +2983,7 @@ private fun MainScreenAddFab(
         onExpandStateChanged = onExpandStateChanged,
         fabContent = {
             when (currentTab) {
+                BottomNavItem.VaultV2,
                 BottomNavItem.Passwords,
                 BottomNavItem.Authenticator,
                 BottomNavItem.CardWallet,
@@ -2819,6 +3012,7 @@ private fun MainScreenAddFab(
                     .background(MaterialTheme.colorScheme.surface)
             ) {
                 when (currentTab) {
+                    BottomNavItem.VaultV2,
                     BottomNavItem.Passwords -> {
                         AddEditPasswordScreen(
                             viewModel = passwordViewModel,

@@ -1571,6 +1571,7 @@ private fun BottomNavConfigRow(
 }
 
 private fun BottomNavContentTab.toIcon(): ImageVector = when (this) {
+    BottomNavContentTab.VAULT_V2 -> Icons.Default.Home
     BottomNavContentTab.PASSWORDS -> Icons.Default.Lock
     BottomNavContentTab.AUTHENTICATOR -> Icons.Default.Security
     BottomNavContentTab.CARD_WALLET -> Icons.Default.Wallet
@@ -1581,6 +1582,7 @@ private fun BottomNavContentTab.toIcon(): ImageVector = when (this) {
 }
 
 private fun BottomNavContentTab.toLabelRes(): Int = when (this) {
+    BottomNavContentTab.VAULT_V2 -> R.string.nav_v2_vault
     BottomNavContentTab.PASSWORDS -> R.string.nav_passwords
     BottomNavContentTab.AUTHENTICATOR -> R.string.nav_authenticator
     BottomNavContentTab.CARD_WALLET -> R.string.nav_card_wallet

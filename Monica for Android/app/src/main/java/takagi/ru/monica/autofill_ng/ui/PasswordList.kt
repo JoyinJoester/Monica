@@ -67,7 +67,7 @@ fun PasswordList(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .animateItemPlacement()
+                        .animateItem()
                 )
             }
             

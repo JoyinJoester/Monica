@@ -56,6 +56,7 @@ enum class UnifiedProgressBarMode {
  * 用于经典本地密码库模式
  */
 enum class BottomNavContentTab {
+    VAULT_V2,
     PASSWORDS,
     AUTHENTICATOR,
     CARD_WALLET,
@@ -66,6 +67,7 @@ enum class BottomNavContentTab {
 
     companion object {
         val DEFAULT_ORDER: List<BottomNavContentTab> = listOf(
+            VAULT_V2,
             PASSWORDS,
             AUTHENTICATOR,
             CARD_WALLET,
@@ -93,6 +95,7 @@ enum class BottomNavContentTab {
 }
 
 data class BottomNavVisibility(
+    val vaultV2: Boolean = false,
     val passwords: Boolean = true,
     val authenticator: Boolean = true,
     val cardWallet: Boolean = true,
@@ -102,6 +105,7 @@ data class BottomNavVisibility(
     val passkey: Boolean = true       // 通行密钥功能默认开启
 ) {
     fun isVisible(tab: BottomNavContentTab): Boolean = when (tab) {
+        BottomNavContentTab.VAULT_V2 -> vaultV2
         // BottomNavContentTab.VAULT -> vault
         BottomNavContentTab.PASSWORDS -> passwords
         BottomNavContentTab.AUTHENTICATOR -> authenticator
@@ -112,7 +116,7 @@ data class BottomNavVisibility(
         BottomNavContentTab.PASSKEY -> passkey
     }
 
-    fun visibleCount(): Int = listOf(passwords, authenticator, cardWallet, generator, notes, send, passkey).count { it }
+    fun visibleCount(): Int = listOf(vaultV2, passwords, authenticator, cardWallet, generator, notes, send, passkey).count { it }
 }
 
 /**

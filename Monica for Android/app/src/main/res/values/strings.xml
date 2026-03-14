@@ -643,8 +643,8 @@
     <string name="nav_settings_short">Set</string>
     
     <!-- V2 Multi-Source Vault Navigation -->
-    <string name="nav_v2_vault">Vault</string>
-    <string name="nav_v2_vault_short">Vault</string>
+    <string name="nav_v2_vault">Vault (Test Feature)</string>
+    <string name="nav_v2_vault_short">Test</string>
     <string name="nav_v2_send">Send</string>
     <string name="nav_v2_send_short">Send</string>
     <string name="nav_v2_sync">Sync</string>
@@ -2204,6 +2204,7 @@
     <!-- Common/component hardcoded text cleanup -->
     <string name="topbar_search_hint">Search...</string>
     <string name="topbar_close_search">Close search</string>
+    <string name="back_to_top">Back to top</string>
     <string name="loading_default">Loading...</string>
     <string name="common_count_items">%1$d items</string>
     <string name="developer_mode_password_disabled">Developer mode: password verification disabled</string>

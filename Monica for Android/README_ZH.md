@@ -189,7 +189,7 @@ cd Monica
 ### 核心技术
 - **Kotlin** - 主要开发语言
 - **Jetpack Compose** - 现代化 UI 框架
-- **Material Design 3** - UI 设计规范
+- **Material Design 3** - UI 设计规范（通过 Compose BOM 统一版本）
 
 ### 架构组件
 - **Room Database** - 本地数据持久化
@@ -208,9 +208,13 @@ cd Monica
 - **CameraX** - 相机功能
 
 ### 构建工具
-- **Gradle 8.7** - 构建系统
-- **Android Gradle Plugin 8.5.0**
-- **Kotlin 1.9.0**
+- **Gradle Wrapper 8.7** - 构建系统
+- **Android Gradle Plugin 8.6.0**
+- **Kotlin 1.9.10**
+- **KSP 1.9.10-1.0.13**
+- **Compose BOM 2024.10.01（Material3 跟随 BOM）**
+
+> 说明：依赖版本的最终准确信息以 `gradle/libs.versions.toml` 与 `app/build.gradle` 为准。
 
 ---
 

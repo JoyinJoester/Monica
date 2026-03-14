@@ -121,7 +121,9 @@ Nguon ung ho duoc uu tien cho:
 ### Build va dong gop
 - Android Studio: phien ban stable moi nhat.
 - JDK: 17+.
-- Cau hinh Android: `minSdk 26`, `targetSdk 34` (xem `Monica for Android/app/build.gradle`).
+- Cau hinh Android: `compileSdk 35`, `targetSdk 34`, `minSdk 26` (xem `Monica for Android/app/build.gradle`).
+- Moc build Android: AGP `8.6.0`, Kotlin `1.9.10`, Compose BOM `2024.10.01` (Material3 dong bo theo BOM).
+- Nguon thong tin phien ban: `Monica for Android/gradle/libs.versions.toml` va `Monica for Android/app/build.gradle`.
 - Cong nghe browser: React + TypeScript + Vite (xem `Monica for Browser/package.json`).
 - Hoan nghenh dong gop qua Issue va PR.
 

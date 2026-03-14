@@ -121,7 +121,9 @@ Android:
 ### 构建与贡献
 - Android Studio: 最新稳定版。
 - JDK: 17+。
-- Android 配置: `minSdk 26`，`targetSdk 34`（见 `Monica for Android/app/build.gradle`）。
+- Android 配置: `compileSdk 35`，`targetSdk 34`，`minSdk 26`（见 `Monica for Android/app/build.gradle`）。
+- Android 构建基线: AGP `8.6.0`，Kotlin `1.9.10`，Compose BOM `2024.10.01`（Material3 跟随 BOM）。
+- 版本信息以 `Monica for Android/gradle/libs.versions.toml` 与 `Monica for Android/app/build.gradle` 为准。
 - 浏览器端技术栈: React + TypeScript + Vite（见 `Monica for Browser/package.json`）。
 - 欢迎通过 Issue / PR 参与功能和安全改进。
 

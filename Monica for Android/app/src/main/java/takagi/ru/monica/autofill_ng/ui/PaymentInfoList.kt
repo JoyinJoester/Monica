@@ -64,7 +64,7 @@ fun PaymentInfoList(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .animateItemPlacement()
+                        .animateItem()
                 )
             }
         }

@@ -121,7 +121,9 @@ Your support mainly funds:
 ### Build and contribution
 - Android Studio: latest stable.
 - JDK: 17+.
-- Android config: `minSdk 26`, `targetSdk 34` (see `Monica for Android/app/build.gradle`).
+- Android config: `compileSdk 35`, `targetSdk 34`, `minSdk 26` (see `Monica for Android/app/build.gradle`).
+- Android build baseline: AGP `8.6.0`, Kotlin `1.9.10`, Compose BOM `2024.10.01` (Material3 aligned by BOM).
+- Version source of truth: `Monica for Android/gradle/libs.versions.toml` and `Monica for Android/app/build.gradle`.
 - Browser tech stack: React + TypeScript + Vite (see `Monica for Browser/package.json`).
 - Contributions via Issues and PRs are welcome.
 

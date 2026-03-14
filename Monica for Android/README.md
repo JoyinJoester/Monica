@@ -91,6 +91,7 @@ Built by developers, for developers (and everyone else).
 
 *   **Language**: [Kotlin](https://kotlinlang.org/)
 *   **UI Framework**: [Jetpack Compose](https://developer.android.com/jetpack/compose)
+*   **UI Baseline**: Compose BOM `2024.10.01` + Material 3 (version aligned by BOM)
 *   **Architecture**: MVVM + Clean Architecture
 *   **Database**: Room (SQLite) with SQLCipher support
 *   **Async**: Coroutines & Flow
@@ -100,6 +101,8 @@ Built by developers, for developers (and everyone else).
     *   `com.google.zxing`: QR Code processing
     *   `dom4j`: XML parsing for KeePass
     *   `sardine-android`: WebDAV client
+
+> Dependency versions are maintained in `gradle/libs.versions.toml` and consumed by `app/build.gradle`.
 
 ---
 

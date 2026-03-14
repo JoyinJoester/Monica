@@ -40,10 +40,13 @@ keyguard-app-master/
 stratumauthapp/
 # Documentation and Analysis
 修复文档/
+doc/
 # Ignore plan documents
 计划文档/
 task_plan*.md
 task_plan_bottom_sheet_nav.md
+# Ignore root task checklist
+密码库V2-任务清单.md
 # Local backups - never commit
 monica_backup_*/
 # Ignore external project
