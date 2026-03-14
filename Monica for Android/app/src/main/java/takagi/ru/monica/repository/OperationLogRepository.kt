@@ -66,4 +66,12 @@ class OperationLogRepository(
         val cutoffTime = System.currentTimeMillis() - (daysToKeep * 24 * 60 * 60 * 1000L)
         operationLogDao.deleteOldLogs(cutoffTime)
     }
+
+    /**
+     * 删除超过指定天数的维护快照日志
+     */
+    suspend fun deleteOldMaintenanceSnapshotLogs(snapshotFieldName: String, daysToKeep: Int = 14) {
+        val cutoffTime = System.currentTimeMillis() - (daysToKeep * 24 * 60 * 60 * 1000L)
+        operationLogDao.deleteOldMaintenanceSnapshotLogs(cutoffTime, snapshotFieldName)
+    }
 }

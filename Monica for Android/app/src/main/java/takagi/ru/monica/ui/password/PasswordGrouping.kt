@@ -87,11 +87,19 @@ fun getPasswordGroupTitle(
 ): String = getGroupKeyForMode(entry, "smart", websiteStackMatchMode)
 
 private fun normalizeWebsiteStrict(raw: String): String {
+    val host = extractHost(raw)
+    if (!host.isNullOrBlank()) {
+        return host
+    }
+
     return raw
+        .trim()
         .lowercase(Locale.ROOT)
         .removePrefix("http://")
         .removePrefix("https://")
         .removePrefix("www.")
+        .substringBefore('?')
+        .substringBefore('#')
         .trimEnd('/')
 }
 
@@ -108,7 +116,7 @@ private fun normalizeWebsiteForStackGroupKey(
     val raw = value.trim()
     if (raw.isEmpty()) return ""
     return when (parseWebsiteStackMatchMode(websiteStackMatchMode)) {
-        WebsiteStackMatchMode.STRICT -> raw
+        WebsiteStackMatchMode.STRICT -> normalizeWebsiteStrict(raw)
         WebsiteStackMatchMode.RELAXED -> extractPrimaryDomain(raw) ?: raw
     }
 }

@@ -42,6 +42,10 @@ class BitwardenAuthService(
         private const val TAG = "BitwardenAuthService"
         private const val DIAG_PREFIX = "[BW_DIAG]"
         private const val ERROR_BODY_SNIPPET_LIMIT = 240
+        private const val PBKDF2_DEFAULT_ITERATIONS = 600000
+        private const val ARGON2_DEFAULT_ITERATIONS = 3
+        private const val ARGON2_DEFAULT_MEMORY_MB = 64
+        private const val ARGON2_DEFAULT_PARALLELISM = 4
         
         // 两步验证类型
         const val TWO_FACTOR_AUTHENTICATOR = 0
@@ -106,11 +110,12 @@ class BitwardenAuthService(
                 }
                 
                 Result.success(
-                    PreLoginResult(
+                    normalizePreLoginResult(
                         kdfType = body.kdf,
                         kdfIterations = body.kdfIterations,
                         kdfMemory = body.kdfMemory,
-                        kdfParallelism = body.kdfParallelism
+                        kdfParallelism = body.kdfParallelism,
+                        diagnosticAttemptId = diagnosticAttemptId
                     )
                 )
             } else {
@@ -210,20 +215,38 @@ class BitwardenAuthService(
             val emailLower = normalizedEmail.lowercase(Locale.ENGLISH)
             
             // 2. 派生 Master Key
-            masterKey = if (preLoginResult.kdfType == BitwardenVault.KDF_TYPE_ARGON2ID) {
-                BitwardenCrypto.deriveMasterKeyArgon2(
-                    password = password,
-                    salt = emailLower,  // 使用小写邮箱作为盐
-                    iterations = preLoginResult.kdfIterations,
-                    memory = preLoginResult.kdfMemory ?: 64,
-                    parallelism = preLoginResult.kdfParallelism ?: 4
-                )
-            } else {
-                BitwardenCrypto.deriveMasterKeyPbkdf2(
-                    password = password,
-                    salt = emailLower,  // 使用小写邮箱作为盐
-                    iterations = preLoginResult.kdfIterations
-                )
+            masterKey = when (preLoginResult.kdfType) {
+                BitwardenVault.KDF_TYPE_ARGON2ID -> {
+                    BitwardenCrypto.deriveMasterKeyArgon2(
+                        password = password,
+                        salt = emailLower,  // 使用小写邮箱作为盐
+                        iterations = preLoginResult.kdfIterations,
+                        memory = preLoginResult.kdfMemory ?: ARGON2_DEFAULT_MEMORY_MB,
+                        parallelism = preLoginResult.kdfParallelism ?: ARGON2_DEFAULT_PARALLELISM
+                    )
+                }
+
+                BitwardenVault.KDF_TYPE_PBKDF2 -> {
+                    BitwardenCrypto.deriveMasterKeyPbkdf2(
+                        password = password,
+                        salt = emailLower,  // 使用小写邮箱作为盐
+                        iterations = preLoginResult.kdfIterations
+                    )
+                }
+
+                else -> {
+                    logDiag(
+                        flow = "primary",
+                        attemptId = attemptId,
+                        stage = "stop_unsupported_kdf",
+                        message =
+                            "kdf=${preLoginResult.kdfType}, iter=${preLoginResult.kdfIterations}, " +
+                                "mem=${preLoginResult.kdfMemory}, parallelism=${preLoginResult.kdfParallelism}"
+                    )
+                    return@withContext Result.failure(
+                        IllegalArgumentException("Unsupported KDF type: ${preLoginResult.kdfType}")
+                    )
+                }
             }
             
             // 3. 派生 Master Password Hash (用于服务器认证)
@@ -1016,6 +1039,61 @@ class BitwardenAuthService(
         val isInvalidCredBody = errorBody?.contains("invalid_username_or_password", ignoreCase = true) == true
 
         return isInvalidGrant && (isInvalidCredDescription || isInvalidCredBody)
+    }
+
+    private fun normalizePreLoginResult(
+        kdfType: Int,
+        kdfIterations: Int,
+        kdfMemory: Int?,
+        kdfParallelism: Int?,
+        diagnosticAttemptId: String?
+    ): PreLoginResult {
+        val normalized = when (kdfType) {
+            BitwardenVault.KDF_TYPE_PBKDF2 -> PreLoginResult(
+                kdfType = kdfType,
+                kdfIterations = kdfIterations.takePositiveOrDefault(PBKDF2_DEFAULT_ITERATIONS),
+                kdfMemory = null,
+                kdfParallelism = null
+            )
+
+            BitwardenVault.KDF_TYPE_ARGON2ID -> PreLoginResult(
+                kdfType = kdfType,
+                kdfIterations = kdfIterations.takePositiveOrDefault(ARGON2_DEFAULT_ITERATIONS),
+                kdfMemory = kdfMemory.takePositiveOrDefault(ARGON2_DEFAULT_MEMORY_MB),
+                kdfParallelism = kdfParallelism.takePositiveOrDefault(ARGON2_DEFAULT_PARALLELISM)
+            )
+
+            else -> PreLoginResult(
+                kdfType = kdfType,
+                kdfIterations = kdfIterations,
+                kdfMemory = kdfMemory,
+                kdfParallelism = kdfParallelism
+            )
+        }
+
+        if (
+            normalized.kdfIterations != kdfIterations ||
+            normalized.kdfMemory != kdfMemory ||
+            normalized.kdfParallelism != kdfParallelism
+        ) {
+            diagnosticAttemptId?.let { attemptId ->
+                logDiag(
+                    flow = "primary",
+                    attemptId = attemptId,
+                    stage = "prelogin_normalized",
+                    message =
+                        "kdf=$kdfType, iter:$kdfIterations->${normalized.kdfIterations}, " +
+                            "mem:$kdfMemory->${normalized.kdfMemory}, " +
+                            "parallelism:$kdfParallelism->${normalized.kdfParallelism}"
+                )
+            }
+        }
+
+        return normalized
+    }
+
+    private fun Int?.takePositiveOrDefault(default: Int): Int {
+        return this?.takeIf { it > 0 } ?: default
     }
 
     private fun newAttemptId(): String = UUID.randomUUID().toString().substring(0, 8)

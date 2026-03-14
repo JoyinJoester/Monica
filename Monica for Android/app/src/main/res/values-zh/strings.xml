@@ -2107,6 +2107,8 @@
     <string name="timeline_field_password">密码</string>
     <string name="timeline_field_batch_move">批量移动</string>
     <string name="timeline_field_batch_copy">批量复制</string>
+    <string name="timeline_field_maintenance_snapshot">维护快照</string>
+    <string name="timeline_snapshot_ready">可用于恢复</string>
     <string name="timeline_batch_source_multiple">多个条目</string>
     <string name="timeline_batch_move_title">批量移动（%1$d）</string>
     <string name="timeline_batch_copy_title">批量复制（%1$d）</string>
@@ -2114,6 +2116,7 @@
     <string name="timeline_restore_to_after_edit">恢复到编辑后</string>
     <string name="timeline_restore_to_before_edit">恢复到编辑前</string>
     <string name="timeline_undo_operation">撤销操作</string>
+    <string name="timeline_restore_snapshot">恢复快照</string>
     <string name="timeline_redo_operation">重做操作</string>
     <string name="timeline_save_old_as_new">旧数据另存为新条目</string>
     <string name="timeline_empty_trash_title">清空回收站</string>
@@ -2273,6 +2276,7 @@
     <string name="quick_database_maintenance_title">快捷数据库维护</string>
     <string name="quick_database_maintenance_entry_desc">一键对齐各数据库里已匹配的密码、验证器、银行卡等镜像数据</string>
     <string name="quick_database_maintenance_desc">自动匹配 Monica、KeePass、Bitwarden 中的同类条目，并把已有副本统一内容，补齐缺失镜像。</string>
+    <string name="quick_database_maintenance_snapshot_retention_notice">每次运行前会生成维护快照，快照仅保留 14 天。</string>
     <string name="quick_database_maintenance_scope_title">维护范围</string>
     <string name="quick_database_maintenance_scope_desc">当前版本只同步已匹配为同一条的数据，不会把所有唯一条目广播到每个数据库。</string>
     <string name="quick_database_maintenance_selection_hint">下面的切换按钮会决定本轮纳入哪些数据类型，按钮尺寸已放大以减少误触。</string>
@@ -2287,6 +2291,22 @@
     <string name="quick_database_maintenance_button_label">开始同步合并</string>
     <string name="quick_database_maintenance_button_running">正在同步合并</string>
     <string name="quick_database_maintenance_run_hint">本操作只同步已匹配成功的镜像，不会把所有唯一条目直接广播到每个数据库。</string>
+    <string name="quick_database_maintenance_sync_settings_title">同步设置</string>
+    <string name="quick_database_maintenance_mode_selector_label">同步模式</string>
+    <string name="quick_database_maintenance_mode_selector_hint">先选择本次同步策略，再执行同步合并。</string>
+    <string name="quick_database_maintenance_target_selector_label">目标数据库</string>
+    <string name="quick_database_maintenance_target_selector_hint">仅在“同步到选择的数据库”模式下生效。</string>
+    <string name="quick_database_maintenance_target_sheet_title">选择目标数据库</string>
+    <string name="quick_database_maintenance_target_sheet_empty">当前没有可选的目标数据库。</string>
+    <string name="quick_database_maintenance_mode_full">全数据库同步（双向）</string>
+    <string name="quick_database_maintenance_mode_target">同步到选择的数据库</string>
+    <string name="quick_database_maintenance_target_placeholder">选择目标数据库</string>
+    <string name="quick_database_maintenance_plan_title">确认冲突处理</string>
+    <string name="quick_database_maintenance_plan_desc">本次将处理 %1$d 个分组，检测到 %2$d 个冲突候选。是否按默认规则继续合并？</string>
+    <string name="quick_database_maintenance_plan_confirm">继续合并</string>
+    <string name="quick_database_maintenance_operation_title">实时操作信息</string>
+    <string name="quick_database_maintenance_operation_desc">实时显示当前正在进行的合并步骤。</string>
+    <string name="quick_database_maintenance_conflict_summary">已按多密码处理的密码冲突：%1$d，已自动合并字段冲突：%2$d</string>
     <string name="quick_database_maintenance_stats_title">数据库数据量统计对比</string>
     <string name="quick_database_maintenance_stats_desc">已接入 %1$d 个数据库，最高 %2$d 条，最低 %3$d 条。</string>
     <string name="quick_database_maintenance_stats_total">总计 %1$d 条</string>
@@ -2309,6 +2329,7 @@
     <string name="quick_database_maintenance_note_passkeys_scan_only">Passkey 当前只做冲突扫描，不会自动复制到多个数据库，避免破坏私钥链路。</string>
     <string name="quick_database_maintenance_error_load_sources">加载已接入数据库列表失败。</string>
     <string name="quick_database_maintenance_error_no_categories">请至少选择一种数据类型后再执行同步合并。</string>
+    <string name="quick_database_maintenance_error_no_target">请先选择目标数据库，再执行目标同步。</string>
     <string name="quick_database_maintenance_error_run">快捷数据库维护失败，请检查已接入数据库后重试。</string>
     <string name="dedup_engine_title">去重引擎</string>
     <string name="dedup_engine_desc">用规则化方式统一扫描 Monica、KeePass 和 Bitwarden 的重复数据</string>

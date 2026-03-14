@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -25,17 +26,27 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -47,6 +58,7 @@ import takagi.ru.monica.data.maintenance.QuickMaintenanceCategory
 import takagi.ru.monica.data.maintenance.QuickMaintenanceCategoryNote
 import takagi.ru.monica.data.maintenance.QuickMaintenanceCategoryResult
 import takagi.ru.monica.data.maintenance.QuickMaintenanceDiffItem
+import takagi.ru.monica.data.maintenance.QuickMaintenanceMode
 import takagi.ru.monica.data.maintenance.QuickMaintenanceSource
 import takagi.ru.monica.data.maintenance.QuickMaintenanceSourceDiff
 import takagi.ru.monica.data.maintenance.QuickMaintenanceSourceStats
@@ -62,7 +74,11 @@ fun QuickDatabaseMaintenanceScreen(
     onIncludeAuthenticatorsChange: (Boolean) -> Unit,
     onIncludeBankCardsChange: (Boolean) -> Unit,
     onIncludePasskeysChange: (Boolean) -> Unit,
-    onRun: () -> Unit
+    onModeChange: (QuickMaintenanceMode) -> Unit,
+    onTargetSourceChange: (String) -> Unit,
+    onRun: () -> Unit,
+    onConfirmRun: () -> Unit,
+    onDismissPlan: () -> Unit
 ) {
     val hasCategorySelection = uiState.includePasswords ||
         uiState.includeAuthenticators ||
@@ -131,6 +147,11 @@ fun QuickDatabaseMaintenanceScreen(
                                 text = stringResource(R.string.quick_database_maintenance_desc),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.85f)
+                            )
+                            Text(
+                                text = stringResource(R.string.quick_database_maintenance_snapshot_retention_notice),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                             )
                         }
                     }
@@ -231,6 +252,105 @@ fun QuickDatabaseMaintenanceScreen(
                         stringResource(R.string.quick_database_maintenance_run_desc)
                     }
                 ) {
+                    var showTargetPickerSheet by remember { mutableStateOf(false) }
+                    Surface(
+                        shape = MaterialTheme.shapes.medium,
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.quick_database_maintenance_sync_settings_title),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.SemiBold
+                            )
+
+                            Text(
+                                text = stringResource(R.string.quick_database_maintenance_mode_selector_label),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            SyncModeOptionCard(
+                                title = stringResource(R.string.quick_database_maintenance_mode_full),
+                                selected = uiState.selectedMode == QuickMaintenanceMode.FULL_BIDIRECTIONAL,
+                                onClick = { onModeChange(QuickMaintenanceMode.FULL_BIDIRECTIONAL) }
+                            )
+                            SyncModeOptionCard(
+                                title = stringResource(R.string.quick_database_maintenance_mode_target),
+                                selected = uiState.selectedMode == QuickMaintenanceMode.TARGET_DATABASE,
+                                onClick = { onModeChange(QuickMaintenanceMode.TARGET_DATABASE) }
+                            )
+                            Text(
+                                text = stringResource(R.string.quick_database_maintenance_mode_selector_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            if (uiState.selectedMode == QuickMaintenanceMode.TARGET_DATABASE) {
+                                val selectedTarget = uiState.connectedSources.firstOrNull { it.key == uiState.selectedTargetSourceKey }
+                                Text(
+                                    text = stringResource(R.string.quick_database_maintenance_target_selector_label),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                OutlinedButton(
+                                    onClick = { showTargetPickerSheet = true },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(
+                                        text = selectedTarget?.let { sourceDisplayLabel(it) }
+                                            ?: stringResource(R.string.quick_database_maintenance_target_placeholder)
+                                    )
+                                }
+                                Text(
+                                    text = stringResource(R.string.quick_database_maintenance_target_selector_hint),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                if (showTargetPickerSheet) {
+                                    ModalBottomSheet(onDismissRequest = { showTargetPickerSheet = false }) {
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 16.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Text(
+                                                text = stringResource(R.string.quick_database_maintenance_target_sheet_title),
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                            if (uiState.connectedSources.isEmpty()) {
+                                                Text(
+                                                    text = stringResource(R.string.quick_database_maintenance_target_sheet_empty),
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            } else {
+                                                uiState.connectedSources.forEach { source ->
+                                                    TargetSourceOptionRow(
+                                                        source = source,
+                                                        selected = source.key == uiState.selectedTargetSourceKey,
+                                                        onClick = {
+                                                            onTargetSourceChange(source.key)
+                                                            showTargetPickerSheet = false
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.size(10.dp))
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     Button(
                         onClick = onRun,
                         modifier = Modifier
@@ -264,6 +384,35 @@ fun QuickDatabaseMaintenanceScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    uiState.progress?.let { progress ->
+                        val total = progress.total.coerceAtLeast(1)
+                        LinearProgressIndicator(
+                            progress = { progress.processed.toFloat() / total.toFloat() },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Text(
+                            text = progress.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
+            if (uiState.operationMessages.isNotEmpty()) {
+                item {
+                    MaintenanceSection(
+                        title = stringResource(R.string.quick_database_maintenance_operation_title),
+                        body = stringResource(R.string.quick_database_maintenance_operation_desc)
+                    ) {
+                        uiState.operationMessages.takeLast(8).forEach { line ->
+                            Text(
+                                text = line,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
             }
 
@@ -333,7 +482,123 @@ fun QuickDatabaseMaintenanceScreen(
                 items(result.categoryResults) { item ->
                     ResultCard(item)
                 }
+                item {
+                    Text(
+                        text = stringResource(
+                            R.string.quick_database_maintenance_conflict_summary,
+                            result.passwordConflictHandled,
+                            result.fieldConflictCount
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+                }
             }
+        }
+    }
+
+    uiState.pendingPlan?.let { plan ->
+        AlertDialog(
+            onDismissRequest = onDismissPlan,
+            title = { Text(stringResource(R.string.quick_database_maintenance_plan_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = stringResource(
+                            R.string.quick_database_maintenance_plan_desc,
+                            plan.estimatedGroups,
+                            plan.conflictCount
+                        )
+                    )
+                    plan.conflictSamples.take(5).forEach { sample ->
+                        Text(
+                            text = "- $sample",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = onConfirmRun) {
+                    Text(stringResource(R.string.quick_database_maintenance_plan_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = onDismissPlan) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun TargetSourceOptionRow(
+    source: QuickMaintenanceSource,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Card(
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) {
+                MaterialTheme.colorScheme.secondaryContainer
+            } else {
+                MaterialTheme.colorScheme.surface
+            }
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            RadioButton(selected = selected, onClick = onClick)
+            Text(
+                text = sourceDisplayLabel(source),
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+            )
+        }
+    }
+}
+
+@Composable
+private fun SyncModeOptionCard(
+    title: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val containerColor = if (selected) {
+        MaterialTheme.colorScheme.secondaryContainer
+    } else {
+        MaterialTheme.colorScheme.surface
+    }
+    Card(
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            RadioButton(selected = selected, onClick = onClick)
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+            )
         }
     }
 }

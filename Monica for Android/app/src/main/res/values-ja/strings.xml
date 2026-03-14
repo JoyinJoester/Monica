@@ -1770,5 +1770,6 @@
     <string name="plus_feature_locked">Plus が必要</string>
     <string name="plus_thank_you">ご支援ありがとうございます！</string>
     <string name="plus_payment_links_title">支払いリンク</string>
+    <string name="quick_database_maintenance_snapshot_retention_notice">各実行の前にメンテナンス用スナップショットを作成し、14日間保持します。</string>
 
 </resources>

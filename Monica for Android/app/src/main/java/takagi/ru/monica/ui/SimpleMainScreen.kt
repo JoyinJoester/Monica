@@ -834,7 +834,7 @@ fun SimpleMainScreen(
         passwordHistoryPageMode = PasswordHistoryPageMode.TIMELINE
     }
     val openTrashPage: () -> Unit = {
-        passwordHistoryInitialTrashScopeKey = resolveTrashScopeKeyFromPasswordFilter(currentFilter)
+        passwordHistoryInitialTrashScopeKey = null
         passwordHistoryPageMode = PasswordHistoryPageMode.TRASH
     }
     val closeHistoryPage: () -> Unit = {

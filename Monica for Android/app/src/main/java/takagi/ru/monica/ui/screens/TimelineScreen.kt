@@ -1,8 +1,12 @@
 package takagi.ru.monica.ui.screens
 
+import android.os.Build
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -516,6 +520,7 @@ private fun TimelineContent(
 ) {
     val timelineEvents by viewModel.timelineEvents.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val maintenanceRestoreMessage by viewModel.maintenanceRestoreMessage.collectAsState()
     val context = LocalContext.current
     val database = remember(context) { PasswordDatabase.getDatabase(context.applicationContext) }
     val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
@@ -612,6 +617,14 @@ private fun TimelineContent(
         }
     }
     val groups = groupAndAggregateEvents(visibleTimelineEvents)
+
+    LaunchedEffect(maintenanceRestoreMessage) {
+        val message = maintenanceRestoreMessage
+        if (!message.isNullOrBlank()) {
+            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+            viewModel.consumeMaintenanceRestoreMessage()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -713,6 +726,7 @@ private fun TimelineContent(
 
     val selectedUnifiedScope = remember(selectedScope) {
         when (selectedScope) {
+            TrashScopeFilter.All -> UnifiedCategoryFilterSelection.All
             TrashScopeFilter.Local -> UnifiedCategoryFilterSelection.Local
             is TrashScopeFilter.BitwardenVaultScope ->
                 UnifiedCategoryFilterSelection.BitwardenVaultFilter(selectedScope.vaultId)
@@ -777,6 +791,12 @@ private fun TimelineContent(
                 viewModel.revertEdit(log) { success ->
                     if (success) {
                         selectedLog = null
+                    } else {
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.timeline_restore_failed),
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
                 }
             },
@@ -1290,7 +1310,7 @@ private fun AggregatedLogItem(
             }
             
             // 展开后的内容
-            AnimatedVisibility(
+            SafeAnimatedVisibility(
                 visible = isExpanded,
                 enter = expandVertically(animationSpec = tween(200)) + fadeIn(animationSpec = tween(150)),
                 exit = shrinkVertically(animationSpec = tween(200)) + fadeOut(animationSpec = tween(100))
@@ -1345,6 +1365,30 @@ private fun AggregatedLogItem(
     }
 }
 
+@Composable
+private fun SafeAnimatedVisibility(
+    visible: Boolean,
+    enter: EnterTransition,
+    exit: ExitTransition,
+    content: @Composable () -> Unit
+) {
+    // Android 14+ 机型上此处可能触发 Lookahead 布局竞态，降级为无动画避免闪退。
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        if (visible) {
+            content()
+        }
+        return
+    }
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = enter,
+        exit = exit
+    ) {
+        content()
+    }
+}
+
 /**
  * 日志详情底部弹窗 - 更精致的设计
  */
@@ -1367,6 +1411,10 @@ private fun StandardLogDetailSheet(
         it.fieldName == stringResource(R.string.timeline_field_batch_move) ||
             it.fieldName == stringResource(R.string.timeline_field_batch_copy)
     }
+    val isMaintenanceSnapshotOperation = log.changes.any {
+        it.fieldName == stringResource(R.string.timeline_field_maintenance_snapshot)
+    }
+    val hasRestorablePayload = isBatchOperation || isMaintenanceSnapshotOperation
     val gradient = getOperationGradient(log.operationType, log.itemType)
     val icon = getOperationIcon(log.operationType, log.itemType)
 
@@ -1589,7 +1637,7 @@ private fun StandardLogDetailSheet(
             }
             
             // 操作按钮
-            if (isUpdateOperation && hasOldValues && (!isBatchOperation || !log.isReverted)) {
+            if (isUpdateOperation && (hasOldValues || hasRestorablePayload) && (!hasRestorablePayload || !log.isReverted)) {
                 Column(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -1611,6 +1659,7 @@ private fun StandardLogDetailSheet(
                         Text(
                             text = when {
                                 isBatchOperation -> stringResource(R.string.timeline_undo_operation)
+                                isMaintenanceSnapshotOperation -> stringResource(R.string.timeline_restore_snapshot)
                                 log.isReverted -> stringResource(R.string.timeline_restore_to_after_edit)
                                 else -> stringResource(R.string.timeline_restore_to_before_edit)
                             },
@@ -1618,7 +1667,7 @@ private fun StandardLogDetailSheet(
                         )
                     }
                     
-                    if (!log.isReverted && !isBatchOperation) {
+                    if (!log.isReverted && !hasRestorablePayload) {
                         OutlinedButton(
                             onClick = onSaveOldAsNew,
                             modifier = Modifier.fillMaxWidth(),
@@ -1928,6 +1977,7 @@ private fun TimelineAxis(
 // ================== 回收站相关组件 ==================
 
 private sealed interface TrashScopeFilter {
+    object All : TrashScopeFilter
     object Local : TrashScopeFilter
     data class BitwardenVaultScope(val vaultId: Long) : TrashScopeFilter
     data class KeePassDatabaseScope(val databaseId: Long) : TrashScopeFilter
@@ -1941,6 +1991,7 @@ private data class TrashScopeFilterOption(
 
 private val TrashScopeFilter.key: String
     get() = when (this) {
+        TrashScopeFilter.All -> "all"
         TrashScopeFilter.Local -> "local"
         is TrashScopeFilter.BitwardenVaultScope -> "bitwarden_${this.vaultId}"
         is TrashScopeFilter.KeePassDatabaseScope -> "keepass_${this.databaseId}"
@@ -1976,6 +2027,9 @@ private fun resolveTrashScope(item: takagi.ru.monica.viewmodel.TrashItem): Trash
 }
 
 private fun TrashScopeFilter.matches(item: takagi.ru.monica.viewmodel.TrashItem): Boolean {
+    if (this == TrashScopeFilter.All) {
+        return true
+    }
     return resolveTrashScope(item) == this
 }
 
@@ -2057,12 +2111,20 @@ private fun TrashContent(
 
     val trashCategories by viewModel.trashCategories.collectAsState()
     val trashSettings by viewModel.trashSettings.collectAsState()
+    val allLabel = stringResource(R.string.filter_all)
     val localLabel = stringResource(R.string.filter_monica)
     val bitwardenLabel = stringResource(R.string.filter_bitwarden)
     val keepassLabel = stringResource(R.string.filter_keepass)
 
-    val scopeOptions = remember(localLabel, bitwardenLabel, keepassLabel, bitwardenVaults, keepassDatabases) {
+    val scopeOptions = remember(allLabel, localLabel, bitwardenLabel, keepassLabel, bitwardenVaults, keepassDatabases) {
         buildList {
+            add(
+                TrashScopeFilterOption(
+                    key = TrashScopeFilter.All.key,
+                    label = allLabel,
+                    scope = TrashScopeFilter.All
+                )
+            )
             add(
                 TrashScopeFilterOption(
                     key = TrashScopeFilter.Local.key,
@@ -2092,7 +2154,7 @@ private fun TrashContent(
         }
     }
 
-    var selectedScopeKey by rememberSaveable { mutableStateOf(TrashScopeFilter.Local.key) }
+    var selectedScopeKey by rememberSaveable { mutableStateOf(TrashScopeFilter.All.key) }
     var initialScopeApplied by remember(initialSelectedScopeKey) { mutableStateOf(false) }
     var showScopeSelectionSheet by remember { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
@@ -2107,7 +2169,7 @@ private fun TrashContent(
 
     val colorScheme = MaterialTheme.colorScheme
 
-    val selectedScope = scopeOptions.firstOrNull { it.key == selectedScopeKey }?.scope ?: TrashScopeFilter.Local
+    val selectedScope = scopeOptions.firstOrNull { it.key == selectedScopeKey }?.scope ?: TrashScopeFilter.All
 
     LaunchedEffect(scopeOptions, initialSelectedScopeKey, initialScopeApplied) {
         val preferredScopeKey = initialSelectedScopeKey
@@ -2120,7 +2182,7 @@ private fun TrashContent(
             }
         }
         if (scopeOptions.none { it.key == selectedScopeKey }) {
-            selectedScopeKey = scopeOptions.firstOrNull()?.key ?: TrashScopeFilter.Local.key
+            selectedScopeKey = scopeOptions.firstOrNull()?.key ?: TrashScopeFilter.All.key
         }
     }
 
@@ -2298,6 +2360,7 @@ private fun TrashContent(
     
     val selectedUnifiedScope = remember(selectedScope) {
         when (selectedScope) {
+            TrashScopeFilter.All -> UnifiedCategoryFilterSelection.All
             TrashScopeFilter.Local -> UnifiedCategoryFilterSelection.Local
             is TrashScopeFilter.BitwardenVaultScope ->
                 UnifiedCategoryFilterSelection.BitwardenVaultFilter(selectedScope.vaultId)
@@ -2327,7 +2390,7 @@ private fun TrashContent(
                     TrashScopeFilter.KeePassDatabaseScope(selection.databaseId).key
                 is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter ->
                     TrashScopeFilter.KeePassDatabaseScope(selection.databaseId).key
-                else -> TrashScopeFilter.Local.key
+                else -> TrashScopeFilter.All.key
             }
             showScopeSelectionSheet = false
         },

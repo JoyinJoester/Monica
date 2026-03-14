@@ -559,16 +559,17 @@ fun MonicaContent(
         }
     }
 
+    // Emergency safe mode: disable global shared transition lookahead to avoid
+    // "Placement happened before lookahead" crashes on affected devices/builds.
     @OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
-    androidx.compose.animation.SharedTransitionLayout {
-        androidx.compose.runtime.CompositionLocalProvider(
-            takagi.ru.monica.ui.LocalSharedTransitionScope provides this,
-            takagi.ru.monica.ui.LocalReduceAnimations provides settings.reduceAnimations
+    androidx.compose.runtime.CompositionLocalProvider(
+        takagi.ru.monica.ui.LocalSharedTransitionScope provides null,
+        takagi.ru.monica.ui.LocalReduceAnimations provides true
+    ) {
+        NavHost(
+            navController = navController,
+            startDestination = fixedStartDestination
         ) {
-            NavHost(
-                navController = navController,
-                startDestination = fixedStartDestination
-            ) {
         composable(Screen.Login.route) {
             LoginScreen(
                 viewModel = viewModel,
@@ -2131,17 +2132,20 @@ fun MonicaContent(
             val quickMaintenanceViewModel: takagi.ru.monica.viewmodel.QuickDatabaseMaintenanceViewModel = viewModel {
                 takagi.ru.monica.viewmodel.QuickDatabaseMaintenanceViewModel(
                     takagi.ru.monica.data.maintenance.createQuickDatabaseMaintenanceEngine(
+                        database = database,
                         passwordRepository = repository,
                         secureItemRepository = secureItemRepository,
                         passkeyRepository = passkeyRepository,
                         localKeePassDatabaseDao = database.localKeePassDatabaseDao(),
+                        bitwardenFolderDao = database.bitwardenFolderDao(),
                         bitwardenVaultDao = database.bitwardenVaultDao(),
                         securityManager = securityManager,
                         workspaceRepository = takagi.ru.monica.repository.KeePassWorkspaceRepository(
                             context = context.applicationContext,
                             dao = database.localKeePassDatabaseDao(),
                             securityManager = securityManager
-                        )
+                        ),
+                        operationLogRepository = takagi.ru.monica.repository.OperationLogRepository(database.operationLogDao())
                     )
                 )
             }
@@ -2156,9 +2160,13 @@ fun MonicaContent(
                 onIncludeAuthenticatorsChange = quickMaintenanceViewModel::updateIncludeAuthenticators,
                 onIncludeBankCardsChange = quickMaintenanceViewModel::updateIncludeBankCards,
                 onIncludePasskeysChange = quickMaintenanceViewModel::updateIncludePasskeys,
+                onModeChange = quickMaintenanceViewModel::updateMode,
+                onTargetSourceChange = quickMaintenanceViewModel::updateTargetSource,
                 onRun = {
                     quickMaintenanceViewModel.runMaintenance()
-                }
+                },
+                onConfirmRun = quickMaintenanceViewModel::confirmAndRunMaintenance,
+                onDismissPlan = quickMaintenanceViewModel::dismissPlan
             )
         }
 
@@ -2373,8 +2381,8 @@ fun MonicaContent(
             )
         }
     }
-        }
-    }
+}
+
 }
 
 @Composable

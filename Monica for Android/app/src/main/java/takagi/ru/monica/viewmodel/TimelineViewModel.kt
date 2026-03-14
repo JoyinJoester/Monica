@@ -4,17 +4,22 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
+import takagi.ru.monica.R
 import takagi.ru.monica.data.OperationLog
 import takagi.ru.monica.data.PasswordDatabase
+import takagi.ru.monica.data.maintenance.MaintenanceSnapshotManager
 import takagi.ru.monica.data.model.DiffChange
 import takagi.ru.monica.data.model.TIMELINE_FIELD_BATCH_COPY_PAYLOAD
 import takagi.ru.monica.data.model.TIMELINE_FIELD_BATCH_MOVE_PAYLOAD
+import takagi.ru.monica.data.model.TIMELINE_FIELD_MAINTENANCE_SNAPSHOT_PAYLOAD
 import takagi.ru.monica.data.model.TimelineBatchCopyPayload
+import takagi.ru.monica.data.model.TimelineMaintenanceSnapshotPayload
 import takagi.ru.monica.data.model.TimelineBatchMovePayload
 import takagi.ru.monica.data.model.TimelineBranch
 import takagi.ru.monica.data.model.TimelineEvent
@@ -36,14 +41,19 @@ class TimelineViewModel(application: Application) : AndroidViewModel(application
     private val passwordRepository = PasswordRepository(database.passwordEntryDao())
     private val secureItemRepository = SecureItemRepository(database.secureItemDao())
     private val securityManager = SecurityManager(application)
+    private val maintenanceSnapshotManager = MaintenanceSnapshotManager(database)
     
     private val _timelineEvents = MutableStateFlow<List<TimelineEvent>>(emptyList())
     val timelineEvents: StateFlow<List<TimelineEvent>> = _timelineEvents.asStateFlow()
     
     private val _isLoading = MutableStateFlow(true)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
+    private val _maintenanceRestoreMessage = MutableStateFlow<String?>(null)
+    val maintenanceRestoreMessage: StateFlow<String?> = _maintenanceRestoreMessage.asStateFlow()
     
     private val json = Json { ignoreUnknownKeys = true }
+    private val app = getApplication<Application>()
     
     init {
         loadTimelineData()
@@ -90,13 +100,36 @@ class TimelineViewModel(application: Application) : AndroidViewModel(application
         if (changesJson.isEmpty()) return emptyList()
         
         return try {
-            val fieldChanges = parseRawChanges(changesJson)
-            fieldChanges.map { fc ->
-                DiffChange(
-                    fieldName = fc.fieldName,
-                    oldValue = fc.oldValue,
-                    newValue = fc.newValue
-                )
+            val fieldChanges = parseRawChangesIncludingTechnical(changesJson)
+            fieldChanges.mapNotNull { fc ->
+                when (fc.fieldName) {
+                    TIMELINE_FIELD_BATCH_MOVE_PAYLOAD -> DiffChange(
+                        fieldName = app.getString(R.string.timeline_field_batch_move),
+                        oldValue = "",
+                        newValue = app.getString(R.string.timeline_snapshot_ready)
+                    )
+                    TIMELINE_FIELD_BATCH_COPY_PAYLOAD -> DiffChange(
+                        fieldName = app.getString(R.string.timeline_field_batch_copy),
+                        oldValue = "",
+                        newValue = app.getString(R.string.timeline_snapshot_ready)
+                    )
+                    TIMELINE_FIELD_MAINTENANCE_SNAPSHOT_PAYLOAD -> DiffChange(
+                        fieldName = app.getString(R.string.timeline_field_maintenance_snapshot),
+                        oldValue = "",
+                        newValue = app.getString(R.string.timeline_snapshot_ready)
+                    )
+                    else -> {
+                        if (fc.fieldName.startsWith("__")) {
+                            null
+                        } else {
+                            DiffChange(
+                                fieldName = fc.fieldName,
+                                oldValue = fc.oldValue,
+                                newValue = fc.newValue
+                            )
+                        }
+                    }
+                }
             }
         } catch (e: Exception) {
             emptyList()
@@ -170,6 +203,32 @@ class TimelineViewModel(application: Application) : AndroidViewModel(application
                 val batchCopyPayload = rawChanges.firstOrNull {
                     it.fieldName == TIMELINE_FIELD_BATCH_COPY_PAYLOAD
                 }?.newValue
+                val maintenanceSnapshotPayload = rawChanges.firstOrNull {
+                    it.fieldName == TIMELINE_FIELD_MAINTENANCE_SNAPSHOT_PAYLOAD
+                }?.newValue
+
+                if (!maintenanceSnapshotPayload.isNullOrBlank()) {
+                    if (isCurrentlyReverted) return@launch onResult(false)
+                    val restored = restoreMaintenanceSnapshot(payloadJson = maintenanceSnapshotPayload)
+                    if (!restored.success) return@launch onResult(false)
+                    _maintenanceRestoreMessage.value = if (restored.usedLegacyMode) {
+                        app.getString(
+                            R.string.timeline_restore_snapshot_result_legacy,
+                            restored.deletedPasswords,
+                            restored.deletedSecureItems
+                        )
+                    } else {
+                        app.getString(
+                            R.string.timeline_restore_snapshot_result,
+                            restored.deletedPasswords,
+                            restored.deletedSecureItems,
+                            restored.upsertedPasswords,
+                            restored.upsertedSecureItems
+                        )
+                    }
+                    database.operationLogDao().updateRevertedStatus(logId, true)
+                    return@launch onResult(true)
+                }
 
                 if (!batchMovePayload.isNullOrBlank()) {
                     if (isCurrentlyReverted) return@launch onResult(false)
@@ -298,6 +357,20 @@ class TimelineViewModel(application: Application) : AndroidViewModel(application
             changed = true
         }
         return changed
+    }
+
+    fun consumeMaintenanceRestoreMessage() {
+        _maintenanceRestoreMessage.value = null
+    }
+
+    private suspend fun restoreMaintenanceSnapshot(payloadJson: String): MaintenanceSnapshotManager.RestoreStats {
+        val payload = try {
+            json.decodeFromString<TimelineMaintenanceSnapshotPayload>(payloadJson)
+        } catch (_: Exception) {
+            return MaintenanceSnapshotManager.RestoreStats(success = false)
+        }
+
+        return maintenanceSnapshotManager.restorePayload(payload)
     }
     
     /**

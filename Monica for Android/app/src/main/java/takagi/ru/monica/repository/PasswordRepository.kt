@@ -138,6 +138,10 @@ class PasswordRepository(
     suspend fun getPasswordsByIds(ids: List<Long>): List<PasswordEntry> {
         return passwordEntryDao.getPasswordsByIds(ids)
     }
+
+    suspend fun getActivePasswordsByIds(ids: List<Long>): List<PasswordEntry> {
+        return passwordEntryDao.getActivePasswordsByIds(ids)
+    }
     
     suspend fun insertPasswordEntry(entry: PasswordEntry): Long {
         return passwordEntryDao.insertPasswordEntry(entry)

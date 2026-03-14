@@ -1776,5 +1776,6 @@
     <string name="plus_feature_locked">Can Plus</string>
     <string name="plus_thank_you">Cam on ban da ung ho!</string>
     <string name="plus_payment_links_title">Lien ket thanh toan</string>
+    <string name="quick_database_maintenance_snapshot_retention_notice">Truoc moi lan chay se tao ban chup bao tri va chi luu trong 14 ngay.</string>
 
 </resources>

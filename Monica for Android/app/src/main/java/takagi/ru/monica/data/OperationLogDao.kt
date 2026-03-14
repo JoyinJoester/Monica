@@ -80,6 +80,12 @@ interface OperationLogDao {
      */
     @Query("DELETE FROM operation_logs WHERE timestamp < :cutoffTime")
     suspend fun deleteOldLogs(cutoffTime: Long)
+
+    /**
+     * 删除超过指定天数的维护快照日志
+     */
+    @Query("DELETE FROM operation_logs WHERE timestamp < :cutoffTime AND changesJson LIKE '%' || :snapshotFieldName || '%'")
+    suspend fun deleteOldMaintenanceSnapshotLogs(cutoffTime: Long, snapshotFieldName: String)
     
     /**
      * 更新日志的恢复状态

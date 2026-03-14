@@ -904,9 +904,11 @@ fun PasswordListContent(
         )
     }
 
-    val shouldLoadManualStackMetadata = quickFilterManualStackOnly ||
-        quickFilterNeverStack ||
-        quickFilterUnstacked
+    val shouldLoadManualStackMetadata =
+        effectiveStackCardMode != StackCardMode.ALWAYS_EXPANDED ||
+            quickFilterManualStackOnly ||
+            quickFilterNeverStack ||
+            quickFilterUnstacked
     val emptyStateMessage = remember(
         currentFilter,
         quickFoldersEnabledForCurrentFilter,

@@ -45,6 +45,10 @@ class BitwardenRepository(private val context: Context) {
         private const val KEY_SYNC_ON_WIFI_ONLY = "sync_on_wifi_only"
         private const val KEY_LAST_SYNC_TIME = "last_sync_time"
         private const val KEY_NEVER_LOCK_BITWARDEN = "never_lock_bitwarden"
+        private const val PBKDF2_DEFAULT_ITERATIONS = 600000
+        private const val ARGON2_DEFAULT_ITERATIONS = 3
+        private const val ARGON2_DEFAULT_MEMORY_MB = 64
+        private const val ARGON2_DEFAULT_PARALLELISM = 4
         private val syncMutex = Mutex()
         
         @Volatile
@@ -66,7 +70,7 @@ class BitwardenRepository(private val context: Context) {
                 // 账号密码错误
                 rawError.contains("invalid_username_or_password", ignoreCase = true) ||
                 rawError.contains("Username or password is incorrect", ignoreCase = true) ->
-                    "邮箱或主密码错误，请检查后重试"
+                    "登录失败：账号凭据无效，或服务器区域/地址不匹配（.com/.eu/自建），请确认后重试"
                 
                 // 验证码错误
                 rawError.contains("Invalid New Device OTP", ignoreCase = true) ||
@@ -108,7 +112,7 @@ class BitwardenRepository(private val context: Context) {
                 
                 // 其他 400 错误
                 rawError.contains("400") && rawError.contains("invalid_grant") ->
-                    "认证失败，可能是两步验证未完成或验证码无效，请重试"
+                    "认证失败：可能是服务器区域或自建地址不匹配、SSO 账户限制、或验证流程未完成，请重试"
                 
                 // 默认返回原始错误（截断过长内容）
                 else -> {
@@ -388,22 +392,37 @@ class BitwardenRepository(private val context: Context) {
     suspend fun unlock(vaultId: Long, masterPassword: String): UnlockResult = withContext(Dispatchers.IO) {
         try {
             val vault = vaultDao.getVaultById(vaultId) ?: return@withContext UnlockResult.Error("Vault 不存在")
+            val normalizedIterations = when (vault.kdfType) {
+                BitwardenVault.KDF_TYPE_PBKDF2 -> vault.kdfIterations.takeIf { it > 0 } ?: PBKDF2_DEFAULT_ITERATIONS
+                BitwardenVault.KDF_TYPE_ARGON2ID -> vault.kdfIterations.takeIf { it > 0 } ?: ARGON2_DEFAULT_ITERATIONS
+                else -> vault.kdfIterations
+            }
+            val normalizedMemory = vault.kdfMemory.takeIf { it != null && it > 0 } ?: ARGON2_DEFAULT_MEMORY_MB
+            val normalizedParallelism = vault.kdfParallelism.takeIf { it != null && it > 0 } ?: ARGON2_DEFAULT_PARALLELISM
             
             // 派生主密钥
-            val masterKey = if (vault.kdfType == BitwardenVault.KDF_TYPE_ARGON2ID) {
-                BitwardenCrypto.deriveMasterKeyArgon2(
-                    password = masterPassword,
-                    salt = vault.email,
-                    iterations = vault.kdfIterations,
-                    memory = vault.kdfMemory ?: 64,
-                    parallelism = vault.kdfParallelism ?: 4
-                )
-            } else {
-                BitwardenCrypto.deriveMasterKeyPbkdf2(
-                    password = masterPassword,
-                    salt = vault.email,
-                    iterations = vault.kdfIterations
-                )
+            val masterKey = when (vault.kdfType) {
+                BitwardenVault.KDF_TYPE_ARGON2ID -> {
+                    BitwardenCrypto.deriveMasterKeyArgon2(
+                        password = masterPassword,
+                        salt = vault.email,
+                        iterations = normalizedIterations,
+                        memory = normalizedMemory,
+                        parallelism = normalizedParallelism
+                    )
+                }
+
+                BitwardenVault.KDF_TYPE_PBKDF2 -> {
+                    BitwardenCrypto.deriveMasterKeyPbkdf2(
+                        password = masterPassword,
+                        salt = vault.email,
+                        iterations = normalizedIterations
+                    )
+                }
+
+                else -> {
+                    return@withContext UnlockResult.Error("不支持的 KDF 类型: ${vault.kdfType}，请重新登录")
+                }
             }
 
             try {

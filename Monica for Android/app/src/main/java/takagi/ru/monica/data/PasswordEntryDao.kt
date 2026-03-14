@@ -54,6 +54,9 @@ interface PasswordEntryDao {
     
     @Query("SELECT * FROM password_entries WHERE id IN (:ids)")
     suspend fun getPasswordsByIds(ids: List<Long>): List<PasswordEntry>
+
+    @Query("SELECT * FROM password_entries WHERE id IN (:ids) AND isDeleted = 0 AND isArchived = 0")
+    suspend fun getActivePasswordsByIds(ids: List<Long>): List<PasswordEntry>
     
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPasswordEntry(entry: PasswordEntry): Long

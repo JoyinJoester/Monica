@@ -12,18 +12,29 @@ import kotlinx.serialization.json.jsonPrimitive
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
+import takagi.ru.monica.data.OperationLog
+import takagi.ru.monica.data.OperationLogItemType
+import takagi.ru.monica.data.OperationType
 import takagi.ru.monica.data.PasskeyEntry
+import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.model.TIMELINE_FIELD_MAINTENANCE_SNAPSHOT_PAYLOAD
+import takagi.ru.monica.data.model.TimelineMaintenanceSnapshotPayload
+import takagi.ru.monica.data.bitwarden.BitwardenFolder
+import takagi.ru.monica.data.bitwarden.BitwardenFolderDao
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.bitwarden.BitwardenVaultDao
 import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.repository.OperationLogRepository
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.repository.PasskeyRepository
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.utils.FieldChange
 import java.net.URI
 import java.net.URLDecoder
 import java.util.Date
@@ -36,6 +47,24 @@ enum class QuickMaintenanceCategory {
     BANK_CARDS,
     PASSKEYS
 }
+
+enum class QuickMaintenanceMode {
+    FULL_BIDIRECTIONAL,
+    TARGET_DATABASE
+}
+
+data class QuickMaintenancePlan(
+    val conflictCount: Int,
+    val conflictSamples: List<String>,
+    val estimatedGroups: Int
+)
+
+data class QuickMaintenanceProgress(
+    val stage: String,
+    val message: String,
+    val processed: Int = 0,
+    val total: Int = 0
+)
 
 enum class QuickMaintenanceSourceKind {
     MONICA_LOCAL,
@@ -61,7 +90,9 @@ enum class QuickMaintenanceCategoryNote {
 }
 
 data class QuickMaintenanceRequest(
-    val categories: Set<QuickMaintenanceCategory>
+    val categories: Set<QuickMaintenanceCategory>,
+    val mode: QuickMaintenanceMode = QuickMaintenanceMode.FULL_BIDIRECTIONAL,
+    val targetSourceKey: String? = null
 )
 
 data class QuickMaintenanceCategoryResult(
@@ -81,7 +112,10 @@ data class QuickMaintenanceResult(
     val totalMatchedGroups: Int,
     val totalUpdatedEntries: Int,
     val totalCreatedEntries: Int,
-    val totalSkippedGroups: Int
+    val totalSkippedGroups: Int,
+    val passwordConflictHandled: Int = 0,
+    val fieldConflictCount: Int = 0,
+    val operationLogs: List<String> = emptyList()
 )
 
 data class QuickMaintenanceSourceStats(
@@ -111,11 +145,67 @@ class QuickDatabaseMaintenanceEngine(
     private val secureItemRepository: SecureItemRepository,
     private val passkeyRepository: PasskeyRepository,
     private val localKeePassDatabaseDao: LocalKeePassDatabaseDao,
+    private val bitwardenFolderDao: BitwardenFolderDao,
     private val bitwardenVaultDao: BitwardenVaultDao,
     private val securityManager: SecurityManager,
-    private val keePassBridge: KeePassCompatibilityBridge
+    private val keePassBridge: KeePassCompatibilityBridge,
+    private val operationLogRepository: OperationLogRepository,
+    private val snapshotManager: MaintenanceSnapshotManager
 ) {
     private val json = Json { ignoreUnknownKeys = true }
+
+    suspend fun plan(request: QuickMaintenanceRequest): QuickMaintenancePlan = withContext(Dispatchers.IO) {
+        val passwordGroups = if (QuickMaintenanceCategory.PASSWORDS in request.categories) {
+            passwordRepository.getAllPasswordEntries().first()
+                .filter { !it.isDeleted && !it.isArchived }
+                .groupBy { passwordFingerprint(it) }
+                .values
+        } else {
+            emptyList()
+        }
+        val secureGroups = if (QuickMaintenanceCategory.AUTHENTICATORS in request.categories || QuickMaintenanceCategory.BANK_CARDS in request.categories) {
+            secureItemRepository.getAllItems().first()
+                .filter { !it.isDeleted }
+                .groupBy { "${it.itemType.name}|${secureFingerprint(it)}" }
+                .values
+        } else {
+            emptyList()
+        }
+
+        val conflictSamples = mutableListOf<String>()
+        var conflictCount = 0
+
+        passwordGroups.forEach { group ->
+            val distinctPasswords = group.map { resolveComparablePassword(it.password) }.filter { it.isNotBlank() }.distinct()
+            if (distinctPasswords.size > 1) {
+                conflictCount += 1
+                if (conflictSamples.size < 12) {
+                    conflictSamples += "密码冲突: ${passwordDiffLabel(group.first())} (${distinctPasswords.size} 个密码版本)"
+                }
+            }
+            if (hasPasswordFieldConflict(group)) {
+                conflictCount += 1
+                if (conflictSamples.size < 12) {
+                    conflictSamples += "字段冲突: ${passwordDiffLabel(group.first())}"
+                }
+            }
+        }
+
+        secureGroups.forEach { group ->
+            if (hasSecureItemFieldConflict(group)) {
+                conflictCount += 1
+                if (conflictSamples.size < 12) {
+                    conflictSamples += "字段冲突: ${secureDiffLabel(group.first())}"
+                }
+            }
+        }
+
+        QuickMaintenancePlan(
+            conflictCount = conflictCount,
+            conflictSamples = conflictSamples,
+            estimatedGroups = passwordGroups.size + secureGroups.size
+        )
+    }
 
     suspend fun loadSources(): List<QuickMaintenanceSource> = withContext(Dispatchers.IO) {
         val keepassDatabases = localKeePassDatabaseDao.getAllDatabasesSync()
@@ -155,30 +245,62 @@ class QuickDatabaseMaintenanceEngine(
             buildSourceStats(sources)
         }
 
-    suspend fun run(request: QuickMaintenanceRequest): QuickMaintenanceResult = withContext(Dispatchers.IO) {
+    suspend fun run(
+        request: QuickMaintenanceRequest,
+        onProgress: (QuickMaintenanceProgress) -> Unit = {}
+    ): QuickMaintenanceResult = withContext(Dispatchers.IO) {
         val sources = loadSources()
+        require(request.mode != QuickMaintenanceMode.TARGET_DATABASE || !request.targetSourceKey.isNullOrBlank()) {
+            "Target source key is required for TARGET_DATABASE mode"
+        }
         val keepassDatabases = localKeePassDatabaseDao.getAllDatabasesSync()
         val vaults = bitwardenVaultDao.getAllVaults().filter { it.syncEnabled }
+
+        onProgress(QuickMaintenanceProgress(stage = "SCAN", message = "正在扫描数据源", processed = 0, total = 5))
+
+        operationLogRepository.deleteOldMaintenanceSnapshotLogs(
+            snapshotFieldName = TIMELINE_FIELD_MAINTENANCE_SNAPSHOT_PAYLOAD,
+            daysToKeep = SNAPSHOT_RETENTION_DAYS
+        )
+
+        val snapshotPayload = snapshotManager.createPayload()
+        writeSnapshotLog(request, snapshotPayload)
+
+        onProgress(QuickMaintenanceProgress(stage = "PLAN", message = "正在生成合并计划", processed = 1, total = 5))
         val sourceStats = buildSourceStats(sources)
         val sourceDiffs = buildSourceDiffs(request.categories, sources)
+        val operationLogs = mutableListOf<String>()
+        var passwordConflictHandled = 0
+        var fieldConflictCount = 0
+
+        onProgress(QuickMaintenanceProgress(stage = "MERGE", message = "正在执行合并", processed = 2, total = 5))
         val categoryResults = buildList {
             if (QuickMaintenanceCategory.PASSWORDS in request.categories) {
-                add(syncPasswords(keepassDatabases, vaults))
+                val passwordResult = syncPasswords(request, keepassDatabases, vaults)
+                passwordConflictHandled += passwordResult.second
+                fieldConflictCount += passwordResult.third
+                operationLogs += passwordResult.fourth
+                add(passwordResult.first)
             }
             if (QuickMaintenanceCategory.AUTHENTICATORS in request.categories) {
-                add(syncSecureItems(ItemType.TOTP, QuickMaintenanceCategory.AUTHENTICATORS, keepassDatabases, vaults))
+                val result = syncSecureItems(request, ItemType.TOTP, QuickMaintenanceCategory.AUTHENTICATORS, keepassDatabases, vaults)
+                fieldConflictCount += result.second
+                operationLogs += result.third
+                add(result.first)
             }
             if (QuickMaintenanceCategory.BANK_CARDS in request.categories) {
-                val cards = syncSecureItems(ItemType.BANK_CARD, QuickMaintenanceCategory.BANK_CARDS, keepassDatabases, vaults)
-                val documents = syncSecureItems(ItemType.DOCUMENT, QuickMaintenanceCategory.BANK_CARDS, keepassDatabases, vaults)
+                val cards = syncSecureItems(request, ItemType.BANK_CARD, QuickMaintenanceCategory.BANK_CARDS, keepassDatabases, vaults)
+                val documents = syncSecureItems(request, ItemType.DOCUMENT, QuickMaintenanceCategory.BANK_CARDS, keepassDatabases, vaults)
+                fieldConflictCount += cards.second + documents.second
+                operationLogs += cards.third + documents.third
                 add(
                     QuickMaintenanceCategoryResult(
                         category = QuickMaintenanceCategory.BANK_CARDS,
-                        matchedGroups = cards.matchedGroups + documents.matchedGroups,
-                        updatedEntries = cards.updatedEntries + documents.updatedEntries,
-                        createdEntries = cards.createdEntries + documents.createdEntries,
-                        skippedGroups = cards.skippedGroups + documents.skippedGroups,
-                        note = if ((cards.matchedGroups + documents.matchedGroups) == 0) {
+                        matchedGroups = cards.first.matchedGroups + documents.first.matchedGroups,
+                        updatedEntries = cards.first.updatedEntries + documents.first.updatedEntries,
+                        createdEntries = cards.first.createdEntries + documents.first.createdEntries,
+                        skippedGroups = cards.first.skippedGroups + documents.first.skippedGroups,
+                        note = if ((cards.first.matchedGroups + documents.first.matchedGroups) == 0) {
                             QuickMaintenanceCategoryNote.BANK_CARDS_NONE_FOUND
                         } else {
                             QuickMaintenanceCategoryNote.BANK_CARDS_MATCHED_ONLY
@@ -191,6 +313,8 @@ class QuickDatabaseMaintenanceEngine(
             }
         }
 
+        onProgress(QuickMaintenanceProgress(stage = "SUMMARY", message = "正在整理冲突处理结果", processed = 4, total = 5))
+
         QuickMaintenanceResult(
             categoryResults = categoryResults,
             sources = sources,
@@ -199,7 +323,10 @@ class QuickDatabaseMaintenanceEngine(
             totalMatchedGroups = categoryResults.sumOf { it.matchedGroups },
             totalUpdatedEntries = categoryResults.sumOf { it.updatedEntries },
             totalCreatedEntries = categoryResults.sumOf { it.createdEntries },
-            totalSkippedGroups = categoryResults.sumOf { it.skippedGroups }
+            totalSkippedGroups = categoryResults.sumOf { it.skippedGroups },
+            passwordConflictHandled = passwordConflictHandled,
+            fieldConflictCount = fieldConflictCount,
+            operationLogs = operationLogs
         )
     }
 
@@ -342,24 +469,50 @@ class QuickDatabaseMaintenanceEngine(
     }
 
     private suspend fun syncPasswords(
+        request: QuickMaintenanceRequest,
         keepassDatabases: List<LocalKeePassDatabase>,
         vaults: List<BitwardenVault>
-    ): QuickMaintenanceCategoryResult {
+    ): Quadruple<QuickMaintenanceCategoryResult, Int, Int, List<String>> {
         val entries = passwordRepository.getAllPasswordEntries().first()
             .filter { !it.isDeleted && !it.isArchived }
         val groups = entries
             .groupBy { passwordFingerprint(it) }
             .values
-            .filter { it.size > 1 }
 
         val keepassSyncBuffer = linkedMapOf<Long, MutableList<PasswordEntry>>()
         var updatedCount = 0
         var createdCount = 0
+        var passwordConflictHandled = 0
+        var fieldConflictCount = 0
+        val operationLogs = mutableListOf<String>()
+        val folderSyncContext = buildFolderSyncContext(vaults)
+
+        val targetSourceKeys = resolveTargetSourceKeys(request, keepassDatabases, vaults)
 
         groups.forEach { group ->
             val canonical = pickCanonicalPassword(group)
-            group.forEach { entry ->
-                val synced = mergePasswordEntry(entry, canonical)
+            val folderSeed = resolveFolderSeed(canonical, group, folderSyncContext)
+            if (hasPasswordFieldConflict(group)) {
+                fieldConflictCount += 1
+                operationLogs += "字段冲突: ${passwordDiffLabel(canonical)} -> 已按完整度规则自动合并"
+            }
+
+            val conflictPasswords = group
+                .map { resolveComparablePassword(it.password) }
+                .filter { it.isNotBlank() }
+                .distinct()
+            if (conflictPasswords.size > 1) {
+                passwordConflictHandled += 1
+                operationLogs += "密码冲突: ${passwordDiffLabel(canonical)} -> 已生成多密码副本 (${conflictPasswords.size})"
+            }
+
+            group.forEach entryLoop@ { entry ->
+                val sourceKey = sourceKeyOf(entry)
+                if (!shouldUpdateExistingEntry(request, sourceKey)) {
+                    return@entryLoop
+                }
+                val folderTarget = resolveFolderTargetForSource(sourceKey, folderSeed, folderSyncContext)
+                val synced = mergePasswordEntry(entry, canonical, folderTarget)
                 if (synced != entry) {
                     passwordRepository.updatePasswordEntry(synced)
                     updatedCount += 1
@@ -370,69 +523,96 @@ class QuickDatabaseMaintenanceEngine(
             }
 
             val existingKeys = group.mapTo(linkedSetOf()) { sourceKeyOf(it) }
-
-            if (MONICA_SOURCE_KEY !in existingKeys) {
-                val created = createPasswordClone(canonical, targetLocal = true)
-                passwordRepository.insertPasswordEntry(created)
-                createdCount += 1
-            }
-
-            keepassDatabases.forEach { database ->
-                val targetKey = keepassSourceKey(database.id)
+            targetSourceKeys.forEach { targetKey ->
                 if (targetKey !in existingKeys) {
-                    val created = createPasswordClone(canonical, keepassDatabaseId = database.id)
+                    val folderTarget = resolveFolderTargetForSource(targetKey, folderSeed, folderSyncContext)
+                    val created = createPasswordCloneForSource(canonical, targetKey, folderTarget)
                     val newId = passwordRepository.insertPasswordEntry(created)
-                    val inserted = created.copy(id = newId)
                     createdCount += 1
-                    keepassSyncBuffer.getOrPut(database.id) { mutableListOf() }.add(inserted)
+                    if (created.keepassDatabaseId != null) {
+                        keepassSyncBuffer.getOrPut(created.keepassDatabaseId) { mutableListOf() }
+                            .add(created.copy(id = newId))
+                    }
                 }
             }
 
-            vaults.forEach { vault ->
-                val targetKey = bitwardenSourceKey(vault.id)
-                if (targetKey !in existingKeys) {
-                    val created = createPasswordClone(canonical, bitwardenVaultId = vault.id)
-                    passwordRepository.insertPasswordEntry(created)
-                    createdCount += 1
+            if (conflictPasswords.size > 1) {
+                val secondaryPasswords = conflictPasswords.drop(1)
+                targetSourceKeys.forEach { targetKey ->
+                    secondaryPasswords.forEachIndexed { index, rawPassword ->
+                        val existingVariant = group.firstOrNull {
+                            sourceKeyOf(it) == targetKey && resolveComparablePassword(it.password) == rawPassword
+                        }
+                        if (existingVariant == null) {
+                            val encrypted = runCatching { securityManager.encryptData(rawPassword) }.getOrDefault(rawPassword)
+                            val folderTarget = resolveFolderTargetForSource(targetKey, folderSeed, folderSyncContext)
+                            val variant = createPasswordCloneForSource(canonical.copy(
+                                title = if (canonical.title.isBlank()) "冲突密码 #${index + 2}" else "${canonical.title} [冲突密码 ${index + 2}]",
+                                password = encrypted,
+                                notes = canonical.notes + "\n\n[同步合并] 保留冲突密码版本"
+                            ), targetKey, folderTarget)
+                            val newId = passwordRepository.insertPasswordEntry(variant)
+                            createdCount += 1
+                            if (variant.keepassDatabaseId != null) {
+                                keepassSyncBuffer.getOrPut(variant.keepassDatabaseId) { mutableListOf() }
+                                    .add(variant.copy(id = newId))
+                            }
+                        }
+                    }
                 }
             }
         }
 
         flushKeePassPasswordChanges(keepassSyncBuffer)
 
-        return QuickMaintenanceCategoryResult(
-            category = QuickMaintenanceCategory.PASSWORDS,
-            matchedGroups = groups.size,
-            updatedEntries = updatedCount,
-            createdEntries = createdCount,
-            note = if (groups.isEmpty()) {
-                QuickMaintenanceCategoryNote.PASSWORDS_NONE_FOUND
-            } else {
-                QuickMaintenanceCategoryNote.PASSWORDS_MATCHED_ONLY
-            }
+        return Quadruple(
+            QuickMaintenanceCategoryResult(
+                category = QuickMaintenanceCategory.PASSWORDS,
+                matchedGroups = groups.size,
+                updatedEntries = updatedCount,
+                createdEntries = createdCount,
+                note = if (groups.isEmpty()) {
+                    QuickMaintenanceCategoryNote.PASSWORDS_NONE_FOUND
+                } else {
+                    QuickMaintenanceCategoryNote.PASSWORDS_MATCHED_ONLY
+                }
+            ),
+            passwordConflictHandled,
+            fieldConflictCount,
+            operationLogs
         )
     }
 
     private suspend fun syncSecureItems(
+        request: QuickMaintenanceRequest,
         type: ItemType,
         category: QuickMaintenanceCategory,
         keepassDatabases: List<LocalKeePassDatabase>,
         vaults: List<BitwardenVault>
-    ): QuickMaintenanceCategoryResult {
+    ): Triple<QuickMaintenanceCategoryResult, Int, List<String>> {
         val items = secureItemRepository.getAllItems().first()
             .filter { !it.isDeleted && it.itemType == type }
         val groups = items
             .groupBy { secureFingerprint(it) }
             .values
-            .filter { it.size > 1 }
 
         val keepassSyncBuffer = linkedMapOf<Long, MutableList<SecureItem>>()
         var updatedCount = 0
         var createdCount = 0
+        var fieldConflictCount = 0
+        val operationLogs = mutableListOf<String>()
+        val targetSourceKeys = resolveTargetSourceKeys(request, keepassDatabases, vaults)
 
         groups.forEach { group ->
             val canonical = pickCanonicalSecureItem(group)
-            group.forEach { item ->
+            if (hasSecureItemFieldConflict(group)) {
+                fieldConflictCount += 1
+                operationLogs += "字段冲突: ${secureDiffLabel(canonical)} -> 已按完整度规则自动合并"
+            }
+            group.forEach itemLoop@ { item ->
+                if (!shouldUpdateExistingEntry(request, sourceKeyOf(item))) {
+                    return@itemLoop
+                }
                 val synced = mergeSecureItem(item, canonical)
                 if (synced != item) {
                     secureItemRepository.updateItem(synced)
@@ -445,44 +625,36 @@ class QuickDatabaseMaintenanceEngine(
 
             val existingKeys = group.mapTo(linkedSetOf()) { sourceKeyOf(it) }
 
-            if (MONICA_SOURCE_KEY !in existingKeys) {
-                secureItemRepository.insertItem(createSecureItemClone(canonical, targetLocal = true))
-                createdCount += 1
-            }
-
-            keepassDatabases.forEach { database ->
-                val targetKey = keepassSourceKey(database.id)
+            targetSourceKeys.forEach { targetKey ->
                 if (targetKey !in existingKeys) {
-                    val created = createSecureItemClone(canonical, keepassDatabaseId = database.id)
+                    val created = createSecureItemCloneForSource(canonical, targetKey)
                     val newId = secureItemRepository.insertItem(created)
-                    val inserted = created.copy(id = newId)
                     createdCount += 1
-                    keepassSyncBuffer.getOrPut(database.id) { mutableListOf() }.add(inserted)
-                }
-            }
-
-            vaults.forEach { vault ->
-                val targetKey = bitwardenSourceKey(vault.id)
-                if (targetKey !in existingKeys) {
-                    secureItemRepository.insertItem(createSecureItemClone(canonical, bitwardenVaultId = vault.id))
-                    createdCount += 1
+                    if (created.keepassDatabaseId != null) {
+                        keepassSyncBuffer.getOrPut(created.keepassDatabaseId) { mutableListOf() }
+                            .add(created.copy(id = newId))
+                    }
                 }
             }
         }
 
         flushKeePassSecureItemChanges(keepassSyncBuffer)
 
-        return QuickMaintenanceCategoryResult(
-            category = category,
-            matchedGroups = groups.size,
-            updatedEntries = updatedCount,
-            createdEntries = createdCount,
-            note = when {
-                groups.isEmpty() && type == ItemType.TOTP -> QuickMaintenanceCategoryNote.AUTHENTICATORS_NONE_FOUND
-                groups.isEmpty() && type == ItemType.BANK_CARD -> QuickMaintenanceCategoryNote.BANK_CARDS_NONE_FOUND
-                type == ItemType.TOTP -> QuickMaintenanceCategoryNote.AUTHENTICATORS_MATCHED_ONLY
-                else -> QuickMaintenanceCategoryNote.BANK_CARDS_MATCHED_ONLY
-            }
+        return Triple(
+            QuickMaintenanceCategoryResult(
+                category = category,
+                matchedGroups = groups.size,
+                updatedEntries = updatedCount,
+                createdEntries = createdCount,
+                note = when {
+                    groups.isEmpty() && type == ItemType.TOTP -> QuickMaintenanceCategoryNote.AUTHENTICATORS_NONE_FOUND
+                    groups.isEmpty() && type == ItemType.BANK_CARD -> QuickMaintenanceCategoryNote.BANK_CARDS_NONE_FOUND
+                    type == ItemType.TOTP -> QuickMaintenanceCategoryNote.AUTHENTICATORS_MATCHED_ONLY
+                    else -> QuickMaintenanceCategoryNote.BANK_CARDS_MATCHED_ONLY
+                }
+            ),
+            fieldConflictCount,
+            operationLogs
         )
     }
 
@@ -501,35 +673,67 @@ class QuickDatabaseMaintenanceEngine(
         )
     }
 
-    private fun mergePasswordEntry(existing: PasswordEntry, canonical: PasswordEntry): PasswordEntry {
-        val contentChanged = passwordContentChanged(existing, canonical)
+    private fun mergePasswordEntry(
+        existing: PasswordEntry,
+        canonical: PasswordEntry,
+        folderTarget: ResolvedFolderTarget
+    ): PasswordEntry {
+        val folderAwareCanonical = canonical.copy(
+            categoryId = folderTarget.categoryId ?: canonical.categoryId,
+            keepassGroupPath = if (existing.keepassDatabaseId != null) {
+                folderTarget.keepassGroupPath ?: existing.keepassGroupPath
+            } else {
+                existing.keepassGroupPath
+            },
+            bitwardenFolderId = if (existing.bitwardenVaultId != null) {
+                folderTarget.bitwardenFolderId ?: existing.bitwardenFolderId
+            } else {
+                existing.bitwardenFolderId
+            }
+        )
+        val contentChanged = passwordContentChanged(existing, folderAwareCanonical)
         val now = if (contentChanged) Date() else existing.updatedAt
         return existing.copy(
-            title = canonical.title,
-            website = canonical.website,
-            username = canonical.username,
-            password = canonical.password,
-            notes = canonical.notes,
-            isFavorite = canonical.isFavorite,
-            appPackageName = canonical.appPackageName,
-            appName = canonical.appName,
-            email = canonical.email,
-            phone = canonical.phone,
-            addressLine = canonical.addressLine,
-            city = canonical.city,
-            state = canonical.state,
-            zipCode = canonical.zipCode,
-            country = canonical.country,
-            creditCardNumber = canonical.creditCardNumber,
-            creditCardHolder = canonical.creditCardHolder,
-            creditCardExpiry = canonical.creditCardExpiry,
-            creditCardCVV = canonical.creditCardCVV,
-            categoryId = canonical.categoryId,
-            authenticatorKey = canonical.authenticatorKey,
-            passkeyBindings = canonical.passkeyBindings,
-            loginType = canonical.loginType,
-            ssoProvider = canonical.ssoProvider,
-            ssoRefEntryId = canonical.ssoRefEntryId,
+            title = folderAwareCanonical.title,
+            website = folderAwareCanonical.website,
+            username = folderAwareCanonical.username,
+            password = folderAwareCanonical.password,
+            notes = folderAwareCanonical.notes,
+            isFavorite = folderAwareCanonical.isFavorite,
+            appPackageName = folderAwareCanonical.appPackageName,
+            appName = folderAwareCanonical.appName,
+            email = folderAwareCanonical.email,
+            phone = folderAwareCanonical.phone,
+            addressLine = folderAwareCanonical.addressLine,
+            city = folderAwareCanonical.city,
+            state = folderAwareCanonical.state,
+            zipCode = folderAwareCanonical.zipCode,
+            country = folderAwareCanonical.country,
+            creditCardNumber = folderAwareCanonical.creditCardNumber,
+            creditCardHolder = folderAwareCanonical.creditCardHolder,
+            creditCardExpiry = folderAwareCanonical.creditCardExpiry,
+            creditCardCVV = folderAwareCanonical.creditCardCVV,
+            categoryId = folderAwareCanonical.categoryId,
+            keepassGroupPath = if (existing.keepassDatabaseId != null) {
+                folderTarget.keepassGroupPath ?: existing.keepassGroupPath
+            } else {
+                existing.keepassGroupPath
+            },
+            keepassGroupUuid = if (existing.keepassDatabaseId != null && folderTarget.keepassGroupPath != null && folderTarget.keepassGroupPath != existing.keepassGroupPath) {
+                null
+            } else {
+                existing.keepassGroupUuid
+            },
+            authenticatorKey = folderAwareCanonical.authenticatorKey,
+            passkeyBindings = folderAwareCanonical.passkeyBindings,
+            loginType = folderAwareCanonical.loginType,
+            ssoProvider = folderAwareCanonical.ssoProvider,
+            ssoRefEntryId = folderAwareCanonical.ssoRefEntryId,
+            bitwardenFolderId = if (existing.bitwardenVaultId != null) {
+                folderTarget.bitwardenFolderId ?: existing.bitwardenFolderId
+            } else {
+                existing.bitwardenFolderId
+            },
             updatedAt = now,
             bitwardenLocalModified = existing.bitwardenLocalModified || (existing.isBitwardenEntry() && contentChanged)
         )
@@ -539,7 +743,8 @@ class QuickDatabaseMaintenanceEngine(
         canonical: PasswordEntry,
         targetLocal: Boolean = false,
         keepassDatabaseId: Long? = null,
-        bitwardenVaultId: Long? = null
+        bitwardenVaultId: Long? = null,
+        folderTarget: ResolvedFolderTarget = ResolvedFolderTarget()
     ): PasswordEntry {
         val now = Date()
         return canonical.copy(
@@ -550,13 +755,14 @@ class QuickDatabaseMaintenanceEngine(
             deletedAt = null,
             isArchived = false,
             archivedAt = null,
+            categoryId = folderTarget.categoryId ?: canonical.categoryId,
             keepassDatabaseId = if (targetLocal || bitwardenVaultId != null) null else keepassDatabaseId,
-            keepassGroupPath = null,
+            keepassGroupPath = if (targetLocal || bitwardenVaultId != null) null else folderTarget.keepassGroupPath,
             keepassEntryUuid = keepassDatabaseId?.let { UUID.randomUUID().toString() },
             keepassGroupUuid = null,
             bitwardenVaultId = if (targetLocal || keepassDatabaseId != null) null else bitwardenVaultId,
             bitwardenCipherId = null,
-            bitwardenFolderId = null,
+            bitwardenFolderId = if (targetLocal || keepassDatabaseId != null) null else folderTarget.bitwardenFolderId,
             bitwardenRevisionDate = null,
             bitwardenLocalModified = false
         )
@@ -716,6 +922,8 @@ class QuickDatabaseMaintenanceEngine(
             existing.creditCardExpiry != canonical.creditCardExpiry ||
             existing.creditCardCVV != canonical.creditCardCVV ||
             existing.categoryId != canonical.categoryId ||
+            existing.keepassGroupPath != canonical.keepassGroupPath ||
+            existing.bitwardenFolderId != canonical.bitwardenFolderId ||
             existing.authenticatorKey != canonical.authenticatorKey ||
             existing.passkeyBindings != canonical.passkeyBindings ||
             existing.loginType != canonical.loginType ||
@@ -883,6 +1091,254 @@ class QuickDatabaseMaintenanceEngine(
         }.getOrNull()
     }
 
+    private suspend fun writeSnapshotLog(
+        request: QuickMaintenanceRequest,
+        payload: TimelineMaintenanceSnapshotPayload
+    ) {
+        val modeLabel = when (request.mode) {
+            QuickMaintenanceMode.FULL_BIDIRECTIONAL -> "全数据库双向"
+            QuickMaintenanceMode.TARGET_DATABASE -> "同步到目标数据库(${request.targetSourceKey})"
+        }
+        val changes = listOf(
+            FieldChange(
+                fieldName = TIMELINE_FIELD_MAINTENANCE_SNAPSHOT_PAYLOAD,
+                oldValue = "",
+                newValue = json.encodeToString(payload)
+            )
+        )
+        operationLogRepository.insertLog(
+            OperationLog(
+                itemType = OperationLogItemType.CATEGORY.name,
+                itemId = System.currentTimeMillis(),
+                itemTitle = "同步合并快照 · $modeLabel",
+                operationType = OperationType.UPDATE.name,
+                changesJson = json.encodeToString(changes)
+            )
+        )
+    }
+
+    private fun resolveTargetSourceKeys(
+        request: QuickMaintenanceRequest,
+        keepassDatabases: List<LocalKeePassDatabase>,
+        vaults: List<BitwardenVault>
+    ): Set<String> {
+        if (request.mode == QuickMaintenanceMode.TARGET_DATABASE) {
+            return setOf(request.targetSourceKey ?: MONICA_SOURCE_KEY)
+        }
+        return buildSet {
+            add(MONICA_SOURCE_KEY)
+            keepassDatabases.forEach { add(keepassSourceKey(it.id)) }
+            vaults.forEach { add(bitwardenSourceKey(it.id)) }
+        }
+    }
+
+    private fun shouldUpdateExistingEntry(request: QuickMaintenanceRequest, sourceKey: String): Boolean {
+        return request.mode != QuickMaintenanceMode.TARGET_DATABASE || request.targetSourceKey == sourceKey
+    }
+
+    private fun createPasswordCloneForSource(
+        canonical: PasswordEntry,
+        sourceKey: String,
+        folderTarget: ResolvedFolderTarget
+    ): PasswordEntry {
+        return when {
+            sourceKey == MONICA_SOURCE_KEY -> createPasswordClone(canonical, targetLocal = true, folderTarget = folderTarget)
+            sourceKey.startsWith("keepass:") -> createPasswordClone(canonical, keepassDatabaseId = sourceKey.substringAfter(':').toLong(), folderTarget = folderTarget)
+            sourceKey.startsWith("bitwarden:") -> createPasswordClone(canonical, bitwardenVaultId = sourceKey.substringAfter(':').toLong(), folderTarget = folderTarget)
+            else -> createPasswordClone(canonical, targetLocal = true, folderTarget = folderTarget)
+        }
+    }
+
+    private suspend fun buildFolderSyncContext(vaults: List<BitwardenVault>): FolderSyncContext {
+        val categories = passwordRepository.getAllCategories().first()
+        val folderByVault = vaults.associate { vault ->
+            vault.id to bitwardenFolderDao.getFoldersByVault(vault.id)
+        }
+        return FolderSyncContext(categories, folderByVault)
+    }
+
+    private fun resolveFolderSeed(
+        canonical: PasswordEntry,
+        group: List<PasswordEntry>,
+        context: FolderSyncContext
+    ): FolderSeed? {
+        val ordered = buildList {
+            add(canonical)
+            addAll(group.filter { it.id != canonical.id })
+        }
+        val folderName = ordered
+            .mapNotNull { resolveFolderName(it, context) }
+            .firstOrNull { it.isNotBlank() }
+            ?.trim()
+            ?: return null
+
+        val keepassPathByDatabase = linkedMapOf<Long, String>()
+        ordered.forEach { entry ->
+            val databaseId = entry.keepassDatabaseId ?: return@forEach
+            val groupPath = entry.keepassGroupPath?.trim().orEmpty()
+            if (groupPath.isNotBlank() && keepassPathByDatabase[databaseId].isNullOrBlank()) {
+                keepassPathByDatabase[databaseId] = groupPath
+            }
+        }
+
+        val bitwardenFolderByVault = linkedMapOf<Long, String>()
+        ordered.forEach { entry ->
+            val vaultId = entry.bitwardenVaultId ?: return@forEach
+            val folderId = entry.bitwardenFolderId?.trim().orEmpty()
+            if (folderId.isNotBlank() && bitwardenFolderByVault[vaultId].isNullOrBlank()) {
+                bitwardenFolderByVault[vaultId] = folderId
+            }
+        }
+
+        return FolderSeed(
+            folderName = folderName,
+            keepassPathByDatabase = keepassPathByDatabase,
+            bitwardenFolderByVault = bitwardenFolderByVault
+        )
+    }
+
+    private fun resolveFolderName(entry: PasswordEntry, context: FolderSyncContext): String? {
+        entry.categoryId?.let { categoryId ->
+            val categoryName = context.categoryNameById[categoryId]?.trim().orEmpty()
+            if (categoryName.isNotBlank()) return categoryName
+        }
+        val keepassName = folderNameFromKeepassPath(entry.keepassGroupPath)
+        if (keepassName.isNotBlank()) return keepassName
+        val vaultId = entry.bitwardenVaultId
+        val folderId = entry.bitwardenFolderId
+        if (vaultId != null && !folderId.isNullOrBlank()) {
+            return context.findBitwardenFolderName(vaultId, folderId)
+        }
+        return null
+    }
+
+    private suspend fun resolveFolderTargetForSource(
+        sourceKey: String,
+        seed: FolderSeed?,
+        context: FolderSyncContext
+    ): ResolvedFolderTarget {
+        if (seed == null) return ResolvedFolderTarget()
+        val categoryId = ensureCategoryId(seed.folderName, context)
+        return when {
+            sourceKey == MONICA_SOURCE_KEY -> {
+                ResolvedFolderTarget(categoryId = categoryId)
+            }
+            sourceKey.startsWith("keepass:") -> {
+                val databaseId = sourceKey.substringAfter(':').toLongOrNull()
+                val groupPath = databaseId?.let { seed.keepassPathByDatabase[it] } ?: seed.folderName
+                ResolvedFolderTarget(
+                    categoryId = categoryId,
+                    keepassGroupPath = groupPath
+                )
+            }
+            sourceKey.startsWith("bitwarden:") -> {
+                val vaultId = sourceKey.substringAfter(':').toLongOrNull()
+                val folderId = if (vaultId == null) {
+                    null
+                } else {
+                    seed.bitwardenFolderByVault[vaultId]
+                        ?: ensureBitwardenFolderId(vaultId, seed.folderName, categoryId, context)
+                }
+                ResolvedFolderTarget(
+                    categoryId = categoryId,
+                    bitwardenFolderId = folderId
+                )
+            }
+            else -> {
+                ResolvedFolderTarget(categoryId = categoryId)
+            }
+        }
+    }
+
+    private fun folderNameFromKeepassPath(path: String?): String {
+        val value = path?.trim().orEmpty()
+        if (value.isBlank()) return ""
+        return value
+            .substringAfterLast('/')
+            .substringAfterLast('\\')
+            .trim()
+    }
+
+    private suspend fun ensureCategoryId(folderName: String, context: FolderSyncContext): Long? {
+        val normalized = normalizeFolderNameKey(folderName)
+        if (normalized.isBlank()) return null
+        context.categoryIdByNormalizedName[normalized]?.let { return it }
+        val trimmedName = folderName.trim()
+        val id = passwordRepository.insertCategory(Category(name = trimmedName))
+        if (id > 0) {
+            context.categoryIdByNormalizedName[normalized] = id
+            context.categoryNameById[id] = trimmedName
+            return id
+        }
+        return context.categoryIdByNormalizedName[normalized]
+    }
+
+    private suspend fun ensureBitwardenFolderId(
+        vaultId: Long,
+        folderName: String,
+        categoryId: Long?,
+        context: FolderSyncContext
+    ): String? {
+        val normalized = normalizeFolderNameKey(folderName)
+        if (normalized.isBlank()) return null
+
+        val folderIdByName = context.folderIdByVaultAndNormalizedName.getOrPut(vaultId) { mutableMapOf() }
+        folderIdByName[normalized]?.let { return it }
+
+        val folderId = UUID.randomUUID().toString()
+        val trimmedName = folderName.trim()
+        bitwardenFolderDao.insert(
+            BitwardenFolder(
+                vaultId = vaultId,
+                bitwardenFolderId = folderId,
+                name = trimmedName,
+                encryptedName = null,
+                revisionDate = Date().toInstant().toString(),
+                isLocalModified = true,
+                localMonicaCategoryId = categoryId
+            )
+        )
+        folderIdByName[normalized] = folderId
+        context.folderNameByVaultAndId.getOrPut(vaultId) { mutableMapOf() }[folderId] = trimmedName
+        return folderId
+    }
+
+    private fun normalizeFolderNameKey(value: String): String {
+        return value.trim().lowercase(Locale.ROOT)
+    }
+
+    private fun createSecureItemCloneForSource(canonical: SecureItem, sourceKey: String): SecureItem {
+        return when {
+            sourceKey == MONICA_SOURCE_KEY -> createSecureItemClone(canonical, targetLocal = true)
+            sourceKey.startsWith("keepass:") -> createSecureItemClone(canonical, keepassDatabaseId = sourceKey.substringAfter(':').toLong())
+            sourceKey.startsWith("bitwarden:") -> createSecureItemClone(canonical, bitwardenVaultId = sourceKey.substringAfter(':').toLong())
+            else -> createSecureItemClone(canonical, targetLocal = true)
+        }
+    }
+
+    private fun hasPasswordFieldConflict(group: List<PasswordEntry>): Boolean {
+        if (group.size <= 1) return false
+        val candidates = listOf(
+            group.map { normalizeText(it.title) },
+            group.map { normalizeText(it.website) },
+            group.map { normalizeText(it.username) },
+            group.map { normalizeText(it.notes) },
+            group.map { normalizeText(it.email) },
+            group.map { normalizeText(it.phone) }
+        )
+        return candidates.any { values -> values.filter { it.isNotBlank() }.distinct().size > 1 }
+    }
+
+    private fun hasSecureItemFieldConflict(group: List<SecureItem>): Boolean {
+        if (group.size <= 1) return false
+        val candidates = listOf(
+            group.map { normalizeText(it.title) },
+            group.map { normalizeText(it.notes) },
+            group.map { normalizeText(it.itemData) }
+        )
+        return candidates.any { values -> values.filter { it.isNotBlank() }.distinct().size > 1 }
+    }
+
     private fun keepassSourceKey(databaseId: Long): String = "keepass:$databaseId"
 
     private fun bitwardenSourceKey(vaultId: Long): String = "bitwarden:$vaultId"
@@ -895,8 +1351,16 @@ class QuickDatabaseMaintenanceEngine(
 
     companion object {
         private const val MONICA_SOURCE_KEY = "monica"
+        private const val SNAPSHOT_RETENTION_DAYS = 14
     }
 }
+
+private data class Quadruple<A, B, C, D>(
+    val first: A,
+    val second: B,
+    val third: C,
+    val fourth: D
+)
 
 private data class MutableSourceStats(
     var passwordCount: Int = 0,
@@ -905,22 +1369,78 @@ private data class MutableSourceStats(
     var passkeyCount: Int = 0
 )
 
+private data class ResolvedFolderTarget(
+    val categoryId: Long? = null,
+    val keepassGroupPath: String? = null,
+    val bitwardenFolderId: String? = null
+)
+
+private data class FolderSeed(
+    val folderName: String,
+    val keepassPathByDatabase: Map<Long, String>,
+    val bitwardenFolderByVault: Map<Long, String>
+)
+
+private class FolderSyncContext(
+    categories: List<Category>,
+    foldersByVault: Map<Long, List<BitwardenFolder>>
+) {
+    val categoryNameById: MutableMap<Long, String> = categories.associate { it.id to it.name }.toMutableMap()
+    val categoryIdByNormalizedName: MutableMap<String, Long> = categories
+        .mapNotNull { category ->
+            val normalized = normalizeFolderNameKey(category.name)
+            if (normalized.isBlank()) null else normalized to category.id
+        }
+        .toMap()
+        .toMutableMap()
+
+    val folderNameByVaultAndId: MutableMap<Long, MutableMap<String, String>> = foldersByVault
+        .mapValues { (_, folders) -> folders.associate { it.bitwardenFolderId to it.name }.toMutableMap() }
+        .toMutableMap()
+
+    val folderIdByVaultAndNormalizedName: MutableMap<Long, MutableMap<String, String>> = foldersByVault
+        .mapValues { (_, folders) ->
+            folders
+                .mapNotNull { folder ->
+                    val normalized = normalizeFolderNameKey(folder.name)
+                    if (normalized.isBlank()) null else normalized to folder.bitwardenFolderId
+                }
+                .toMap()
+                .toMutableMap()
+        }
+        .toMutableMap()
+
+    fun findBitwardenFolderName(vaultId: Long, folderId: String): String? {
+        return folderNameByVaultAndId[vaultId]?.get(folderId)
+    }
+}
+
+private fun normalizeFolderNameKey(value: String): String {
+    return value.trim().lowercase(Locale.ROOT)
+}
+
 fun createQuickDatabaseMaintenanceEngine(
+    database: PasswordDatabase,
     passwordRepository: PasswordRepository,
     secureItemRepository: SecureItemRepository,
     passkeyRepository: PasskeyRepository,
     localKeePassDatabaseDao: LocalKeePassDatabaseDao,
+    bitwardenFolderDao: BitwardenFolderDao,
     bitwardenVaultDao: BitwardenVaultDao,
     securityManager: SecurityManager,
-    workspaceRepository: KeePassWorkspaceRepository
+    workspaceRepository: KeePassWorkspaceRepository,
+    operationLogRepository: OperationLogRepository
 ): QuickDatabaseMaintenanceEngine {
     return QuickDatabaseMaintenanceEngine(
         passwordRepository = passwordRepository,
         secureItemRepository = secureItemRepository,
         passkeyRepository = passkeyRepository,
         localKeePassDatabaseDao = localKeePassDatabaseDao,
+        bitwardenFolderDao = bitwardenFolderDao,
         bitwardenVaultDao = bitwardenVaultDao,
         securityManager = securityManager,
-        keePassBridge = KeePassCompatibilityBridge(workspaceRepository)
+        keePassBridge = KeePassCompatibilityBridge(workspaceRepository),
+        operationLogRepository = operationLogRepository,
+        snapshotManager = MaintenanceSnapshotManager(database)
     )
 }

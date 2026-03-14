@@ -185,7 +185,7 @@ class PasswordViewModel(
                             baseResults
                         } else {
                             val additionalEntries = try {
-                                repository.getPasswordsByIds(additionalIds)
+                                repository.getActivePasswordsByIds(additionalIds)
                             } catch (e: Exception) {
                                 Log.w("PasswordViewModel", "Failed to fetch custom field matched entries", e)
                                 emptyList()
@@ -287,8 +287,8 @@ class PasswordViewModel(
                     else -> false
                 }
                 
-                // Smart dedupe is only for the "All" view and does not mutate source data.
-                val shouldDedupe = !isExplicitSourceView && smartDedupe && filter is CategoryFilter.All
+                // Smart dedupe is only for non-search "All" view and does not mutate source data.
+                val shouldDedupe = query.isBlank() && !isExplicitSourceView && smartDedupe && filter is CategoryFilter.All
                 
                 val filtered = if (shouldDedupe) {
                     dedupeSmart(entries)
