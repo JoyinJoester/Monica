@@ -60,6 +60,7 @@ fun ExpressiveNoteCard(
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
+    val previewImageMaxDimension = 512
     val context = LocalContext.current
     val imageManager = remember(context) { ImageManager(context) }
     val cardImageBitmaps = remember(note.id) { mutableStateMapOf<String, Bitmap>() }
@@ -81,7 +82,10 @@ fun ExpressiveNoteCard(
         }
         note.inlineImageIds.take(3).forEach { imageId ->
             if (!cardImageBitmaps.containsKey(imageId)) {
-                imageManager.loadImage(imageId)?.let { bitmap ->
+                imageManager.loadImage(
+                    fileName = imageId,
+                    maxDimension = previewImageMaxDimension
+                )?.let { bitmap ->
                     cardImageBitmaps[imageId] = bitmap
                 }
             }

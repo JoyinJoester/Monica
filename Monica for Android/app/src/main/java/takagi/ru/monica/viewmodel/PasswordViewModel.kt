@@ -1244,14 +1244,25 @@ class PasswordViewModel(
     }
 
     /**
-     * Mark the session authenticated when developer bypass is already enabled.
-     * This avoids re-running password verification during startup hydration.
+     * Restore the in-memory authenticated state when an existing session is still valid.
+     * This is used for developer bypass and activity recreation while the app remains unlocked.
      */
-    fun markAuthenticatedForBypass() {
+    fun restoreAuthenticatedSession() {
         if (!_isAuthenticated.value) {
             _isAuthenticated.value = true
+        }
+        // Keep the original unlock timestamp when we are only restoring UI state
+        // after an Activity recreation, so auto-lock timing remains accurate.
+        if (!SessionManager.isUnlocked.value) {
             SessionManager.markUnlocked()
         }
+    }
+
+    /**
+     * Backward-compatible wrapper for the old startup bypass flow.
+     */
+    fun markAuthenticatedForBypass() {
+        restoreAuthenticatedSession()
     }
     
     fun setMasterPassword(password: String) {

@@ -11,6 +11,21 @@
     <string name="common_confirm">确认</string>
     <string name="common_edit">编辑</string>
     <string name="common_add">添加</string>
+    <string name="pin_enter_title">输入PIN码</string>
+    <string name="pin_enter_subtitle">输入 6 位数字密码以继续</string>
+    <string name="pin_set_title">设置PIN码</string>
+    <string name="pin_set_subtitle">创建一个 6 位数字密码</string>
+    <string name="pin_confirm_title">确认PIN码</string>
+    <string name="pin_confirm_subtitle">再次输入以确认</string>
+    <string name="pin_mismatch_title">PIN不匹配</string>
+    <string name="pin_error_subtitle">请重新输入 6 位数字密码</string>
+    <string name="pin_delete">删除一位</string>
+    <string name="pin_confirm_action">确认PIN</string>
+    <string name="pin_input_label">PIN</string>
+    <string name="pin_input_placeholder">输入 6 位数字</string>
+    <string name="pin_continue">继续</string>
+    <string name="pin_format_error">PIN 必须是 6 位数字</string>
+    <string name="pin_keyboard_hint">将自动打开数字键盘</string>
     
     <!-- TOTP -->
     <string name="totp_empty_title">暂无验证器</string>
@@ -30,6 +45,7 @@
     <string name="search_title">搜索验证器</string>
     <string name="search_hint">搜索</string>
     <string name="no_entries">暂无验证器</string>
+    <string name="search_no_results">未找到匹配项</string>
     <string name="no_search_results">未找到匹配项</string>
     <string name="search_add_button">添加验证器</string>
     <string name="add_totp">添加验证器</string>

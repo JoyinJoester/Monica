@@ -1,37 +1,51 @@
 package takagi.ru.monica.wear.ui.screens
 
-import androidx.compose.animation.core.*
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Backspace
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.*
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.wear.compose.material3.MaterialTheme
+import androidx.wear.compose.material3.ScreenScaffold
+import androidx.wear.compose.material3.Text
 import kotlinx.coroutines.delay
+import takagi.ru.monica.wear.R
+import takagi.ru.monica.wear.ui.components.ExpressiveBackground
+import takagi.ru.monica.wear.ui.components.MonicaTimeText
 
-/**
- * PIN码锁定屏幕 - Wear OS 拨号器风格
- * 简洁、无按钮背景、自动适配屏幕尺寸
- */
 @Composable
 fun PinLockScreen(
     isFirstTime: Boolean,
@@ -41,326 +55,252 @@ fun PinLockScreen(
     var pin by remember { mutableStateOf("") }
     var confirmPin by remember { mutableStateOf("") }
     var isConfirming by remember { mutableStateOf(false) }
-    var showError by remember { mutableStateOf(false) }
-    
-    val haptics = LocalHapticFeedback.current
-    val currentPin = if (isConfirming) confirmPin else pin
-    
-    // 标题
-    val titleText = when {
-        showError -> "PIN不匹配"
-        isFirstTime && !isConfirming -> "设置PIN码"
-        isFirstTime && isConfirming -> "确认PIN码"
-        else -> "输入PIN码"
-    }
-    
-    // 错误抖动动画
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusRequester = remember { FocusRequester() }
+    val scrollState = rememberScrollState()
     val shakeAnimation = remember { Animatable(0f) }
-    LaunchedEffect(showError) {
-        if (showError) {
+    val pinFormatError = stringResource(R.string.pin_format_error)
+    val pinMismatchError = stringResource(R.string.pin_error_subtitle)
+
+    val inputValue = if (isConfirming) confirmPin else pin
+    val titleText = when {
+        errorMessage == pinMismatchError && isFirstTime -> stringResource(R.string.pin_mismatch_title)
+        isFirstTime && !isConfirming -> stringResource(R.string.pin_set_title)
+        isFirstTime -> stringResource(R.string.pin_confirm_title)
+        else -> stringResource(R.string.pin_enter_title)
+    }
+    val subtitleText = when {
+        errorMessage != null -> errorMessage!!
+        isFirstTime && !isConfirming -> stringResource(R.string.pin_set_subtitle)
+        isFirstTime -> stringResource(R.string.pin_confirm_subtitle)
+        else -> stringResource(R.string.pin_keyboard_hint)
+    }
+
+    LaunchedEffect(isConfirming) {
+        delay(180)
+        focusRequester.requestFocus()
+        keyboardController?.show()
+    }
+
+    LaunchedEffect(errorMessage) {
+        if (errorMessage != null) {
             repeat(3) {
-                shakeAnimation.animateTo(8f, tween(40))
-                shakeAnimation.animateTo(-8f, tween(40))
+                shakeAnimation.animateTo(10f, tween(45))
+                shakeAnimation.animateTo(-10f, tween(45))
             }
-            shakeAnimation.animateTo(0f, tween(40))
-            delay(800)
-            showError = false
+            shakeAnimation.animateTo(0f, tween(45))
         }
     }
 
-    // 使用 BoxWithConstraints 获取屏幕尺寸并自动适配
-    BoxWithConstraints(
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
-        contentAlignment = Alignment.Center
-    ) {
-        // 基于屏幕宽度计算所有尺寸
-        val screenWidth = maxWidth
-        val screenHeight = maxHeight
-        
-        // 自适应尺寸计算
-        val numberSize = (screenWidth * 0.13f)  // 数字大小约为屏幕宽度的13%
-        val iconSize = screenWidth * 0.08f       // 图标大小
-        val dotSize = screenWidth * 0.025f       // PIN 圆点大小
-        val rowSpacing = screenHeight * 0.01f    // 行间距
-        val columnSpacing = screenWidth * 0.08f  // 列间距
-        val titleSize = (screenWidth.value * 0.07f)  // 标题字体
-        
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+    ScreenScaffold(
+        timeText = { MonicaTimeText() }
+    ) { contentPadding ->
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(contentPadding),
+            contentAlignment = Alignment.Center
         ) {
-            // 顶部区域：标题 + PIN 圆点
+            ExpressiveBackground()
+
             Column(
+                modifier = Modifier
+                    .fillMaxWidth(0.82f)
+                    .verticalScroll(scrollState)
+                    .imePadding()
+                    .graphicsLayer { translationX = shakeAnimation.value },
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.graphicsLayer { translationX = shakeAnimation.value }
+                verticalArrangement = Arrangement.Center
             ) {
-                // 标题
+                Spacer(modifier = Modifier.height(8.dp))
+
                 Text(
                     text = titleText,
-                    color = if (showError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
-                    fontSize = titleSize.sp,
-                    fontWeight = FontWeight.Medium,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (errorMessage != null) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onBackground
+                    },
+                    fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center
                 )
-                
-                Spacer(modifier = Modifier.height(rowSpacing))
-                
-                // PIN 圆点指示器
-                DialerPinDots(
-                    currentLength = currentPin.length,
-                    maxLength = 6,
-                    dotSize = dotSize
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Text(
+                    text = subtitleText,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (errorMessage != null) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    textAlign = TextAlign.Center
                 )
-            }
-            
-            Spacer(modifier = Modifier.height(rowSpacing * 2))
-            
-            // 数字键盘 - 拨号器风格
-            DialerKeypad(
-                numberSize = numberSize,
-                iconSize = iconSize,
-                rowSpacing = rowSpacing,
-                columnSpacing = columnSpacing,
-                isComplete = currentPin.length == 6,
-                onDigitClick = { digit ->
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    if (isConfirming) {
-                        if (confirmPin.length < 6) confirmPin += digit
-                    } else {
-                        if (pin.length < 6) pin += digit
-                    }
-                },
-                onDeleteClick = {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    if (isConfirming) {
-                        if (confirmPin.isNotEmpty()) confirmPin = confirmPin.dropLast(1)
-                    } else {
-                        if (pin.isNotEmpty()) pin = pin.dropLast(1)
-                    }
-                },
-                onConfirmClick = {
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                    if (currentPin.length == 6) {
-                        if (isFirstTime) {
-                            if (!isConfirming) {
-                                isConfirming = true
-                            } else {
-                                if (pin == confirmPin) {
-                                    onPinEntered(pin)
-                                } else {
-                                    showError = true
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                BasicTextField(
+                    value = inputValue,
+                    onValueChange = { value ->
+                        val digitsOnly = value.filter { it.isDigit() }.take(6)
+                        errorMessage = null
+                        if (isConfirming) {
+                            confirmPin = digitsOnly
+                        } else {
+                            pin = digitsOnly
+                        }
+
+                        if (digitsOnly.length == 6) {
+                            keyboardController?.hide()
+                            handlePinSubmit(
+                                isFirstTime = isFirstTime,
+                                isConfirming = isConfirming,
+                                pin = if (isConfirming) pin else digitsOnly,
+                                confirmPin = if (isConfirming) digitsOnly else confirmPin,
+                                currentValue = digitsOnly,
+                                onSetConfirming = { isConfirming = it },
+                                onClearPins = {
                                     pin = ""
                                     confirmPin = ""
-                                    isConfirming = false
+                                },
+                                onError = { errorMessage = it },
+                                onSuccess = onPinEntered,
+                                formatError = pinFormatError,
+                                mismatchError = pinMismatchError
+                            )
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .focusRequester(focusRequester)
+                        .padding(horizontal = 4.dp),
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.titleLarge.copy(
+                        color = MaterialTheme.colorScheme.onBackground,
+                        textAlign = TextAlign.Center,
+                        fontWeight = FontWeight.Medium
+                    ),
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.NumberPassword,
+                        imeAction = ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onDone = {
+                            keyboardController?.hide()
+                            handlePinSubmit(
+                                isFirstTime = isFirstTime,
+                                isConfirming = isConfirming,
+                                pin = pin,
+                                confirmPin = confirmPin,
+                                currentValue = inputValue,
+                                onSetConfirming = { isConfirming = it },
+                                onClearPins = {
+                                    pin = ""
+                                    confirmPin = ""
+                                },
+                                onError = { errorMessage = it },
+                                onSuccess = onPinEntered,
+                                formatError = pinFormatError,
+                                mismatchError = pinMismatchError
+                            )
+                        }
+                    ),
+                    decorationBox = { innerTextField ->
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier.fillMaxWidth(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (inputValue.isEmpty()) {
+                                    Text(
+                                        text = stringResource(R.string.pin_input_placeholder),
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+                                        textAlign = TextAlign.Center
+                                    )
                                 }
+                                innerTextField()
                             }
-                        } else {
-                            onPinEntered(currentPin)
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(3.dp)
+                                    .background(
+                                        color = if (errorMessage != null) {
+                                            MaterialTheme.colorScheme.error.copy(alpha = 0.88f)
+                                        } else {
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.92f)
+                                        },
+                                        shape = CircleShape
+                                    )
+                            )
                         }
                     }
-                }
-            )
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text(
+                    text = "${inputValue.length}/6",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+            }
         }
     }
 }
 
-/**
- * 拨号器风格 PIN 圆点
- */
-@Composable
-private fun DialerPinDots(
-    currentLength: Int,
-    maxLength: Int,
-    dotSize: androidx.compose.ui.unit.Dp
+private fun handlePinSubmit(
+    isFirstTime: Boolean,
+    isConfirming: Boolean,
+    pin: String,
+    confirmPin: String,
+    currentValue: String,
+    onSetConfirming: (Boolean) -> Unit,
+    onClearPins: () -> Unit,
+    onError: (String?) -> Unit,
+    onSuccess: (String) -> Unit,
+    formatError: String,
+    mismatchError: String
 ) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(dotSize * 0.8f),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        repeat(maxLength) { index ->
-            val isFilled = index < currentLength
-            
-            val scale by animateFloatAsState(
-                targetValue = if (isFilled) 1.3f else 1f,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioMediumBouncy,
-                    stiffness = Spring.StiffnessHigh
-                ),
-                label = "dotScale"
-            )
-            
-            Box(
-                modifier = Modifier
-                    .size(dotSize)
-                    .scale(scale)
-                    .background(
-                        color = if (isFilled) 
-                            MaterialTheme.colorScheme.primary 
-                        else 
-                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
-                        shape = CircleShape
-                    )
-            )
-        }
+    val normalized = currentValue.filter { it.isDigit() }
+    if (normalized.length != 6) {
+        onError(formatError)
+        return
     }
-}
 
-/**
- * 拨号器风格数字键盘 - 无背景，纯文本
- */
-@Composable
-private fun DialerKeypad(
-    numberSize: androidx.compose.ui.unit.Dp,
-    iconSize: androidx.compose.ui.unit.Dp,
-    rowSpacing: androidx.compose.ui.unit.Dp,
-    columnSpacing: androidx.compose.ui.unit.Dp,
-    isComplete: Boolean,
-    onDigitClick: (String) -> Unit,
-    onDeleteClick: () -> Unit,
-    onConfirmClick: () -> Unit
-) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(rowSpacing)
-    ) {
-        // 1 2 3
-        Row(horizontalArrangement = Arrangement.spacedBy(columnSpacing)) {
-            DialerDigitKey("1", numberSize, onDigitClick)
-            DialerDigitKey("2", numberSize, onDigitClick)
-            DialerDigitKey("3", numberSize, onDigitClick)
+    if (isFirstTime) {
+        if (!isConfirming) {
+            onError(null)
+            onSetConfirming(true)
+            return
         }
-        // 4 5 6
-        Row(horizontalArrangement = Arrangement.spacedBy(columnSpacing)) {
-            DialerDigitKey("4", numberSize, onDigitClick)
-            DialerDigitKey("5", numberSize, onDigitClick)
-            DialerDigitKey("6", numberSize, onDigitClick)
-        }
-        // 7 8 9
-        Row(horizontalArrangement = Arrangement.spacedBy(columnSpacing)) {
-            DialerDigitKey("7", numberSize, onDigitClick)
-            DialerDigitKey("8", numberSize, onDigitClick)
-            DialerDigitKey("9", numberSize, onDigitClick)
-        }
-        // ⌫ 0 ✓
-        Row(horizontalArrangement = Arrangement.spacedBy(columnSpacing)) {
-            // 删除键
-            DialerIconKey(
-                icon = Icons.Default.Backspace,
-                size = iconSize,
-                contentDescription = "删除",
-                onClick = onDeleteClick
-            )
-            // 0
-            DialerDigitKey("0", numberSize, onDigitClick)
-            // 确认键
-            DialerIconKey(
-                icon = Icons.Default.Check,
-                size = iconSize,
-                contentDescription = "确认",
-                tint = if (isComplete) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
-                enabled = isComplete,
-                onClick = onConfirmClick
-            )
-        }
-    }
-}
 
-/**
- * 拨号器风格数字键 - 纯文本，无背景
- */
-@Composable
-private fun DialerDigitKey(
-    digit: String,
-    size: androidx.compose.ui.unit.Dp,
-    onClick: (String) -> Unit
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.8f else 1f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessHigh
-        ),
-        label = "digitScale"
-    )
-    
-    val alpha by animateFloatAsState(
-        targetValue = if (isPressed) 0.6f else 1f,
-        animationSpec = tween(100),
-        label = "digitAlpha"
-    )
-    
-    Box(
-        modifier = Modifier
-            .size(size)
-            .scale(scale)
-            .alpha(alpha)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = { onClick(digit) }
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = digit,
-            color = MaterialTheme.colorScheme.onSurface,
-            fontSize = (size.value * 0.6f).sp,
-            fontWeight = FontWeight.Light,
-            textAlign = TextAlign.Center
-        )
+        if (pin == confirmPin) {
+            onError(null)
+            onSuccess(pin)
+        } else {
+            onClearPins()
+            onSetConfirming(false)
+            onError(mismatchError)
+        }
+        return
     }
-}
 
-/**
- * 拨号器风格图标键
- */
-@Composable
-private fun DialerIconKey(
-    icon: ImageVector,
-    size: androidx.compose.ui.unit.Dp,
-    contentDescription: String,
-    tint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.onSurface,
-    enabled: Boolean = true,
-    onClick: () -> Unit
-) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.8f else 1f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessHigh
-        ),
-        label = "iconScale"
-    )
-    
-    // 图标容器大小与数字键相同，但图标本身较小
-    val containerSize = size * 1.6f  // 与数字键容器大小一致
-    
-    Box(
-        modifier = Modifier
-            .size(containerSize)
-            .scale(scale)
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                enabled = enabled,
-                onClick = onClick
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = contentDescription,
-            tint = tint,
-            modifier = Modifier.size(size)
-        )
-    }
+    onError(null)
+    onSuccess(normalized)
 }

@@ -71,7 +71,8 @@ class BitwardenAuthService(
     suspend fun preLogin(
         email: String,
         serverUrl: String = BitwardenApiFactory.OFFICIAL_VAULT_URL,
-        diagnosticAttemptId: String? = null
+        diagnosticAttemptId: String? = null,
+        tlsConfig: BitwardenTlsConfig? = null
     ): Result<PreLoginResult> = withContext(Dispatchers.IO) {
         val startMs = System.currentTimeMillis()
         try {
@@ -89,7 +90,8 @@ class BitwardenAuthService(
             }
             val identityApi = apiManager.getIdentityApi(
                 identityUrl = urls.identity,
-                refererUrl = urls.vault
+                refererUrl = urls.vault,
+                tlsConfig = tlsConfig
             )
             
             val response = identityApi.preLogin(PreLoginRequest(normalizedEmail))
@@ -165,7 +167,8 @@ class BitwardenAuthService(
         email: String,
         password: String,
         serverUrl: String = BitwardenApiFactory.OFFICIAL_VAULT_URL,
-        captchaResponse: String? = null
+        captchaResponse: String? = null,
+        tlsConfig: BitwardenTlsConfig? = null
     ): Result<LoginResult> = withContext(Dispatchers.IO) {
         var masterKey: ByteArray? = null
         var stretchedKey: SymmetricCryptoKey? = null
@@ -199,7 +202,8 @@ class BitwardenAuthService(
             val preLoginResult = preLogin(
                 email = normalizedEmail,
                 serverUrl = serverUrl,
-                diagnosticAttemptId = attemptId
+                diagnosticAttemptId = attemptId,
+                tlsConfig = tlsConfig
             ).getOrElse {
                 logDiag(
                     flow = "primary",
@@ -275,7 +279,8 @@ class BitwardenAuthService(
             val identityApi = apiManager.getIdentityApi(
                 identityUrl = urls.identity,
                 refererUrl = urls.vault,
-                headerProfile = primaryHeaderProfile
+                headerProfile = primaryHeaderProfile,
+                tlsConfig = tlsConfig
             )
             val response = identityApi.login(
                 authEmail = authEmail,
@@ -459,7 +464,8 @@ class BitwardenAuthService(
                         val retryIdentityApi = apiManager.getIdentityApi(
                             identityUrl = urls.identity,
                             refererUrl = urls.vault,
-                            headerProfile = retryHeaderProfile
+                            headerProfile = retryHeaderProfile,
+                            tlsConfig = tlsConfig
                         )
                         val retryResponse = retryIdentityApi.login(
                             authEmail = authEmail,
@@ -675,7 +681,8 @@ class BitwardenAuthService(
         twoFactorProvider: Int,
         remember: Boolean = false,
         serverUrl: String = BitwardenApiFactory.OFFICIAL_VAULT_URL,
-        captchaResponse: String? = null
+        captchaResponse: String? = null,
+        tlsConfig: BitwardenTlsConfig? = null
     ): Result<LoginResult> = withContext(Dispatchers.IO) {
         val attemptId = twoFactorState.diagnosticAttemptId ?: newAttemptId()
         val startMs = System.currentTimeMillis()
@@ -698,7 +705,8 @@ class BitwardenAuthService(
             val identityApi = apiManager.getIdentityApi(
                 identityUrl = urls.identity,
                 refererUrl = urls.vault,
-                headerProfile = headerProfile
+                headerProfile = headerProfile,
+                tlsConfig = tlsConfig
             )
             
             // Auth-Email header - 使用原始邮箱，不是小写！
@@ -809,7 +817,8 @@ class BitwardenAuthService(
         twoFactorState: LoginResult.TwoFactorRequired,
         newDeviceOtp: String,
         serverUrl: String = BitwardenApiFactory.OFFICIAL_VAULT_URL,
-        captchaResponse: String? = null
+        captchaResponse: String? = null,
+        tlsConfig: BitwardenTlsConfig? = null
     ): Result<LoginResult> = withContext(Dispatchers.IO) {
         val attemptId = twoFactorState.diagnosticAttemptId ?: newAttemptId()
         val startMs = System.currentTimeMillis()
@@ -831,7 +840,8 @@ class BitwardenAuthService(
             val identityApi = apiManager.getIdentityApi(
                 identityUrl = urls.identity,
                 refererUrl = urls.vault,
-                headerProfile = headerProfile
+                headerProfile = headerProfile,
+                tlsConfig = tlsConfig
             )
 
             val authEmail = toBase64UrlNoPadding(twoFactorState.email)
@@ -937,12 +947,14 @@ class BitwardenAuthService(
     suspend fun refreshToken(
         refreshToken: String,
         identityUrl: String = BitwardenApiFactory.OFFICIAL_IDENTITY_URL,
-        refererUrl: String? = null
+        refererUrl: String? = null,
+        tlsConfig: BitwardenTlsConfig? = null
     ): Result<RefreshResult> = withContext(Dispatchers.IO) {
         try {
             val identityApi = apiManager.getIdentityApi(
                 identityUrl = identityUrl,
-                refererUrl = refererUrl
+                refererUrl = refererUrl,
+                tlsConfig = tlsConfig
             )
             
             val response = identityApi.refreshToken(

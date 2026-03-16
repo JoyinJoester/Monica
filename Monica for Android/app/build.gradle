@@ -91,6 +91,7 @@ dependencies {
     implementation libs.androidx.core.ktx
     implementation libs.androidx.core.splashscreen  // 添加splashscreen依赖
     implementation libs.androidx.lifecycle.runtime.ktx
+    implementation "androidx.lifecycle:lifecycle-process:2.6.1"
     implementation libs.androidx.activity.compose
     
     // Compose

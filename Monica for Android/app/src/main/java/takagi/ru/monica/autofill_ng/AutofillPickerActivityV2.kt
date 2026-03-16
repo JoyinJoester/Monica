@@ -320,6 +320,18 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         val securityManager = SecurityManager(applicationContext)
         // settingsManager 已由 BaseMonicaActivity 初始化
         val localSettingsManager = settingsManager
+
+        runCatching {
+            val autoLockMinutes = runBlocking {
+                localSettingsManager.settingsFlow.first().autoLockMinutes
+            }
+            SessionManager.updateAutoLockTimeout(autoLockMinutes)
+        }.onFailure { error ->
+            AutofillLogger.w(
+                "PICKER",
+                "Failed to sync auto-lock timeout before verification: ${error.message}"
+            )
+        }
         
         // 检查是否可以跳过验证（基于会话管理器的安全窗规则）
         val canSkipAuth = canSkipVerification()

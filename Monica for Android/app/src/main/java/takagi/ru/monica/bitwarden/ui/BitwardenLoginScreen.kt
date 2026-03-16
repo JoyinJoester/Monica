@@ -31,6 +31,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import takagi.ru.monica.bitwarden.api.BitwardenApiFactory
+import takagi.ru.monica.bitwarden.api.BitwardenTlsConfig
 import takagi.ru.monica.bitwarden.service.BitwardenAuthService
 import takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel
 
@@ -65,6 +66,13 @@ fun BitwardenLoginScreen(
     var email by rememberSaveable { mutableStateOf("") }
     var masterPassword by rememberSaveable { mutableStateOf("") }
     var showPassword by rememberSaveable { mutableStateOf(false) }
+    var showAdvancedTls by rememberSaveable { mutableStateOf(false) }
+    var tlsCertificateAlias by rememberSaveable { mutableStateOf("") }
+    var tlsCaCertificatePem by rememberSaveable { mutableStateOf("") }
+    var tlsMtlsEnabled by rememberSaveable { mutableStateOf(false) }
+    var tlsClientCertPkcs12Base64 by rememberSaveable { mutableStateOf("") }
+    var tlsClientCertPassword by rememberSaveable { mutableStateOf("") }
+    var showClientCertPassword by rememberSaveable { mutableStateOf(false) }
     val selectedServerPreset = runCatching {
         BitwardenServerPreset.valueOf(selectedServerPresetName)
     }.getOrElse { BitwardenServerPreset.US }
@@ -89,6 +97,20 @@ fun BitwardenLoginScreen(
         }
     }
 
+    fun buildTlsConfigForLogin(): BitwardenTlsConfig? {
+        if (selectedServerPreset != BitwardenServerPreset.SELF_HOSTED) {
+            return null
+        }
+        val config = BitwardenTlsConfig(
+            certificateAlias = tlsCertificateAlias.trim().takeIf { it.isNotBlank() },
+            caCertificatePem = tlsCaCertificatePem.trim().takeIf { it.isNotBlank() },
+            mtlsEnabled = tlsMtlsEnabled,
+            clientCertPkcs12Base64 = tlsClientCertPkcs12Base64.trim().takeIf { it.isNotBlank() },
+            clientCertPassword = tlsClientCertPassword.takeIf { it.isNotBlank() }
+        )
+        return if (config.isEmpty()) null else config
+    }
+
     fun submitPrimaryLogin(captcha: String? = null) {
         val normalizedEmail = email.trim()
         val resolvedServerUrl = resolveServerUrlForLogin()
@@ -98,7 +120,8 @@ fun BitwardenLoginScreen(
             resolvedServerUrl,
             normalizedEmail,
             masterPassword,
-            captchaResponse = captcha
+            captchaResponse = captcha,
+            tlsConfig = buildTlsConfigForLogin()
         )
     }
 
@@ -270,6 +293,28 @@ fun BitwardenLoginScreen(
                     }
                 }
 
+                Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedButton(
+                    onClick = { showAdvancedTls = !showAdvancedTls },
+                    enabled = selectedServerPreset == BitwardenServerPreset.SELF_HOSTED,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Outlined.Security, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(if (showAdvancedTls) "收起证书与 mTLS 设置" else "证书与 mTLS 设置")
+                }
+
+                if (selectedServerPreset != BitwardenServerPreset.SELF_HOSTED) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "证书设置入口已开启，切换到“自托管”后可配置。",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
                 AnimatedVisibility(
                     visible = selectedServerPreset == BitwardenServerPreset.SELF_HOSTED,
                     enter = fadeIn(),
@@ -292,6 +337,106 @@ fun BitwardenLoginScreen(
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth()
                         )
+
+                        AnimatedVisibility(
+                            visible = showAdvancedTls,
+                            enter = fadeIn(),
+                            exit = fadeOut()
+                        ) {
+                            Card(
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp)
+                                ) {
+                                    Text(
+                                        text = "高级 TLS（可选）",
+                                        style = MaterialTheme.typography.titleSmall
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "默认留空即使用系统证书链，不会改变原有登录行为。",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    OutlinedTextField(
+                                        value = tlsCertificateAlias,
+                                        onValueChange = { tlsCertificateAlias = it },
+                                        label = { Text("系统证书别名（可选）") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    OutlinedTextField(
+                                        value = tlsCaCertificatePem,
+                                        onValueChange = { tlsCaCertificatePem = it },
+                                        label = { Text("自签 CA 证书 PEM（可选）") },
+                                        placeholder = { Text("-----BEGIN CERTIFICATE-----") },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(min = 96.dp)
+                                    )
+
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Checkbox(
+                                            checked = tlsMtlsEnabled,
+                                            onCheckedChange = { tlsMtlsEnabled = it }
+                                        )
+                                        Text("启用 mTLS（客户端证书）")
+                                    }
+
+                                    AnimatedVisibility(visible = tlsMtlsEnabled) {
+                                        Column(modifier = Modifier.fillMaxWidth()) {
+                                            OutlinedTextField(
+                                                value = tlsClientCertPkcs12Base64,
+                                                onValueChange = { tlsClientCertPkcs12Base64 = it },
+                                                label = { Text("客户端证书 PKCS#12(Base64)") },
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .heightIn(min = 96.dp)
+                                            )
+
+                                            Spacer(modifier = Modifier.height(8.dp))
+
+                                            OutlinedTextField(
+                                                value = tlsClientCertPassword,
+                                                onValueChange = { tlsClientCertPassword = it },
+                                                label = { Text("客户端证书密码（可选）") },
+                                                trailingIcon = {
+                                                    IconButton(onClick = { showClientCertPassword = !showClientCertPassword }) {
+                                                        Icon(
+                                                            if (showClientCertPassword) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
+                                                            contentDescription = if (showClientCertPassword) "隐藏密码" else "显示密码"
+                                                        )
+                                                    }
+                                                },
+                                                visualTransformation = if (showClientCertPassword) {
+                                                    VisualTransformation.None
+                                                } else {
+                                                    PasswordVisualTransformation()
+                                                },
+                                                singleLine = true,
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 

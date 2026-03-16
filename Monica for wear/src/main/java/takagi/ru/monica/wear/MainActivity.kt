@@ -19,10 +19,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import android.content.ContextWrapper
+import androidx.wear.compose.material3.AppScaffold
 import androidx.wear.compose.navigation.SwipeDismissableNavHost
 import androidx.wear.compose.navigation.composable
 import androidx.wear.compose.navigation.rememberSwipeDismissableNavController
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.collectAsState
 import takagi.ru.monica.wear.data.PasswordDatabase
 import takagi.ru.monica.wear.repository.TotpRepositoryImpl
@@ -58,6 +58,7 @@ class MainActivity : ComponentActivity() {
         
         // 初始化安全管理器
         securityManager = WearSecurityManager(applicationContext)
+        securityManager.migrateLegacyPinFormatIfNeeded()
         
         // 初始化数据库和Repository
         val database = PasswordDatabase.getDatabase(applicationContext)
@@ -166,35 +167,37 @@ fun MonicaWearApp(
             else -> {
                 // 主应用界面
                 val navController = rememberSwipeDismissableNavController()
-            
-                SwipeDismissableNavHost(
-                    navController = navController,
-                    startDestination = "totp_pager",
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    // TOTP分页浏览屏幕
-                    composable("totp_pager") {
-                        TotpPagerScreen(
-                            viewModel = totpViewModel,
-                            settingsViewModel = settingsViewModel,
-                            onShowSettings = {
-                                navController.navigate("settings")
-                            }
-                        )
-                    }
-                    
-                    // 设置屏幕
-                    composable("settings") {
-                        SettingsScreen(
-                            viewModel = settingsViewModel,
-                            securityManager = securityManager,
-                            onBack = {
-                                navController.popBackStack()
-                            },
-                            onLanguageChanged = {
-                                // 语言已通过 CompositionLocal 动态更新，无需重启
-                            }
-                        )
+
+                AppScaffold {
+                    SwipeDismissableNavHost(
+                        navController = navController,
+                        startDestination = "totp_pager",
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        // TOTP分页浏览屏幕
+                        composable("totp_pager") {
+                            TotpPagerScreen(
+                                viewModel = totpViewModel,
+                                settingsViewModel = settingsViewModel,
+                                onShowSettings = {
+                                    navController.navigate("settings")
+                                }
+                            )
+                        }
+
+                        // 设置屏幕
+                        composable("settings") {
+                            SettingsScreen(
+                                viewModel = settingsViewModel,
+                                securityManager = securityManager,
+                                onBack = {
+                                    navController.popBackStack()
+                                },
+                                onLanguageChanged = {
+                                    // 语言已通过 CompositionLocal 动态更新，无需重启
+                                }
+                            )
+                        }
                     }
                 }
             }

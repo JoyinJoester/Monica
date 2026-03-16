@@ -13,10 +13,8 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,12 +27,25 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.wear.compose.material.Button
+import androidx.wear.compose.material3.Button
+import androidx.wear.compose.material3.CircularProgressIndicator
+import androidx.wear.compose.material3.FilledIconButton
+import androidx.wear.compose.material3.FilledTonalIconButton
+import androidx.wear.compose.material3.Icon
+import androidx.wear.compose.material3.IconButtonDefaults
+import androidx.wear.compose.material3.MaterialTheme
+import androidx.wear.compose.material3.ScreenScaffold
+import androidx.wear.compose.material3.Text
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
+import takagi.ru.monica.wear.ui.components.ExpressiveBackground
+import takagi.ru.monica.wear.ui.components.MonicaTimeText
 import takagi.ru.monica.wear.R
+import takagi.ru.monica.wear.ui.components.RoundActionDock
 import takagi.ru.monica.wear.ui.components.SearchOverlay
 import takagi.ru.monica.wear.ui.components.TotpCard
+import takagi.ru.monica.wear.ui.components.WearPanel
+import takagi.ru.monica.wear.ui.components.roundContentWidthFraction
 import takagi.ru.monica.wear.viewmodel.SettingsViewModel
 import takagi.ru.monica.wear.viewmodel.TotpItemState
 import takagi.ru.monica.wear.viewmodel.TotpViewModel
@@ -83,101 +94,162 @@ fun TotpPagerScreen(
                 scaleIn(initialScale = 0.9f, animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy)),
         modifier = modifier.fillMaxSize()
     ) {
-        Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            when {
-                isLoading -> {
-                    BoxWithConstraints(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        val indicatorSize = maxWidth * 0.2f
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(indicatorSize)
+        ScreenScaffold(
+            timeText = { MonicaTimeText() }
+        ) { contentPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(contentPadding)
+            ) {
+                ExpressiveBackground()
+                when {
+                    isLoading -> {
+                        BoxWithConstraints(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            val indicatorSize = maxWidth * 0.2f
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(indicatorSize)
+                            )
+                        }
+                    }
+                    allItems.isEmpty() && !isWebDavConfigured -> {
+                        DraggableEmptyState(
+                            content = { WebDavEmptyState(onGoToSettings = onShowSettings) },
+                            onSwipeUp = { showSearch = true },
+                            onSwipeDown = onShowSettings
+                        )
+                    }
+                    allItems.isEmpty() -> {
+                        DraggableEmptyState(
+                            content = { EmptyState() },
+                            onSwipeUp = { showSearch = true },
+                            onSwipeDown = onShowSettings
+                        )
+                    }
+                    else -> {
+                        TotpPagerContent(
+                            viewModel = viewModel,
+                            settingsViewModel = settingsViewModel,
+                            pagerState = pagerState,
+                            allItems = allItems,
+                            searchResults = searchResults,
+                            searchQuery = searchQuery,
+                            showSearch = showSearch,
+                            onSwipeUp = { showSearch = true },
+                            onSwipeDown = onShowSettings,
+                            onSearchDismiss = {
+                                showSearch = false
+                                viewModel.clearSearch()
+                            }
                         )
                     }
                 }
-                allItems.isEmpty() && !isWebDavConfigured -> {
-                    DraggableEmptyState(
-                        content = { WebDavEmptyState(onGoToSettings = onShowSettings) },
-                        onSwipeUp = { showSearch = true },
-                        onSwipeDown = onShowSettings
+
+                if (!showSearch && allItems.isNotEmpty()) {
+                    MonicaBottomActions(
+                        onSearchClick = { showSearch = true },
+                        onSettingsClick = onShowSettings,
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = 10.dp)
                     )
                 }
-                allItems.isEmpty() -> {
-                    DraggableEmptyState(
-                        content = { EmptyState() },
-                        onSwipeUp = { showSearch = true },
-                        onSwipeDown = onShowSettings
-                    )
-                }
-                else -> {
-                    TotpPagerContent(
-                        viewModel = viewModel,
-                        settingsViewModel = settingsViewModel,
-                        pagerState = pagerState,
-                        allItems = allItems,
-                        searchResults = searchResults,
+
+                // 搜索覆盖层
+                AnimatedVisibility(
+                    visible = showSearch,
+                    enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                    exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    SearchOverlay(
                         searchQuery = searchQuery,
-                        showSearch = showSearch,
-                        onSwipeUp = { showSearch = true },
-                        onSwipeDown = onShowSettings,
-                        onSearchDismiss = {
+                        searchResults = if (searchQuery.isBlank()) allItems else searchResults,
+                        onSearchQueryChange = { viewModel.searchTotpItems(it) },
+                        onNavigateToItem = { item ->
+                            val targetIndex = allItems.indexOfFirst { it.item.id == item.item.id }
+                            if (targetIndex >= 0) {
+                                coroutineScope.launch {
+                                    pagerState.animateScrollToPage(targetIndex)
+                                }
+                            }
                             showSearch = false
                             viewModel.clearSearch()
-                        }
+                        },
+                        onDismiss = {
+                            showSearch = false
+                            viewModel.clearSearch()
+                        },
+                        onAddTotp = { secret, issuer, accountName, onResult ->
+                            settingsViewModel.addTotpItem(secret, issuer, accountName, onResult)
+                        },
+                        onEditTotp = { item, secret, issuer, accountName, onResult ->
+                            viewModel.updateTotpItem(item, secret, issuer, accountName) { success, error ->
+                                if (success) {
+                                    Toast.makeText(context, context.getString(R.string.totp_update_success), Toast.LENGTH_SHORT).show()
+                                    onResult(true, null)
+                                } else {
+                                    Toast.makeText(context, error ?: context.getString(R.string.totp_update_failed), Toast.LENGTH_SHORT).show()
+                                    onResult(false, error)
+                                }
+                            }
+                        },
+                        onDeleteTotp = { item ->
+                            viewModel.deleteTotpItem(item) { success, error ->
+                                if (success) {
+                                    Toast.makeText(context, context.getString(R.string.totp_delete_success), Toast.LENGTH_SHORT).show()
+                                } else {
+                                    Toast.makeText(context, error ?: context.getString(R.string.totp_delete_failed), Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
             }
-            
-            // 搜索覆盖层
-            AnimatedVisibility(
-                visible = showSearch,
-                enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-                modifier = Modifier.fillMaxSize()
+        }
+    }
+}
+
+@Composable
+private fun MonicaBottomActions(
+    onSearchClick: () -> Unit,
+    onSettingsClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    RoundActionDock(
+        modifier = modifier.fillMaxWidth(roundContentWidthFraction(0.48f, 0.56f))
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            FilledTonalIconButton(
+                onClick = onSettingsClick,
+                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                )
             ) {
-                SearchOverlay(
-                    searchQuery = searchQuery,
-                    searchResults = if (searchQuery.isBlank()) allItems else searchResults,
-                    onSearchQueryChange = { viewModel.searchTotpItems(it) },
-                    onNavigateToItem = { item ->
-                        val targetIndex = allItems.indexOfFirst { it.item.id == item.item.id }
-                        if (targetIndex >= 0) {
-                            coroutineScope.launch {
-                                pagerState.animateScrollToPage(targetIndex)
-                            }
-                        }
-                        showSearch = false
-                        viewModel.clearSearch()
-                    },
-                    onDismiss = {
-                        showSearch = false
-                        viewModel.clearSearch()
-                    },
-                    onAddTotp = { secret, issuer, accountName, onResult ->
-                        settingsViewModel.addTotpItem(secret, issuer, accountName, onResult)
-                    },
-                    onEditTotp = { item, secret, issuer, accountName, onResult ->
-                        viewModel.updateTotpItem(item, secret, issuer, accountName) { success, error ->
-                            if (success) {
-                                Toast.makeText(context, context.getString(R.string.totp_update_success), Toast.LENGTH_SHORT).show()
-                                onResult(true, null)
-                            } else {
-                                Toast.makeText(context, error ?: context.getString(R.string.totp_update_failed), Toast.LENGTH_SHORT).show()
-                                onResult(false, error)
-                            }
-                        }
-                    },
-                    onDeleteTotp = { item ->
-                        viewModel.deleteTotpItem(item) { success, error ->
-                            if (success) {
-                                Toast.makeText(context, context.getString(R.string.totp_delete_success), Toast.LENGTH_SHORT).show()
-                            } else {
-                                Toast.makeText(context, error ?: context.getString(R.string.totp_delete_failed), Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                    },
-                    modifier = Modifier.fillMaxSize()
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = "Settings"
+                )
+            }
+
+            FilledIconButton(
+                onClick = onSearchClick,
+                colors = IconButtonDefaults.filledIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = "Search"
                 )
             }
         }
@@ -276,16 +348,20 @@ private fun TotpPagerContent(
         if (allItems.size > 1) {
             val dotSize = screenWidth * 0.025f
             val dotSpacing = screenWidth * 0.015f
-            
-            AdaptivePageIndicator(
-                pageCount = allItems.size,
-                currentPage = pagerState.currentPage,
-                dotSize = dotSize,
-                dotSpacing = dotSpacing,
+
+            RoundActionDock(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = screenWidth * 0.06f)
-            )
+                    .fillMaxWidth(0.34f)
+                    .padding(bottom = screenWidth * 0.2f)
+            ) {
+                AdaptivePageIndicator(
+                    pageCount = allItems.size,
+                    currentPage = pagerState.currentPage,
+                    dotSize = dotSize,
+                    dotSpacing = dotSpacing
+                )
+            }
         }
     }
 }
@@ -334,35 +410,35 @@ private fun AdaptivePageIndicator(
  */
 @Composable
 private fun EmptyState(modifier: Modifier = Modifier) {
-    BoxWithConstraints(
+    Box(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        val screenWidth = maxWidth
-        val titleSize = (screenWidth.value * 0.07f).sp
-        val subtitleSize = (screenWidth.value * 0.055f).sp
-        val padding = screenWidth * 0.08f
-        val spacing = screenWidth * 0.03f
-        
-        Column(
-            modifier = Modifier.padding(padding),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+        WearPanel(
+            modifier = Modifier.fillMaxWidth(0.72f),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            borderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f)
         ) {
-            Text(
-                text = stringResource(R.string.totp_empty_title),
-                color = MaterialTheme.colorScheme.onBackground,
-                fontSize = titleSize,
-                fontWeight = FontWeight.Medium,
-                textAlign = TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(spacing))
-            Text(
-                text = stringResource(R.string.totp_empty_subtitle),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = subtitleSize,
-                textAlign = TextAlign.Center
-            )
+            Column(
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.totp_empty_title),
+                    color = MaterialTheme.colorScheme.onBackground,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    text = stringResource(R.string.totp_empty_subtitle),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center
+                )
+            }
         }
     }
 }
@@ -375,56 +451,43 @@ private fun WebDavEmptyState(
     onGoToSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    BoxWithConstraints(
+    Box(
         modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        val screenWidth = maxWidth
-        val screenHeight = maxHeight
-        
-        // 自适应尺寸计算
-        val iconSize = screenWidth * 0.2f
-        val titleSize = (screenWidth.value * 0.08f).sp
-        val subtitleSize = (screenWidth.value * 0.055f).sp
-        val padding = screenWidth * 0.1f
-        val spacing = screenHeight * 0.03f
-        val buttonHeight = screenHeight * 0.12f
-        
-        Column(
-            modifier = Modifier.padding(horizontal = padding),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+        WearPanel(
+            modifier = Modifier.fillMaxWidth(0.72f),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(28.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            borderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f)
         ) {
-            Icon(
-                imageVector = Icons.Default.CloudOff,
-                contentDescription = null,
-                modifier = Modifier.size(iconSize),
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Spacer(modifier = Modifier.height(spacing))
-            Text(
-                text = stringResource(R.string.webdav_empty_title),
-                fontSize = titleSize,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onBackground,
-                textAlign = TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(spacing * 0.5f))
-            Text(
-                text = stringResource(R.string.webdav_empty_subtitle),
-                fontSize = subtitleSize,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(spacing))
-            Button(
-                onClick = onGoToSettings,
-                modifier = Modifier.height(buttonHeight)
+            Column(
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(
-                    text = stringResource(R.string.webdav_empty_button),
-                    fontSize = subtitleSize
+                Icon(
+                    imageVector = Icons.Default.CloudOff,
+                    contentDescription = null,
+                    modifier = Modifier.size(40.dp),
+                    tint = MaterialTheme.colorScheme.primary
                 )
+                Text(
+                    text = stringResource(R.string.webdav_empty_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    text = stringResource(R.string.webdav_empty_subtitle),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+                Button(onClick = onGoToSettings) {
+                    Text(text = stringResource(R.string.webdav_empty_button))
+                }
             }
         }
     }

@@ -57,6 +57,7 @@ fun NoteDetailScreen(
     onEditNote: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val detailImageMaxDimension = 1440
     val context = LocalContext.current
     val imageManager = remember { ImageManager(context) }
     val noteItem by viewModel.observeNoteById(noteId).collectAsState(initial = null)
@@ -65,7 +66,7 @@ fun NoteDetailScreen(
         noteItem?.let { NoteContentCodec.decodeFromItem(it) }
     }
 
-    val imageBitmaps = remember { mutableStateMapOf<String, Bitmap>() }
+    val imageBitmaps = remember(noteId) { mutableStateMapOf<String, Bitmap>() }
     val legacyImageIds = remember(noteItem?.imagePaths) {
         noteItem?.let { NoteContentCodec.decodeImagePaths(it.imagePaths) }.orEmpty()
     }
@@ -91,9 +92,16 @@ fun NoteDetailScreen(
     }
 
     LaunchedEffect(imageIds) {
+        val staleKeys = imageBitmaps.keys.toSet() - imageIds.toSet()
+        staleKeys.forEach { key ->
+            imageBitmaps.remove(key)
+        }
         imageIds.forEach { imageId ->
             if (!imageBitmaps.containsKey(imageId)) {
-                imageManager.loadImage(imageId)?.let { bitmap ->
+                imageManager.loadImage(
+                    fileName = imageId,
+                    maxDimension = detailImageMaxDimension
+                )?.let { bitmap ->
                     imageBitmaps[imageId] = bitmap
                 }
             }

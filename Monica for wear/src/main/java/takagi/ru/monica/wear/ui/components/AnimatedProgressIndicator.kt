@@ -3,7 +3,7 @@ package takagi.ru.monica.wear.ui.components
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.MaterialTheme
+import androidx.wear.compose.material3.MaterialTheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -26,7 +26,7 @@ fun ClassicCircularProgress(
     modifier: Modifier = Modifier
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
-    val surfaceColor = MaterialTheme.colorScheme.surfaceVariant
+    val surfaceColor = MaterialTheme.colorScheme.surfaceContainer
     
     Canvas(modifier = modifier.size(120.dp)) {
         val strokeWidth = 8.dp.toPx()
@@ -70,7 +70,7 @@ fun ModernWaveProgress(
     modifier: Modifier = Modifier
 ) {
     val primaryColor = MaterialTheme.colorScheme.primary
-    val surfaceColor = MaterialTheme.colorScheme.surface
+    val surfaceColor = MaterialTheme.colorScheme.surfaceContainerLow
     
     // 轻微的呼吸效果（透明度变化）
     val infiniteTransition = rememberInfiniteTransition(label = "breathe")

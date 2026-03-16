@@ -195,7 +195,7 @@ class FillResponseBuilderNg(
         val menuPresentation = if (filledData.isVaultLocked) {
             AutofillDatasetBuilder.RemoteViewsFactory.createUnlockPrompt(
                 context = context,
-                message = context.getString(R.string.unlock)
+                message = context.getString(R.string.autofill_manual_entry_title)
             )
         } else {
             AutofillDatasetBuilder.RemoteViewsFactory.createManualSelection(

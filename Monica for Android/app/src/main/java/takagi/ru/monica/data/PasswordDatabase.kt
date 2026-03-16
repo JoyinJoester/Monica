@@ -28,7 +28,7 @@ import takagi.ru.monica.data.bitwarden.*
         BitwardenConflictBackup::class,
         BitwardenPendingOperation::class
     ],
-    version = 47,
+    version = 48,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -1260,6 +1260,26 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Migration 47 -> 48:
+         * 为 Bitwarden vault 增加自签名证书与 mTLS 配置字段。
+         */
+        private val MIGRATION_47_48 = object : androidx.room.migration.Migration(47, 48) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 47→48: bitwarden tls columns")
+                    database.execSQL("ALTER TABLE bitwarden_vaults ADD COLUMN tls_certificate_alias TEXT")
+                    database.execSQL("ALTER TABLE bitwarden_vaults ADD COLUMN tls_ca_certificate_pem TEXT")
+                    database.execSQL("ALTER TABLE bitwarden_vaults ADD COLUMN tls_mtls_enabled INTEGER NOT NULL DEFAULT 0")
+                    database.execSQL("ALTER TABLE bitwarden_vaults ADD COLUMN tls_client_cert_pkcs12 TEXT")
+                    database.execSQL("ALTER TABLE bitwarden_vaults ADD COLUMN tls_encrypted_client_cert_password TEXT")
+                    android.util.Log.i("PasswordDatabase", "Migration 47→48 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 47→48 failed: ${e.message}")
+                }
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -1313,7 +1333,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_43_44,  // Bitwarden 多库去重与唯一约束
                         MIGRATION_44_45,  // 密码归档同步元信息
                         MIGRATION_45_46,  // KeePass KDBX 配置字段
-                        MIGRATION_46_47   // KeePass 原生 UUID 字段
+                        MIGRATION_46_47,  // KeePass 原生 UUID 字段
+                        MIGRATION_47_48   // Bitwarden TLS/证书字段
                     )
                     .build()
                 INSTANCE = instance

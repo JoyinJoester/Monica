@@ -52,7 +52,7 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavHostController
 import androidx.navigation.NavOptionsBuilder
 import androidx.navigation.NavType
@@ -369,12 +369,19 @@ fun MonicaApp(
             val isFirstTime = runCatching {
                 !viewModel.isMasterPasswordSet()
             }.getOrDefault(false)
+            val canRestoreSession = runCatching {
+                SessionManager.canSkipVerification(context)
+            }.getOrDefault(false)
             StartupAuthState(
                 disablePasswordVerification = disablePasswordVerification,
-                isFirstTime = isFirstTime
+                isFirstTime = isFirstTime,
+                canRestoreSession = canRestoreSession
             )
         }
-        if (loadedState.disablePasswordVerification && !loadedState.isFirstTime) {
+        if (
+            (loadedState.disablePasswordVerification && !loadedState.isFirstTime) ||
+            loadedState.canRestoreSession
+        ) {
             viewModel.markAuthenticatedForBypass()
         }
         startupAuthState = loadedState
@@ -445,7 +452,8 @@ fun MonicaApp(
 
 private data class StartupAuthState(
     val disablePasswordVerification: Boolean,
-    val isFirstTime: Boolean
+    val isFirstTime: Boolean,
+    val canRestoreSession: Boolean
 )
 
 @Composable
@@ -470,6 +478,7 @@ fun MonicaContent(
     initialIsFirstTime: Boolean = false,
     onPermissionRequested: (String, (Boolean) -> Unit) -> Unit
 ) {
+    val context = LocalContext.current
     val isAuthenticated by viewModel.isAuthenticated.collectAsState()
     val settings by settingsViewModel.settings.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -482,31 +491,24 @@ fun MonicaContent(
     val currentSettings by rememberUpdatedState(settings)
     val currentIsFirstTime by rememberUpdatedState(isFirstTime)
 
-    // Auto-lock logic: only use lifecycleOwner as key to prevent observer recreation
-    // The settings and auth state are captured by closure and always reflect latest values
+    // Auto-lock logic: measure actual background duration and lock only when timeout is exceeded.
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_STOP -> {
-                    // Only record timestamp when user is authenticated
-                    // 使用 currentIsAuthenticated 确保访问最新值
                     if (currentIsAuthenticated) {
                         lastBackgroundTimestamp = System.currentTimeMillis()
                     }
                 }
                 Lifecycle.Event.ON_START -> {
-                    // 如果已禁用密码验证，跳过自动锁定
-                    // 使用 currentSettings 和 currentIsFirstTime 确保访问最新值
-                    if (currentSettings.disablePasswordVerification && !currentIsFirstTime) {
-                        viewModel.refreshKeePassFromSourceForCurrentContext()
-                        lastBackgroundTimestamp = null
-                        return@LifecycleEventObserver
+                    if (!currentIsAuthenticated && SessionManager.canSkipVerification(context)) {
+                        viewModel.restoreAuthenticatedSession()
                     }
-                    
+
                     val minutes = currentSettings.autoLockMinutes
                     val timeoutMs = when {
-                        minutes == -1 -> null // Never auto-lock
-                        minutes <= 0 -> 0L // Immediate lock after background
+                        minutes == -1 -> null
+                        minutes <= 0 -> 0L
                         else -> minutes.toLong() * 60_000L
                     }
 
@@ -526,8 +528,18 @@ fun MonicaContent(
                     } else if (timeoutMs == null) {
                         lastBackgroundTimestamp = null
                     }
+
                     if (currentIsAuthenticated || (currentSettings.disablePasswordVerification && !currentIsFirstTime)) {
                         viewModel.refreshKeePassFromSourceForCurrentContext()
+                    }
+                    if (!currentIsAuthenticated &&
+                        !SessionManager.canSkipVerification(context) &&
+                        !(currentSettings.disablePasswordVerification && !currentIsFirstTime)
+                    ) {
+                        navController.navigate(Screen.Login.route) {
+                            launchSingleTop = true
+                            popUpTo(0) { inclusive = true }
+                        }
                     }
                 }
                 else -> Unit
@@ -554,6 +566,21 @@ fun MonicaContent(
             if (currentRoute == Screen.Login.route) {
                 navController.navigate(Screen.Main.createRoute()) {
                     popUpTo(Screen.Login.route) { inclusive = true }
+                }
+            }
+        } else if (!(settings.disablePasswordVerification && !isFirstTime)) {
+            if (SessionManager.canSkipVerification(context)) {
+                viewModel.restoreAuthenticatedSession()
+                return@LaunchedEffect
+            }
+            if (!lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                return@LaunchedEffect
+            }
+            val currentRoute = navController.currentDestination?.route
+            if (currentRoute != Screen.Login.route) {
+                navController.navigate(Screen.Login.route) {
+                    launchSingleTop = true
+                    popUpTo(0) { inclusive = true }
                 }
             }
         }

@@ -90,6 +90,10 @@ abstract class BaseMonicaActivity : FragmentActivity() {
     
     override fun onResume() {
         super.onResume()
+
+        // Sync latest timeout before expiration check to avoid using stale defaults.
+        val autoLockMinutes = cachedSettings?.autoLockMinutes ?: 5
+        SessionManager.updateAutoLockTimeout(autoLockMinutes)
         
         // 检查会话是否过期
         if (SessionManager.isSessionExpired()) {
@@ -99,6 +103,12 @@ abstract class BaseMonicaActivity : FragmentActivity() {
             // 刷新会话时间戳
             SessionManager.refreshSession()
         }
+    }
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        // 用户交互时刷新会话时间戳，确保“非空闲”不会被错误锁定
+        SessionManager.refreshSession()
     }
     
     /**

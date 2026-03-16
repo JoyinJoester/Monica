@@ -83,7 +83,7 @@ object SessionManager {
         
         // 检查是否超时
         val elapsedMinutes = (SystemClock.elapsedRealtime() - unlockTimestamp) / 60000
-        if (elapsedMinutes >= autoLockMinutes) {
+        if (autoLockMinutes != -1 && elapsedMinutes >= autoLockMinutes) {
             android.util.Log.d(TAG, "canSkipVerification: false (session expired, elapsed=$elapsedMinutes min)")
             markLocked()
             return false
@@ -117,7 +117,7 @@ object SessionManager {
     fun isSessionExpired(): Boolean {
         if (!_isUnlocked.value) return true
         val elapsedMinutes = (SystemClock.elapsedRealtime() - unlockTimestamp) / 60000
-        return elapsedMinutes >= autoLockMinutes
+        return autoLockMinutes != -1 && elapsedMinutes >= autoLockMinutes
     }
     
     /**
@@ -125,6 +125,7 @@ object SessionManager {
      */
     fun getRemainingMinutes(): Int {
         if (!_isUnlocked.value) return 0
+        if (autoLockMinutes == -1) return -1
         val elapsedMinutes = (SystemClock.elapsedRealtime() - unlockTimestamp) / 60000
         return maxOf(0, autoLockMinutes - elapsedMinutes.toInt())
     }

@@ -212,6 +212,7 @@ import takagi.ru.monica.ui.screens.AddEditDocumentScreen
 import takagi.ru.monica.ui.screens.AddEditNoteScreen
 import takagi.ru.monica.ui.screens.AddEditSendScreen
 import takagi.ru.monica.ui.theme.MonicaTheme
+import java.util.concurrent.CancellationException
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -775,6 +776,7 @@ fun PasswordListContent(
                 runCatching {
                     listState.scrollToItem(index = targetIndex)
                 }.onFailure { throwable ->
+                    if (throwable is CancellationException) return@onFailure
                     Log.e(
                         FAST_SCROLL_LOG_TAG,
                         "scrollToItem failed: targetIndex=$targetIndex totalItems=${listState.layoutInfo.totalItemsCount}",

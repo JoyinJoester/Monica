@@ -4,10 +4,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.graphics.Color
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.wear.compose.material3.ColorScheme as WearColorScheme
+import androidx.wear.compose.material3.MaterialTheme
+import androidx.wear.compose.material3.MotionScheme
+import androidx.wear.compose.material3.Shapes
+import androidx.wear.compose.material3.Typography
 import takagi.ru.monica.wear.viewmodel.ColorScheme
 
 /**
@@ -23,7 +26,7 @@ fun MonicaWearTheme(
     val backgroundColor = getBackgroundColor(useOledBlack)
     
     val colors = when (colorScheme) {
-        ColorScheme.OCEAN_BLUE -> darkColorScheme(
+        ColorScheme.OCEAN_BLUE -> monicaWearColorScheme(
             primary = OceanBluePrimaryDark,
             onPrimary = OceanBlueOnPrimaryDark,
             primaryContainer = OceanBluePrimaryContainerDark,
@@ -41,7 +44,6 @@ fun MonicaWearTheme(
             errorContainer = ErrorContainerDark,
             onErrorContainer = OnErrorContainerDark,
             background = backgroundColor,
-            onBackground = OceanBlueOnSurfaceDark,
             surface = OceanBlueSurfaceDark,
             onSurface = OceanBlueOnSurfaceDark,
             surfaceVariant = OceanBlueSurfaceVariantDark,
@@ -50,7 +52,7 @@ fun MonicaWearTheme(
             outlineVariant = OceanBlueOutlineVariantDark
         )
         
-        ColorScheme.SUNSET_ORANGE -> darkColorScheme(
+        ColorScheme.SUNSET_ORANGE -> monicaWearColorScheme(
             primary = SunsetOrangePrimaryDark,
             onPrimary = SunsetOrangeOnPrimaryDark,
             primaryContainer = SunsetOrangePrimaryContainerDark,
@@ -68,7 +70,6 @@ fun MonicaWearTheme(
             errorContainer = ErrorContainerDark,
             onErrorContainer = OnErrorContainerDark,
             background = backgroundColor,
-            onBackground = SunsetOrangeOnSurfaceDark,
             surface = SunsetOrangeSurfaceDark,
             onSurface = SunsetOrangeOnSurfaceDark,
             surfaceVariant = SunsetOrangeSurfaceVariantDark,
@@ -77,7 +78,7 @@ fun MonicaWearTheme(
             outlineVariant = SunsetOrangeOutlineVariantDark
         )
         
-        ColorScheme.FOREST_GREEN -> darkColorScheme(
+        ColorScheme.FOREST_GREEN -> monicaWearColorScheme(
             primary = ForestGreenPrimaryDark,
             onPrimary = ForestGreenOnPrimaryDark,
             primaryContainer = ForestGreenPrimaryContainerDark,
@@ -95,7 +96,6 @@ fun MonicaWearTheme(
             errorContainer = ErrorContainerDark,
             onErrorContainer = OnErrorContainerDark,
             background = backgroundColor,
-            onBackground = ForestGreenOnSurfaceDark,
             surface = ForestGreenSurfaceDark,
             onSurface = ForestGreenOnSurfaceDark,
             surfaceVariant = ForestGreenSurfaceVariantDark,
@@ -104,7 +104,7 @@ fun MonicaWearTheme(
             outlineVariant = ForestGreenOutlineVariantDark
         )
         
-        ColorScheme.TECH_PURPLE -> darkColorScheme(
+        ColorScheme.TECH_PURPLE -> monicaWearColorScheme(
             primary = TechPurplePrimaryDark,
             onPrimary = TechPurpleOnPrimaryDark,
             primaryContainer = TechPurplePrimaryContainerDark,
@@ -122,7 +122,6 @@ fun MonicaWearTheme(
             errorContainer = ErrorContainerDark,
             onErrorContainer = OnErrorContainerDark,
             background = backgroundColor,
-            onBackground = TechPurpleOnSurfaceDark,
             surface = TechPurpleSurfaceDark,
             onSurface = TechPurpleOnSurfaceDark,
             surfaceVariant = TechPurpleSurfaceVariantDark,
@@ -131,7 +130,7 @@ fun MonicaWearTheme(
             outlineVariant = TechPurpleOutlineVariantDark
         )
         
-        ColorScheme.BLACK_MAMBA -> darkColorScheme(
+        ColorScheme.BLACK_MAMBA -> monicaWearColorScheme(
             primary = BlackMambaPrimaryDark,
             onPrimary = BlackMambaOnPrimaryDark,
             primaryContainer = BlackMambaPrimaryContainerDark,
@@ -149,7 +148,6 @@ fun MonicaWearTheme(
             errorContainer = ErrorContainerDark,
             onErrorContainer = OnErrorContainerDark,
             background = backgroundColor,
-            onBackground = BlackMambaOnSurfaceDark,
             surface = BlackMambaSurfaceDark,
             onSurface = BlackMambaOnSurfaceDark,
             surfaceVariant = BlackMambaSurfaceVariantDark,
@@ -158,7 +156,7 @@ fun MonicaWearTheme(
             outlineVariant = BlackMambaOutlineVariantDark
         )
         
-        ColorScheme.GREY_STYLE -> darkColorScheme(
+        ColorScheme.GREY_STYLE -> monicaWearColorScheme(
             primary = GreyStylePrimaryDark,
             onPrimary = GreyStyleOnPrimaryDark,
             primaryContainer = GreyStylePrimaryContainerDark,
@@ -176,7 +174,6 @@ fun MonicaWearTheme(
             errorContainer = ErrorContainerDark,
             onErrorContainer = OnErrorContainerDark,
             background = backgroundColor,
-            onBackground = GreyStyleOnSurfaceDark,
             surface = GreyStyleSurfaceDark,
             onSurface = GreyStyleOnSurfaceDark,
             surfaceVariant = GreyStyleSurfaceVariantDark,
@@ -186,37 +183,77 @@ fun MonicaWearTheme(
         )
     }
 
-    // 使用 Wear Material 主题
-    androidx.wear.compose.material.MaterialTheme(
-        colors = androidx.wear.compose.material.Colors(
-            primary = colors.primary,
-            primaryVariant = colors.primaryContainer,
-            secondary = colors.secondary,
-            secondaryVariant = colors.secondaryContainer,
-            error = colors.error,
-            onPrimary = colors.onPrimary,
-            onSecondary = colors.onSecondary,
-            onError = colors.onError,
-            surface = colors.surface,
-            onSurface = colors.onSurface,
-            background = colors.background,
-            onBackground = colors.onBackground
-        )
+    MaterialTheme(
+        colorScheme = colors,
+        typography = Typography(),
+        shapes = Shapes(),
+        motionScheme = MotionScheme.standard()
     ) {
-        // 提供 M3 颜色给需要它的组件
-        MaterialTheme(
-            colorScheme = colors
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(colors.background)
         ) {
-            // 重要：为 Wear OS 添加显式背景包装器
-            // Wear OS 不会自动应用背景色，需要手动包装
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(colors.background)
-            ) {
-                content()
-            }
+            content()
         }
     }
+}
+
+private fun monicaWearColorScheme(
+    primary: Color,
+    onPrimary: Color,
+    primaryContainer: Color,
+    onPrimaryContainer: Color,
+    secondary: Color,
+    onSecondary: Color,
+    secondaryContainer: Color,
+    onSecondaryContainer: Color,
+    tertiary: Color,
+    onTertiary: Color,
+    tertiaryContainer: Color,
+    onTertiaryContainer: Color,
+    error: Color,
+    onError: Color,
+    errorContainer: Color,
+    onErrorContainer: Color,
+    background: Color,
+    surface: Color,
+    onSurface: Color,
+    surfaceVariant: Color,
+    onSurfaceVariant: Color,
+    outline: Color,
+    outlineVariant: Color,
+): WearColorScheme {
+    return WearColorScheme(
+        primary = primary,
+        primaryDim = primaryContainer,
+        onPrimary = onPrimary,
+        primaryContainer = primaryContainer,
+        onPrimaryContainer = onPrimaryContainer,
+        secondary = secondary,
+        secondaryDim = secondaryContainer,
+        onSecondary = onSecondary,
+        secondaryContainer = secondaryContainer,
+        onSecondaryContainer = onSecondaryContainer,
+        tertiary = tertiary,
+        tertiaryDim = tertiaryContainer,
+        onTertiary = onTertiary,
+        tertiaryContainer = tertiaryContainer,
+        onTertiaryContainer = onTertiaryContainer,
+        surfaceContainerLow = surface,
+        surfaceContainer = surfaceVariant,
+        surfaceContainerHigh = surfaceVariant,
+        onSurface = onSurface,
+        onSurfaceVariant = onSurfaceVariant,
+        outline = outline,
+        outlineVariant = outlineVariant,
+        background = background,
+        onBackground = onSurface,
+        error = error,
+        errorDim = errorContainer,
+        onError = onError,
+        errorContainer = errorContainer,
+        onErrorContainer = onErrorContainer,
+    )
 }
 

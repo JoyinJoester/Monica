@@ -52,6 +52,22 @@ data class BitwardenVault(
     
     @ColumnInfo(name = "events_url")
     val eventsUrl: String? = null,
+
+    // === TLS / 证书配置（仅用于自托管）===
+    @ColumnInfo(name = "tls_certificate_alias")
+    val tlsCertificateAlias: String? = null,
+
+    @ColumnInfo(name = "tls_ca_certificate_pem")
+    val tlsCaCertificatePem: String? = null,
+
+    @ColumnInfo(name = "tls_mtls_enabled", defaultValue = "0")
+    val tlsMtlsEnabled: Boolean = false,
+
+    @ColumnInfo(name = "tls_client_cert_pkcs12")
+    val tlsClientCertPkcs12Base64: String? = null,
+
+    @ColumnInfo(name = "tls_encrypted_client_cert_password")
+    val tlsEncryptedClientCertPassword: String? = null,
     
     // === 认证信息 (加密存储) ===
     @ColumnInfo(name = "encrypted_access_token")

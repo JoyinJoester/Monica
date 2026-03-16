@@ -13,6 +13,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import takagi.ru.monica.bitwarden.api.BitwardenApiFactory
 import takagi.ru.monica.bitwarden.api.BitwardenApiManager
+import takagi.ru.monica.bitwarden.api.BitwardenTlsConfig
 import takagi.ru.monica.bitwarden.api.FolderCreateRequest
 import takagi.ru.monica.bitwarden.api.FolderUpdateRequest
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
@@ -207,7 +208,8 @@ class BitwardenRepository(private val context: Context) {
         serverUrl: String?,
         email: String,
         masterPassword: String,
-        captchaResponse: String? = null
+        captchaResponse: String? = null,
+        tlsConfig: BitwardenTlsConfig? = null
     ): RepositoryLoginResult = withContext(Dispatchers.IO) {
         try {
             val normalizedEmail = email.trim()
@@ -220,14 +222,15 @@ class BitwardenRepository(private val context: Context) {
                 email = normalizedEmail,
                 password = masterPassword,
                 serverUrl = effectiveServerUrl,
-                captchaResponse = captchaResponse
+                captchaResponse = captchaResponse,
+                tlsConfig = tlsConfig
             )
             
             loginResult.fold(
                 onSuccess = { result ->
                     when (result) {
                         is LoginResult.Success -> {
-                            handleSuccessfulLogin(result, normalizedEmail)
+                            handleSuccessfulLogin(result, normalizedEmail, tlsConfig)
                         }
                         is LoginResult.TwoFactorRequired -> {
                             RepositoryLoginResult.TwoFactorRequired(
@@ -262,7 +265,8 @@ class BitwardenRepository(private val context: Context) {
         twoFactorCode: String,
         twoFactorProvider: Int,
         serverUrl: String?,
-        captchaResponse: String? = null
+        captchaResponse: String? = null,
+        tlsConfig: BitwardenTlsConfig? = null
     ): RepositoryLoginResult = withContext(Dispatchers.IO) {
         try {
             val effectiveServerUrl = serverUrl?.takeIf { it.isNotBlank() }
@@ -273,7 +277,8 @@ class BitwardenRepository(private val context: Context) {
                     twoFactorState = twoFactorState,
                     newDeviceOtp = twoFactorCode,
                     serverUrl = effectiveServerUrl,
-                    captchaResponse = captchaResponse
+                    captchaResponse = captchaResponse,
+                    tlsConfig = tlsConfig
                 )
             } else {
                 authService.loginTwoFactor(
@@ -282,14 +287,15 @@ class BitwardenRepository(private val context: Context) {
                     twoFactorProvider = twoFactorProvider,
                     remember = true,
                     serverUrl = effectiveServerUrl,
-                    captchaResponse = captchaResponse
+                    captchaResponse = captchaResponse,
+                    tlsConfig = tlsConfig
                 )
             }
             
             loginResult.fold(
                 onSuccess = { result ->
                     when (result) {
-                        is LoginResult.Success -> handleSuccessfulLogin(result, twoFactorState.email)
+                        is LoginResult.Success -> handleSuccessfulLogin(result, twoFactorState.email, tlsConfig)
                         is LoginResult.CaptchaRequired -> RepositoryLoginResult.CaptchaRequired(
                             message = result.message,
                             siteKey = result.siteKey
@@ -316,7 +322,8 @@ class BitwardenRepository(private val context: Context) {
      */
     private suspend fun handleSuccessfulLogin(
         result: LoginResult.Success,
-        email: String
+        email: String,
+        tlsConfig: BitwardenTlsConfig?
     ): RepositoryLoginResult {
         // 加密敏感数据用于存储
         val encryptedAccessToken = encryptForStorage(result.accessToken)
@@ -336,6 +343,13 @@ class BitwardenRepository(private val context: Context) {
                 serverUrl = result.serverUrls.vault,
                 identityUrl = result.serverUrls.identity,
                 apiUrl = result.serverUrls.api,
+                tlsCertificateAlias = tlsConfig?.certificateAlias ?: existingVault.tlsCertificateAlias,
+                tlsCaCertificatePem = tlsConfig?.caCertificatePem ?: existingVault.tlsCaCertificatePem,
+                tlsMtlsEnabled = tlsConfig?.mtlsEnabled ?: existingVault.tlsMtlsEnabled,
+                tlsClientCertPkcs12Base64 = tlsConfig?.clientCertPkcs12Base64
+                    ?: existingVault.tlsClientCertPkcs12Base64,
+                tlsEncryptedClientCertPassword = tlsConfig?.clientCertPassword
+                    ?: existingVault.tlsEncryptedClientCertPassword,
                 encryptedAccessToken = encryptedAccessToken,
                 encryptedRefreshToken = encryptedRefreshToken,
                 accessTokenExpiresAt = expiresAt,
@@ -356,6 +370,11 @@ class BitwardenRepository(private val context: Context) {
                 serverUrl = result.serverUrls.vault,
                 identityUrl = result.serverUrls.identity,
                 apiUrl = result.serverUrls.api,
+                tlsCertificateAlias = tlsConfig?.certificateAlias,
+                tlsCaCertificatePem = tlsConfig?.caCertificatePem,
+                tlsMtlsEnabled = tlsConfig?.mtlsEnabled == true,
+                tlsClientCertPkcs12Base64 = tlsConfig?.clientCertPkcs12Base64,
+                tlsEncryptedClientCertPassword = tlsConfig?.clientCertPassword,
                 encryptedAccessToken = encryptedAccessToken,
                 encryptedRefreshToken = encryptedRefreshToken,
                 accessTokenExpiresAt = expiresAt,
@@ -687,7 +706,14 @@ class BitwardenRepository(private val context: Context) {
             val result = authService.refreshToken(
                 refreshToken = refreshToken,
                 identityUrl = vault.identityUrl,
-                refererUrl = vault.serverUrl
+                refererUrl = vault.serverUrl,
+                tlsConfig = BitwardenTlsConfig(
+                    certificateAlias = vault.tlsCertificateAlias,
+                    caCertificatePem = vault.tlsCaCertificatePem,
+                    mtlsEnabled = vault.tlsMtlsEnabled,
+                    clientCertPkcs12Base64 = vault.tlsClientCertPkcs12Base64,
+                    clientCertPassword = vault.tlsEncryptedClientCertPassword
+                )
             )
             result.getOrNull()?.let { refreshResult ->
                 // 更新存储
@@ -747,7 +773,7 @@ class BitwardenRepository(private val context: Context) {
             }
 
             val encryptedName = BitwardenCrypto.encryptString(trimmed, symmetricKey)
-            val vaultApi = apiManager.getVaultApi(vault.apiUrl, vault.serverUrl)
+            val vaultApi = apiManager.getVaultApi(vault)
             val response = vaultApi.createFolder(
                 "Bearer $accessToken",
                 FolderCreateRequest(name = encryptedName)
@@ -805,7 +831,7 @@ class BitwardenRepository(private val context: Context) {
             }
 
             val encryptedName = BitwardenCrypto.encryptString(trimmed, symmetricKey)
-            val vaultApi = apiManager.getVaultApi(vault.apiUrl, vault.serverUrl)
+            val vaultApi = apiManager.getVaultApi(vault)
             val response = vaultApi.updateFolder(
                 "Bearer $accessToken",
                 folderId,
@@ -848,7 +874,7 @@ class BitwardenRepository(private val context: Context) {
                 }
             }
 
-            val vaultApi = apiManager.getVaultApi(vault.apiUrl, vault.serverUrl)
+            val vaultApi = apiManager.getVaultApi(vault)
             val response = vaultApi.deleteFolder("Bearer $accessToken", folderId)
             if (!response.isSuccessful) {
                 return@withContext Result.failure(
@@ -985,7 +1011,7 @@ class BitwardenRepository(private val context: Context) {
                 }
             }
 
-            val vaultApi = apiManager.getVaultApi(vault.apiUrl, vault.serverUrl)
+            val vaultApi = apiManager.getVaultApi(vault)
             val response = vaultApi.deleteCipher("Bearer $accessToken", cipherId)
             if (!response.isSuccessful && response.code() != 404) {
                 return@withContext Result.failure(
@@ -1023,7 +1049,7 @@ class BitwardenRepository(private val context: Context) {
                 }
             }
 
-            val vaultApi = apiManager.getVaultApi(vault.apiUrl, vault.serverUrl)
+            val vaultApi = apiManager.getVaultApi(vault)
             val response = vaultApi.permanentDeleteCipher("Bearer $accessToken", cipherId)
             if (!response.isSuccessful && response.code() != 404) {
                 return@withContext Result.failure(
@@ -1112,7 +1138,7 @@ class BitwardenRepository(private val context: Context) {
                 expirationMillis = expirationMillis
             )
 
-            val vaultApi = apiManager.getVaultApi(vault.apiUrl, vault.serverUrl)
+            val vaultApi = apiManager.getVaultApi(vault)
             val response = vaultApi.createSend(
                 authorization = "Bearer $accessToken",
                 send = payload.request
@@ -1175,7 +1201,7 @@ class BitwardenRepository(private val context: Context) {
                 }
             }
 
-            val vaultApi = apiManager.getVaultApi(vault.apiUrl, vault.serverUrl)
+            val vaultApi = apiManager.getVaultApi(vault)
             val response = vaultApi.deleteSend(
                 authorization = "Bearer $accessToken",
                 sendId = sendId

@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import takagi.ru.monica.bitwarden.api.BitwardenTlsConfig
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.bitwarden.service.LoginResult
 import takagi.ru.monica.bitwarden.sync.BitwardenSyncOrchestrator
@@ -55,6 +56,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     // 两步验证临时状态
     private var twoFactorState: LoginResult.TwoFactorRequired? = null
     private var pendingServerUrl: String? = null
+    private var pendingTlsConfig: BitwardenTlsConfig? = null
     private val processStartMs = System.currentTimeMillis()
     private val delayedAutoSyncJobs = mutableMapOf<Long, Job>()
     
@@ -201,7 +203,8 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
         serverUrl: String?,
         email: String,
         masterPassword: String,
-        captchaResponse: String? = null
+        captchaResponse: String? = null,
+        tlsConfig: BitwardenTlsConfig? = null
     ) {
         if (email.isBlank() || masterPassword.isBlank()) {
             viewModelScope.launch {
@@ -217,7 +220,8 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                 serverUrl = serverUrl?.takeIf { it.isNotBlank() },
                 email = email,
                 masterPassword = masterPassword,
-                captchaResponse = captchaResponse
+                captchaResponse = captchaResponse,
+                tlsConfig = tlsConfig
             )
             
             when (result) {
@@ -236,6 +240,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                 is BitwardenRepository.RepositoryLoginResult.TwoFactorRequired -> {
                     twoFactorState = result.state
                     pendingServerUrl = serverUrl
+                    pendingTlsConfig = tlsConfig
                     _loginState.value = LoginState.TwoFactorRequired(result.providers)
                     _events.emit(BitwardenEvent.ShowTwoFactorDialog(result.providers))
                 }
@@ -288,13 +293,15 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                 twoFactorCode = twoFactorCode,
                 twoFactorProvider = twoFactorMethod,
                 serverUrl = pendingServerUrl,
-                captchaResponse = captchaResponse
+                captchaResponse = captchaResponse,
+                tlsConfig = pendingTlsConfig
             )
             
             when (result) {
                 is BitwardenRepository.RepositoryLoginResult.Success -> {
                     twoFactorState = null
                     pendingServerUrl = null
+                    pendingTlsConfig = null
                     _loginState.value = LoginState.Success(result.vault)
                     _activeVault.value = result.vault
                     _unlockState.value = UnlockState.Unlocked

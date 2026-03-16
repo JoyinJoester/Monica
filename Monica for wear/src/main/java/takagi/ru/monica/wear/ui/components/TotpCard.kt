@@ -3,7 +3,7 @@ package takagi.ru.monica.wear.ui.components
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -23,9 +23,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.wear.compose.material3.Card
+import androidx.wear.compose.material3.CardDefaults
+import androidx.wear.compose.material3.CircularProgressIndicator
+import androidx.wear.compose.material3.MaterialTheme
+import androidx.wear.compose.material3.ProgressIndicatorDefaults
+import androidx.wear.compose.material3.Text
 
 import takagi.ru.monica.wear.R
 import takagi.ru.monica.wear.viewmodel.TotpItemState
@@ -67,7 +70,17 @@ fun TotpCard(
     // 颜色定义
     val titleColor = MaterialTheme.colorScheme.onSurface
     val subtitleColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val codeColor = if (isExpiringSoon) 
+    val cardColor = if (isExpiringSoon) {
+        MaterialTheme.colorScheme.errorContainer
+    } else {
+        MaterialTheme.colorScheme.surfaceContainer
+    }
+    val cardBorder = if (isExpiringSoon) {
+        MaterialTheme.colorScheme.error.copy(alpha = 0.26f)
+    } else {
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+    }
+    val codeColor = if (isExpiringSoon)
         MaterialTheme.colorScheme.error 
     else 
         MaterialTheme.colorScheme.primary
@@ -96,15 +109,7 @@ fun TotpCard(
     
     // 使用 BoxWithConstraints 自适应屏幕尺寸
     BoxWithConstraints(
-        modifier = modifier
-            .fillMaxSize()
-            .scale(pressScale)
-            .background(MaterialTheme.colorScheme.background)
-            .clickable { 
-                isPressed = true
-                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                onCopyCode()
-            },
+        modifier = modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
         val screenWidth = maxWidth
@@ -122,91 +127,129 @@ fun TotpCard(
         val spacing = screenHeight * 0.03f
         val smallSpacing = screenHeight * 0.015f
         
-        Column(
+        Card(
+            onClick = {
+                isPressed = true
+                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                onCopyCode()
+            },
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = padding),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .fillMaxWidth(0.9f)
+                .fillMaxHeight(0.76f)
+                .scale(pressScale),
+            shape = RoundedCornerShape(30.dp),
+            border = BorderStroke(1.dp, cardBorder),
+            colors = CardDefaults.cardColors(containerColor = cardColor)
         ) {
-            // 发行方名称
-            if (state.totpData.issuer.isNotBlank()) {
-                Text(
-                    text = state.totpData.issuer,
-                    color = titleColor,
-                    fontSize = titleSize,
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1
-                )
-            }
-            
-            // 账户名
-            if (state.totpData.accountName.isNotBlank()) {
-                Spacer(modifier = Modifier.height(smallSpacing * 0.5f))
-                Text(
-                    text = state.totpData.accountName,
-                    color = subtitleColor,
-                    fontSize = subtitleSize,
-                    textAlign = TextAlign.Center,
-                    maxLines = 1
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(spacing))
-            
-            // 验证码（带动画）
-            AnimatedContent(
-                targetState = state.code,
-                transitionSpec = {
-                    (fadeIn(animationSpec = tween(300)) + 
-                     scaleIn(initialScale = 0.8f, animationSpec = spring(
-                         dampingRatio = Spring.DampingRatioMediumBouncy
-                     )))
-                        .togetherWith(fadeOut(animationSpec = tween(200)))
-                },
-                label = "codeAnimation"
-            ) { code ->
-                Text(
-                    text = formatCode(code),
-                    color = codeColor.copy(alpha = pulseAlpha),
-                    fontSize = codeSize,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace,
-                    letterSpacing = letterSpacing
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(spacing))
-            
-            // 倒计时进度条 - 自适应尺寸
-            Box(
-                modifier = Modifier.size(progressSize),
-                contentAlignment = Alignment.Center
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                                cardColor,
+                                MaterialTheme.colorScheme.background.copy(alpha = 0.88f)
+                            )
+                        )
+                    )
+                    .padding(horizontal = padding, vertical = padding * 0.9f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.SpaceBetween
             ) {
-                CircularProgressIndicator(
-                    progress = { animatedProgress },
-                    modifier = Modifier.fillMaxSize(),
-                    color = timerColor,
-                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                    strokeWidth = progressStroke
-                )
-                
-                Text(
-                    text = state.remainingSeconds.toString(),
-                    color = timerColor,
-                    fontSize = timerTextSize,
-                    fontWeight = FontWeight.Bold
-                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    if (state.totpData.issuer.isNotBlank()) {
+                        Text(
+                            text = state.totpData.issuer,
+                            color = titleColor,
+                            fontSize = titleSize,
+                            fontWeight = FontWeight.Bold,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1
+                        )
+                    }
+
+                    if (state.totpData.accountName.isNotBlank()) {
+                        Spacer(modifier = Modifier.height(smallSpacing))
+                        Text(
+                            text = state.totpData.accountName,
+                            color = subtitleColor,
+                            fontSize = subtitleSize,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1
+                        )
+                    }
+                }
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Tap to copy",
+                        color = subtitleColor.copy(alpha = 0.8f),
+                        fontSize = (screenWidth.value * 0.042f).sp
+                    )
+                    Spacer(modifier = Modifier.height(spacing * 0.55f))
+
+                    AnimatedContent(
+                        targetState = state.code,
+                        transitionSpec = {
+                            (fadeIn(animationSpec = tween(300)) +
+                                scaleIn(
+                                    initialScale = 0.8f,
+                                    animationSpec = spring(
+                                        dampingRatio = Spring.DampingRatioMediumBouncy
+                                    )
+                                )).togetherWith(fadeOut(animationSpec = tween(200)))
+                        },
+                        label = "codeAnimation"
+                    ) { code ->
+                        Text(
+                            text = formatCode(code),
+                            color = codeColor.copy(alpha = pulseAlpha),
+                            fontSize = codeSize,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace,
+                            letterSpacing = letterSpacing
+                        )
+                    }
+                }
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier.size(progressSize),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            progress = { animatedProgress },
+                            modifier = Modifier.fillMaxSize(),
+                            colors = ProgressIndicatorDefaults.colors(
+                                indicatorColor = timerColor,
+                                trackColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                            ),
+                            strokeWidth = progressStroke
+                        )
+
+                        Text(
+                            text = state.remainingSeconds.toString(),
+                            color = timerColor,
+                            fontSize = timerTextSize,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(smallSpacing))
+                    Text(
+                        text = stringResource(R.string.totp_seconds_refresh),
+                        color = subtitleColor,
+                        fontSize = (screenWidth.value * 0.045f).sp
+                    )
+                }
             }
-            
-            Spacer(modifier = Modifier.height(smallSpacing))
-            
-            Text(
-                text = stringResource(R.string.totp_seconds_refresh),
-                color = subtitleColor,
-                fontSize = (screenWidth.value * 0.045f).sp
-            )
         }
     }
     

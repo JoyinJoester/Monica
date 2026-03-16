@@ -3,6 +3,9 @@ package takagi.ru.monica.notes.domain
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import org.json.JSONArray
+import org.json.JSONObject
+import org.json.JSONTokener
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.NoteData
 
@@ -23,17 +26,10 @@ object NoteContentCodec {
     private val INLINE_IMAGE_MARKDOWN_REGEX = Regex("!\\[([^\\]]*)\\]\\(monica-image://([^\\)\\s]+)\\)")
 
     fun decode(itemData: String, fallbackNotes: String): DecodedNoteContent {
-        return runCatching { Json.decodeFromString<NoteData>(itemData) }
-            .map {
-                DecodedNoteContent(
-                    content = it.content,
-                    tags = it.tags,
-                    isMarkdown = it.isMarkdown
-                )
-            }
-            .getOrElse {
-                DecodedNoteContent(content = fallbackNotes)
-            }
+        return decodeLegacySafe(
+            itemData = itemData,
+            fallbackNotes = fallbackNotes
+        ) ?: DecodedNoteContent(content = fallbackNotes.ifBlank { itemData })
     }
 
     fun decodeFromItem(item: SecureItem): DecodedNoteContent = decode(
@@ -199,5 +195,48 @@ object NoteContentCodec {
     fun toPlainPreview(content: String, isMarkdown: Boolean): String {
         if (!isMarkdown) return content
         return markdownToPlainText(content)
+    }
+
+    private fun decodeLegacySafe(itemData: String, fallbackNotes: String): DecodedNoteContent? {
+        val raw = itemData.trim()
+        if (raw.isEmpty()) {
+            return DecodedNoteContent(content = fallbackNotes)
+        }
+
+        if (!raw.startsWith("{") && !raw.startsWith("\"")) {
+            return DecodedNoteContent(content = raw)
+        }
+
+        return runCatching {
+            when (val parsed = JSONTokener(raw).nextValue()) {
+                is JSONObject -> parsed.toDecodedNoteContent(fallbackNotes)
+                is String -> DecodedNoteContent(content = parsed.ifBlank { fallbackNotes })
+                else -> null
+            }
+        }.getOrNull()
+    }
+
+    private fun JSONObject.toDecodedNoteContent(fallbackNotes: String): DecodedNoteContent {
+        val content = optString("content")
+            .takeIf { it.isNotBlank() }
+            ?: fallbackNotes
+
+        return DecodedNoteContent(
+            content = content,
+            tags = optJSONArray("tags").toStringList(),
+            isMarkdown = optBoolean("isMarkdown", false)
+        )
+    }
+
+    private fun JSONArray?.toStringList(): List<String> {
+        if (this == null) return emptyList()
+        return buildList(length()) {
+            for (index in 0 until length()) {
+                val value = optString(index).trim()
+                if (value.isNotEmpty() && value !in this) {
+                    add(value)
+                }
+            }
+        }
     }
 }

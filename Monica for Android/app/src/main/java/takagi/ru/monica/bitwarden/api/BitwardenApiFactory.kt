@@ -1,12 +1,25 @@
 package takagi.ru.monica.bitwarden.api
 
 import kotlinx.serialization.json.Json
+import android.util.Base64
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.kotlinx.serialization.asConverterFactory
+import takagi.ru.monica.data.bitwarden.BitwardenVault
+import java.io.ByteArrayInputStream
+import java.security.KeyStore
+import java.security.SecureRandom
+import java.security.cert.CertificateFactory
+import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
+import javax.net.ssl.KeyManager
+import javax.net.ssl.KeyManagerFactory
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManager
+import javax.net.ssl.TrustManagerFactory
+import javax.net.ssl.X509TrustManager
 
 /**
  * Bitwarden API 客户端工厂
@@ -60,10 +73,11 @@ object BitwardenApiFactory {
     fun createOkHttpClient(
         enableLogging: Boolean = false,
         refererUrl: String? = null,
-        headerProfile: HeaderProfile = HeaderProfile.MONICA_DEFAULT
+        headerProfile: HeaderProfile = HeaderProfile.MONICA_DEFAULT,
+        tlsConfig: BitwardenTlsConfig? = null
     ): OkHttpClient {
         val headerSpec = getHeaderSpec(headerProfile)
-        return OkHttpClient.Builder()
+        val builder = OkHttpClient.Builder()
             .connectTimeout(30, TimeUnit.SECONDS)
             .readTimeout(60, TimeUnit.SECONDS)
             .writeTimeout(60, TimeUnit.SECONDS)
@@ -91,7 +105,9 @@ object BitwardenApiFactory {
                     })
                 }
             }
-            .build()
+
+        configureTls(builder, tlsConfig)
+        return builder.build()
     }
 
     fun headerProfileName(profile: HeaderProfile): String = when (profile) {
@@ -231,6 +247,110 @@ object BitwardenApiFactory {
             )
         }
     }
+
+    private fun configureTls(
+        builder: OkHttpClient.Builder,
+        tlsConfig: BitwardenTlsConfig?
+    ) {
+        if (tlsConfig == null || tlsConfig.isEmpty()) return
+
+        val trustManager = buildTrustManager(tlsConfig.caCertificatePem)
+        val keyManagers = buildClientKeyManagers(
+            enabled = tlsConfig.mtlsEnabled,
+            pkcs12Base64 = tlsConfig.clientCertPkcs12Base64,
+            password = tlsConfig.clientCertPassword
+        )
+
+        val sslContext = SSLContext.getInstance("TLS")
+        sslContext.init(keyManagers, arrayOf<TrustManager>(trustManager), SecureRandom())
+        builder.sslSocketFactory(sslContext.socketFactory, trustManager)
+    }
+
+    private fun buildTrustManager(caCertificatePem: String?): X509TrustManager {
+        val systemTrustManager = systemDefaultTrustManager()
+        if (caCertificatePem.isNullOrBlank()) return systemTrustManager
+
+        val customTrustManager = customCaTrustManager(caCertificatePem)
+        return CompositeX509TrustManager(listOf(systemTrustManager, customTrustManager))
+    }
+
+    private fun systemDefaultTrustManager(): X509TrustManager {
+        val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
+        tmf.init(null as KeyStore?)
+        return tmf.trustManagers.filterIsInstance<X509TrustManager>().first()
+    }
+
+    private fun customCaTrustManager(caCertificatePem: String): X509TrustManager {
+        val certificateFactory = CertificateFactory.getInstance("X.509")
+        val certificates = certificateFactory.generateCertificates(
+            ByteArrayInputStream(caCertificatePem.toByteArray(Charsets.UTF_8))
+        )
+
+        val keyStore = KeyStore.getInstance(KeyStore.getDefaultType())
+        keyStore.load(null)
+        certificates.forEachIndexed { index, cert ->
+            keyStore.setCertificateEntry("ca_$index", cert)
+        }
+
+        val tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
+        tmf.init(keyStore)
+        return tmf.trustManagers.filterIsInstance<X509TrustManager>().first()
+    }
+
+    private fun buildClientKeyManagers(
+        enabled: Boolean,
+        pkcs12Base64: String?,
+        password: String?
+    ): Array<KeyManager>? {
+        if (!enabled) return null
+        if (pkcs12Base64.isNullOrBlank()) return null
+
+        val passwordChars = password.orEmpty().toCharArray()
+        val keyStore = KeyStore.getInstance("PKCS12")
+        val certBytes = Base64.decode(pkcs12Base64, Base64.DEFAULT)
+        keyStore.load(ByteArrayInputStream(certBytes), passwordChars)
+
+        val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm())
+        kmf.init(keyStore, passwordChars)
+        return kmf.keyManagers
+    }
+
+    private class CompositeX509TrustManager(
+        private val delegates: List<X509TrustManager>
+    ) : X509TrustManager {
+        override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {
+            var lastError: Exception? = null
+            delegates.forEach { manager ->
+                try {
+                    manager.checkClientTrusted(chain, authType)
+                    return
+                } catch (e: Exception) {
+                    lastError = e
+                }
+            }
+            throw lastError ?: IllegalStateException("No trust manager accepted client certificate")
+        }
+
+        override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {
+            var lastError: Exception? = null
+            delegates.forEach { manager ->
+                try {
+                    manager.checkServerTrusted(chain, authType)
+                    return
+                } catch (e: Exception) {
+                    lastError = e
+                }
+            }
+            throw lastError ?: IllegalStateException("No trust manager accepted server certificate")
+        }
+
+        override fun getAcceptedIssuers(): Array<X509Certificate> {
+            return delegates
+                .flatMap { it.acceptedIssuers.toList() }
+                .distinctBy { it.subjectX500Principal.name + it.serialNumber }
+                .toTypedArray()
+        }
+    }
     
     /**
      * 服务器 URL 配置
@@ -254,33 +374,20 @@ class BitwardenApiManager {
     private val identityApiCache = mutableMapOf<String, BitwardenIdentityApi>()
     private val vaultApiCache = mutableMapOf<String, BitwardenVaultApi>()
 
-    private fun getOrCreateOkHttpClient(
-        refererUrl: String?,
-        headerProfile: BitwardenApiFactory.HeaderProfile
-    ): OkHttpClient {
-        val cacheKey = "${headerProfile.name}|${refererUrl?.trim().orEmpty()}"
-        return okHttpClientCache.getOrPut(cacheKey) {
-            BitwardenApiFactory.createOkHttpClient(
-                enableLogging = true,
-                refererUrl = refererUrl,
-                headerProfile = headerProfile
-            )
-        }
-    }
-    
     /**
      * 获取 Identity API 客户端
      */
     fun getIdentityApi(
         identityUrl: String,
         refererUrl: String? = null,
-        headerProfile: BitwardenApiFactory.HeaderProfile = BitwardenApiFactory.HeaderProfile.MONICA_DEFAULT
+        headerProfile: BitwardenApiFactory.HeaderProfile = BitwardenApiFactory.HeaderProfile.MONICA_DEFAULT,
+        tlsConfig: BitwardenTlsConfig? = null
     ): BitwardenIdentityApi {
-        val cacheKey = "${identityUrl.trimEnd('/')}|${refererUrl?.trim().orEmpty()}|${headerProfile.name}"
+        val cacheKey = "${identityUrl.trimEnd('/')}|${refererUrl?.trim().orEmpty()}|${headerProfile.name}|${tlsConfig?.cacheFingerprint().orEmpty()}"
         return identityApiCache.getOrPut(cacheKey) {
             BitwardenApiFactory.createIdentityApi(
                 baseUrl = identityUrl,
-                okHttpClient = getOrCreateOkHttpClient(refererUrl, headerProfile)
+                okHttpClient = getOrCreateOkHttpClient(refererUrl, headerProfile, tlsConfig)
             )
         }
     }
@@ -291,15 +398,35 @@ class BitwardenApiManager {
     fun getVaultApi(
         apiUrl: String,
         refererUrl: String? = null,
-        headerProfile: BitwardenApiFactory.HeaderProfile = BitwardenApiFactory.HeaderProfile.MONICA_DEFAULT
+        headerProfile: BitwardenApiFactory.HeaderProfile = BitwardenApiFactory.HeaderProfile.MONICA_DEFAULT,
+        tlsConfig: BitwardenTlsConfig? = null
     ): BitwardenVaultApi {
-        val cacheKey = "${apiUrl.trimEnd('/')}|${refererUrl?.trim().orEmpty()}|${headerProfile.name}"
+        val cacheKey = "${apiUrl.trimEnd('/')}|${refererUrl?.trim().orEmpty()}|${headerProfile.name}|${tlsConfig?.cacheFingerprint().orEmpty()}"
         return vaultApiCache.getOrPut(cacheKey) {
             BitwardenApiFactory.createVaultApi(
                 baseUrl = apiUrl,
-                okHttpClient = getOrCreateOkHttpClient(refererUrl, headerProfile)
+                okHttpClient = getOrCreateOkHttpClient(refererUrl, headerProfile, tlsConfig)
             )
         }
+    }
+
+    fun getVaultApi(
+        vault: BitwardenVault,
+        headerProfile: BitwardenApiFactory.HeaderProfile = BitwardenApiFactory.HeaderProfile.MONICA_DEFAULT
+    ): BitwardenVaultApi {
+        val tlsConfig = BitwardenTlsConfig(
+            certificateAlias = vault.tlsCertificateAlias,
+            caCertificatePem = vault.tlsCaCertificatePem,
+            mtlsEnabled = vault.tlsMtlsEnabled,
+            clientCertPkcs12Base64 = vault.tlsClientCertPkcs12Base64,
+            clientCertPassword = vault.tlsEncryptedClientCertPassword
+        )
+        return getVaultApi(
+            apiUrl = vault.apiUrl,
+            refererUrl = vault.serverUrl,
+            headerProfile = headerProfile,
+            tlsConfig = tlsConfig
+        )
     }
     
     /**
@@ -309,5 +436,21 @@ class BitwardenApiManager {
         okHttpClientCache.clear()
         identityApiCache.clear()
         vaultApiCache.clear()
+    }
+
+    private fun getOrCreateOkHttpClient(
+        refererUrl: String?,
+        headerProfile: BitwardenApiFactory.HeaderProfile,
+        tlsConfig: BitwardenTlsConfig?
+    ): OkHttpClient {
+        val cacheKey = "${headerProfile.name}|${refererUrl?.trim().orEmpty()}|${tlsConfig?.cacheFingerprint().orEmpty()}"
+        return okHttpClientCache.getOrPut(cacheKey) {
+            BitwardenApiFactory.createOkHttpClient(
+                enableLogging = true,
+                refererUrl = refererUrl,
+                headerProfile = headerProfile,
+                tlsConfig = tlsConfig
+            )
+        }
     }
 }

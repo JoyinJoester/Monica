@@ -36,7 +36,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -869,6 +868,7 @@ fun SimpleMainScreen(
     // 监听 FAB 展开状态，展开时禁用隐藏逻辑
     var isFabExpanded by remember { mutableStateOf(false) }
     var isFastScrollStripVisible by rememberSaveable(currentTab) { mutableStateOf(false) }
+    var fastScrollIndicatorLabel by rememberSaveable(currentTab.key) { mutableStateOf<String?>(null) }
     // 使用 rememberUpdatedState 确保 currentTab 始终是最新的
     val currentTabState = rememberUpdatedState(currentTab)
     // 确保滚动监听器能获取到最新的设置值
@@ -1182,7 +1182,9 @@ fun SimpleMainScreen(
             }
         }
         val handlePasskeyOpen: (PasskeyEntry) -> Unit = { passkey ->
-            if (!isCompactWidth) {
+            if (isCompactWidth) {
+                selectedTabKey = BottomNavItem.Passkey.key
+            } else {
                 selectedPasskey = passkey
             }
         }
@@ -1549,6 +1551,10 @@ fun SimpleMainScreen(
                     passwordGroupMode = passwordGroupMode,
                     stackCardMode = stackCardMode,
                     onPasswordOpen = handlePasswordDetailOpen,
+                    onBankCardOpen = handleBankCardOpen,
+                    onDocumentOpen = handleDocumentOpen,
+                    onNoteOpen = { handleNoteOpen(it) },
+                    onPasskeyOpen = handlePasskeyOpen,
                     onPasswordSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onMoveToCategory, onStack, onDelete ->
                         isPasswordSelectionMode = isSelectionMode
                         selectedPasswordCount = count
@@ -1656,7 +1662,7 @@ fun SimpleMainScreen(
         bottomBar = {
             if (isCompactWidth) {
                 Column {
-                    AnimatedVisibility(
+                    androidx.compose.animation.AnimatedVisibility(
                         visible = shouldShowBitwardenSyncIndicator,
                         enter = slideInVertically(
                             initialOffsetY = { it / 2 },
@@ -1721,12 +1727,24 @@ fun SimpleMainScreen(
                     VaultV2Pane(
                         passwordViewModel = passwordViewModel,
                         totpViewModel = totpViewModel,
+                        bankCardViewModel = bankCardViewModel,
+                        documentViewModel = documentViewModel,
+                        noteViewModel = noteViewModel,
+                        passkeyViewModel = passkeyViewModel,
                         onOpenPassword = handlePasswordDetailOpen,
                         onOpenTotp = handleTotpOpen,
+                        onOpenBankCard = handleBankCardOpen,
+                        onOpenDocument = handleDocumentOpen,
+                        onOpenNote = { handleNoteOpen(it) },
+                        onOpenPasskey = handlePasskeyOpen,
                         onBackToTopVisibilityChange = { visible ->
                             passwordListShowBackToTop = visible
                         },
+                        onFastScrollSectionLabelChange = { label ->
+                            fastScrollIndicatorLabel = label
+                        },
                         scrollToTopRequestKey = passwordScrollToTopRequestKey,
+                        appSettings = appSettings,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -2038,6 +2056,7 @@ fun SimpleMainScreen(
         onFabExpandedChange = { expanded -> isFabExpanded = expanded },
         fastScrollStripVisible = isFastScrollStripVisible,
         onFastScrollStripVisibleChange = { visible -> isFastScrollStripVisible = visible },
+        fastScrollIndicatorLabel = if (currentTab == BottomNavItem.VaultV2) fastScrollIndicatorLabel else null,
         passwordListShowBackToTop = passwordListShowBackToTop,
         onBackToTop = { passwordScrollToTopRequestKey++ },
         quickAccessEnabled = appSettings.passwordListQuickAccessEnabled,
@@ -2049,6 +2068,7 @@ fun SimpleMainScreen(
         cardWalletSubTab = cardWalletSubTab,
         onPasswordAddOpen = handlePasswordAddOpen,
         onTotpAddOpen = handleTotpAddOpen,
+        onBankCardAddOpen = handleBankCardAddOpen,
         onWalletAddOpen = handleWalletAddOpen,
         onNoteAddOpen = { handleNoteOpen(null) },
         onSendAddOpen = handleSendAddOpen,
@@ -2477,6 +2497,10 @@ private fun CompactDraggableTabContent(
     passwordGroupMode: String,
     stackCardMode: StackCardMode,
     onPasswordOpen: (Long) -> Unit,
+    onBankCardOpen: (Long) -> Unit,
+    onDocumentOpen: (Long) -> Unit,
+    onNoteOpen: (Long) -> Unit,
+    onPasskeyOpen: (PasskeyEntry) -> Unit,
     onPasswordSelectionModeChange: (
         Boolean,
         Int,
@@ -2564,6 +2588,8 @@ private fun CompactDraggableTabContent(
     onMoveToCategoryDocuments: () -> Unit,
     onDeleteSelectedDocuments: () -> Unit
 ) {
+    val appSettings by settingsViewModel.settings.collectAsState()
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -2574,10 +2600,20 @@ private fun CompactDraggableTabContent(
                 VaultV2Pane(
                     passwordViewModel = passwordViewModel,
                     totpViewModel = totpViewModel,
+                    bankCardViewModel = bankCardViewModel,
+                    documentViewModel = documentViewModel,
+                    noteViewModel = noteViewModel,
+                    passkeyViewModel = passkeyViewModel,
                     onOpenPassword = onPasswordOpen,
                     onOpenTotp = onTotpOpen,
+                    onOpenBankCard = onBankCardOpen,
+                    onOpenDocument = onDocumentOpen,
+                    onOpenNote = onNoteOpen,
+                    onOpenPasskey = onPasskeyOpen,
                     onBackToTopVisibilityChange = onBackToTopVisibilityChange,
+                    onFastScrollSectionLabelChange = { },
                     scrollToTopRequestKey = passwordScrollToTopRequestKey,
+                    appSettings = appSettings,
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -2827,6 +2863,7 @@ private fun BoxScope.MainScreenFabOverlay(
     onFabExpandedChange: (Boolean) -> Unit,
     fastScrollStripVisible: Boolean,
     onFastScrollStripVisibleChange: (Boolean) -> Unit,
+    fastScrollIndicatorLabel: String?,
     passwordListShowBackToTop: Boolean,
     onBackToTop: () -> Unit,
     quickAccessEnabled: Boolean,
@@ -2838,6 +2875,7 @@ private fun BoxScope.MainScreenFabOverlay(
     cardWalletSubTab: CardWalletTab,
     onPasswordAddOpen: () -> Unit,
     onTotpAddOpen: () -> Unit,
+    onBankCardAddOpen: () -> Unit,
     onWalletAddOpen: () -> Unit,
     onNoteAddOpen: () -> Unit,
     onSendAddOpen: () -> Unit,
@@ -3041,6 +3079,7 @@ private fun BoxScope.MainScreenFabOverlay(
                 cardWalletSubTab = cardWalletSubTab,
                 onPasswordAddOpen = onPasswordAddOpen,
                 onTotpAddOpen = onTotpAddOpen,
+                onBankCardAddOpen = onBankCardAddOpen,
                 onWalletAddOpen = onWalletAddOpen,
                 onNoteAddOpen = onNoteAddOpen,
                 onSendAddOpen = onSendAddOpen,
@@ -3086,7 +3125,9 @@ private fun BoxScope.MainScreenFabOverlay(
             FastScrollPanel(
                 visible = fastScrollStripVisible,
                 progress = fastScrollStripProgress,
+                indicatorLabel = fastScrollIndicatorLabel,
                 onProgressChange = passwordViewModel::requestFastScroll,
+                onDismiss = { onFastScrollStripVisibleChange(false) },
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
                     .padding(end = 24.dp)
@@ -3124,7 +3165,9 @@ private fun BoxScope.MainScreenFabOverlay(
 private fun FastScrollPanel(
     visible: Boolean,
     progress: Float,
+    indicatorLabel: String?,
     onProgressChange: (Float) -> Unit,
+    onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     AnimatedVisibility(
@@ -3135,92 +3178,173 @@ private fun FastScrollPanel(
     ) {
         val clampedProgress = progress.coerceIn(0f, 1f)
         var gestureAreaHeightPx by remember { mutableStateOf(1) }
+        var isTracking by remember { mutableStateOf(false) }
+        var trackingTouchYPx by remember { mutableStateOf(0f) }
         val activeTrackColor = MaterialTheme.colorScheme.tertiaryContainer
         val inactiveTrackColor = MaterialTheme.colorScheme.secondaryContainer
         val indicatorColor = MaterialTheme.colorScheme.tertiary
         val dotColor = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.92f)
+        val density = LocalDensity.current
 
         fun progressFromTouchY(y: Float): Float {
             val height = gestureAreaHeightPx.coerceAtLeast(1).toFloat()
             return (y / height).coerceIn(0f, 1f)
         }
 
-        BoxWithConstraints(
-            modifier = Modifier
-                .width(52.dp)
-                .height(356.dp),
-            contentAlignment = Alignment.TopCenter
+        Column(
+            modifier = Modifier.width(128.dp),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            val sliderWidth = 40.dp
-            val separatorGap = 10.dp
-            val separatorThickness = 4.dp
-            val activeHeight = (maxHeight - separatorGap - separatorThickness) * clampedProgress
-            val inactiveHeight = (maxHeight - separatorGap - separatorThickness) - activeHeight
-
-            Box(
+            BoxWithConstraints(
                 modifier = Modifier
-                    .width(sliderWidth)
-                    .fillMaxHeight()
-                    .onSizeChanged { size ->
-                        gestureAreaHeightPx = size.height.coerceAtLeast(1)
-                    }
-                    .pointerInput(Unit) {
-                        detectTapGestures { offset ->
-                            onProgressChange(progressFromTouchY(offset.y))
+                    .width(128.dp)
+                    .height(356.dp)
+            ) {
+                val sliderWidth = 40.dp
+                val separatorGap = 10.dp
+                val separatorThickness = 4.dp
+                val activeHeight = (maxHeight - separatorGap - separatorThickness) * clampedProgress
+                val inactiveHeight = (maxHeight - separatorGap - separatorThickness) - activeHeight
+                val indicatorBubbleHeight = 52.dp
+                val indicatorBubbleWidth = 56.dp
+                val maxBubbleOffsetPx = with(density) {
+                    (maxHeight - indicatorBubbleHeight).toPx().coerceAtLeast(0f)
+                }
+                val bubbleOffsetPx = (trackingTouchYPx - with(density) { indicatorBubbleHeight.toPx() / 2f })
+                    .coerceIn(0f, maxBubbleOffsetPx)
+
+                Box(modifier = Modifier.fillMaxSize()) {
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = isTracking && !indicatorLabel.isNullOrBlank(),
+                        enter = scaleIn(
+                            initialScale = 0.9f,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        ) + fadeIn(animationSpec = tween(120)),
+                        exit = scaleOut(
+                            targetScale = 0.94f,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMedium
+                            )
+                        ) + fadeOut(animationSpec = tween(90)),
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .offset(
+                                x = 0.dp,
+                                y = with(density) { bubbleOffsetPx.toDp() }
+                            )
+                    ) {
+                        Surface(
+                            modifier = Modifier.size(width = indicatorBubbleWidth, height = indicatorBubbleHeight),
+                            shape = RoundedCornerShape(999.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            contentColor = MaterialTheme.colorScheme.onSurface,
+                            tonalElevation = 6.dp,
+                            shadowElevation = 2.dp
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = indicatorLabel.orEmpty(),
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                            }
                         }
                     }
-                    .pointerInput(Unit) {
-                        detectVerticalDragGestures(
-                            onDragStart = { offset ->
-                                onProgressChange(progressFromTouchY(offset.y))
-                            },
-                            onVerticalDrag = { change, _ ->
-                                onProgressChange(progressFromTouchY(change.position.y))
-                            }
-                        )
-                    }
-            ) {
-                if (activeHeight > 0.dp) {
+
                     Box(
                         modifier = Modifier
-                            .align(Alignment.TopCenter)
+                            .align(Alignment.TopEnd)
                             .width(sliderWidth)
-                            .height(activeHeight)
-                            .clip(RoundedCornerShape(22.dp))
-                            .background(activeTrackColor)
+                            .fillMaxHeight()
+                            .onSizeChanged { size ->
+                                gestureAreaHeightPx = size.height.coerceAtLeast(1)
+                            }
+                            .pointerInput(Unit) {
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    isTracking = true
+                                    trackingTouchYPx = down.position.y.coerceIn(0f, gestureAreaHeightPx.toFloat())
+                                    onProgressChange(progressFromTouchY(trackingTouchYPx))
+
+                                    var activePointerId = down.id
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.firstOrNull { it.id == activePointerId }
+                                            ?: event.changes.firstOrNull()
+                                            ?: break
+
+                                        activePointerId = change.id
+                                        trackingTouchYPx = change.position.y.coerceIn(0f, gestureAreaHeightPx.toFloat())
+                                        onProgressChange(progressFromTouchY(trackingTouchYPx))
+
+                                        if (!change.pressed) {
+                                            break
+                                        }
+                                        change.consume()
+                                    }
+
+                                    isTracking = false
+                                }
+                            }
                     ) {
+                        if (activeHeight > 0.dp) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .width(sliderWidth)
+                                    .height(activeHeight)
+                                    .clip(RoundedCornerShape(22.dp))
+                                    .background(activeTrackColor)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .align(Alignment.TopCenter)
+                                        .padding(top = 8.dp)
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(dotColor)
+                                )
+                            }
+                        }
+
                         Box(
                             modifier = Modifier
                                 .align(Alignment.TopCenter)
-                                .padding(top = 8.dp)
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(dotColor)
+                                .offset(y = activeHeight + (separatorGap / 2))
+                                .width(28.dp)
+                                .height(separatorThickness)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(indicatorColor)
                         )
+
+                        if (inactiveHeight > 0.dp) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .offset(y = activeHeight + separatorGap + separatorThickness)
+                                    .width(sliderWidth)
+                                    .height(inactiveHeight)
+                                    .clip(RoundedCornerShape(22.dp))
+                                    .background(inactiveTrackColor)
+                            )
+                        }
                     }
                 }
+            }
 
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .offset(y = activeHeight + (separatorGap / 2))
-                        .width(28.dp)
-                        .height(separatorThickness)
-                        .clip(RoundedCornerShape(999.dp))
-                        .background(indicatorColor)
+            SmallFloatingActionButton(
+                onClick = onDismiss,
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = stringResource(R.string.close)
                 )
-
-                if (inactiveHeight > 0.dp) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .offset(y = activeHeight + separatorGap + separatorThickness)
-                            .width(sliderWidth)
-                            .height(inactiveHeight)
-                            .clip(RoundedCornerShape(22.dp))
-                            .background(inactiveTrackColor)
-                    )
-                }
             }
         }
     }
@@ -3321,6 +3445,7 @@ private fun MainScreenAddFab(
     cardWalletSubTab: CardWalletTab,
     onPasswordAddOpen: () -> Unit,
     onTotpAddOpen: () -> Unit,
+    onBankCardAddOpen: () -> Unit,
     onWalletAddOpen: () -> Unit,
     onNoteAddOpen: () -> Unit,
     onSendAddOpen: () -> Unit,
@@ -3351,149 +3476,329 @@ private fun MainScreenAddFab(
         ) + fadeIn(),
         exit = scaleOut(targetScale = 0.85f) + fadeOut()
     ) {
-        SwipeableAddFab(
-            // 通过内部参数控制 FAB 位置，确保容器本身是全屏的
-            // NavigationBar 高度约 80dp + 系统导航条高度 + 边距
-            fabBottomOffset = fabBottomOffset,
-            fabContainerColor = fabContainerColor,
-            modifier = Modifier,
-            onFabClickOverride = when (currentTab) {
-                BottomNavItem.VaultV2 -> if (isCompactWidth) null else ({ onPasswordAddOpen() })
-                BottomNavItem.Passwords -> if (isCompactWidth) null else ({ onPasswordAddOpen() })
-                BottomNavItem.Authenticator -> if (isCompactWidth) null else ({ onTotpAddOpen() })
-                BottomNavItem.CardWallet -> if (isCompactWidth || cardWalletSubTab == CardWalletTab.ALL) {
-                    null
-                } else {
-                    ({ onWalletAddOpen() })
-                }
-                BottomNavItem.Notes -> if (isCompactWidth) null else ({ onNoteAddOpen() })
-                BottomNavItem.Send -> if (isCompactWidth) null else ({ onSendAddOpen() })
-                BottomNavItem.Generator -> ({ onGeneratorRefresh() })
-                else -> null
-            },
-            onExpandStateChanged = onExpandStateChanged,
-            fabContent = {
-                when (currentTab) {
-                    BottomNavItem.VaultV2,
-                    BottomNavItem.Passwords,
-                    BottomNavItem.Authenticator,
-                    BottomNavItem.CardWallet,
-                    BottomNavItem.Notes,
-                    BottomNavItem.Send -> {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = stringResource(R.string.add),
-                            tint = fabIconTint
-                        )
+        if (currentTab == BottomNavItem.VaultV2) {
+            VaultV2FabMenu(
+                fabBottomOffset = fabBottomOffset,
+                fabContainerColor = fabContainerColor,
+                fabIconTint = fabIconTint,
+                onExpandStateChanged = onExpandStateChanged,
+                onCreatePassword = onPasswordAddOpen,
+                onCreateNote = onNoteAddOpen,
+                onCreateAuthenticator = onTotpAddOpen,
+                onCreateCard = onBankCardAddOpen,
+            )
+        } else {
+            SwipeableAddFab(
+                // 通过内部参数控制 FAB 位置，确保容器本身是全屏的
+                // NavigationBar 高度约 80dp + 系统导航条高度 + 边距
+                fabBottomOffset = fabBottomOffset,
+                fabContainerColor = fabContainerColor,
+                modifier = Modifier,
+                onFabClickOverride = when (currentTab) {
+                    BottomNavItem.VaultV2 -> if (isCompactWidth) null else ({ onPasswordAddOpen() })
+                    BottomNavItem.Passwords -> if (isCompactWidth) null else ({ onPasswordAddOpen() })
+                    BottomNavItem.Authenticator -> if (isCompactWidth) null else ({ onTotpAddOpen() })
+                    BottomNavItem.CardWallet -> if (isCompactWidth || cardWalletSubTab == CardWalletTab.ALL) {
+                        null
+                    } else {
+                        ({ onWalletAddOpen() })
                     }
-                    BottomNavItem.Generator -> {
-                        Icon(
-                            imageVector = Icons.Default.Refresh,
-                            contentDescription = stringResource(R.string.regenerate),
-                            tint = fabIconTint
-                        )
-                    }
-                    else -> { /* 不显示 */ }
-                }
-            },
-            expandedContent = { collapse ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.surface)
-                ) {
+                    BottomNavItem.Notes -> if (isCompactWidth) null else ({ onNoteAddOpen() })
+                    BottomNavItem.Send -> if (isCompactWidth) null else ({ onSendAddOpen() })
+                    BottomNavItem.Generator -> ({ onGeneratorRefresh() })
+                    else -> null
+                },
+                onExpandStateChanged = onExpandStateChanged,
+                fabContent = {
                     when (currentTab) {
                         BottomNavItem.VaultV2,
-                        BottomNavItem.Passwords -> {
-                            AddEditPasswordScreen(
-                                viewModel = passwordViewModel,
-                                totpViewModel = totpViewModel,
-                                bankCardViewModel = bankCardViewModel,
-                                localKeePassViewModel = localKeePassViewModel,
-                                passwordId = null,
-                                onNavigateBack = collapse
-                            )
-                        }
-                        BottomNavItem.Authenticator -> {
-                            val totpCategories by totpViewModel.categories.collectAsState()
-                            AddEditTotpScreen(
-                                totpId = null,
-                                initialData = null,
-                                initialTitle = "",
-                                initialNotes = "",
-                                initialCategoryId = totpNewItemDefaults.categoryId,
-                                initialKeePassDatabaseId = totpNewItemDefaults.keepassDatabaseId,
-                                initialKeePassGroupPath = totpNewItemDefaults.keepassGroupPath,
-                                initialBitwardenVaultId = totpNewItemDefaults.bitwardenVaultId,
-                                initialBitwardenFolderId = totpNewItemDefaults.bitwardenFolderId,
-                                categories = totpCategories,
-                                passwordViewModel = passwordViewModel,
-                                localKeePassViewModel = localKeePassViewModel,
-                                onSave = { title, notes, totpData, categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
-                                    totpViewModel.saveTotpItem(
-                                        id = null,
-                                        title = title,
-                                        notes = notes,
-                                        totpData = totpData,
-                                        categoryId = categoryId,
-                                        keepassDatabaseId = keepassDatabaseId,
-                                        keepassGroupPath = keepassGroupPath,
-                                        bitwardenVaultId = bitwardenVaultId,
-                                        bitwardenFolderId = bitwardenFolderId
-                                    )
-                                    collapse()
-                                },
-                                onNavigateBack = collapse,
-                                onScanQrCode = {
-                                    collapse()
-                                    onNavigateToQuickTotpScan()
-                                }
-                            )
-                        }
-                        BottomNavItem.CardWallet -> {
-                            UnifiedWalletAddScreen(
-                                selectedType = walletUnifiedAddType,
-                                onTypeSelected = onWalletUnifiedAddTypeChange,
-                                onNavigateBack = collapse,
-                                bankCardViewModel = bankCardViewModel,
-                                documentViewModel = documentViewModel,
-                                stateHolder = walletAddSaveableStateHolder
-                            )
-                        }
-                        BottomNavItem.Notes -> {
-                            AddEditNoteScreen(
-                                noteId = -1L,
-                                onNavigateBack = collapse,
-                                viewModel = noteViewModel
-                            )
-                        }
+                        BottomNavItem.Passwords,
+                        BottomNavItem.Authenticator,
+                        BottomNavItem.CardWallet,
+                        BottomNavItem.Notes,
                         BottomNavItem.Send -> {
-                            AddEditSendScreen(
-                                sendState = sendState,
-                                onNavigateBack = collapse,
-                                onCreate = { title, text, notes, password, maxAccessCount, hideEmail, hiddenText, expireInDays ->
-                                    bitwardenViewModel.createTextSend(
-                                        title = title,
-                                        text = text,
-                                        notes = notes,
-                                        password = password,
-                                        maxAccessCount = maxAccessCount,
-                                        hideEmail = hideEmail,
-                                        hiddenText = hiddenText,
-                                        expireInDays = expireInDays
-                                    )
-                                    collapse()
-                                }
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = stringResource(R.string.add),
+                                tint = fabIconTint
                             )
                         }
                         BottomNavItem.Generator -> {
-                            // Generator 使用全局 FAB 点击回调触发刷新，不走展开页面。
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = stringResource(R.string.regenerate),
+                                tint = fabIconTint
+                            )
                         }
-                        else -> { /* Should not happen */ }
+                        else -> { /* 不显示 */ }
+                    }
+                },
+                expandedContent = { collapse ->
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(MaterialTheme.colorScheme.surface)
+                    ) {
+                        when (currentTab) {
+                            BottomNavItem.VaultV2,
+                            BottomNavItem.Passwords -> {
+                                AddEditPasswordScreen(
+                                    viewModel = passwordViewModel,
+                                    totpViewModel = totpViewModel,
+                                    bankCardViewModel = bankCardViewModel,
+                                    localKeePassViewModel = localKeePassViewModel,
+                                    passwordId = null,
+                                    onNavigateBack = collapse
+                                )
+                            }
+                            BottomNavItem.Authenticator -> {
+                                val totpCategories by totpViewModel.categories.collectAsState()
+                                AddEditTotpScreen(
+                                    totpId = null,
+                                    initialData = null,
+                                    initialTitle = "",
+                                    initialNotes = "",
+                                    initialCategoryId = totpNewItemDefaults.categoryId,
+                                    initialKeePassDatabaseId = totpNewItemDefaults.keepassDatabaseId,
+                                    initialKeePassGroupPath = totpNewItemDefaults.keepassGroupPath,
+                                    initialBitwardenVaultId = totpNewItemDefaults.bitwardenVaultId,
+                                    initialBitwardenFolderId = totpNewItemDefaults.bitwardenFolderId,
+                                    categories = totpCategories,
+                                    passwordViewModel = passwordViewModel,
+                                    localKeePassViewModel = localKeePassViewModel,
+                                    onSave = { title, notes, totpData, categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
+                                        totpViewModel.saveTotpItem(
+                                            id = null,
+                                            title = title,
+                                            notes = notes,
+                                            totpData = totpData,
+                                            categoryId = categoryId,
+                                            keepassDatabaseId = keepassDatabaseId,
+                                            keepassGroupPath = keepassGroupPath,
+                                            bitwardenVaultId = bitwardenVaultId,
+                                            bitwardenFolderId = bitwardenFolderId
+                                        )
+                                        collapse()
+                                    },
+                                    onNavigateBack = collapse,
+                                    onScanQrCode = {
+                                        collapse()
+                                        onNavigateToQuickTotpScan()
+                                    }
+                                )
+                            }
+                            BottomNavItem.CardWallet -> {
+                                UnifiedWalletAddScreen(
+                                    selectedType = walletUnifiedAddType,
+                                    onTypeSelected = onWalletUnifiedAddTypeChange,
+                                    onNavigateBack = collapse,
+                                    bankCardViewModel = bankCardViewModel,
+                                    documentViewModel = documentViewModel,
+                                    stateHolder = walletAddSaveableStateHolder
+                                )
+                            }
+                            BottomNavItem.Notes -> {
+                                AddEditNoteScreen(
+                                    noteId = -1L,
+                                    onNavigateBack = collapse,
+                                    viewModel = noteViewModel
+                                )
+                            }
+                            BottomNavItem.Send -> {
+                                AddEditSendScreen(
+                                    sendState = sendState,
+                                    onNavigateBack = collapse,
+                                    onCreate = { title, text, notes, password, maxAccessCount, hideEmail, hiddenText, expireInDays ->
+                                        bitwardenViewModel.createTextSend(
+                                            title = title,
+                                            text = text,
+                                            notes = notes,
+                                            password = password,
+                                            maxAccessCount = maxAccessCount,
+                                            hideEmail = hideEmail,
+                                            hiddenText = hiddenText,
+                                            expireInDays = expireInDays
+                                        )
+                                        collapse()
+                                    }
+                                )
+                            }
+                            BottomNavItem.Generator -> {
+                                // Generator 使用全局 FAB 点击回调触发刷新，不走展开页面。
+                            }
+                            else -> { /* Should not happen */ }
+                        }
+                    }
+                }
+            )
+        }
+    }
+}
+
+private data class VaultV2FabMenuAction(
+    val icon: ImageVector,
+    val labelRes: Int,
+    val onClick: () -> Unit,
+)
+
+@Composable
+private fun VaultV2FabMenu(
+    fabBottomOffset: Dp,
+    fabContainerColor: Color,
+    fabIconTint: Color,
+    onExpandStateChanged: (Boolean) -> Unit,
+    onCreatePassword: () -> Unit,
+    onCreateNote: () -> Unit,
+    onCreateAuthenticator: () -> Unit,
+    onCreateCard: () -> Unit,
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val animatedCornerRadius by animateDpAsState(
+        targetValue = if (expanded) 28.dp else 16.dp,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "vault_v2_fab_corner"
+    )
+    val menuActions = remember(onCreatePassword, onCreateNote, onCreateAuthenticator, onCreateCard) {
+        listOf(
+            VaultV2FabMenuAction(
+                icon = Icons.Default.CreditCard,
+                labelRes = R.string.item_type_bank_card,
+                onClick = onCreateCard
+            ),
+            VaultV2FabMenuAction(
+                icon = Icons.Default.Security,
+                labelRes = R.string.item_type_authenticator,
+                onClick = onCreateAuthenticator
+            ),
+            VaultV2FabMenuAction(
+                icon = Icons.Default.Description,
+                labelRes = R.string.v2_create_note,
+                onClick = onCreateNote
+            ),
+            VaultV2FabMenuAction(
+                icon = Icons.Default.Lock,
+                labelRes = R.string.item_type_password,
+                onClick = onCreatePassword
+            ),
+        )
+    }
+
+    fun updateExpanded(next: Boolean) {
+        if (expanded == next) return
+        expanded = next
+        onExpandStateChanged(next)
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            if (expanded) {
+                onExpandStateChanged(false)
+            }
+        }
+    }
+
+    BackHandler(enabled = expanded) {
+        updateExpanded(false)
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        AnimatedVisibility(
+            visible = expanded,
+            enter = fadeIn(animationSpec = tween(durationMillis = 120)),
+            exit = fadeOut(animationSpec = tween(durationMillis = 90)),
+            modifier = Modifier.matchParentSize()
+        ) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) {
+                        updateExpanded(false)
+                    }
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(
+                    end = 16.dp,
+                    bottom = fabBottomOffset + 16.dp
+                ),
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            menuActions.forEachIndexed { index, action ->
+                AnimatedVisibility(
+                    visible = expanded,
+                    enter = fadeIn(
+                        animationSpec = tween(durationMillis = 160, delayMillis = index * 28)
+                    ) + slideInVertically(
+                        initialOffsetY = { it / 3 },
+                        animationSpec = tween(
+                            durationMillis = 220,
+                            delayMillis = index * 28,
+                            easing = LinearEasing
+                        )
+                    ),
+                    exit = fadeOut(animationSpec = tween(durationMillis = 90)) + slideOutVertically(
+                        targetOffsetY = { it / 4 },
+                        animationSpec = tween(durationMillis = 120)
+                    )
+                ) {
+                    Surface(
+                        onClick = {
+                            updateExpanded(false)
+                            action.onClick()
+                        },
+                        shape = RoundedCornerShape(24.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        tonalElevation = 4.dp,
+                        shadowElevation = 3.dp
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = action.icon,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = stringResource(action.labelRes),
+                                style = MaterialTheme.typography.labelLarge
+                            )
+                        }
                     }
                 }
             }
-        )
+
+            Surface(
+                modifier = Modifier.size(56.dp),
+                shape = RoundedCornerShape(animatedCornerRadius),
+                color = fabContainerColor,
+                contentColor = fabIconTint,
+                tonalElevation = 6.dp,
+                shadowElevation = 6.dp,
+                onClick = { updateExpanded(!expanded) }
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = if (expanded) Icons.Default.Close else Icons.Default.Add,
+                        contentDescription = stringResource(R.string.add),
+                        tint = fabIconTint
+                    )
+                }
+            }
+        }
     }
 }
 

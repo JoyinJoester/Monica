@@ -3,7 +3,6 @@ package takagi.ru.monica.wear.ui.screens
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -29,8 +28,6 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Upload
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.*
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,19 +42,32 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
-import androidx.wear.compose.material.Chip
-import androidx.wear.compose.material.ChipDefaults
-import androidx.wear.compose.material.Icon as WearIcon
-import androidx.wear.compose.material.ToggleChip
-import androidx.wear.compose.material.Switch
+import androidx.wear.compose.material3.Button as WearButton
+import androidx.wear.compose.material3.ButtonDefaults as WearButtonDefaults
+import androidx.wear.compose.material3.CircularProgressIndicator
+import androidx.wear.compose.material3.FilledIconButton
+import androidx.wear.compose.material3.FilledTonalIconButton
+import androidx.wear.compose.material3.Icon
+import androidx.wear.compose.material3.IconButtonDefaults
+import androidx.wear.compose.material3.MaterialTheme
+import androidx.wear.compose.material3.ScreenScaffold
+import androidx.wear.compose.material3.SwitchButton
+import androidx.wear.compose.material3.Text
+import androidx.wear.compose.material3.Icon as WearIcon
 import takagi.ru.monica.wear.R
 import takagi.ru.monica.wear.security.WearSecurityManager
 import takagi.ru.monica.wear.ui.components.ChangeLockDialog
+import takagi.ru.monica.wear.ui.components.ExpressiveBackground
+import takagi.ru.monica.wear.ui.components.MonicaTimeText
+import takagi.ru.monica.wear.ui.components.RoundHeaderChip
+import takagi.ru.monica.wear.ui.components.RoundSectionChip
+import takagi.ru.monica.wear.ui.components.WearPanel
+import takagi.ru.monica.wear.ui.components.WearTextField
+import takagi.ru.monica.wear.ui.components.roundContentWidthFraction
 import takagi.ru.monica.wear.viewmodel.ColorScheme as WearColorScheme
 import takagi.ru.monica.wear.viewmodel.SettingsViewModel
 import takagi.ru.monica.wear.viewmodel.SyncState
@@ -70,7 +80,6 @@ import java.util.*
  * 设置界面 - Material 3 设计（深色主题）
  * 包含WebDAV配置、同步、安全设置等
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     viewModel: SettingsViewModel,
@@ -164,11 +173,10 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                OutlinedTextField(
+                WearTextField(
                     value = tempPassword,
                     onValueChange = { tempPassword = it },
-                    label = { Text("密码") },
-                    singleLine = true,
+                    label = "密码",
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -265,7 +273,6 @@ fun SettingsScreen(
 /**
  * 设置界面内容组件
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SettingsScreenContent(
     syncState: SyncState,
@@ -288,123 +295,134 @@ private fun SettingsScreenContent(
 ) {
     val listState = rememberScalingLazyListState()
 
-    ScalingLazyColumn(
-        modifier = modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .padding(horizontal = 6.dp, vertical = 6.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-        state = listState
-    ) {
-        item {
-            Text(
-                text = stringResource(R.string.settings_title),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(start = 4.dp, top = 2.dp, bottom = 6.dp)
-            )
-        }
+    ScreenScaffold(
+        timeText = { MonicaTimeText() }
+    ) { contentPadding ->
+        Box(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(contentPadding)
+        ) {
+            ExpressiveBackground()
+            ScalingLazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 6.dp, vertical = 6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                state = listState
+            ) {
+                item {
+                    RoundHeaderChip(
+                        title = stringResource(R.string.settings_title),
+                        subtitle = stringResource(R.string.settings_about_app),
+                        modifier = Modifier
+                            .fillMaxWidth(roundContentWidthFraction(0.68f, 0.76f))
+                            .padding(top = 2.dp, bottom = 6.dp)
+                    )
+                }
 
-        item {
-            SyncStatusCard(
-                syncState = syncState,
-                lastSyncTime = lastSyncTime,
-                onSyncClick = onSyncClick,
-                isConfigured = isWebDavConfigured
-            )
-        }
+                item {
+                    SyncStatusCard(
+                        syncState = syncState,
+                        lastSyncTime = lastSyncTime,
+                        onSyncClick = onSyncClick,
+                        isConfigured = isWebDavConfigured
+                    )
+                }
 
-        // Sync
-        item {
-            SectionLabel(text = stringResource(R.string.settings_section_sync))
-        }
-        item {
-            SettingChip(
-                chipIcon = Icons.Default.Cloud,
-                label = stringResource(R.string.settings_webdav_config),
-                secondaryLabel = stringResource(if (isWebDavConfigured) R.string.settings_webdav_configured else R.string.settings_webdav_not_configured),
-                onClick = onWebDavClick
-            )
-        }
-        if (isWebDavConfigured) {
-            item {
-                SettingChip(
-                    chipIcon = Icons.Default.Upload,
-                    label = "备份到云端",
-                    secondaryLabel = "手动上传当前数据",
-                    onClick = onBackupClick
-                )
+                // Sync
+                item {
+                    SectionLabel(text = stringResource(R.string.settings_section_sync))
+                }
+                item {
+                    SettingChip(
+                        chipIcon = Icons.Default.Cloud,
+                        label = stringResource(R.string.settings_webdav_config),
+                        secondaryLabel = stringResource(if (isWebDavConfigured) R.string.settings_webdav_configured else R.string.settings_webdav_not_configured),
+                        onClick = onWebDavClick
+                    )
+                }
+                if (isWebDavConfigured) {
+                    item {
+                        SettingChip(
+                            chipIcon = Icons.Default.Upload,
+                            label = "备份到云端",
+                            secondaryLabel = "手动上传当前数据",
+                            onClick = onBackupClick
+                        )
+                    }
+                }
+
+                // Authenticator
+                item { SectionLabel(text = stringResource(R.string.settings_section_authenticator)) }
+                item {
+                    SettingChip(
+                        chipIcon = Icons.Default.Add,
+                        label = stringResource(R.string.settings_add_totp),
+                        secondaryLabel = stringResource(R.string.settings_add_totp_subtitle),
+                        onClick = onAddTotpClick
+                    )
+                }
+
+                // Appearance
+                item { SectionLabel(text = stringResource(R.string.settings_section_appearance)) }
+                item {
+                    SettingChip(
+                        chipIcon = Icons.Default.Palette,
+                        label = stringResource(R.string.settings_color_scheme),
+                        secondaryLabel = stringResource(currentColorScheme.displayNameResId),
+                        onClick = onThemeClick
+                    )
+                }
+                item {
+                    SettingToggleChip(
+                        chipIcon = Icons.Default.Palette,
+                        label = stringResource(R.string.settings_oled_black),
+                        secondaryLabel = stringResource(if (useOledBlack) R.string.settings_oled_black_enabled else R.string.settings_oled_black_disabled),
+                        checked = useOledBlack,
+                        onCheckedChange = onOledBlackToggle
+                    )
+                }
+                item {
+                    SettingChip(
+                        chipIcon = Icons.Default.Language,
+                        label = stringResource(R.string.settings_language),
+                        secondaryLabel = stringResource(currentLanguage.displayNameResId),
+                        onClick = onLanguageClick
+                    )
+                }
+
+                // Security
+                if (securityManager != null) {
+                    item { SectionLabel(text = stringResource(R.string.settings_section_security)) }
+                    item {
+                        SettingChip(
+                            chipIcon = Icons.Default.Key,
+                            label = stringResource(R.string.settings_reset_pin),
+                            secondaryLabel = stringResource(R.string.settings_reset_pin_subtitle),
+                            onClick = onChangeLockClick
+                        )
+                    }
+                }
+
+                // Data
+                item { SectionLabel(text = stringResource(R.string.settings_section_data)) }
+                item {
+                    SettingChip(
+                        chipIcon = Icons.Default.DeleteForever,
+                        label = stringResource(R.string.settings_clear_data),
+                        secondaryLabel = stringResource(R.string.settings_clear_data_subtitle),
+                        onClick = onClearDataClick,
+                        isDestructive = true
+                    )
+                }
+
+                item { AboutSection() }
+
+                item { Spacer(modifier = Modifier.height(12.dp)) }
             }
         }
-
-        // Authenticator
-        item { SectionLabel(text = stringResource(R.string.settings_section_authenticator)) }
-        item {
-            SettingChip(
-                chipIcon = Icons.Default.Add,
-                label = stringResource(R.string.settings_add_totp),
-                secondaryLabel = stringResource(R.string.settings_add_totp_subtitle),
-                onClick = onAddTotpClick
-            )
-        }
-
-        // Appearance
-        item { SectionLabel(text = stringResource(R.string.settings_section_appearance)) }
-        item {
-            SettingChip(
-                chipIcon = Icons.Default.Palette,
-                label = stringResource(R.string.settings_color_scheme),
-                secondaryLabel = stringResource(currentColorScheme.displayNameResId),
-                onClick = onThemeClick
-            )
-        }
-        item {
-            SettingToggleChip(
-                chipIcon = Icons.Default.Palette,
-                label = stringResource(R.string.settings_oled_black),
-                secondaryLabel = stringResource(if (useOledBlack) R.string.settings_oled_black_enabled else R.string.settings_oled_black_disabled),
-                checked = useOledBlack,
-                onCheckedChange = onOledBlackToggle
-            )
-        }
-        item {
-            SettingChip(
-                chipIcon = Icons.Default.Language,
-                label = stringResource(R.string.settings_language),
-                secondaryLabel = stringResource(currentLanguage.displayNameResId),
-                onClick = onLanguageClick
-            )
-        }
-
-        // Security
-        if (securityManager != null) {
-            item { SectionLabel(text = stringResource(R.string.settings_section_security)) }
-            item {
-                SettingChip(
-                    chipIcon = Icons.Default.Key,
-                    label = stringResource(R.string.settings_reset_pin),
-                    secondaryLabel = stringResource(R.string.settings_reset_pin_subtitle),
-                    onClick = onChangeLockClick
-                )
-            }
-        }
-
-        // Data
-        item { SectionLabel(text = stringResource(R.string.settings_section_data)) }
-        item {
-            SettingChip(
-                chipIcon = Icons.Default.DeleteForever,
-                label = stringResource(R.string.settings_clear_data),
-                secondaryLabel = stringResource(R.string.settings_clear_data_subtitle),
-                onClick = onClearDataClick,
-                isDestructive = true
-            )
-        }
-
-        item { AboutSection() }
-
-        item { Spacer(modifier = Modifier.height(12.dp)) }
     }
 }
 
@@ -435,7 +453,7 @@ private fun SyncStatusCard(
         is SyncState.Success -> MaterialTheme.colorScheme.primaryContainer
         is SyncState.Error -> MaterialTheme.colorScheme.errorContainer
         SyncState.Syncing -> MaterialTheme.colorScheme.secondaryContainer
-        else -> MaterialTheme.colorScheme.surfaceVariant
+        else -> MaterialTheme.colorScheme.surfaceContainer
     }
     
     val contentColor = when (syncState) {
@@ -445,21 +463,16 @@ private fun SyncStatusCard(
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     
-    ElevatedCard(
+    WearPanel(
         modifier = modifier
-            .fillMaxWidth()
+            .fillMaxWidth(roundContentWidthFraction(0.86f, 0.94f))
             .clickable(
                 enabled = isConfigured && syncState != SyncState.Syncing,
                 onClick = onSyncClick
             ),
-        shape = MaterialTheme.shapes.extraLarge,
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = containerColor
-        ),
-        elevation = CardDefaults.elevatedCardElevation(
-            defaultElevation = 4.dp,
-            pressedElevation = 8.dp
-        )
+        shape = RoundedCornerShape(32.dp),
+        containerColor = containerColor,
+        borderColor = contentColor.copy(alpha = 0.18f)
     ) {
         Column(
             modifier = Modifier
@@ -509,8 +522,7 @@ private fun SyncStatusCard(
                 ) {
                     CircularProgressIndicator(
                         modifier = Modifier.size(24.dp),
-                        strokeWidth = 3.dp,
-                        color = contentColor
+                        strokeWidth = 3.dp
                     )
                 }
             }
@@ -613,12 +625,11 @@ private fun SettingsItem(
 
 @Composable
 private fun SectionLabel(text: String) {
-    Text(
+    RoundSectionChip(
         text = text,
-        style = MaterialTheme.typography.labelLarge,
-        color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.8f),
-        fontWeight = FontWeight.Medium,
-        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+        modifier = Modifier
+            .fillMaxWidth(roundContentWidthFraction(0.58f, 0.66f))
+            .padding(vertical = 2.dp)
     )
 }
 
@@ -641,14 +652,13 @@ private fun WearDialogContainer(
             val cardWidth = if (fullScreen) maxWidth else maxWidth * 0.9f
             val cardHeight = if (fullScreen) maxHeight else maxHeight * 0.9f
 
-            Surface(
+            WearPanel(
                 modifier = modifier
                     .width(cardWidth)
                     .heightIn(max = cardHeight)
                     .clip(if (fullScreen) RoundedCornerShape(0.dp) else RoundedCornerShape(20.dp)),
-                tonalElevation = 6.dp,
-                shadowElevation = 8.dp,
-                color = MaterialTheme.colorScheme.surfaceVariant,
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                borderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
                 shape = if (fullScreen) RoundedCornerShape(0.dp) else RoundedCornerShape(20.dp)
             ) {
                 Column(
@@ -699,7 +709,7 @@ private fun DialogActionButtons(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Chip(
+        WearButton(
             onClick = onSecondary,
             modifier = Modifier.weight(1f),
             label = {
@@ -709,10 +719,10 @@ private fun DialogActionButtons(
                     overflow = TextOverflow.Ellipsis
                 )
             },
-            colors = ChipDefaults.secondaryChipColors()
+            colors = WearButtonDefaults.outlinedButtonColors()
         )
 
-        Chip(
+        WearButton(
             onClick = onPrimary,
             enabled = primaryEnabled,
             modifier = Modifier.weight(1f),
@@ -723,14 +733,18 @@ private fun DialogActionButtons(
                     overflow = TextOverflow.Ellipsis
                 )
             },
-            colors = if (primaryIsDestructive) {
-                ChipDefaults.primaryChipColors(
-                    backgroundColor = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer
-                )
-            } else {
-                ChipDefaults.primaryChipColors()
-            }
+            colors = WearButtonDefaults.buttonColors(
+                containerColor = if (primaryIsDestructive) {
+                    MaterialTheme.colorScheme.errorContainer
+                } else {
+                    MaterialTheme.colorScheme.primary
+                },
+                contentColor = if (primaryIsDestructive) {
+                    MaterialTheme.colorScheme.onErrorContainer
+                } else {
+                    MaterialTheme.colorScheme.onPrimary
+                }
+            )
         )
     }
 }
@@ -744,9 +758,9 @@ private fun SettingChip(
     isDestructive: Boolean = false,
     onClick: () -> Unit
 ) {
-    Chip(
+    WearButton(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth(roundContentWidthFraction(0.84f, 0.92f)),
         label = {
             Text(
                 text = label,
@@ -774,9 +788,11 @@ private fun SettingChip(
                 tint = if (isDestructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
             )
         },
-        colors = ChipDefaults.primaryChipColors(
-            backgroundColor = MaterialTheme.colorScheme.surfaceVariant,
-            contentColor = if (isDestructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+        colors = WearButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+            contentColor = if (isDestructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+            secondaryContentColor = if (isDestructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f),
+            iconColor = if (isDestructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
         )
     )
 }
@@ -789,10 +805,10 @@ private fun SettingToggleChip(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
-    ToggleChip(
+    SwitchButton(
         checked = checked,
         onCheckedChange = onCheckedChange,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth(roundContentWidthFraction(0.84f, 0.92f)),
         label = {
             Text(
                 text = label,
@@ -813,33 +829,13 @@ private fun SettingToggleChip(
                 )
             }
         } else null,
-        toggleControl = {
-            androidx.wear.compose.material.Switch(
-                checked = checked,
-                onCheckedChange = null, // ToggleChip handles click
-                colors = androidx.wear.compose.material.SwitchDefaults.colors(
-                    checkedThumbColor = MaterialTheme.colorScheme.primary,
-                    checkedTrackColor = MaterialTheme.colorScheme.primaryContainer,
-                    uncheckedThumbColor = MaterialTheme.colorScheme.outline,
-                    uncheckedTrackColor = MaterialTheme.colorScheme.surfaceVariant
-                )
-            )
-        },
-        appIcon = {
+        icon = {
             WearIcon(
                 imageVector = chipIcon,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary
             )
         },
-        colors = androidx.wear.compose.material.ToggleChipDefaults.toggleChipColors(
-            checkedStartBackgroundColor = MaterialTheme.colorScheme.surfaceVariant,
-            checkedEndBackgroundColor = MaterialTheme.colorScheme.surfaceVariant,
-            uncheckedStartBackgroundColor = MaterialTheme.colorScheme.surfaceVariant,
-            uncheckedEndBackgroundColor = MaterialTheme.colorScheme.surfaceVariant,
-            checkedContentColor = MaterialTheme.colorScheme.onSurface,
-            uncheckedContentColor = MaterialTheme.colorScheme.onSurface
-        )
     )
 }
 
@@ -850,15 +846,11 @@ private fun SettingToggleChip(
 private fun AboutSection(
     modifier: Modifier = Modifier
 ) {
-    androidx.wear.compose.material.Card(
-        onClick = {},
-        enabled = false,
-        modifier = modifier.fillMaxWidth(),
-        backgroundPainter = androidx.wear.compose.material.CardDefaults.cardBackgroundPainter(
-            startBackgroundColor = MaterialTheme.colorScheme.surfaceVariant,
-            endBackgroundColor = MaterialTheme.colorScheme.surfaceVariant
-        ),
-        shape = RoundedCornerShape(18.dp)
+    WearPanel(
+        modifier = modifier.fillMaxWidth(roundContentWidthFraction(0.84f, 0.92f)),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.82f),
+        borderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+        shape = RoundedCornerShape(30.dp)
     ) {
         Column(
             modifier = Modifier
@@ -900,7 +892,6 @@ private fun AboutSection(
 /**
  * WebDAV配置对话框
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun WebDavConfigDialog(
     viewModel: SettingsViewModel,
@@ -949,15 +940,12 @@ private fun WebDavConfigDialog(
 
             item {
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    OutlinedTextField(
+                    WearTextField(
                         value = serverUrl,
                         onValueChange = { serverUrl = it },
-                        placeholder = { Text(stringResource(R.string.webdav_server_url), maxLines = 1) },
-                        singleLine = true,
-                        textStyle = MaterialTheme.typography.bodySmall,
+                        placeholder = stringResource(R.string.webdav_server_url),
                         keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Uri),
-                        leadingIcon = { Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                        shape = RoundedCornerShape(28.dp),
+                        leadingIcon = Icons.Default.Link,
                         modifier = Modifier.fillMaxWidth(inputWidthFraction)
                     )
                 }
@@ -965,15 +953,12 @@ private fun WebDavConfigDialog(
 
             item {
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    OutlinedTextField(
+                    WearTextField(
                         value = username,
                         onValueChange = { username = it },
-                        placeholder = { Text(stringResource(R.string.webdav_username), maxLines = 1) },
-                        singleLine = true,
-                        textStyle = MaterialTheme.typography.bodySmall,
+                        placeholder = stringResource(R.string.webdav_username),
                         keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Ascii),
-                        leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                        shape = RoundedCornerShape(28.dp),
+                        leadingIcon = Icons.Default.Person,
                         modifier = Modifier.fillMaxWidth(inputWidthFraction)
                     )
                 }
@@ -981,22 +966,19 @@ private fun WebDavConfigDialog(
 
             item {
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    OutlinedTextField(
+                    WearTextField(
                         value = password,
                         onValueChange = { password = it },
-                        placeholder = { Text(stringResource(R.string.webdav_password), maxLines = 1) },
-                        singleLine = true,
-                        textStyle = MaterialTheme.typography.bodySmall,
+                        placeholder = stringResource(R.string.webdav_password),
                         keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
-                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                        shape = RoundedCornerShape(28.dp),
+                        leadingIcon = Icons.Default.Lock,
                         modifier = Modifier.fillMaxWidth(inputWidthFraction)
                     )
                 }
             }
 
             item {
-                ToggleChip(
+                SwitchButton(
                     checked = enableEncryption,
                     onCheckedChange = { enableEncryption = it },
                     modifier = Modifier.fillMaxWidth(),
@@ -1008,10 +990,7 @@ private fun WebDavConfigDialog(
                             maxLines = 1
                         )
                     },
-                    toggleControl = {
-                        Switch(checked = enableEncryption, onCheckedChange = null)
-                    },
-                    appIcon = {
+                    icon = {
                         WearIcon(
                             imageVector = Icons.Default.Lock,
                             contentDescription = null,
@@ -1024,15 +1003,12 @@ private fun WebDavConfigDialog(
             if (enableEncryption) {
                 item {
                     Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                        OutlinedTextField(
+                        WearTextField(
                             value = encryptionPassword,
                             onValueChange = { encryptionPassword = it },
-                            placeholder = { Text(stringResource(R.string.webdav_encryption_password), maxLines = 1) },
-                            singleLine = true,
-                            textStyle = MaterialTheme.typography.bodySmall,
+                            placeholder = stringResource(R.string.webdav_encryption_password),
                             keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Password),
-                            leadingIcon = { Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                            shape = RoundedCornerShape(28.dp),
+                            leadingIcon = Icons.Default.Key,
                             modifier = Modifier.fillMaxWidth(inputWidthFraction)
                         )
                     }
@@ -1056,9 +1032,12 @@ private fun WebDavConfigDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
                 ) {
-                    androidx.wear.compose.material.Button(
+                    FilledTonalIconButton(
                         onClick = onDismiss,
-                        colors = androidx.wear.compose.material.ButtonDefaults.secondaryButtonColors()
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     ) {
                         WearIcon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -1066,7 +1045,7 @@ private fun WebDavConfigDialog(
                         )
                     }
 
-                    androidx.wear.compose.material.Button(
+                    FilledIconButton(
                         onClick = {
                             isLoading = true
                             viewModel.configureWebDav(
@@ -1081,7 +1060,10 @@ private fun WebDavConfigDialog(
                             }
                         },
                         enabled = !isLoading && serverUrl.isNotBlank() && username.isNotBlank(),
-                        colors = androidx.wear.compose.material.ButtonDefaults.primaryButtonColors()
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        )
                     ) {
                         WearIcon(
                             imageVector = Icons.Default.CheckCircle,
@@ -1099,7 +1081,6 @@ private fun WebDavConfigDialog(
 /**
  * 加密密码配置对话框
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PasswordConfigDialog(
     viewModel: SettingsViewModel,
@@ -1126,32 +1107,26 @@ private fun PasswordConfigDialog(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            OutlinedTextField(
+            WearTextField(
                 value = password,
                 onValueChange = {
                     password = it
                     errorMessage = ""
                 },
-                label = { Text("加密密码") },
-                singleLine = true,
+                label = "加密密码",
                 modifier = Modifier.fillMaxWidth(),
-                leadingIcon = {
-                    Icon(Icons.Default.Lock, contentDescription = null)
-                }
+                leadingIcon = Icons.Default.Lock
             )
 
-            OutlinedTextField(
+            WearTextField(
                 value = confirmPassword,
                 onValueChange = {
                     confirmPassword = it
                     errorMessage = ""
                 },
-                label = { Text("确认密码") },
-                singleLine = true,
+                label = "确认密码",
                 modifier = Modifier.fillMaxWidth(),
-                leadingIcon = {
-                    Icon(Icons.Default.Lock, contentDescription = null)
-                }
+                leadingIcon = Icons.Default.Lock
             )
 
             if (errorMessage.isNotEmpty()) {
@@ -1183,7 +1158,6 @@ private fun PasswordConfigDialog(
 /**
  * 清除数据确认对话框
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ClearDataConfirmDialog(
     onConfirm: () -> Unit,
@@ -1261,7 +1235,7 @@ private fun ColorSchemeSelectionDialog(
             // 配色选项
             items(WearColorScheme.values().size) { index ->
                 val scheme = WearColorScheme.values()[index]
-                Chip(
+                WearButton(
                     onClick = {
                         onColorSchemeSelected(scheme)
                         onDismiss()
@@ -1291,9 +1265,9 @@ private fun ColorSchemeSelectionDialog(
                         }
                     },
                     colors = if (scheme == currentColorScheme) {
-                        ChipDefaults.primaryChipColors()
+                        WearButtonDefaults.filledTonalButtonColors()
                     } else {
-                        ChipDefaults.secondaryChipColors()
+                        WearButtonDefaults.outlinedButtonColors()
                     }
                 )
             }
@@ -1304,9 +1278,12 @@ private fun ColorSchemeSelectionDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Center
                 ) {
-                    androidx.wear.compose.material.Button(
+                    FilledTonalIconButton(
                         onClick = onDismiss,
-                        colors = androidx.wear.compose.material.ButtonDefaults.secondaryButtonColors()
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     ) {
                         WearIcon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -1372,7 +1349,7 @@ private fun LanguageSelectionDialog(
             // 语言选项
             items(takagi.ru.monica.wear.viewmodel.AppLanguage.values().size) { index ->
                 val language = takagi.ru.monica.wear.viewmodel.AppLanguage.values()[index]
-                Chip(
+                WearButton(
                     onClick = {
                         onLanguageSelected(language)
                         onDismiss()
@@ -1402,9 +1379,9 @@ private fun LanguageSelectionDialog(
                         }
                     },
                     colors = if (language == currentLanguage) {
-                        ChipDefaults.primaryChipColors()
+                        WearButtonDefaults.filledTonalButtonColors()
                     } else {
-                        ChipDefaults.secondaryChipColors()
+                        WearButtonDefaults.outlinedButtonColors()
                     }
                 )
             }
@@ -1415,9 +1392,12 @@ private fun LanguageSelectionDialog(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Center
                 ) {
-                    androidx.wear.compose.material.Button(
+                    FilledTonalIconButton(
                         onClick = onDismiss,
-                        colors = androidx.wear.compose.material.ButtonDefaults.secondaryButtonColors()
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     ) {
                         WearIcon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
@@ -1435,7 +1415,6 @@ private fun LanguageSelectionDialog(
 /**
  * 添加 TOTP 验证器对话框
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun AddTotpDialog(
     onDismiss: () -> Unit,
@@ -1492,21 +1471,18 @@ private fun AddTotpDialog(
             // 密钥输入 (必填)
             item {
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    OutlinedTextField(
+                    WearTextField(
                         value = secret,
                         onValueChange = { 
                             secret = it.uppercase().filter { c -> c.isLetterOrDigit() }
                             errorMessage = null
                         },
-                        placeholder = { Text(stringResource(R.string.dialog_totp_secret_required), maxLines = 1, style = MaterialTheme.typography.bodySmall) },
-                        singleLine = true,
-                        textStyle = MaterialTheme.typography.bodySmall,
+                        placeholder = stringResource(R.string.dialog_totp_secret_required),
                         keyboardOptions = KeyboardOptions(
                             keyboardType = androidx.compose.ui.text.input.KeyboardType.Ascii,
                             capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Characters
                         ),
-                        leadingIcon = { Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                        shape = RoundedCornerShape(28.dp),
+                        leadingIcon = Icons.Default.Key,
                         modifier = Modifier.fillMaxWidth(inputWidthFraction),
                         enabled = !isLoading
                     )
@@ -1516,18 +1492,15 @@ private fun AddTotpDialog(
             // 服务名称 (可选)
             item {
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    OutlinedTextField(
+                    WearTextField(
                         value = issuer,
                         onValueChange = { 
                             issuer = it
                             errorMessage = null
                         },
-                        placeholder = { Text(stringResource(R.string.dialog_totp_issuer), maxLines = 1, style = MaterialTheme.typography.bodySmall) },
-                        singleLine = true,
-                        textStyle = MaterialTheme.typography.bodySmall,
+                        placeholder = stringResource(R.string.dialog_totp_issuer),
                         keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Text),
-                        leadingIcon = { Icon(Icons.Default.Info, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                        shape = RoundedCornerShape(28.dp),
+                        leadingIcon = Icons.Default.Info,
                         modifier = Modifier.fillMaxWidth(inputWidthFraction),
                         enabled = !isLoading
                     )
@@ -1537,18 +1510,15 @@ private fun AddTotpDialog(
             // 账户名称 (可选)
             item {
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    OutlinedTextField(
+                    WearTextField(
                         value = accountName,
                         onValueChange = { 
                             accountName = it
                             errorMessage = null
                         },
-                        placeholder = { Text(stringResource(R.string.dialog_totp_account), maxLines = 1, style = MaterialTheme.typography.bodySmall) },
-                        singleLine = true,
-                        textStyle = MaterialTheme.typography.bodySmall,
+                        placeholder = stringResource(R.string.dialog_totp_account),
                         keyboardOptions = KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Email),
-                        leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(18.dp)) },
-                        shape = RoundedCornerShape(28.dp),
+                        leadingIcon = Icons.Default.Person,
                         modifier = Modifier.fillMaxWidth(inputWidthFraction),
                         enabled = !isLoading
                     )
@@ -1590,9 +1560,12 @@ private fun AddTotpDialog(
                     horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
                 ) {
                     // 取消按钮
-                    androidx.wear.compose.material.Button(
+                    FilledTonalIconButton(
                         onClick = onDismiss,
-                        colors = androidx.wear.compose.material.ButtonDefaults.secondaryButtonColors(),
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        ),
                         enabled = !isLoading
                     ) {
                         WearIcon(
@@ -1602,7 +1575,7 @@ private fun AddTotpDialog(
                     }
 
                     // 保存按钮
-                    androidx.wear.compose.material.Button(
+                    FilledIconButton(
                         onClick = {
                             if (secret.isBlank()) {
                                 errorMessage = context.getString(R.string.dialog_totp_secret_error)
@@ -1620,7 +1593,10 @@ private fun AddTotpDialog(
                             }
                         },
                         enabled = !isLoading && secret.isNotBlank(),
-                        colors = androidx.wear.compose.material.ButtonDefaults.primaryButtonColors()
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary
+                        )
                     ) {
                         WearIcon(
                             imageVector = Icons.Default.CheckCircle,

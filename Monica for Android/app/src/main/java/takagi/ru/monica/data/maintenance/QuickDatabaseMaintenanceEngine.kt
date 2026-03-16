@@ -1,5 +1,6 @@
 package takagi.ru.monica.data.maintenance
 
+import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
@@ -35,6 +36,7 @@ import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.FieldChange
+import takagi.ru.monica.utils.decodeKeePassPathSegments
 import java.net.URI
 import java.net.URLDecoder
 import java.util.Date
@@ -1199,7 +1201,7 @@ class QuickDatabaseMaintenanceEngine(
 
     private fun resolveFolderName(entry: PasswordEntry, context: FolderSyncContext): String? {
         entry.categoryId?.let { categoryId ->
-            val categoryName = context.categoryNameById[categoryId]?.trim().orEmpty()
+            val categoryName = sanitizeFolderLabel(context.categoryNameById[categoryId]).trim()
             if (categoryName.isNotBlank()) return categoryName
         }
         val keepassName = folderNameFromKeepassPath(entry.keepassGroupPath)
@@ -1251,19 +1253,27 @@ class QuickDatabaseMaintenanceEngine(
     }
 
     private fun folderNameFromKeepassPath(path: String?): String {
+        val decodedSegments = decodeKeePassPathSegments(path)
+        if (decodedSegments.isNotEmpty()) {
+            return decodedSegments.last().trim()
+        }
         val value = path?.trim().orEmpty()
         if (value.isBlank()) return ""
-        return value
-            .substringAfterLast('/')
-            .substringAfterLast('\\')
-            .trim()
+        return sanitizeFolderLabel(
+            value
+                .substringAfterLast('/')
+                .substringAfterLast('\\')
+        ).trim()
     }
 
     private suspend fun ensureCategoryId(folderName: String, context: FolderSyncContext): Long? {
-        val normalized = normalizeFolderNameKey(folderName)
+        val trimmedName = sanitizeFolderLabel(folderName).trim()
+        val normalized = normalizeFolderNameKey(trimmedName)
         if (normalized.isBlank()) return null
-        context.categoryIdByNormalizedName[normalized]?.let { return it }
-        val trimmedName = folderName.trim()
+        context.categoryIdByNormalizedName[normalized]?.let { categoryId ->
+            repairExistingCategoryNameIfNeeded(categoryId, trimmedName, context)
+            return categoryId
+        }
         val id = passwordRepository.insertCategory(Category(name = trimmedName))
         if (id > 0) {
             context.categoryIdByNormalizedName[normalized] = id
@@ -1279,14 +1289,17 @@ class QuickDatabaseMaintenanceEngine(
         categoryId: Long?,
         context: FolderSyncContext
     ): String? {
-        val normalized = normalizeFolderNameKey(folderName)
+        val trimmedName = sanitizeFolderLabel(folderName).trim()
+        val normalized = normalizeFolderNameKey(trimmedName)
         if (normalized.isBlank()) return null
 
         val folderIdByName = context.folderIdByVaultAndNormalizedName.getOrPut(vaultId) { mutableMapOf() }
-        folderIdByName[normalized]?.let { return it }
+        folderIdByName[normalized]?.let { folderId ->
+            repairExistingBitwardenFolderNameIfNeeded(vaultId, folderId, trimmedName, context)
+            return folderId
+        }
 
         val folderId = UUID.randomUUID().toString()
-        val trimmedName = folderName.trim()
         bitwardenFolderDao.insert(
             BitwardenFolder(
                 vaultId = vaultId,
@@ -1301,6 +1314,41 @@ class QuickDatabaseMaintenanceEngine(
         folderIdByName[normalized] = folderId
         context.folderNameByVaultAndId.getOrPut(vaultId) { mutableMapOf() }[folderId] = trimmedName
         return folderId
+    }
+
+    private suspend fun repairExistingCategoryNameIfNeeded(
+        categoryId: Long,
+        repairedName: String,
+        context: FolderSyncContext
+    ) {
+        val existingName = context.categoryNameById[categoryId]?.trim().orEmpty()
+        if (existingName.isBlank() || existingName == repairedName || !looksPercentEncoded(existingName)) {
+            return
+        }
+        val category = passwordRepository.getCategoryById(categoryId) ?: return
+        passwordRepository.updateCategory(category.copy(name = repairedName))
+        context.categoryNameById[categoryId] = repairedName
+    }
+
+    private suspend fun repairExistingBitwardenFolderNameIfNeeded(
+        vaultId: Long,
+        folderId: String,
+        repairedName: String,
+        context: FolderSyncContext
+    ) {
+        val existingName = context.folderNameByVaultAndId[vaultId]?.get(folderId)?.trim().orEmpty()
+        if (existingName.isBlank() || existingName == repairedName || !looksPercentEncoded(existingName)) {
+            return
+        }
+        val folder = bitwardenFolderDao.getFolderByBitwardenId(folderId) ?: return
+        bitwardenFolderDao.update(
+            folder.copy(
+                name = repairedName,
+                isLocalModified = true,
+                lastSyncedAt = System.currentTimeMillis()
+            )
+        )
+        context.folderNameByVaultAndId.getOrPut(vaultId) { mutableMapOf() }[folderId] = repairedName
     }
 
     private fun normalizeFolderNameKey(value: String): String {
@@ -1416,7 +1464,26 @@ private class FolderSyncContext(
 }
 
 private fun normalizeFolderNameKey(value: String): String {
-    return value.trim().lowercase(Locale.ROOT)
+    return sanitizeFolderLabel(value).trim().lowercase(Locale.ROOT)
+}
+
+private fun sanitizeFolderLabel(value: String?): String {
+    var current = value?.trim().orEmpty()
+    if (current.isBlank()) return ""
+    repeat(2) {
+        val decoded = runCatching { Uri.decode(current) }
+            .getOrDefault(current)
+            .trim()
+        if (decoded == current) {
+            return current
+        }
+        current = decoded
+    }
+    return current
+}
+
+private fun looksPercentEncoded(value: String): Boolean {
+    return PERCENT_ENCODED_SEGMENT_REGEX.containsMatchIn(value)
 }
 
 fun createQuickDatabaseMaintenanceEngine(
@@ -1444,3 +1511,5 @@ fun createQuickDatabaseMaintenanceEngine(
         snapshotManager = MaintenanceSnapshotManager(database)
     )
 }
+
+private val PERCENT_ENCODED_SEGMENT_REGEX = Regex("%[0-9A-Fa-f]{2}")

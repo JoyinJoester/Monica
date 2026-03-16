@@ -34,6 +34,8 @@ class WearSecurityManager(context: Context) {
         private const val PREFS_NAME = "wear_security_prefs"
         private const val PIN_HASH_KEY = "pin_hash"
         private const val PIN_SALT_KEY = "pin_salt"
+        private const val PIN_FORMAT_VERSION_KEY = "pin_format_version"
+        private const val CURRENT_PIN_FORMAT_VERSION = 2
     }
     
     /**
@@ -42,7 +44,8 @@ class WearSecurityManager(context: Context) {
     fun verifyPin(inputPin: String): Boolean {
         val storedHash = prefs.getString(PIN_HASH_KEY, null) ?: return false
         val salt = prefs.getString(PIN_SALT_KEY, null) ?: return false
-        val inputHash = hashPin(inputPin, salt)
+        val normalizedPin = normalizePin(inputPin)
+        val inputHash = hashPin(normalizedPin, salt)
         return inputHash == storedHash
     }
     
@@ -50,11 +53,13 @@ class WearSecurityManager(context: Context) {
      * 设置PIN码
      */
     fun setPin(pin: String) {
+        val normalizedPin = normalizePin(pin)
         val salt = generateSalt()
-        val hash = hashPin(pin, salt)
+        val hash = hashPin(normalizedPin, salt)
         prefs.edit()
             .putString(PIN_HASH_KEY, hash)
             .putString(PIN_SALT_KEY, salt)
+            .putInt(PIN_FORMAT_VERSION_KEY, CURRENT_PIN_FORMAT_VERSION)
             .apply()
     }
     
@@ -82,6 +87,20 @@ class WearSecurityManager(context: Context) {
         setPin(newPin)
         return true
     }
+
+    /**
+     * 将旧版 PIN 存储标记为新版输入格式。
+     * 旧版和新版都使用同一套哈希存储，因此只需要补齐版本元数据。
+     */
+    fun migrateLegacyPinFormatIfNeeded() {
+        val hasPin = prefs.contains(PIN_HASH_KEY) && prefs.contains(PIN_SALT_KEY)
+        val version = prefs.getInt(PIN_FORMAT_VERSION_KEY, 0)
+        if (hasPin && version < CURRENT_PIN_FORMAT_VERSION) {
+            prefs.edit()
+                .putInt(PIN_FORMAT_VERSION_KEY, CURRENT_PIN_FORMAT_VERSION)
+                .apply()
+        }
+    }
     
     /**
      * 清除PIN码
@@ -101,6 +120,10 @@ class WearSecurityManager(context: Context) {
         val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
         val hash = factory.generateSecret(spec).encoded
         return hash.joinToString("") { "%02x".format(it) }
+    }
+
+    private fun normalizePin(pin: String): String {
+        return pin.filter { it.isDigit() }
     }
     
     /**

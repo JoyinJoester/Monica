@@ -12,6 +12,7 @@ import android.os.UserManager
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -36,6 +37,8 @@ class ImageManager(private val context: Context) {
         private const val TEMP_IMAGE_DIR = "temp_share"
         private const val ALGORITHM = "AES/CBC/PKCS5Padding"
         private const val KEY_ALGORITHM = "AES"
+        private const val MAX_STORED_IMAGE_DIMENSION = 2048
+        private const val DEFAULT_LOAD_MAX_DIMENSION = 1600
         
         // 简单的加密密钥（实际应用中应该使用更安全的密钥管理方案）
         private val ENCRYPTION_KEY = "MonicaSecureKey1".toByteArray()
@@ -97,14 +100,13 @@ class ImageManager(private val context: Context) {
      */
     suspend fun saveImageFromUri(uri: Uri): String? = withContext(Dispatchers.IO) {
         try {
-            val inputStream = context.contentResolver.openInputStream(uri) ?: return@withContext null
-            val bitmap = BitmapFactory.decodeStream(inputStream)
-            inputStream.close()
-            
-            if (bitmap != null) {
+            val bitmap = decodeSampledBitmapFromUri(uri, MAX_STORED_IMAGE_DIMENSION) ?: return@withContext null
+            try {
                 saveImage(bitmap)
-            } else {
-                null
+            } finally {
+                if (!bitmap.isRecycled) {
+                    bitmap.recycle()
+                }
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -122,16 +124,23 @@ class ImageManager(private val context: Context) {
             // 生成唯一文件名
             val fileName = "${UUID.randomUUID()}.enc"
             val file = File(imageDirectory, fileName)
-            
-            // 将Bitmap转换为字节数组
-            val byteArray = bitmapToByteArray(bitmap)
-            
-            // 加密并保存
-            val encryptedData = encrypt(byteArray)
-            FileOutputStream(file).use { fos ->
-                fos.write(encryptedData)
+
+            val normalizedBitmap = normalizeBitmapForStorage(bitmap, MAX_STORED_IMAGE_DIMENSION)
+            try {
+                // 将Bitmap转换为字节数组
+                val byteArray = bitmapToByteArray(normalizedBitmap)
+
+                // 加密并保存
+                val encryptedData = encrypt(byteArray)
+                FileOutputStream(file).use { fos ->
+                    fos.write(encryptedData)
+                }
+            } finally {
+                if (normalizedBitmap !== bitmap && !normalizedBitmap.isRecycled) {
+                    normalizedBitmap.recycle()
+                }
             }
-            
+
             fileName
         } catch (e: Exception) {
             e.printStackTrace()
@@ -144,7 +153,10 @@ class ImageManager(private val context: Context) {
      * @param fileName 文件名
      * @return 解密后的Bitmap，失败返回null
      */
-    suspend fun loadImage(fileName: String): Bitmap? = withContext(Dispatchers.IO) {
+    suspend fun loadImage(
+        fileName: String,
+        maxDimension: Int = DEFAULT_LOAD_MAX_DIMENSION
+    ): Bitmap? = withContext(Dispatchers.IO) {
         try {
             val file = File(imageDirectory, fileName)
             if (!file.exists()) {
@@ -156,9 +168,11 @@ class ImageManager(private val context: Context) {
             
             // 解密
             val decryptedData = decrypt(encryptedData)
-            
-            // 转换为Bitmap
-            BitmapFactory.decodeByteArray(decryptedData, 0, decryptedData.size)
+
+            decodeSampledBitmapFromBytes(
+                data = decryptedData,
+                maxDimension = maxDimension
+            )
         } catch (e: Exception) {
             e.printStackTrace()
             null
@@ -204,6 +218,73 @@ class ImageManager(private val context: Context) {
         val stream = java.io.ByteArrayOutputStream()
         bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
         return stream.toByteArray()
+    }
+
+    private fun normalizeBitmapForStorage(bitmap: Bitmap, maxDimension: Int): Bitmap {
+        val width = bitmap.width
+        val height = bitmap.height
+        if (width <= maxDimension && height <= maxDimension) {
+            return bitmap
+        }
+
+        val scale = minOf(
+            maxDimension.toFloat() / width.toFloat(),
+            maxDimension.toFloat() / height.toFloat()
+        )
+        val targetWidth = (width * scale).toInt().coerceAtLeast(1)
+        val targetHeight = (height * scale).toInt().coerceAtLeast(1)
+        return Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
+    }
+
+    private fun decodeSampledBitmapFromUri(uri: Uri, maxDimension: Int): Bitmap? {
+        val bounds = BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+        context.contentResolver.openInputStream(uri)?.use { inputStream ->
+            BitmapFactory.decodeStream(inputStream, null, bounds)
+        } ?: return null
+
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+            return null
+        }
+
+        val decodeOptions = BitmapFactory.Options().apply {
+            inJustDecodeBounds = false
+            inSampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight, maxDimension)
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        return context.contentResolver.openInputStream(uri)?.use { inputStream ->
+            BitmapFactory.decodeStream(inputStream, null, decodeOptions)
+        }
+    }
+
+    private fun decodeSampledBitmapFromBytes(data: ByteArray, maxDimension: Int): Bitmap? {
+        val bounds = BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+        BitmapFactory.decodeStream(ByteArrayInputStream(data), null, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+            return null
+        }
+
+        val decodeOptions = BitmapFactory.Options().apply {
+            inJustDecodeBounds = false
+            inSampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight, maxDimension)
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        return BitmapFactory.decodeStream(ByteArrayInputStream(data), null, decodeOptions)
+    }
+
+    private fun calculateInSampleSize(width: Int, height: Int, maxDimension: Int): Int {
+        var sampleSize = 1
+        var currentWidth = width
+        var currentHeight = height
+        while (currentWidth > maxDimension || currentHeight > maxDimension) {
+            sampleSize *= 2
+            currentWidth /= 2
+            currentHeight /= 2
+        }
+        return sampleSize.coerceAtLeast(1)
     }
     
     /**

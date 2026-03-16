@@ -14,6 +14,9 @@ import takagi.ru.monica.autofill_ng.AutofillSecretResolver
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.security.SessionManager
+import takagi.ru.monica.utils.SettingsManager
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 
 private const val MAX_FILLED_PARTITIONS_COUNT = 20
 private const val MAX_INLINE_SUGGESTION_COUNT = 5
@@ -23,10 +26,26 @@ class FilledDataBuilderNg(
     private val securityManager: SecurityManager,
 ) {
 
+    private fun syncAutoLockTimeoutForAutofill() {
+        runCatching {
+            val settingsManager = SettingsManager(context.applicationContext)
+            val autoLockMinutes = runBlocking {
+                settingsManager.settingsFlow.first().autoLockMinutes
+            }
+            SessionManager.updateAutoLockTimeout(autoLockMinutes)
+        }.onFailure { error ->
+            android.util.Log.w(
+                "FilledDataBuilderNg",
+                "Failed to sync auto-lock timeout for autofill: ${error.message}"
+            )
+        }
+    }
+
     fun build(
         request: AutofillRequest.Fillable,
         passwords: List<PasswordEntry>,
     ): FilledData {
+        syncAutoLockTimeoutForAutofill()
         val isVaultLocked = !SessionManager.canSkipVerification(context)
         val maxCipherInlineSuggestionsCount = (request.maxInlineSuggestionsCount - 1)
             .coerceAtMost(MAX_INLINE_SUGGESTION_COUNT)
