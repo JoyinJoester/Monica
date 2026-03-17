@@ -67,7 +67,7 @@ import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.model.BankCardData
 import takagi.ru.monica.data.model.TotpData
-import takagi.ru.monica.ui.components.AppSelectorField
+import takagi.ru.monica.ui.components.AppSelectorDialog
 import takagi.ru.monica.ui.components.CustomIconActionDialog
 import takagi.ru.monica.ui.components.CustomFieldEditorSection
 import takagi.ru.monica.ui.components.CustomFieldEditCard
@@ -471,8 +471,7 @@ fun AddEditPasswordScreen(
     // 判断字段是否应该显示：设置开启 或 条目已有该字段数据
     fun shouldShowSecurityVerification() = fieldVisibility.securityVerification || authenticatorKey.isNotEmpty()
     fun shouldShowCategoryAndNotes() = fieldVisibility.categoryAndNotes || notes.isNotEmpty()
-    fun shouldShowAppBinding() = forceShowAppBinding || fieldVisibility.appBinding || appPackageName.isNotEmpty()
-    fun shouldShowPersonalInfo() = fieldVisibility.personalInfo || 
+    fun shouldShowPersonalInfo() = fieldVisibility.personalInfo ||
         emails.any { it.isNotEmpty() } || phones.any { it.isNotEmpty() }
     fun shouldShowAddressInfo() = fieldVisibility.addressInfo || 
         addressLine.isNotEmpty() || city.isNotEmpty() || state.isNotEmpty() || 
@@ -1149,17 +1148,63 @@ fun AddEditPasswordScreen(
                             )
                         }
 
-                        // Website
+                        // Website + App Binding (inline)
+                        var showAppSelectorFromWebsite by remember { mutableStateOf(false) }
                         OutlinedTextField(
                             value = website,
                             onValueChange = { website = it },
                             label = { Text(stringResource(R.string.website_url)) },
                             leadingIcon = { Icon(Icons.Default.Language, null) },
+                            trailingIcon = {
+                                IconButton(onClick = { showAppSelectorFromWebsite = true }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Apps,
+                                        contentDescription = stringResource(R.string.linked_app),
+                                        tint = if (appPackageName.isNotEmpty()) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                                    )
+                                }
+                            },
+                            supportingText = if (appPackageName.isNotEmpty()) { {
+                                InputChip(
+                                    selected = true,
+                                    onClick = { showAppSelectorFromWebsite = true },
+                                    label = { Text(appName) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Apps,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    },
+                                    trailingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = stringResource(R.string.clear_app_selection),
+                                            modifier = Modifier
+                                                .size(16.dp)
+                                                .clickable {
+                                                    appPackageName = ""
+                                                    appName = ""
+                                                }
+                                        )
+                                    }
+                                )
+                            } } else null,
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
                             shape = RoundedCornerShape(12.dp)
                         )
+                        if (showAppSelectorFromWebsite) {
+                            AppSelectorDialog(
+                                onDismiss = { showAppSelectorFromWebsite = false },
+                                onAppSelected = { packageName, name ->
+                                    appPackageName = packageName
+                                    appName = name
+                                    showAppSelectorFromWebsite = false
+                                }
+                            )
+                        }
 
                         // Username - 支持常用账号填充
                         Row(
@@ -1388,53 +1433,6 @@ fun AddEditPasswordScreen(
                 )
             }
             
-            // App Binding Card - 根据设置和数据决定是否显示
-            if (shouldShowAppBinding()) {
-                item {
-                    InfoCard(title = stringResource(R.string.section_app_association)) {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            AppSelectorField(
-                                selectedPackageName = appPackageName,
-                                selectedAppName = appName,
-                                onAppSelected = { packageName, name ->
-                                    appPackageName = packageName
-                                    appName = name
-                                }
-                            )
-                            
-                            AnimatedVisibility(
-                                visible = appPackageName.isNotEmpty(),
-                                enter = EnterTransition.None,
-                                exit = ExitTransition.None
-                            ) {
-                                Column(modifier = Modifier.padding(top = 8.dp)) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.fillMaxWidth().clickable { bindWebsite = !bindWebsite }
-                                    ) {
-                                        Checkbox(checked = bindWebsite, onCheckedChange = { bindWebsite = it })
-                                        Column {
-                                            Text(stringResource(R.string.bind_website), style = MaterialTheme.typography.bodyMedium)
-                                            Text(stringResource(R.string.bind_website_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                    }
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        modifier = Modifier.fillMaxWidth().clickable { bindTitle = !bindTitle }
-                                    ) {
-                                        Checkbox(checked = bindTitle, onCheckedChange = { bindTitle = it })
-                                        Column {
-                                            Text(stringResource(R.string.bind_title), style = MaterialTheme.typography.bodyMedium)
-                                            Text(stringResource(R.string.bind_title_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
             // Collapsible: Personal Info - 根据设置和数据决定是否显示
             if (shouldShowPersonalInfo()) {
                 item {
@@ -2843,13 +2841,8 @@ private fun VaultSelector(
         var localExpanded by remember { mutableStateOf(false) }
         var expandedBitwardenVaultId by remember { mutableStateOf<Long?>(null) }
         fun dismissStorageTargetSheet(afterDismiss: (() -> Unit)? = null) {
-            coroutineScope.launch {
-                if (sheetState.isVisible) {
-                    sheetState.hide()
-                }
-                showBottomSheet = false
-                afterDismiss?.invoke()
-            }
+            showBottomSheet = false
+            afterDismiss?.invoke()
         }
 
         ModalBottomSheet(

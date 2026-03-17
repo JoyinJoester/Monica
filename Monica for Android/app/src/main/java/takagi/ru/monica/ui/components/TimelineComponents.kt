@@ -34,11 +34,10 @@ fun DiffComparisonSheet(
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val colorScheme = MaterialTheme.colorScheme
     
-    ModalBottomSheet(
+    MonicaModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = colorScheme.surface,
-        contentColor = colorScheme.onSurface
+        containerColor = colorScheme.surfaceContainerLow
     ) {
         Column(
             modifier = Modifier

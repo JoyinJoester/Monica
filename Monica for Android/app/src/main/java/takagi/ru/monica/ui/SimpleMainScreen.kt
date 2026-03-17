@@ -820,6 +820,13 @@ fun SimpleMainScreen(
     }
 
     val currentTab = tabs.firstOrNull { it.key == selectedTabKey } ?: tabs.first()
+
+    // 切换离开密码 tab 时重置堆叠展开状态
+    LaunchedEffect(currentTab) {
+        if (currentTab != BottomNavItem.Passwords) {
+            passwordViewModel.clearExpandedGroups()
+        }
+    }
     var selectedPasswordId by rememberSaveable { mutableStateOf<Long?>(null) }
     var inlinePasswordEditorId by rememberSaveable { mutableStateOf<Long?>(null) }
     var isAddingPasswordInline by rememberSaveable { mutableStateOf(false) }

@@ -145,6 +145,52 @@ class SecurityManager(private val context: Context) {
         }
         return result
     }
+
+    fun unlockVaultWithPassword(inputPassword: String): Boolean {
+        if (!isMasterPasswordSet()) {
+            return true
+        }
+
+        android.util.Log.d("SecurityManager", "Vault unlock requested. verificationDisabled=$isVerificationDisabled")
+
+        return try {
+            if (isVerificationDisabled) {
+                ensureMdkInitializedWithPassword(inputPassword)
+                true
+            } else {
+                val storedHash = sharedPreferences.getString(MASTER_PASSWORD_HASH_KEY, null) ?: return false
+                val storedSalt = sharedPreferences.getString(MASTER_PASSWORD_SALT_KEY, null)?.let { saltStr ->
+                    saltStr.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+                } ?: return false
+
+                val (computedHash, _) = hashMasterPassword(inputPassword, storedSalt)
+                if (computedHash != storedHash) {
+                    return false
+                }
+
+                ensureMdkInitializedWithPassword(inputPassword)
+                true
+            }
+        } catch (e: Exception) {
+            android.util.Log.w("SecurityManager", "Vault password unlock failed: ${e.message}")
+            false
+        }
+    }
+
+    fun unlockVaultWithBiometric(): Boolean {
+        if (!isMasterPasswordSet()) {
+            return true
+        }
+
+        return try {
+            ensureMdkKeystoreWrapper()
+            val mdk = getMdkForCrypto()
+            mdk != null && mdk.isNotEmpty()
+        } catch (e: Exception) {
+            android.util.Log.w("SecurityManager", "Vault biometric unlock failed: ${e.message}")
+            false
+        }
+    }
     
     /**
      * Set the master password

@@ -1,6 +1,5 @@
 package takagi.ru.monica.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -29,7 +28,6 @@ import androidx.compose.material.icons.filled.UnfoldMore
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -190,12 +188,10 @@ fun StorageTargetSelectorCard(
         var localExpanded by remember { mutableStateOf(false) }
         var expandedBitwardenVaultId by remember { mutableStateOf<Long?>(null) }
 
-        ModalBottomSheet(
+        MonicaModalBottomSheet(
             onDismissRequest = { showBottomSheet = false },
             sheetState = sheetState,
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            containerColor = MaterialTheme.colorScheme.surface,
-            tonalElevation = 2.dp
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         ) {
             Column(
                 modifier = Modifier
@@ -232,7 +228,7 @@ fun StorageTargetSelectorCard(
                     }
                 )
 
-                AnimatedVisibility(
+                BottomSheetAnimatedVisibility(
                     visible = localExpanded,
                     enter = fadeIn() + expandVertically(),
                     exit = fadeOut() + shrinkVertically()
@@ -327,7 +323,7 @@ fun StorageTargetSelectorCard(
                         }
                     )
 
-                    AnimatedVisibility(
+                    BottomSheetAnimatedVisibility(
                         visible = vaultExpanded,
                         enter = fadeIn() + expandVertically(),
                         exit = fadeOut() + shrinkVertically()

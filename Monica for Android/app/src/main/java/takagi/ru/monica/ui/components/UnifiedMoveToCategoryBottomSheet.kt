@@ -1,6 +1,5 @@
 package takagi.ru.monica.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -15,7 +14,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
@@ -39,7 +40,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -110,13 +110,16 @@ fun UnifiedMoveToCategoryBottomSheet(
     val localKeePassDatabases = keepassDatabases
     val monicaCategoryNodes = remember(categories) { buildMonicaCategoryNodes(categories) }
 
-    ModalBottomSheet(
+    MonicaModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .fillMaxHeight(0.92f)
+                .navigationBarsPadding()
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             Row(
@@ -157,6 +160,7 @@ fun UnifiedMoveToCategoryBottomSheet(
             }
 
             LazyColumn(
+                modifier = Modifier.fillMaxWidth().weight(1f),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
@@ -176,7 +180,7 @@ fun UnifiedMoveToCategoryBottomSheet(
                                 }
                             }
                         )
-                        AnimatedVisibility(
+                        BottomSheetAnimatedVisibility(
                             visible = expanded,
                             enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = expandCollapseSpec),
                             exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)
@@ -269,7 +273,7 @@ fun UnifiedMoveToCategoryBottomSheet(
                                             }
                                         }
                                     )
-                                    AnimatedVisibility(
+                                    BottomSheetAnimatedVisibility(
                                         visible = expanded,
                                         enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = expandCollapseSpec),
                                         exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)
@@ -356,7 +360,7 @@ fun UnifiedMoveToCategoryBottomSheet(
                                             }
                                         }
                                     )
-                                    AnimatedVisibility(
+                                    BottomSheetAnimatedVisibility(
                                         visible = expanded,
                                         enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = expandCollapseSpec),
                                         exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)

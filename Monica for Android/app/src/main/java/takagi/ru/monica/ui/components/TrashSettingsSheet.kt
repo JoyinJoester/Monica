@@ -24,7 +24,6 @@ fun TrashSettingsSheet(
     onDismiss: () -> Unit,
     onConfirm: (enabled: Boolean, days: Int) -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState()
     var enabled by remember { mutableStateOf(currentSettings.enabled) }
     var selectedDays by remember { mutableStateOf(currentSettings.autoDeleteDays) }
     
@@ -37,9 +36,9 @@ fun TrashSettingsSheet(
         90 to stringResource(R.string.trash_day_format, 90)
     )
     
-    ModalBottomSheet(
+    MonicaModalBottomSheet(
         onDismissRequest = onDismiss,
-        sheetState = sheetState
+        showDragHandle = true
     ) {
         Column(
             modifier = Modifier

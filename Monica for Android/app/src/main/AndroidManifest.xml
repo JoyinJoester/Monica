@@ -191,6 +191,29 @@
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
         </service>
+
+        <service
+            android:name=".ime.MonicaInputMethodService"
+            android:label="@string/ime_monica_label"
+            android:icon="@drawable/ic_key"
+            android:permission="android.permission.BIND_INPUT_METHOD"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.view.InputMethod" />
+            </intent-filter>
+            <meta-data
+                android:name="android.view.im"
+                android:resource="@xml/monica_input_method" />
+        </service>
+
+        <activity
+            android:name=".ime.ImeBiometricAuthActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ImeBiometricAuth"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=":ime_biometric"
+            android:launchMode="singleTask" />
         
         <!-- Autofill Save Activity (旧版全屏) -->
         <activity

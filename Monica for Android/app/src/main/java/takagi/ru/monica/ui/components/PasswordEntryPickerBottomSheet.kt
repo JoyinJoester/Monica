@@ -32,8 +32,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -160,10 +160,10 @@ fun PasswordEntryPickerBottomSheet(
     }
 
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    ModalBottomSheet(
+    MonicaModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        dragHandle = { BottomSheetDefaults.DragHandle() }
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
     ) {
         Column(
             modifier = Modifier
@@ -183,14 +183,14 @@ fun PasswordEntryPickerBottomSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            OutlinedTextField(
+            TextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
                 modifier = Modifier.fillMaxWidth(),
                 placeholder = { Text(stringResource(R.string.search)) },
                 leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
                 singleLine = true,
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(28.dp)
             )
 
             Row(

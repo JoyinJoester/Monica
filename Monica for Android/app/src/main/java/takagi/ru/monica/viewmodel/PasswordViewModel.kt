@@ -137,6 +137,21 @@ class PasswordViewModel(
     private val _categoryFilter = MutableStateFlow<CategoryFilter>(CategoryFilter.All)
     val categoryFilter = _categoryFilter.asStateFlow()
 
+    private val _expandedGroups = MutableStateFlow<Set<String>>(emptySet())
+    val expandedGroups: StateFlow<Set<String>> = _expandedGroups.asStateFlow()
+
+    fun toggleExpandedGroup(groupKey: String) {
+        _expandedGroups.value = if (_expandedGroups.value.contains(groupKey)) {
+            _expandedGroups.value - groupKey
+        } else {
+            _expandedGroups.value + groupKey
+        }
+    }
+
+    fun clearExpandedGroups() {
+        _expandedGroups.value = emptySet()
+    }
+
     private val _fastScrollRequestKey = MutableStateFlow(0)
     val fastScrollRequestKey: StateFlow<Int> = _fastScrollRequestKey.asStateFlow()
     private val _fastScrollProgress = MutableStateFlow(0f)

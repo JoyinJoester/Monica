@@ -4,7 +4,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -17,25 +19,22 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Whatshot
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -48,7 +47,6 @@ import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordEntry
 import java.text.DateFormat
 import java.util.Date
-import kotlinx.coroutines.launch
 
 enum class PasswordQuickAccessMode {
     RECENT,
@@ -80,47 +78,45 @@ fun PasswordQuickAccessSheet(
         }
     }
 
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val coroutineScope = rememberCoroutineScope()
-
-    fun dismissSheet(afterDismiss: (() -> Unit)? = null) {
-        coroutineScope.launch {
-            if (sheetState.isVisible) {
-                sheetState.hide()
-            }
-            onDismiss()
-            afterDismiss?.invoke()
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        if (!sheetState.isVisible) {
-            sheetState.show()
-        }
-    }
-
-    ModalBottomSheet(
-        onDismissRequest = { dismissSheet() },
-        sheetState = sheetState,
-        dragHandle = { BottomSheetDefaults.DragHandle() }
+    MonicaModalBottomSheet(
+        onDismissRequest = onDismiss,
+        showDragHandle = true
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .fillMaxHeight(0.9f)
                 .navigationBarsPadding()
                 .padding(horizontal = 20.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(
-                text = stringResource(R.string.password_quick_access_title),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                text = stringResource(R.string.password_quick_access_desc),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer
+                )
+            ) {
+                ListItem(
+                    headlineContent = {
+                        Text(
+                            text = stringResource(R.string.password_quick_access_title),
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    },
+                    supportingContent = {
+                        Text(
+                            text = stringResource(R.string.password_quick_access_desc),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    colors = ListItemDefaults.colors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer
+                    )
+                )
+            }
 
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                 SegmentedButton(
@@ -156,15 +152,15 @@ fun PasswordQuickAccessSheet(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 4.dp),
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(28.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer
                     )
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 20.dp),
+                            .padding(horizontal = 20.dp, vertical = 28.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
@@ -188,16 +184,16 @@ fun PasswordQuickAccessSheet(
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 520.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .heightIn(min = 360.dp, max = 720.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    contentPadding = PaddingValues(bottom = 20.dp)
                 ) {
                     items(activeItems, key = { it.entry.id }) { item ->
                         PasswordQuickAccessRow(
                             item = item,
                             onClick = {
-                                dismissSheet {
-                                    onOpenPassword(item.entry.id)
-                                }
+                                onDismiss()
+                                onOpenPassword(item.entry.id)
                             }
                         )
                     }
@@ -224,66 +220,66 @@ private fun PasswordQuickAccessRow(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
         )
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.primaryContainer
-            ) {
-                Box(modifier = Modifier.padding(10.dp)) {
-                    Icon(
-                        imageVector = Icons.Outlined.Lock,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
-            }
-
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(2.dp)
-            ) {
+        ListItem(
+            headlineContent = {
                 Text(
                     text = item.entry.title,
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = stringResource(R.string.password_quick_access_last_opened, lastOpenedText),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.tertiary
-                )
-            }
-
-            Surface(
-                shape = RoundedCornerShape(999.dp),
-                color = MaterialTheme.colorScheme.secondaryContainer
-            ) {
-                Text(
-                    text = stringResource(R.string.password_quick_access_open_count, item.openCount),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                )
-            }
-        }
+            },
+            supportingContent = {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = stringResource(R.string.password_quick_access_last_opened, lastOpenedText),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.tertiary
+                    )
+                }
+            },
+            leadingContent = {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Box(modifier = Modifier.padding(12.dp)) {
+                        Icon(
+                            imageVector = Icons.Outlined.Lock,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+                }
+            },
+            trailingContent = {
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer
+                ) {
+                    Text(
+                        text = stringResource(R.string.password_quick_access_open_count, item.openCount),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                    )
+                }
+            },
+            colors = ListItemDefaults.colors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer
+            )
+        )
     }
 }

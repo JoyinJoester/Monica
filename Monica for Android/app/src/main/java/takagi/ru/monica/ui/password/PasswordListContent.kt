@@ -687,10 +687,8 @@ fun PasswordListContent(
     // 添加已删除项ID集合（用于在验证前隐藏项）
     var deletedItemIds by remember { mutableStateOf(setOf<Long>()) }
     
-    // 堆叠展开状态 - 记录哪些分组已展开
-    var expandedGroups by rememberSaveable(stateSaver = stringSetSaver) {
-        mutableStateOf(setOf<String>())
-    }
+    // 堆叠展开状态 - 记录哪些分组已展开（托管到 ViewModel，导航返回后保持）
+    val expandedGroups by viewModel.expandedGroups.collectAsState()
     var quickFilterFavorite by rememberSaveable { mutableStateOf(false) }
     var quickFilter2fa by rememberSaveable { mutableStateOf(false) }
     var quickFilterNotes by rememberSaveable { mutableStateOf(false) }
@@ -724,9 +722,18 @@ fun PasswordListContent(
         }
     }
     
-    // 当分组模式改变时,重置展开状态
+    // 当分组模式改变时,重置展开状态（初始值用 null 标记，重建时不误清空）
+    val prevGroupMode = remember { mutableStateOf<String?>(null) }
+    val prevStackCardMode = remember { mutableStateOf<StackCardMode?>(null) }
     LaunchedEffect(effectiveGroupMode, effectiveStackCardMode) {
-        expandedGroups = setOf()
+        val prev1 = prevGroupMode.value
+        val prev2 = prevStackCardMode.value
+        if (prev1 != null && prev2 != null &&
+            (effectiveGroupMode != prev1 || effectiveStackCardMode != prev2)) {
+            viewModel.clearExpandedGroups()
+        }
+        prevGroupMode.value = effectiveGroupMode
+        prevStackCardMode.value = effectiveStackCardMode
     }
 
     LaunchedEffect(backToTopEstimatedScrollPx, backToTopViewportHeight) {
@@ -1389,7 +1396,7 @@ fun PasswordListContent(
                     interactionSource = outsideTapInteractionSource,
                     indication = null
                 ) {
-                    expandedGroups = emptySet()
+                    viewModel.clearExpandedGroups()
                 }
         ) {
             val searchProgress = (pullAction.currentOffset / triggerDistance).coerceIn(0f, 1f)
@@ -1687,11 +1694,7 @@ fun PasswordListContent(
                             swipedItemId = itemToDelete?.id,
                             onToggleExpand = {
                                 if (effectiveStackCardMode == StackCardMode.AUTO) {
-                                    expandedGroups = if (expandedGroups.contains(groupKey)) {
-                                        expandedGroups - groupKey
-                                    } else {
-                                        expandedGroups + groupKey
-                                    }
+                                    viewModel.toggleExpandedGroup(groupKey)
                                 }
                             },
                         onPasswordClick = { password ->

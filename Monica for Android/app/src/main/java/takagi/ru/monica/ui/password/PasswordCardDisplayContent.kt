@@ -44,9 +44,19 @@ fun resolvePasswordCardDisplayLines(
                 .takeIf { it.isNotBlank() }
                 ?.let { PasswordCardDisplayLine(field, Icons.Default.Person, it) }
 
-            PasswordCardDisplayField.WEBSITE -> entry.website
-                .takeIf { it.isNotBlank() }
-                ?.let { PasswordCardDisplayLine(field, Icons.Default.Language, it) }
+            PasswordCardDisplayField.WEBSITE -> {
+                val websiteText = entry.website.takeIf { it.isNotBlank() }
+                val appNameText = entry.appName.takeIf { it.isNotBlank() }
+                when {
+                    websiteText != null && appNameText != null ->
+                        PasswordCardDisplayLine(field, Icons.Default.Language, "$websiteText · $appNameText")
+                    websiteText != null ->
+                        PasswordCardDisplayLine(field, Icons.Default.Language, websiteText)
+                    appNameText != null ->
+                        PasswordCardDisplayLine(field, Icons.Default.Apps, appNameText)
+                    else -> null
+                }
+            }
 
             PasswordCardDisplayField.APP_NAME -> entry.appName
                 .takeIf { it.isNotBlank() }

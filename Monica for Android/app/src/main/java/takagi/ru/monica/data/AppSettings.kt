@@ -455,8 +455,7 @@ enum class PasswordCardDisplayField {
     companion object {
         val DEFAULT_ORDER: List<PasswordCardDisplayField> = listOf(
             USERNAME,
-            WEBSITE,
-            APP_NAME
+            WEBSITE
         )
     }
 }
