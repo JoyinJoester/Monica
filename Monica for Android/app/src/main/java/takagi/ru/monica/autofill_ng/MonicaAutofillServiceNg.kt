@@ -123,6 +123,10 @@ class MonicaAutofillServiceNg : AutofillService() {
             parsedApplicationId = parsed.applicationId,
             fallbackPackage = fallbackPackage,
         )
+        if (isSelfPackage(packageName)) {
+            AutofillLogger.i("AF", "Skip fill request for Monica itself: $packageName")
+            return null
+        }
         val isCompatMode = (request.flags or FillRequest.FLAG_COMPATIBILITY_MODE_REQUEST) == request.flags
         AutofillLogger.i(
             "AF",
@@ -472,6 +476,11 @@ class MonicaAutofillServiceNg : AutofillService() {
         )
         val website = parsed.webDomain.orEmpty()
 
+        if (isSelfPackage(packageName)) {
+            AutofillLogger.i("AF", "Skip save request for Monica itself: $packageName")
+            return null
+        }
+
         if (packageName.isNotBlank() && autofillPreferences.isInBlacklist(packageName)) {
             AutofillLogger.i("AF", "Skip save request: package in blacklist ($packageName)")
             return null
@@ -564,6 +573,10 @@ class MonicaAutofillServiceNg : AutofillService() {
             val info = packageManager.getApplicationInfo(packageName, 0)
             packageManager.getApplicationLabel(info)?.toString()
         }.getOrNull()?.takeIf { it.isNotBlank() }
+    }
+
+    private fun isSelfPackage(packageName: String): Boolean {
+        return packageName.equals(applicationContext.packageName, ignoreCase = true)
     }
 }
 

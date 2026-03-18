@@ -2,6 +2,8 @@ package takagi.ru.monica.ui.base
 
 import android.content.Context
 import android.os.Bundle
+import android.os.Build
+import android.view.View
 import android.view.WindowManager
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.Composable
@@ -69,6 +71,8 @@ abstract class BaseMonicaActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+
+        disableSystemAutofillForMonicaUi()
         
         settingsManager = SettingsManager(applicationContext)
         
@@ -91,9 +95,13 @@ abstract class BaseMonicaActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
 
+        // Keep Monica's own UI out of the platform Autofill pipeline so the app
+        // never suggests or saves credentials for its own internal forms.
+        disableSystemAutofillForMonicaUi()
+
         // Sync latest timeout before expiration check to avoid using stale defaults.
-        val autoLockMinutes = cachedSettings?.autoLockMinutes ?: 5
-        SessionManager.updateAutoLockTimeout(autoLockMinutes)
+        // Only update if settings have been loaded; do not overwrite with fallback default.
+        cachedSettings?.let { SessionManager.updateAutoLockTimeout(it.autoLockMinutes) }
         
         // 检查会话是否过期
         if (SessionManager.isSessionExpired()) {
@@ -142,5 +150,13 @@ abstract class BaseMonicaActivity : FragmentActivity() {
      */
     protected fun markAuthenticationSuccess() {
         SessionManager.markUnlocked()
+    }
+
+    private fun disableSystemAutofillForMonicaUi() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+
+        window?.decorView?.importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+        findViewById<View?>(android.R.id.content)?.importantForAutofill =
+            View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
     }
 }

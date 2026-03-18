@@ -1,13 +1,8 @@
 package takagi.ru.monica.ime
 
-import android.content.BroadcastReceiver
-import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
-import android.inputmethodservice.InputMethodService
 import android.graphics.Color
-import android.os.Build
-import android.os.SystemClock
+import android.inputmethodservice.InputMethodService
 import android.text.InputType
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -25,7 +20,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
@@ -37,7 +31,7 @@ import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.security.SecurityManager
-import takagi.ru.monica.utils.BiometricAuthHelper
+import takagi.ru.monica.security.SessionManager
 import takagi.ru.monica.utils.SettingsManager
 
 class MonicaInputMethodService : InputMethodService() {
@@ -55,39 +49,9 @@ class MonicaInputMethodService : InputMethodService() {
     private lateinit var securityManager: SecurityManager
     private lateinit var settingsManager: SettingsManager
     private lateinit var database: PasswordDatabase
-    private lateinit var biometricAuthHelper: BiometricAuthHelper
-
     private var composeView: ComposeView? = null
     private var recomposer: Recomposer? = null
-    private var lastUnlockElapsedRealtime: Long? = null
     private var refreshJob: Job? = null
-    private var biometricLaunchJob: Job? = null
-    private var biometricAuthInProgress = false
-    private val biometricResultReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action != ACTION_IME_BIOMETRIC_RESULT) return
-            biometricAuthInProgress = false
-            biometricLaunchJob = null
-            val success = intent.getBooleanExtra(EXTRA_IME_BIOMETRIC_SUCCESS, false)
-            val errorMessage = intent.getStringExtra(EXTRA_IME_BIOMETRIC_ERROR)
-            if (success) {
-                serviceScope.launch {
-                    val unlocked = withContext(Dispatchers.IO) {
-                        securityManager.unlockVaultWithBiometric()
-                    }
-                    if (unlocked) {
-                        onVaultUnlocked()
-                    } else {
-                        uiState.update {
-                            it.copy(errorMessage = getString(takagi.ru.monica.R.string.ime_unlock_required))
-                        }
-                    }
-                }
-            } else if (!errorMessage.isNullOrBlank()) {
-                uiState.update { it.copy(errorMessage = errorMessage) }
-            }
-        }
-    }
 
     override fun onCreate() {
         super.onCreate()
@@ -95,8 +59,6 @@ class MonicaInputMethodService : InputMethodService() {
         securityManager = SecurityManager(applicationContext)
         settingsManager = SettingsManager(applicationContext)
         database = PasswordDatabase.getDatabase(applicationContext)
-        biometricAuthHelper = BiometricAuthHelper(applicationContext)
-        registerImeBiometricReceiver()
 
         serviceScope.launch {
             val settings = settingsManager.settingsFlow.first()
@@ -126,16 +88,6 @@ class MonicaInputMethodService : InputMethodService() {
                     MonicaImeContent(
                         settings = settings,
                         uiState = state,
-                        onUnlock = ::unlockWithPassword,
-                        onBiometricUnlock = ::unlockWithBiometric,
-                        onUnlockPasswordChanged = { password ->
-                            uiState.update {
-                                it.copy(
-                                    unlockPassword = password,
-                                    errorMessage = null
-                                )
-                            }
-                        },
                         onQueryChanged = { query ->
                             uiState.update { it.copy(query = query) }
                             requestRefreshVaultEntries()
@@ -157,25 +109,8 @@ class MonicaInputMethodService : InputMethodService() {
                         onKeyboardModeChange = { mode ->
                             uiState.update { it.copy(keyboardMode = mode) }
                         },
-                        onPanelSelected = { panel ->
-                            val shouldOpenPanel = panel != MonicaImePanel.KEYBOARD
-                            uiState.update {
-                                it.copy(
-                                    activePanel = panel,
-                                    isAutofillPanelVisible = shouldOpenPanel,
-                                    errorMessage = if (shouldOpenPanel) it.errorMessage else null,
-                                    query = if (shouldOpenPanel) it.query else "",
-                                    selectedDatabaseScope = if (panel == MonicaImePanel.PASSWORDS) {
-                                        it.selectedDatabaseScope
-                                    } else {
-                                        MonicaImeDatabaseScope.All
-                                    }
-                                )
-                            }
-                            if (shouldOpenPanel) {
-                                requestRefreshVaultEntries(force = true)
-                            }
-                        }
+                        onPanelSelected = ::handlePanelSelection,
+                        onDismiss = { requestHideSelf(0) }
                     )
                 }
             }
@@ -196,7 +131,6 @@ class MonicaInputMethodService : InputMethodService() {
                 isAutofillPanelVisible = false,
                 query = "",
                 selectedDatabaseScope = MonicaImeDatabaseScope.All,
-                unlockPassword = "",
                 errorMessage = null
             )
         }
@@ -208,10 +142,13 @@ class MonicaInputMethodService : InputMethodService() {
         requestRefreshVaultEntries()
     }
 
+    override fun onWindowShown() {
+        super.onWindowShown()
+        requestRefreshVaultEntries(force = true)
+    }
+
     override fun onDestroy() {
-        unregisterReceiverSafely()
         refreshJob?.cancel()
-        biometricLaunchJob?.cancel()
         composeView?.disposeComposition()
         composeView = null
         recomposer?.cancel()
@@ -221,81 +158,65 @@ class MonicaInputMethodService : InputMethodService() {
         super.onDestroy()
     }
 
-    private fun unlockWithPassword(password: String) {
-        serviceScope.launch {
-            val verified = withContext(Dispatchers.IO) {
-                securityManager.unlockVaultWithPassword(password)
-            }
-            if (verified) {
-                onVaultUnlocked()
-            } else {
-                uiState.update {
-                    it.copy(errorMessage = getString(takagi.ru.monica.R.string.ime_unlock_error))
-                }
-            }
-        }
-    }
-
-    private fun unlockWithBiometric() {
-        if (biometricAuthInProgress) return
-        biometricAuthInProgress = true
-        biometricLaunchJob?.cancel()
-        biometricLaunchJob = serviceScope.launch {
-            val settings = withContext(Dispatchers.IO) {
-                settingsManager.settingsFlow.first()
-            }
-            val canUseBiometric = settings.biometricEnabled && biometricAuthHelper.isBiometricAvailable()
-            if (!canUseBiometric) {
-                biometricAuthInProgress = false
-                uiState.update {
-                    it.copy(errorMessage = getString(takagi.ru.monica.R.string.biometric_not_available))
-                }
-                return@launch
-            }
-
-            // Let the IME show animation settle before attaching a transient auth activity.
-            delay(150)
-
-            runCatching {
-                startActivity(
-                    Intent(applicationContext, ImeBiometricAuthActivity::class.java).apply {
-                        addFlags(
-                            Intent.FLAG_ACTIVITY_NEW_TASK or
-                                Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS or
-                                Intent.FLAG_ACTIVITY_NO_HISTORY or
-                                Intent.FLAG_ACTIVITY_NO_ANIMATION
-                        )
-                    }
-                )
-            }.onFailure {
-                biometricAuthInProgress = false
-                val fallbackMessage = it.message
-                    ?: getString(takagi.ru.monica.R.string.biometric_not_available)
-                uiState.update {
-                    it.copy(
-                        errorMessage = fallbackMessage
+    private fun openUnlockInMonica() {
+        runCatching {
+            startActivity(
+                Intent(this, takagi.ru.monica.MainActivity::class.java).apply {
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP
                     )
                 }
+            )
+        }.onFailure { error ->
+            uiState.update {
+                it.copy(errorMessage = error.message ?: getString(takagi.ru.monica.R.string.ime_unlock_open_app_error))
             }
         }
-    }
-
-    private suspend fun onVaultUnlocked() {
-        lastUnlockElapsedRealtime = SystemClock.elapsedRealtime()
-        uiState.update {
-            it.copy(
-                unlocked = true,
-                errorMessage = null,
-                unlockPassword = ""
-            )
-        }
-        requestRefreshVaultEntries(force = true)
     }
 
     private fun requestRefreshVaultEntries(force: Boolean = false) {
         refreshJob?.cancel()
         refreshJob = serviceScope.launch {
             refreshVaultEntries(force = force)
+        }
+    }
+
+    private fun handlePanelSelection(panel: MonicaImePanel) {
+        if (panel == MonicaImePanel.KEYBOARD) {
+            uiState.update {
+                it.copy(
+                    activePanel = MonicaImePanel.KEYBOARD,
+                    isAutofillPanelVisible = false,
+                    query = "",
+                    selectedDatabaseScope = MonicaImeDatabaseScope.All,
+                    errorMessage = null
+                )
+            }
+            return
+        }
+
+        serviceScope.launch {
+            val settings = settingsManager.settingsFlow.first()
+            val unlockedNow = updateUnlockState(settings.autoLockMinutes)
+            if (!unlockedNow) {
+                openUnlockInMonica()
+                return@launch
+            }
+
+            uiState.update {
+                it.copy(
+                    activePanel = panel,
+                    isAutofillPanelVisible = true,
+                    errorMessage = null,
+                    selectedDatabaseScope = if (panel == MonicaImePanel.PASSWORDS) {
+                        it.selectedDatabaseScope
+                    } else {
+                        MonicaImeDatabaseScope.All
+                    }
+                )
+            }
+            requestRefreshVaultEntries(force = true)
         }
     }
 
@@ -377,7 +298,6 @@ class MonicaInputMethodService : InputMethodService() {
         }
 
         if (snapshot.results.any { it is ImeRefreshResult.UnlockRequired }) {
-            lastUnlockElapsedRealtime = null
             uiState.update {
                 it.copy(
                     unlocked = false,
@@ -410,14 +330,17 @@ class MonicaInputMethodService : InputMethodService() {
             uiState.update { it.copy(unlocked = true, errorMessage = null) }
             return true
         }
-        val unlockedAt = lastUnlockElapsedRealtime ?: run {
-            uiState.update { it.copy(unlocked = false) }
-            return false
+        // vault 运行时已解锁（processCachedMdk 有值）说明本进程内已完成过验证，直接放行
+        if (securityManager.isVaultRuntimeUnlocked()) {
+            uiState.update { it.copy(unlocked = true, errorMessage = null) }
+            return true
         }
-        val timeoutMillis = autoLockMinutes.coerceAtLeast(1) * 60_000L
-        val unlocked = SystemClock.elapsedRealtime() - unlockedAt < timeoutMillis
-        if (!unlocked) {
-            lastUnlockElapsedRealtime = null
+        // 否则依赖 SessionManager 会话窗口判断
+        SessionManager.updateAutoLockTimeout(autoLockMinutes)
+        val unlocked = SessionManager.canSkipVerification(this)
+        if (unlocked) {
+            uiState.update { it.copy(unlocked = true, errorMessage = null) }
+        } else {
             uiState.update {
                 it.copy(
                     unlocked = false,
@@ -603,15 +526,6 @@ class MonicaInputMethodService : InputMethodService() {
     }
 
     private fun handleKeyPress(text: String) {
-        if (shouldRouteKeysToUnlockField()) {
-            uiState.update {
-                it.copy(
-                    unlockPassword = it.unlockPassword + text,
-                    errorMessage = null
-                )
-            }
-            return
-        }
         commitExternalText(text)
     }
 
@@ -621,49 +535,14 @@ class MonicaInputMethodService : InputMethodService() {
     }
 
     private fun handleBackspace() {
-        if (shouldRouteKeysToUnlockField()) {
-            uiState.update {
-                it.copy(
-                    unlockPassword = it.unlockPassword.dropLast(1),
-                    errorMessage = null
-                )
-            }
-            return
-        }
         currentInputConnection?.deleteSurroundingText(1, 0)
     }
 
     private fun handleEnter() {
-        if (shouldRouteKeysToUnlockField()) {
-            val password = uiState.value.unlockPassword
-            if (password.isNotBlank()) {
-                unlockWithPassword(password)
-            }
-            return
-        }
         val connection = currentInputConnection ?: return
         if (!connection.performEditorAction(EditorInfo.IME_ACTION_DONE)) {
             connection.commitText("\n", 1)
         }
-    }
-
-    private fun shouldRouteKeysToUnlockField(): Boolean {
-        val state = uiState.value
-        return !state.unlocked && state.activePanel != MonicaImePanel.KEYBOARD
-    }
-
-    private fun registerImeBiometricReceiver() {
-        val filter = IntentFilter(ACTION_IME_BIOMETRIC_RESULT)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(biometricResultReceiver, filter, RECEIVER_NOT_EXPORTED)
-        } else {
-            @Suppress("DEPRECATION")
-            registerReceiver(biometricResultReceiver, filter)
-        }
-    }
-
-    private fun unregisterReceiverSafely() {
-        runCatching { unregisterReceiver(biometricResultReceiver) }
     }
 }
 

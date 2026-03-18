@@ -32,7 +32,6 @@ class SecurityManager(private val context: Context) {
     
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var isVerificationDisabled = false
-    private var cachedMdk: ByteArray? = null
     @Volatile
     private var mdkAuthUnavailableUntilMillis: Long = 0L
     @Volatile
@@ -91,6 +90,13 @@ class SecurityManager(private val context: Context) {
         private const val BITWARDEN_PRIVATE_KEY_KEY = "bitwarden_private_key"
         private const val BITWARDEN_SERVER_URL_KEY = "bitwarden_server_url"
         private const val BITWARDEN_CONNECTED_KEY = "bitwarden_connected"
+
+        @Volatile
+        private var processCachedMdk: ByteArray? = null
+
+        fun clearRuntimeUnlockCache() {
+            processCachedMdk = null
+        }
     }
     
     /**
@@ -191,6 +197,10 @@ class SecurityManager(private val context: Context) {
             false
         }
     }
+
+    fun isVaultRuntimeUnlocked(): Boolean {
+        return processCachedMdk?.isNotEmpty() == true
+    }
     
     /**
      * Set the master password
@@ -258,7 +268,7 @@ class SecurityManager(private val context: Context) {
             .remove(BITWARDEN_SERVER_URL_KEY)
             .remove(BITWARDEN_CONNECTED_KEY)
             .apply()
-        cachedMdk = null
+        clearRuntimeUnlockCache()
     }
     
     /**
@@ -372,6 +382,42 @@ class SecurityManager(private val context: Context) {
         return keyGenerator.generateKey()
     }
 
+    private fun hasSecureKeyAlias(): Boolean {
+        return runCatching {
+            val keyStore = KeyStore.getInstance("AndroidKeyStore")
+            keyStore.load(null)
+            keyStore.containsAlias(KEY_ALIAS_DATA)
+        }.getOrDefault(false)
+    }
+
+    private fun clearKeystoreWrappedMdk(reason: String) {
+        android.util.Log.w("SecurityManager", "Clearing stale MDK keystore wrapper: $reason")
+        sharedPreferences.edit().remove(MDK_KEYSTORE_BLOB_KEY).apply()
+    }
+
+    private fun persistKeystoreWrappedMdk(mdk: ByteArray): Boolean {
+        if (mdk.isEmpty()) {
+            android.util.Log.w("SecurityManager", "Skip persisting empty MDK keystore wrapper")
+            return false
+        }
+        return try {
+            val ksKey = getOrGenerateSecureKey()
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.ENCRYPT_MODE, ksKey)
+            val iv = cipher.iv
+            val enc = cipher.doFinal(mdk)
+            val combined = iv + enc
+            val blob = android.util.Base64.encodeToString(combined, android.util.Base64.NO_WRAP)
+            sharedPreferences.edit()
+                .putString(MDK_KEYSTORE_BLOB_KEY, blob)
+                .apply()
+            true
+        } catch (e: Exception) {
+            android.util.Log.w("SecurityManager", "Persist MDK keystore wrapper failed: ${e.message}")
+            false
+        }
+    }
+
     private fun generateRandom(bytes: Int): ByteArray {
         val b = ByteArray(bytes)
         SecureRandom().nextBytes(b)
@@ -407,6 +453,9 @@ class SecurityManager(private val context: Context) {
     private fun ensureMdkInitializedWithPassword(password: String, forceUpdate: Boolean = false) {
         val hasPasswordBlob = sharedPreferences.contains(MDK_PASSWORD_BLOB_KEY)
         val hasKeystoreBlob = sharedPreferences.contains(MDK_KEYSTORE_BLOB_KEY)
+        if (hasKeystoreBlob && !hasSecureKeyAlias()) {
+            clearKeystoreWrappedMdk("secure key alias missing; likely app clone or restored app data")
+        }
         var mdk: ByteArray? = null
         if (!hasPasswordBlob && !hasKeystoreBlob) {
             mdk = generateRandom(32)
@@ -428,7 +477,7 @@ class SecurityManager(private val context: Context) {
         } else {
             mdk ?: getOrCreateMdkBytes()
         }
-        cachedMdk = actualMdk
+        processCachedMdk = actualMdk
         if (!hasPasswordBlob || forceUpdate) {
             val blob = aesGcmEncrypt(pwKey, actualMdk)
             sharedPreferences.edit()
@@ -439,51 +488,39 @@ class SecurityManager(private val context: Context) {
         } else {
             sharedPreferences.edit().putBoolean(MDK_READY_KEY, true).apply()
         }
-        try {
-            if (!hasKeystoreBlob) {
-                val ksKey = getOrGenerateSecureKey()
-                val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-                cipher.init(Cipher.ENCRYPT_MODE, ksKey)
-                val iv = cipher.iv
-                val enc = cipher.doFinal(actualMdk)
-                val combined = iv + enc
-                val blob = android.util.Base64.encodeToString(combined, android.util.Base64.NO_WRAP)
-                sharedPreferences.edit()
-                    .putString(MDK_KEYSTORE_BLOB_KEY, blob)
-                    .apply()
-            }
-        } catch (e: Exception) {
-            android.util.Log.w("SecurityManager", "Create keystore MDK wrapper failed: ${e.message}")
+        if (!sharedPreferences.contains(MDK_KEYSTORE_BLOB_KEY)) {
+            persistKeystoreWrappedMdk(actualMdk)
         }
     }
 
     private fun ensureMdkKeystoreWrapper() {
         if (sharedPreferences.contains(MDK_KEYSTORE_BLOB_KEY)) return
         val mdk = getOrCreateMdkBytes()
-        try {
-            val ksKey = getOrGenerateSecureKey()
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.ENCRYPT_MODE, ksKey)
-            val iv = cipher.iv
-            val enc = cipher.doFinal(mdk)
-            val combined = iv + enc
-            val blob = android.util.Base64.encodeToString(combined, android.util.Base64.NO_WRAP)
-            sharedPreferences.edit().putString(MDK_KEYSTORE_BLOB_KEY, blob).apply()
-        } catch (e: Exception) {
-            android.util.Log.w("SecurityManager", "Keystore MDK wrapper creation failed: ${e.message}")
+        if (mdk.isEmpty()) {
+            android.util.Log.w("SecurityManager", "Cannot create MDK keystore wrapper without current MDK")
+            return
         }
+        persistKeystoreWrappedMdk(mdk)
     }
 
     private fun getOrCreateMdkBytes(): ByteArray {
+        processCachedMdk?.let { cached ->
+            if (cached.isNotEmpty()) {
+                return cached.copyOf()
+            }
+        }
         val passwordBlob = sharedPreferences.getString(MDK_PASSWORD_BLOB_KEY, null)
         val keystoreBlob = sharedPreferences.getString(MDK_KEYSTORE_BLOB_KEY, null)
         if (passwordBlob == null && keystoreBlob == null) {
             return generateRandom(32)
         }
+        if (keystoreBlob == null) {
+            android.util.Log.w("SecurityManager", "MDK keystore wrapper missing and no cached MDK is available")
+            return ByteArray(0)
+        }
         return try {
-            val ksBlob = sharedPreferences.getString(MDK_KEYSTORE_BLOB_KEY, null) ?: return ByteArray(0)
             val ksKey = getOrGenerateSecureKey()
-            val combined = android.util.Base64.decode(ksBlob, android.util.Base64.NO_WRAP)
+            val combined = android.util.Base64.decode(keystoreBlob, android.util.Base64.NO_WRAP)
             val iv = combined.copyOfRange(0, 12)
             val enc = combined.copyOfRange(12, combined.size)
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
@@ -497,7 +534,7 @@ class SecurityManager(private val context: Context) {
     }
 
     private fun getMdkForCrypto(): ByteArray? {
-        cachedMdk?.let { return it }
+        processCachedMdk?.let { return it }
         val now = System.currentTimeMillis()
         if (now < mdkAuthUnavailableUntilMillis) {
             return null
@@ -505,6 +542,10 @@ class SecurityManager(private val context: Context) {
         val ready = sharedPreferences.getBoolean(MDK_READY_KEY, false)
         if (!ready) return null
         val ksBlob = sharedPreferences.getString(MDK_KEYSTORE_BLOB_KEY, null) ?: return null
+        if (!hasSecureKeyAlias()) {
+            clearKeystoreWrappedMdk("secure key alias missing while reading wrapper; likely app clone or restored app data")
+            return null
+        }
         return try {
             val ksKey = getOrGenerateSecureKey()
             val combined = android.util.Base64.decode(ksBlob, android.util.Base64.NO_WRAP)
@@ -514,7 +555,7 @@ class SecurityManager(private val context: Context) {
             val spec = GCMParameterSpec(128, iv)
             cipher.init(Cipher.DECRYPT_MODE, ksKey, spec)
             val mdk = cipher.doFinal(enc)
-            cachedMdk = mdk
+            processCachedMdk = mdk
             mdkAuthUnavailableUntilMillis = 0L
             hasLoggedMdkAuthExpiredWarning = false
             hasLoggedMdkFallbackEncryption = false
@@ -534,6 +575,7 @@ class SecurityManager(private val context: Context) {
                 mdkAuthUnavailableUntilMillis = System.currentTimeMillis() + 30_000L
                 return null  // 认证过期，返回 null 让调用方降级处理
             }
+            clearKeystoreWrappedMdk("keystore wrapper unreadable: ${e.javaClass.simpleName}")
             null
         }
     }

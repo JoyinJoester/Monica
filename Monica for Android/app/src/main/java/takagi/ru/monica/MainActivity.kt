@@ -482,7 +482,6 @@ fun MonicaContent(
     val isAuthenticated by viewModel.isAuthenticated.collectAsState()
     val settings by settingsViewModel.settings.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
-    var lastBackgroundTimestamp by remember { mutableStateOf<Long?>(null) }
 
     val isFirstTime = initialIsFirstTime
     
@@ -491,42 +490,12 @@ fun MonicaContent(
     val currentSettings by rememberUpdatedState(settings)
     val currentIsFirstTime by rememberUpdatedState(isFirstTime)
 
-    // Auto-lock logic: measure actual background duration and lock only when timeout is exceeded.
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
-                Lifecycle.Event.ON_STOP -> {
-                    if (currentIsAuthenticated) {
-                        lastBackgroundTimestamp = System.currentTimeMillis()
-                    }
-                }
                 Lifecycle.Event.ON_START -> {
                     if (!currentIsAuthenticated && SessionManager.canSkipVerification(context)) {
                         viewModel.restoreAuthenticatedSession()
-                    }
-
-                    val minutes = currentSettings.autoLockMinutes
-                    val timeoutMs = when {
-                        minutes == -1 -> null
-                        minutes <= 0 -> 0L
-                        else -> minutes.toLong() * 60_000L
-                    }
-
-                    val lastBackground = lastBackgroundTimestamp
-                    if (
-                        currentIsAuthenticated &&
-                        timeoutMs != null &&
-                        lastBackground != null &&
-                        System.currentTimeMillis() - lastBackground >= timeoutMs
-                    ) {
-                        viewModel.logout()
-                        lastBackgroundTimestamp = null
-                        navController.navigate(Screen.Login.route) {
-                            launchSingleTop = true
-                            popUpTo(0) { inclusive = true }
-                        }
-                    } else if (timeoutMs == null) {
-                        lastBackgroundTimestamp = null
                     }
 
                     if (currentIsAuthenticated || (currentSettings.disablePasswordVerification && !currentIsFirstTime)) {

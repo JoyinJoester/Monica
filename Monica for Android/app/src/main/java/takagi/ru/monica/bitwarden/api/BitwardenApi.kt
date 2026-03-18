@@ -345,7 +345,7 @@ data class TokenResponse(
     val hCaptchaSiteKey: String? = null,
     @JsonNames("twoFactorProviders")
     @SerialName("TwoFactorProviders")
-    val twoFactorProviders: List<Int>? = null,
+    val twoFactorProviders: List<String>? = null,
     @JsonNames("twoFactorProviders2")
     @SerialName("TwoFactorProviders2")
     val twoFactorProviders2: Map<String, JsonElement>? = null,

@@ -2,7 +2,6 @@ package takagi.ru.monica.bitwarden.service
 
 import android.content.Context
 import android.os.Build
-import android.provider.Settings
 import android.util.Base64
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
@@ -264,6 +263,18 @@ class BitwardenAuthService(
             // 只有密钥派生使用小写邮箱作为盐
             val authEmail = toBase64UrlNoPadding(normalizedEmail)
             val deviceId = getDeviceId()
+            val pwBytes = password.toByteArray(java.nio.charset.StandardCharsets.UTF_8)
+            val pwCharCount = password.length
+            val pwByteCount = pwBytes.size
+            val pwHasNonAscii = password.any { it.code > 127 }
+            val pwSpecialCount = password.count { !it.isLetterOrDigit() }
+            val pwUpperCount = password.count { it.isUpperCase() }
+            val pwLowerCount = password.count { it.isLowerCase() }
+            val pwDigitCount = password.count { it.isDigit() }
+            val pwLeadingSpace = password.first() == ' '
+            val pwTrailingSpace = password.last() == ' '
+            val emailCharCount = normalizedEmail.length
+            val emailByteCount = normalizedEmail.toByteArray(java.nio.charset.StandardCharsets.UTF_8).size
             logDiag(
                 flow = "primary",
                 attemptId = attemptId,
@@ -271,8 +282,12 @@ class BitwardenAuthService(
                 message =
                     "kdf=${preLoginResult.kdfType}, iter=${preLoginResult.kdfIterations}, mem=${preLoginResult.kdfMemory}, " +
                         "parallelism=${preLoginResult.kdfParallelism}, authEmailLen=${authEmail.length}, " +
-                        "deviceIdLen=${deviceId.length}, headerProfile=$primaryHeaderProfileName, " +
-                        "uaVersion=$primaryUaVersion, refererApplied=$primaryRefererApplied"
+                        "deviceId=$deviceId, headerProfile=$primaryHeaderProfileName, " +
+                        "uaVersion=$primaryUaVersion, refererApplied=$primaryRefererApplied, " +
+                        "pw_chars=$pwCharCount, pw_bytes=$pwByteCount, pw_non_ascii=$pwHasNonAscii, " +
+                        "pw_special=$pwSpecialCount, pw_upper=$pwUpperCount, pw_lower=$pwLowerCount, " +
+                        "pw_digit=$pwDigitCount, pw_leading_space=$pwLeadingSpace, pw_trailing_space=$pwTrailingSpace, " +
+                        "email_chars=$emailCharCount, email_bytes=$emailByteCount"
             )
             
             // 6. 发送登录请求 (模拟 Keyguard Linux Desktop 模式)
@@ -308,7 +323,7 @@ class BitwardenAuthService(
                     )
                     return@withContext Result.success(
                         LoginResult.TwoFactorRequired(
-                            providers = body.twoFactorProviders,
+                            providers = body.twoFactorProviders.mapNotNull { it.toIntOrNull() },
                             providersData = body.twoFactorProviders2,
                             // 保存中间状态用于后续两步验证
                             tempMasterKey = masterKey,
@@ -324,7 +339,7 @@ class BitwardenAuthService(
                         )
                     )
                 }
-                
+
                 // 解密 Protected Symmetric Key
                 val encryptedKey = body.key ?: return@withContext Result.failure(
                     Exception("No encryption key in response")
@@ -360,7 +375,7 @@ class BitwardenAuthService(
                 val errorResponse = parseTokenError(errorBody)
 
                 // 两步验证 (标准 2FA)
-                val providers = errorResponse?.twoFactorProviders
+                val providers = errorResponse?.twoFactorProviders?.mapNotNull { it.toIntOrNull() }
                 if (!providers.isNullOrEmpty()) {
                     val tokenError = errorResponse
                     logDiag(
@@ -489,7 +504,7 @@ class BitwardenAuthService(
                                 )
                                 return@withContext Result.success(
                                     LoginResult.TwoFactorRequired(
-                                        providers = retryBody.twoFactorProviders,
+                                        providers = retryBody.twoFactorProviders.mapNotNull { it.toIntOrNull() },
                                         providersData = retryBody.twoFactorProviders2,
                                         tempMasterKey = masterKey,
                                         tempStretchedKey = stretchedKey,
@@ -541,7 +556,7 @@ class BitwardenAuthService(
                             retrySummary =
                                 "code=${retryResponse.code()},error=${retryErrorResponse?.error},desc=${retryErrorResponse?.errorDescription}"
 
-                            val retryProviders = retryErrorResponse?.twoFactorProviders
+                            val retryProviders = retryErrorResponse?.twoFactorProviders?.mapNotNull { it.toIntOrNull() }
                             if (!retryProviders.isNullOrEmpty()) {
                                 logDiag(
                                     flow = "primary",
@@ -987,14 +1002,12 @@ class BitwardenAuthService(
      * 获取设备 ID
      */
     private fun getDeviceId(): String {
-        return try {
-            Settings.Secure.getString(
-                context.contentResolver,
-                Settings.Secure.ANDROID_ID
-            ) ?: UUID.randomUUID().toString()
-        } catch (e: Exception) {
-            UUID.randomUUID().toString()
-        }
+        val prefs = context.getSharedPreferences("bitwarden_device", Context.MODE_PRIVATE)
+        val existing = prefs.getString("device_id", null)
+        if (existing != null) return existing
+        val newId = UUID.randomUUID().toString()
+        prefs.edit().putString("device_id", newId).apply()
+        return newId
     }
     
     /**

@@ -248,7 +248,9 @@ fun BitwardenLoginScreen(
                     visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(
                         keyboardType = KeyboardType.Password,
-                        imeAction = ImeAction.Done
+                        imeAction = ImeAction.Done,
+                        autoCorrect = false,
+                        capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.None
                     ),
                     keyboardActions = KeyboardActions(
                         onDone = {

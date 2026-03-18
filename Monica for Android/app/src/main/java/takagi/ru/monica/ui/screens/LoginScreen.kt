@@ -35,6 +35,7 @@ fun LoginScreen(
             viewModel.setMasterPassword(password)
         },
         onSuccess = {
+            viewModel.restoreAuthenticatedSession()
             if (!isFirstTime) {
                 // 如果是验证成功（非首次设置），可以显示一个提示
                 // 但通常登录成功直接跳转，不需要Toast干扰，除非是生物识别

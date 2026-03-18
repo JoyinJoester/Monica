@@ -122,14 +122,11 @@ object BitwardenApiFactory {
 
     fun isRefererApplied(profile: HeaderProfile, refererUrl: String?): Boolean {
         val normalized = refererUrl?.trim()?.takeIf { it.isNotBlank() } ?: return false
-        return when (profile) {
-            HeaderProfile.MONICA_DEFAULT -> true
-            HeaderProfile.KEYGUARD_FALLBACK -> {
-                val officialUs = isOfficialServer(normalized)
-                val officialEu = isOfficialEuServer(normalized)
-                !(officialUs || officialEu)
-            }
-        }
+        val officialUs = isOfficialServer(normalized)
+        val officialEu = isOfficialEuServer(normalized)
+        // keyguard 对官方服务器不发 referer，只对自建服务器发
+        if (officialUs || officialEu) return false
+        return true
     }
     
     /**

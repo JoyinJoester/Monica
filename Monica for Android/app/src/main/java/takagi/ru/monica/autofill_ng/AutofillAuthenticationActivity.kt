@@ -62,6 +62,7 @@ import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.ThemeMode
+import takagi.ru.monica.ui.components.MonicaPasswordDialogAuthScreen
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.theme.MonicaTheme
 import takagi.ru.monica.utils.BiometricAuthHelper
@@ -195,8 +196,19 @@ class AutofillAuthenticationActivity : AppCompatActivity() {
     private fun showPasswordAuthentication() {
         Log.d(TAG, "Showing password authentication")
         setContent {
-            AutofillPasswordAuthScreen(
+            MonicaPasswordDialogAuthScreen(
                 settingsFlow = settingsManager.settingsFlow,
+                appName = getString(R.string.app_name),
+                title = getString(R.string.verify_identity),
+                subtitle = getString(R.string.autofill_auth_subtitle),
+                passwordLabel = getString(R.string.master_password),
+                description = getString(R.string.enter_master_password),
+                confirmText = getString(R.string.confirm),
+                cancelText = getString(R.string.cancel),
+                emptyError = getString(R.string.current_password_required),
+                numericError = getString(R.string.error_password_must_be_numeric),
+                minLengthError = getString(R.string.error_password_min_6_digits),
+                incorrectError = getString(R.string.password_incorrect),
                 verifyPassword = { input -> securityManager.verifyMasterPassword(input) },
                 onSuccess = { onAuthenticationSuccess() },
                 onCancel = { onAuthenticationCancelled() }

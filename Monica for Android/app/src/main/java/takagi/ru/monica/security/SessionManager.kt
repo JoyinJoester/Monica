@@ -52,6 +52,7 @@ object SessionManager {
     fun markLocked() {
         _isUnlocked.value = false
         unlockTimestamp = 0L
+        SecurityManager.clearRuntimeUnlockCache()
         android.util.Log.d(TAG, "Session locked, PID=$processId")
     }
     
@@ -89,11 +90,10 @@ object SessionManager {
             return false
         }
         
-        // 检查屏幕是否锁定
+        // 检查屏幕是否锁定（仅返回 false，不主动清除会话，避免切后台时误锁）
         val keyguardManager = context.getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
         if (keyguardManager?.isKeyguardLocked == true) {
             android.util.Log.d(TAG, "canSkipVerification: false (device locked)")
-            markLocked()
             return false
         }
         

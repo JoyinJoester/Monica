@@ -1,10 +1,12 @@
 package takagi.ru.monica.bitwarden.service
 
 import android.content.Context
+import android.os.Build
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import takagi.ru.monica.BuildConfig
 
 /**
  * Bitwarden 登录诊断持久化日志。
@@ -31,7 +33,22 @@ object BitwardenDiagLogger {
                 if (!logDir.exists()) {
                     logDir.mkdirs()
                 }
-                persistentLogFile = File(logDir, LOG_FILE_NAME)
+                val file = File(logDir, LOG_FILE_NAME)
+                persistentLogFile = file
+                // 写入构建身份头，便于日志归因
+                val time = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+                val header = buildString {
+                    appendLine("=== Monica Bitwarden Diag Session ===")
+                    appendLine("session_start=$time")
+                    appendLine("app_version=${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+                    appendLine("build_time=${BuildConfig.BUILD_TIME}")
+                    appendLine("git_sha=${BuildConfig.GIT_SHA}")
+                    appendLine("bw_diag_schema=${BuildConfig.BW_DIAG_SCHEMA}")
+                    appendLine("android_api=${Build.VERSION.SDK_INT}")
+                    appendLine("device=${Build.MANUFACTURER} ${Build.MODEL}")
+                    appendLine("===")
+                }
+                file.appendText(header)
             }
         }
     }
@@ -89,7 +106,7 @@ object BitwardenDiagLogger {
     private fun sanitize(text: String): String {
         return text
             .replace(
-                Regex("(password|pwd|passwd)[\"']?\\s*[:=]\\s*[\"']?([^\"',}\\s]+)", RegexOption.IGNORE_CASE),
+                Regex("(password|pwd|passwd|passwordhash|hash)[\"'\\s]*[:=][\"'\\s]*[A-Za-z0-9+/=]{8,}", RegexOption.IGNORE_CASE),
                 "$1=***"
             )
             .replace(
@@ -97,6 +114,6 @@ object BitwardenDiagLogger {
                 "***@***.com"
             )
             .replace(Regex("\\b[A-Za-z0-9]{28,}\\b"), "***TOKEN***")
+            .replace(Regex("[A-Za-z0-9+/]{40,}={0,2}"), "***TOKEN***")
     }
 }
-

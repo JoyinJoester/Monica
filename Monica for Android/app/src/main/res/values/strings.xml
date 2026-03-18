@@ -49,11 +49,14 @@
     <string name="ime_toolbar_keyboard">Keyboard</string>
     <string name="ime_state_locked">Locked</string>
     <string name="ime_state_unlocked">Unlocked</string>
-    <string name="ime_unlock_title">Unlock autofill</string>
-    <string name="ime_unlock_message">Enter your Monica master password to view and fill entries.</string>
+    <string name="ime_unlock_title">Unlock in Monica</string>
+    <string name="ime_unlock_message">Monica secure keyboard follows the main app lock state.</string>
     <string name="ime_unlock_password_label">Master password</string>
     <string name="ime_unlock_error">Master password is incorrect.</string>
-    <string name="ime_unlock_required">Vault locked. Enter master password again.</string>
+    <string name="ime_unlock_required">Vault locked. Open Monica to authenticate again.</string>
+    <string name="ime_unlock_in_app_message">Use Monica to verify with biometrics or your master password, then come back here to fill.</string>
+    <string name="ime_unlock_open_app">Open Monica to unlock</string>
+    <string name="ime_unlock_open_app_error">Could not open Monica authentication.</string>
     <string name="ime_search_accounts">Search accounts</string>
     <string name="ime_picker_title">Password picker</string>
     <string name="ime_picker_subtitle">Pick a database, then tap an item to fill the current field.</string>

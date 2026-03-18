@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -17,6 +18,9 @@ class ImeBiometricAuthActivity : AppCompatActivity() {
 
     private lateinit var biometricAuthHelper: BiometricAuthHelper
     private lateinit var settingsManager: SettingsManager
+    private var promptReady = false
+    private var promptShown = false
+    private var resultPublished = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -33,29 +37,62 @@ class ImeBiometricAuthActivity : AppCompatActivity() {
                 publishResult(false, getString(R.string.biometric_not_available))
                 return@launch
             }
-            biometricAuthHelper.authenticate(
-                activity = this@ImeBiometricAuthActivity,
-                title = getString(R.string.biometric_login_title),
-                subtitle = getString(R.string.biometric_login_subtitle),
-                description = getString(R.string.biometric_login_description),
-                negativeButtonText = getString(R.string.use_password),
-                onSuccess = {
-                    publishResult(true, null)
-                },
-                onError = { _, errorMessage ->
-                    publishResult(
-                        false,
-                        getString(R.string.biometric_auth_error, errorMessage)
-                    )
-                },
-                onCancel = {
-                    publishResult(false, null)
-                }
-            )
+            promptReady = true
+            maybeShowPrompt()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        maybeShowPrompt()
+    }
+
+    private fun maybeShowPrompt() {
+        if (!promptReady || promptShown || resultPublished || isFinishing || isDestroyed) {
+            return
+        }
+        if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            return
+        }
+
+        promptShown = true
+        window?.decorView?.post {
+            if (resultPublished || isFinishing || isDestroyed) {
+                return@post
+            }
+            runCatching {
+                biometricAuthHelper.authenticate(
+                    activity = this@ImeBiometricAuthActivity,
+                    title = getString(R.string.biometric_login_title),
+                    subtitle = getString(R.string.biometric_login_subtitle),
+                    description = getString(R.string.biometric_login_description),
+                    negativeButtonText = getString(R.string.use_password),
+                    onSuccess = {
+                        publishResult(true, null)
+                    },
+                    onError = { _, errorMessage ->
+                        publishResult(
+                            false,
+                            getString(R.string.biometric_auth_error, errorMessage)
+                        )
+                    },
+                    onCancel = {
+                        publishResult(false, null)
+                    }
+                )
+            }.onFailure { error ->
+                promptShown = false
+                publishResult(
+                    false,
+                    error.message ?: getString(R.string.biometric_not_available)
+                )
+            }
         }
     }
 
     private fun publishResult(success: Boolean, errorMessage: String?) {
+        if (resultPublished) return
+        resultPublished = true
         sendBroadcast(
             Intent(MonicaInputMethodService.ACTION_IME_BIOMETRIC_RESULT).apply {
                 setPackage(packageName)

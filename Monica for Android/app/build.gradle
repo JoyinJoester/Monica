@@ -22,6 +22,14 @@ android {
         vectorDrawables {
             useSupportLibrary true
         }
+
+        def gitSha = 'unknown'
+        try {
+            gitSha = ['git', 'rev-parse', '--short', 'HEAD'].execute([], rootDir).text.trim()
+        } catch (ignored) {}
+        buildConfigField 'String', 'GIT_SHA', "\"${gitSha}\""
+        buildConfigField 'String', 'BUILD_TIME', "\"${new Date().format('yyyy-MM-dd HH:mm:ss z')}\""
+        buildConfigField 'int', 'BW_DIAG_SCHEMA', '1'
         
         // NDK 架构优化 - 只保留常用架构
         ndk {
@@ -49,6 +57,7 @@ android {
     }
     buildFeatures {
         compose true
+        buildConfig true
     }
     sourceSets {
         test {
@@ -62,6 +71,9 @@ android {
     lint {
         // Workaround: lint/lifecycle detector crashes with Kotlin 2.x analysis API in current toolchain.
         disable 'NullSafeMutableLiveData'
+        // Avoid scanning dependency-provided lint registries; one of them intermittently
+        // crashes ASM migration with NegativeArraySizeException in lintVitalAnalyzeRelease.
+        checkDependencies false
     }
     packaging {
         resources {
@@ -91,7 +103,7 @@ dependencies {
     implementation libs.androidx.core.ktx
     implementation libs.androidx.core.splashscreen  // 添加splashscreen依赖
     implementation libs.androidx.lifecycle.runtime.ktx
-    implementation "androidx.lifecycle:lifecycle-process:2.6.1"
+    implementation "androidx.lifecycle:lifecycle-process:2.8.7"
     implementation libs.androidx.activity.compose
     
     // Compose

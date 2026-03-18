@@ -21,6 +21,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import takagi.ru.monica.R
+import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.security.SessionManager
 import takagi.ru.monica.utils.BiometricAuthHelper
 
 /**
@@ -53,8 +55,14 @@ fun PasswordVerificationContent(
     
     // 生物识别帮助类
     val biometricHelper = remember { BiometricAuthHelper(context) }
+    val securityManager = remember(context) { SecurityManager(context.applicationContext) }
     val isBiometricAvailable = remember { biometricHelper.isBiometricAvailable() }
     var autoBiometricTried by remember { mutableStateOf(false) }
+
+    fun completeAuthentication() {
+        SessionManager.markUnlocked()
+        onSuccess()
+    }
     
     // 自动触发生物识别
     LaunchedEffect(isFirstTime, isBiometricAvailable, biometricEnabled, activity) {
@@ -63,7 +71,15 @@ fun PasswordVerificationContent(
             biometricHelper.authenticate(
                 activity = activity,
                 onSuccess = {
-                    onSuccess()
+                    val unlocked = runCatching {
+                        securityManager.unlockVaultWithBiometric()
+                    }.getOrDefault(false)
+
+                    if (unlocked || !securityManager.isMasterPasswordSet()) {
+                        completeAuthentication()
+                    } else {
+                        errorMessage = context.getString(R.string.ime_unlock_required)
+                    }
                 },
                 onError = { _, errorMsg ->
                     errorMessage = context.getString(R.string.biometric_error, errorMsg)
@@ -202,7 +218,7 @@ fun PasswordVerificationContent(
             onClick = {
                 // 如果已存在主密码且关闭了密码验证,直接通过
                 if (!isFirstTime && disablePasswordVerification) {
-                    onSuccess()
+                    completeAuthentication()
                     return@Button
                 }
                 
@@ -226,12 +242,12 @@ fun PasswordVerificationContent(
                             return@Button
                         }
                         onSetPassword(masterPassword)
-                        onSuccess()
+                        completeAuthentication()
                     }
                 } else {
                     // 验证密码
                     if (onVerifyPassword(masterPassword)) {
-                        onSuccess()
+                        completeAuthentication()
                     } else {
                         errorMessage = context.getString(R.string.error_invalid_password)
                     }
@@ -258,7 +274,15 @@ fun PasswordVerificationContent(
                     biometricHelper.authenticate(
                         activity = activity,
                         onSuccess = {
-                            onSuccess()
+                            val unlocked = runCatching {
+                                securityManager.unlockVaultWithBiometric()
+                            }.getOrDefault(false)
+
+                            if (unlocked || !securityManager.isMasterPasswordSet()) {
+                                completeAuthentication()
+                            } else {
+                                errorMessage = context.getString(R.string.ime_unlock_required)
+                            }
                         },
                         onError = { _, errorMsg ->
                             errorMessage = context.getString(R.string.biometric_error, errorMsg)

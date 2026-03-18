@@ -107,8 +107,7 @@ internal data class MonicaImeUiState(
     val keyboardMode: MonicaKeyboardMode = MonicaKeyboardMode.LETTERS,
     val isUppercase: Boolean = false,
     val autoLockMinutes: Int = 5,
-    val isAutofillPanelVisible: Boolean = false,
-    val unlockPassword: String = ""
+    val isAutofillPanelVisible: Boolean = false
 )
 
 internal enum class MonicaKeyboardMode {
@@ -164,9 +163,6 @@ private enum class MonicaToolbarSelection {
 internal fun MonicaImeContent(
     settings: AppSettings,
     uiState: MonicaImeUiState,
-    onUnlock: (String) -> Unit,
-    onBiometricUnlock: () -> Unit,
-    onUnlockPasswordChanged: (String) -> Unit,
     onQueryChanged: (String) -> Unit,
     onDatabaseScopeSelected: (MonicaImeDatabaseScope) -> Unit,
     onFillEntry: (MonicaImePasswordEntry) -> Unit,
@@ -178,7 +174,8 @@ internal fun MonicaImeContent(
     onSpace: () -> Unit,
     onShiftToggle: () -> Unit,
     onKeyboardModeChange: (MonicaKeyboardMode) -> Unit,
-    onPanelSelected: (MonicaImePanel) -> Unit
+    onPanelSelected: (MonicaImePanel) -> Unit,
+    onDismiss: () -> Unit
 ) {
     val darkTheme = when (settings.themeMode) {
         ThemeMode.SYSTEM -> androidx.compose.foundation.isSystemInDarkTheme()
@@ -186,7 +183,6 @@ internal fun MonicaImeContent(
         ThemeMode.DARK -> true
     }
     val activePanelRequiresUnlock = uiState.activePanel != MonicaImePanel.KEYBOARD
-    val showLockedPanel = activePanelRequiresUnlock && !uiState.unlocked
     val showPanelContent = activePanelRequiresUnlock && uiState.unlocked
 
     MonicaTheme(
@@ -212,21 +208,10 @@ internal fun MonicaImeContent(
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.surface)
                 ) {
-                    if (showLockedPanel) {
-                        ImeUnlockFloatingPanel(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                            unlockPassword = uiState.unlockPassword,
-                            errorMessage = uiState.errorMessage,
-                            biometricEnabled = settings.biometricEnabled,
-                            onUnlockPasswordChanged = onUnlockPasswordChanged,
-                            onUnlock = { onUnlock(uiState.unlockPassword) },
-                            onBiometricUnlock = onBiometricUnlock
-                        )
-                    }
-
                     MonicaImeToolbar(
                         uiState = uiState,
-                        onPanelSelected = onPanelSelected
+                        onPanelSelected = onPanelSelected,
+                        onDismiss = onDismiss
                     )
 
                     if (showPanelContent) {
@@ -282,7 +267,8 @@ internal fun MonicaImeContent(
 @Composable
 private fun MonicaImeToolbar(
     uiState: MonicaImeUiState,
-    onPanelSelected: (MonicaImePanel) -> Unit
+    onPanelSelected: (MonicaImePanel) -> Unit,
+    onDismiss: () -> Unit
 ) {
     val selected = when (uiState.activePanel) {
         MonicaImePanel.KEYBOARD -> MonicaToolbarSelection.MONICA
@@ -342,20 +328,11 @@ private fun MonicaImeToolbar(
 
         ToolbarCircleButton(
             selected = false,
-            onClick = {},
-            enabled = false,
-            contentDescription = stringResource(R.string.ime_toolbar_more)
+            onClick = onDismiss,
+            contentDescription = stringResource(R.string.ime_toolbar_keyboard)
         ) {
-            Icon(Icons.Default.MoreHoriz, contentDescription = null)
+            Icon(Icons.Default.KeyboardArrowUp, contentDescription = null)
         }
-        Text(
-            text = uiState.activePackageName.ifBlank { stringResource(R.string.ime_toolbar_keyboard) },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f)
-        )
     }
 }
 

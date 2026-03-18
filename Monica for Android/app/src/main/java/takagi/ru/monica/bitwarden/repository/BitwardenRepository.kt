@@ -68,10 +68,10 @@ class BitwardenRepository(private val context: Context) {
             if (rawError.isNullOrBlank()) return "未知错误"
             
             return when {
-                // 账号密码错误
+                // 账号密码错误（也可能是新设备验证触发，Bitwarden 新版不区分这两种情况）
                 rawError.contains("invalid_username_or_password", ignoreCase = true) ||
                 rawError.contains("Username or password is incorrect", ignoreCase = true) ->
-                    "登录失败：账号凭据无效，或服务器区域/地址不匹配（.com/.eu/自建），请确认后重试"
+                    "登录失败：账号或密码错误。\n\n如果您确认密码正确，Bitwarden 可能要求验证新设备——请检查邮箱是否收到验证邮件，点击邮件中的链接完成授权后重试"
                 
                 // 验证码错误
                 rawError.contains("Invalid New Device OTP", ignoreCase = true) ||
