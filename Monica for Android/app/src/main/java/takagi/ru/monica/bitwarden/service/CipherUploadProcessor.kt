@@ -614,7 +614,7 @@ class CipherUploadProcessor(
                 country = docData.country.takeIf { it.isNotBlank() }?.let {
                     crypto.encryptString(it, symmetricKey)
                 },
-                company = docData.company.ifBlank { docData.issuedBy }.takeIf { it.isNotBlank() }?.let {
+                company = docData.company.takeIf { it.isNotBlank() }?.let {
                     crypto.encryptString(it, symmetricKey)
                 },
                 email = docData.email.takeIf { it.isNotBlank() }?.let {
