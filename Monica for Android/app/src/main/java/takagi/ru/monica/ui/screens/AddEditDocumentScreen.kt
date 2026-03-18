@@ -22,8 +22,12 @@ import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenVault
+import takagi.ru.monica.data.CustomFieldDraft
+import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.DocumentType
+import takagi.ru.monica.data.model.displayFullName
+import takagi.ru.monica.ui.components.CustomFieldEditorSection
 import takagi.ru.monica.ui.components.DualPhotoPicker
 import takagi.ru.monica.ui.components.StorageTargetSelectorCard
 import takagi.ru.monica.utils.RememberedStorageTarget
@@ -61,10 +65,30 @@ fun AddEditDocumentScreen(
     var expiryDate by rememberSaveable { mutableStateOf("") }
     var issuedBy by rememberSaveable { mutableStateOf("") }
     var nationality by rememberSaveable { mutableStateOf("") } // 添加国籍字段
+    var titlePrefix by rememberSaveable { mutableStateOf("") }
+    var firstName by rememberSaveable { mutableStateOf("") }
+    var middleName by rememberSaveable { mutableStateOf("") }
+    var lastName by rememberSaveable { mutableStateOf("") }
+    var address1 by rememberSaveable { mutableStateOf("") }
+    var address2 by rememberSaveable { mutableStateOf("") }
+    var address3 by rememberSaveable { mutableStateOf("") }
+    var city by rememberSaveable { mutableStateOf("") }
+    var stateProvince by rememberSaveable { mutableStateOf("") }
+    var postalCode by rememberSaveable { mutableStateOf("") }
+    var country by rememberSaveable { mutableStateOf("") }
+    var company by rememberSaveable { mutableStateOf("") }
+    var email by rememberSaveable { mutableStateOf("") }
+    var phone by rememberSaveable { mutableStateOf("") }
+    var ssn by rememberSaveable { mutableStateOf("") }
+    var username by rememberSaveable { mutableStateOf("") }
+    var passportNumber by rememberSaveable { mutableStateOf("") }
+    var licenseNumber by rememberSaveable { mutableStateOf("") }
+    var additionalInfo by rememberSaveable { mutableStateOf("") }
     var documentType by rememberSaveable { mutableStateOf(DocumentType.ID_CARD) }
     var notes by rememberSaveable { mutableStateOf("") }
     var isFavorite by rememberSaveable { mutableStateOf(false) }
     var showDocumentTypeMenu by remember { mutableStateOf(false) }
+    var customFields by remember { mutableStateOf<List<CustomFieldDraft>>(emptyList()) }
     
     // 防止重复点击保存按钮
     var isSaving by remember { mutableStateOf(false) }
@@ -147,6 +171,26 @@ fun AddEditDocumentScreen(
                     expiryDate = data.expiryDate
                     issuedBy = data.issuedBy
                     nationality = data.nationality // 加载国籍信息
+                    titlePrefix = data.title
+                    firstName = data.firstName
+                    middleName = data.middleName
+                    lastName = data.lastName
+                    address1 = data.address1
+                    address2 = data.address2
+                    address3 = data.address3
+                    city = data.city
+                    stateProvince = data.stateProvince
+                    postalCode = data.postalCode
+                    country = data.country
+                    company = data.company
+                    email = data.email
+                    phone = data.phone
+                    ssn = data.ssn
+                    username = data.username
+                    passportNumber = data.passportNumber
+                    licenseNumber = data.licenseNumber
+                    additionalInfo = data.additionalInfo
+                    customFields = CardWalletDataCodec.customFieldsToDrafts(data.customFields)
                     documentType = data.documentType
                 }
             }
@@ -159,14 +203,38 @@ fun AddEditDocumentScreen(
         isSaving = true // 防止重复点击
         val syncVaultId = bitwardenVaultId
 
+        val resolvedFullName = listOf(firstName, middleName, lastName)
+            .filter { it.isNotBlank() }
+            .joinToString(" ")
+            .ifBlank { fullName }
         val documentData = DocumentData(
             documentNumber = documentNumber,
-            fullName = fullName,
+            fullName = resolvedFullName,
             issuedDate = issuedDate,
             expiryDate = expiryDate,
             issuedBy = issuedBy,
             nationality = nationality, // 保存国籍信息
-            documentType = documentType
+            documentType = documentType,
+            additionalInfo = additionalInfo,
+            title = titlePrefix,
+            firstName = firstName,
+            middleName = middleName,
+            lastName = lastName,
+            address1 = address1,
+            address2 = address2,
+            address3 = address3,
+            city = city,
+            stateProvince = stateProvince,
+            postalCode = postalCode,
+            country = country,
+            company = company,
+            email = email,
+            phone = phone,
+            ssn = ssn,
+            username = username,
+            passportNumber = passportNumber,
+            licenseNumber = licenseNumber,
+            customFields = CardWalletDataCodec.draftsToCustomFields(customFields)
         )
 
         val imagePathsList = listOf(
@@ -473,6 +541,85 @@ fun AddEditDocumentScreen(
                         )
                     }
                 }
+            }
+
+            InfoCard(title = "身份扩展") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = titlePrefix,
+                            onValueChange = { titlePrefix = it },
+                            label = { Text("称谓") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        OutlinedTextField(
+                            value = firstName,
+                            onValueChange = { firstName = it },
+                            label = { Text("名") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = middleName,
+                            onValueChange = { middleName = it },
+                            label = { Text("中间名") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        OutlinedTextField(
+                            value = lastName,
+                            onValueChange = { lastName = it },
+                            label = { Text("姓") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
+                    OutlinedTextField(value = company, onValueChange = { company = it }, label = { Text("公司 / 机构") }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp))
+                    OutlinedTextField(value = username, onValueChange = { username = it }, label = { Text(stringResource(R.string.username)) }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp))
+                    OutlinedTextField(value = email, onValueChange = { email = it }, label = { Text(stringResource(R.string.email)) }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email), shape = RoundedCornerShape(12.dp))
+                    OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("电话") }, modifier = Modifier.fillMaxWidth(), singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone), shape = RoundedCornerShape(12.dp))
+                }
+            }
+
+            InfoCard(title = "地址与附加信息") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(value = address1, onValueChange = { address1 = it }, label = { Text("地址 1") }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp))
+                    OutlinedTextField(value = address2, onValueChange = { address2 = it }, label = { Text("地址 2") }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp))
+                    OutlinedTextField(value = address3, onValueChange = { address3 = it }, label = { Text("地址 3") }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp))
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(value = city, onValueChange = { city = it }, label = { Text(stringResource(R.string.city)) }, modifier = Modifier.weight(1f), singleLine = true, shape = RoundedCornerShape(12.dp))
+                        OutlinedTextField(value = stateProvince, onValueChange = { stateProvince = it }, label = { Text(stringResource(R.string.state)) }, modifier = Modifier.weight(1f), singleLine = true, shape = RoundedCornerShape(12.dp))
+                    }
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(value = postalCode, onValueChange = { postalCode = it }, label = { Text(stringResource(R.string.postal_code)) }, modifier = Modifier.weight(1f), singleLine = true, shape = RoundedCornerShape(12.dp))
+                        OutlinedTextField(value = country, onValueChange = { country = it }, label = { Text(stringResource(R.string.country)) }, modifier = Modifier.weight(1f), singleLine = true, shape = RoundedCornerShape(12.dp))
+                    }
+                    OutlinedTextField(value = passportNumber, onValueChange = { passportNumber = it }, label = { Text("护照号") }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp))
+                    OutlinedTextField(value = licenseNumber, onValueChange = { licenseNumber = it }, label = { Text("驾照号") }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp))
+                    OutlinedTextField(value = ssn, onValueChange = { ssn = it }, label = { Text("SSN / 身份号") }, modifier = Modifier.fillMaxWidth(), singleLine = true, shape = RoundedCornerShape(12.dp))
+                    OutlinedTextField(value = additionalInfo, onValueChange = { additionalInfo = it }, label = { Text("附加信息") }, modifier = Modifier.fillMaxWidth(), minLines = 2, maxLines = 4, shape = RoundedCornerShape(12.dp))
+                }
+            }
+
+            InfoCard(title = "自定义字段") {
+                CustomFieldEditorSection(
+                    fields = customFields,
+                    onFieldsChange = { customFields = it },
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
             
             // Photos InfoCard

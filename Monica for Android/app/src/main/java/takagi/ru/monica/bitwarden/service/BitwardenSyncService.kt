@@ -390,7 +390,7 @@ class BitwardenSyncService(
             val totp = decryptString(login.totp, symmetricKey) ?: ""
             val parsedUris = parseLoginUris(login.uris, symmetricKey)
             val customFields = parsePasswordCustomFieldMap(cipher.fields, symmetricKey)
-            val encryptedPassword = securityManager.encryptData(password)
+            val encryptedPassword = encryptBitwardenPasswordForOfflineDisplay(password, cipher.id)
             
             return PasswordEntry(
                 title = name,
@@ -454,7 +454,9 @@ class BitwardenSyncService(
             val name = decryptString(cipher.name, symmetricKey) ?: entry.title
             val username = decryptString(login.username, symmetricKey) ?: entry.username
             val decryptedPassword = decryptString(login.password, symmetricKey)
-            val encryptedPassword = decryptedPassword?.let { securityManager.encryptData(it) } ?: entry.password
+            val encryptedPassword = decryptedPassword?.let {
+                encryptBitwardenPasswordForOfflineDisplay(it, cipher.id)
+            } ?: entry.password
             val notes = decryptString(cipher.notes, symmetricKey) ?: entry.notes
             val totp = decryptString(login.totp, symmetricKey) ?: entry.authenticatorKey
             val parsedUris = parseLoginUris(login.uris, symmetricKey)
@@ -1250,6 +1252,45 @@ class BitwardenSyncService(
             candidate = decrypted
         }
         return candidate
+    }
+
+    /**
+     * Bitwarden 密码需要支持“服务器暂时不可用时的本地查看”。
+     * 若主路径加密后的密文当前无法立即读回，则降级为兼容密文，避免详情页出现空密码。
+     */
+    private fun encryptBitwardenPasswordForOfflineDisplay(
+        plainPassword: String,
+        cipherId: String
+    ): String {
+        val primaryEncrypted = securityManager.encryptData(plainPassword)
+        val primaryReadable = runCatching { securityManager.decryptData(primaryEncrypted) }
+            .getOrNull()
+            ?.let { it == plainPassword }
+            ?: false
+        if (primaryReadable) {
+            return primaryEncrypted
+        }
+
+        android.util.Log.w(
+            TAG,
+            "Bitwarden password payload is not immediately readable; fallback to legacy V1, cipherId=$cipherId"
+        )
+
+        val legacyEncrypted = securityManager.encryptDataLegacyCompat(plainPassword)
+        val legacyReadable = runCatching { securityManager.decryptData(legacyEncrypted) }
+            .getOrNull()
+            ?.let { it == plainPassword }
+            ?: false
+
+        return if (legacyReadable) {
+            legacyEncrypted
+        } else {
+            android.util.Log.w(
+                TAG,
+                "Legacy fallback is still unreadable; keep primary encrypted payload, cipherId=$cipherId"
+            )
+            primaryEncrypted
+        }
     }
 }
 

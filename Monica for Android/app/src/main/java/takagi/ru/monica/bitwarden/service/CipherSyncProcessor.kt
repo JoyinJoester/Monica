@@ -10,10 +10,13 @@ import takagi.ru.monica.bitwarden.mapper.*
 import takagi.ru.monica.bitwarden.sync.SyncItemType
 import takagi.ru.monica.data.*
 import takagi.ru.monica.data.model.BankCardData
+import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.CardType
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.DocumentType
 import takagi.ru.monica.data.model.NoteData
+import takagi.ru.monica.data.model.SecureCustomField
+import takagi.ru.monica.data.model.SecureCustomFieldType
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.passkey.PasskeyCredentialIdCodec
@@ -153,7 +156,7 @@ class CipherSyncProcessor(
             ?: ""
         val remoteCountry = customFields["monica_country"] ?: customFields["country"] ?: ""
         val remotePasskeyBindings = customFields["monica_passkey_bindings"].orEmpty()
-        val encryptedPassword = securityManager.encryptData(password)
+        val encryptedPassword = encryptBitwardenPasswordForOfflineDisplay(password, cipher.id)
         
         if (existing == null) {
             if (hasPendingDelete && !isServerDeleted) {
@@ -311,6 +314,45 @@ class CipherSyncProcessor(
             decrypted == null -> true
             decrypted.isBlank() -> false
             else -> true
+        }
+    }
+
+    /**
+     * Bitwarden 条目在离线浏览时只能依赖本地缓存。
+     * 若当前 MDK 状态不稳定，优先降级到可立即读回的兼容密文，避免详情页显示空密码。
+     */
+    private fun encryptBitwardenPasswordForOfflineDisplay(
+        plainPassword: String,
+        cipherId: String
+    ): String {
+        val primaryEncrypted = securityManager.encryptData(plainPassword)
+        val primaryReadable = runCatching { securityManager.decryptData(primaryEncrypted) }
+            .getOrNull()
+            ?.let { it == plainPassword }
+            ?: false
+        if (primaryReadable) {
+            return primaryEncrypted
+        }
+
+        android.util.Log.w(
+            TAG,
+            "Bitwarden password payload is not immediately readable; fallback to legacy V1, cipherId=$cipherId"
+        )
+
+        val legacyEncrypted = securityManager.encryptDataLegacyCompat(plainPassword)
+        val legacyReadable = runCatching { securityManager.decryptData(legacyEncrypted) }
+            .getOrNull()
+            ?.let { it == plainPassword }
+            ?: false
+
+        return if (legacyReadable) {
+            legacyEncrypted
+        } else {
+            android.util.Log.w(
+                TAG,
+                "Legacy fallback is still unreadable; keep primary encrypted payload, cipherId=$cipherId"
+            )
+            primaryEncrypted
         }
     }
     
@@ -541,20 +583,35 @@ class CipherSyncProcessor(
         val expYear = decryptString(card.expYear, symmetricKey) ?: ""
         val cvv = decryptString(card.code, symmetricKey) ?: ""
         val brand = decryptString(card.brand, symmetricKey) ?: ""
+        val decryptedFields = decryptCustomFields(cipher.fields, symmetricKey)
+        val fieldMap = decryptedFields.associate { it.name to it.value }
         
         val existing = secureItemDao.getByBitwardenCipherIdInVault(vault.id, cipher.id)
         
-        // 构建银行卡数据（使用 CardMapper.kt 中的 CardItemData 结构）
         val cardData = BankCardData(
             cardNumber = cardNumber,
             cardholderName = cardHolder,
             expiryMonth = expMonth,
             expiryYear = expYear,
             cvv = cvv,
-            bankName = brand,
-            cardType = CardType.CREDIT
+            bankName = fieldMap["monica_bank_name"].orEmpty(),
+            cardType = parseCardType(fieldMap["monica_card_type"]),
+            billingAddress = fieldMap["monica_billing_address"].orEmpty(),
+            brand = brand,
+            nickname = fieldMap["monica_nickname"].orEmpty(),
+            validFromMonth = fieldMap["monica_valid_from_month"].orEmpty(),
+            validFromYear = fieldMap["monica_valid_from_year"].orEmpty(),
+            pin = fieldMap["monica_pin"].orEmpty(),
+            iban = fieldMap["monica_iban"].orEmpty(),
+            swiftBic = fieldMap["monica_swift_bic"].orEmpty(),
+            routingNumber = fieldMap["monica_routing_number"].orEmpty(),
+            accountNumber = fieldMap["monica_account_number"].orEmpty(),
+            branchCode = fieldMap["monica_branch_code"].orEmpty(),
+            currency = fieldMap["monica_currency"].orEmpty(),
+            customerServicePhone = fieldMap["monica_customer_service_phone"].orEmpty(),
+            customFields = decryptedFields.toCardCustomFields()
         )
-        val itemData = json.encodeToString(cardData)
+        val itemData = CardWalletDataCodec.encodeBankCardData(cardData)
         
         if (existing == null) {
             val newItem = SecureItem(
@@ -644,7 +701,8 @@ class CipherSyncProcessor(
         
         val name = decryptString(cipher.name, symmetricKey) ?: "Identity"
         val notes = decryptString(cipher.notes, symmetricKey) ?: ""
-        val customFieldMap = decryptCustomFieldMap(cipher.fields, symmetricKey)
+        val decryptedFields = decryptCustomFields(cipher.fields, symmetricKey)
+        val customFieldMap = decryptedFields.associate { it.name to it.value }
         val fieldDocumentType = parseDocumentType(customFieldMap["monica_document_type"])
         val resolvedDocumentType = fieldDocumentType ?: guessDocumentType(identity)
         
@@ -668,18 +726,36 @@ class CipherSyncProcessor(
         
         val existing = secureItemDao.getByBitwardenCipherIdInVault(vault.id, cipher.id)
         
-        // 构建证件数据（使用 IdentityMapper.kt 中的 DocumentItemData 结构）
         val docData = DocumentData(
             documentType = resolvedDocumentType,
             documentNumber = idNumber,
             fullName = fullName,
             issuedDate = customFieldMap["monica_issue_date"].orEmpty(),
             expiryDate = customFieldMap["monica_expiry_date"].orEmpty(),
-            issuedBy = decryptString(identity.company, symmetricKey) ?: "",
-            nationality = decryptString(identity.country, symmetricKey) ?: "",
-            additionalInfo = customFieldMap["monica_additional_info"].orEmpty()
+            issuedBy = customFieldMap["monica_issued_by"].orEmpty(),
+            nationality = customFieldMap["monica_nationality"].orEmpty(),
+            additionalInfo = customFieldMap["monica_additional_info"].orEmpty(),
+            title = decryptString(identity.title, symmetricKey) ?: "",
+            firstName = firstName,
+            middleName = middleName,
+            lastName = lastName,
+            address1 = decryptString(identity.address1, symmetricKey) ?: "",
+            address2 = decryptString(identity.address2, symmetricKey) ?: "",
+            address3 = decryptString(identity.address3, symmetricKey) ?: "",
+            city = decryptString(identity.city, symmetricKey) ?: "",
+            stateProvince = decryptString(identity.state, symmetricKey) ?: "",
+            postalCode = decryptString(identity.postalCode, symmetricKey) ?: "",
+            country = decryptString(identity.country, symmetricKey) ?: "",
+            company = decryptString(identity.company, symmetricKey) ?: "",
+            email = decryptString(identity.email, symmetricKey) ?: "",
+            phone = decryptString(identity.phone, symmetricKey) ?: "",
+            ssn = ssn,
+            username = decryptString(identity.username, symmetricKey) ?: "",
+            passportNumber = passportNumber,
+            licenseNumber = licenseNumber,
+            customFields = decryptedFields.toDocumentCustomFields()
         )
-        val itemData = json.encodeToString(docData)
+        val itemData = CardWalletDataCodec.encodeDocumentData(docData)
         
         if (existing == null) {
             val newItem = SecureItem(
@@ -1081,20 +1157,37 @@ class CipherSyncProcessor(
         }
     }
 
+    private fun parseCardType(raw: String?): CardType {
+        return when (raw?.trim()?.uppercase()) {
+            "DEBIT" -> CardType.DEBIT
+            "PREPAID" -> CardType.PREPAID
+            else -> CardType.CREDIT
+        }
+    }
+
+    private fun decryptCustomFields(
+        fields: List<CipherFieldApiData>?,
+        key: SymmetricCryptoKey
+    ): List<DecryptedCustomField> {
+        if (fields.isNullOrEmpty()) return emptyList()
+
+        return fields.mapNotNull { field ->
+            val name = decryptOrPlain(field.name, key).orEmpty().trim()
+            if (name.isBlank()) return@mapNotNull null
+            val value = decryptOrPlain(field.value, key).orEmpty()
+            DecryptedCustomField(
+                name = name,
+                value = value,
+                type = field.type
+            )
+        }
+    }
+
     private fun decryptCustomFieldMap(
         fields: List<CipherFieldApiData>?,
         key: SymmetricCryptoKey
     ): Map<String, String> {
-        if (fields.isNullOrEmpty()) return emptyMap()
-
-        return buildMap {
-            fields.forEach { field ->
-                val name = decryptOrPlain(field.name, key).orEmpty().trim()
-                if (name.isBlank()) return@forEach
-                val value = decryptOrPlain(field.value, key).orEmpty()
-                put(name, value)
-            }
-        }
+        return decryptCustomFields(fields, key).associate { it.name to it.value }
     }
 
     private fun parseLoginUris(
@@ -1143,6 +1236,58 @@ class CipherSyncProcessor(
         return runCatching {
             Date.from(Instant.parse(raw))
         }.getOrNull()
+    }
+
+    private data class DecryptedCustomField(
+        val name: String,
+        val value: String,
+        val type: Int
+    )
+
+    private fun List<DecryptedCustomField>.toCardCustomFields(): List<SecureCustomField> {
+        val reserved = setOf(
+            "monica_bank_name",
+            "monica_card_type",
+            "monica_billing_address",
+            "monica_nickname",
+            "monica_valid_from_month",
+            "monica_valid_from_year",
+            "monica_pin",
+            "monica_iban",
+            "monica_swift_bic",
+            "monica_routing_number",
+            "monica_account_number",
+            "monica_branch_code",
+            "monica_currency",
+            "monica_customer_service_phone"
+        )
+        return filterNot { it.name in reserved }
+            .map { it.toSecureCustomField() }
+    }
+
+    private fun List<DecryptedCustomField>.toDocumentCustomFields(): List<SecureCustomField> {
+        val reserved = setOf(
+            "monica_document_type",
+            "monica_issue_date",
+            "monica_expiry_date",
+            "monica_issued_by",
+            "monica_nationality",
+            "monica_additional_info"
+        )
+        return filterNot { it.name in reserved }
+            .map { it.toSecureCustomField() }
+    }
+
+    private fun DecryptedCustomField.toSecureCustomField(): SecureCustomField {
+        return SecureCustomField(
+            label = name,
+            value = value,
+            type = when (type) {
+                1 -> SecureCustomFieldType.HIDDEN
+                2 -> SecureCustomFieldType.BOOLEAN
+                else -> SecureCustomFieldType.TEXT
+            }
+        )
     }
 }
 

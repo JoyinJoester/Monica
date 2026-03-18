@@ -60,7 +60,20 @@ data class BankCardData(
     val cvv: String = "",         // CVV安全码（加密存储）
     val bankName: String = "",    // 银行名称
     val cardType: CardType = CardType.CREDIT, // 卡类型
-    val billingAddress: String = "" // 账单地址（JSON格式存储BillingAddress）
+    val billingAddress: String = "", // 账单地址（JSON格式存储BillingAddress）
+    val brand: String = "",
+    val nickname: String = "",
+    val validFromMonth: String = "",
+    val validFromYear: String = "",
+    val pin: String = "",
+    val iban: String = "",
+    val swiftBic: String = "",
+    val routingNumber: String = "",
+    val accountNumber: String = "",
+    val branchCode: String = "",
+    val currency: String = "",
+    val customerServicePhone: String = "",
+    val customFields: List<SecureCustomField> = emptyList()
 )
 
 /**
@@ -114,6 +127,24 @@ enum class CardType {
     PREPAID      // 预付卡
 }
 
+@Serializable
+enum class SecureCustomFieldType {
+    TEXT,
+    HIDDEN,
+    BOOLEAN
+}
+
+@Serializable
+data class SecureCustomField(
+    val label: String,
+    val value: String = "",
+    val type: SecureCustomFieldType = SecureCustomFieldType.TEXT
+) {
+    fun isValid(): Boolean = label.isNotBlank()
+
+    fun isProtected(): Boolean = type == SecureCustomFieldType.HIDDEN
+}
+
 /**
  * 证件数据
  */
@@ -126,7 +157,26 @@ data class DocumentData(
     val expiryDate: String = "",     // 有效期至
     val issuedBy: String = "",       // 签发机关
     val nationality: String = "",    // 国籍
-    val additionalInfo: String = ""  // 其他信息
+    val additionalInfo: String = "",  // 其他信息
+    val title: String = "",
+    val firstName: String = "",
+    val middleName: String = "",
+    val lastName: String = "",
+    val address1: String = "",
+    val address2: String = "",
+    val address3: String = "",
+    val city: String = "",
+    val stateProvince: String = "",
+    val postalCode: String = "",
+    val country: String = "",
+    val company: String = "",
+    val email: String = "",
+    val phone: String = "",
+    val ssn: String = "",
+    val username: String = "",
+    val passportNumber: String = "",
+    val licenseNumber: String = "",
+    val customFields: List<SecureCustomField> = emptyList()
 )
 
 enum class DocumentType {
@@ -135,6 +185,15 @@ enum class DocumentType {
     DRIVER_LICENSE,// 驾驶证
     SOCIAL_SECURITY,// 社保卡
     OTHER          // 其他
+}
+
+fun DocumentData.displayFullName(): String {
+    val parts = listOf(firstName, middleName, lastName).filter { it.isNotBlank() }
+    return when {
+        parts.isNotEmpty() -> parts.joinToString(" ")
+        fullName.isNotBlank() -> fullName
+        else -> ""
+    }
 }
 
 /**

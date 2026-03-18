@@ -12,9 +12,12 @@ import takagi.ru.monica.bitwarden.sync.SyncItemType
 import takagi.ru.monica.data.*
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.BankCardData
+import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.DocumentType
 import takagi.ru.monica.data.model.NoteData
+import takagi.ru.monica.data.model.SecureCustomField
+import takagi.ru.monica.data.model.SecureCustomFieldType
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import java.util.Date
@@ -503,22 +506,23 @@ class CipherUploadProcessor(
                 cardholderName = cardData.cardholderName.takeIf { it.isNotBlank() }?.let {
                     crypto.encryptString(it, symmetricKey)
                 },
-                number = cardData.number.takeIf { it.isNotBlank() }?.let {
+                number = cardData.cardNumber.takeIf { it.isNotBlank() }?.let {
                     crypto.encryptString(it, symmetricKey)
                 },
-                expMonth = cardData.expMonth.takeIf { it.isNotBlank() }?.let {
+                expMonth = cardData.expiryMonth.takeIf { it.isNotBlank() }?.let {
                     crypto.encryptString(it, symmetricKey)
                 },
-                expYear = cardData.expYear.takeIf { it.isNotBlank() }?.let {
+                expYear = cardData.expiryYear.takeIf { it.isNotBlank() }?.let {
                     crypto.encryptString(it, symmetricKey)
                 },
                 code = cardData.cvv.takeIf { it.isNotBlank() }?.let {
                     crypto.encryptString(it, symmetricKey)
                 },
-                brand = cardData.bankName.ifBlank { cardData.brand }.takeIf { it.isNotBlank() }?.let {
+                brand = cardData.brand.ifBlank { cardData.bankName }.takeIf { it.isNotBlank() }?.let {
                     crypto.encryptString(it, symmetricKey)
                 }
-            )
+            ),
+            fields = buildEncryptedCardFields(cardData, symmetricKey)
         )
     }
     
@@ -548,18 +552,24 @@ class CipherUploadProcessor(
         val docData = parseDocumentData(item)
         
         val crypto = BitwardenCrypto
-        val identityNumberForLicense = docData.documentNumber.takeIf {
-            it.isNotBlank() && docData.documentType == DocumentType.DRIVER_LICENSE.name
+        val identityNumberForLicense = docData.licenseNumber.ifBlank {
+            docData.documentNumber.takeIf {
+                it.isNotBlank() && docData.documentType == DocumentType.DRIVER_LICENSE
+            }.orEmpty()
         }
-        val identityNumberForPassport = docData.documentNumber.takeIf {
-            it.isNotBlank() && docData.documentType == DocumentType.PASSPORT.name
+        val identityNumberForPassport = docData.passportNumber.ifBlank {
+            docData.documentNumber.takeIf {
+                it.isNotBlank() && docData.documentType == DocumentType.PASSPORT
+            }.orEmpty()
         }
-        val identityNumberForSsn = docData.documentNumber.takeIf {
-            it.isNotBlank() && (
-                docData.documentType == DocumentType.ID_CARD.name ||
-                    docData.documentType == DocumentType.SOCIAL_SECURITY.name ||
-                    docData.documentType == DocumentType.OTHER.name
-                )
+        val identityNumberForSsn = docData.ssn.ifBlank {
+            docData.documentNumber.takeIf {
+                it.isNotBlank() && (
+                    docData.documentType == DocumentType.ID_CARD ||
+                        docData.documentType == DocumentType.SOCIAL_SECURITY ||
+                        docData.documentType == DocumentType.OTHER
+                    )
+            }.orEmpty()
         }
         
         return CipherCreateRequest(
@@ -571,25 +581,58 @@ class CipherUploadProcessor(
             folderId = item.bitwardenFolderId,
             favorite = item.isFavorite,
             identity = CipherIdentityApiData(
+                title = docData.title.takeIf { it.isNotBlank() }?.let {
+                    crypto.encryptString(it, symmetricKey)
+                },
                 firstName = docData.firstName.takeIf { it.isNotBlank() }?.let {
+                    crypto.encryptString(it, symmetricKey)
+                },
+                middleName = docData.middleName.takeIf { it.isNotBlank() }?.let {
                     crypto.encryptString(it, symmetricKey)
                 },
                 lastName = docData.lastName.takeIf { it.isNotBlank() }?.let {
                     crypto.encryptString(it, symmetricKey)
                 },
-                licenseNumber = identityNumberForLicense?.let {
+                address1 = docData.address1.takeIf { it.isNotBlank() }?.let {
                     crypto.encryptString(it, symmetricKey)
                 },
-                passportNumber = identityNumberForPassport?.let {
+                address2 = docData.address2.takeIf { it.isNotBlank() }?.let {
                     crypto.encryptString(it, symmetricKey)
                 },
-                ssn = identityNumberForSsn?.let {
+                address3 = docData.address3.takeIf { it.isNotBlank() }?.let {
                     crypto.encryptString(it, symmetricKey)
                 },
-                company = docData.issuingAuthority.takeIf { it.isNotBlank() }?.let {
+                city = docData.city.takeIf { it.isNotBlank() }?.let {
+                    crypto.encryptString(it, symmetricKey)
+                },
+                state = docData.stateProvince.takeIf { it.isNotBlank() }?.let {
+                    crypto.encryptString(it, symmetricKey)
+                },
+                postalCode = docData.postalCode.takeIf { it.isNotBlank() }?.let {
                     crypto.encryptString(it, symmetricKey)
                 },
                 country = docData.country.takeIf { it.isNotBlank() }?.let {
+                    crypto.encryptString(it, symmetricKey)
+                },
+                company = docData.company.ifBlank { docData.issuedBy }.takeIf { it.isNotBlank() }?.let {
+                    crypto.encryptString(it, symmetricKey)
+                },
+                email = docData.email.takeIf { it.isNotBlank() }?.let {
+                    crypto.encryptString(it, symmetricKey)
+                },
+                phone = docData.phone.takeIf { it.isNotBlank() }?.let {
+                    crypto.encryptString(it, symmetricKey)
+                },
+                ssn = identityNumberForSsn.takeIf { it.isNotBlank() }?.let {
+                    crypto.encryptString(it, symmetricKey)
+                },
+                username = docData.username.takeIf { it.isNotBlank() }?.let {
+                    crypto.encryptString(it, symmetricKey)
+                },
+                passportNumber = identityNumberForPassport.takeIf { it.isNotBlank() }?.let {
+                    crypto.encryptString(it, symmetricKey)
+                },
+                licenseNumber = identityNumberForLicense.takeIf { it.isNotBlank() }?.let {
                     crypto.encryptString(it, symmetricKey)
                 }
             ),
@@ -617,25 +660,9 @@ class CipherUploadProcessor(
         }
     }
 
-    private fun parseBankCardData(item: SecureItem): CardItemData {
-        return try {
-            val appData = json.decodeFromString<BankCardData>(item.itemData)
-            CardItemData(
-                cardholderName = appData.cardholderName,
-                number = appData.cardNumber,
-                expMonth = appData.expiryMonth,
-                expYear = appData.expiryYear,
-                cvv = appData.cvv,
-                bankName = appData.bankName,
-                billingAddress = appData.billingAddress
-            )
-        } catch (_: Exception) {
-            try {
-                json.decodeFromString(CardItemData.serializer(), item.itemData)
-            } catch (_: Exception) {
-                CardItemData()
-            }
-        }
+    private fun parseBankCardData(item: SecureItem): BankCardData {
+        return CardWalletDataCodec.parseBankCardData(item.itemData)
+            ?: BankCardData(cardNumber = "", cardholderName = "", expiryMonth = "", expiryYear = "")
     }
 
     private fun parseNoteData(item: SecureItem): NoteItemData {
@@ -655,59 +682,90 @@ class CipherUploadProcessor(
         }
     }
 
-    private fun parseDocumentData(item: SecureItem): DocumentItemData {
-        return try {
-            val appData = json.decodeFromString<DocumentData>(item.itemData)
-            val names = splitName(appData.fullName)
-            DocumentItemData(
-                documentType = appData.documentType.name,
-                documentNumber = appData.documentNumber,
-                issueDate = appData.issuedDate,
-                expiryDate = appData.expiryDate,
-                issuingAuthority = appData.issuedBy,
-                country = appData.nationality,
-                additionalInfo = appData.additionalInfo,
-                firstName = names.first,
-                lastName = names.second
-            )
-        } catch (_: Exception) {
-            try {
-                json.decodeFromString(DocumentItemData.serializer(), item.itemData)
-            } catch (_: Exception) {
-                DocumentItemData()
-            }
-        }
+    private fun parseDocumentData(item: SecureItem): DocumentData {
+        return CardWalletDataCodec.parseDocumentData(item.itemData)
+            ?: DocumentData(documentType = DocumentType.ID_CARD, documentNumber = "", fullName = "")
     }
 
     private fun buildEncryptedDocumentFields(
-        docData: DocumentItemData,
+        docData: DocumentData,
         symmetricKey: SymmetricCryptoKey
     ): List<CipherFieldApiData>? {
-        val crypto = BitwardenCrypto
-        val rawFields = listOf(
-            "monica_document_type" to docData.documentType,
-            "monica_issue_date" to docData.issueDate,
-            "monica_expiry_date" to docData.expiryDate,
-            "monica_additional_info" to docData.additionalInfo
-        ).filter { it.second.isNotBlank() }
-
-        if (rawFields.isEmpty()) return null
-
-        return rawFields.map { (name, value) ->
-            CipherFieldApiData(
-                name = crypto.encryptString(name, symmetricKey),
-                value = crypto.encryptString(value, symmetricKey),
-                type = 0
-            )
+        val reserved = buildList {
+            add("monica_document_type" to docData.documentType.name)
+            add("monica_issue_date" to docData.issuedDate)
+            add("monica_expiry_date" to docData.expiryDate)
+            add("monica_issued_by" to docData.issuedBy)
+            add("monica_nationality" to docData.nationality)
+            add("monica_additional_info" to docData.additionalInfo)
         }
+        return buildEncryptedFields(
+            symmetricKey = symmetricKey,
+            reservedFields = reserved,
+            customFields = docData.customFields
+        )
     }
 
-    private fun splitName(fullName: String): Pair<String, String> {
-        val normalized = fullName.trim()
-        if (normalized.isBlank()) return "" to ""
-        val parts = normalized.split(Regex("\\s+"))
-        if (parts.size == 1) return parts[0] to ""
-        return parts.dropLast(1).joinToString(" ") to parts.last()
+    private fun buildEncryptedCardFields(
+        cardData: BankCardData,
+        symmetricKey: SymmetricCryptoKey
+    ): List<CipherFieldApiData>? {
+        val reserved = buildList {
+            add("monica_bank_name" to cardData.bankName)
+            add("monica_card_type" to cardData.cardType.name)
+            add("monica_billing_address" to cardData.billingAddress)
+            add("monica_nickname" to cardData.nickname)
+            add("monica_valid_from_month" to cardData.validFromMonth)
+            add("monica_valid_from_year" to cardData.validFromYear)
+            add("monica_pin" to cardData.pin)
+            add("monica_iban" to cardData.iban)
+            add("monica_swift_bic" to cardData.swiftBic)
+            add("monica_routing_number" to cardData.routingNumber)
+            add("monica_account_number" to cardData.accountNumber)
+            add("monica_branch_code" to cardData.branchCode)
+            add("monica_currency" to cardData.currency)
+            add("monica_customer_service_phone" to cardData.customerServicePhone)
+        }
+        return buildEncryptedFields(
+            symmetricKey = symmetricKey,
+            reservedFields = reserved,
+            customFields = cardData.customFields
+        )
+    }
+
+    private fun buildEncryptedFields(
+        symmetricKey: SymmetricCryptoKey,
+        reservedFields: List<Pair<String, String>>,
+        customFields: List<SecureCustomField>
+    ): List<CipherFieldApiData>? {
+        val crypto = BitwardenCrypto
+        val result = mutableListOf<CipherFieldApiData>()
+
+        reservedFields
+            .filter { (_, value) -> value.isNotBlank() }
+            .forEach { (name, value) ->
+                result += CipherFieldApiData(
+                    name = crypto.encryptString(name, symmetricKey),
+                    value = crypto.encryptString(value, symmetricKey),
+                    type = 0
+                )
+            }
+
+        customFields
+            .filter { it.isValid() }
+            .forEach { field ->
+                result += CipherFieldApiData(
+                    name = crypto.encryptString(field.label, symmetricKey),
+                    value = crypto.encryptString(field.value, symmetricKey),
+                    type = when (field.type) {
+                        SecureCustomFieldType.TEXT -> 0
+                        SecureCustomFieldType.HIDDEN -> 1
+                        SecureCustomFieldType.BOOLEAN -> 2
+                    }
+                )
+            }
+
+        return result.ifEmpty { null }
     }
 
     private fun CipherCreateRequest.toUpdateRequest(): CipherUpdateRequest {

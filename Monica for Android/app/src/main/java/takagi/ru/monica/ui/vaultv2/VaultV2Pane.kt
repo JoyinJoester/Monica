@@ -903,7 +903,7 @@ private fun VaultV2List(
 						color = MaterialTheme.colorScheme.onSurfaceVariant,
 						modifier = Modifier
 							.fillMaxWidth()
-							.padding(horizontal = 8.dp, vertical = 4.dp),
+							.padding(horizontal = 12.dp, vertical = 4.dp),
 					)
 				}
 			}
@@ -951,7 +951,7 @@ private fun VaultV2PathBanner(
 	Row(
 		modifier = Modifier
 			.fillMaxWidth()
-			.padding(vertical = 4.dp),
+			.padding(horizontal = 12.dp, vertical = 4.dp),
 		horizontalArrangement = Arrangement.spacedBy(10.dp),
 		verticalAlignment = Alignment.CenterVertically,
 	) {

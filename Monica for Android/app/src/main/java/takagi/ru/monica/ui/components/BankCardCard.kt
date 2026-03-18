@@ -18,11 +18,11 @@ import takagi.ru.monica.R
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.BankCardData
 import takagi.ru.monica.data.model.BillingAddress
+import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.CardType
 import takagi.ru.monica.data.model.formatForDisplay
 import takagi.ru.monica.data.model.isEmpty
 import takagi.ru.monica.bitwarden.sync.SyncStatus
-import kotlinx.serialization.json.Json
 
 /**
  * 银行卡卡片组件
@@ -43,26 +43,15 @@ fun BankCardCard(
     onLongClick: (() -> Unit)? = null
 ) {
     // 解析银行卡数据
-    val cardData = try {
-        Json.decodeFromString<BankCardData>(item.itemData)
-    } catch (e: Exception) {
-        BankCardData(
+    val cardData = CardWalletDataCodec.parseBankCardData(item.itemData)
+        ?: BankCardData(
             cardNumber = "",
             cardholderName = "",
             expiryMonth = "",
             expiryYear = ""
         )
-    }
     val billingAddress = remember(cardData.billingAddress) {
-        if (cardData.billingAddress.isNotBlank()) {
-            try {
-                Json.decodeFromString<BillingAddress>(cardData.billingAddress)
-            } catch (e: Exception) {
-                BillingAddress()
-            }
-        } else {
-            BillingAddress()
-        }
+        CardWalletDataCodec.parseBillingAddress(cardData.billingAddress)
     }
     val hasBillingAddress = remember(billingAddress) { !billingAddress.isEmpty() }
     

@@ -29,9 +29,12 @@ import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.BankCardData
 import takagi.ru.monica.data.model.BillingAddress
+import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.CardType
 import takagi.ru.monica.data.model.formatForDisplay
 import takagi.ru.monica.data.model.isEmpty
+import takagi.ru.monica.data.CustomFieldDraft
+import takagi.ru.monica.ui.components.CustomFieldEditorSection
 import takagi.ru.monica.ui.components.DualPhotoPicker
 import takagi.ru.monica.ui.components.StorageTargetSelectorCard
 import takagi.ru.monica.utils.RememberedStorageTarget
@@ -67,6 +70,18 @@ fun AddEditBankCardScreen(
     var cvv by rememberSaveable { mutableStateOf("") }
     var bankName by rememberSaveable { mutableStateOf("") }
     var cardType by rememberSaveable { mutableStateOf(CardType.DEBIT) }
+    var brand by rememberSaveable { mutableStateOf("") }
+    var nickname by rememberSaveable { mutableStateOf("") }
+    var validFromMonth by rememberSaveable { mutableStateOf("") }
+    var validFromYear by rememberSaveable { mutableStateOf("") }
+    var pin by rememberSaveable { mutableStateOf("") }
+    var iban by rememberSaveable { mutableStateOf("") }
+    var swiftBic by rememberSaveable { mutableStateOf("") }
+    var routingNumber by rememberSaveable { mutableStateOf("") }
+    var accountNumber by rememberSaveable { mutableStateOf("") }
+    var branchCode by rememberSaveable { mutableStateOf("") }
+    var currency by rememberSaveable { mutableStateOf("") }
+    var customerServicePhone by rememberSaveable { mutableStateOf("") }
     var notes by rememberSaveable { mutableStateOf("") }
     var isFavorite by rememberSaveable { mutableStateOf(false) }
     var showCardTypeMenu by remember { mutableStateOf(false) }
@@ -75,6 +90,7 @@ fun AddEditBankCardScreen(
     var hasBillingAddress by remember { mutableStateOf(false) }
     var billingAddress by remember { mutableStateOf(BillingAddress()) }
     var showBillingAddressDialog by remember { mutableStateOf(false) }
+    var customFields by remember { mutableStateOf<List<CustomFieldDraft>>(emptyList()) }
     
     // 防止重复点击保存按钮
     var isSaving by remember { mutableStateOf(false) }
@@ -157,12 +173,21 @@ fun AddEditBankCardScreen(
                     cvv = data.cvv
                     bankName = data.bankName
                     cardType = data.cardType
+                    brand = data.brand
+                    nickname = data.nickname
+                    validFromMonth = data.validFromMonth
+                    validFromYear = data.validFromYear
+                    pin = data.pin
+                    iban = data.iban
+                    swiftBic = data.swiftBic
+                    routingNumber = data.routingNumber
+                    accountNumber = data.accountNumber
+                    branchCode = data.branchCode
+                    currency = data.currency
+                    customerServicePhone = data.customerServicePhone
+                    customFields = CardWalletDataCodec.customFieldsToDrafts(data.customFields)
                     if (data.billingAddress.isNotBlank()) {
-                        billingAddress = try {
-                            Json.decodeFromString<BillingAddress>(data.billingAddress)
-                        } catch (e: Exception) {
-                            BillingAddress()
-                        }
+                        billingAddress = CardWalletDataCodec.parseBillingAddress(data.billingAddress)
                         hasBillingAddress = !billingAddress.isEmpty()
                     } else {
                         billingAddress = BillingAddress()
@@ -179,11 +204,7 @@ fun AddEditBankCardScreen(
         isSaving = true // 防止重复点击
         val syncVaultId = bitwardenVaultId
 
-        val billingAddressJson = if (hasBillingAddress && !billingAddress.isEmpty()) {
-            Json.encodeToString(billingAddress)
-        } else {
-            ""
-        }
+        val billingAddressJson = if (hasBillingAddress) CardWalletDataCodec.encodeBillingAddress(billingAddress) else ""
         val cardData = BankCardData(
             cardNumber = cardNumber,
             cardholderName = cardholderName,
@@ -192,7 +213,20 @@ fun AddEditBankCardScreen(
             cvv = cvv,
             bankName = bankName,
             cardType = cardType,
-            billingAddress = billingAddressJson
+            billingAddress = billingAddressJson,
+            brand = brand,
+            nickname = nickname,
+            validFromMonth = validFromMonth,
+            validFromYear = validFromYear,
+            pin = pin,
+            iban = iban,
+            swiftBic = swiftBic,
+            routingNumber = routingNumber,
+            accountNumber = accountNumber,
+            branchCode = branchCode,
+            currency = currency,
+            customerServicePhone = customerServicePhone,
+            customFields = CardWalletDataCodec.draftsToCustomFields(customFields)
         )
 
         val imagePathsList = listOf(
@@ -555,6 +589,135 @@ fun AddEditBankCardScreen(
                         }
                     }
                 }
+            }
+
+            InfoCard(title = "扩展字段") {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = brand,
+                        onValueChange = { brand = it },
+                        label = { Text("卡组织 / Brand") },
+                        leadingIcon = { Icon(Icons.Default.Style, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    OutlinedTextField(
+                        value = nickname,
+                        onValueChange = { nickname = it },
+                        label = { Text("卡片昵称") },
+                        leadingIcon = { Icon(Icons.Default.Label, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = validFromMonth,
+                            onValueChange = { if (it.length <= 2 && it.all(Char::isDigit)) validFromMonth = it },
+                            label = { Text("起始月") },
+                            modifier = Modifier.weight(1f),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        OutlinedTextField(
+                            value = validFromYear,
+                            onValueChange = { if (it.length <= 4 && it.all(Char::isDigit)) validFromYear = it },
+                            label = { Text("起始年") },
+                            modifier = Modifier.weight(1f),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
+                    OutlinedTextField(
+                        value = iban,
+                        onValueChange = { iban = it },
+                        label = { Text("IBAN") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    OutlinedTextField(
+                        value = swiftBic,
+                        onValueChange = { swiftBic = it },
+                        label = { Text("SWIFT / BIC") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = accountNumber,
+                            onValueChange = { accountNumber = it },
+                            label = { Text("账户号") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        OutlinedTextField(
+                            value = routingNumber,
+                            onValueChange = { routingNumber = it },
+                            label = { Text("Routing") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = branchCode,
+                            onValueChange = { branchCode = it },
+                            label = { Text("分行代码") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        OutlinedTextField(
+                            value = currency,
+                            onValueChange = { currency = it },
+                            label = { Text("币种") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                    }
+                    OutlinedTextField(
+                        value = customerServicePhone,
+                        onValueChange = { customerServicePhone = it },
+                        label = { Text("客服电话") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    OutlinedTextField(
+                        value = pin,
+                        onValueChange = { pin = it },
+                        label = { Text("PIN") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+            }
+
+            InfoCard(title = "自定义字段") {
+                CustomFieldEditorSection(
+                    fields = customFields,
+                    onFieldsChange = { customFields = it },
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
             
             // Photos Card

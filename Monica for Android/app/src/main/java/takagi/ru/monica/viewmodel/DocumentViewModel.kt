@@ -21,12 +21,11 @@ import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.data.model.DocumentData
+import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.utils.FieldChange
 import takagi.ru.monica.utils.KeePassKdbxService
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.encodeToString
 import java.util.Date
 import java.util.UUID
 
@@ -158,7 +157,7 @@ class DocumentViewModel(
                 id = 0,
                 itemType = ItemType.DOCUMENT,
                 title = title,
-                itemData = Json.encodeToString(documentData),
+                itemData = CardWalletDataCodec.encodeDocumentData(documentData),
                 notes = notes,
                 isFavorite = isFavorite,
                 categoryId = categoryId,
@@ -230,7 +229,7 @@ class DocumentViewModel(
                 
                 val updatedItem = existingItem.copy(
                     title = title,
-                    itemData = Json.encodeToString(documentData),
+                    itemData = CardWalletDataCodec.encodeDocumentData(documentData),
                     notes = notes,
                     isFavorite = isFavorite,
                     categoryId = categoryId,
@@ -435,10 +434,6 @@ class DocumentViewModel(
     
     // 解析证件数据
     fun parseDocumentData(jsonData: String): DocumentData? {
-        return try {
-            Json.decodeFromString<DocumentData>(jsonData)
-        } catch (e: Exception) {
-            null
-        }
+        return CardWalletDataCodec.parseDocumentData(jsonData)
     }
 }

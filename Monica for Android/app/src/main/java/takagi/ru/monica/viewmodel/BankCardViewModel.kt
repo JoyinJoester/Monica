@@ -21,13 +21,12 @@ import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.data.model.BankCardData
+import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.CardType
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.utils.FieldChange
 import takagi.ru.monica.utils.KeePassKdbxService
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.encodeToString
 import java.util.Date
 import java.util.UUID
 
@@ -176,7 +175,7 @@ class BankCardViewModel(
                 id = 0,
                 itemType = ItemType.BANK_CARD,
                 title = title,
-                itemData = Json.encodeToString(cardData),
+                itemData = CardWalletDataCodec.encodeBankCardData(cardData),
                 notes = notes,
                 isFavorite = isFavorite,
                 categoryId = categoryId,
@@ -252,7 +251,7 @@ class BankCardViewModel(
                 
                 val updatedItem = existingItem.copy(
                     title = title,
-                    itemData = Json.encodeToString(cardData),
+                    itemData = CardWalletDataCodec.encodeBankCardData(cardData),
                     notes = notes,
                     isFavorite = isFavorite,
                     categoryId = categoryId,
@@ -457,10 +456,6 @@ class BankCardViewModel(
     
     // 解析银行卡数据
     fun parseCardData(jsonData: String): BankCardData? {
-        return try {
-            Json.decodeFromString<BankCardData>(jsonData)
-        } catch (e: Exception) {
-            null
-        }
+        return CardWalletDataCodec.parseBankCardData(jsonData)
     }
 }

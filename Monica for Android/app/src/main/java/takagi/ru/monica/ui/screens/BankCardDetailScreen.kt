@@ -34,9 +34,12 @@ import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.BankCardData
+import takagi.ru.monica.data.model.CardWalletDataCodec
+import takagi.ru.monica.data.model.formatForDisplay
 import takagi.ru.monica.ui.components.ActionStrip
 import takagi.ru.monica.ui.components.ActionStripItem
 import takagi.ru.monica.ui.components.BankCardCard
+import takagi.ru.monica.ui.components.CustomFieldDisplayCard
 import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.util.ImageManager
 import takagi.ru.monica.viewmodel.BankCardViewModel
@@ -225,6 +228,7 @@ fun BankCardDetailScreen(
                     
                     // Billing Address
                     if (data.billingAddress.isNotEmpty()) {
+                        val billingAddress = CardWalletDataCodec.parseBillingAddress(data.billingAddress)
                          Card(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(16.dp),
@@ -236,17 +240,87 @@ fun BankCardDetailScreen(
                                 modifier = Modifier.padding(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                              ) {
-                                 Text(
+                                Text(
                                     text = stringResource(R.string.billing_address),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = data.billingAddress, // Assuming it's a formatted string for now based on model or we might need JSON parse if it is complex object. Model says String.
+                                    text = billingAddress.formatForDisplay(),
                                     style = MaterialTheme.typography.bodyMedium
                                 )
                              }
                          }
+                    }
+
+                    if (
+                        data.brand.isNotBlank() ||
+                        data.nickname.isNotBlank() ||
+                        data.validFromMonth.isNotBlank() ||
+                        data.validFromYear.isNotBlank() ||
+                        data.iban.isNotBlank() ||
+                        data.swiftBic.isNotBlank() ||
+                        data.routingNumber.isNotBlank() ||
+                        data.accountNumber.isNotBlank() ||
+                        data.branchCode.isNotBlank() ||
+                        data.currency.isNotBlank() ||
+                        data.customerServicePhone.isNotBlank() ||
+                        data.pin.isNotBlank()
+                    ) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Text(
+                                    text = "扩展字段",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                if (data.nickname.isNotBlank()) {
+                                    InfoFieldWithCopy(label = "昵称", value = data.nickname, context = context)
+                                }
+                                if (data.brand.isNotBlank()) {
+                                    InfoFieldWithCopy(label = "卡组织 / Brand", value = data.brand, context = context)
+                                }
+                                if (data.validFromMonth.isNotBlank() || data.validFromYear.isNotBlank()) {
+                                    InfoFieldWithCopy(
+                                        label = "起始日期",
+                                        value = listOf(data.validFromMonth, data.validFromYear).filter { it.isNotBlank() }.joinToString("/"),
+                                        context = context
+                                    )
+                                }
+                                if (data.iban.isNotBlank()) InfoFieldWithCopy(label = "IBAN", value = data.iban, context = context)
+                                if (data.swiftBic.isNotBlank()) InfoFieldWithCopy(label = "SWIFT / BIC", value = data.swiftBic, context = context)
+                                if (data.accountNumber.isNotBlank()) InfoFieldWithCopy(label = "账户号", value = data.accountNumber, context = context)
+                                if (data.routingNumber.isNotBlank()) InfoFieldWithCopy(label = "Routing", value = data.routingNumber, context = context)
+                                if (data.branchCode.isNotBlank()) InfoFieldWithCopy(label = "分行代码", value = data.branchCode, context = context)
+                                if (data.currency.isNotBlank()) InfoFieldWithCopy(label = "币种", value = data.currency, context = context)
+                                if (data.customerServicePhone.isNotBlank()) InfoFieldWithCopy(label = "客服电话", value = data.customerServicePhone, context = context)
+                                if (data.pin.isNotBlank()) {
+                                    PasswordField(
+                                        label = "PIN",
+                                        value = data.pin,
+                                        visible = cvvVisible,
+                                        onToggleVisibility = { cvvVisible = !cvvVisible },
+                                        context = context
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (data.customFields.isNotEmpty()) {
+                        CustomFieldDisplayCard(
+                            fields = CardWalletDataCodec.customFieldsToDisplay(data.customFields),
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                 }
                 

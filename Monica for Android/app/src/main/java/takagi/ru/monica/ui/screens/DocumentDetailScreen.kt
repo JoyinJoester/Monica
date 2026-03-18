@@ -23,10 +23,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.DocumentType
+import takagi.ru.monica.data.model.displayFullName
 import takagi.ru.monica.ui.components.ActionStrip
 import takagi.ru.monica.ui.components.ActionStripItem
+import takagi.ru.monica.ui.components.CustomFieldDisplayCard
 import takagi.ru.monica.ui.components.ImageDialog
 import takagi.ru.monica.ui.components.InfoFieldWithCopy
 import takagi.ru.monica.ui.components.InfoField
@@ -61,11 +64,7 @@ fun DocumentDetailScreen(
         viewModel.getDocumentById(documentId)?.let { item ->
             documentItem = item
             
-            try {
-                documentData = Json.decodeFromString<DocumentData>(item.itemData)
-            } catch (e: Exception) {
-                // Handle parsing error
-            }
+            documentData = CardWalletDataCodec.parseDocumentData(item.itemData)
             
             try {
                 if (item.imagePaths.isNotBlank()) {
@@ -175,10 +174,10 @@ fun DocumentDetailScreen(
                             context = context
                         )
                         
-                         if (data.fullName.isNotBlank()) {
+                         if (data.displayFullName().isNotBlank()) {
                             InfoFieldWithCopy(
                                 label = stringResource(R.string.full_name),
-                                value = data.fullName,
+                                value = data.displayFullName(),
                                 context = context
                             )
                         }
@@ -237,7 +236,71 @@ fun DocumentDetailScreen(
                                 value = data.nationality
                             )
                         }
+
+                        if (data.issuedBy.isNotBlank()) {
+                            InfoField(label = stringResource(R.string.issued_by), value = data.issuedBy)
+                        }
                     }
+                }
+
+                if (
+                    data.title.isNotBlank() ||
+                    data.firstName.isNotBlank() ||
+                    data.middleName.isNotBlank() ||
+                    data.lastName.isNotBlank() ||
+                    data.company.isNotBlank() ||
+                    data.email.isNotBlank() ||
+                    data.phone.isNotBlank() ||
+                    data.username.isNotBlank() ||
+                    data.address1.isNotBlank() ||
+                    data.address2.isNotBlank() ||
+                    data.address3.isNotBlank() ||
+                    data.city.isNotBlank() ||
+                    data.stateProvince.isNotBlank() ||
+                    data.postalCode.isNotBlank() ||
+                    data.country.isNotBlank() ||
+                    data.ssn.isNotBlank() ||
+                    data.passportNumber.isNotBlank() ||
+                    data.licenseNumber.isNotBlank() ||
+                    data.additionalInfo.isNotBlank()
+                ) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(text = "扩展字段", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            if (data.title.isNotBlank()) InfoField(label = "称谓", value = data.title)
+                            if (data.company.isNotBlank()) InfoField(label = "公司 / 机构", value = data.company)
+                            if (data.email.isNotBlank()) InfoField(label = stringResource(R.string.email), value = data.email)
+                            if (data.phone.isNotBlank()) InfoField(label = "电话", value = data.phone)
+                            if (data.username.isNotBlank()) InfoField(label = stringResource(R.string.username), value = data.username)
+                            if (data.address1.isNotBlank()) InfoField(label = "地址 1", value = data.address1)
+                            if (data.address2.isNotBlank()) InfoField(label = "地址 2", value = data.address2)
+                            if (data.address3.isNotBlank()) InfoField(label = "地址 3", value = data.address3)
+                            if (data.city.isNotBlank()) InfoField(label = stringResource(R.string.city), value = data.city)
+                            if (data.stateProvince.isNotBlank()) InfoField(label = stringResource(R.string.state), value = data.stateProvince)
+                            if (data.postalCode.isNotBlank()) InfoField(label = stringResource(R.string.postal_code), value = data.postalCode)
+                            if (data.country.isNotBlank()) InfoField(label = stringResource(R.string.country), value = data.country)
+                            if (data.ssn.isNotBlank()) InfoField(label = "SSN / 身份号", value = data.ssn)
+                            if (data.passportNumber.isNotBlank()) InfoField(label = "护照号", value = data.passportNumber)
+                            if (data.licenseNumber.isNotBlank()) InfoField(label = "驾照号", value = data.licenseNumber)
+                            if (data.additionalInfo.isNotBlank()) InfoField(label = "附加信息", value = data.additionalInfo)
+                        }
+                    }
+                }
+
+                if (data.customFields.isNotEmpty()) {
+                    CustomFieldDisplayCard(
+                        fields = CardWalletDataCodec.customFieldsToDisplay(data.customFields),
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
                 
                 // Images

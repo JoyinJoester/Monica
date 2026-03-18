@@ -19,10 +19,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.DocumentType
+import takagi.ru.monica.data.model.displayFullName
 import takagi.ru.monica.bitwarden.sync.SyncStatus
-import kotlinx.serialization.json.Json
 
 /**
  * 证件卡片组件
@@ -43,17 +44,14 @@ fun DocumentCard(
     onLongClick: (() -> Unit)? = null
 ) {
     // 解析证件数据
-    val documentData = try {
-        Json.decodeFromString<DocumentData>(item.itemData)
-    } catch (e: Exception) {
-        DocumentData(
+    val documentData = CardWalletDataCodec.parseDocumentData(item.itemData)
+        ?: DocumentData(
             documentNumber = "",
             documentType = DocumentType.ID_CARD,
             fullName = "",
             issuedDate = "",
             expiryDate = ""
         )
-    }
     
     // 获取对应容器的文字颜色
     val contentColor = getDocumentCardContentColor(documentData.documentType, isSelected)
@@ -111,7 +109,7 @@ fun DocumentCard(
                         color = contentColor
                     )
                     Text(
-                        text = getDocumentTypeName(documentData.documentType),
+                        text = documentData.displayFullName().ifBlank { getDocumentTypeName(documentData.documentType) },
                         style = MaterialTheme.typography.bodySmall,
                         color = contentColor.copy(alpha = 0.7f)
                     )
