@@ -359,7 +359,16 @@ enum class PasswordListQuickFilterItem {
  */
 enum class PasswordListQuickFolderStyle {
     CLASSIC,    // 经典快捷卡片（含返回上级）
-    M3_CARD     // M3 卡片模式（无返回卡片，顶部路径横幅）
+    M3_CARD     // M3 卡片模式
+}
+
+enum class CategorySelectionUiMode {
+    BOTTOM_SHEET,
+    CHIP_MENU;
+
+    companion object {
+        val DEFAULT = BOTTOM_SHEET
+    }
 }
 
 data class AppSettings(
@@ -411,6 +420,8 @@ data class AppSettings(
     val passwordListQuickFilterItems: List<PasswordListQuickFilterItem> = PasswordListQuickFilterItem.DEFAULT_ORDER, // 密码列表快捷筛选显示内容
     val passwordListQuickFoldersEnabled: Boolean = false, // 密码列表快捷文件夹开关
     val passwordListQuickFolderStyle: PasswordListQuickFolderStyle = PasswordListQuickFolderStyle.CLASSIC, // 密码列表快捷文件夹展示样式
+    val passwordListQuickFolderPathBannerEnabled: Boolean = false, // 密码列表路径横幅开关
+    val categorySelectionUiMode: CategorySelectionUiMode = CategorySelectionUiMode.DEFAULT, // 分类选择 UI 形式
     val passwordListQuickAccessEnabled: Boolean = true, // 密码列表“最近打开/经常打开”快捷入口开关
     val passwordListTopModulesOrder: List<PasswordListTopModule> = PasswordListTopModule.DEFAULT_ORDER, // 密码列表顶部模块顺序
     val noteGridLayout: Boolean = true, // 笔记列表使用网格布局 (true = 网格, false = 列表)

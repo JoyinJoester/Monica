@@ -225,7 +225,7 @@ private fun PaymentLinkButton(
 ) {
     val scope = rememberCoroutineScope()
     
-    OutlinedButton(
+    FilledTonalButton(
         onClick = {
             try {
                 val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
@@ -243,7 +243,11 @@ private fun PaymentLinkButton(
                 }
             }
         },
-        modifier = Modifier.fillMaxWidth()
+        modifier = Modifier.fillMaxWidth(),
+        colors = ButtonDefaults.filledTonalButtonColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+        )
     ) {
         Icon(
             imageVector = icon,

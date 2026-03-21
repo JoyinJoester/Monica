@@ -98,6 +98,7 @@ import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AuthenticatorCardDisplayField
+import takagi.ru.monica.data.CategorySelectionUiMode
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordCardDisplayField
 import takagi.ru.monica.data.PasswordEntry
@@ -432,75 +433,80 @@ fun PasswordListCustomizationScreen(
                             }
                         }
 
+                        if (settings.passwordListQuickFolderPathBannerEnabled) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .horizontalScroll(rememberScrollState())
+                                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(MaterialTheme.colorScheme.primaryContainer)
+                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = "Monica",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    }
+                                    Text(
+                                        text = ">",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 6.dp)
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.68f))
+                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = "目录1",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                                        )
+                                    }
+                                    Text(
+                                        text = ">",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(horizontal = 6.dp)
+                                    )
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.68f))
+                                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                                    ) {
+                                        Text(
+                                            text = "子目录",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
                         if (settings.passwordListQuickFoldersEnabled) {
                             val previewM3Style =
                                 settings.passwordListQuickFolderStyle == PasswordListQuickFolderStyle.M3_CARD
                             if (previewM3Style) {
-                                Box(
+                                Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .horizontalScroll(rememberScrollState())
-                                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(10.dp))
-                                                .background(MaterialTheme.colorScheme.primaryContainer)
-                                                .padding(horizontal = 10.dp, vertical = 4.dp)
-                                        ) {
-                                            Text(
-                                                text = "Monica",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                                            )
-                                        }
-                                        Text(
-                                            text = ">",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(horizontal = 6.dp)
-                                        )
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(10.dp))
-                                                .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.68f))
-                                                .padding(horizontal = 10.dp, vertical = 4.dp)
-                                        ) {
-                                            Text(
-                                                text = "目录1",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                                            )
-                                        }
-                                        Text(
-                                            text = ">",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.padding(horizontal = 6.dp)
-                                        )
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(10.dp))
-                                                .background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.68f))
-                                                .padding(horizontal = 10.dp, vertical = 4.dp)
-                                        ) {
-                                            Text(
-                                                text = "子目录",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                                            )
-                                        }
-                                    }
-                                }
-                                Card(
-                                    modifier = Modifier.fillMaxWidth(),
+                                        .padding(top = if (settings.passwordListQuickFolderPathBannerEnabled) 8.dp else 0.dp),
                                     colors = CardDefaults.cardColors(
                                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f)
                                     )
@@ -786,6 +792,91 @@ fun PasswordListCustomizationScreen(
                         Icon(imageVector = Icons.Default.Folder, contentDescription = null)
                         Spacer(modifier = Modifier.size(10.dp))
                         Text(
+                            text = stringResource(R.string.category_selection_ui_mode_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Text(
+                        text = stringResource(R.string.category_selection_ui_mode_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    ListItem(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable {
+                                viewModel.updateCategorySelectionUiMode(
+                                    CategorySelectionUiMode.BOTTOM_SHEET
+                                )
+                            },
+                        colors = ListItemDefaults.colors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        ),
+                        headlineContent = {
+                            Text(stringResource(R.string.category_selection_ui_mode_bottom_sheet_title))
+                        },
+                        supportingContent = {
+                            Text(stringResource(R.string.category_selection_ui_mode_bottom_sheet_desc))
+                        },
+                        trailingContent = {
+                            RadioButton(
+                                selected = settings.categorySelectionUiMode == CategorySelectionUiMode.BOTTOM_SHEET,
+                                onClick = {
+                                    viewModel.updateCategorySelectionUiMode(
+                                        CategorySelectionUiMode.BOTTOM_SHEET
+                                    )
+                                }
+                            )
+                        }
+                    )
+
+                    ListItem(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable {
+                                viewModel.updateCategorySelectionUiMode(
+                                    CategorySelectionUiMode.CHIP_MENU
+                                )
+                            },
+                        colors = ListItemDefaults.colors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                        ),
+                        headlineContent = {
+                            Text(stringResource(R.string.category_selection_ui_mode_chip_menu_title))
+                        },
+                        supportingContent = {
+                            Text(stringResource(R.string.category_selection_ui_mode_chip_menu_desc))
+                        },
+                        trailingContent = {
+                            RadioButton(
+                                selected = settings.categorySelectionUiMode == CategorySelectionUiMode.CHIP_MENU,
+                                onClick = {
+                                    viewModel.updateCategorySelectionUiMode(
+                                        CategorySelectionUiMode.CHIP_MENU
+                                    )
+                                }
+                            )
+                        }
+                    )
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(imageVector = Icons.Default.Folder, contentDescription = null)
+                        Spacer(modifier = Modifier.size(10.dp))
+                        Text(
                             text = stringResource(R.string.password_list_quick_folders_switch_title),
                             style = MaterialTheme.typography.titleMedium,
                             modifier = Modifier.weight(1f)
@@ -797,6 +888,28 @@ fun PasswordListCustomizationScreen(
                     }
                     Text(
                         text = stringResource(R.string.password_list_quick_folders_switch_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(R.string.password_list_quick_folder_path_banner_switch_title),
+                            style = MaterialTheme.typography.titleSmall,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Switch(
+                            checked = settings.passwordListQuickFolderPathBannerEnabled,
+                            onCheckedChange = viewModel::updatePasswordListQuickFolderPathBannerEnabled
+                        )
+                    }
+                    Text(
+                        text = stringResource(R.string.password_list_quick_folder_path_banner_switch_desc),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

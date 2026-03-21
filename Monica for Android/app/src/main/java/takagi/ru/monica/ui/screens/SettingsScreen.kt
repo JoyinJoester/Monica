@@ -239,15 +239,17 @@ fun SettingsScreen(
             // Top padding spacer for edge-to-edge scrolling
             Spacer(modifier = Modifier.height(paddingValues.calculateTopPadding()))
             
-            // Monica Plus Card
-            takagi.ru.monica.ui.components.MonicaPlusCard(
-                isPlusActivated = settings.isPlusActivated,
-                onClick = {
-                    android.util.Log.d("SettingsScreen", "Monica Plus card clicked")
-                    onNavigateToMonicaPlus()
-                },
-                modifier = getSharedModifier("monica_plus_card")
-            )
+            // Monica Plus card is moved to Extensions page after activation.
+            if (!settings.isPlusActivated) {
+                takagi.ru.monica.ui.components.MonicaPlusCard(
+                    isPlusActivated = settings.isPlusActivated,
+                    onClick = {
+                        android.util.Log.d("SettingsScreen", "Monica Plus card clicked")
+                        onNavigateToMonicaPlus()
+                    },
+                    modifier = getSharedModifier("monica_plus_card")
+                )
+            }
 
             // 安全分析入口卡片 - 置顶显示
             Card(
@@ -1677,8 +1679,8 @@ fun AutoLockSelectionSheet(
 ) {
     val context = LocalContext.current
     val options = listOf(0, 1, 5, 10, 60, 300, 1440, -1) // 0=立即, 1/5/10分钟, 60=1小时, 300=5小时, 1440=1天, -1=从不
-    val sheetState = rememberModalBottomSheetState()
-    
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -1688,7 +1690,6 @@ fun AutoLockSelectionSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
                 .padding(bottom = 32.dp)
         ) {
             Text(

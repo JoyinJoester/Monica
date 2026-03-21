@@ -221,6 +221,7 @@ class AutofillAuthenticationActivity : AppCompatActivity() {
      */
     private fun onAuthenticationSuccess() {
         Log.d(TAG, "Authentication success, creating dataset")
+        securityManager.markVaultAuthenticated()
         
         try {
             if (autofillIds == null || fieldTypes == null || autofillIds!!.size != fieldTypes!!.size) {

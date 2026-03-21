@@ -144,10 +144,14 @@ fun MonicaPlusScreen(
                                 )
                             }
                         } else {
-                            // Show Payment Button when not activated
-                            OutlinedButton(
+                            // Use a filled action button to keep CTA contrast strong in M3.
+                            Button(
                                 onClick = onNavigateToPayment,
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
+                                )
                             ) {
                                 Text(stringResource(R.string.click_to_pay))
                             }

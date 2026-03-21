@@ -290,6 +290,7 @@ private data class PageAdjustmentSettingsBackupEntry(
     val passwordListQuickFilterItems: List<String> = emptyList(),
     val passwordListQuickFoldersEnabled: Boolean = false,
     val passwordListQuickFolderStyle: String = "CLASSIC",
+    val passwordListQuickFolderPathBannerEnabled: Boolean = false,
     val passwordListQuickAccessEnabled: Boolean = true,
     val passwordListTopModulesOrder: List<String> = emptyList(),
     val passwordCardDisplayMode: String = "SHOW_ALL",
@@ -1429,6 +1430,8 @@ class WebDavHelper(
                                 passwordListQuickFilterItems = pageAdjustmentSettingsSnapshot.passwordListQuickFilterItems,
                                 passwordListQuickFoldersEnabled = pageAdjustmentSettingsSnapshot.passwordListQuickFoldersEnabled,
                                 passwordListQuickFolderStyle = pageAdjustmentSettingsSnapshot.passwordListQuickFolderStyle,
+                                passwordListQuickFolderPathBannerEnabled =
+                                    pageAdjustmentSettingsSnapshot.passwordListQuickFolderPathBannerEnabled,
                                 passwordListQuickAccessEnabled = pageAdjustmentSettingsSnapshot.passwordListQuickAccessEnabled,
                                 passwordListTopModulesOrder = pageAdjustmentSettingsSnapshot.passwordListTopModulesOrder,
                                 passwordCardDisplayMode = pageAdjustmentSettingsSnapshot.passwordCardDisplayMode,
@@ -2402,6 +2405,8 @@ class WebDavHelper(
                                                     pageAdjustmentBackup.passwordListQuickFoldersEnabled,
                                                 passwordListQuickFolderStyle =
                                                     pageAdjustmentBackup.passwordListQuickFolderStyle,
+                                                passwordListQuickFolderPathBannerEnabled =
+                                                    pageAdjustmentBackup.passwordListQuickFolderPathBannerEnabled,
                                                 passwordListQuickAccessEnabled =
                                                     pageAdjustmentBackup.passwordListQuickAccessEnabled,
                                                 passwordListTopModulesOrder =

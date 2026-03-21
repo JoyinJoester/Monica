@@ -13,6 +13,8 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -89,12 +91,15 @@ import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.components.SyncStatusIcon
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
+import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenu
+import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuOffset
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
 import takagi.ru.monica.ui.components.UnifiedMoveAction
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
 import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
 import takagi.ru.monica.ui.components.PullActionVisualState
 import takagi.ru.monica.ui.components.PullGestureIndicator
+import takagi.ru.monica.ui.components.unifiedCategoryFilterChipMenuModifier
 import takagi.ru.monica.bitwarden.sync.SyncStatus
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.notes.ui.model.NoteListItemUiModel
@@ -202,6 +207,47 @@ fun NoteListScreen(
                 scope = SettingsManager.CategoryFilterScope.NOTE,
                 state = encodeNoteCategoryFilter(selectedCategoryFilter)
             )
+        }
+    }
+    val selectedUnifiedFilter = when (val filter = selectedCategoryFilter) {
+        NoteCategoryFilter.All -> UnifiedCategoryFilterSelection.All
+        NoteCategoryFilter.Local -> UnifiedCategoryFilterSelection.Local
+        NoteCategoryFilter.Starred -> UnifiedCategoryFilterSelection.Starred
+        NoteCategoryFilter.Uncategorized -> UnifiedCategoryFilterSelection.Uncategorized
+        NoteCategoryFilter.LocalStarred -> UnifiedCategoryFilterSelection.LocalStarred
+        NoteCategoryFilter.LocalUncategorized -> UnifiedCategoryFilterSelection.LocalUncategorized
+        is NoteCategoryFilter.Custom -> UnifiedCategoryFilterSelection.Custom(filter.categoryId)
+        is NoteCategoryFilter.BitwardenVault -> UnifiedCategoryFilterSelection.BitwardenVaultFilter(filter.vaultId)
+        is NoteCategoryFilter.BitwardenFolderFilter -> UnifiedCategoryFilterSelection.BitwardenFolderFilter(filter.vaultId, filter.folderId)
+        is NoteCategoryFilter.BitwardenVaultStarred -> UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter(filter.vaultId)
+        is NoteCategoryFilter.BitwardenVaultUncategorized -> UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter(filter.vaultId)
+        is NoteCategoryFilter.KeePassDatabase -> UnifiedCategoryFilterSelection.KeePassDatabaseFilter(filter.databaseId)
+        is NoteCategoryFilter.KeePassGroupFilter -> UnifiedCategoryFilterSelection.KeePassGroupFilter(filter.databaseId, filter.groupPath)
+        is NoteCategoryFilter.KeePassDatabaseStarred -> UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter(filter.databaseId)
+        is NoteCategoryFilter.KeePassDatabaseUncategorized -> UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter(filter.databaseId)
+    }
+    val handleCategorySelection: (UnifiedCategoryFilterSelection) -> Unit = { selection ->
+        selectedCategoryFilter = when (selection) {
+            is UnifiedCategoryFilterSelection.All -> NoteCategoryFilter.All
+            is UnifiedCategoryFilterSelection.Local -> NoteCategoryFilter.Local
+            is UnifiedCategoryFilterSelection.Starred -> NoteCategoryFilter.Starred
+            is UnifiedCategoryFilterSelection.Uncategorized -> NoteCategoryFilter.Uncategorized
+            is UnifiedCategoryFilterSelection.LocalStarred -> NoteCategoryFilter.LocalStarred
+            is UnifiedCategoryFilterSelection.LocalUncategorized -> NoteCategoryFilter.LocalUncategorized
+            is UnifiedCategoryFilterSelection.Custom -> NoteCategoryFilter.Custom(selection.categoryId)
+            is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> NoteCategoryFilter.BitwardenVault(selection.vaultId)
+            is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> NoteCategoryFilter.BitwardenFolderFilter(selection.folderId, selection.vaultId)
+            is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> NoteCategoryFilter.BitwardenVaultStarred(selection.vaultId)
+            is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> NoteCategoryFilter.BitwardenVaultUncategorized(selection.vaultId)
+            is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> NoteCategoryFilter.KeePassDatabase(selection.databaseId)
+            is UnifiedCategoryFilterSelection.KeePassGroupFilter -> NoteCategoryFilter.KeePassGroupFilter(selection.databaseId, selection.groupPath)
+            is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> NoteCategoryFilter.KeePassDatabaseStarred(selection.databaseId)
+            is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> NoteCategoryFilter.KeePassDatabaseUncategorized(selection.databaseId)
+        }
+        when (selection) {
+            is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> viewModel.syncKeePassNotes(selection.databaseId)
+            is UnifiedCategoryFilterSelection.KeePassGroupFilter -> viewModel.syncKeePassNotes(selection.databaseId)
+            else -> Unit
         }
     }
 
@@ -465,12 +511,79 @@ fun NoteListScreen(
                 searchHint = stringResource(R.string.search),
                 onActionPillBoundsChanged = { bounds -> categoryPillBoundsInWindow = bounds },
                 actions = {
-                    IconButton(onClick = { isCategorySheetVisible = true }) {
-                        Icon(
-                            imageVector = Icons.Default.Folder,
-                            contentDescription = stringResource(R.string.category),
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
+                    if (settings.categorySelectionUiMode == takagi.ru.monica.data.CategorySelectionUiMode.CHIP_MENU) {
+                        Box {
+                            IconButton(onClick = { isCategorySheetVisible = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Folder,
+                                    contentDescription = stringResource(R.string.category),
+                                    tint = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            MaterialTheme(
+                                shapes = MaterialTheme.shapes.copy(
+                                    extraSmall = RoundedCornerShape(20.dp),
+                                    small = RoundedCornerShape(20.dp)
+                                )
+                            ) {
+                                DropdownMenu(
+                                    expanded = isCategorySheetVisible,
+                                    onDismissRequest = { isCategorySheetVisible = false },
+                                    offset = UnifiedCategoryFilterChipMenuOffset,
+                                    modifier = unifiedCategoryFilterChipMenuModifier()
+                                ) {
+                                    UnifiedCategoryFilterChipMenu(
+                                        visible = true,
+                                        onDismiss = { isCategorySheetVisible = false },
+                                        selected = selectedUnifiedFilter,
+                                        onSelect = handleCategorySelection,
+                                        categories = categories,
+                                        keepassDatabases = keepassDatabases,
+                                        bitwardenVaults = bitwardenVaults,
+                                        getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+                                        getKeePassGroups = getKeePassGroups,
+                                        quickFilterContent = {
+                                            if (availableTags.isNotEmpty()) {
+                                                Text(
+                                                    text = stringResource(R.string.note_tags),
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .horizontalScroll(rememberScrollState()),
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    FilterChip(
+                                                        selected = selectedTag == null,
+                                                        onClick = { selectedTag = null },
+                                                        label = { Text(stringResource(R.string.note_all_tags)) }
+                                                    )
+                                                    availableTags.forEach { tag ->
+                                                        FilterChip(
+                                                            selected = selectedTag == tag,
+                                                            onClick = {
+                                                                selectedTag = if (selectedTag == tag) null else tag
+                                                            },
+                                                            label = { Text("#$tag") }
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        IconButton(onClick = { isCategorySheetVisible = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = stringResource(R.string.category),
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
                     }
                     // 搜索按钮
                     IconButton(onClick = { isSearchExpanded = true }) {
@@ -561,52 +674,13 @@ fun NoteListScreen(
                 }
             )
 
-            val selectedUnifiedFilter = when (val filter = selectedCategoryFilter) {
-                NoteCategoryFilter.All -> UnifiedCategoryFilterSelection.All
-                NoteCategoryFilter.Local -> UnifiedCategoryFilterSelection.Local
-                NoteCategoryFilter.Starred -> UnifiedCategoryFilterSelection.Starred
-                NoteCategoryFilter.Uncategorized -> UnifiedCategoryFilterSelection.Uncategorized
-                NoteCategoryFilter.LocalStarred -> UnifiedCategoryFilterSelection.LocalStarred
-                NoteCategoryFilter.LocalUncategorized -> UnifiedCategoryFilterSelection.LocalUncategorized
-                is NoteCategoryFilter.Custom -> UnifiedCategoryFilterSelection.Custom(filter.categoryId)
-                is NoteCategoryFilter.BitwardenVault -> UnifiedCategoryFilterSelection.BitwardenVaultFilter(filter.vaultId)
-                is NoteCategoryFilter.BitwardenFolderFilter -> UnifiedCategoryFilterSelection.BitwardenFolderFilter(filter.vaultId, filter.folderId)
-                is NoteCategoryFilter.BitwardenVaultStarred -> UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter(filter.vaultId)
-                is NoteCategoryFilter.BitwardenVaultUncategorized -> UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter(filter.vaultId)
-                is NoteCategoryFilter.KeePassDatabase -> UnifiedCategoryFilterSelection.KeePassDatabaseFilter(filter.databaseId)
-                is NoteCategoryFilter.KeePassGroupFilter -> UnifiedCategoryFilterSelection.KeePassGroupFilter(filter.databaseId, filter.groupPath)
-                is NoteCategoryFilter.KeePassDatabaseStarred -> UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter(filter.databaseId)
-                is NoteCategoryFilter.KeePassDatabaseUncategorized -> UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter(filter.databaseId)
-            }
             if (isCategorySheetVisible) {
-                UnifiedCategoryFilterBottomSheet(
+                when (settings.categorySelectionUiMode) {
+                    takagi.ru.monica.data.CategorySelectionUiMode.BOTTOM_SHEET -> UnifiedCategoryFilterBottomSheet(
                 visible = true,
                 onDismiss = { isCategorySheetVisible = false },
                 selected = selectedUnifiedFilter,
-                onSelect = { selection ->
-                    selectedCategoryFilter = when (selection) {
-                        is UnifiedCategoryFilterSelection.All -> NoteCategoryFilter.All
-                        is UnifiedCategoryFilterSelection.Local -> NoteCategoryFilter.Local
-                        is UnifiedCategoryFilterSelection.Starred -> NoteCategoryFilter.Starred
-                        is UnifiedCategoryFilterSelection.Uncategorized -> NoteCategoryFilter.Uncategorized
-                        is UnifiedCategoryFilterSelection.LocalStarred -> NoteCategoryFilter.LocalStarred
-                        is UnifiedCategoryFilterSelection.LocalUncategorized -> NoteCategoryFilter.LocalUncategorized
-                        is UnifiedCategoryFilterSelection.Custom -> NoteCategoryFilter.Custom(selection.categoryId)
-                        is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> NoteCategoryFilter.BitwardenVault(selection.vaultId)
-                        is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> NoteCategoryFilter.BitwardenFolderFilter(selection.folderId, selection.vaultId)
-                        is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> NoteCategoryFilter.BitwardenVaultStarred(selection.vaultId)
-                        is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> NoteCategoryFilter.BitwardenVaultUncategorized(selection.vaultId)
-                        is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> NoteCategoryFilter.KeePassDatabase(selection.databaseId)
-                        is UnifiedCategoryFilterSelection.KeePassGroupFilter -> NoteCategoryFilter.KeePassGroupFilter(selection.databaseId, selection.groupPath)
-                        is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> NoteCategoryFilter.KeePassDatabaseStarred(selection.databaseId)
-                        is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> NoteCategoryFilter.KeePassDatabaseUncategorized(selection.databaseId)
-                    }
-                    when (selection) {
-                        is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> viewModel.syncKeePassNotes(selection.databaseId)
-                        is UnifiedCategoryFilterSelection.KeePassGroupFilter -> viewModel.syncKeePassNotes(selection.databaseId)
-                        else -> Unit
-                    }
-                },
+                onSelect = handleCategorySelection,
                 launchAnchorBounds = categoryPillBoundsInWindow,
                 categories = categories,
                 keepassDatabases = keepassDatabases,
@@ -712,6 +786,8 @@ fun NoteListScreen(
                     }
                 }
                 )
+                    takagi.ru.monica.data.CategorySelectionUiMode.CHIP_MENU -> Unit
+                }
             }
         },
         bottomBar = {

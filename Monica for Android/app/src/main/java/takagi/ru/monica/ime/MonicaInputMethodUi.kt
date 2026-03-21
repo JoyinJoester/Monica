@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -34,8 +35,9 @@ import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Keyboard
-import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Badge
@@ -174,7 +176,9 @@ internal fun MonicaImeContent(
     onSpace: () -> Unit,
     onShiftToggle: () -> Unit,
     onKeyboardModeChange: (MonicaKeyboardMode) -> Unit,
+    onOpenUnlockApp: () -> Unit,
     onPanelSelected: (MonicaImePanel) -> Unit,
+    onSwitchInputMethod: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val darkTheme = when (settings.themeMode) {
@@ -184,6 +188,7 @@ internal fun MonicaImeContent(
     }
     val activePanelRequiresUnlock = uiState.activePanel != MonicaImePanel.KEYBOARD
     val showPanelContent = activePanelRequiresUnlock && uiState.unlocked
+    val showUnlockPanel = activePanelRequiresUnlock && !uiState.unlocked
 
     MonicaTheme(
         darkTheme = darkTheme,
@@ -245,7 +250,16 @@ internal fun MonicaImeContent(
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
                     }
 
-                    if (!showPanelContent) {
+                    if (showUnlockPanel) {
+                        ImeUnlockFloatingPanel(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                            errorMessage = uiState.errorMessage,
+                            onOpenUnlockApp = onOpenUnlockApp
+                        )
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
+                    }
+
+                    if (!showPanelContent && !showUnlockPanel) {
                         MonicaKeyboard(
                             mode = uiState.keyboardMode,
                             isUppercase = uiState.isUppercase,
@@ -254,7 +268,8 @@ internal fun MonicaImeContent(
                             onEnter = onEnter,
                             onSpace = onSpace,
                             onShiftToggle = onShiftToggle,
-                            onKeyboardModeChange = onKeyboardModeChange
+                            onKeyboardModeChange = onKeyboardModeChange,
+                            onSwitchInputMethod = onSwitchInputMethod
                         )
                     }
                 }
@@ -291,7 +306,7 @@ private fun MonicaImeToolbar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.widthIn(max = 240.dp),
             horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)
         ) {
             toolbarItems.forEachIndexed { index, item ->
@@ -326,12 +341,22 @@ private fun MonicaImeToolbar(
             }
         }
 
+        Spacer(modifier = Modifier.weight(1f))
+
+        ToolbarCircleButton(
+            selected = false,
+            onClick = { },
+            contentDescription = null
+        ) {
+            Icon(Icons.Default.MoreHoriz, contentDescription = null)
+        }
+
         ToolbarCircleButton(
             selected = false,
             onClick = onDismiss,
             contentDescription = stringResource(R.string.ime_toolbar_keyboard)
         ) {
-            Icon(Icons.Default.KeyboardArrowUp, contentDescription = null)
+            Icon(Icons.Default.KeyboardArrowDown, contentDescription = null)
         }
     }
 }
@@ -722,7 +747,8 @@ private fun MonicaKeyboard(
     onEnter: () -> Unit,
     onSpace: () -> Unit,
     onShiftToggle: () -> Unit,
-    onKeyboardModeChange: (MonicaKeyboardMode) -> Unit
+    onKeyboardModeChange: (MonicaKeyboardMode) -> Unit,
+    onSwitchInputMethod: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -738,7 +764,8 @@ private fun MonicaKeyboard(
                 onEnter = onEnter,
                 onSpace = onSpace,
                 onShiftToggle = onShiftToggle,
-                onKeyboardModeChange = onKeyboardModeChange
+                onKeyboardModeChange = onKeyboardModeChange,
+                onSwitchInputMethod = onSwitchInputMethod
             )
         }
 
@@ -770,7 +797,8 @@ private fun MonicaLetterKeyboard(
     onEnter: () -> Unit,
     onSpace: () -> Unit,
     onShiftToggle: () -> Unit,
-    onKeyboardModeChange: (MonicaKeyboardMode) -> Unit
+    onKeyboardModeChange: (MonicaKeyboardMode) -> Unit,
+    onSwitchInputMethod: () -> Unit
 ) {
     val rows = listOf(
         "qwertyuiop".toList(),
@@ -786,7 +814,7 @@ private fun MonicaLetterKeyboard(
             if (index == 2) {
                 MonicaKeyButton(
                     label = "",
-                    icon = { Icon(Icons.Default.KeyboardArrowUp, contentDescription = stringResource(R.string.ime_key_shift)) },
+                    icon = { Icon(Icons.Default.ArrowUpward, contentDescription = stringResource(R.string.ime_key_shift)) },
                     weight = 1.35f,
                     active = isUppercase,
                     style = MonicaKeyStyle.ACCENT,
@@ -836,7 +864,7 @@ private fun MonicaLetterKeyboard(
             weight = 1.05f,
             style = MonicaKeyStyle.ACCENT,
             cornerRadius = 14.dp,
-            onClick = { onKeyboardModeChange(MonicaKeyboardMode.SYMBOLS) }
+            onClick = onSwitchInputMethod
         )
         MonicaKeyButton(
             label = "",
@@ -1095,7 +1123,7 @@ private fun KeyboardModeLabelPart(text: String, selected: Boolean) {
 private fun ToolbarCircleButton(
     selected: Boolean,
     onClick: () -> Unit,
-    contentDescription: String,
+    contentDescription: String? = null,
     enabled: Boolean = true,
     label: String? = null,
     content: @Composable (() -> Unit)? = null

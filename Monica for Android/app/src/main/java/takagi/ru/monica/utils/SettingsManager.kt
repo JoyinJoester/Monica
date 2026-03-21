@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.shareIn
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.BottomNavVisibility
+import takagi.ru.monica.data.CategorySelectionUiMode
 import takagi.ru.monica.data.ColorScheme
 import takagi.ru.monica.data.Language
 import takagi.ru.monica.data.PasswordListQuickFilterItem
@@ -58,6 +59,8 @@ data class PageAdjustmentSettingsSnapshot(
     val passwordListQuickFilterItems: List<String> = emptyList(),
     val passwordListQuickFoldersEnabled: Boolean = false,
     val passwordListQuickFolderStyle: String = takagi.ru.monica.data.PasswordListQuickFolderStyle.CLASSIC.name,
+    val passwordListQuickFolderPathBannerEnabled: Boolean = false,
+    val categorySelectionUiMode: String = takagi.ru.monica.data.CategorySelectionUiMode.DEFAULT.name,
     val passwordListQuickAccessEnabled: Boolean = true,
     val passwordListTopModulesOrder: List<String> = emptyList(),
     val passwordCardDisplayMode: String = takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL.name,
@@ -140,6 +143,8 @@ class SettingsManager(private val context: Context) {
         private val PASSWORD_LIST_QUICK_FILTER_ITEMS_KEY = stringPreferencesKey("password_list_quick_filter_items") // 密码列表快捷筛选显示内容
         private val PASSWORD_LIST_QUICK_FOLDERS_ENABLED_KEY = booleanPreferencesKey("password_list_quick_folders_enabled") // 密码列表快捷文件夹开关
         private val PASSWORD_LIST_QUICK_FOLDER_STYLE_KEY = stringPreferencesKey("password_list_quick_folder_style") // 密码列表快捷文件夹展示样式
+        private val PASSWORD_LIST_QUICK_FOLDER_PATH_BANNER_ENABLED_KEY = booleanPreferencesKey("password_list_quick_folder_path_banner_enabled") // 密码列表路径横幅开关
+        private val CATEGORY_SELECTION_UI_MODE_KEY = stringPreferencesKey("category_selection_ui_mode") // 分类选择 UI 形式
         private val PASSWORD_LIST_QUICK_ACCESS_ENABLED_KEY = booleanPreferencesKey("password_list_quick_access_enabled") // 密码列表“最近/常用”快捷入口开关
         private val PASSWORD_LIST_TOP_MODULES_ORDER_KEY = stringPreferencesKey("password_list_top_modules_order") // 密码列表顶部模块顺序
         private val HIDE_FAB_ON_SCROLL_KEY = booleanPreferencesKey("hide_fab_on_scroll") // 滚动隐藏 FAB
@@ -420,6 +425,23 @@ class SettingsManager(private val context: Context) {
                         ?: PasswordListQuickFolderStyle.CLASSIC.name
                 )
             }.getOrDefault(PasswordListQuickFolderStyle.CLASSIC),
+            passwordListQuickFolderPathBannerEnabled =
+                preferences[PASSWORD_LIST_QUICK_FOLDER_PATH_BANNER_ENABLED_KEY]
+                    ?: (
+                        runCatching {
+                            PasswordListQuickFolderStyle.valueOf(
+                                preferences[PASSWORD_LIST_QUICK_FOLDER_STYLE_KEY]
+                                    ?: PasswordListQuickFolderStyle.CLASSIC.name
+                            )
+                        }.getOrDefault(PasswordListQuickFolderStyle.CLASSIC) ==
+                            PasswordListQuickFolderStyle.M3_CARD
+                    ),
+            categorySelectionUiMode = runCatching {
+                CategorySelectionUiMode.valueOf(
+                    preferences[CATEGORY_SELECTION_UI_MODE_KEY]
+                        ?: CategorySelectionUiMode.DEFAULT.name
+                )
+            }.getOrDefault(CategorySelectionUiMode.DEFAULT),
             passwordListQuickAccessEnabled = preferences[PASSWORD_LIST_QUICK_ACCESS_ENABLED_KEY] ?: true,
             passwordListTopModulesOrder = parsedTopModulesOrder,
             noteGridLayout = preferences[NOTE_GRID_LAYOUT_KEY] ?: true,
@@ -765,6 +787,18 @@ class SettingsManager(private val context: Context) {
         }
     }
 
+    suspend fun updatePasswordListQuickFolderPathBannerEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PASSWORD_LIST_QUICK_FOLDER_PATH_BANNER_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun updateCategorySelectionUiMode(mode: CategorySelectionUiMode) {
+        dataStore.edit { preferences ->
+            preferences[CATEGORY_SELECTION_UI_MODE_KEY] = mode.name
+        }
+    }
+
     suspend fun updatePasswordListQuickAccessEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[PASSWORD_LIST_QUICK_ACCESS_ENABLED_KEY] = enabled
@@ -817,6 +851,8 @@ class SettingsManager(private val context: Context) {
             passwordListQuickFilterItems = settings.passwordListQuickFilterItems.map { it.name },
             passwordListQuickFoldersEnabled = settings.passwordListQuickFoldersEnabled,
             passwordListQuickFolderStyle = settings.passwordListQuickFolderStyle.name,
+            passwordListQuickFolderPathBannerEnabled = settings.passwordListQuickFolderPathBannerEnabled,
+            categorySelectionUiMode = settings.categorySelectionUiMode.name,
             passwordListQuickAccessEnabled = settings.passwordListQuickAccessEnabled,
             passwordListTopModulesOrder = settings.passwordListTopModulesOrder.map { it.name },
             passwordCardDisplayMode = settings.passwordCardDisplayMode.name,
@@ -875,6 +911,9 @@ class SettingsManager(private val context: Context) {
         val parsedQuickFolderStyle = runCatching {
             PasswordListQuickFolderStyle.valueOf(snapshot.passwordListQuickFolderStyle.trim())
         }.getOrDefault(PasswordListQuickFolderStyle.CLASSIC)
+        val parsedCategorySelectionUiMode = runCatching {
+            CategorySelectionUiMode.valueOf(snapshot.categorySelectionUiMode.trim())
+        }.getOrDefault(CategorySelectionUiMode.DEFAULT)
         val parsedUnmatchedIconStrategy = runCatching {
             takagi.ru.monica.data.UnmatchedIconHandlingStrategy.valueOf(
                 snapshot.unmatchedIconHandlingStrategy.trim()
@@ -887,6 +926,9 @@ class SettingsManager(private val context: Context) {
                 parsedQuickFilterItems.joinToString(",") { it.name }
             preferences[PASSWORD_LIST_QUICK_FOLDERS_ENABLED_KEY] = snapshot.passwordListQuickFoldersEnabled
             preferences[PASSWORD_LIST_QUICK_FOLDER_STYLE_KEY] = parsedQuickFolderStyle.name
+            preferences[PASSWORD_LIST_QUICK_FOLDER_PATH_BANNER_ENABLED_KEY] =
+                snapshot.passwordListQuickFolderPathBannerEnabled
+            preferences[CATEGORY_SELECTION_UI_MODE_KEY] = parsedCategorySelectionUiMode.name
             preferences[PASSWORD_LIST_QUICK_ACCESS_ENABLED_KEY] = snapshot.passwordListQuickAccessEnabled
             preferences[PASSWORD_LIST_TOP_MODULES_ORDER_KEY] =
                 parsedTopModules.joinToString(",") { it.name }

@@ -95,7 +95,7 @@ fun PlusFeatureCard(
                 color = if (isUnlocked) {
                     MaterialTheme.colorScheme.primary
                 } else {
-                    MaterialTheme.colorScheme.surfaceVariant
+                    MaterialTheme.colorScheme.secondaryContainer
                 }
             ) {
                 Row(
@@ -109,7 +109,7 @@ fun PlusFeatureCard(
                         tint = if (isUnlocked) {
                             MaterialTheme.colorScheme.onPrimary
                         } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
+                            MaterialTheme.colorScheme.onSecondaryContainer
                         }
                     )
                     Spacer(modifier = Modifier.width(4.dp))
@@ -122,7 +122,7 @@ fun PlusFeatureCard(
                         color = if (isUnlocked) {
                             MaterialTheme.colorScheme.onPrimary
                         } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
+                            MaterialTheme.colorScheme.onSecondaryContainer
                         }
                     )
                 }

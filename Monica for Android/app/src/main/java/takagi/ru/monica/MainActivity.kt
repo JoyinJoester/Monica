@@ -1828,6 +1828,9 @@ fun MonicaContent(
                 onNavigateBack = {
                     navController.popBackStack()
                 },
+                onNavigateToMonicaPlus = {
+                    navController.navigate(Screen.MonicaPlus.route)
+                },
                 isPlusActivated = settings.isPlusActivated,
                 validatorVibrationEnabled = settings.validatorVibrationEnabled,
                 onValidatorVibrationChange = { enabled ->

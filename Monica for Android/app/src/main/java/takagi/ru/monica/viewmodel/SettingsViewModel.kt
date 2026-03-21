@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.BottomNavContentTab
+import takagi.ru.monica.data.CategorySelectionUiMode
 import takagi.ru.monica.data.ColorScheme
 import takagi.ru.monica.data.Language
 import takagi.ru.monica.data.PresetCustomField
@@ -312,6 +313,18 @@ class SettingsViewModel(
     fun updatePasswordListQuickFolderStyle(style: takagi.ru.monica.data.PasswordListQuickFolderStyle) {
         viewModelScope.launch {
             settingsManager.updatePasswordListQuickFolderStyle(style)
+        }
+    }
+
+    fun updatePasswordListQuickFolderPathBannerEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updatePasswordListQuickFolderPathBannerEnabled(enabled)
+        }
+    }
+
+    fun updateCategorySelectionUiMode(mode: CategorySelectionUiMode) {
+        viewModelScope.launch {
+            settingsManager.updateCategorySelectionUiMode(mode)
         }
     }
 

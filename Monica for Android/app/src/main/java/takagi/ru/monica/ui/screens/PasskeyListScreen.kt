@@ -12,6 +12,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -31,6 +32,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -45,6 +47,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -76,10 +79,13 @@ import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import takagi.ru.monica.ui.components.SyncStatusBadge
 import takagi.ru.monica.ui.components.SyncStatusIcon
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
+import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenu
+import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuOffset
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
 import takagi.ru.monica.ui.components.UnifiedMoveAction
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
 import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
+import takagi.ru.monica.ui.components.unifiedCategoryFilterChipMenuModifier
 import takagi.ru.monica.ui.gestures.SwipeActions
 import takagi.ru.monica.ui.haptic.rememberHapticFeedback
 import takagi.ru.monica.utils.BiometricHelper
@@ -850,12 +856,49 @@ fun PasskeyListScreen(
                 searchHint = stringResource(R.string.passkey_search_placeholder),
                 onActionPillBoundsChanged = { bounds -> categoryPillBoundsInWindow = bounds },
                 actions = {
-                    IconButton(onClick = { showCategoryFilterDialog = true }) {
-                        Icon(
-                            imageVector = Icons.Default.Folder,
-                            contentDescription = stringResource(R.string.category),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    if (appSettings.categorySelectionUiMode == takagi.ru.monica.data.CategorySelectionUiMode.CHIP_MENU) {
+                        Box {
+                            IconButton(onClick = { showCategoryFilterDialog = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Folder,
+                                    contentDescription = stringResource(R.string.category),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            MaterialTheme(
+                                shapes = MaterialTheme.shapes.copy(
+                                    extraSmall = RoundedCornerShape(20.dp),
+                                    small = RoundedCornerShape(20.dp)
+                                )
+                            ) {
+                                DropdownMenu(
+                                    expanded = showCategoryFilterDialog,
+                                    onDismissRequest = { showCategoryFilterDialog = false },
+                                    offset = UnifiedCategoryFilterChipMenuOffset,
+                                    modifier = unifiedCategoryFilterChipMenuModifier()
+                                ) {
+                                    UnifiedCategoryFilterChipMenu(
+                                        visible = true,
+                                        onDismiss = { showCategoryFilterDialog = false },
+                                        selected = selectedCategoryFilter,
+                                        onSelect = { selection -> selectedCategoryFilter = selection },
+                                        categories = categories,
+                                        keepassDatabases = keepassDatabases,
+                                        bitwardenVaults = bitwardenVaults,
+                                        getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+                                        quickFilterContent = {}
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        IconButton(onClick = { showCategoryFilterDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = stringResource(R.string.category),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                     if (selectedBitwardenVaultId != null) {
                         IconButton(
@@ -1179,65 +1222,69 @@ fun PasskeyListScreen(
     }
 
     if (showCategoryFilterDialog) {
-        UnifiedCategoryFilterBottomSheet(
-        visible = true,
-        onDismiss = { showCategoryFilterDialog = false },
-        selected = selectedCategoryFilter,
-        onSelect = { selection ->
-            selectedCategoryFilter = selection
-        },
-        launchAnchorBounds = categoryPillBoundsInWindow,
-        categories = categories,
-        keepassDatabases = keepassDatabases,
-        bitwardenVaults = bitwardenVaults,
-        getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
-        onVerifyMasterPassword = { input ->
-            securityManager.verifyMasterPassword(input)
-        },
-        onRequestBiometricVerify = if (activity != null && canUseBiometric) {
-            { onSuccess, onError ->
-                biometricHelper.authenticate(
-                    activity = activity,
-                    title = context.getString(R.string.verify_identity),
-                    subtitle = context.getString(R.string.verify_to_delete),
-                    onSuccess = { onSuccess() },
-                    onError = { error -> onError(error) },
-                    onFailed = {}
-                )
-            }
-        } else {
-            null
-        },
-        onCreateCategoryWithName = { name ->
-            scope.launch {
-                val finalName = name.trim()
-                if (finalName.isNotEmpty()) {
-                    database.categoryDao().insert(Category(name = finalName))
-                }
-            }
-        },
-        onRenameCategory = { category ->
-            scope.launch {
-                database.categoryDao().update(category)
-            }
-        },
-        onDeleteCategory = { category ->
-            scope.launch {
-                if (passwordViewModel != null) {
-                    passwordViewModel.deleteCategory(category)
+        when (appSettings.categorySelectionUiMode) {
+            takagi.ru.monica.data.CategorySelectionUiMode.BOTTOM_SHEET -> UnifiedCategoryFilterBottomSheet(
+                visible = true,
+                onDismiss = { showCategoryFilterDialog = false },
+                selected = selectedCategoryFilter,
+                onSelect = { selection ->
+                    selectedCategoryFilter = selection
+                },
+                launchAnchorBounds = categoryPillBoundsInWindow,
+                categories = categories,
+                keepassDatabases = keepassDatabases,
+                bitwardenVaults = bitwardenVaults,
+                getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+                onVerifyMasterPassword = { input ->
+                    securityManager.verifyMasterPassword(input)
+                },
+                onRequestBiometricVerify = if (activity != null && canUseBiometric) {
+                    { onSuccess, onError ->
+                        biometricHelper.authenticate(
+                            activity = activity,
+                            title = context.getString(R.string.verify_identity),
+                            subtitle = context.getString(R.string.verify_to_delete),
+                            onSuccess = { onSuccess() },
+                            onError = { error -> onError(error) },
+                            onFailed = {}
+                        )
+                    }
                 } else {
-                    database.passwordEntryDao().removeCategoryFromPasswords(category.id)
-                    database.secureItemDao().removeCategoryFromItems(category.id)
-                    database.passkeyDao().removeCategoryFromPasskeys(category.id)
-                    database.categoryDao().delete(category)
+                    null
+                },
+                onCreateCategoryWithName = { name ->
+                    scope.launch {
+                        val finalName = name.trim()
+                        if (finalName.isNotEmpty()) {
+                            database.categoryDao().insert(Category(name = finalName))
+                        }
+                    }
+                },
+                onRenameCategory = { category ->
+                    scope.launch {
+                        database.categoryDao().update(category)
+                    }
+                },
+                onDeleteCategory = { category ->
+                    scope.launch {
+                        if (passwordViewModel != null) {
+                            passwordViewModel.deleteCategory(category)
+                        } else {
+                            database.passwordEntryDao().removeCategoryFromPasswords(category.id)
+                            database.secureItemDao().removeCategoryFromItems(category.id)
+                            database.passkeyDao().removeCategoryFromPasskeys(category.id)
+                            database.categoryDao().delete(category)
+                        }
+                        val currentFilter = selectedCategoryFilter
+                        if (currentFilter is UnifiedCategoryFilterSelection.Custom && currentFilter.categoryId == category.id) {
+                            selectedCategoryFilter = UnifiedCategoryFilterSelection.All
+                        }
+                    }
                 }
-                val currentFilter = selectedCategoryFilter
-                if (currentFilter is UnifiedCategoryFilterSelection.Custom && currentFilter.categoryId == category.id) {
-                    selectedCategoryFilter = UnifiedCategoryFilterSelection.All
-                }
-            }
+            )
+
+            takagi.ru.monica.data.CategorySelectionUiMode.CHIP_MENU -> Unit
         }
-        )
     }
 
     if (showDeleteConfirmDialog) {

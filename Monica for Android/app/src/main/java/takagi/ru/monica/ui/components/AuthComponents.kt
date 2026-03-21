@@ -22,7 +22,6 @@ import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import takagi.ru.monica.R
 import takagi.ru.monica.security.SecurityManager
-import takagi.ru.monica.security.SessionManager
 import takagi.ru.monica.utils.BiometricAuthHelper
 
 /**
@@ -60,7 +59,7 @@ fun PasswordVerificationContent(
     var autoBiometricTried by remember { mutableStateOf(false) }
 
     fun completeAuthentication() {
-        SessionManager.markUnlocked()
+        securityManager.markVaultAuthenticated()
         onSuccess()
     }
     

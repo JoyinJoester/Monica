@@ -201,6 +201,67 @@ class SecurityManager(private val context: Context) {
     fun isVaultRuntimeUnlocked(): Boolean {
         return processCachedMdk?.isNotEmpty() == true
     }
+
+    /**
+     * Unified success hook for any authentication flow (password/biometric/app/IME/autofill).
+     * Keeps session and keystore cooldown states in sync to avoid false locked prompts.
+     */
+    fun markVaultAuthenticated() {
+        SessionManager.markUnlocked()
+        mdkAuthUnavailableUntilMillis = 0L
+        hasLoggedMdkAuthExpiredWarning = false
+        hasLoggedMdkFallbackEncryption = false
+    }
+
+    /**
+     * Single-source vault accessibility check for IME/autofill style callers.
+     * Requires both a valid session window and usable runtime key material.
+     */
+    fun canAccessVaultNow(context: Context, autoLockMinutes: Int): Boolean {
+        if (!isMasterPasswordSet()) return true
+        if (isVaultRuntimeUnlocked()) return true
+
+        val mdkAccessible = try {
+            val mdk = getMdkForCrypto()
+            mdk != null && mdk.isNotEmpty()
+        } catch (_: android.security.keystore.KeyPermanentlyInvalidatedException) {
+            false
+        } catch (_: Exception) {
+            false
+        }
+
+        // Cross-process/cold-process recovery: if keystore-authenticated MDK is readable,
+        // treat vault as unlocked and sync session state immediately.
+        if (mdkAccessible) {
+            markVaultAuthenticated()
+            return true
+        }
+
+        SessionManager.updateAutoLockTimeout(autoLockMinutes)
+        val sessionActive = SessionManager.canSkipVerification(context)
+        if (!sessionActive) {
+            return false
+        }
+
+        // Session is still valid but MDK read previously failed (often due a stale auth cooldown).
+        // Force one immediate retry before reporting locked state.
+        mdkAuthUnavailableUntilMillis = 0L
+        val retriedAccessible = try {
+            val mdk = getMdkForCrypto()
+            mdk != null && mdk.isNotEmpty()
+        } catch (_: android.security.keystore.KeyPermanentlyInvalidatedException) {
+            false
+        } catch (_: Exception) {
+            false
+        }
+
+        if (retriedAccessible) {
+            markVaultAuthenticated()
+            return true
+        }
+
+        return false
+    }
     
     /**
      * Set the master password

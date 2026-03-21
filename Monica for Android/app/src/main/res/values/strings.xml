@@ -810,6 +810,7 @@
     <string name="note_content">Content</string>
     <string name="note_content_placeholder">Write something meaningful...</string>
     <string name="note_tags">Tags</string>
+    <string name="note_all_tags">All tags</string>
     <string name="note_tags_placeholder">Tag1, Tag2</string>
     <string name="note_markdown_label">Markdown formatting</string>
     <string name="note_mode_plain">Plain</string>
@@ -889,7 +890,7 @@
     <string name="all_navigation_items">All Navigation Items</string>
     <string name="category_all">All</string>
     <string name="hidden">Hidden</string>
-    <string name="settings_version_number">V1.0.27</string>
+    <string name="settings_version_number">V1.0.281</string>
     <string name="settings_support_author">Support Author</string>
     <string name="settings_support_author_description">Thank you for your support</string>
     <string name="settings_privacy_policy">Privacy Policy</string>
@@ -2149,7 +2150,9 @@
     <string name="group_by_none">No grouping</string>
     <string name="new_category">New category</string>
     <string name="edit_category">Edit category</string>
+    <string name="rename_category">Rename</string>
     <string name="category_name">Category name</string>
+    <string name="add_category">New category</string>
     <string name="category_rename_mode_leaf_only">Rename current level</string>
     <string name="category_rename_mode_full_path">Edit full path</string>
     <string name="category_parent_path_hint">Parent path: %1$s</string>
@@ -2919,7 +2922,19 @@
     <string name="password_list_quick_folders_switch_desc">Show quick folder cards at the top of the password list to jump to parent or child folders.</string>
     <string name="password_list_quick_folders_style_title">Quick Folder Style</string>
     <string name="password_list_quick_folders_style_classic">Classic</string>
-    <string name="password_list_quick_folders_style_m3">Card + Path banner</string>
+    <string name="password_list_quick_folders_style_m3">Card</string>
+    <string name="password_list_quick_folder_path_banner_switch_title">Path Banner</string>
+    <string name="password_list_quick_folder_path_banner_switch_desc">Show a folder path banner above the password list. Works independently from quick folder cards.</string>
+    <string name="category_selection_ui_mode_title">Category selection UI switch</string>
+    <string name="category_selection_ui_mode_desc">Choose which UI style is used when opening category selection in the password list.</string>
+    <string name="category_selection_ui_mode_bottom_sheet_title">Bottom sheet</string>
+    <string name="category_selection_ui_mode_bottom_sheet_desc">Use the current bottom sheet style.</string>
+    <string name="category_selection_ui_mode_chip_menu_title">Chip menu</string>
+    <string name="category_selection_ui_mode_chip_menu_desc">Open an anchored chip menu beside the top pill, with databases on the first row and category folders below.</string>
+    <string name="category_selection_menu_databases">Databases</string>
+    <string name="category_selection_menu_quick_filters">Quick filters</string>
+    <string name="category_selection_menu_folders">Category folders</string>
+    <string name="category_selection_menu_local_database">Monica</string>
     <string name="password_list_quick_access_switch_title">Recent &amp; Frequent Button</string>
     <string name="password_list_quick_access_switch_desc">Show a quick-entry button above Add FAB for recently opened and frequently opened passwords.</string>
     <string name="password_list_quick_filter_favorite">Favorites</string>

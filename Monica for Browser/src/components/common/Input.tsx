@@ -10,33 +10,37 @@ const InputContainer = styled.div`
 
 const StyledInput = styled.input<{ hasError?: boolean }>`
   width: 100%;
-  padding: 16px 16px;
-  border-radius: 12px;
+  padding: 11px 14px;
+  border-radius: 10px;
   border: 1px solid ${({ theme, hasError }) => hasError ? theme.colors.error : theme.colors.outline};
   background-color: ${({ theme }) => theme.colors.surface};
   color: ${({ theme }) => theme.colors.onSurface};
-  font-size: 16px;
+  font-size: 14px;
   font-family: inherit;
-  transition: all 0.2s ease;
+  transition:
+    border-color 140ms cubic-bezier(0.2, 0.6, 0.2, 1),
+    box-shadow 140ms cubic-bezier(0.2, 0.6, 0.2, 1);
   outline: none;
 
   &:focus {
     border-color: ${({ theme, hasError }) => hasError ? theme.colors.error : theme.colors.primary};
-    border-width: 2px;
-    padding: 15px 15px; /* Adjust for border width inc */
+    box-shadow: 0 0 0 3px ${({ theme, hasError }) =>
+      hasError ? `${theme.colors.errorContainer}` : theme.colors.primaryContainer};
   }
 
   &::placeholder {
     color: ${({ theme }) => theme.colors.onSurfaceVariant};
+    opacity: 0.7;
   }
 `;
 
 const Label = styled.label`
   display: block;
-  margin-bottom: 4px;
+  margin-bottom: 5px;
   font-size: 12px;
+  font-weight: 600;
   color: ${({ theme }) => theme.colors.onSurfaceVariant};
-  margin-left: 4px;
+  letter-spacing: 0.02em;
 `;
 
 const ErrorText = styled(motion.span)`
@@ -44,7 +48,7 @@ const ErrorText = styled(motion.span)`
   font-size: 12px;
   margin-top: 4px;
   display: block;
-  margin-left: 4px;
+  margin-left: 2px;
 `;
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
@@ -59,8 +63,9 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(({ label, er
             <StyledInput ref={ref} hasError={!!error} {...props} />
             {error && (
                 <ErrorText
-                    initial={{ opacity: 0, y: -5 }}
+                    initial={{ opacity: 0, y: -4 }}
                     animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.14 }}
                 >
                     {error}
                 </ErrorText>

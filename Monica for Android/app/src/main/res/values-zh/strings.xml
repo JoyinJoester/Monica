@@ -37,6 +37,7 @@
     <string name="note_mode_edit">编辑</string>
     <string name="note_mode_preview">预览</string>
     <string name="note_markdown_preview_empty">Markdown 预览为空。</string>
+    <string name="note_all_tags">全部标签</string>
     <string name="note_tags_placeholder">标签1, 标签2</string>
     <string name="note_images_embedded_hint">图片会以内嵌方式插入正文。</string>
     <string name="note_add_image">添加图片</string>
@@ -852,7 +853,7 @@
     <string name="custom_icon_load_more">加载更多图标（剩余 %1$d 个）</string>
     <string name="custom_icon_upload_success">图标上传成功</string>
     <string name="custom_icon_upload_failed">上传失败：%1$s</string>
-    <string name="settings_version_number">V1.0.27</string>
+    <string name="settings_version_number">V1.0.281</string>
     <string name="settings_support_author">支持作者</string>
     <string name="settings_support_author_description">感谢您的支持</string>
     <string name="settings_privacy_policy">隐私政策</string>
@@ -1984,7 +1985,9 @@
     <string name="group_by_none">不分组</string>
     <string name="new_category">新建分类</string>
     <string name="edit_category">编辑分类</string>
+    <string name="rename_category">重命名</string>
     <string name="category_name">分类名称</string>
+    <string name="add_category">新建分类</string>
     <string name="category_rename_mode_leaf_only">仅重命名当前层级</string>
     <string name="category_rename_mode_full_path">编辑完整路径</string>
     <string name="category_parent_path_hint">父级路径：%1$s</string>
@@ -2758,7 +2761,19 @@
     <string name="password_list_quick_folders_switch_desc">开启后在密码列表顶部显示快捷文件夹卡片，可快速返回上一级目录或进入子目录。</string>
     <string name="password_list_quick_folders_style_title">快捷文件夹展示样式</string>
     <string name="password_list_quick_folders_style_classic">经典样式</string>
-    <string name="password_list_quick_folders_style_m3">卡片+路径横幅</string>
+    <string name="password_list_quick_folders_style_m3">卡片样式</string>
+    <string name="password_list_quick_folder_path_banner_switch_title">路径横幅</string>
+    <string name="password_list_quick_folder_path_banner_switch_desc">在密码列表顶部显示当前目录路径横幅，可独立于快捷文件夹卡片单独使用。</string>
+    <string name="category_selection_ui_mode_title">分类选择UI切换</string>
+    <string name="category_selection_ui_mode_desc">选择密码列表打开分类选择时使用的界面形式。</string>
+    <string name="category_selection_ui_mode_bottom_sheet_title">底部弹窗</string>
+    <string name="category_selection_ui_mode_bottom_sheet_desc">使用当前的 Bottom Sheet 形式。</string>
+    <string name="category_selection_ui_mode_chip_menu_title">胶囊菜单</string>
+    <string name="category_selection_ui_mode_chip_menu_desc">在顶部胶囊右侧弹出 chip 菜单，第一行显示数据库，下面显示快捷筛选和分类文件夹。</string>
+    <string name="category_selection_menu_databases">数据库</string>
+    <string name="category_selection_menu_quick_filters">快捷筛选</string>
+    <string name="category_selection_menu_folders">分类文件夹</string>
+    <string name="category_selection_menu_local_database">Monica</string>
     <string name="password_list_quick_access_switch_title">最近打开与常用按钮</string>
     <string name="password_list_quick_access_switch_desc">开启后会在添加按钮上方显示快捷入口，可快速打开最近使用和高频使用的密码。</string>
     <string name="password_list_quick_filter_favorite">收藏</string>

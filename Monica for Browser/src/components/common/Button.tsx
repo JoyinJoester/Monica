@@ -6,52 +6,87 @@ interface ButtonProps {
     fullWidth?: boolean;
 }
 
-export const Button = styled(motion.button) <ButtonProps>`
+export const Button = styled(motion.button)<ButtonProps>`
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 10px 24px;
-  border-radius: 100px; /* Pillow shape for M3 */
+  gap: 6px;
+  padding: 10px 22px;
+  border-radius: 999px;
   font-family: inherit;
-  font-weight: 500;
+  font-weight: 600;
   font-size: 14px;
   cursor: pointer;
-  border: none;
+  border: 1px solid transparent;
   outline: none;
   width: ${({ fullWidth }) => (fullWidth ? '100%' : 'auto')};
-  
-  /* Primary Variant */
-  background-color: ${({ theme, variant }) =>
-        variant === 'secondary' ? theme.colors.secondaryContainer :
-            variant === 'text' ? 'transparent' :
-                theme.colors.primary};
-    
-  color: ${({ theme, variant }) =>
-        variant === 'secondary' ? theme.colors.onSecondaryContainer :
-            variant === 'text' ? theme.colors.primary :
-                theme.colors.onPrimary};
+  transition:
+    background-color 140ms cubic-bezier(0.2, 0.6, 0.2, 1),
+    color 140ms cubic-bezier(0.2, 0.6, 0.2, 1),
+    border-color 140ms cubic-bezier(0.2, 0.6, 0.2, 1),
+    box-shadow 140ms cubic-bezier(0.2, 0.6, 0.2, 1),
+    transform 140ms cubic-bezier(0.2, 0.6, 0.2, 1);
 
-  box-shadow: ${({ variant }) => variant === 'primary' ? '0 2px 4px rgba(0,0,0,0.1)' : 'none'};
-  transition: box-shadow 0.2s ease;
+  background-color: ${
+    ({ theme, variant }) =>
+      variant === 'secondary' ? theme.colors.surfaceVariant :
+      variant === 'text'      ? 'transparent' :
+                                theme.colors.primary
+  };
+
+  color: ${
+    ({ theme, variant }) =>
+      variant === 'secondary' ? theme.colors.onSurface :
+      variant === 'text'      ? theme.colors.primary :
+                                theme.colors.onPrimary
+  };
+
+  border-color: ${
+    ({ theme, variant }) =>
+      variant === 'secondary' ? theme.colors.outline :
+      variant === 'text'      ? 'transparent' :
+                                'transparent'
+  };
+
+  box-shadow: ${
+    ({ variant }) =>
+      variant === 'primary' ? '0 2px 8px rgba(0,0,0,0.10)' : 'none'
+  };
 
   &:hover {
-    box-shadow: ${({ variant }) => variant === 'primary' ? '0 4px 8px rgba(0,0,0,0.15)' : 'none'};
-    background-color: ${({ theme, variant }) =>
-        variant === 'secondary' ? theme.colors.secondary : // Hover state approx
-            variant === 'text' ? theme.colors.surfaceVariant : // subtle hover
-                theme.colors.primary}; // Need darker shade ideally, using filter
-    filter: brightness(0.95);
+    transform: translateY(-1px);
+    background-color: ${
+      ({ theme, variant }) =>
+        variant === 'secondary' ? theme.colors.outline :
+        variant === 'text'      ? theme.colors.surfaceVariant :
+                                  theme.colors.primaryContainer
+    };
+    color: ${
+      ({ theme, variant }) =>
+        variant === 'text' ? theme.colors.primary : undefined
+    };
+    border-color: ${
+      ({ theme, variant }) =>
+        variant === 'primary' ? theme.colors.primary : undefined
+    };
+    box-shadow: ${
+      ({ variant }) =>
+        variant === 'primary' ? '0 4px 16px rgba(0,0,0,0.13)' : 'none'
+    };
   }
 
   &:disabled {
     background-color: ${({ theme }) => theme.colors.surfaceVariant};
     color: ${({ theme }) => theme.colors.onSurfaceVariant};
+    border-color: transparent;
     cursor: not-allowed;
     box-shadow: none;
+    transform: none;
+    opacity: 0.6;
   }
 `;
 
 Button.defaultProps = {
-    whileTap: { scale: 0.95 },
+    whileTap: { scale: 0.97 },
     variant: 'primary',
 };

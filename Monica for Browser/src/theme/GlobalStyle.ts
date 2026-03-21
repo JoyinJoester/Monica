@@ -9,10 +9,10 @@ export const GlobalStyle = createGlobalStyle`
   }
 
   body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    font-family: 'Source Sans 3', 'Noto Sans SC', 'PingFang SC', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, sans-serif;
     background-color: ${({ theme }) => theme.colors.background};
     color: ${({ theme }) => theme.colors.onBackground};
-    overflow: hidden;    
+    overflow: hidden;
     transition: background-color 0.3s ease, color 0.3s ease;
   }
 
@@ -46,33 +46,37 @@ export const GlobalStyle = createGlobalStyle`
     }
   }
 
-  code {
-    font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+  code, pre, kbd {
+    font-family: 'JetBrains Mono', 'SFMono-Regular', Consolas, 'Courier New', monospace;
   }
 
   * {
     box-sizing: border-box;
-    /* Custom Scrollbar */
+
     &::-webkit-scrollbar {
-      width: 6px;
+      width: 5px;
     }
     &::-webkit-scrollbar-thumb {
-      background-color: ${({ theme }) => theme.colors.outlineVariant};
-      border-radius: 3px;
+      background-color: ${({ theme }) => theme.colors.outline};
+      border-radius: 999px;
     }
     &::-webkit-scrollbar-track {
       background-color: transparent;
     }
   }
 
-  /* Global tap/click feedback for all interactive elements */
   button, [role="button"], a, select, summary {
-    -webkit-tap-highlight-color: rgba(0, 0, 0, 0.08);
+    -webkit-tap-highlight-color: rgba(0, 0, 0, 0.06);
   }
 
-  /* Ensure focus-visible rings for keyboard navigation */
   :focus-visible {
     outline: 2px solid ${({ theme }) => theme.colors.primary};
     outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  ::selection {
+    background: ${({ theme }) => theme.colors.primaryContainer};
+    color: ${({ theme }) => theme.colors.onPrimaryContainer};
   }
 `;

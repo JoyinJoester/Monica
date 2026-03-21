@@ -19,6 +19,8 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
+// ─── Layout Container ────────────────────────────────────────────────────────
+
 const LayoutContainer = styled.div<{ $manager: boolean }>`
   display: flex;
   flex-direction: column;
@@ -28,122 +30,15 @@ const LayoutContainer = styled.div<{ $manager: boolean }>`
 
   @media (min-width: 960px) {
     flex-direction: ${({ $manager }) => ($manager ? 'row' : 'column')};
-    ${({ $manager }) => $manager && css`
-      background: radial-gradient(circle at 20% 0%, #1a3157 0%, #121f3a 38%, #0c1528 100%);
-    `}
   }
 `;
 
-const MainArea = styled.section<{ $manager: boolean }>`
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0;
-  min-height: 0;
-
-  @media (min-width: 960px) {
-    ${({ $manager }) => $manager && css`
-      max-width: calc(100% - 100px);
-    `}
-  }
-`;
-
-const Header = styled.header<{ $manager: boolean }>`
-  padding: 16px 20px;
-  background-color: ${({ theme }) => `${theme.colors.surface}E8`};
-  border-bottom: 1px solid ${({ theme }) => theme.colors.outlineVariant};
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  backdrop-filter: blur(8px);
-
-  @media (min-width: 960px) {
-    ${({ $manager }) => $manager && css`
-      min-height: 72px;
-      padding: 20px 28px;
-      background: rgba(13, 24, 45, 0.88);
-      border-bottom: 1px solid rgba(112, 146, 204, 0.26);
-      backdrop-filter: blur(12px);
-    `}
-  }
-`;
-
-const Title = styled.h1<{ $manager: boolean }>`
-  margin: 0;
-  font-size: 20px;
-  font-weight: 700;
-  color: ${({ theme, $manager }) => ($manager ? '#e9ebff' : theme.colors.primary)};
-  letter-spacing: -0.5px;
-`;
-
-const HeaderActions = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 8px;
-`;
-
-const OpenManagerButton = styled.button`
-  border: 1px solid ${({ theme }) => theme.colors.outlineVariant};
-  background: ${({ theme }) => theme.colors.surface};
-  color: ${({ theme }) => theme.colors.onSurface};
-  border-radius: 18px;
-  padding: 8px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  cursor: pointer;
-  transition: transform 0.18s ease, background-color 0.18s ease, border-color 0.18s ease;
-
-  &:hover {
-    transform: translateY(-1px);
-    background: ${({ theme }) => theme.colors.primaryContainer};
-    border-color: ${({ theme }) => theme.colors.primary};
-  }
-
-  &:active {
-    transform: translateY(0) scale(0.95);
-    opacity: 0.8;
-  }
-
-  svg {
-    width: 14px;
-    height: 14px;
-  }
-`;
-
-const Content = styled.main<{ $manager: boolean }>`
-  flex: 1;
-  overflow-y: auto;
-  position: relative;
-  padding-bottom: 4px;
-
-  ${({ $manager }) => $manager && css`
-    animation: content-fade 220ms ease-out;
-    background: transparent;
-
-    @keyframes content-fade {
-      from {
-        opacity: 0;
-        transform: translateY(8px);
-      }
-      to {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-  `}
-`;
+// ─── Sidebar Nav (manager mode, desktop) ─────────────────────────────────────
 
 const Navigation = styled.nav<{ $manager: boolean }>`
-  padding: 8px 8px;
+  padding: 8px;
   background-color: ${({ theme }) => theme.colors.surface};
-  border-top: 1px solid ${({ theme }) => theme.colors.outlineVariant};
+  border-top: 1px solid ${({ theme }) => theme.colors.outline};
   display: flex;
   justify-content: space-around;
   align-items: center;
@@ -152,48 +47,54 @@ const Navigation = styled.nav<{ $manager: boolean }>`
   z-index: 15;
 
   @media (min-width: 960px) {
-    ${({ $manager }) => $manager && css`
-      width: 84px;
-      background: rgba(12, 22, 41, 0.96);
-      border-top: none;
-      border-right: 1px solid rgba(112, 146, 204, 0.26);
-      justify-content: flex-start;
-      align-items: stretch;
-      flex-direction: column;
-      gap: 6px;
-      padding: 16px 10px;
-      overflow-y: auto;
-    `}
+    ${({ $manager }) =>
+      $manager &&
+      css`
+        width: 80px;
+        min-width: 80px;
+        background: ${({ theme }: any) => theme.colors.surface};
+        border-top: none;
+        border-right: 1px solid ${({ theme }: any) => theme.colors.outline};
+        justify-content: flex-start;
+        align-items: stretch;
+        flex-direction: column;
+        gap: 2px;
+        padding: 12px 8px;
+        overflow-y: auto;
+      `}
   }
 `;
 
-const ManagerNavTop = styled.div`
+const SidebarLogo = styled.div`
   display: none;
 
   @media (min-width: 960px) {
     display: flex;
     justify-content: center;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid ${({ theme }) => theme.colors.outline};
   }
 `;
 
-const ManagerLogo = styled.div`
-  width: 44px;
-  height: 44px;
+const LogoMark = styled.div`
+  width: 40px;
+  height: 40px;
   border-radius: 12px;
-  border: 1px solid rgba(138, 177, 243, 0.48);
-  background: linear-gradient(135deg, rgba(70, 124, 220, 0.28), rgba(54, 97, 198, 0.26));
-  color: #b8d5ff;
+  background: ${({ theme }) => theme.colors.primaryContainer};
+  border: 1px solid ${({ theme }) => theme.colors.outline};
+  color: ${({ theme }) => theme.colors.primary};
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 10px 24px rgba(22, 66, 150, 0.35);
 
   svg {
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
   }
 `;
+
+// ─── Nav Items ────────────────────────────────────────────────────────────────
 
 const NavItem = styled(NavLink)<{ $manager: boolean }>`
   display: flex;
@@ -203,52 +104,156 @@ const NavItem = styled(NavLink)<{ $manager: boolean }>`
   color: ${({ theme }) => theme.colors.onSurfaceVariant};
   font-size: 10px;
   font-weight: 500;
-  padding: 6px 10px;
-  border-radius: 12px;
-  transition: all 0.2s ease;
+  padding: 6px 8px;
+  border-radius: 10px;
+  transition:
+    color 140ms cubic-bezier(0.2, 0.6, 0.2, 1),
+    background-color 140ms cubic-bezier(0.2, 0.6, 0.2, 1);
   min-width: 0;
   flex: 1;
   cursor: pointer;
 
-    &:active {
-      transform: scale(0.92);
-      opacity: 0.8;
-    }
+  &.active {
+    color: ${({ theme }) => theme.colors.primary};
+    background: ${({ theme }) => theme.colors.primaryContainer};
+  }
+
+  &:hover:not(.active) {
+    color: ${({ theme }) => theme.colors.onSurface};
+    background: ${({ theme }) => theme.colors.surfaceVariant};
+  }
+
+  &:active {
+    transform: scale(0.94);
   }
 
   svg {
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
     margin-bottom: 2px;
   }
 
   @media (min-width: 960px) {
-    ${({ $manager }) => $manager && css`
-      flex: unset;
-      width: 100%;
-      padding: 10px 6px;
-      border-radius: 12px;
-      font-size: 10px;
-      color: #8fa9d8;
+    ${({ $manager }) =>
+      $manager &&
+      css`
+        flex: unset;
+        width: 100%;
+        padding: 9px 6px;
+        border-radius: 10px;
+        font-size: 10px;
 
-      &.active {
-        background: linear-gradient(135deg, rgba(64, 121, 221, 0.5), rgba(47, 96, 196, 0.38));
-        color: #f5f6ff;
-        border: 1px solid rgba(126, 168, 235, 0.45);
-        box-shadow: 0 8px 24px rgba(25, 74, 169, 0.3);
-      }
-
-      &:hover {
-        color: #dce1ff;
-        background: rgba(107, 145, 216, 0.16);
-      }
-
-      svg {
-        margin-bottom: 4px;
-      }
-    `}
+        svg {
+          margin-bottom: 3px;
+        }
+      `}
   }
 `;
+
+// ─── Main Area ────────────────────────────────────────────────────────────────
+
+const MainArea = styled.section<{ $manager: boolean }>`
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+`;
+
+// ─── Header ──────────────────────────────────────────────────────────────────
+
+const Header = styled.header`
+  padding: 14px 16px;
+  background-color: ${({ theme }) => `${theme.colors.surface}F0`};
+  border-bottom: 1px solid ${({ theme }) => theme.colors.outline};
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  backdrop-filter: blur(10px);
+`;
+
+const Title = styled.h1`
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: ${({ theme }) => theme.colors.primary};
+  letter-spacing: -0.3px;
+  font-family: 'Source Sans 3', 'Noto Sans SC', sans-serif;
+`;
+
+const HeaderActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+`;
+
+const OpenManagerButton = styled.button`
+  border: 1px solid ${({ theme }) => theme.colors.outline};
+  background: ${({ theme }) => theme.colors.surface};
+  color: ${({ theme }) => theme.colors.onSurfaceVariant};
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  transition:
+    background-color 140ms cubic-bezier(0.2, 0.6, 0.2, 1),
+    border-color 140ms cubic-bezier(0.2, 0.6, 0.2, 1),
+    color 140ms cubic-bezier(0.2, 0.6, 0.2, 1),
+    transform 140ms cubic-bezier(0.2, 0.6, 0.2, 1);
+
+  &:hover {
+    transform: translateY(-1px);
+    background: ${({ theme }) => theme.colors.primaryContainer};
+    border-color: ${({ theme }) => theme.colors.primary};
+    color: ${({ theme }) => theme.colors.onPrimaryContainer};
+  }
+
+  &:active {
+    transform: scale(0.96);
+  }
+
+  svg {
+    width: 13px;
+    height: 13px;
+  }
+`;
+
+// ─── Content ──────────────────────────────────────────────────────────────────
+
+const Content = styled.main<{ $manager: boolean }>`
+  flex: 1;
+  overflow-y: auto;
+  position: relative;
+  padding-bottom: 4px;
+
+  ${({ $manager }) =>
+    $manager &&
+    css`
+      animation: content-fade 220ms cubic-bezier(0.16, 1, 0.3, 1);
+
+      @keyframes content-fade {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+    `}
+`;
+
+// ─── Component ───────────────────────────────────────────────────────────────
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -267,11 +272,11 @@ export const Layout = ({ children, isManagerMode = false }: LayoutProps) => {
     <LayoutContainer $manager={isManagerMode}>
       {isManagerMode && (
         <Navigation $manager={isManagerMode}>
-          <ManagerNavTop>
-            <ManagerLogo>
+          <SidebarLogo>
+            <LogoMark>
               <Infinity />
-            </ManagerLogo>
-          </ManagerNavTop>
+            </LogoMark>
+          </SidebarLogo>
           <NavItem $manager={isManagerMode} to="/" title={t('nav.passwords')}>
             <KeyRound />
           </NavItem>
@@ -311,8 +316,8 @@ export const Layout = ({ children, isManagerMode = false }: LayoutProps) => {
         </Navigation>
       )}
       <MainArea $manager={isManagerMode}>
-        <Header $manager={isManagerMode}>
-          <Title $manager={isManagerMode}>{t('app.title')}</Title>
+        <Header>
+          <Title>{t('app.title')}</Title>
           <HeaderActions>
             {!isManagerMode && (
               <OpenManagerButton type="button" onClick={handleOpenManagerTab} title={t('app.openManager')}>

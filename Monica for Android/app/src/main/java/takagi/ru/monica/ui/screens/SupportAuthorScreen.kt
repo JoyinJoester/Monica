@@ -286,9 +286,13 @@ fun SupportAuthorScreen(
                     )
 
                     // Ko-fi 按钮
-                    OutlinedButton(
+                    FilledTonalButton(
                         onClick = { openLink("https://ko-fi.com/joyinjoester") },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
                     ) {
                         Icon(
                             imageVector = Icons.Default.OpenInNew,
@@ -300,9 +304,13 @@ fun SupportAuthorScreen(
                     }
 
                     // Afdian 按钮
-                    OutlinedButton(
+                    FilledTonalButton(
                         onClick = { openLink("https://afdian.com/a/JoyinJoester/plan") },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.filledTonalButtonColors(
+                            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
                     ) {
                         Icon(
                             imageVector = Icons.Default.OpenInNew,

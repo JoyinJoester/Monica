@@ -30,6 +30,7 @@ import takagi.ru.monica.data.SecureItem
 @Composable
 fun ExtensionsScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToMonicaPlus: () -> Unit = {},
     isPlusActivated: Boolean = false,
     validatorVibrationEnabled: Boolean = false,
     onValidatorVibrationChange: (Boolean) -> Unit = {},
@@ -139,6 +140,13 @@ fun ExtensionsScreen(
                 .padding(padding)
                 .verticalScroll(scrollState)
         ) {
+            if (isPlusActivated) {
+                takagi.ru.monica.ui.components.MonicaPlusCard(
+                    isPlusActivated = true,
+                    onClick = onNavigateToMonicaPlus
+                )
+            }
+
             // 顶部说明卡片
             ElevatedCard(
                 modifier = Modifier

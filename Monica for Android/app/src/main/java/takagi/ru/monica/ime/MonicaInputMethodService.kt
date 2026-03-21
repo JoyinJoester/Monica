@@ -1,9 +1,13 @@
 package takagi.ru.monica.ime
 
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
 import android.content.Intent
 import android.graphics.Color
 import android.inputmethodservice.InputMethodService
 import android.text.InputType
+import android.os.Build
 import android.view.View
 import android.view.inputmethod.EditorInfo
 import androidx.compose.runtime.Recomposer
@@ -13,8 +17,6 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
-import java.security.KeyStoreException
-import java.security.UnrecoverableKeyException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -30,6 +32,7 @@ import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.bitwarden.BitwardenVault
+import takagi.ru.monica.autofill_ng.AutofillSecretResolver
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.security.SessionManager
 import takagi.ru.monica.utils.SettingsManager
@@ -52,6 +55,34 @@ class MonicaInputMethodService : InputMethodService() {
     private var composeView: ComposeView? = null
     private var recomposer: Recomposer? = null
     private var refreshJob: Job? = null
+    private var pendingUnlockPanel: MonicaImePanel? = null
+    private val imeUnlockResultReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action != ACTION_IME_BIOMETRIC_RESULT) return
+
+            val success = intent.getBooleanExtra(EXTRA_IME_BIOMETRIC_SUCCESS, false)
+            val errorMessage = intent.getStringExtra(EXTRA_IME_BIOMETRIC_ERROR)
+            val targetPanel = pendingUnlockPanel ?: MonicaImePanel.PASSWORDS
+            pendingUnlockPanel = null
+
+            if (success) {
+                uiState.update {
+                    it.copy(
+                        activePanel = targetPanel,
+                        isAutofillPanelVisible = targetPanel != MonicaImePanel.KEYBOARD,
+                        errorMessage = null
+                    )
+                }
+                requestRefreshVaultEntries(force = true)
+            } else {
+                uiState.update {
+                    it.copy(
+                        errorMessage = errorMessage ?: getString(takagi.ru.monica.R.string.ime_unlock_required)
+                    )
+                }
+            }
+        }
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -59,6 +90,16 @@ class MonicaInputMethodService : InputMethodService() {
         securityManager = SecurityManager(applicationContext)
         settingsManager = SettingsManager(applicationContext)
         database = PasswordDatabase.getDatabase(applicationContext)
+        val receiverFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            Context.RECEIVER_NOT_EXPORTED
+        } else {
+            0
+        }
+        registerReceiver(
+            imeUnlockResultReceiver,
+            IntentFilter(ACTION_IME_BIOMETRIC_RESULT),
+            receiverFlags
+        )
 
         serviceScope.launch {
             val settings = settingsManager.settingsFlow.first()
@@ -109,6 +150,8 @@ class MonicaInputMethodService : InputMethodService() {
                         onKeyboardModeChange = { mode ->
                             uiState.update { it.copy(keyboardMode = mode) }
                         },
+                        onOpenUnlockApp = ::openMonicaAppForUnlock,
+                        onSwitchInputMethod = ::switchToNextInputMethod,
                         onPanelSelected = ::handlePanelSelection,
                         onDismiss = { requestHideSelf(0) }
                     )
@@ -124,13 +167,24 @@ class MonicaInputMethodService : InputMethodService() {
             imeWindow.navigationBarColor = Color.BLACK
             imeWindow.decorView.setBackgroundColor(Color.BLACK)
         }
+        val previousState = uiState.value
+        val incomingPackageName = info?.packageName?.takeIf { it.isNotBlank() }
+        val effectivePackageName = incomingPackageName ?: previousState.activePackageName
+        val packageUnchanged =
+            incomingPackageName == null || previousState.activePackageName == incomingPackageName
+        val preserveAutofillPanel =
+            previousState.activePanel != MonicaImePanel.KEYBOARD && packageUnchanged
         uiState.update {
             it.copy(
-                activePackageName = info?.packageName.orEmpty(),
-                activePanel = MonicaImePanel.KEYBOARD,
-                isAutofillPanelVisible = false,
-                query = "",
-                selectedDatabaseScope = MonicaImeDatabaseScope.All,
+                activePackageName = effectivePackageName,
+                activePanel = if (preserveAutofillPanel) previousState.activePanel else MonicaImePanel.KEYBOARD,
+                isAutofillPanelVisible = preserveAutofillPanel,
+                query = if (preserveAutofillPanel) previousState.query else "",
+                selectedDatabaseScope = if (preserveAutofillPanel) {
+                    previousState.selectedDatabaseScope
+                } else {
+                    MonicaImeDatabaseScope.All
+                },
                 errorMessage = null
             )
         }
@@ -149,6 +203,7 @@ class MonicaInputMethodService : InputMethodService() {
 
     override fun onDestroy() {
         refreshJob?.cancel()
+        unregisterReceiver(imeUnlockResultReceiver)
         composeView?.disposeComposition()
         composeView = null
         recomposer?.cancel()
@@ -158,16 +213,18 @@ class MonicaInputMethodService : InputMethodService() {
         super.onDestroy()
     }
 
-    private fun openUnlockInMonica() {
+    private fun openMonicaAppForUnlock() {
         runCatching {
-            startActivity(
-                Intent(this, takagi.ru.monica.MainActivity::class.java).apply {
+            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+                ?.apply {
                     addFlags(
                         Intent.FLAG_ACTIVITY_NEW_TASK or
-                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP
                     )
                 }
-            )
+                ?: error("No launch activity found")
+            startActivity(launchIntent)
         }.onFailure { error ->
             uiState.update {
                 it.copy(errorMessage = error.message ?: getString(takagi.ru.monica.R.string.ime_unlock_open_app_error))
@@ -200,7 +257,18 @@ class MonicaInputMethodService : InputMethodService() {
             val settings = settingsManager.settingsFlow.first()
             val unlockedNow = updateUnlockState(settings.autoLockMinutes)
             if (!unlockedNow) {
-                openUnlockInMonica()
+                pendingUnlockPanel = panel
+                uiState.update {
+                    it.copy(
+                        unlocked = false,
+                        activePanel = panel,
+                        isAutofillPanelVisible = true,
+                        entries = emptyList(),
+                        databaseOptions = emptyList(),
+                        selectedDatabaseScope = MonicaImeDatabaseScope.All,
+                        errorMessage = getString(takagi.ru.monica.R.string.ime_unlock_required)
+                    )
+                }
                 return@launch
             }
 
@@ -269,23 +337,17 @@ class MonicaInputMethodService : InputMethodService() {
                     )
                 }
                 .filter { result ->
-                    if (result is ImeRefreshResult.UnlockRequired) {
-                        true
-                    } else {
-                        val entry = (result as ImeRefreshResult.Entry).value
-                        entryMatchesScope(entry, selectedScope) &&
-                            queryMatches(entry, query)
-                    }
+                    val entry = result.value
+                    entryMatchesScope(entry, selectedScope) &&
+                        queryMatches(entry, query)
                 }
                 .sortedWith(
                     compareByDescending<ImeRefreshResult> {
-                        (it as? ImeRefreshResult.Entry)?.value?.let { entry ->
-                            entryMatchesPackage(entry, activePackage)
-                        } ?: false
+                        it.value.let { entry -> entryMatchesPackage(entry, activePackage) }
                     }.thenByDescending {
-                        (it as? ImeRefreshResult.Entry)?.value?.isFavorite ?: false
+                        it.value.isFavorite
                     }.thenBy {
-                        (it as? ImeRefreshResult.Entry)?.value?.title?.lowercase().orEmpty()
+                        it.value.title.lowercase()
                     }
                 )
                 .take(if (force || query.isNotBlank()) 50 else 20)
@@ -297,21 +359,7 @@ class MonicaInputMethodService : InputMethodService() {
             )
         }
 
-        if (snapshot.results.any { it is ImeRefreshResult.UnlockRequired }) {
-            uiState.update {
-                it.copy(
-                    unlocked = false,
-                    entries = emptyList(),
-                    databaseOptions = emptyList(),
-                    selectedDatabaseScope = MonicaImeDatabaseScope.All,
-                    autoLockMinutes = settings.autoLockMinutes,
-                    errorMessage = getString(takagi.ru.monica.R.string.ime_unlock_required)
-                )
-            }
-            return
-        }
-
-        val entries = snapshot.results.mapNotNull { (it as? ImeRefreshResult.Entry)?.value }
+        val entries = snapshot.results.map { it.value }
 
         uiState.update {
             it.copy(
@@ -326,16 +374,6 @@ class MonicaInputMethodService : InputMethodService() {
     }
 
     private fun updateUnlockState(autoLockMinutes: Int): Boolean {
-        if (!securityManager.isMasterPasswordSet()) {
-            uiState.update { it.copy(unlocked = true, errorMessage = null) }
-            return true
-        }
-        // vault 运行时已解锁（processCachedMdk 有值）说明本进程内已完成过验证，直接放行
-        if (securityManager.isVaultRuntimeUnlocked()) {
-            uiState.update { it.copy(unlocked = true, errorMessage = null) }
-            return true
-        }
-        // 否则依赖 SessionManager 会话窗口判断
         SessionManager.updateAutoLockTimeout(autoLockMinutes)
         val unlocked = SessionManager.canSkipVerification(this)
         if (unlocked) {
@@ -393,38 +431,37 @@ class MonicaInputMethodService : InputMethodService() {
         keepassLabel: String,
         bitwardenLabel: String
     ): ImeRefreshResult? {
-        return try {
-            ImeRefreshResult.Entry(
-                MonicaImePasswordEntry(
-                    id = id,
-                    title = title,
-                    username = username,
-                    website = website,
-                    packageName = appPackageName,
-                    password = securityManager.decryptData(password),
-                    isFavorite = isFavorite,
-                    sourceLabel = resolveSourceLabel(
-                        entry = this,
-                        keepassLookup = keepassLookup,
-                        bitwardenLookup = bitwardenLookup,
-                        localLabel = localLabel,
-                        keepassLabel = keepassLabel,
-                        bitwardenLabel = bitwardenLabel
-                    ),
-                    keepassDatabaseId = keepassDatabaseId,
-                    bitwardenVaultId = bitwardenVaultId
-                )
-            )
-        } catch (error: Exception) {
-            if (error is android.security.keystore.KeyPermanentlyInvalidatedException ||
-                error is KeyStoreException ||
-                error is UnrecoverableKeyException ||
-                error.message?.contains("MDK not available", ignoreCase = true) == true
-            ) {
-                return ImeRefreshResult.UnlockRequired
-            }
-            null
+        val decryptedPassword = AutofillSecretResolver.decryptPasswordOrNull(
+            securityManager = securityManager,
+            encryptedOrPlain = password,
+            logTag = "MonicaIme"
+        )
+
+        if (username.isBlank() && decryptedPassword.isNullOrBlank()) {
+            return null
         }
+
+        return ImeRefreshResult(
+            value = MonicaImePasswordEntry(
+                id = id,
+                title = title,
+                username = username,
+                website = website,
+                packageName = appPackageName,
+                password = decryptedPassword.orEmpty(),
+                isFavorite = isFavorite,
+                sourceLabel = resolveSourceLabel(
+                    entry = this,
+                    keepassLookup = keepassLookup,
+                    bitwardenLookup = bitwardenLookup,
+                    localLabel = localLabel,
+                    keepassLabel = keepassLabel,
+                    bitwardenLabel = bitwardenLabel
+                ),
+                keepassDatabaseId = keepassDatabaseId,
+                bitwardenVaultId = bitwardenVaultId
+            )
+        )
     }
 
     private fun resolveSourceLabel(
@@ -525,6 +562,11 @@ class MonicaInputMethodService : InputMethodService() {
         }
     }
 
+    private fun switchToNextInputMethod() {
+        val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+        imm.showInputMethodPicker()
+    }
+
     private fun handleKeyPress(text: String) {
         commitExternalText(text)
     }
@@ -546,10 +588,9 @@ class MonicaInputMethodService : InputMethodService() {
     }
 }
 
-private sealed interface ImeRefreshResult {
-    data class Entry(val value: MonicaImePasswordEntry) : ImeRefreshResult
-    data object UnlockRequired : ImeRefreshResult
-}
+private data class ImeRefreshResult(
+    val value: MonicaImePasswordEntry
+)
 
 private data class ImeRefreshSnapshot(
     val results: List<ImeRefreshResult>,

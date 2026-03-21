@@ -69,6 +69,7 @@ class ImeUnlockActivity : AppCompatActivity() {
             onSuccess = {
                 val unlocked = runCatching { securityManager.unlockVaultWithBiometric() }.getOrDefault(false)
                 if (unlocked) {
+                    securityManager.markVaultAuthenticated()
                     publishResult(success = true, errorMessage = null)
                 } else {
                     showPasswordAuthentication()
@@ -99,7 +100,10 @@ class ImeUnlockActivity : AppCompatActivity() {
                 minLengthError = getString(R.string.error_password_min_6_digits),
                 incorrectError = getString(R.string.ime_unlock_error),
                 verifyPassword = { input -> securityManager.unlockVaultWithPassword(input) },
-                onSuccess = { publishResult(success = true, errorMessage = null) },
+                onSuccess = {
+                    securityManager.markVaultAuthenticated()
+                    publishResult(success = true, errorMessage = null)
+                },
                 onCancel = { publishResult(success = false, errorMessage = null) }
             )
         }

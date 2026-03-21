@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
@@ -55,10 +56,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -95,10 +99,13 @@ import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.components.PullActionVisualState
 import takagi.ru.monica.ui.components.PullGestureIndicator
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
+import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenu
+import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuOffset
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
 import takagi.ru.monica.ui.components.UnifiedMoveAction
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
 import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
+import takagi.ru.monica.ui.components.unifiedCategoryFilterChipMenuModifier
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.KeePassGroupInfo
@@ -183,6 +190,7 @@ fun CardWalletScreen(
     var showTopActionsMenu by remember { mutableStateOf(false) }
     var showHistoryPage by rememberSaveable { mutableStateOf(false) }
     var showCategoryFilterDialog by remember { mutableStateOf(false) }
+    var categoryPillBoundsInWindow by remember { mutableStateOf<Rect?>(null) }
     var selectedCategoryFilter by rememberSaveable(stateSaver = cardWalletCategoryFilterSaver) {
         mutableStateOf<UnifiedCategoryFilterSelection>(UnifiedCategoryFilterSelection.All)
     }
@@ -781,11 +789,52 @@ fun CardWalletScreen(
             },
             searchHint = stringResource(R.string.topbar_search_hint),
             actions = {
-                IconButton(onClick = { showCategoryFilterDialog = true }) {
-                    Icon(
-                        imageVector = Icons.Default.Folder,
-                        contentDescription = stringResource(R.string.category)
-                    )
+                if (appSettings.categorySelectionUiMode == takagi.ru.monica.data.CategorySelectionUiMode.CHIP_MENU) {
+                    Box {
+                        IconButton(onClick = { showCategoryFilterDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = stringResource(R.string.category)
+                            )
+                        }
+                        MaterialTheme(
+                            shapes = MaterialTheme.shapes.copy(
+                                extraSmall = RoundedCornerShape(20.dp),
+                                small = RoundedCornerShape(20.dp)
+                            )
+                        ) {
+                            DropdownMenu(
+                                expanded = showCategoryFilterDialog,
+                                onDismissRequest = { showCategoryFilterDialog = false },
+                                offset = UnifiedCategoryFilterChipMenuOffset,
+                                modifier = unifiedCategoryFilterChipMenuModifier()
+                            ) {
+                                UnifiedCategoryFilterChipMenu(
+                                    visible = true,
+                                    onDismiss = { showCategoryFilterDialog = false },
+                                    selected = selectedCategoryFilter,
+                                    onSelect = { selection -> selectedCategoryFilter = selection },
+                                    categories = categories,
+                                    keepassDatabases = keepassDatabases,
+                                    bitwardenVaults = bitwardenVaults,
+                                    getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+                                    getKeePassGroups = getKeePassGroups
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    IconButton(
+                        modifier = Modifier.onGloballyPositioned { coordinates ->
+                            categoryPillBoundsInWindow = coordinates.boundsInWindow()
+                        },
+                        onClick = { showCategoryFilterDialog = true }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Folder,
+                            contentDescription = stringResource(R.string.category)
+                        )
+                    }
                 }
                 IconButton(onClick = { isSearchExpanded = true }) {
                     Icon(
@@ -1282,17 +1331,21 @@ fun CardWalletScreen(
     }
 
     if (showCategoryFilterDialog) {
-        UnifiedCategoryFilterBottomSheet(
-        visible = true,
-        onDismiss = { showCategoryFilterDialog = false },
-        selected = selectedCategoryFilter,
-        onSelect = { selection -> selectedCategoryFilter = selection },
-        categories = categories,
-        keepassDatabases = keepassDatabases,
-        bitwardenVaults = bitwardenVaults,
-        getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
-        getKeePassGroups = getKeePassGroups
-        )
+        when (appSettings.categorySelectionUiMode) {
+            takagi.ru.monica.data.CategorySelectionUiMode.BOTTOM_SHEET -> UnifiedCategoryFilterBottomSheet(
+                visible = true,
+                onDismiss = { showCategoryFilterDialog = false },
+                selected = selectedCategoryFilter,
+                onSelect = { selection -> selectedCategoryFilter = selection },
+                categories = categories,
+                keepassDatabases = keepassDatabases,
+                bitwardenVaults = bitwardenVaults,
+                getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+                getKeePassGroups = getKeePassGroups
+            )
+
+            takagi.ru.monica.data.CategorySelectionUiMode.CHIP_MENU -> Unit
+        }
     }
 
     if (showBatchMoveCategoryDialog) {

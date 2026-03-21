@@ -1253,7 +1253,7 @@ class PasswordViewModel(
         val isValid = securityManager.verifyMasterPassword(password)
         _isAuthenticated.value = isValid
         if (isValid) {
-            SessionManager.markUnlocked()
+            securityManager.markVaultAuthenticated()
         }
         return isValid
     }
@@ -1283,7 +1283,7 @@ class PasswordViewModel(
     fun setMasterPassword(password: String) {
         securityManager.setMasterPassword(password)
         _isAuthenticated.value = true
-        SessionManager.markUnlocked()
+        securityManager.markVaultAuthenticated()
     }
     
     fun isMasterPasswordSet(): Boolean {
