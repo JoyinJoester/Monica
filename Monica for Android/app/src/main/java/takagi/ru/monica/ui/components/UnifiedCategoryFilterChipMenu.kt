@@ -25,7 +25,6 @@ import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -61,7 +60,7 @@ private data class ChipMenuLocalCategoryNode(
     val displayName: String
 )
 
-val UnifiedCategoryFilterChipMenuOffset = DpOffset(x = 96.dp, y = 6.dp)
+val UnifiedCategoryFilterChipMenuOffset = DpOffset(x = 124.dp, y = 6.dp)
 private val UnifiedCategoryFilterChipMenuMinWidth = 280.dp
 private val UnifiedCategoryFilterChipMenuMaxWidth = 336.dp
 private val UnifiedCategoryFilterChipMenuCompactInset = 72.dp
@@ -203,38 +202,32 @@ fun UnifiedCategoryFilterChipMenu(
                 .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            FilterChip(
+            MonicaExpressiveFilterChip(
                 selected = selected is UnifiedCategoryFilterSelection.All,
                 onClick = { onSelect(UnifiedCategoryFilterSelection.All) },
-                label = { Text(stringResource(R.string.category_all)) },
-                leadingIcon = { Icon(Icons.Default.List, contentDescription = null) }
+                label = stringResource(R.string.category_all),
+                leadingIcon = Icons.Default.List
             )
-            FilterChip(
+            MonicaExpressiveFilterChip(
                 selected = selected.isMonicaScope(),
                 onClick = { onSelect(UnifiedCategoryFilterSelection.Local) },
-                label = { Text(stringResource(R.string.category_selection_menu_local_database)) },
-                leadingIcon = { Icon(Icons.Default.Smartphone, contentDescription = null) }
+                label = stringResource(R.string.category_selection_menu_local_database),
+                leadingIcon = Icons.Default.Smartphone
             )
             keepassDatabases.forEach { database ->
-                FilterChip(
+                MonicaExpressiveFilterChip(
                     selected = selected.isKeePassScope(database.id),
                     onClick = { onSelect(UnifiedCategoryFilterSelection.KeePassDatabaseFilter(database.id)) },
-                    label = { Text(database.name) },
-                    leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) }
+                    label = database.name,
+                    leadingIcon = Icons.Default.Key
                 )
             }
             bitwardenVaults.forEach { vault ->
-                FilterChip(
+                MonicaExpressiveFilterChip(
                     selected = selected.isBitwardenScope(vault.id),
                     onClick = { onSelect(UnifiedCategoryFilterSelection.BitwardenVaultFilter(vault.id)) },
-                    label = {
-                        Text(
-                            vault.email.ifBlank { "Bitwarden" },
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    },
-                    leadingIcon = { Icon(Icons.Default.CloudSync, contentDescription = null) }
+                    label = vault.email.ifBlank { "Bitwarden" },
+                    leadingIcon = Icons.Default.CloudSync
                 )
             }
         }
@@ -258,7 +251,7 @@ fun UnifiedCategoryFilterChipMenu(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         columnItems.forEach { item ->
-                            FilterChip(
+                            MonicaExpressiveFilterChip(
                                 selected = item.isSelected,
                                 onClick = {
                                     if (item.selection != null) {
@@ -267,8 +260,8 @@ fun UnifiedCategoryFilterChipMenu(
                                         onSelectLocalOnlyQuickFilter?.invoke()
                                     }
                                 },
-                                label = { Text(stringResource(item.labelRes)) },
-                                leadingIcon = { Icon(item.icon, contentDescription = null) }
+                                label = stringResource(item.labelRes),
+                                leadingIcon = item.icon
                             )
                         }
                     }
@@ -288,28 +281,17 @@ fun UnifiedCategoryFilterChipMenu(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 folderChips.forEach { chip ->
-                    FilterChip(
+                    MonicaExpressiveFilterChip(
                         selected = chip.selection == selected,
                         onClick = {
                             onSelect(chip.selection)
                             onDismiss()
                         },
-                        label = {
-                            Text(
-                                chip.label,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = if (chip.isBack) {
-                                    Icons.AutoMirrored.Filled.KeyboardArrowLeft
-                                } else {
-                                    Icons.Default.Folder
-                                },
-                                contentDescription = null
-                            )
+                        label = chip.label,
+                        leadingIcon = if (chip.isBack) {
+                            Icons.AutoMirrored.Filled.KeyboardArrowLeft
+                        } else {
+                            Icons.Default.Folder
                         }
                     )
                 }

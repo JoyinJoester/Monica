@@ -105,6 +105,8 @@ dependencies {
     implementation libs.androidx.lifecycle.runtime.ktx
     implementation "androidx.lifecycle:lifecycle-process:2.8.7"
     implementation libs.androidx.activity.compose
+    // Pin profileinstaller to the latest stable patch and avoid older transitive copies.
+    implementation "androidx.profileinstaller:profileinstaller:1.4.1"
     
     // Compose
     implementation platform(libs.androidx.compose.bom)

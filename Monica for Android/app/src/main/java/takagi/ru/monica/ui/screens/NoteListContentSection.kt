@@ -19,7 +19,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -29,7 +28,6 @@ import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Note
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -65,9 +63,6 @@ import takagi.ru.monica.util.VibrationPatterns
 @Composable
 fun NoteListContent(
     notes: List<NoteListItemUiModel>,
-    allTags: List<String>,
-    selectedTag: String?,
-    onSelectTag: (String?) -> Unit,
     isGridLayout: Boolean,
     isSearchExpanded: Boolean,
     onRequestExpandSearch: () -> Unit,
@@ -392,33 +387,6 @@ fun NoteListContent(
     }
 
     Column(modifier = modifier.fillMaxSize()) {
-        if (allTags.isNotEmpty()) {
-            LazyRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(vertical = 4.dp)
-            ) {
-                item {
-                    FilterChip(
-                        selected = selectedTag == null,
-                        onClick = { onSelectTag(null) },
-                        label = { Text("All tags") }
-                    )
-                }
-                items(allTags, key = { it }) { tag ->
-                    FilterChip(
-                        selected = selectedTag == tag,
-                        onClick = {
-                            onSelectTag(if (selectedTag == tag) null else tag)
-                        },
-                        label = { Text("#$tag") }
-                    )
-                }
-            }
-        }
-
         Box(
             modifier = Modifier
                 .fillMaxWidth()

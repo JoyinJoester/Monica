@@ -79,7 +79,6 @@ import takagi.ru.monica.viewmodel.NoteViewModel
 import takagi.ru.monica.viewmodel.NoteDraftStorageTarget
 import takagi.ru.monica.viewmodel.SettingsViewModel
 import java.text.SimpleDateFormat
-import java.util.Locale
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.SettingsManager
@@ -89,6 +88,7 @@ import androidx.compose.ui.res.stringResource
 import takagi.ru.monica.R
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.components.ExpressiveTopBar
+import takagi.ru.monica.ui.components.MonicaExpressiveFilterChip
 import takagi.ru.monica.ui.components.SyncStatusIcon
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenu
@@ -107,6 +107,7 @@ import kotlinx.coroutines.launch
 import takagi.ru.monica.util.VibrationPatterns
 import takagi.ru.monica.utils.SavedCategoryFilterState
 import androidx.lifecycle.viewmodel.compose.viewModel
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -345,7 +346,6 @@ fun NoteListScreen(
             }
         }
     }
-
     val availableTags = remember(notes, selectedCategoryFilter) {
         val categoryFiltered = when (val filter = selectedCategoryFilter) {
             NoteCategoryFilter.All -> notes
@@ -555,18 +555,18 @@ fun NoteListScreen(
                                                         .horizontalScroll(rememberScrollState()),
                                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                                 ) {
-                                                    FilterChip(
+                                                    MonicaExpressiveFilterChip(
                                                         selected = selectedTag == null,
                                                         onClick = { selectedTag = null },
-                                                        label = { Text(stringResource(R.string.note_all_tags)) }
+                                                        label = stringResource(R.string.note_all_tags)
                                                     )
                                                     availableTags.forEach { tag ->
-                                                        FilterChip(
+                                                        MonicaExpressiveFilterChip(
                                                             selected = selectedTag == tag,
                                                             onClick = {
                                                                 selectedTag = if (selectedTag == tag) null else tag
                                                             },
-                                                            label = { Text("#$tag") }
+                                                            label = "#$tag"
                                                         )
                                                     }
                                                 }
@@ -975,9 +975,6 @@ fun NoteListScreen(
 
         NoteListContent(
             notes = filteredNoteUiItems,
-            allTags = availableTags,
-            selectedTag = selectedTag,
-            onSelectTag = { selectedTag = it },
             isGridLayout = isGridLayout,
             isSearchExpanded = isSearchExpanded,
             onRequestExpandSearch = { isSearchExpanded = true },

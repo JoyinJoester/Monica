@@ -35,7 +35,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -175,8 +174,11 @@ import takagi.ru.monica.ui.components.QuickAddCallback
 import takagi.ru.monica.ui.components.SyncStatusIcon
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.components.CreateCategoryDialog
+import takagi.ru.monica.ui.components.MonicaExpressiveFilterChip
+import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuOffset
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
+import takagi.ru.monica.ui.components.unifiedCategoryFilterChipMenuModifier
 import takagi.ru.monica.ui.components.UnifiedMoveAction
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
 import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
@@ -2281,18 +2283,8 @@ private fun PasswordListTopSection(
                                 DropdownMenu(
                                     expanded = isCategorySheetVisible,
                                     onDismissRequest = { onCategorySheetVisibleChange(false) },
-                                    offset = DpOffset(x = 0.dp, y = 6.dp),
-                                    modifier = Modifier
-                                        .widthIn(min = 360.dp, max = 360.dp)
-                                        .heightIn(max = 460.dp)
-                                        .shadow(10.dp, RoundedCornerShape(20.dp))
-                                        .clip(RoundedCornerShape(20.dp))
-                                        .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                                        .border(
-                                            width = 1.dp,
-                                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
-                                            shape = RoundedCornerShape(20.dp)
-                                        )
+                                    offset = UnifiedCategoryFilterChipMenuOffset,
+                                    modifier = unifiedCategoryFilterChipMenuModifier()
                                 ) {
                                     PasswordListCategoryChipMenu(
                                         currentFilter = currentFilter,
@@ -2682,111 +2674,13 @@ private fun PasswordQuickFilterChip(
     leadingIcon: ImageVector? = null,
     selectedLeadingIcon: ImageVector? = leadingIcon
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-    val colorScheme = MaterialTheme.colorScheme
-    val animatedCornerRadius by animateDpAsState(
-        targetValue = when {
-            isPressed -> 8.dp
-            selected -> 12.dp
-            else -> 20.dp
-        },
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMediumLow
-        ),
-        label = "passwordQuickFilterChipCornerRadius"
-    )
-
-    val containerColor by animateColorAsState(
-        targetValue = when {
-            isPressed && selected -> colorScheme.secondaryContainer
-            selected -> colorScheme.secondaryContainer
-            isPressed -> colorScheme.surfaceContainerHigh
-            else -> colorScheme.surfaceContainerLow
-        },
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMediumLow
-        ),
-        label = "passwordQuickFilterChipContainer"
-    )
-    val contentColor by animateColorAsState(
-        targetValue = when {
-            selected -> colorScheme.onSecondaryContainer
-            isPressed -> colorScheme.onSurface
-            else -> colorScheme.onSurfaceVariant
-        },
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
-        label = "passwordQuickFilterChipContent"
-    )
-    val borderColor by animateColorAsState(
-        targetValue = when {
-            isPressed && selected -> colorScheme.primary.copy(alpha = 0.18f)
-            selected -> Color.Transparent
-            isPressed -> colorScheme.primary.copy(alpha = 0.20f)
-            else -> colorScheme.outlineVariant.copy(alpha = 0.88f)
-        },
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
-        label = "passwordQuickFilterChipBorder"
-    )
-    val borderWidth by animateDpAsState(
-        targetValue = when {
-            isPressed && selected -> 1.dp
-            selected -> 0.dp
-            isPressed -> 1.2.dp
-            else -> 1.dp
-        },
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessMedium
-        ),
-        label = "passwordQuickFilterChipBorderWidth"
-    )
-
-    FilterChip(
+    MonicaExpressiveFilterChip(
         selected = selected,
         onClick = onClick,
-        shape = RoundedCornerShape(animatedCornerRadius),
-        label = {
-            Text(
-                text = label,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        },
-        leadingIcon = (selectedLeadingIcon ?: leadingIcon)?.let { icon ->
-            {
-                Icon(
-                    imageVector = if (selected) icon else (leadingIcon ?: icon),
-                    contentDescription = null
-                )
-            }
-        },
-        interactionSource = interactionSource,
-        border = FilterChipDefaults.filterChipBorder(
-            enabled = true,
-            selected = selected,
-            borderColor = borderColor,
-            selectedBorderColor = borderColor,
-            borderWidth = borderWidth,
-            selectedBorderWidth = borderWidth
-        ),
-        colors = FilterChipDefaults.filterChipColors(
-            containerColor = containerColor,
-            labelColor = contentColor,
-            iconColor = contentColor,
-            selectedContainerColor = containerColor,
-            selectedLabelColor = contentColor,
-            selectedLeadingIconColor = contentColor
-        ),
-        modifier = modifier
+        label = label,
+        modifier = modifier,
+        leadingIcon = leadingIcon,
+        selectedLeadingIcon = selectedLeadingIcon
     )
 }
 
@@ -2849,38 +2743,32 @@ private fun PasswordListCategoryChipMenu(
                             .horizontalScroll(databaseScrollState),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        FilterChip(
+                        MonicaExpressiveFilterChip(
                             selected = currentFilter is CategoryFilter.All,
                             onClick = { onSelectFilter(CategoryFilter.All) },
-                            label = { Text(stringResource(R.string.category_all)) },
-                            leadingIcon = { Icon(Icons.Default.List, contentDescription = null) }
+                            label = stringResource(R.string.category_all),
+                            leadingIcon = Icons.Default.List
                         )
-                        FilterChip(
+                        MonicaExpressiveFilterChip(
                             selected = currentFilter.isMonicaDatabaseFilter(),
                             onClick = { onSelectFilter(CategoryFilter.Local) },
-                            label = { Text(stringResource(R.string.category_selection_menu_local_database)) },
-                            leadingIcon = { Icon(Icons.Default.Smartphone, contentDescription = null) }
+                            label = stringResource(R.string.category_selection_menu_local_database),
+                            leadingIcon = Icons.Default.Smartphone
                         )
                         keepassDatabases.forEach { database ->
-                            FilterChip(
+                            MonicaExpressiveFilterChip(
                                 selected = currentFilter.isKeePassDatabaseFilter(database.id),
                                 onClick = { onSelectFilter(CategoryFilter.KeePassDatabase(database.id)) },
-                                label = { Text(database.name) },
-                                leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) }
+                                label = database.name,
+                                leadingIcon = Icons.Default.Key
                             )
                         }
                         bitwardenVaults.forEach { vault ->
-                            FilterChip(
+                            MonicaExpressiveFilterChip(
                                 selected = currentFilter.isBitwardenVaultFilter(vault.id),
                                 onClick = { onSelectFilter(CategoryFilter.BitwardenVault(vault.id)) },
-                                label = {
-                                    Text(
-                                        vault.email.ifBlank { "Bitwarden" },
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                },
-                                leadingIcon = { Icon(Icons.Default.CloudSync, contentDescription = null) }
+                                label = vault.email.ifBlank { "Bitwarden" },
+                                leadingIcon = Icons.Default.CloudSync
                             )
                         }
                     }
@@ -2994,7 +2882,7 @@ private fun PasswordListCategoryChipMenu(
                 quickFolderShortcuts.forEach { shortcut ->
                     val editableCategory = (shortcut.targetFilter as? CategoryFilter.Custom)
                         ?.let { filter -> categories.firstOrNull { it.id == filter.categoryId } }
-                    FilterChip(
+                    MonicaExpressiveFilterChip(
                         selected = shortcut.targetFilter == currentFilter,
                         onClick = {
                             if (categoryEditMode && editableCategory != null) {
@@ -3004,24 +2892,13 @@ private fun PasswordListCategoryChipMenu(
                                 onDismiss()
                             }
                         },
-                        label = {
-                            Text(
-                                shortcut.title,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = if (categoryEditMode && editableCategory != null) {
-                                    Icons.Default.Edit
-                                } else if (shortcut.isBack) {
-                                    Icons.AutoMirrored.Filled.KeyboardArrowLeft
-                                } else {
-                                    Icons.Default.Folder
-                                },
-                                contentDescription = null
-                            )
+                        label = shortcut.title,
+                        leadingIcon = if (categoryEditMode && editableCategory != null) {
+                            Icons.Default.Edit
+                        } else if (shortcut.isBack) {
+                            Icons.AutoMirrored.Filled.KeyboardArrowLeft
+                        } else {
+                            Icons.Default.Folder
                         }
                     )
                 }
