@@ -25,7 +25,7 @@ class AutofillProcessorNg(
     fun process(
         packageName: String,
         uri: String?,
-        credentialTargets: List<ParsedItem>,
+        fillableTargets: List<ParsedItem>,
         inlineRequest: InlineSuggestionsRequest?,
         isCompatMode: Boolean,
         passwords: List<PasswordEntry>,
@@ -34,7 +34,7 @@ class AutofillProcessorNg(
         val request = parser.parse(
             packageName = packageName,
             uri = uri,
-            credentialTargets = credentialTargets,
+            fillableTargets = fillableTargets,
             inlineRequest = inlineRequest,
             fieldSignatureKey = fieldSignatureKey,
             isCompatMode = isCompatMode,

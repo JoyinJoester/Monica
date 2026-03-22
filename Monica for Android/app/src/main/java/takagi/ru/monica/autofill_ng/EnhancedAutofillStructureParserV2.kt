@@ -43,11 +43,20 @@ class EnhancedAutofillStructureParserV2 {
         SEARCH_FIELD,
         CREDIT_CARD_NUMBER,
         CREDIT_CARD_EXPIRATION_DATE,
+        CREDIT_CARD_EXPIRATION_MONTH,
+        CREDIT_CARD_EXPIRATION_YEAR,
         CREDIT_CARD_SECURITY_CODE,
         CREDIT_CARD_HOLDER_NAME,
         POSTAL_ADDRESS,
         POSTAL_CODE,
         PERSON_NAME,
+        PERSON_FIRST_NAME,
+        PERSON_LAST_NAME,
+        ADDRESS_CITY,
+        ADDRESS_REGION,
+        ADDRESS_COUNTRY,
+        COMPANY_NAME,
+        IDENTITY_NUMBER,
         OTP_CODE,
         UNKNOWN,
     }
@@ -76,6 +85,13 @@ class EnhancedAutofillStructureParserV2 {
         POSTAL_ADDRESS,
         POSTAL_CODE,
         PERSON_NAME,
+        PERSON_FIRST_NAME,
+        PERSON_LAST_NAME,
+        ADDRESS_CITY,
+        ADDRESS_REGION,
+        ADDRESS_COUNTRY,
+        COMPANY_NAME,
+        IDENTITY_NUMBER,
         OTP_CODE,
         OFF,
         UNKNOWN,
@@ -183,6 +199,38 @@ class EnhancedAutofillStructureParserV2 {
         ".*(credit|debit|card)+.*number.*".toRegex(),
     )
 
+    private val autofillLabelPersonFirstNameTranslations = listOf(
+        "first name",
+        "given name",
+        "名",
+    )
+
+    private val autofillLabelPersonLastNameTranslations = listOf(
+        "last name",
+        "family name",
+        "surname",
+        "姓",
+    )
+
+    private val autofillLabelPostalAddressTranslations = listOf(
+        "address",
+        "street",
+        "地址",
+    )
+
+    private val autofillLabelIdentityNumberTranslations = listOf(
+        "passport",
+        "license",
+        "document number",
+        "identity",
+        "证件",
+        "身份证",
+        "护照",
+        "驾照",
+        "社保",
+        "ssn",
+    )
+
     private val autofillHintMatchers = listOf(
         AutofillHintMatcher(
             hint = InternalHint.EMAIL_ADDRESS,
@@ -285,6 +333,97 @@ class EnhancedAutofillStructureParserV2 {
         AutofillHintMatcher(
             hint = InternalHint.PERSON_NAME,
             target = HintConstants.AUTOFILL_HINT_NAME,
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.PERSON_FIRST_NAME,
+            target = "given-name",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.PERSON_FIRST_NAME,
+            target = "first-name",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.PERSON_LAST_NAME,
+            target = "family-name",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.PERSON_LAST_NAME,
+            target = "last-name",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.POSTAL_ADDRESS,
+            target = "street-address",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.POSTAL_ADDRESS,
+            target = "address-line1",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.POSTAL_ADDRESS,
+            target = "address-line2",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.ADDRESS_CITY,
+            target = "address-level2",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.ADDRESS_CITY,
+            target = "city",
+            partly = true,
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.ADDRESS_REGION,
+            target = "address-level1",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.ADDRESS_REGION,
+            target = "state",
+            partly = true,
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.ADDRESS_REGION,
+            target = "province",
+            partly = true,
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.ADDRESS_COUNTRY,
+            target = "country",
+            partly = true,
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.COMPANY_NAME,
+            target = "organization",
+            partly = true,
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.COMPANY_NAME,
+            target = "company",
+            partly = true,
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.IDENTITY_NUMBER,
+            target = "passport-number",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.IDENTITY_NUMBER,
+            target = "document-number",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.IDENTITY_NUMBER,
+            target = "identity-number",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.IDENTITY_NUMBER,
+            target = "license-number",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.IDENTITY_NUMBER,
+            target = "driver-license",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.IDENTITY_NUMBER,
+            target = "ssn",
+            partly = true,
         ),
         AutofillHintMatcher(
             hint = InternalHint.OTP_CODE,
@@ -741,6 +880,72 @@ class EnhancedAutofillStructureParserV2 {
                 reason = "id",
             )
 
+            "cardholder" in id || "holder_name" in id -> ParsedItemBuilder(
+                accuracy = Accuracy.HIGH,
+                hint = InternalHint.CREDIT_CARD_HOLDER_NAME,
+                reason = "id",
+            )
+
+            "cc_exp_month" in id || "exp_month" in id -> ParsedItemBuilder(
+                accuracy = Accuracy.HIGH,
+                hint = InternalHint.CREDIT_CARD_EXPIRATION_MONTH,
+                reason = "id",
+            )
+
+            "cc_exp_year" in id || "exp_year" in id -> ParsedItemBuilder(
+                accuracy = Accuracy.HIGH,
+                hint = InternalHint.CREDIT_CARD_EXPIRATION_YEAR,
+                reason = "id",
+            )
+
+            "passport" in id || "license" in id || "document" in id || "identity" in id || "ssn" in id -> ParsedItemBuilder(
+                accuracy = Accuracy.HIGH,
+                hint = InternalHint.IDENTITY_NUMBER,
+                reason = "id",
+            )
+
+            "first_name" in id || "given_name" in id -> ParsedItemBuilder(
+                accuracy = Accuracy.MEDIUM,
+                hint = InternalHint.PERSON_FIRST_NAME,
+                reason = "id",
+            )
+
+            "last_name" in id || "family_name" in id || "surname" in id -> ParsedItemBuilder(
+                accuracy = Accuracy.MEDIUM,
+                hint = InternalHint.PERSON_LAST_NAME,
+                reason = "id",
+            )
+
+            "street" in id || "address" in id -> ParsedItemBuilder(
+                accuracy = Accuracy.MEDIUM,
+                hint = InternalHint.POSTAL_ADDRESS,
+                reason = "id",
+            )
+
+            "city" in id -> ParsedItemBuilder(
+                accuracy = Accuracy.MEDIUM,
+                hint = InternalHint.ADDRESS_CITY,
+                reason = "id",
+            )
+
+            "state" in id || "province" in id || "region" in id -> ParsedItemBuilder(
+                accuracy = Accuracy.MEDIUM,
+                hint = InternalHint.ADDRESS_REGION,
+                reason = "id",
+            )
+
+            "country" in id -> ParsedItemBuilder(
+                accuracy = Accuracy.MEDIUM,
+                hint = InternalHint.ADDRESS_COUNTRY,
+                reason = "id",
+            )
+
+            "company" in id || "organization" in id -> ParsedItemBuilder(
+                accuracy = Accuracy.MEDIUM,
+                hint = InternalHint.COMPANY_NAME,
+                reason = "id",
+            )
+
             "totp" in id || "twofa" in id || "2fa" in id -> ParsedItemBuilder(
                 accuracy = Accuracy.HIGH,
                 hint = InternalHint.OTP_CODE,
@@ -792,6 +997,34 @@ class EnhancedAutofillStructureParserV2 {
                 ParsedItemBuilder(
                     accuracy = Accuracy.MEDIUM,
                     hint = InternalHint.CREDIT_CARD_NUMBER,
+                    reason = "label:$hint",
+                )
+
+            autofillLabelPersonFirstNameTranslations.any { it in hint } ->
+                ParsedItemBuilder(
+                    accuracy = Accuracy.MEDIUM,
+                    hint = InternalHint.PERSON_FIRST_NAME,
+                    reason = "label:$hint",
+                )
+
+            autofillLabelPersonLastNameTranslations.any { it in hint } ->
+                ParsedItemBuilder(
+                    accuracy = Accuracy.MEDIUM,
+                    hint = InternalHint.PERSON_LAST_NAME,
+                    reason = "label:$hint",
+                )
+
+            autofillLabelPostalAddressTranslations.any { it in hint } ->
+                ParsedItemBuilder(
+                    accuracy = Accuracy.MEDIUM,
+                    hint = InternalHint.POSTAL_ADDRESS,
+                    reason = "label:$hint",
+                )
+
+            autofillLabelIdentityNumberTranslations.any { it in hint } ->
+                ParsedItemBuilder(
+                    accuracy = Accuracy.MEDIUM,
+                    hint = InternalHint.IDENTITY_NUMBER,
                     reason = "label:$hint",
                 )
 
@@ -995,15 +1228,22 @@ class EnhancedAutofillStructureParserV2 {
         InternalHint.PHONE_NUMBER -> FieldHint.PHONE_NUMBER
         InternalHint.CREDIT_CARD_NUMBER -> FieldHint.CREDIT_CARD_NUMBER
         InternalHint.CREDIT_CARD_EXPIRATION_DATE,
-        InternalHint.CREDIT_CARD_EXPIRATION_MONTH,
-        InternalHint.CREDIT_CARD_EXPIRATION_YEAR,
         InternalHint.CREDIT_CARD_EXPIRATION_DAY,
         -> FieldHint.CREDIT_CARD_EXPIRATION_DATE
+        InternalHint.CREDIT_CARD_EXPIRATION_MONTH -> FieldHint.CREDIT_CARD_EXPIRATION_MONTH
+        InternalHint.CREDIT_CARD_EXPIRATION_YEAR -> FieldHint.CREDIT_CARD_EXPIRATION_YEAR
         InternalHint.CREDIT_CARD_SECURITY_CODE -> FieldHint.CREDIT_CARD_SECURITY_CODE
         InternalHint.CREDIT_CARD_HOLDER_NAME -> FieldHint.CREDIT_CARD_HOLDER_NAME
         InternalHint.POSTAL_ADDRESS -> FieldHint.POSTAL_ADDRESS
         InternalHint.POSTAL_CODE -> FieldHint.POSTAL_CODE
         InternalHint.PERSON_NAME -> FieldHint.PERSON_NAME
+        InternalHint.PERSON_FIRST_NAME -> FieldHint.PERSON_FIRST_NAME
+        InternalHint.PERSON_LAST_NAME -> FieldHint.PERSON_LAST_NAME
+        InternalHint.ADDRESS_CITY -> FieldHint.ADDRESS_CITY
+        InternalHint.ADDRESS_REGION -> FieldHint.ADDRESS_REGION
+        InternalHint.ADDRESS_COUNTRY -> FieldHint.ADDRESS_COUNTRY
+        InternalHint.COMPANY_NAME -> FieldHint.COMPANY_NAME
+        InternalHint.IDENTITY_NUMBER -> FieldHint.IDENTITY_NUMBER
         InternalHint.OTP_CODE -> FieldHint.OTP_CODE
         InternalHint.OFF -> null
         InternalHint.UNKNOWN -> FieldHint.UNKNOWN

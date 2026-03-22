@@ -5,6 +5,7 @@ import android.view.autofill.AutofillValue
 import android.widget.inline.InlinePresentationSpec
 import takagi.ru.monica.autofill_ng.model.AutofillCipher
 import takagi.ru.monica.autofill_ng.model.AutofillRequest
+import takagi.ru.monica.autofill_ng.model.AutofillPartition
 import takagi.ru.monica.autofill_ng.model.AutofillView
 import takagi.ru.monica.autofill_ng.model.FilledData
 import takagi.ru.monica.autofill_ng.model.FilledItem
@@ -59,30 +60,39 @@ class FilledDataBuilderNg(
                 null
             }?.also { inlineSuggestionsAdded += 1 }
 
-        val ciphers = passwords.mapNotNull { entry ->
-            val usernameValue = decryptForAutofill(entry.username)
-            val passwordValue = decryptForAutofill(entry.password)
-            if (usernameValue.isNullOrBlank() && passwordValue.isNullOrBlank()) {
-                null
-            } else {
-                entry.toAutofillCipherLogin(
-                    fallbackWebsite = request.uri.orEmpty(),
-                    usernameValue = usernameValue.orEmpty(),
-                    passwordValue = passwordValue.orEmpty()
-                )
-            }
+        val loginViews = when (val partition = request.partition) {
+            is AutofillPartition.Login -> partition.views
+            is AutofillPartition.Generic -> partition.views.filterIsInstance<AutofillView.Login>()
         }
 
-        val filledPartitions = ciphers
-            .map { autofillCipher ->
-                fillLoginPartition(
-                    autofillCipher = autofillCipher,
-                    autofillViews = request.partition.views,
-                    inlinePresentationSpec = getCipherInlinePresentationOrNull()
-                )
+        val filledPartitions = if (loginViews.isEmpty()) {
+            emptyList()
+        } else {
+            val ciphers = passwords.mapNotNull { entry ->
+                val usernameValue = decryptForAutofill(entry.username)
+                val passwordValue = decryptForAutofill(entry.password)
+                if (usernameValue.isNullOrBlank() && passwordValue.isNullOrBlank()) {
+                    null
+                } else {
+                    entry.toAutofillCipherLogin(
+                        fallbackWebsite = request.uri.orEmpty(),
+                        usernameValue = usernameValue.orEmpty(),
+                        passwordValue = passwordValue.orEmpty()
+                    )
+                }
             }
-            .filter { it.filledItems.isNotEmpty() }
-            .take(MAX_FILLED_PARTITIONS_COUNT)
+
+            ciphers
+                .map { autofillCipher ->
+                    fillLoginPartition(
+                        autofillCipher = autofillCipher,
+                        autofillViews = loginViews,
+                        inlinePresentationSpec = getCipherInlinePresentationOrNull()
+                    )
+                }
+                .filter { it.filledItems.isNotEmpty() }
+                .take(MAX_FILLED_PARTITIONS_COUNT)
+        }
 
         val vaultItemInlinePresentationSpec = request
             .inlinePresentationSpecs

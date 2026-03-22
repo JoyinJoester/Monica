@@ -7,7 +7,7 @@ import android.widget.inline.InlinePresentationSpec
 data class FilledData(
     val filledPartitions: List<FilledPartition>,
     val ignoreAutofillIds: List<AutofillId>,
-    val originalPartition: AutofillPartition.Login,
+    val originalPartition: AutofillPartition,
     val uri: String?,
     val vaultItemInlinePresentationSpec: InlinePresentationSpec?,
     val isVaultLocked: Boolean,

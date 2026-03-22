@@ -13,7 +13,7 @@ sealed class AutofillRequest {
         val maxInlineSuggestionsCount: Int,
         val isCompatMode: Boolean,
         val packageName: String,
-        val partition: AutofillPartition.Login,
+        val partition: AutofillPartition,
         val uri: String?,
         val fieldSignatureKey: String? = null,
     ) : AutofillRequest()

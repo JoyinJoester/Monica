@@ -147,9 +147,9 @@ class MonicaAutofillServiceNg : AutofillService() {
         )
         if (packageName.isBlank()) return null
 
-        val credentialTargets = selectCredentialTargets(parsed.items)
-        if (credentialTargets.isEmpty()) {
-            AutofillLogger.i("AF", "No credential fields detected")
+        val fillableTargets = selectFillableTargets(parsed.items)
+        if (fillableTargets.isEmpty()) {
+            AutofillLogger.i("AF", "No supported autofill fields detected")
             return null
         }
 
@@ -157,7 +157,7 @@ class MonicaAutofillServiceNg : AutofillService() {
         val fieldSignatureKey = buildFieldSignatureKey(
             packageName = packageName,
             webDomain = webDomain,
-            credentialTargets = credentialTargets,
+            credentialTargets = fillableTargets,
         )
         AutofillLogger.i(
             "AF",
@@ -165,11 +165,11 @@ class MonicaAutofillServiceNg : AutofillService() {
             metadata = mapOf(
                 "packageName" to packageName,
                 "webDomain" to (webDomain ?: "none"),
-                "targetCount" to credentialTargets.size,
+                "targetCount" to fillableTargets.size,
                 "fieldSignaturePresent" to !fieldSignatureKey.isNullOrBlank(),
                 "fieldSignatureKey" to (fieldSignatureKey ?: "none"),
-                "focusedTargetCount" to credentialTargets.count { it.isFocused },
-                "visibleTargetCount" to credentialTargets.count { it.isVisible },
+                "focusedTargetCount" to fillableTargets.count { it.isFocused },
+                "visibleTargetCount" to fillableTargets.count { it.isVisible },
             )
         )
         if (!fieldSignatureKey.isNullOrBlank() &&
@@ -181,7 +181,7 @@ class MonicaAutofillServiceNg : AutofillService() {
                 metadata = mapOf(
                     "packageName" to packageName,
                     "webDomain" to (webDomain ?: "none"),
-                    "targetCount" to credentialTargets.size,
+                    "targetCount" to fillableTargets.size,
                 ),
             )
             return null
@@ -189,43 +189,50 @@ class MonicaAutofillServiceNg : AutofillService() {
         val requestUri = webDomain?.let { "https://$it" } ?: "androidapp://$packageName"
         val appDisplayName = resolveAppDisplayName(packageName)
 
-        val allPasswords = passwordRepository.getAllPasswordEntries().first()
-        val sourceFilter = autofillPreferences.v2DefaultSourceFilter.first()
-        val defaultKeepassDatabaseId = autofillPreferences.v2DefaultKeepassDatabaseId.first()
-        val defaultBitwardenVaultId = autofillPreferences.v2DefaultBitwardenVaultId.first()
-        val scopedPasswords = applyDefaultSourceFilter(
-            entries = allPasswords,
-            sourceFilter = sourceFilter,
-            keepassDatabaseId = defaultKeepassDatabaseId,
-            bitwardenVaultId = defaultBitwardenVaultId,
-        )
-        val strictOnly = autofillPreferences.isBitwardenStrictModeEnabled.first()
-        val allowSubdomainToggle = autofillPreferences.isBitwardenSubdomainMatchEnabled.first()
-        val uriStrategy = autofillPreferences.domainMatchStrategy.first()
-        val uriConfig = resolveUriStrategyConfig(uriStrategy, allowSubdomainToggle)
-        val matchedPasswords = if (uriConfig.disableMatch) {
-            emptyList()
-        } else {
-            matcher.match(
-                entries = scopedPasswords,
-                packageName = packageName,
-                webDomain = webDomain,
-                appDisplayName = appDisplayName,
-                config = BitwardenLikeAutofillMatcherNg.Config(
-                    strictOnly = strictOnly,
-                    allowSubdomainMatch = uriConfig.allowSubdomainMatch,
-                    allowBaseDomainMatch = uriConfig.allowBaseDomainMatch,
-                    exactDomainOnly = uriConfig.exactDomainOnly,
-                    maxSuggestions = 20,
-                ),
+        val hasLoginTargets = fillableTargets.any { isLoginHint(it.hint) }
+        var candidatePasswordCount = 0
+        val matchedPasswords = if (hasLoginTargets) {
+            val allPasswords = passwordRepository.getAllPasswordEntries().first()
+            val sourceFilter = autofillPreferences.v2DefaultSourceFilter.first()
+            val defaultKeepassDatabaseId = autofillPreferences.v2DefaultKeepassDatabaseId.first()
+            val defaultBitwardenVaultId = autofillPreferences.v2DefaultBitwardenVaultId.first()
+            val scopedPasswords = applyDefaultSourceFilter(
+                entries = allPasswords,
+                sourceFilter = sourceFilter,
+                keepassDatabaseId = defaultKeepassDatabaseId,
+                bitwardenVaultId = defaultBitwardenVaultId,
             )
+            candidatePasswordCount = scopedPasswords.size
+            val strictOnly = autofillPreferences.isBitwardenStrictModeEnabled.first()
+            val allowSubdomainToggle = autofillPreferences.isBitwardenSubdomainMatchEnabled.first()
+            val uriStrategy = autofillPreferences.domainMatchStrategy.first()
+            val uriConfig = resolveUriStrategyConfig(uriStrategy, allowSubdomainToggle)
+            if (uriConfig.disableMatch) {
+                emptyList()
+            } else {
+                matcher.match(
+                    entries = scopedPasswords,
+                    packageName = packageName,
+                    webDomain = webDomain,
+                    appDisplayName = appDisplayName,
+                    config = BitwardenLikeAutofillMatcherNg.Config(
+                        strictOnly = strictOnly,
+                        allowSubdomainMatch = uriConfig.allowSubdomainMatch,
+                        allowBaseDomainMatch = uriConfig.allowBaseDomainMatch,
+                        exactDomainOnly = uriConfig.exactDomainOnly,
+                        maxSuggestions = 20,
+                    ),
+                )
+            }
+        } else {
+            emptyList()
         }
 
         diagnostics.logPasswordMatching(
             packageName = packageName,
             domain = webDomain,
-            matchStrategy = if (strictOnly) "bitwarden_v2_strict" else "bitwarden_v2_hybrid",
-            totalPasswords = scopedPasswords.size,
+            matchStrategy = if (hasLoginTargets) "bitwarden_v2_hybrid" else "structured_manual_picker",
+            totalPasswords = candidatePasswordCount,
             matchedPasswords = matchedPasswords.size,
         )
 
@@ -233,7 +240,7 @@ class MonicaAutofillServiceNg : AutofillService() {
         val response = bwCompatProcessor.process(
             packageName = packageName,
             uri = requestUri,
-            credentialTargets = credentialTargets,
+            fillableTargets = fillableTargets,
             inlineRequest = inlineRequest,
             isCompatMode = isCompatMode,
             passwords = matchedPasswords,
@@ -245,7 +252,7 @@ class MonicaAutofillServiceNg : AutofillService() {
         } else {
             AutofillLogger.i(
                 "AF",
-                "Fill response ready: package=$packageName, domain=$webDomain, targets=${credentialTargets.size}, matches=${matchedPasswords.size}",
+                "Fill response ready: package=$packageName, domain=$webDomain, targets=${fillableTargets.size}, matches=${matchedPasswords.size}",
             )
         }
         return response
@@ -331,15 +338,11 @@ class MonicaAutofillServiceNg : AutofillService() {
         return request.inlineSuggestionsRequest
     }
 
-    private fun selectCredentialTargets(items: List<ParsedItem>): List<ParsedItem> {
+    private fun selectFillableTargets(items: List<ParsedItem>): List<ParsedItem> {
         if (items.isEmpty()) return emptyList()
 
         val filtered = items.filter { item ->
-            item.hint == FieldHint.USERNAME ||
-                item.hint == FieldHint.EMAIL_ADDRESS ||
-                item.hint == FieldHint.PHONE_NUMBER ||
-                item.hint == FieldHint.PASSWORD ||
-                item.hint == FieldHint.NEW_PASSWORD
+            isSupportedFillableHint(item.hint)
         }
         if (filtered.isEmpty()) return emptyList()
 
@@ -373,7 +376,53 @@ class MonicaAutofillServiceNg : AutofillService() {
     private fun hintPriority(hint: FieldHint): Int = when (hint) {
         FieldHint.PASSWORD, FieldHint.NEW_PASSWORD -> 3
         FieldHint.USERNAME, FieldHint.EMAIL_ADDRESS, FieldHint.PHONE_NUMBER -> 2
+        FieldHint.CREDIT_CARD_NUMBER,
+        FieldHint.CREDIT_CARD_EXPIRATION_DATE,
+        FieldHint.CREDIT_CARD_EXPIRATION_MONTH,
+        FieldHint.CREDIT_CARD_EXPIRATION_YEAR,
+        FieldHint.CREDIT_CARD_SECURITY_CODE,
+        FieldHint.CREDIT_CARD_HOLDER_NAME,
+        FieldHint.IDENTITY_NUMBER,
+        -> 2
+        FieldHint.PERSON_NAME,
+        FieldHint.PERSON_FIRST_NAME,
+        FieldHint.PERSON_LAST_NAME,
+        FieldHint.POSTAL_ADDRESS,
+        FieldHint.POSTAL_CODE,
+        FieldHint.ADDRESS_CITY,
+        FieldHint.ADDRESS_REGION,
+        FieldHint.ADDRESS_COUNTRY,
+        FieldHint.COMPANY_NAME,
+        -> 1
         else -> 0
+    }
+
+    private fun isSupportedFillableHint(hint: FieldHint): Boolean {
+        return isLoginHint(hint) ||
+            hint == FieldHint.CREDIT_CARD_NUMBER ||
+            hint == FieldHint.CREDIT_CARD_EXPIRATION_DATE ||
+            hint == FieldHint.CREDIT_CARD_EXPIRATION_MONTH ||
+            hint == FieldHint.CREDIT_CARD_EXPIRATION_YEAR ||
+            hint == FieldHint.CREDIT_CARD_SECURITY_CODE ||
+            hint == FieldHint.CREDIT_CARD_HOLDER_NAME ||
+            hint == FieldHint.POSTAL_ADDRESS ||
+            hint == FieldHint.POSTAL_CODE ||
+            hint == FieldHint.PERSON_NAME ||
+            hint == FieldHint.PERSON_FIRST_NAME ||
+            hint == FieldHint.PERSON_LAST_NAME ||
+            hint == FieldHint.ADDRESS_CITY ||
+            hint == FieldHint.ADDRESS_REGION ||
+            hint == FieldHint.ADDRESS_COUNTRY ||
+            hint == FieldHint.COMPANY_NAME ||
+            hint == FieldHint.IDENTITY_NUMBER
+    }
+
+    private fun isLoginHint(hint: FieldHint): Boolean {
+        return hint == FieldHint.USERNAME ||
+            hint == FieldHint.EMAIL_ADDRESS ||
+            hint == FieldHint.PHONE_NUMBER ||
+            hint == FieldHint.PASSWORD ||
+            hint == FieldHint.NEW_PASSWORD
     }
 
     private fun buildFieldSignatureKey(

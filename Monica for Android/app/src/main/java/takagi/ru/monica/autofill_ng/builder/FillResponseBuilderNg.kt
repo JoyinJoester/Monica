@@ -163,6 +163,7 @@ class FillResponseBuilderNg(
             when (view) {
                 is AutofillView.Login.Username -> "USERNAME"
                 is AutofillView.Login.Password -> "PASSWORD"
+                is AutofillView.Field -> view.hint.name
             }
         }
         val suggestedPasswordIds = filledData.filledPartitions

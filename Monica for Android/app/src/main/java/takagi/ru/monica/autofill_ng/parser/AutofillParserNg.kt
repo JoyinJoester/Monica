@@ -14,22 +14,28 @@ class AutofillParserNg {
     fun parse(
         packageName: String,
         uri: String?,
-        credentialTargets: List<ParsedItem>,
+        fillableTargets: List<ParsedItem>,
         inlineRequest: InlineSuggestionsRequest?,
         fieldSignatureKey: String? = null,
         isCompatMode: Boolean = false,
     ): AutofillRequest {
         val normalizedUri = uri?.trim().takeUnless { it.isNullOrBlank() } ?: "androidapp://$packageName"
-        val loginViews = buildLoginViews(
-            credentialTargets = credentialTargets,
+        val views = buildViews(
+            fillableTargets = fillableTargets,
             website = normalizedUri
         )
-        if (loginViews.isEmpty()) return AutofillRequest.Unfillable
+        if (views.isEmpty()) return AutofillRequest.Unfillable
 
         val inlineSpecs = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             inlineRequest?.inlinePresentationSpecs
         } else {
             null
+        }
+
+        val partition = if (views.any { it !is AutofillView.Login }) {
+            AutofillPartition.Generic(views)
+        } else {
+            AutofillPartition.Login(views.filterIsInstance<AutofillView.Login>())
         }
 
         return AutofillRequest.Fillable(
@@ -38,30 +44,30 @@ class AutofillParserNg {
             maxInlineSuggestionsCount = inlineRequest?.maxSuggestionCount ?: 0,
             isCompatMode = isCompatMode,
             packageName = packageName,
-            partition = AutofillPartition.Login(loginViews),
+            partition = partition,
             uri = normalizedUri,
             fieldSignatureKey = fieldSignatureKey,
         )
     }
 
-    private fun buildLoginViews(
-        credentialTargets: List<ParsedItem>,
+    private fun buildViews(
+        fillableTargets: List<ParsedItem>,
         website: String,
-    ): List<AutofillView.Login> {
-        if (credentialTargets.isEmpty()) return emptyList()
+    ): List<AutofillView> {
+        if (fillableTargets.isEmpty()) return emptyList()
 
-        val prioritized = credentialTargets.sortedWith(
+        val prioritized = fillableTargets.sortedWith(
             compareByDescending<ParsedItem> { it.isFocused }
                 .thenByDescending { it.accuracy.score }
                 .thenBy { it.traversalIndex }
         )
 
-        val deduped = linkedMapOf<String, AutofillView.Login>()
+        val deduped = linkedMapOf<String, AutofillView>()
         prioritized.forEach { item ->
-            val view = item.toLoginView(website = website) ?: return@forEach
+            val view = item.toAutofillView(website = website) ?: return@forEach
             val key = view.data.autofillId.toString()
             val existing = deduped[key]
-            if (existing == null || (existing is AutofillView.Login.Username && view is AutofillView.Login.Password)) {
+            if (existing == null || isHigherPriorityView(candidate = view, existing = existing)) {
                 deduped[key] = view
             }
         }
@@ -69,7 +75,7 @@ class AutofillParserNg {
         return deduped.values.toList()
     }
 
-    private fun ParsedItem.toLoginView(website: String): AutofillView.Login? {
+    private fun ParsedItem.toAutofillView(website: String): AutofillView? {
         val data = AutofillView.Data(
             autofillId = id,
             autofillType = View.AUTOFILL_TYPE_TEXT,
@@ -80,7 +86,36 @@ class AutofillParserNg {
         return when (hint) {
             FieldHint.PASSWORD, FieldHint.NEW_PASSWORD -> AutofillView.Login.Password(data)
             FieldHint.USERNAME, FieldHint.EMAIL_ADDRESS, FieldHint.PHONE_NUMBER -> AutofillView.Login.Username(data)
+            FieldHint.CREDIT_CARD_NUMBER,
+            FieldHint.CREDIT_CARD_EXPIRATION_DATE,
+            FieldHint.CREDIT_CARD_EXPIRATION_MONTH,
+            FieldHint.CREDIT_CARD_EXPIRATION_YEAR,
+            FieldHint.CREDIT_CARD_SECURITY_CODE,
+            FieldHint.CREDIT_CARD_HOLDER_NAME,
+            FieldHint.POSTAL_ADDRESS,
+            FieldHint.POSTAL_CODE,
+            FieldHint.PERSON_NAME,
+            FieldHint.PERSON_FIRST_NAME,
+            FieldHint.PERSON_LAST_NAME,
+            FieldHint.ADDRESS_CITY,
+            FieldHint.ADDRESS_REGION,
+            FieldHint.ADDRESS_COUNTRY,
+            FieldHint.COMPANY_NAME,
+            FieldHint.IDENTITY_NUMBER,
+            -> AutofillView.Field(hint = hint, data = data)
             else -> null
+        }
+    }
+
+    private fun isHigherPriorityView(candidate: AutofillView, existing: AutofillView): Boolean {
+        return viewPriority(candidate) > viewPriority(existing)
+    }
+
+    private fun viewPriority(view: AutofillView): Int {
+        return when (view) {
+            is AutofillView.Login.Password -> 4
+            is AutofillView.Login.Username -> 3
+            is AutofillView.Field -> 2
         }
     }
 }

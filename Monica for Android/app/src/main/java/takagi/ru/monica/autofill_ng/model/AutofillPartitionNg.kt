@@ -31,4 +31,24 @@ sealed class AutofillPartition {
         override val saveType: Int
             get() = SaveInfo.SAVE_DATA_TYPE_PASSWORD
     }
+
+    data class Generic(
+        override val views: List<AutofillView>,
+    ) : AutofillPartition() {
+        private val loginViews: List<AutofillView.Login>
+            get() = views.filterIsInstance<AutofillView.Login>()
+
+        override val optionalSaveIds: List<AutofillId>
+            get() = loginViews
+                .filter { it !is AutofillView.Login.Password }
+                .map { it.data.autofillId }
+
+        override val requiredSaveIds: List<AutofillId>
+            get() = loginViews
+                .filterIsInstance<AutofillView.Login.Password>()
+                .map { it.data.autofillId }
+
+        override val saveType: Int
+            get() = SaveInfo.SAVE_DATA_TYPE_PASSWORD
+    }
 }
