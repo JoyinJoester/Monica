@@ -1,8 +1,16 @@
 package takagi.ru.monica.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,6 +31,7 @@ import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOff
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.outlined.CheckCircle
@@ -41,6 +50,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalConfiguration
@@ -48,6 +58,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.saveable.rememberSaveable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
@@ -143,6 +154,57 @@ fun UnifiedCategoryFilterChipMenuDropdown(
     }
 }
 
+@Composable
+private fun ChipMenuSection(
+    title: String,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    val arrowRotation by animateFloatAsState(
+        targetValue = if (expanded) 0f else -90f,
+        animationSpec = tween(durationMillis = 160),
+        label = "chip_menu_section_arrow"
+    )
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .clickable { onExpandedChange(!expanded) }
+                .padding(vertical = 2.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowDown,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.graphicsLayer { rotationZ = arrowRotation }
+            )
+        }
+        AnimatedVisibility(
+            visible = expanded,
+            enter = expandVertically(animationSpec = tween(180)) + fadeIn(animationSpec = tween(120)),
+            exit = shrinkVertically(animationSpec = tween(140)) + fadeOut(animationSpec = tween(100))
+        ) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                content = content
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun UnifiedCategoryFilterChipMenu(
@@ -164,8 +226,9 @@ fun UnifiedCategoryFilterChipMenu(
 ) {
     if (!visible) return
 
-    val quickFilterScrollState = rememberScrollState()
     var showDeferredFolderSection by remember { mutableStateOf(false) }
+    var quickFiltersExpanded by rememberSaveable { mutableStateOf(true) }
+    var foldersExpanded by rememberSaveable { mutableStateOf(true) }
     LaunchedEffect(Unit) {
         withFrameNanos { }
         showDeferredFolderSection = true
@@ -247,8 +310,6 @@ fun UnifiedCategoryFilterChipMenu(
             }
         }
     }
-    val quickFilterColumns = remember(quickFilterItems) { quickFilterItems.chunked(2) }
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -270,23 +331,20 @@ fun UnifiedCategoryFilterChipMenu(
                 selected = selected is UnifiedCategoryFilterSelection.All,
                 onClick = { onSelect(UnifiedCategoryFilterSelection.All) },
                 label = stringResource(R.string.category_all),
-                leadingIcon = Icons.Default.List,
-                animated = false
+                leadingIcon = Icons.Default.List
             )
             MonicaExpressiveFilterChip(
                 selected = selected.isMonicaScope(),
                 onClick = { onSelect(UnifiedCategoryFilterSelection.Local) },
                 label = stringResource(R.string.category_selection_menu_local_database),
-                leadingIcon = Icons.Default.Smartphone,
-                animated = false
+                leadingIcon = Icons.Default.Smartphone
             )
             keepassDatabases.forEach { database ->
                 MonicaExpressiveFilterChip(
                     selected = selected.isKeePassScope(database.id),
                     onClick = { onSelect(UnifiedCategoryFilterSelection.KeePassDatabaseFilter(database.id)) },
                     label = database.name,
-                    leadingIcon = Icons.Default.Key,
-                    animated = false
+                    leadingIcon = Icons.Default.Key
                 )
             }
             bitwardenVaults.forEach { vault ->
@@ -294,75 +352,73 @@ fun UnifiedCategoryFilterChipMenu(
                     selected = selected.isBitwardenScope(vault.id),
                     onClick = { onSelect(UnifiedCategoryFilterSelection.BitwardenVaultFilter(vault.id)) },
                     label = vault.email.ifBlank { "Bitwarden" },
-                    leadingIcon = Icons.Default.CloudSync,
-                    animated = false
+                    leadingIcon = Icons.Default.CloudSync
                 )
             }
         }
 
         if (quickFilterContent != null) {
-            quickFilterContent.invoke(this)
-        } else {
-            Text(
-                text = stringResource(R.string.category_selection_menu_quick_filters),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(quickFilterScrollState),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ChipMenuSection(
+                title = stringResource(R.string.category_selection_menu_quick_filters),
+                expanded = quickFiltersExpanded,
+                onExpandedChange = { quickFiltersExpanded = it }
             ) {
-                quickFilterColumns.forEach { columnItems ->
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        columnItems.forEach { item ->
-                            MonicaExpressiveFilterChip(
-                                selected = item.isSelected,
-                                onClick = {
-                                    if (item.selection != null) {
-                                        onSelect(item.selection)
-                                    } else {
-                                        onSelectLocalOnlyQuickFilter?.invoke()
-                                    }
-                                },
-                                label = stringResource(item.labelRes),
-                                leadingIcon = item.icon,
-                                animated = false
-                            )
-                        }
+                quickFilterContent.invoke(this)
+            }
+        } else {
+            ChipMenuSection(
+                title = stringResource(R.string.category_selection_menu_quick_filters),
+                expanded = quickFiltersExpanded,
+                onExpandedChange = { quickFiltersExpanded = it }
+            ) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    quickFilterItems.forEach { item ->
+                        MonicaExpressiveFilterChip(
+                            selected = item.isSelected,
+                            onClick = {
+                                if (item.selection != null) {
+                                    onSelect(item.selection)
+                                } else {
+                                    onSelectLocalOnlyQuickFilter?.invoke()
+                                }
+                            },
+                            label = stringResource(item.labelRes),
+                            leadingIcon = item.icon
+                        )
                     }
                 }
             }
         }
 
         if (showDeferredFolderSection && folderChips.isNotEmpty()) {
-            Text(
-                text = stringResource(R.string.category_selection_menu_folders),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ChipMenuSection(
+                title = stringResource(R.string.category_selection_menu_folders),
+                expanded = foldersExpanded,
+                onExpandedChange = { foldersExpanded = it }
             ) {
-                folderChips.forEach { chip ->
-                    MonicaExpressiveFilterChip(
-                        selected = chip.selection == selected,
-                        onClick = {
-                            onSelect(chip.selection)
-                        },
-                        label = chip.label,
-                        leadingIcon = if (chip.isBack) {
-                            Icons.AutoMirrored.Filled.KeyboardArrowLeft
-                        } else {
-                            Icons.Default.Folder
-                        },
-                        animated = false
-                    )
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    folderChips.forEach { chip ->
+                        MonicaExpressiveFilterChip(
+                            selected = chip.selection == selected,
+                            onClick = {
+                                onSelect(chip.selection)
+                            },
+                            label = chip.label,
+                            leadingIcon = if (chip.isBack) {
+                                Icons.AutoMirrored.Filled.KeyboardArrowLeft
+                            } else {
+                                Icons.Default.Folder
+                            }
+                        )
+                    }
                 }
             }
         }
@@ -426,15 +482,7 @@ private fun buildFolderChips(
         is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter,
         is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter,
         is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> {
-            val chips = mutableListOf<FolderChipItem>()
-            if (selected is UnifiedCategoryFilterSelection.BitwardenFolderFilter) {
-                chips += FolderChipItem(
-                    label = "返回",
-                    selection = UnifiedCategoryFilterSelection.BitwardenVaultFilter(selected.vaultId),
-                    isBack = true
-                )
-            }
-            chips += bitwardenFolders
+            bitwardenFolders
                 .filter { it.bitwardenFolderId.isNotBlank() }
                 .map {
                     FolderChipItem(
@@ -445,7 +493,6 @@ private fun buildFolderChips(
                         )
                     )
                 }
-            chips
         }
 
         is UnifiedCategoryFilterSelection.KeePassDatabaseFilter,

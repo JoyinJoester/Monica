@@ -576,8 +576,7 @@ fun NoteListScreen(
                                                 MonicaExpressiveFilterChip(
                                                     selected = selectedTag == null,
                                                     onClick = { selectedTag = null },
-                                                    label = stringResource(R.string.note_all_tags),
-                                                    animated = false
+                                                    label = stringResource(R.string.note_all_tags)
                                                 )
                                                 availableTags.forEach { tag ->
                                                     MonicaExpressiveFilterChip(
@@ -585,8 +584,7 @@ fun NoteListScreen(
                                                         onClick = {
                                                             selectedTag = if (selectedTag == tag) null else tag
                                                         },
-                                                        label = "#$tag",
-                                                        animated = false
+                                                        label = "#$tag"
                                                     )
                                                 }
                                             }
