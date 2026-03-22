@@ -92,6 +92,7 @@ import takagi.ru.monica.ui.components.MonicaExpressiveFilterChip
 import takagi.ru.monica.ui.components.SyncStatusIcon
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenu
+import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuDropdown
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuOffset
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
 import takagi.ru.monica.ui.components.UnifiedMoveAction
@@ -99,7 +100,6 @@ import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
 import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
 import takagi.ru.monica.ui.components.PullActionVisualState
 import takagi.ru.monica.ui.components.PullGestureIndicator
-import takagi.ru.monica.ui.components.unifiedCategoryFilterChipMenuModifier
 import takagi.ru.monica.bitwarden.sync.SyncStatus
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.notes.ui.model.NoteListItemUiModel
@@ -512,69 +512,12 @@ fun NoteListScreen(
                 onActionPillBoundsChanged = { bounds -> categoryPillBoundsInWindow = bounds },
                 actions = {
                     if (settings.categorySelectionUiMode == takagi.ru.monica.data.CategorySelectionUiMode.CHIP_MENU) {
-                        Box {
-                            IconButton(onClick = { isCategorySheetVisible = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.Folder,
-                                    contentDescription = stringResource(R.string.category),
-                                    tint = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                            MaterialTheme(
-                                shapes = MaterialTheme.shapes.copy(
-                                    extraSmall = RoundedCornerShape(20.dp),
-                                    small = RoundedCornerShape(20.dp)
-                                )
-                            ) {
-                                DropdownMenu(
-                                    expanded = isCategorySheetVisible,
-                                    onDismissRequest = { isCategorySheetVisible = false },
-                                    offset = UnifiedCategoryFilterChipMenuOffset,
-                                    modifier = unifiedCategoryFilterChipMenuModifier()
-                                ) {
-                                    UnifiedCategoryFilterChipMenu(
-                                        visible = true,
-                                        onDismiss = { isCategorySheetVisible = false },
-                                        selected = selectedUnifiedFilter,
-                                        onSelect = handleCategorySelection,
-                                        categories = categories,
-                                        keepassDatabases = keepassDatabases,
-                                        bitwardenVaults = bitwardenVaults,
-                                        getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
-                                        getKeePassGroups = getKeePassGroups,
-                                        quickFilterContent = {
-                                            if (availableTags.isNotEmpty()) {
-                                                Text(
-                                                    text = stringResource(R.string.note_tags),
-                                                    style = MaterialTheme.typography.labelLarge,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                                Row(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .horizontalScroll(rememberScrollState()),
-                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                                ) {
-                                                    MonicaExpressiveFilterChip(
-                                                        selected = selectedTag == null,
-                                                        onClick = { selectedTag = null },
-                                                        label = stringResource(R.string.note_all_tags)
-                                                    )
-                                                    availableTags.forEach { tag ->
-                                                        MonicaExpressiveFilterChip(
-                                                            selected = selectedTag == tag,
-                                                            onClick = {
-                                                                selectedTag = if (selectedTag == tag) null else tag
-                                                            },
-                                                            label = "#$tag"
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    )
-                                }
-                            }
+                        IconButton(onClick = { isCategorySheetVisible = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = stringResource(R.string.category),
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
                         }
                     } else {
                         IconButton(onClick = { isCategorySheetVisible = true }) {
@@ -600,6 +543,57 @@ fun NoteListScreen(
                                 contentDescription = stringResource(R.string.more_options),
                                 tint = MaterialTheme.colorScheme.onSurface
                             )
+                        }
+                        if (settings.categorySelectionUiMode == takagi.ru.monica.data.CategorySelectionUiMode.CHIP_MENU) {
+                            UnifiedCategoryFilterChipMenuDropdown(
+                                expanded = isCategorySheetVisible,
+                                onDismissRequest = { isCategorySheetVisible = false },
+                                offset = UnifiedCategoryFilterChipMenuOffset
+                            ) {
+                                UnifiedCategoryFilterChipMenu(
+                                    visible = true,
+                                    onDismiss = { isCategorySheetVisible = false },
+                                    selected = selectedUnifiedFilter,
+                                    onSelect = handleCategorySelection,
+                                    categories = categories,
+                                    keepassDatabases = keepassDatabases,
+                                    bitwardenVaults = bitwardenVaults,
+                                    getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+                                    getKeePassGroups = getKeePassGroups,
+                                    quickFilterContent = {
+                                        if (availableTags.isNotEmpty()) {
+                                            Text(
+                                                text = stringResource(R.string.note_tags),
+                                                style = MaterialTheme.typography.labelLarge,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .horizontalScroll(rememberScrollState()),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                MonicaExpressiveFilterChip(
+                                                    selected = selectedTag == null,
+                                                    onClick = { selectedTag = null },
+                                                    label = stringResource(R.string.note_all_tags),
+                                                    animated = false
+                                                )
+                                                availableTags.forEach { tag ->
+                                                    MonicaExpressiveFilterChip(
+                                                        selected = selectedTag == tag,
+                                                        onClick = {
+                                                            selectedTag = if (selectedTag == tag) null else tag
+                                                        },
+                                                        label = "#$tag",
+                                                        animated = false
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                )
+                            }
                         }
                         MaterialTheme(
                             shapes = MaterialTheme.shapes.copy(

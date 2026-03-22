@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -25,15 +26,19 @@ import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
@@ -43,6 +48,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import takagi.ru.monica.R
@@ -60,22 +67,45 @@ private data class ChipMenuLocalCategoryNode(
     val displayName: String
 )
 
-val UnifiedCategoryFilterChipMenuOffset = DpOffset(x = 124.dp, y = 6.dp)
+@Composable
+private fun <T> rememberAsyncComputed(
+    vararg keys: Any?,
+    initialValue: T,
+    compute: suspend () -> T
+): T {
+    val state = remember { mutableStateOf(initialValue) }
+    val latestCompute by rememberUpdatedState(compute)
+
+    LaunchedEffect(*keys) {
+        state.value = withContext(Dispatchers.Default) {
+            latestCompute()
+        }
+    }
+
+    return state.value
+}
+
+val UnifiedCategoryFilterChipMenuOffset = DpOffset(x = 48.dp, y = 6.dp)
 private val UnifiedCategoryFilterChipMenuMinWidth = 280.dp
 private val UnifiedCategoryFilterChipMenuMaxWidth = 336.dp
 private val UnifiedCategoryFilterChipMenuCompactInset = 72.dp
 private val UnifiedCategoryFilterChipMenuShape = RoundedCornerShape(20.dp)
 
 @Composable
-fun unifiedCategoryFilterChipMenuModifier(): Modifier {
+fun rememberUnifiedCategoryFilterChipMenuWidth(): androidx.compose.ui.unit.Dp {
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
-    val resolvedMenuWidth = minOf(
+    return minOf(
         UnifiedCategoryFilterChipMenuMaxWidth,
         maxOf(
             UnifiedCategoryFilterChipMenuMinWidth,
             screenWidth - UnifiedCategoryFilterChipMenuCompactInset
         )
     )
+}
+
+@Composable
+fun unifiedCategoryFilterChipMenuModifier(): Modifier {
+    val resolvedMenuWidth = rememberUnifiedCategoryFilterChipMenuWidth()
     return Modifier
         .widthIn(min = resolvedMenuWidth, max = resolvedMenuWidth)
         .heightIn(max = 460.dp)
@@ -87,6 +117,30 @@ fun unifiedCategoryFilterChipMenuModifier(): Modifier {
             color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
             shape = UnifiedCategoryFilterChipMenuShape
         )
+}
+
+@Composable
+fun UnifiedCategoryFilterChipMenuDropdown(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    offset: DpOffset = UnifiedCategoryFilterChipMenuOffset,
+    content: @Composable () -> Unit
+) {
+    MaterialTheme(
+        shapes = MaterialTheme.shapes.copy(
+            extraSmall = RoundedCornerShape(20.dp),
+            small = RoundedCornerShape(20.dp)
+        )
+    ) {
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = onDismissRequest,
+            offset = offset,
+            modifier = unifiedCategoryFilterChipMenuModifier()
+        ) {
+            content()
+        }
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
@@ -111,7 +165,17 @@ fun UnifiedCategoryFilterChipMenu(
     if (!visible) return
 
     val quickFilterScrollState = rememberScrollState()
-    val localNodes = remember(categories) { buildLocalCategoryNodes(categories) }
+    var showDeferredFolderSection by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        showDeferredFolderSection = true
+    }
+    val localNodes = rememberAsyncComputed(
+        categories,
+        initialValue = emptyList()
+    ) {
+        buildLocalCategoryNodes(categories)
+    }
     val localNodeByPath = remember(localNodes) { localNodes.associateBy(ChipMenuLocalCategoryNode::path) }
     val localCurrentPath = remember(selected, localNodes) {
         when (selected) {
@@ -142,13 +206,13 @@ fun UnifiedCategoryFilterChipMenu(
             getKeePassGroups?.invoke(databaseId)
         } ?: flowOf(emptyList())
     }.collectAsState(initial = emptyList())
-    val folderChips = remember(
+    val folderChips = rememberAsyncComputed(
         selected,
         localNodes,
-        localNodeByPath,
         localCurrentPath,
         bitwardenFolders,
-        keepassGroups
+        keepassGroups,
+        initialValue = emptyList()
     ) {
         buildFolderChips(
             selected = selected,
@@ -206,20 +270,23 @@ fun UnifiedCategoryFilterChipMenu(
                 selected = selected is UnifiedCategoryFilterSelection.All,
                 onClick = { onSelect(UnifiedCategoryFilterSelection.All) },
                 label = stringResource(R.string.category_all),
-                leadingIcon = Icons.Default.List
+                leadingIcon = Icons.Default.List,
+                animated = false
             )
             MonicaExpressiveFilterChip(
                 selected = selected.isMonicaScope(),
                 onClick = { onSelect(UnifiedCategoryFilterSelection.Local) },
                 label = stringResource(R.string.category_selection_menu_local_database),
-                leadingIcon = Icons.Default.Smartphone
+                leadingIcon = Icons.Default.Smartphone,
+                animated = false
             )
             keepassDatabases.forEach { database ->
                 MonicaExpressiveFilterChip(
                     selected = selected.isKeePassScope(database.id),
                     onClick = { onSelect(UnifiedCategoryFilterSelection.KeePassDatabaseFilter(database.id)) },
                     label = database.name,
-                    leadingIcon = Icons.Default.Key
+                    leadingIcon = Icons.Default.Key,
+                    animated = false
                 )
             }
             bitwardenVaults.forEach { vault ->
@@ -227,7 +294,8 @@ fun UnifiedCategoryFilterChipMenu(
                     selected = selected.isBitwardenScope(vault.id),
                     onClick = { onSelect(UnifiedCategoryFilterSelection.BitwardenVaultFilter(vault.id)) },
                     label = vault.email.ifBlank { "Bitwarden" },
-                    leadingIcon = Icons.Default.CloudSync
+                    leadingIcon = Icons.Default.CloudSync,
+                    animated = false
                 )
             }
         }
@@ -261,7 +329,8 @@ fun UnifiedCategoryFilterChipMenu(
                                     }
                                 },
                                 label = stringResource(item.labelRes),
-                                leadingIcon = item.icon
+                                leadingIcon = item.icon,
+                                animated = false
                             )
                         }
                     }
@@ -269,7 +338,7 @@ fun UnifiedCategoryFilterChipMenu(
             }
         }
 
-        if (folderChips.isNotEmpty()) {
+        if (showDeferredFolderSection && folderChips.isNotEmpty()) {
             Text(
                 text = stringResource(R.string.category_selection_menu_folders),
                 style = MaterialTheme.typography.labelLarge,
@@ -285,14 +354,14 @@ fun UnifiedCategoryFilterChipMenu(
                         selected = chip.selection == selected,
                         onClick = {
                             onSelect(chip.selection)
-                            onDismiss()
                         },
                         label = chip.label,
                         leadingIcon = if (chip.isBack) {
                             Icons.AutoMirrored.Filled.KeyboardArrowLeft
                         } else {
                             Icons.Default.Folder
-                        }
+                        },
+                        animated = false
                     )
                 }
             }

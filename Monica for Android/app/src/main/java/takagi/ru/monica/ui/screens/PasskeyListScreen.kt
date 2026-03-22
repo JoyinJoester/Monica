@@ -80,12 +80,12 @@ import takagi.ru.monica.ui.components.SyncStatusBadge
 import takagi.ru.monica.ui.components.SyncStatusIcon
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenu
+import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuDropdown
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuOffset
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
 import takagi.ru.monica.ui.components.UnifiedMoveAction
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
 import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
-import takagi.ru.monica.ui.components.unifiedCategoryFilterChipMenuModifier
 import takagi.ru.monica.ui.gestures.SwipeActions
 import takagi.ru.monica.ui.haptic.rememberHapticFeedback
 import takagi.ru.monica.utils.BiometricHelper
@@ -857,39 +857,12 @@ fun PasskeyListScreen(
                 onActionPillBoundsChanged = { bounds -> categoryPillBoundsInWindow = bounds },
                 actions = {
                     if (appSettings.categorySelectionUiMode == takagi.ru.monica.data.CategorySelectionUiMode.CHIP_MENU) {
-                        Box {
-                            IconButton(onClick = { showCategoryFilterDialog = true }) {
-                                Icon(
-                                    imageVector = Icons.Default.Folder,
-                                    contentDescription = stringResource(R.string.category),
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            MaterialTheme(
-                                shapes = MaterialTheme.shapes.copy(
-                                    extraSmall = RoundedCornerShape(20.dp),
-                                    small = RoundedCornerShape(20.dp)
-                                )
-                            ) {
-                                DropdownMenu(
-                                    expanded = showCategoryFilterDialog,
-                                    onDismissRequest = { showCategoryFilterDialog = false },
-                                    offset = UnifiedCategoryFilterChipMenuOffset,
-                                    modifier = unifiedCategoryFilterChipMenuModifier()
-                                ) {
-                                    UnifiedCategoryFilterChipMenu(
-                                        visible = true,
-                                        onDismiss = { showCategoryFilterDialog = false },
-                                        selected = selectedCategoryFilter,
-                                        onSelect = { selection -> selectedCategoryFilter = selection },
-                                        categories = categories,
-                                        keepassDatabases = keepassDatabases,
-                                        bitwardenVaults = bitwardenVaults,
-                                        getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
-                                        quickFilterContent = {}
-                                    )
-                                }
-                            }
+                        IconButton(onClick = { showCategoryFilterDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Folder,
+                                contentDescription = stringResource(R.string.category),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     } else {
                         IconButton(onClick = { showCategoryFilterDialog = true }) {
@@ -916,12 +889,33 @@ fun PasskeyListScreen(
                             )
                         }
                     }
-                    IconButton(onClick = { isSearchExpanded = true }) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = stringResource(R.string.search),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                    Box {
+                        IconButton(onClick = { isSearchExpanded = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = stringResource(R.string.search),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        if (appSettings.categorySelectionUiMode == takagi.ru.monica.data.CategorySelectionUiMode.CHIP_MENU) {
+                            UnifiedCategoryFilterChipMenuDropdown(
+                                expanded = showCategoryFilterDialog,
+                                onDismissRequest = { showCategoryFilterDialog = false },
+                                offset = UnifiedCategoryFilterChipMenuOffset
+                            ) {
+                                UnifiedCategoryFilterChipMenu(
+                                    visible = true,
+                                    onDismiss = { showCategoryFilterDialog = false },
+                                    selected = selectedCategoryFilter,
+                                    onSelect = { selection -> selectedCategoryFilter = selection },
+                                    categories = categories,
+                                    keepassDatabases = keepassDatabases,
+                                    bitwardenVaults = bitwardenVaults,
+                                    getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+                                    quickFilterContent = {}
+                                )
+                            }
+                        }
                     }
                 }
             )

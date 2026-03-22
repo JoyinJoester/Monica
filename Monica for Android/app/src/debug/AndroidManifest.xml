@@ -2,11 +2,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <application>
+    <application
+        android:vmSafeMode="true">
         <!--
           Work around emulator/runtime crashes in ART profile saving that currently
-          surface around Compose text input classes. Keep release behavior intact
-          and disable only debug auto profile installation.
+          surface around generated Compose / Kotlin serialization classes.
+          Keep release behavior intact and hard-disable debug-side profile/JIT
+          optimizations that route through the crashing Profile Saver path.
         -->
         <provider
             android:name="androidx.startup.InitializationProvider"

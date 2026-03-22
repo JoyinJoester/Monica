@@ -152,12 +152,12 @@ import takagi.ru.monica.ui.components.SyncStatusIcon
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenu
+import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuDropdown
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuOffset
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
 import takagi.ru.monica.ui.components.UnifiedMoveAction
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
 import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
-import takagi.ru.monica.ui.components.unifiedCategoryFilterChipMenuModifier
 import takagi.ru.monica.ui.common.dialog.DeleteConfirmDialog
 import takagi.ru.monica.ui.common.layout.DetailPane
 import takagi.ru.monica.ui.common.layout.InspectorRow
@@ -548,39 +548,12 @@ fun TotpListContent(
             actions = {
                 // 分类选择按钮
                 if (appSettings.categorySelectionUiMode == takagi.ru.monica.data.CategorySelectionUiMode.CHIP_MENU) {
-                    Box {
-                        IconButton(onClick = { isCategorySheetVisible = true }) {
-                            Icon(
-                                imageVector = Icons.Default.Folder,
-                                contentDescription = stringResource(R.string.category),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        MaterialTheme(
-                            shapes = MaterialTheme.shapes.copy(
-                                extraSmall = RoundedCornerShape(20.dp),
-                                small = RoundedCornerShape(20.dp)
-                            )
-                        ) {
-                            DropdownMenu(
-                                expanded = isCategorySheetVisible,
-                                onDismissRequest = { isCategorySheetVisible = false },
-                                offset = UnifiedCategoryFilterChipMenuOffset,
-                                modifier = unifiedCategoryFilterChipMenuModifier()
-                            ) {
-                                UnifiedCategoryFilterChipMenu(
-                                    visible = true,
-                                    onDismiss = { isCategorySheetVisible = false },
-                                    selected = totpSelectedFilter,
-                                    onSelect = handleCategorySelection,
-                                    categories = categories,
-                                    keepassDatabases = keepassDatabases,
-                                    bitwardenVaults = bitwardenVaults,
-                                    getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
-                                    getKeePassGroups = getKeePassGroups
-                                )
-                            }
-                        }
+                    IconButton(onClick = { isCategorySheetVisible = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Folder,
+                            contentDescription = stringResource(R.string.category),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 } else {
                     IconButton(onClick = { isCategorySheetVisible = true }) {
@@ -606,6 +579,25 @@ fun TotpListContent(
                             contentDescription = stringResource(R.string.more_options),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+                    if (appSettings.categorySelectionUiMode == takagi.ru.monica.data.CategorySelectionUiMode.CHIP_MENU) {
+                        UnifiedCategoryFilterChipMenuDropdown(
+                            expanded = isCategorySheetVisible,
+                            onDismissRequest = { isCategorySheetVisible = false },
+                            offset = UnifiedCategoryFilterChipMenuOffset
+                        ) {
+                            UnifiedCategoryFilterChipMenu(
+                                visible = true,
+                                onDismiss = { isCategorySheetVisible = false },
+                                selected = totpSelectedFilter,
+                                onSelect = handleCategorySelection,
+                                categories = categories,
+                                keepassDatabases = keepassDatabases,
+                                bitwardenVaults = bitwardenVaults,
+                                getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+                                getKeePassGroups = getKeePassGroups
+                            )
+                        }
                     }
                     MaterialTheme(
                         shapes = MaterialTheme.shapes.copy(
