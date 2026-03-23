@@ -1,9 +1,16 @@
 package takagi.ru.monica.ui.screens
 
-import android.app.Activity
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
+import android.util.Log
+import android.content.ActivityNotFoundException
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.Arrangement
@@ -65,7 +72,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.activity.compose.BackHandler
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
@@ -74,16 +81,23 @@ import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.NoteCodeBlockCollapseMode
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.ui.components.ImageImportConfirmDialog
 import takagi.ru.monica.ui.components.ImageDialog
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.components.StorageTargetSelectorCard
 import takagi.ru.monica.util.ImageManager
-import takagi.ru.monica.util.PhotoPickerHelper
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.RememberedStorageTarget
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.viewmodel.NoteEditorViewModel
 import takagi.ru.monica.viewmodel.NoteViewModel
+
+private const val ADD_EDIT_NOTE_SCREEN_TAG = "AddEditNoteScreen"
+
+private data class PendingNoteImageImport(
+    val bitmap: Bitmap,
+    val originalSizeBytes: Long?
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -117,6 +131,10 @@ fun AddEditNoteScreen(
     var passwordError by remember { mutableStateOf(false) }
     var showAddImageDialog by remember { mutableStateOf(false) }
     var pendingImageInsertionCursor by rememberSaveable { mutableStateOf(-1) }
+    var pendingCameraImagePath by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingCameraImageUri by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingNoteImageImport by remember { mutableStateOf<PendingNoteImageImport?>(null) }
+    var isSavingPendingNoteImage by remember { mutableStateOf(false) }
     var isFullScreenEditor by rememberSaveable { mutableStateOf(false) }
     var isEditorModeAnimating by remember { mutableStateOf(false) }
     var transitionFromFullScreen by remember { mutableStateOf(false) }
@@ -126,7 +144,6 @@ fun AddEditNoteScreen(
     val editorModeProgress = remember { Animatable(1f) }
     val normalEditorScrollState = rememberScrollState()
     val imageManager = remember { ImageManager(context) }
-    val activity = remember(context) { context as? Activity }
     val isEditing = noteId != -1L
     val isBitwardenNoteTarget = editorState.bitwardenVaultId != null
     val isMarkdown = true
@@ -141,6 +158,200 @@ fun AddEditNoteScreen(
     val rememberedStorageTarget by settingsManager
         .rememberedStorageTargetFlow(SettingsManager.StorageTargetScope.NOTE)
         .collectAsState(initial = null as RememberedStorageTarget?)
+
+    fun clearPendingNoteImageImport(resetInsertionCursor: Boolean) {
+        pendingNoteImageImport?.bitmap?.let { bitmap ->
+            if (!bitmap.isRecycled) {
+                bitmap.recycle()
+            }
+        }
+        pendingNoteImageImport = null
+        isSavingPendingNoteImage = false
+        if (resetInsertionCursor) {
+            pendingImageInsertionCursor = -1
+        }
+    }
+
+    suspend fun prepareSelectedNoteImage(uri: Uri) {
+        try {
+            Log.d(ADD_EDIT_NOTE_SCREEN_TAG, "Preparing note image import uri=$uri")
+            if (editorState.bitwardenVaultId != null) {
+                Log.w(ADD_EDIT_NOTE_SCREEN_TAG, "Skipped note image import because Bitwarden target is active")
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.note_bitwarden_inline_image_disabled_toast),
+                    Toast.LENGTH_SHORT
+                ).show()
+                return
+            }
+
+            val preparedImport = imageManager.prepareImageImport(uri)
+            if (preparedImport != null) {
+                clearPendingNoteImageImport(resetInsertionCursor = false)
+                pendingNoteImageImport = PendingNoteImageImport(
+                    bitmap = preparedImport.bitmap,
+                    originalSizeBytes = preparedImport.originalSizeBytes
+                )
+            } else {
+                Log.w(ADD_EDIT_NOTE_SCREEN_TAG, "prepareImageImport returned null for uri=$uri")
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.photo_save_failed),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        } catch (e: Exception) {
+            Log.e(ADD_EDIT_NOTE_SCREEN_TAG, "Failed to prepare note image uri=$uri", e)
+            Toast.makeText(
+                context,
+                context.getString(R.string.photo_process_failed, e.message ?: e.javaClass.simpleName),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    suspend fun confirmPendingNoteImageImport(quality: Int) {
+        val importRequest = pendingNoteImageImport ?: return
+        try {
+            if (editorState.bitwardenVaultId != null) {
+                clearPendingNoteImageImport(resetInsertionCursor = true)
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.note_bitwarden_inline_image_disabled_toast),
+                    Toast.LENGTH_SHORT
+                ).show()
+                return
+            }
+
+            isSavingPendingNoteImage = true
+            Log.d(
+                ADD_EDIT_NOTE_SCREEN_TAG,
+                "Confirming note image import quality=$quality insertionCursor=$pendingImageInsertionCursor"
+            )
+            val fileName = imageManager.saveImage(
+                bitmap = importRequest.bitmap,
+                compressionFormat = Bitmap.CompressFormat.JPEG,
+                compressionQuality = quality
+            )
+            if (fileName != null) {
+                editorViewModel.insertInlineImage(
+                    imageId = fileName,
+                    insertionIndex = pendingImageInsertionCursor.takeIf { it >= 0 }
+                )
+                clearPendingNoteImageImport(resetInsertionCursor = true)
+            } else {
+                isSavingPendingNoteImage = false
+                Log.w(ADD_EDIT_NOTE_SCREEN_TAG, "confirmPendingNoteImageImport returned null")
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.photo_save_failed),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        } catch (e: Exception) {
+            isSavingPendingNoteImage = false
+            Log.e(ADD_EDIT_NOTE_SCREEN_TAG, "confirmPendingNoteImageImport failed", e)
+            Toast.makeText(
+                context,
+                context.getString(R.string.photo_process_failed, e.message ?: e.javaClass.simpleName),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    val noteGalleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        Log.d(ADD_EDIT_NOTE_SCREEN_TAG, "Gallery result uri=$uri")
+        if (uri == null) {
+            pendingImageInsertionCursor = -1
+            return@rememberLauncherForActivityResult
+        }
+        scope.launch {
+            prepareSelectedNoteImage(uri)
+        }
+    }
+
+    val noteGalleryFallbackLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        Log.d(ADD_EDIT_NOTE_SCREEN_TAG, "Fallback gallery result uri=$uri")
+        if (uri == null) {
+            pendingImageInsertionCursor = -1
+            return@rememberLauncherForActivityResult
+        }
+        scope.launch {
+            prepareSelectedNoteImage(uri)
+        }
+    }
+
+    val noteCameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        val tempPath = pendingCameraImagePath
+        val tempUri = pendingCameraImageUri
+        pendingCameraImagePath = null
+        pendingCameraImageUri = null
+        Log.d(ADD_EDIT_NOTE_SCREEN_TAG, "Camera result success=$success tempPath=$tempPath tempUri=$tempUri")
+        if (!success || tempPath.isNullOrBlank()) {
+            tempPath?.let { path: String -> java.io.File(path).delete() }
+            pendingImageInsertionCursor = -1
+            return@rememberLauncherForActivityResult
+        }
+        val resolvedTempPath = tempPath
+        val resolvedTempUri = tempUri
+        scope.launch {
+            val tempFile = java.io.File(resolvedTempPath)
+            try {
+                if (!tempFile.exists() || tempFile.length() == 0L) {
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.photo_file_missing_or_empty),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    pendingImageInsertionCursor = -1
+                    return@launch
+                }
+                prepareSelectedNoteImage(resolvedTempUri?.let(Uri::parse) ?: Uri.fromFile(tempFile))
+            } finally {
+                tempFile.delete()
+            }
+        }
+    }
+
+    val launchNoteCameraCapture: () -> Unit = {
+        runCatching {
+            val (tempFile, tempUri) = imageManager.createTempPhotoCaptureRequest()
+            pendingCameraImagePath = tempFile.absolutePath
+            pendingCameraImageUri = tempUri.toString()
+            Log.d(ADD_EDIT_NOTE_SCREEN_TAG, "Launching camera tempPath=${tempFile.absolutePath} uri=$tempUri")
+            noteCameraLauncher.launch(tempUri)
+        }.onFailure { error ->
+            pendingCameraImagePath = null
+            pendingCameraImageUri = null
+            pendingImageInsertionCursor = -1
+            Log.e(ADD_EDIT_NOTE_SCREEN_TAG, "Camera launch failed", error)
+            Toast.makeText(
+                context,
+                context.getString(R.string.photo_process_failed, error.message ?: error.javaClass.simpleName),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    val noteCameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        Log.d(ADD_EDIT_NOTE_SCREEN_TAG, "Camera permission result granted=$granted")
+        if (granted) {
+            launchNoteCameraCapture()
+        } else {
+            pendingCameraImagePath = null
+            pendingCameraImageUri = null
+            pendingImageInsertionCursor = -1
+            Toast.makeText(context, context.getString(R.string.camera_permission_required), Toast.LENGTH_SHORT).show()
+        }
+    }
 
     LaunchedEffect(noteId, isEditing) {
         if (!isEditing) {
@@ -183,63 +394,6 @@ fun AddEditNoteScreen(
                 }
             }
         }
-    }
-
-    LaunchedEffect(Unit) {
-        PhotoPickerHelper.setCallback(context, object : PhotoPickerHelper.PhotoPickerCallback {
-            override fun onPhotoSelected(imagePath: String?) {
-                imagePath?.let { path ->
-                    scope.launch {
-                        try {
-                            if (editorViewModel.uiState.value.bitwardenVaultId != null) {
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.note_bitwarden_inline_image_disabled_toast),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                                return@launch
-                            }
-                            val file = java.io.File(path)
-                            if (!file.exists() || file.length() == 0L) {
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.photo_file_missing_or_empty),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                                return@launch
-                            }
-
-                            val fileName = imageManager.saveImageFromUri(Uri.fromFile(file))
-                            if (fileName != null) {
-                                editorViewModel.insertInlineImage(
-                                    imageId = fileName,
-                                    insertionIndex = pendingImageInsertionCursor.takeIf { it >= 0 }
-                                )
-                                pendingImageInsertionCursor = -1
-                                file.delete()
-                            } else {
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.photo_save_failed),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        } catch (e: Exception) {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.photo_process_failed, e.message ?: e.javaClass.simpleName),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    }
-                }
-            }
-
-            override fun onError(error: String) {
-                pendingImageInsertionCursor = -1
-                Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
-            }
-        })
     }
 
     fun animateEditorModeChange(targetFullScreen: Boolean) {
@@ -633,6 +787,23 @@ fun AddEditNoteScreen(
             showNoteImageDialog = null
         }
     }
+
+    pendingNoteImageImport?.let { importRequest ->
+        ImageImportConfirmDialog(
+            imageManager = imageManager,
+            bitmap = importRequest.bitmap,
+            originalSizeBytes = importRequest.originalSizeBytes,
+            isSaving = isSavingPendingNoteImage,
+            onDismiss = {
+                clearPendingNoteImageImport(resetInsertionCursor = true)
+            },
+            onConfirm = { quality ->
+                scope.launch {
+                    confirmPendingNoteImageImport(quality)
+                }
+            }
+        )
+    }
     
     // Add Image Selection Dialog (Bottom Sheet or Dialog)
     if (showAddImageDialog) {
@@ -653,13 +824,39 @@ fun AddEditNoteScreen(
                         OutlinedButton(
                             onClick = {
                                 showAddImageDialog = false
-                                if (activity != null) {
-                                    pendingImageInsertionCursor = editorState.contentField.selection.start
-                                        .coerceIn(0, editorState.contentField.text.length)
-                                    PhotoPickerHelper.currentTag = "note"
-                                    PhotoPickerHelper.pickFromGallery(activity)
-                                } else {
-                                    Toast.makeText(context, context.getString(R.string.photo_cannot_open_gallery), Toast.LENGTH_SHORT).show()
+                                pendingImageInsertionCursor = editorState.contentField.selection.start
+                                    .coerceIn(0, editorState.contentField.text.length)
+                                Log.d(
+                                    ADD_EDIT_NOTE_SCREEN_TAG,
+                                    "Gallery button clicked insertionCursor=$pendingImageInsertionCursor"
+                                )
+                                runCatching {
+                                    noteGalleryLauncher.launch(
+                                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                }.onFailure { error ->
+                                    if (error is ActivityNotFoundException) {
+                                        Log.w(ADD_EDIT_NOTE_SCREEN_TAG, "PickVisualMedia unavailable, falling back to GetContent", error)
+                                        runCatching {
+                                            noteGalleryFallbackLauncher.launch("image/*")
+                                        }.onFailure { fallbackError ->
+                                            Log.e(ADD_EDIT_NOTE_SCREEN_TAG, "Fallback gallery launch failed", fallbackError)
+                                            pendingImageInsertionCursor = -1
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(R.string.photo_process_failed, fallbackError.message ?: fallbackError.javaClass.simpleName),
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    } else {
+                                        Log.e(ADD_EDIT_NOTE_SCREEN_TAG, "Gallery launch failed", error)
+                                        pendingImageInsertionCursor = -1
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.photo_process_failed, error.message ?: error.javaClass.simpleName),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
                                 }
                             },
                             modifier = Modifier.weight(1f)
@@ -671,13 +868,16 @@ fun AddEditNoteScreen(
                         OutlinedButton(
                             onClick = {
                                 showAddImageDialog = false
-                                if (activity != null) {
-                                    pendingImageInsertionCursor = editorState.contentField.selection.start
-                                        .coerceIn(0, editorState.contentField.text.length)
-                                    PhotoPickerHelper.currentTag = "note"
-                                    PhotoPickerHelper.takePhoto(activity)
+                                pendingImageInsertionCursor = editorState.contentField.selection.start
+                                    .coerceIn(0, editorState.contentField.text.length)
+                                Log.d(
+                                    ADD_EDIT_NOTE_SCREEN_TAG,
+                                    "Camera button clicked insertionCursor=$pendingImageInsertionCursor permission=${ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)}"
+                                )
+                                if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                                    launchNoteCameraCapture()
                                 } else {
-                                    Toast.makeText(context, context.getString(R.string.photo_cannot_open_camera_use_gallery), Toast.LENGTH_SHORT).show()
+                                    noteCameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                                 }
                             },
                             modifier = Modifier.weight(1f)

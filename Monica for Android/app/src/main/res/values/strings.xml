@@ -53,10 +53,10 @@
     <string name="ime_unlock_message">Monica secure keyboard follows the main app lock state.</string>
     <string name="ime_unlock_password_label">Master password</string>
     <string name="ime_unlock_error">Master password is incorrect.</string>
-    <string name="ime_unlock_required">Vault locked. Open Monica to authenticate again.</string>
-    <string name="ime_unlock_in_app_message">Use Monica to verify with biometrics or your master password, then come back here to fill.</string>
-    <string name="ime_unlock_open_app">Open Monica to unlock</string>
-    <string name="ime_unlock_open_app_error">Could not open Monica authentication.</string>
+    <string name="ime_unlock_required">Vault locked. Unlock to continue.</string>
+    <string name="ime_unlock_in_app_message">Verify with biometrics or your master password to continue filling.</string>
+    <string name="ime_unlock_open_app">Unlock</string>
+    <string name="ime_unlock_open_app_error">Could not open the unlock screen.</string>
     <string name="ime_search_accounts">Search accounts</string>
     <string name="ime_picker_title">Password picker</string>
     <string name="ime_picker_subtitle">Pick a database, then tap an item to fill the current field.</string>
@@ -767,6 +767,8 @@
     
     <!-- Timeline Screen -->
     <string name="no_history_records">No history records</string>
+    <string name="password_history_title">Password History</string>
+    <string name="password_history_last_used">Last used: %1$s</string>
     <string name="sync_conflict">Sync Conflict</string>
     <string name="modified_field">Modified %1$s</string>
     <string name="restore_version">Restore Version</string>
@@ -2392,6 +2394,12 @@
     <string name="photo_file_missing_or_empty">File does not exist or is empty</string>
     <string name="photo_save_failed">Failed to save photo</string>
     <string name="photo_process_failed">Failed to process photo: %1$s</string>
+    <string name="photo_import_dialog_title">Import photo</string>
+    <string name="photo_import_dialog_quality">Compression quality: %1$d%%</string>
+    <string name="photo_import_dialog_original_size">Original size: %1$s</string>
+    <string name="photo_import_dialog_estimated_size">Estimated saved size: %1$s</string>
+    <string name="photo_import_dialog_hint">Lower quality reduces storage and backup size. The imported image will be saved after compression.</string>
+    <string name="photo_import_dialog_confirm">Import</string>
     <string name="photo_cannot_open_gallery">Cannot open gallery</string>
     <string name="photo_cannot_open_camera_use_gallery">Cannot open camera, switching to gallery</string>
     <string name="delete_image">Delete image</string>

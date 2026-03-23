@@ -159,7 +159,8 @@ class MainActivity : BaseMonicaActivity() {
             database.bitwardenFolderDao(),
             database.secureItemDao(),
             database.passkeyDao(),
-            database.passwordArchiveSyncMetaDao()
+            database.passwordArchiveSyncMetaDao(),
+            database.passwordHistoryDao()
         )
         val secureItemRepository = takagi.ru.monica.repository.SecureItemRepository(database.secureItemDao())
         val securityManager = SecurityManager(this)
@@ -494,16 +495,25 @@ fun MonicaContent(
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_START -> {
-                    if (!currentIsAuthenticated && SessionManager.canSkipVerification(context)) {
+                    val canSkipVerification = SessionManager.canSkipVerification(context)
+                    val bypassEnabled =
+                        currentSettings.disablePasswordVerification && !currentIsFirstTime
+
+                    if (!currentIsAuthenticated && canSkipVerification) {
                         viewModel.restoreAuthenticatedSession()
                     }
 
-                    if (currentIsAuthenticated || (currentSettings.disablePasswordVerification && !currentIsFirstTime)) {
+                    if (currentIsAuthenticated && !canSkipVerification && !bypassEnabled) {
+                        viewModel.logout()
+                        return@LifecycleEventObserver
+                    }
+
+                    if (currentIsAuthenticated || bypassEnabled) {
                         viewModel.refreshKeePassFromSourceForCurrentContext()
                     }
                     if (!currentIsAuthenticated &&
-                        !SessionManager.canSkipVerification(context) &&
-                        !(currentSettings.disablePasswordVerification && !currentIsFirstTime)
+                        !canSkipVerification &&
+                        !bypassEnabled
                     ) {
                         navController.navigate(Screen.Login.route) {
                             launchSingleTop = true

@@ -12,7 +12,6 @@ import androidx.compose.material.icons.filled.*
 // Ensure Bookmark icons are available (using wildcards in original line 9 covers it if they are in filled, else explicit import)
 import androidx.compose.material.icons.filled.BookmarkAdd
 import androidx.compose.material.icons.filled.BookmarkRemove
-import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -51,7 +50,6 @@ import android.text.format.DateUtils
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
-import takagi.ru.monica.util.ImageCompressor
 
 private fun matchesAnyKeyword(message: String, vararg keywords: String): Boolean {
     val normalized = message.lowercase(Locale.ROOT)
@@ -185,17 +183,10 @@ fun WebDavBackupScreen(
     // 备份进行中状态（防止重复点击）
     var isBackupInProgress by remember { mutableStateOf(false) }
     
-    // 图片压缩状态
-    var isCompressing by remember { mutableStateOf(false) }
-    var imageStats by remember { mutableStateOf<ImageCompressor.ImageStats?>(null) }
-    var showCompressDialog by remember { mutableStateOf(false) }
-    var compressionProgress by remember { mutableStateOf(0f) }
-    var compressionMessage by remember { mutableStateOf("") }
     var showPasswordPicker by remember { mutableStateOf(false) }
     
     val webDavHelper = remember { WebDavHelper(context) }
     val autoBackupManager = remember { AutoBackupManager(context) }
-    val imageCompressor = remember { ImageCompressor(context) }
     val pickerSecurityManager = remember { takagi.ru.monica.security.SecurityManager(context) }
     val passwordEntriesForPicker by passwordRepository.getAllPasswordEntries().collectAsState(initial = emptyList())
     
@@ -224,19 +215,18 @@ fun WebDavBackupScreen(
         // 加载备份偏好设置
         backupPreferences = webDavHelper.getBackupPreferences()
         
-        // 加载各类型的数量
-        passwordCount = passwordRepository.getAllPasswordEntries().first().size
-        val allSecureItems = secureItemRepository.getAllItems().first()
-        authenticatorCount = allSecureItems.count { it.itemType == takagi.ru.monica.data.ItemType.TOTP }
-        documentCount = allSecureItems.count { it.itemType == takagi.ru.monica.data.ItemType.DOCUMENT }
-        bankCardCount = allSecureItems.count { it.itemType == takagi.ru.monica.data.ItemType.BANK_CARD }
-        noteCount = allSecureItems.count { it.itemType == takagi.ru.monica.data.ItemType.NOTE }
+        // 加载各类型的数量（仅 Monica 本地数据，排除 KeePass 和 Bitwarden）
+        passwordCount = passwordRepository.getLocalEntriesCount()
+        authenticatorCount = secureItemRepository.getLocalItemCountByType(takagi.ru.monica.data.ItemType.TOTP)
+        documentCount = secureItemRepository.getLocalItemCountByType(takagi.ru.monica.data.ItemType.DOCUMENT)
+        bankCardCount = secureItemRepository.getLocalItemCountByType(takagi.ru.monica.data.ItemType.BANK_CARD)
+        noteCount = secureItemRepository.getLocalItemCountByType(takagi.ru.monica.data.ItemType.NOTE)
         
-        // 获取回收站数量
+        // 获取本地回收站数量（排除 KeePass 和 Bitwarden 的数据）
         val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
-        val deletedPasswordCount = database.passwordEntryDao().getDeletedCount()
-        val deletedSecureItems = secureItemRepository.getDeletedItems().first()
-        trashCount = deletedPasswordCount + deletedSecureItems.size
+        val deletedPasswordCount = passwordRepository.getLocalDeletedEntriesCount()
+        val deletedSecureItemCount = secureItemRepository.getLocalDeletedItemCount()
+        trashCount = deletedPasswordCount + deletedSecureItemCount
         
         // 获取本地 KeePass 数据库数量
         try {
@@ -248,18 +238,15 @@ fun WebDavBackupScreen(
             localKeePassCount = 0
         }
 
-        // 获取 Passkey 数量
+        // 获取本地 Passkey 数量（排除 KeePass 和 Bitwarden 的数据）
         try {
             val passkeyDao = database.passkeyDao()
             passkeyCount = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                passkeyDao.getAllPasskeysSync().size
+                passkeyDao.getLocalPasskeyCount()
             }
         } catch (e: Exception) {
             passkeyCount = 0
         }
-        
-        // 加载图片统计信息
-        imageStats = imageCompressor.getImageStats()
     }
     
     Scaffold(
@@ -724,162 +711,6 @@ fun WebDavBackupScreen(
             
             // 备份列表(仅在配置成功后显示)
             if (isConfigured) {
-                // 图片压缩卡片
-                Card(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.webdav_image_optimization_title),
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        
-                        imageStats?.let { stats ->
-                            if (stats.totalImages > 0) {
-                                Text(
-                                    text = stringResource(
-                                        R.string.webdav_image_stats_total,
-                                        stats.totalImages,
-                                        stats.formatTotalSize()
-                                    ),
-                                    style = MaterialTheme.typography.bodyMedium
-                                )
-                                if (stats.largeImageCount > 0) {
-                                    Text(
-                                        text = stringResource(
-                                            R.string.webdav_image_stats_optimizable,
-                                            stats.largeImageCount,
-                                            stats.compressedCount
-                                        ),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                } else {
-                                    Text(
-                                        text = stringResource(R.string.webdav_image_all_optimized),
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.tertiary
-                                    )
-                                }
-                            } else {
-                                Text(
-                                    text = stringResource(R.string.webdav_image_none),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                        
-                        if (isCompressing) {
-                            Column {
-                                LinearProgressIndicator(
-                                    progress = { compressionProgress },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                                Text(
-                                    text = compressionMessage,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                        
-                        OutlinedButton(
-                            onClick = {
-                                if (imageStats?.largeImageCount ?: 0 > 0) {
-                                    showCompressDialog = true
-                                } else {
-                                    Toast.makeText(
-                                        context,
-                                        context.getString(R.string.webdav_image_no_need_compress),
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            enabled = !isCompressing && !isBackupInProgress && (imageStats?.largeImageCount ?: 0) > 0
-                        ) {
-                            Icon(Icons.Default.Compress, contentDescription = null)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(stringResource(R.string.webdav_compress_images_one_tap))
-                        }
-                    }
-                }
-                
-                // 压缩确认对话框
-                if (showCompressDialog) {
-                    AlertDialog(
-                        onDismissRequest = { showCompressDialog = false },
-                        title = { Text(stringResource(R.string.webdav_compress_dialog_title)) },
-                        text = { 
-                            Text(
-                                stringResource(
-                                    R.string.webdav_compress_dialog_message,
-                                    imageStats?.largeImageCount ?: 0
-                                )
-                            )
-                        },
-                        confirmButton = {
-                            Button(
-                                onClick = {
-                                    showCompressDialog = false
-                                    isCompressing = true
-                                    compressionProgress = 0f
-                                    compressionMessage = context.getString(R.string.webdav_compress_status_preparing)
-                                    
-                                    coroutineScope.launch {
-                                        try {
-                                            val result = imageCompressor.compressAllImages(
-                                                object : ImageCompressor.CompressionProgressCallback {
-                                                    override fun onProgress(current: Int, total: Int, currentFileName: String) {
-                                                        compressionProgress = current.toFloat() / total
-                                                        compressionMessage = context.getString(
-                                                            R.string.webdav_compress_status_processing,
-                                                            current,
-                                                            total
-                                                        )
-                                                    }
-                                                    
-                                                    override fun onComplete(result: ImageCompressor.CompressionResult) {
-                                                        compressionProgress = 1f
-                                                        compressionMessage = context.getString(R.string.webdav_compress_status_done)
-                                                    }
-                                                }
-                                            )
-                                            
-                                            isCompressing = false
-                                            imageStats = imageCompressor.getImageStats()
-                                            
-                                            Toast.makeText(
-                                                context,
-                                                result.getSummary(),
-                                                Toast.LENGTH_LONG
-                                            ).show()
-                                        } catch (e: Exception) {
-                                            isCompressing = false
-                                            Toast.makeText(
-                                                context,
-                                                context.getString(R.string.webdav_compress_failed, e.message),
-                                                Toast.LENGTH_LONG
-                                            ).show()
-                                        }
-                                    }
-                                }
-                            ) {
-                                Text(stringResource(R.string.confirm))
-                            }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = { showCompressDialog = false }) {
-                                Text(stringResource(R.string.cancel))
-                            }
-                        }
-                    )
-                }
-                
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 // 创建备份按钮
@@ -910,17 +741,6 @@ fun WebDavBackupScreen(
                         errorMessage = ""
                         coroutineScope.launch {
                             try {
-                                // 备份前自动压缩大图片（如果启用了图片备份）
-                                if (backupPreferences.includeImages && (imageStats?.largeImageCount ?: 0) > 0) {
-                                    Toast.makeText(
-                                        context,
-                                        context.getString(R.string.webdav_optimizing_images),
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                    imageCompressor.compressAllImages()
-                                    imageStats = imageCompressor.getImageStats()
-                                }
-                                
                                 // 获取所有密码数据
                                 val allPasswords = passwordRepository.getAllPasswordEntries().first()
                                 
@@ -1002,7 +822,7 @@ fun WebDavBackupScreen(
                         }
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = !isLoading && !isBackupInProgress && !isCompressing
+                    enabled = !isLoading && !isBackupInProgress
                 ) {
                     if (isBackupInProgress) {
                         CircularProgressIndicator(

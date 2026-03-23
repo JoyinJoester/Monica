@@ -50,6 +50,7 @@ import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordDatabase
+import takagi.ru.monica.data.PasswordHistoryEntry
 import takagi.ru.monica.data.UnmatchedIconHandlingStrategy
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.utils.FieldValidation
@@ -161,6 +162,8 @@ fun PasswordDetailScreen(
     
     // 自定义字段状态
     var customFields by remember { mutableStateOf<List<CustomField>>(emptyList()) }
+    val passwordHistory by viewModel.getPasswordHistoryFlow(passwordId).collectAsState(initial = emptyList())
+    val passwordHistoryVisibility = remember { mutableStateMapOf<Long, Boolean>() }
     val usernameAliasFallbackTitle = stringResource(R.string.autofill_username)
     val hasAliasMeta = customFields.any {
         it.title == MONICA_USERNAME_ALIAS_META_FIELD_TITLE && it.value == MONICA_USERNAME_ALIAS_META_VALUE
@@ -730,6 +733,14 @@ fun PasswordDetailScreen(
                         }
                     )
                 }
+
+                if (passwordHistory.isNotEmpty()) {
+                    PasswordHistorySection(
+                        history = passwordHistory,
+                        visibilityState = passwordHistoryVisibility,
+                        context = context
+                    )
+                }
                 
                 // 底部间距 (避免 ActionStrip 遮挡)
                 Spacer(modifier = Modifier.height(80.dp))
@@ -828,6 +839,61 @@ fun PasswordDetailScreen(
                 null
             }
         )
+    }
+}
+
+@Composable
+private fun PasswordHistorySection(
+    history: List<PasswordHistoryEntry>,
+    visibilityState: MutableMap<Long, Boolean>,
+    context: Context
+) {
+    val dateFormatter = remember { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT) }
+
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.password_history_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+
+            history.forEachIndexed { index, item ->
+                if (index > 0) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
+
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = stringResource(
+                            R.string.password_history_last_used,
+                            dateFormatter.format(item.lastUsedAt)
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    PasswordField(
+                        label = stringResource(R.string.password),
+                        value = item.password,
+                        visible = visibilityState[item.id] == true,
+                        onToggleVisibility = {
+                            val current = visibilityState[item.id] == true
+                            visibilityState[item.id] = !current
+                        },
+                        context = context
+                    )
+                }
+            }
+        }
     }
 }
 

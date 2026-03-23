@@ -13,6 +13,7 @@ import takagi.ru.monica.data.CustomFieldDraft
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.PasswordArchiveSyncMeta
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.PasswordHistoryEntry
 import takagi.ru.monica.data.PasswordHistoryManager
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
@@ -95,6 +96,7 @@ class PasswordViewModel(
         private const val MONICA_NO_STACK_FIELD_TITLE = "__monica_no_stack"
         private const val MONICA_KEEPASS_ARCHIVE_ROOT_GROUP_NAME = ".Monica"
         private const val MONICA_KEEPASS_ARCHIVE_GROUP_NAME = "Archive"
+        private const val PASSWORD_HISTORY_LIMIT = 10
     }
 
     enum class ManualStackMode {
@@ -1417,6 +1419,10 @@ class PasswordViewModel(
             )
         )
 
+        if (oldEntry != null && oldPassword.isNotBlank() && oldPassword != entryToUpdate.password) {
+            savePasswordHistorySnapshot(entryToUpdate.id, oldPassword)
+        }
+
         keepassPasswordUpdateExecutor.syncUpdatedEntry(
             existingEntry = oldEntry,
             updatedEntry = entryToUpdate,
@@ -1459,6 +1465,23 @@ class PasswordViewModel(
             changes = changes
         )
         return true
+    }
+
+    private suspend fun savePasswordHistorySnapshot(entryId: Long, plainPassword: String) {
+        if (plainPassword.isBlank()) return
+
+        val latestHistory = repository.getPasswordHistoryByEntryIdSync(entryId).firstOrNull()
+        val latestPassword = latestHistory?.let { decryptForDisplay(it.password) }
+        if (latestPassword == plainPassword) return
+
+        repository.insertPasswordHistory(
+            PasswordHistoryEntry(
+                entryId = entryId,
+                password = securityManager.encryptData(plainPassword),
+                lastUsedAt = Date()
+            )
+        )
+        repository.trimPasswordHistory(entryId, PASSWORD_HISTORY_LIMIT)
     }
     
     fun deletePasswordEntry(entry: PasswordEntry) {
@@ -1849,6 +1872,15 @@ class PasswordViewModel(
         return repository.getPasswordEntryById(id)?.let { entry ->
             entry.copy(password = decryptForDisplay(entry.password))
         }
+    }
+
+    fun getPasswordHistoryFlow(passwordId: Long): Flow<List<PasswordHistoryEntry>> {
+        return repository.getPasswordHistoryByEntryId(passwordId)
+            .map { entries ->
+                entries.map { entry ->
+                    entry.copy(password = decryptForDisplay(entry.password))
+                }
+            }
     }
 
     /**

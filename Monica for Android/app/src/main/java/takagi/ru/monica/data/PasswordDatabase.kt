@@ -20,6 +20,7 @@ import takagi.ru.monica.data.bitwarden.*
         KeepassGroupSyncConfig::class,
         CustomField::class,  // 自定义字段表
         PasswordArchiveSyncMeta::class, // 归档同步元信息
+        PasswordHistoryEntry::class, // 历史密码表
         PasskeyEntry::class,  // Passkey 通行密钥表
         // Bitwarden 集成表
         BitwardenVault::class,
@@ -28,7 +29,7 @@ import takagi.ru.monica.data.bitwarden.*
         BitwardenConflictBackup::class,
         BitwardenPendingOperation::class
     ],
-    version = 48,
+    version = 49,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -42,6 +43,7 @@ abstract class PasswordDatabase : RoomDatabase() {
     abstract fun keepassGroupSyncConfigDao(): KeepassGroupSyncConfigDao
     abstract fun customFieldDao(): CustomFieldDao  // 自定义字段 DAO
     abstract fun passwordArchiveSyncMetaDao(): PasswordArchiveSyncMetaDao
+    abstract fun passwordHistoryDao(): PasswordHistoryDao
     abstract fun passkeyDao(): PasskeyDao  // Passkey DAO
     
     // Bitwarden DAOs
@@ -1280,6 +1282,38 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Migration 48 -> 49:
+         * 增加历史密码表，用于密码详情页展示历史密码。
+         */
+        private val MIGRATION_48_49 = object : androidx.room.migration.Migration(48, 49) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 48→49: password history table")
+                    database.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS password_history_entries (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            entry_id INTEGER NOT NULL,
+                            password TEXT NOT NULL,
+                            last_used_at INTEGER NOT NULL,
+                            FOREIGN KEY(entry_id) REFERENCES password_entries(id) ON DELETE CASCADE
+                        )
+                        """.trimIndent()
+                    )
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_password_history_entries_entry_id ON password_history_entries(entry_id)"
+                    )
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_password_history_entries_entry_id_last_used_at ON password_history_entries(entry_id, last_used_at)"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 48→49 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 48→49 failed: ${e.message}")
+                }
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -1334,7 +1368,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_44_45,  // 密码归档同步元信息
                         MIGRATION_45_46,  // KeePass KDBX 配置字段
                         MIGRATION_46_47,  // KeePass 原生 UUID 字段
-                        MIGRATION_47_48   // Bitwarden TLS/证书字段
+                        MIGRATION_47_48,  // Bitwarden TLS/证书字段
+                        MIGRATION_48_49   // 历史密码表
                     )
                     .build()
                 INSTANCE = instance

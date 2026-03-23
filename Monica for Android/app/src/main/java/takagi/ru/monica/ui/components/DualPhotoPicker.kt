@@ -1,8 +1,15 @@
 package takagi.ru.monica.ui.components
 
-import android.app.Activity
+import android.Manifest
+import android.content.ActivityNotFoundException
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.net.Uri
+import android.util.Log
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -15,6 +22,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,10 +33,23 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.util.ImageManager
-import takagi.ru.monica.util.PhotoPickerHelper
+
+private enum class DualPhotoSlot {
+    FRONT,
+    BACK
+}
+
+private data class PendingDualPhotoImport(
+    val slot: DualPhotoSlot,
+    val bitmap: Bitmap,
+    val originalSizeBytes: Long?
+)
+
+private const val DUAL_PHOTO_PICKER_TAG = "DualPhotoPicker"
 
 /**
  * 双面照片选择器组件
@@ -47,7 +68,6 @@ fun DualPhotoPicker(
     backLabel: String? = null
 ) {
     val context = LocalContext.current
-    val activity = context as? Activity
     val imageManager = remember { ImageManager(context) }
     val scope = rememberCoroutineScope()
     
@@ -55,8 +75,231 @@ fun DualPhotoPicker(
     var backBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var showFrontImageDialog by remember { mutableStateOf(false) }
     var showBackImageDialog by remember { mutableStateOf(false) }
+    var pendingSlot by remember { mutableStateOf<DualPhotoSlot?>(null) }
+    var pendingCameraImagePath by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingCameraImageUri by rememberSaveable { mutableStateOf<String?>(null) }
+    var pendingPhotoImport by remember { mutableStateOf<PendingDualPhotoImport?>(null) }
+    var isSavingPendingPhoto by remember { mutableStateOf(false) }
     val resolvedFrontLabel = frontLabel ?: stringResource(R.string.photo_front_label)
     val resolvedBackLabel = backLabel ?: stringResource(R.string.photo_back_label)
+
+    fun clearPendingPhotoImport() {
+        pendingPhotoImport?.bitmap?.let { bitmap ->
+            if (!bitmap.isRecycled) {
+                bitmap.recycle()
+            }
+        }
+        pendingPhotoImport = null
+        isSavingPendingPhoto = false
+    }
+
+    suspend fun prepareSelectedPhoto(slot: DualPhotoSlot, uri: Uri) {
+        try {
+            Log.d(DUAL_PHOTO_PICKER_TAG, "Preparing photo import for slot=$slot uri=$uri")
+            val preparedImport = imageManager.prepareImageImport(uri)
+            if (preparedImport != null) {
+                clearPendingPhotoImport()
+                pendingPhotoImport = PendingDualPhotoImport(
+                    slot = slot,
+                    bitmap = preparedImport.bitmap,
+                    originalSizeBytes = preparedImport.originalSizeBytes
+                )
+            } else {
+                Log.w(DUAL_PHOTO_PICKER_TAG, "Photo prepare returned null for slot=$slot uri=$uri")
+                Toast.makeText(context, context.getString(R.string.photo_save_failed), Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Log.e(DUAL_PHOTO_PICKER_TAG, "Photo prepare failed for slot=$slot uri=$uri", e)
+            Toast.makeText(
+                context,
+                context.getString(R.string.photo_process_failed, e.message ?: e.javaClass.simpleName),
+                Toast.LENGTH_SHORT
+            ).show()
+        } finally {
+            pendingSlot = null
+        }
+    }
+
+    suspend fun confirmPendingPhotoImport(quality: Int) {
+        val importRequest = pendingPhotoImport ?: return
+        try {
+            isSavingPendingPhoto = true
+            Log.d(
+                DUAL_PHOTO_PICKER_TAG,
+                "Confirming photo import for slot=${importRequest.slot} quality=$quality"
+            )
+            val fileName = imageManager.saveImage(
+                bitmap = importRequest.bitmap,
+                compressionFormat = Bitmap.CompressFormat.JPEG,
+                compressionQuality = quality
+            )
+            if (fileName != null) {
+                when (importRequest.slot) {
+                    DualPhotoSlot.FRONT -> onFrontImageSelected(fileName)
+                    DualPhotoSlot.BACK -> onBackImageSelected(fileName)
+                }
+                clearPendingPhotoImport()
+            } else {
+                Log.w(
+                    DUAL_PHOTO_PICKER_TAG,
+                    "confirmPendingPhotoImport returned null for slot=${importRequest.slot}"
+                )
+                isSavingPendingPhoto = false
+                Toast.makeText(context, context.getString(R.string.photo_save_failed), Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            isSavingPendingPhoto = false
+            Log.e(
+                DUAL_PHOTO_PICKER_TAG,
+                "confirmPendingPhotoImport failed for slot=${importRequest.slot}",
+                e
+            )
+            Toast.makeText(
+                context,
+                context.getString(R.string.photo_process_failed, e.message ?: e.javaClass.simpleName),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        val slot = pendingSlot
+        Log.d(DUAL_PHOTO_PICKER_TAG, "Gallery result slot=$slot uri=$uri")
+        if (uri == null || slot == null) {
+            pendingSlot = null
+            return@rememberLauncherForActivityResult
+        }
+        scope.launch {
+            prepareSelectedPhoto(slot, uri)
+        }
+    }
+
+    val galleryFallbackLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        val slot = pendingSlot
+        Log.d(DUAL_PHOTO_PICKER_TAG, "Fallback gallery result slot=$slot uri=$uri")
+        if (uri == null || slot == null) {
+            pendingSlot = null
+            return@rememberLauncherForActivityResult
+        }
+        scope.launch {
+            prepareSelectedPhoto(slot, uri)
+        }
+    }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        val slot = pendingSlot
+        val tempPath = pendingCameraImagePath
+        val tempUri = pendingCameraImageUri
+        pendingCameraImagePath = null
+        pendingCameraImageUri = null
+        Log.d(DUAL_PHOTO_PICKER_TAG, "Camera result slot=$slot success=$success tempPath=$tempPath tempUri=$tempUri")
+        if (!success || slot == null || tempPath.isNullOrBlank()) {
+            tempPath?.let { path: String -> java.io.File(path).delete() }
+            pendingSlot = null
+            return@rememberLauncherForActivityResult
+        }
+        val resolvedTempPath = tempPath
+        val resolvedTempUri = tempUri
+        scope.launch {
+            val tempFile = java.io.File(resolvedTempPath)
+            try {
+                if (!tempFile.exists() || tempFile.length() == 0L) {
+                    Toast.makeText(context, context.getString(R.string.photo_file_missing_or_empty), Toast.LENGTH_SHORT).show()
+                    pendingSlot = null
+                    return@launch
+                }
+                prepareSelectedPhoto(slot, resolvedTempUri?.let(Uri::parse) ?: Uri.fromFile(tempFile))
+            } finally {
+                tempFile.delete()
+            }
+        }
+    }
+
+    val launchCameraCapture: () -> Unit = {
+        runCatching {
+            val (tempFile, tempUri) = imageManager.createTempPhotoCaptureRequest()
+            pendingCameraImagePath = tempFile.absolutePath
+            pendingCameraImageUri = tempUri.toString()
+            Log.d(DUAL_PHOTO_PICKER_TAG, "Launching camera for slot=$pendingSlot tempPath=${tempFile.absolutePath} uri=$tempUri")
+            cameraLauncher.launch(tempUri)
+        }.onFailure { error ->
+            pendingCameraImagePath = null
+            pendingCameraImageUri = null
+            pendingSlot = null
+            Log.e(DUAL_PHOTO_PICKER_TAG, "Camera launch failed", error)
+            Toast.makeText(
+                context,
+                context.getString(R.string.photo_process_failed, error.message ?: error.javaClass.simpleName),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        Log.d(DUAL_PHOTO_PICKER_TAG, "Camera permission result granted=$granted pendingSlot=$pendingSlot")
+        if (granted) {
+            launchCameraCapture()
+        } else {
+            pendingSlot = null
+            pendingCameraImagePath = null
+            pendingCameraImageUri = null
+            Toast.makeText(context, context.getString(R.string.camera_permission_required), Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun launchGallery(slot: DualPhotoSlot) {
+        pendingSlot = slot
+        Log.d(DUAL_PHOTO_PICKER_TAG, "Launching gallery for slot=$slot")
+        runCatching {
+            galleryLauncher.launch(
+                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+            )
+        }.onFailure { error ->
+            if (error is ActivityNotFoundException) {
+                Log.w(DUAL_PHOTO_PICKER_TAG, "PickVisualMedia unavailable, falling back to GetContent for slot=$slot", error)
+                runCatching {
+                    galleryFallbackLauncher.launch("image/*")
+                }.onFailure { fallbackError ->
+                    Log.e(DUAL_PHOTO_PICKER_TAG, "Fallback gallery launch failed for slot=$slot", fallbackError)
+                    pendingSlot = null
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.photo_process_failed, fallbackError.message ?: fallbackError.javaClass.simpleName),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            } else {
+                Log.e(DUAL_PHOTO_PICKER_TAG, "Gallery launch failed for slot=$slot", error)
+                pendingSlot = null
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.photo_process_failed, error.message ?: error.javaClass.simpleName),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    fun launchCamera(slot: DualPhotoSlot) {
+        pendingSlot = slot
+        Log.d(
+            DUAL_PHOTO_PICKER_TAG,
+            "Launch camera requested for slot=$slot permission=${ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)}"
+        )
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+            launchCameraCapture()
+        } else {
+            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
     
     // 加载正面图片
     LaunchedEffect(frontImageFileName) {
@@ -76,52 +319,6 @@ fun DualPhotoPicker(
         }
     }
     
-    // 设置照片选择回调
-    LaunchedEffect(Unit) {
-        PhotoPickerHelper.setCallback(context, object : PhotoPickerHelper.PhotoPickerCallback {
-            override fun onPhotoSelected(imagePath: String?) {
-                imagePath?.let { path ->
-                    scope.launch {
-                        try {
-                            // 检查文件是否存在
-                            val file = java.io.File(path)
-                            if (!file.exists() || file.length() == 0L) {
-                                Toast.makeText(context, context.getString(R.string.photo_file_missing_or_empty), Toast.LENGTH_SHORT).show()
-                                return@launch
-                            }
-                            
-                            // 保存图片
-                            val uri = android.net.Uri.fromFile(file)
-                            val fileName = imageManager.saveImageFromUri(uri)
-                            if (fileName != null) {
-                                // 根据标签判断是正面还是背面
-                                if (PhotoPickerHelper.currentTag == "front") {
-                                    onFrontImageSelected(fileName)
-                                } else if (PhotoPickerHelper.currentTag == "back") {
-                                    onBackImageSelected(fileName)
-                                }
-                                // 删除临时文件
-                                file.delete()
-                            } else {
-                                Toast.makeText(context, context.getString(R.string.photo_save_failed), Toast.LENGTH_SHORT).show()
-                            }
-                        } catch (e: Exception) {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.photo_process_failed, e.message ?: e.javaClass.simpleName),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    }
-                }
-            }
-            
-            override fun onError(error: String) {
-                Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
-            }
-        })
-    }
-    
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -131,27 +328,10 @@ fun DualPhotoPicker(
             bitmap = frontBitmap,
             label = resolvedFrontLabel,
             onImageSelected = {
-                PhotoPickerHelper.currentTag = "front"
-                activity?.let { act ->
-                    PhotoPickerHelper.pickFromGallery(act)
-                } ?: run {
-                    Toast.makeText(context, context.getString(R.string.photo_cannot_open_gallery), Toast.LENGTH_SHORT).show()
-                }
+                launchGallery(DualPhotoSlot.FRONT)
             },
             onImageCaptured = {
-                PhotoPickerHelper.currentTag = "front"
-                activity?.let { act ->
-                    PhotoPickerHelper.takePhoto(act)
-                } ?: run {
-                    Toast.makeText(context, context.getString(R.string.photo_cannot_open_camera_use_gallery), Toast.LENGTH_SHORT).show()
-                    // 直接打开图库作为替代
-                    PhotoPickerHelper.currentTag = "front"
-                    activity?.let { act ->
-                        PhotoPickerHelper.pickFromGallery(act)
-                    } ?: run {
-                        Toast.makeText(context, context.getString(R.string.photo_cannot_open_gallery), Toast.LENGTH_SHORT).show()
-                    }
-                }
+                launchCamera(DualPhotoSlot.FRONT)
             },
             onImageRemoved = {
                 scope.launch {
@@ -170,27 +350,10 @@ fun DualPhotoPicker(
             bitmap = backBitmap,
             label = resolvedBackLabel,
             onImageSelected = {
-                PhotoPickerHelper.currentTag = "back"
-                activity?.let { act ->
-                    PhotoPickerHelper.pickFromGallery(act)
-                } ?: run {
-                    Toast.makeText(context, context.getString(R.string.photo_cannot_open_gallery), Toast.LENGTH_SHORT).show()
-                }
+                launchGallery(DualPhotoSlot.BACK)
             },
             onImageCaptured = {
-                PhotoPickerHelper.currentTag = "back"
-                activity?.let { act ->
-                    PhotoPickerHelper.takePhoto(act)
-                } ?: run {
-                    Toast.makeText(context, context.getString(R.string.photo_cannot_open_camera_use_gallery), Toast.LENGTH_SHORT).show()
-                    // 直接打开图库作为替代
-                    PhotoPickerHelper.currentTag = "back"
-                    activity?.let { act ->
-                        PhotoPickerHelper.pickFromGallery(act)
-                    } ?: run {
-                        Toast.makeText(context, context.getString(R.string.photo_cannot_open_gallery), Toast.LENGTH_SHORT).show()
-                    }
-                }
+                launchCamera(DualPhotoSlot.BACK)
             },
             onImageRemoved = {
                 scope.launch {
@@ -217,6 +380,24 @@ fun DualPhotoPicker(
         ImageDialog(
             bitmap = backBitmap!!,
             onDismiss = { showBackImageDialog = false }
+        )
+    }
+
+    pendingPhotoImport?.let { importRequest ->
+        ImageImportConfirmDialog(
+            imageManager = imageManager,
+            bitmap = importRequest.bitmap,
+            originalSizeBytes = importRequest.originalSizeBytes,
+            isSaving = isSavingPendingPhoto,
+            onDismiss = {
+                clearPendingPhotoImport()
+                pendingSlot = null
+            },
+            onConfirm = { quality ->
+                scope.launch {
+                    confirmPendingPhotoImport(quality)
+                }
+            }
         )
     }
 }

@@ -138,9 +138,10 @@ fun AddEditBankCardScreen(
     }
     
     // 如果是编辑模式，加载现有数据
+    // 如果是添加模式，重置表单字段（防止保留上次添加的数据）
     LaunchedEffect(cardId) {
-        cardId?.let {
-            viewModel.getCardById(it)?.let { item ->
+        if (cardId != null) {
+            viewModel.getCardById(cardId)?.let { item ->
                 title = item.title
                 notes = item.notes
                 isFavorite = item.isFavorite
@@ -195,6 +196,35 @@ fun AddEditBankCardScreen(
                     }
                 }
             }
+        } else {
+            // 添加模式：重置表单字段
+            title = ""
+            cardNumber = ""
+            cardholderName = ""
+            expiryMonth = ""
+            expiryYear = ""
+            cvv = ""
+            bankName = ""
+            cardType = CardType.DEBIT
+            brand = ""
+            nickname = ""
+            validFromMonth = ""
+            validFromYear = ""
+            pin = ""
+            iban = ""
+            swiftBic = ""
+            routingNumber = ""
+            accountNumber = ""
+            branchCode = ""
+            currency = ""
+            customerServicePhone = ""
+            notes = ""
+            isFavorite = false
+            hasBillingAddress = false
+            billingAddress = BillingAddress()
+            customFields = emptyList()
+            frontImageFileName = null
+            backImageFileName = null
         }
     }
 

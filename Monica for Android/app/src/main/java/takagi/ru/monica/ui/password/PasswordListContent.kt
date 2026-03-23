@@ -15,6 +15,8 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.AnimationVector2D
+import androidx.compose.animation.core.animateIntOffsetAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -23,6 +25,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
@@ -52,7 +55,6 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.animation.core.Animatable
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
@@ -80,12 +82,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -93,8 +98,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.zIndex
 import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.platform.LocalContext
@@ -120,6 +127,7 @@ import takagi.ru.monica.R
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.CategorySelectionUiMode
 import takagi.ru.monica.data.PasskeyEntry
+import takagi.ru.monica.data.PasswordListTopModule
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.data.model.PasskeyBindingCodec
@@ -182,6 +190,7 @@ import takagi.ru.monica.ui.components.UnifiedMoveAction
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
 import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
 import takagi.ru.monica.ui.components.UNIFIED_MOVE_ARCHIVE_SENTINEL_CATEGORY_ID
+import takagi.ru.monica.ui.components.rememberUnifiedCategoryFilterChipMenuWidth
 import takagi.ru.monica.ui.common.dialog.DeleteConfirmDialog
 import takagi.ru.monica.ui.common.layout.DetailPane
 import takagi.ru.monica.ui.common.layout.InspectorRow
@@ -211,7 +220,6 @@ import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
 import takagi.ru.monica.data.bitwarden.BitwardenSend
 import takagi.ru.monica.bitwarden.sync.SyncStatus
 import takagi.ru.monica.security.SecurityManager
-import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 import takagi.ru.monica.ui.screens.AddEditPasswordScreen
 import takagi.ru.monica.ui.screens.AddEditTotpScreen
@@ -712,7 +720,9 @@ fun PasswordListContent(
     var lastCustomFieldEntryIds by remember { mutableStateOf<List<Long>>(emptyList()) }
     val configuredQuickFilterItems = appSettings.passwordListQuickFilterItems
     val quickFolderStyle = appSettings.passwordListQuickFolderStyle
-    var quickFolderRootKey by rememberSaveable { mutableStateOf(QUICK_FOLDER_ROOT_ALL) }
+    var quickFolderRootKey by rememberSaveable {
+        mutableStateOf(currentFilter.toQuickFolderRootKeyOrNull() ?: QUICK_FOLDER_ROOT_ALL)
+    }
     val outsideTapInteractionSource = remember { MutableInteractionSource() }
     val canCollapseExpandedGroups = effectiveStackCardMode == StackCardMode.AUTO && expandedGroups.isNotEmpty()
     var shouldShowBackToTop by remember { mutableStateOf(false) }
@@ -1250,9 +1260,7 @@ fun PasswordListContent(
     
     // 根据分组模式对密码进行分组（后台线程计算，避免阻塞首滑）
     var groupedPasswords by remember {
-        mutableStateOf<Map<String, List<takagi.ru.monica.data.PasswordEntry>>>(
-            buildGroupedPasswordsForEntries(visiblePasswordEntries)
-        )
+        mutableStateOf<Map<String, List<takagi.ru.monica.data.PasswordEntry>>>(emptyMap())
     }
     LaunchedEffect(
         visiblePasswordEntries,
@@ -2289,6 +2297,9 @@ private fun PasswordListTopSection(
                                 quickFilterUnstacked = quickFilterUnstacked,
                                 onQuickFilterUnstackedChange = onQuickFilterUnstackedChange,
                                 quickFolderShortcuts = categoryMenuQuickFolderShortcuts,
+                                topModulesOrder = appSettings.passwordListTopModulesOrder,
+                                onTopModulesOrderChange = settingsViewModel::updatePasswordListTopModulesOrder,
+                                onQuickFilterItemsOrderChange = settingsViewModel::updatePasswordListQuickFilterItems,
                                 launchAnchorBounds = null,
                                 onDismiss = { onCategorySheetVisibleChange(false) },
                                 onSelectFilter = viewModel::setCategoryFilter,
@@ -2624,6 +2635,7 @@ private fun PasswordQuickFilterChip(
     onClick: () -> Unit,
     label: String,
     modifier: Modifier = Modifier,
+    interactionSource: MutableInteractionSource? = null,
     leadingIcon: ImageVector? = null,
     selectedLeadingIcon: ImageVector? = leadingIcon,
     animated: Boolean = true
@@ -2633,6 +2645,7 @@ private fun PasswordQuickFilterChip(
         onClick = onClick,
         label = label,
         modifier = modifier,
+        interactionSource = interactionSource,
         leadingIcon = leadingIcon,
         selectedLeadingIcon = selectedLeadingIcon,
         animated = animated
@@ -2640,10 +2653,542 @@ private fun PasswordQuickFilterChip(
 }
 
 @Composable
+private fun PasswordQuickFilterChipItem(
+    item: takagi.ru.monica.data.PasswordListQuickFilterItem,
+    categoryEditMode: Boolean,
+    quickFilterFavorite: Boolean,
+    onQuickFilterFavoriteChange: (Boolean) -> Unit,
+    quickFilter2fa: Boolean,
+    onQuickFilter2faChange: (Boolean) -> Unit,
+    quickFilterNotes: Boolean,
+    onQuickFilterNotesChange: (Boolean) -> Unit,
+    quickFilterUncategorized: Boolean,
+    onQuickFilterUncategorizedChange: (Boolean) -> Unit,
+    quickFilterLocalOnly: Boolean,
+    onQuickFilterLocalOnlyChange: (Boolean) -> Unit,
+    quickFilterManualStackOnly: Boolean,
+    onQuickFilterManualStackOnlyChange: (Boolean) -> Unit,
+    quickFilterNeverStack: Boolean,
+    onQuickFilterNeverStackChange: (Boolean) -> Unit,
+    quickFilterUnstacked: Boolean,
+    onQuickFilterUnstackedChange: (Boolean) -> Unit,
+    interactionSource: MutableInteractionSource? = null,
+    modifier: Modifier = Modifier
+) {
+    when (item) {
+        takagi.ru.monica.data.PasswordListQuickFilterItem.FAVORITE -> {
+            PasswordQuickFilterChip(
+                selected = quickFilterFavorite,
+                onClick = {
+                    if (!categoryEditMode) {
+                        onQuickFilterFavoriteChange(!quickFilterFavorite)
+                    }
+                },
+                label = stringResource(R.string.password_list_quick_filter_favorite),
+                modifier = modifier,
+                interactionSource = interactionSource,
+                leadingIcon = Icons.Outlined.FavoriteBorder,
+                selectedLeadingIcon = Icons.Default.Favorite
+            )
+        }
+
+        takagi.ru.monica.data.PasswordListQuickFilterItem.TWO_FA -> {
+            PasswordQuickFilterChip(
+                selected = quickFilter2fa,
+                onClick = {
+                    if (!categoryEditMode) {
+                        onQuickFilter2faChange(!quickFilter2fa)
+                    }
+                },
+                label = stringResource(R.string.password_list_quick_filter_2fa),
+                modifier = modifier,
+                interactionSource = interactionSource,
+                leadingIcon = Icons.Default.Security
+            )
+        }
+
+        takagi.ru.monica.data.PasswordListQuickFilterItem.NOTES -> {
+            PasswordQuickFilterChip(
+                selected = quickFilterNotes,
+                onClick = {
+                    if (!categoryEditMode) {
+                        onQuickFilterNotesChange(!quickFilterNotes)
+                    }
+                },
+                label = stringResource(R.string.password_list_quick_filter_notes),
+                modifier = modifier,
+                interactionSource = interactionSource,
+                leadingIcon = Icons.Default.Description
+            )
+        }
+
+        takagi.ru.monica.data.PasswordListQuickFilterItem.UNCATEGORIZED -> {
+            PasswordQuickFilterChip(
+                selected = quickFilterUncategorized,
+                onClick = {
+                    if (!categoryEditMode) {
+                        onQuickFilterUncategorizedChange(!quickFilterUncategorized)
+                    }
+                },
+                label = stringResource(R.string.password_list_quick_filter_uncategorized),
+                modifier = modifier,
+                interactionSource = interactionSource,
+                leadingIcon = Icons.Default.FolderOff
+            )
+        }
+
+        takagi.ru.monica.data.PasswordListQuickFilterItem.LOCAL_ONLY -> {
+            PasswordQuickFilterChip(
+                selected = quickFilterLocalOnly,
+                onClick = {
+                    if (!categoryEditMode) {
+                        onQuickFilterLocalOnlyChange(!quickFilterLocalOnly)
+                    }
+                },
+                label = stringResource(R.string.password_list_quick_filter_local_only),
+                modifier = modifier,
+                interactionSource = interactionSource,
+                leadingIcon = Icons.Default.Key
+            )
+        }
+
+        takagi.ru.monica.data.PasswordListQuickFilterItem.MANUAL_STACK_ONLY -> {
+            PasswordQuickFilterChip(
+                selected = quickFilterManualStackOnly,
+                onClick = {
+                    if (!categoryEditMode) {
+                        onQuickFilterManualStackOnlyChange(!quickFilterManualStackOnly)
+                    }
+                },
+                label = stringResource(R.string.password_list_quick_filter_manual_stack_only),
+                modifier = modifier,
+                interactionSource = interactionSource,
+                leadingIcon = Icons.Default.Apps
+            )
+        }
+
+        takagi.ru.monica.data.PasswordListQuickFilterItem.NEVER_STACK -> {
+            PasswordQuickFilterChip(
+                selected = quickFilterNeverStack,
+                onClick = {
+                    if (!categoryEditMode) {
+                        onQuickFilterNeverStackChange(!quickFilterNeverStack)
+                    }
+                },
+                label = stringResource(R.string.password_list_quick_filter_never_stack),
+                modifier = modifier,
+                interactionSource = interactionSource,
+                leadingIcon = Icons.Default.LinearScale
+            )
+        }
+
+        takagi.ru.monica.data.PasswordListQuickFilterItem.UNSTACKED -> {
+            PasswordQuickFilterChip(
+                selected = quickFilterUnstacked,
+                onClick = {
+                    if (!categoryEditMode) {
+                        onQuickFilterUnstackedChange(!quickFilterUnstacked)
+                    }
+                },
+                label = stringResource(R.string.password_list_quick_filter_unstacked),
+                modifier = modifier,
+                interactionSource = interactionSource,
+                leadingIcon = Icons.Default.Straighten
+            )
+        }
+    }
+}
+
+private fun <T> reorderList(list: List<T>, fromIndex: Int, toIndex: Int): List<T> {
+    if (fromIndex == toIndex || fromIndex !in list.indices || toIndex !in list.indices) {
+        return list
+    }
+    return list.toMutableList().apply {
+        add(toIndex, removeAt(fromIndex))
+    }
+}
+
+private fun <T> reorderListByInsertion(list: List<T>, item: T, insertionIndex: Int): List<T> {
+    if (item !in list) {
+        return list
+    }
+    return list.toMutableList().apply {
+        remove(item)
+        add(insertionIndex.coerceIn(0, size), item)
+    }
+}
+
+@Composable
+private fun PasswordQuickFilterEditGrid(
+    items: List<takagi.ru.monica.data.PasswordListQuickFilterItem>,
+    measuredSizes: MutableMap<takagi.ru.monica.data.PasswordListQuickFilterItem, IntSize>,
+    availableWidth: Dp,
+    quickFilterFavorite: Boolean,
+    onQuickFilterFavoriteChange: (Boolean) -> Unit,
+    quickFilter2fa: Boolean,
+    onQuickFilter2faChange: (Boolean) -> Unit,
+    quickFilterNotes: Boolean,
+    onQuickFilterNotesChange: (Boolean) -> Unit,
+    quickFilterUncategorized: Boolean,
+    onQuickFilterUncategorizedChange: (Boolean) -> Unit,
+    quickFilterLocalOnly: Boolean,
+    onQuickFilterLocalOnlyChange: (Boolean) -> Unit,
+    quickFilterManualStackOnly: Boolean,
+    onQuickFilterManualStackOnlyChange: (Boolean) -> Unit,
+    quickFilterNeverStack: Boolean,
+    onQuickFilterNeverStackChange: (Boolean) -> Unit,
+    quickFilterUnstacked: Boolean,
+    onQuickFilterUnstackedChange: (Boolean) -> Unit,
+    onOrderCommitted: (List<takagi.ru.monica.data.PasswordListQuickFilterItem>) -> Unit
+) {
+    val density = LocalDensity.current
+    val gridSpacing = 8.dp
+    val itemHeight = 48.dp
+    val availableWidthPx = with(density) { availableWidth.toPx() }
+    val itemHeightPx = with(density) { itemHeight.toPx() }
+    val gridSpacingPx = with(density) { gridSpacing.toPx() }
+
+    var draggingItem by remember { mutableStateOf<takagi.ru.monica.data.PasswordListQuickFilterItem?>(null) }
+    var dragTargetIndex by remember { mutableIntStateOf(-1) }
+    var dragPointerPosition by remember { mutableStateOf(Offset.Zero) }
+    var dragTouchOffset by remember { mutableStateOf(Offset.Zero) }
+    var pendingCommittedOrder by remember {
+        mutableStateOf<List<takagi.ru.monica.data.PasswordListQuickFilterItem>?>(null)
+    }
+    var dragSnapshotOrder by remember {
+        mutableStateOf<List<takagi.ru.monica.data.PasswordListQuickFilterItem>>(emptyList())
+    }
+    var dragSnapshotOffsets by remember {
+        mutableStateOf<Map<takagi.ru.monica.data.PasswordListQuickFilterItem, Offset>>(emptyMap())
+    }
+
+    val displayOrder = pendingCommittedOrder ?: items
+    val previewSourceOrder = if (draggingItem != null && dragSnapshotOrder.isNotEmpty()) {
+        dragSnapshotOrder
+    } else {
+        displayOrder
+    }
+    val previewOrder = remember(previewSourceOrder, draggingItem, dragTargetIndex) {
+        val dragged = draggingItem
+        if (dragged != null && dragTargetIndex >= 0) {
+            reorderListByInsertion(previewSourceOrder, dragged, dragTargetIndex)
+        } else {
+            previewSourceOrder
+        }
+    }
+    val activeOrder = if (draggingItem != null) previewOrder else displayOrder
+
+    fun itemSize(item: takagi.ru.monica.data.PasswordListQuickFilterItem): IntSize {
+        return measuredSizes[item] ?: IntSize(
+            width = ((availableWidthPx - gridSpacingPx) / 2f).roundToInt().coerceAtLeast(120),
+            height = itemHeightPx.roundToInt()
+        )
+    }
+
+    fun computeLayout(
+        order: List<takagi.ru.monica.data.PasswordListQuickFilterItem>
+    ): Pair<Map<takagi.ru.monica.data.PasswordListQuickFilterItem, Offset>, Float> {
+        val offsets = linkedMapOf<takagi.ru.monica.data.PasswordListQuickFilterItem, Offset>()
+        var x = 0f
+        var y = 0f
+        var rowHeight = 0f
+
+        order.forEach { item ->
+            val size = itemSize(item)
+            val itemWidth = size.width.toFloat()
+            val itemHeightValue = maxOf(size.height.toFloat(), itemHeightPx)
+            if (x > 0f && x + itemWidth > availableWidthPx) {
+                x = 0f
+                y += rowHeight + gridSpacingPx
+                rowHeight = 0f
+            }
+            offsets[item] = Offset(x, y)
+            x += itemWidth + gridSpacingPx
+            rowHeight = maxOf(rowHeight, itemHeightValue)
+        }
+
+        val totalHeight = if (offsets.isEmpty()) itemHeightPx else y + rowHeight
+        return offsets to totalHeight
+    }
+
+    val layoutInfo = remember(activeOrder, measuredSizes, availableWidth) {
+        computeLayout(activeOrder)
+    }
+    val targetOffsets = layoutInfo.first
+    val gridHeight = with(density) { layoutInfo.second.toDp() }
+
+    fun insertionIndexFor(
+        point: Offset,
+        order: List<takagi.ru.monica.data.PasswordListQuickFilterItem>,
+        offsets: Map<takagi.ru.monica.data.PasswordListQuickFilterItem, Offset>,
+        ignoredItem: takagi.ru.monica.data.PasswordListQuickFilterItem? = null
+    ): Int {
+        val candidates = order.filter { it != ignoredItem }
+        if (candidates.isEmpty()) {
+            return 0
+        }
+
+        val fallbackIndex = dragTargetIndex.takeIf { it in 0..candidates.size }
+            ?: order.indexOf(ignoredItem).takeIf { it >= 0 }
+            ?: candidates.size
+
+        candidates.forEachIndexed { index, item ->
+            val topLeft = offsets[item] ?: return@forEachIndexed
+            val size = itemSize(item)
+            val centerX = topLeft.x + size.width / 2f
+            val centerY = topLeft.y + size.height / 2f
+            val rowThreshold = size.height * 0.45f
+
+            if (point.y < centerY - rowThreshold) {
+                return index
+            }
+            if (kotlin.math.abs(point.y - centerY) <= rowThreshold && point.x < centerX) {
+                return index
+            }
+        }
+
+        return candidates.size.coerceAtLeast(fallbackIndex)
+    }
+
+    fun resetDragState(clearSnapshot: Boolean = true) {
+        draggingItem = null
+        dragTargetIndex = -1
+        dragPointerPosition = Offset.Zero
+        dragTouchOffset = Offset.Zero
+        if (clearSnapshot) {
+            dragSnapshotOrder = emptyList()
+            dragSnapshotOffsets = emptyMap()
+        }
+    }
+
+    LaunchedEffect(items, pendingCommittedOrder) {
+        if (pendingCommittedOrder != null && items == pendingCommittedOrder) {
+            pendingCommittedOrder = null
+        }
+    }
+
+    Box(
+        modifier = Modifier.fillMaxWidth(),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Box(
+            modifier = Modifier
+                .requiredWidth(availableWidth)
+                .height(gridHeight)
+        ) {
+            items.forEach { item ->
+                val targetPosition = targetOffsets[item] ?: dragSnapshotOffsets[item] ?: Offset.Zero
+                val chipSize = itemSize(item)
+                val itemAlpha = if (draggingItem == item) 0f else 1f
+                val animatedOffset by animateIntOffsetAsState(
+                    targetValue = IntOffset(targetPosition.x.roundToInt(), targetPosition.y.roundToInt()),
+                    animationSpec = spring(
+                        stiffness = Spring.StiffnessMediumLow,
+                        dampingRatio = Spring.DampingRatioNoBouncy
+                    ),
+                    label = "password_menu_quick_filter_position"
+                )
+
+                Box(
+                    modifier = Modifier
+                        .offset { animatedOffset }
+                        .requiredSize(
+                            width = with(density) { chipSize.width.toDp() },
+                            height = with(density) { chipSize.height.toDp() }
+                        )
+                        .alpha(itemAlpha),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(item, displayOrder) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = { offset ->
+                                        val snapshotOrder = displayOrder
+                                        val startIndex = snapshotOrder.indexOf(item)
+                                        if (startIndex == -1) return@detectDragGesturesAfterLongPress
+                                        val snapshotOffsets = computeLayout(snapshotOrder).first
+                                        val startTopLeft = snapshotOffsets[item] ?: Offset.Zero
+                                        draggingItem = item
+                                        dragTargetIndex = startIndex
+                                        dragPointerPosition = startTopLeft + offset
+                                        dragTouchOffset = offset
+                                        dragSnapshotOrder = snapshotOrder
+                                        dragSnapshotOffsets = snapshotOffsets
+                                    },
+                                    onDragCancel = {
+                                        resetDragState()
+                                    },
+                                    onDragEnd = {
+                                        val dragged = draggingItem
+                                        val insertionIndex = dragTargetIndex
+                                        val sourceOrder = if (dragSnapshotOrder.isNotEmpty()) {
+                                            dragSnapshotOrder
+                                        } else {
+                                            displayOrder
+                                        }
+                                        if (dragged == null || insertionIndex < 0) {
+                                            resetDragState()
+                                            return@detectDragGesturesAfterLongPress
+                                        }
+                                        val reordered = reorderListByInsertion(sourceOrder, dragged, insertionIndex)
+                                        pendingCommittedOrder = reordered
+                                        resetDragState()
+                                        if (reordered != items) {
+                                            onOrderCommitted(reordered)
+                                        }
+                                    },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        if (draggingItem != item) return@detectDragGesturesAfterLongPress
+                                        dragPointerPosition += Offset(dragAmount.x, dragAmount.y)
+
+                                        val snapshotOrder = if (dragSnapshotOrder.isNotEmpty()) {
+                                            dragSnapshotOrder
+                                        } else {
+                                            displayOrder
+                                        }
+                                        val snapshotOffsets = if (dragSnapshotOffsets.isNotEmpty()) {
+                                            dragSnapshotOffsets
+                                        } else {
+                                            computeLayout(snapshotOrder).first
+                                        }
+                                        dragTargetIndex = insertionIndexFor(
+                                            point = dragPointerPosition,
+                                            order = snapshotOrder,
+                                            offsets = snapshotOffsets,
+                                            ignoredItem = item
+                                        )
+                                    }
+                                )
+                            },
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        PasswordQuickFilterChipItem(
+                            item = item,
+                            categoryEditMode = true,
+                            quickFilterFavorite = quickFilterFavorite,
+                            onQuickFilterFavoriteChange = onQuickFilterFavoriteChange,
+                            quickFilter2fa = quickFilter2fa,
+                            onQuickFilter2faChange = onQuickFilter2faChange,
+                            quickFilterNotes = quickFilterNotes,
+                            onQuickFilterNotesChange = onQuickFilterNotesChange,
+                            quickFilterUncategorized = quickFilterUncategorized,
+                            onQuickFilterUncategorizedChange = onQuickFilterUncategorizedChange,
+                            quickFilterLocalOnly = quickFilterLocalOnly,
+                            onQuickFilterLocalOnlyChange = onQuickFilterLocalOnlyChange,
+                            quickFilterManualStackOnly = quickFilterManualStackOnly,
+                            onQuickFilterManualStackOnlyChange = onQuickFilterManualStackOnlyChange,
+                            quickFilterNeverStack = quickFilterNeverStack,
+                            onQuickFilterNeverStackChange = onQuickFilterNeverStackChange,
+                            quickFilterUnstacked = quickFilterUnstacked,
+                            onQuickFilterUnstackedChange = onQuickFilterUnstackedChange,
+                            modifier = Modifier.onGloballyPositioned { coordinates ->
+                                val size = coordinates.size
+                                if (measuredSizes[item] != size) {
+                                    measuredSizes[item] = size
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+
+            draggingItem?.let { item ->
+                val placeholderOffset = targetOffsets[item] ?: dragSnapshotOffsets[item] ?: Offset.Zero
+                val placeholderSize = itemSize(item)
+                Box(
+                    modifier = Modifier
+                        .offset {
+                            IntOffset(
+                                placeholderOffset.x.roundToInt(),
+                                placeholderOffset.y.roundToInt()
+                            )
+                        }
+                        .requiredSize(
+                            width = with(density) { placeholderSize.width.toDp() },
+                            height = with(density) { placeholderSize.height.toDp() }
+                        )
+                        .alpha(0.22f)
+                        .zIndex(1f),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    PasswordQuickFilterChipItem(
+                        item = item,
+                        categoryEditMode = true,
+                        quickFilterFavorite = quickFilterFavorite,
+                        onQuickFilterFavoriteChange = onQuickFilterFavoriteChange,
+                        quickFilter2fa = quickFilter2fa,
+                        onQuickFilter2faChange = onQuickFilter2faChange,
+                        quickFilterNotes = quickFilterNotes,
+                        onQuickFilterNotesChange = onQuickFilterNotesChange,
+                        quickFilterUncategorized = quickFilterUncategorized,
+                        onQuickFilterUncategorizedChange = onQuickFilterUncategorizedChange,
+                        quickFilterLocalOnly = quickFilterLocalOnly,
+                        onQuickFilterLocalOnlyChange = onQuickFilterLocalOnlyChange,
+                        quickFilterManualStackOnly = quickFilterManualStackOnly,
+                        onQuickFilterManualStackOnlyChange = onQuickFilterManualStackOnlyChange,
+                        quickFilterNeverStack = quickFilterNeverStack,
+                        onQuickFilterNeverStackChange = onQuickFilterNeverStackChange,
+                        quickFilterUnstacked = quickFilterUnstacked,
+                        onQuickFilterUnstackedChange = onQuickFilterUnstackedChange,
+                        modifier = Modifier
+                    )
+                }
+
+                val overlayOffset = dragPointerPosition - dragTouchOffset
+                val overlaySize = itemSize(item)
+                Box(
+                    modifier = Modifier
+                        .offset {
+                            IntOffset(
+                                overlayOffset.x.roundToInt(),
+                                overlayOffset.y.roundToInt()
+                            )
+                        }
+                        .requiredSize(
+                            width = with(density) { overlaySize.width.toDp() },
+                            height = with(density) { overlaySize.height.toDp() }
+                        )
+                        .zIndex(2f),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    PasswordQuickFilterChipItem(
+                        item = item,
+                        categoryEditMode = true,
+                        quickFilterFavorite = quickFilterFavorite,
+                        onQuickFilterFavoriteChange = onQuickFilterFavoriteChange,
+                        quickFilter2fa = quickFilter2fa,
+                        onQuickFilter2faChange = onQuickFilter2faChange,
+                        quickFilterNotes = quickFilterNotes,
+                        onQuickFilterNotesChange = onQuickFilterNotesChange,
+                        quickFilterUncategorized = quickFilterUncategorized,
+                        onQuickFilterUncategorizedChange = onQuickFilterUncategorizedChange,
+                        quickFilterLocalOnly = quickFilterLocalOnly,
+                        onQuickFilterLocalOnlyChange = onQuickFilterLocalOnlyChange,
+                        quickFilterManualStackOnly = quickFilterManualStackOnly,
+                        onQuickFilterManualStackOnlyChange = onQuickFilterManualStackOnlyChange,
+                        quickFilterNeverStack = quickFilterNeverStack,
+                        onQuickFilterNeverStackChange = onQuickFilterNeverStackChange,
+                        quickFilterUnstacked = quickFilterUnstacked,
+                        onQuickFilterUnstackedChange = onQuickFilterUnstackedChange,
+                        modifier = Modifier
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun PasswordMenuSection(
     title: String,
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+    headerModifier: Modifier = Modifier,
+    toggleEnabled: Boolean = true,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val arrowRotation by animateFloatAsState(
@@ -2652,15 +3197,21 @@ private fun PasswordMenuSection(
         label = "password_menu_section_arrow"
     )
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        val baseHeaderModifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .padding(vertical = 2.dp)
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .clickable { onExpandedChange(!expanded) }
-                .padding(vertical = 2.dp),
+            modifier = if (toggleEnabled) {
+                baseHeaderModifier
+                    .clickable { onExpandedChange(!expanded) }
+                    .then(headerModifier)
+            } else {
+                baseHeaderModifier.then(headerModifier)
+            },
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -2714,6 +3265,9 @@ private fun PasswordListCategoryChipMenu(
     quickFilterUnstacked: Boolean,
     onQuickFilterUnstackedChange: (Boolean) -> Unit,
     quickFolderShortcuts: List<PasswordQuickFolderShortcut>,
+    topModulesOrder: List<PasswordListTopModule>,
+    onTopModulesOrderChange: (List<PasswordListTopModule>) -> Unit,
+    onQuickFilterItemsOrderChange: (List<takagi.ru.monica.data.PasswordListQuickFilterItem>) -> Unit,
     launchAnchorBounds: androidx.compose.ui.geometry.Rect?,
     onDismiss: () -> Unit,
     onSelectFilter: (CategoryFilter) -> Unit,
@@ -2722,7 +3276,9 @@ private fun PasswordListCategoryChipMenu(
     onRenameCategory: ((Category) -> Unit)? = null,
     onDeleteCategory: ((Category) -> Unit)? = null
 ) {
+    val coroutineScope = rememberCoroutineScope()
     val databaseScrollState = rememberScrollState()
+    val menuWidth = rememberUnifiedCategoryFilterChipMenuWidth()
     var showDeferredFolderSection by remember { mutableStateOf(false) }
     var quickFiltersExpanded by rememberSaveable { mutableStateOf(true) }
     var foldersExpanded by rememberSaveable { mutableStateOf(true) }
@@ -2737,6 +3293,139 @@ private fun PasswordListCategoryChipMenu(
     val quickFilterItems = remember(configuredQuickFilterItems) {
         configuredQuickFilterItems.ifEmpty { takagi.ru.monica.data.PasswordListQuickFilterItem.DEFAULT_ORDER }
     }
+    var quickFilterOrder by remember(quickFilterItems) { mutableStateOf(quickFilterItems) }
+    val quickFilterMeasuredSizes = remember {
+        mutableStateMapOf<takagi.ru.monica.data.PasswordListQuickFilterItem, IntSize>()
+    }
+    var moduleOrder by remember(topModulesOrder) {
+        mutableStateOf(PasswordListTopModule.sanitizeOrder(topModulesOrder))
+    }
+    var draggingModule by remember { mutableStateOf<PasswordListTopModule?>(null) }
+    var settlingModule by remember { mutableStateOf<PasswordListTopModule?>(null) }
+    var moduleDragOffset by remember { mutableStateOf(Offset.Zero) }
+    var moduleReorderEpoch by remember { mutableIntStateOf(0) }
+    val moduleSettleOffset = remember { Animatable(Offset.Zero, Offset.VectorConverter) }
+    val modulePlacementOffsets = remember {
+        mutableMapOf<PasswordListTopModule, Animatable<Offset, AnimationVector2D>>()
+    }
+    val previousModuleBounds = remember { mutableMapOf<PasswordListTopModule, androidx.compose.ui.geometry.Rect>() }
+    val lastModuleAnimatedEpoch = remember { mutableMapOf<PasswordListTopModule, Int>() }
+    val moduleBounds = remember { mutableMapOf<PasswordListTopModule, androidx.compose.ui.geometry.Rect>() }
+
+    LaunchedEffect(quickFilterItems) {
+        quickFilterOrder = quickFilterItems
+    }
+    LaunchedEffect(topModulesOrder) {
+        if (draggingModule == null) {
+            moduleOrder = PasswordListTopModule.sanitizeOrder(topModulesOrder)
+        }
+    }
+    LaunchedEffect(categoryEditMode) {
+        if (!categoryEditMode) {
+            draggingModule = null
+            settlingModule = null
+            moduleDragOffset = Offset.Zero
+            moduleSettleOffset.stop()
+            moduleSettleOffset.snapTo(Offset.Zero)
+            modulePlacementOffsets.values.forEach { animatable ->
+                animatable.stop()
+                coroutineScope.launch { animatable.snapTo(Offset.Zero) }
+            }
+            lastModuleAnimatedEpoch.clear()
+        }
+    }
+
+    val availableModules = remember(showDeferredFolderSection, quickFolderShortcuts, quickFilterOrder) {
+        buildList {
+            if (quickFilterOrder.isNotEmpty()) add(PasswordListTopModule.QUICK_FILTERS)
+            if (showDeferredFolderSection && quickFolderShortcuts.isNotEmpty()) add(PasswordListTopModule.QUICK_FOLDERS)
+        }
+    }
+    val orderedModules = remember(moduleOrder, availableModules) {
+        moduleOrder.filter { it in availableModules }
+    }
+
+    fun settleModule(module: PasswordListTopModule) {
+        val startOffset = moduleDragOffset
+        draggingModule = null
+        moduleDragOffset = Offset.Zero
+        settlingModule = module
+        coroutineScope.launch {
+            try {
+                moduleSettleOffset.stop()
+                moduleSettleOffset.snapTo(startOffset)
+                moduleSettleOffset.animateTo(
+                    targetValue = Offset.Zero,
+                    animationSpec = spring(
+                        stiffness = Spring.StiffnessMediumLow,
+                        dampingRatio = Spring.DampingRatioNoBouncy
+                    )
+                )
+            } catch (_: CancellationException) {
+            } finally {
+                if (settlingModule == module) {
+                    settlingModule = null
+                }
+                moduleSettleOffset.snapTo(Offset.Zero)
+            }
+        }
+    }
+
+    fun animateModulePlacementIfNeeded(
+        module: PasswordListTopModule,
+        newRect: androidx.compose.ui.geometry.Rect
+    ) {
+        val previousRect = previousModuleBounds.put(module, newRect)
+        if (previousRect == null || draggingModule == module || settlingModule == module) return
+        if (moduleReorderEpoch == 0 || lastModuleAnimatedEpoch[module] == moduleReorderEpoch) return
+        val delta = previousRect.topLeft - newRect.topLeft
+        if (delta == Offset.Zero) return
+        lastModuleAnimatedEpoch[module] = moduleReorderEpoch
+        val animatable = modulePlacementOffsets.getOrPut(module) {
+            Animatable(Offset.Zero, Offset.VectorConverter)
+        }
+        coroutineScope.launch {
+            try {
+                animatable.stop()
+                animatable.snapTo(delta)
+                animatable.animateTo(
+                    targetValue = Offset.Zero,
+                    animationSpec = spring(
+                        stiffness = Spring.StiffnessMedium,
+                        dampingRatio = Spring.DampingRatioNoBouncy
+                    )
+                )
+            } catch (_: CancellationException) {
+            }
+        }
+    }
+
+    fun updateModuleBounds(
+        module: PasswordListTopModule,
+        rect: androidx.compose.ui.geometry.Rect
+    ) {
+        val previousRect = moduleBounds[module]
+        if (previousRect == rect) return
+        moduleBounds[module] = rect
+    }
+
+    fun swapModuleIfNeeded(module: PasswordListTopModule) {
+        val draggedRect = moduleBounds[module] ?: return
+        val probe = draggedRect.center + moduleDragOffset
+        val target = orderedModules.firstOrNull { candidate ->
+            candidate != module && moduleBounds[candidate]?.contains(probe) == true
+        } ?: return
+        val targetRect = moduleBounds[target] ?: return
+        val fromIndex = moduleOrder.indexOf(module)
+        val toIndex = moduleOrder.indexOf(target)
+        if (fromIndex == -1 || toIndex == -1 || fromIndex == toIndex) return
+        val reordered = reorderList(moduleOrder, fromIndex, toIndex)
+        moduleOrder = reordered
+        moduleReorderEpoch += 1
+        onTopModulesOrderChange(reordered)
+        moduleDragOffset += draggedRect.center - targetRect.center
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -2784,129 +3473,205 @@ private fun PasswordListCategoryChipMenu(
                         }
                     }
 
-        PasswordMenuSection(
-            title = stringResource(R.string.category_selection_menu_quick_filters),
-            expanded = quickFiltersExpanded,
-            onExpandedChange = { quickFiltersExpanded = it }
-        ) {
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                quickFilterItems.forEach { item ->
-                    when (item) {
-                        takagi.ru.monica.data.PasswordListQuickFilterItem.FAVORITE -> {
-                            PasswordQuickFilterChip(
-                                selected = quickFilterFavorite,
-                                onClick = { onQuickFilterFavoriteChange(!quickFilterFavorite) },
-                                label = stringResource(R.string.password_list_quick_filter_favorite),
-                                leadingIcon = Icons.Outlined.FavoriteBorder,
-                                selectedLeadingIcon = Icons.Default.Favorite
+        orderedModules.forEach { module ->
+            key(module) {
+                val modulePlacementOffset = modulePlacementOffsets[module]?.value ?: Offset.Zero
+                val moduleDisplayOffset = when {
+                    draggingModule == module -> moduleDragOffset
+                    settlingModule == module -> moduleSettleOffset.value
+                    else -> modulePlacementOffset
+                }
+                when (module) {
+                PasswordListTopModule.QUICK_FILTERS -> {
+                    PasswordMenuSection(
+                        title = stringResource(R.string.category_selection_menu_quick_filters),
+                        expanded = quickFiltersExpanded,
+                        onExpandedChange = { quickFiltersExpanded = it },
+                        modifier = Modifier
+                            .onGloballyPositioned { coordinates ->
+                                val rect = coordinates.boundsInWindow()
+                                updateModuleBounds(module, rect)
+                                animateModulePlacementIfNeeded(module, rect)
+                            }
+                            .graphicsLayer {
+                                translationX = moduleDisplayOffset.x
+                                translationY = moduleDisplayOffset.y
+                            }
+                            .zIndex(if (draggingModule == module || settlingModule == module) 1f else 0f),
+                        headerModifier = Modifier.pointerInput(categoryEditMode, module) {
+                            if (!categoryEditMode) return@pointerInput
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    settlingModule = null
+                                    coroutineScope.launch {
+                                        moduleSettleOffset.stop()
+                                        moduleSettleOffset.snapTo(Offset.Zero)
+                                    }
+                                    draggingModule = module
+                                    moduleDragOffset = Offset.Zero
+                                },
+                                onDragCancel = {
+                                    settleModule(module)
+                                },
+                                onDragEnd = {
+                                    settleModule(module)
+                                },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    moduleDragOffset += Offset(dragAmount.x, dragAmount.y)
+                                    swapModuleIfNeeded(module)
+                                }
                             )
+                        },
+                        toggleEnabled = !categoryEditMode
+                    ) {
+                        if (categoryEditMode) {
+                            val horizontalContentPadding = 32.dp
+                            PasswordQuickFilterEditGrid(
+                                items = quickFilterOrder,
+                                measuredSizes = quickFilterMeasuredSizes,
+                                availableWidth = (menuWidth - horizontalContentPadding).coerceAtLeast(220.dp),
+                                quickFilterFavorite = quickFilterFavorite,
+                                onQuickFilterFavoriteChange = onQuickFilterFavoriteChange,
+                                quickFilter2fa = quickFilter2fa,
+                                onQuickFilter2faChange = onQuickFilter2faChange,
+                                quickFilterNotes = quickFilterNotes,
+                                onQuickFilterNotesChange = onQuickFilterNotesChange,
+                                quickFilterUncategorized = quickFilterUncategorized,
+                                onQuickFilterUncategorizedChange = onQuickFilterUncategorizedChange,
+                                quickFilterLocalOnly = quickFilterLocalOnly,
+                                onQuickFilterLocalOnlyChange = onQuickFilterLocalOnlyChange,
+                                quickFilterManualStackOnly = quickFilterManualStackOnly,
+                                onQuickFilterManualStackOnlyChange = onQuickFilterManualStackOnlyChange,
+                                quickFilterNeverStack = quickFilterNeverStack,
+                                onQuickFilterNeverStackChange = onQuickFilterNeverStackChange,
+                                quickFilterUnstacked = quickFilterUnstacked,
+                                onQuickFilterUnstackedChange = onQuickFilterUnstackedChange,
+                                onOrderCommitted = { reordered ->
+                                    if (reordered != quickFilterOrder) {
+                                        quickFilterOrder = reordered
+                                        onQuickFilterItemsOrderChange(reordered)
+                                    }
+                                }
+                            )
+                        } else {
+                            FlowRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                quickFilterOrder.forEach { item ->
+                                    key(item) {
+                                        Box(
+                                            modifier = Modifier.onGloballyPositioned { coordinates ->
+                                                val size = coordinates.size
+                                                if (quickFilterMeasuredSizes[item] != size) {
+                                                    quickFilterMeasuredSizes[item] = size
+                                                }
+                                            }
+                                        ) {
+                                            PasswordQuickFilterChipItem(
+                                                item = item,
+                                                categoryEditMode = false,
+                                                quickFilterFavorite = quickFilterFavorite,
+                                                onQuickFilterFavoriteChange = onQuickFilterFavoriteChange,
+                                                quickFilter2fa = quickFilter2fa,
+                                                onQuickFilter2faChange = onQuickFilter2faChange,
+                                                quickFilterNotes = quickFilterNotes,
+                                                onQuickFilterNotesChange = onQuickFilterNotesChange,
+                                                quickFilterUncategorized = quickFilterUncategorized,
+                                                onQuickFilterUncategorizedChange = onQuickFilterUncategorizedChange,
+                                                quickFilterLocalOnly = quickFilterLocalOnly,
+                                                onQuickFilterLocalOnlyChange = onQuickFilterLocalOnlyChange,
+                                                quickFilterManualStackOnly = quickFilterManualStackOnly,
+                                                onQuickFilterManualStackOnlyChange = onQuickFilterManualStackOnlyChange,
+                                                quickFilterNeverStack = quickFilterNeverStack,
+                                                onQuickFilterNeverStackChange = onQuickFilterNeverStackChange,
+                                                quickFilterUnstacked = quickFilterUnstacked,
+                                                onQuickFilterUnstackedChange = onQuickFilterUnstackedChange
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
+                    }
+                }
 
-                        takagi.ru.monica.data.PasswordListQuickFilterItem.TWO_FA -> {
-                            PasswordQuickFilterChip(
-                                selected = quickFilter2fa,
-                                onClick = { onQuickFilter2faChange(!quickFilter2fa) },
-                                label = stringResource(R.string.password_list_quick_filter_2fa),
-                                leadingIcon = Icons.Default.Security
+                PasswordListTopModule.QUICK_FOLDERS -> {
+                    PasswordMenuSection(
+                        title = stringResource(R.string.category_selection_menu_folders),
+                        expanded = foldersExpanded,
+                        onExpandedChange = { foldersExpanded = it },
+                        modifier = Modifier
+                            .onGloballyPositioned { coordinates ->
+                                val rect = coordinates.boundsInWindow()
+                                updateModuleBounds(module, rect)
+                                animateModulePlacementIfNeeded(module, rect)
+                            }
+                            .graphicsLayer {
+                                translationX = moduleDisplayOffset.x
+                                translationY = moduleDisplayOffset.y
+                            }
+                            .zIndex(if (draggingModule == module || settlingModule == module) 1f else 0f),
+                        headerModifier = Modifier.pointerInput(categoryEditMode, module) {
+                            if (!categoryEditMode) return@pointerInput
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    settlingModule = null
+                                    coroutineScope.launch {
+                                        moduleSettleOffset.stop()
+                                        moduleSettleOffset.snapTo(Offset.Zero)
+                                    }
+                                    draggingModule = module
+                                    moduleDragOffset = Offset.Zero
+                                },
+                                onDragCancel = {
+                                    settleModule(module)
+                                },
+                                onDragEnd = {
+                                    settleModule(module)
+                                },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    moduleDragOffset += Offset(dragAmount.x, dragAmount.y)
+                                    swapModuleIfNeeded(module)
+                                }
                             )
-                        }
-
-                        takagi.ru.monica.data.PasswordListQuickFilterItem.NOTES -> {
-                            PasswordQuickFilterChip(
-                                selected = quickFilterNotes,
-                                onClick = { onQuickFilterNotesChange(!quickFilterNotes) },
-                                label = stringResource(R.string.password_list_quick_filter_notes),
-                                leadingIcon = Icons.Default.Description
-                            )
-                        }
-
-                        takagi.ru.monica.data.PasswordListQuickFilterItem.UNCATEGORIZED -> {
-                            PasswordQuickFilterChip(
-                                selected = quickFilterUncategorized,
-                                onClick = { onQuickFilterUncategorizedChange(!quickFilterUncategorized) },
-                                label = stringResource(R.string.password_list_quick_filter_uncategorized),
-                                leadingIcon = Icons.Default.FolderOff
-                            )
-                        }
-
-                        takagi.ru.monica.data.PasswordListQuickFilterItem.LOCAL_ONLY -> {
-                            PasswordQuickFilterChip(
-                                selected = quickFilterLocalOnly,
-                                onClick = { onQuickFilterLocalOnlyChange(!quickFilterLocalOnly) },
-                                label = stringResource(R.string.password_list_quick_filter_local_only),
-                                leadingIcon = Icons.Default.Key
-                            )
-                        }
-
-                        takagi.ru.monica.data.PasswordListQuickFilterItem.MANUAL_STACK_ONLY -> {
-                            PasswordQuickFilterChip(
-                                selected = quickFilterManualStackOnly,
-                                onClick = { onQuickFilterManualStackOnlyChange(!quickFilterManualStackOnly) },
-                                label = stringResource(R.string.password_list_quick_filter_manual_stack_only),
-                                leadingIcon = Icons.Default.Apps
-                            )
-                        }
-
-                        takagi.ru.monica.data.PasswordListQuickFilterItem.NEVER_STACK -> {
-                            PasswordQuickFilterChip(
-                                selected = quickFilterNeverStack,
-                                onClick = { onQuickFilterNeverStackChange(!quickFilterNeverStack) },
-                                label = stringResource(R.string.password_list_quick_filter_never_stack),
-                                leadingIcon = Icons.Default.LinearScale
-                            )
-                        }
-
-                        takagi.ru.monica.data.PasswordListQuickFilterItem.UNSTACKED -> {
-                            PasswordQuickFilterChip(
-                                selected = quickFilterUnstacked,
-                                onClick = { onQuickFilterUnstackedChange(!quickFilterUnstacked) },
-                                label = stringResource(R.string.password_list_quick_filter_unstacked),
-                                leadingIcon = Icons.Default.Straighten
-                            )
+                        },
+                        toggleEnabled = !categoryEditMode
+                    ) {
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            quickFolderShortcuts.forEach { shortcut ->
+                                val editableCategory = (shortcut.targetFilter as? CategoryFilter.Custom)
+                                    ?.let { filter -> categories.firstOrNull { it.id == filter.categoryId } }
+                                MonicaExpressiveFilterChip(
+                                    selected = shortcut.targetFilter == currentFilter,
+                                    onClick = {
+                                        if (categoryEditMode && editableCategory != null) {
+                                            categoryActionTarget = editableCategory
+                                        } else {
+                                            onSelectFilter(shortcut.targetFilter)
+                                        }
+                                    },
+                                    label = shortcut.title,
+                                    leadingIcon = if (categoryEditMode && editableCategory != null) {
+                                        Icons.Default.Edit
+                                    } else if (shortcut.isBack) {
+                                        Icons.AutoMirrored.Filled.KeyboardArrowLeft
+                                    } else {
+                                        Icons.Default.Folder
+                                    }
+                                )
+                            }
                         }
                     }
                 }
             }
-        }
-
-        if (showDeferredFolderSection && quickFolderShortcuts.isNotEmpty()) {
-            PasswordMenuSection(
-                title = stringResource(R.string.category_selection_menu_folders),
-                expanded = foldersExpanded,
-                onExpandedChange = { foldersExpanded = it }
-            ) {
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    quickFolderShortcuts.forEach { shortcut ->
-                        val editableCategory = (shortcut.targetFilter as? CategoryFilter.Custom)
-                            ?.let { filter -> categories.firstOrNull { it.id == filter.categoryId } }
-                        MonicaExpressiveFilterChip(
-                            selected = shortcut.targetFilter == currentFilter,
-                            onClick = {
-                                if (categoryEditMode && editableCategory != null) {
-                                    categoryActionTarget = editableCategory
-                                } else {
-                                    onSelectFilter(shortcut.targetFilter)
-                                }
-                            },
-                            label = shortcut.title,
-                            leadingIcon = if (categoryEditMode && editableCategory != null) {
-                                Icons.Default.Edit
-                            } else if (shortcut.isBack) {
-                                Icons.AutoMirrored.Filled.KeyboardArrowLeft
-                            } else {
-                                Icons.Default.Folder
-                            }
-                        )
-                    }
-                }
             }
         }
 
@@ -4805,6 +5570,7 @@ private fun applyQuickFolderRootVisibility(
 private fun CategoryFilter.toQuickFolderRootKeyOrNull(): String? = when (this) {
     is CategoryFilter.All -> QUICK_FOLDER_ROOT_ALL
     is CategoryFilter.Archived -> null
+    is CategoryFilter.Custom -> QUICK_FOLDER_ROOT_LOCAL
     is CategoryFilter.Local -> QUICK_FOLDER_ROOT_LOCAL
     is CategoryFilter.Starred -> QUICK_FOLDER_ROOT_STARRED
     is CategoryFilter.Uncategorized -> QUICK_FOLDER_ROOT_UNCATEGORIZED
@@ -4825,3 +5591,7 @@ private fun String.toQuickFolderRootFilter(): CategoryFilter = when (this) {
     QUICK_FOLDER_ROOT_LOCAL_UNCATEGORIZED -> CategoryFilter.LocalUncategorized
     else -> CategoryFilter.All
 }
+
+
+
+

@@ -8,7 +8,9 @@ import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
+import android.provider.OpenableColumns
 import android.os.UserManager
+import android.util.Log
 import androidx.core.content.FileProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -31,8 +33,14 @@ import javax.crypto.spec.IvParameterSpec
  * 负责图片的加密存储、解密读取和删除
  */
 class ImageManager(private val context: Context) {
+
+    data class PreparedImageImport(
+        val bitmap: Bitmap,
+        val originalSizeBytes: Long?
+    )
     
     companion object {
+        private const val TAG = "ImageManager"
         private const val IMAGE_DIR = "secure_images"
         private const val TEMP_IMAGE_DIR = "temp_share"
         private const val ALGORITHM = "AES/CBC/PKCS5Padding"
@@ -51,6 +59,11 @@ class ImageManager(private val context: Context) {
     
     private val tempPhotoDirectory: File by lazy {
         ensureDirectoriesExist(context.cacheDir, TEMP_IMAGE_DIR)
+    }
+
+    private fun createTempPhotoFile(): File {
+        val fileName = "temp_photo_${System.currentTimeMillis()}.jpg"
+        return File(tempPhotoDirectory, fileName)
     }
     
     /**
@@ -81,16 +94,43 @@ class ImageManager(private val context: Context) {
      * @return 临时照片的 URI
      */
     fun createTempPhotoUri(): Uri {
-        // 生成临时文件
-        val fileName = "temp_photo_${System.currentTimeMillis()}.jpg"
-        val tempFile = File(tempPhotoDirectory, fileName)
-        
-        // 使用 FileProvider 创建 URI
-        return FileProvider.getUriForFile(
+        return createTempPhotoCaptureRequest().second
+    }
+
+    /**
+     * 创建拍照请求需要的临时文件和 URI
+     */
+    fun createTempPhotoCaptureRequest(): Pair<File, Uri> {
+        val tempFile = createTempPhotoFile()
+        val tempUri = FileProvider.getUriForFile(
             context,
             "${context.packageName}.fileprovider",
             tempFile
         )
+        Log.d(TAG, "Created temp photo capture request path=${tempFile.absolutePath} uri=$tempUri")
+        return tempFile to tempUri
+    }
+
+    /**
+     * 准备导入图片：解码预览图并读取原始大小
+     */
+    suspend fun prepareImageImport(uri: Uri): PreparedImageImport? = withContext(Dispatchers.IO) {
+        try {
+            Log.d(TAG, "prepareImageImport start uri=$uri")
+            val bitmap = decodeSampledBitmapFromUri(uri, MAX_STORED_IMAGE_DIMENSION) ?: return@withContext null
+            val originalSizeBytes = queryUriSize(uri)
+            Log.d(
+                TAG,
+                "prepareImageImport success uri=$uri width=${bitmap.width} height=${bitmap.height} originalSizeBytes=$originalSizeBytes"
+            )
+            PreparedImageImport(
+                bitmap = bitmap,
+                originalSizeBytes = originalSizeBytes
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "prepareImageImport failed uri=$uri", e)
+            null
+        }
     }
     
     /**
@@ -100,15 +140,20 @@ class ImageManager(private val context: Context) {
      */
     suspend fun saveImageFromUri(uri: Uri): String? = withContext(Dispatchers.IO) {
         try {
-            val bitmap = decodeSampledBitmapFromUri(uri, MAX_STORED_IMAGE_DIMENSION) ?: return@withContext null
+            Log.d(TAG, "saveImageFromUri start uri=$uri")
+            val preparedImport = prepareImageImport(uri) ?: return@withContext null
+            val bitmap = preparedImport.bitmap
             try {
-                saveImage(bitmap)
+                saveImage(bitmap).also { fileName ->
+                    Log.d(TAG, "saveImageFromUri success uri=$uri fileName=$fileName")
+                }
             } finally {
                 if (!bitmap.isRecycled) {
                     bitmap.recycle()
                 }
             }
         } catch (e: Exception) {
+            Log.e(TAG, "saveImageFromUri failed uri=$uri", e)
             e.printStackTrace()
             null
         }
@@ -119,16 +164,25 @@ class ImageManager(private val context: Context) {
      * @param bitmap 位图
      * @return 保存后的文件名，失败返回null
      */
-    suspend fun saveImage(bitmap: Bitmap): String? = withContext(Dispatchers.IO) {
+    suspend fun saveImage(
+        bitmap: Bitmap,
+        compressionFormat: Bitmap.CompressFormat = Bitmap.CompressFormat.PNG,
+        compressionQuality: Int = 100
+    ): String? = withContext(Dispatchers.IO) {
         try {
             // 生成唯一文件名
             val fileName = "${UUID.randomUUID()}.enc"
             val file = File(imageDirectory, fileName)
+            val safeQuality = compressionQuality.coerceIn(0, 100)
 
             val normalizedBitmap = normalizeBitmapForStorage(bitmap, MAX_STORED_IMAGE_DIMENSION)
             try {
                 // 将Bitmap转换为字节数组
-                val byteArray = bitmapToByteArray(normalizedBitmap)
+                val byteArray = bitmapToByteArray(
+                    bitmap = normalizedBitmap,
+                    compressionFormat = compressionFormat,
+                    compressionQuality = safeQuality
+                )
 
                 // 加密并保存
                 val encryptedData = encrypt(byteArray)
@@ -141,9 +195,42 @@ class ImageManager(private val context: Context) {
                 }
             }
 
+            Log.d(
+                TAG,
+                "saveImage success fileName=$fileName path=${file.absolutePath} format=$compressionFormat quality=$safeQuality"
+            )
             fileName
         } catch (e: Exception) {
+            Log.e(TAG, "saveImage failed", e)
             e.printStackTrace()
+            null
+        }
+    }
+
+    /**
+     * 估算按指定压缩参数保存后的图片大小
+     */
+    suspend fun estimateSavedImageSize(
+        bitmap: Bitmap,
+        compressionFormat: Bitmap.CompressFormat = Bitmap.CompressFormat.JPEG,
+        compressionQuality: Int = 80
+    ): Long? = withContext(Dispatchers.Default) {
+        try {
+            val safeQuality = compressionQuality.coerceIn(0, 100)
+            val normalizedBitmap = normalizeBitmapForStorage(bitmap, MAX_STORED_IMAGE_DIMENSION)
+            try {
+                bitmapToByteArray(
+                    bitmap = normalizedBitmap,
+                    compressionFormat = compressionFormat,
+                    compressionQuality = safeQuality
+                ).size.toLong()
+            } finally {
+                if (normalizedBitmap !== bitmap && !normalizedBitmap.isRecycled) {
+                    normalizedBitmap.recycle()
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "estimateSavedImageSize failed format=$compressionFormat quality=$compressionQuality", e)
             null
         }
     }
@@ -214,10 +301,49 @@ class ImageManager(private val context: Context) {
     /**
      * 将Bitmap转换为字节数组
      */
-    private fun bitmapToByteArray(bitmap: Bitmap): ByteArray {
+    private fun bitmapToByteArray(
+        bitmap: Bitmap,
+        compressionFormat: Bitmap.CompressFormat,
+        compressionQuality: Int
+    ): ByteArray {
         val stream = java.io.ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
+        bitmap.compress(compressionFormat, compressionQuality, stream)
         return stream.toByteArray()
+    }
+
+    private fun queryUriSize(uri: Uri): Long? {
+        if (uri.scheme == "file") {
+            return uri.path
+                ?.let(::File)
+                ?.takeIf { it.exists() }
+                ?.length()
+                ?.takeIf { it > 0L }
+        }
+
+        try {
+            context.contentResolver.openFileDescriptor(uri, "r")?.use { descriptor ->
+                descriptor.statSize.takeIf { it > 0L }?.let { return it }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "queryUriSize via file descriptor failed uri=$uri", e)
+        }
+
+        return try {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                if (!cursor.moveToFirst()) {
+                    return@use null
+                }
+                val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                if (sizeIndex == -1 || cursor.isNull(sizeIndex)) {
+                    null
+                } else {
+                    cursor.getLong(sizeIndex).takeIf { it > 0L }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "queryUriSize via cursor failed uri=$uri", e)
+            null
+        }
     }
 
     private fun normalizeBitmapForStorage(bitmap: Bitmap, maxDimension: Int): Bitmap {
@@ -237,14 +363,29 @@ class ImageManager(private val context: Context) {
     }
 
     private fun decodeSampledBitmapFromUri(uri: Uri, maxDimension: Int): Bitmap? {
+        Log.d(TAG, "decodeSampledBitmapFromUri start uri=$uri maxDimension=$maxDimension")
+        if (uri.scheme == "file") {
+            return decodeSampledBitmapFromFileUri(uri, maxDimension)
+        }
+        decodeSampledBitmapFromContentUri(uri, maxDimension)?.let { decoded ->
+            return decoded
+        }
+
+        Log.w(TAG, "decodeSampledBitmapFromContentUri returned null, falling back to stream decode uri=$uri")
         val bounds = BitmapFactory.Options().apply {
             inJustDecodeBounds = true
         }
-        context.contentResolver.openInputStream(uri)?.use { inputStream ->
+        val firstStream = context.contentResolver.openInputStream(uri)
+        if (firstStream == null) {
+            Log.w(TAG, "openInputStream returned null for uri=$uri")
+            return null
+        }
+        firstStream.use { inputStream ->
             BitmapFactory.decodeStream(inputStream, null, bounds)
-        } ?: return null
+        }
 
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+            Log.w(TAG, "decodeSampledBitmapFromUri invalid bounds uri=$uri width=${bounds.outWidth} height=${bounds.outHeight}")
             return null
         }
 
@@ -253,9 +394,71 @@ class ImageManager(private val context: Context) {
             inSampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight, maxDimension)
             inPreferredConfig = Bitmap.Config.ARGB_8888
         }
-        return context.contentResolver.openInputStream(uri)?.use { inputStream ->
+        val secondStream = context.contentResolver.openInputStream(uri)
+        if (secondStream == null) {
+            Log.w(TAG, "second openInputStream returned null for uri=$uri")
+            return null
+        }
+        val decoded = secondStream.use { inputStream ->
             BitmapFactory.decodeStream(inputStream, null, decodeOptions)
         }
+        Log.d(TAG, "decodeSampledBitmapFromUri result uri=$uri decoded=${decoded != null} sampleSize=${decodeOptions.inSampleSize}")
+        return decoded
+    }
+
+    private fun decodeSampledBitmapFromContentUri(uri: Uri, maxDimension: Int): Bitmap? {
+        return try {
+            val bounds = BitmapFactory.Options().apply {
+                inJustDecodeBounds = true
+            }
+            context.contentResolver.openFileDescriptor(uri, "r")?.use { descriptor ->
+                BitmapFactory.decodeFileDescriptor(descriptor.fileDescriptor, null, bounds)
+            } ?: run {
+                Log.w(TAG, "openFileDescriptor returned null for uri=$uri")
+                return null
+            }
+
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+                Log.w(TAG, "decodeSampledBitmapFromContentUri invalid bounds uri=$uri width=${bounds.outWidth} height=${bounds.outHeight}")
+                return null
+            }
+
+            val decodeOptions = BitmapFactory.Options().apply {
+                inJustDecodeBounds = false
+                inSampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight, maxDimension)
+                inPreferredConfig = Bitmap.Config.ARGB_8888
+            }
+
+            val decoded = context.contentResolver.openFileDescriptor(uri, "r")?.use { descriptor ->
+                BitmapFactory.decodeFileDescriptor(descriptor.fileDescriptor, null, decodeOptions)
+            }
+            Log.d(TAG, "decodeSampledBitmapFromContentUri result uri=$uri decoded=${decoded != null} sampleSize=${decodeOptions.inSampleSize}")
+            decoded
+        } catch (e: Exception) {
+            Log.e(TAG, "decodeSampledBitmapFromContentUri failed uri=$uri", e)
+            null
+        }
+    }
+
+    private fun decodeSampledBitmapFromFileUri(uri: Uri, maxDimension: Int): Bitmap? {
+        val filePath = uri.path ?: return null
+        val bounds = BitmapFactory.Options().apply {
+            inJustDecodeBounds = true
+        }
+        BitmapFactory.decodeFile(filePath, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+            Log.w(TAG, "decodeSampledBitmapFromFileUri invalid bounds uri=$uri width=${bounds.outWidth} height=${bounds.outHeight}")
+            return null
+        }
+
+        val decodeOptions = BitmapFactory.Options().apply {
+            inJustDecodeBounds = false
+            inSampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight, maxDimension)
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+        }
+        val decoded = BitmapFactory.decodeFile(filePath, decodeOptions)
+        Log.d(TAG, "decodeSampledBitmapFromFileUri result uri=$uri decoded=${decoded != null} sampleSize=${decodeOptions.inSampleSize}")
+        return decoded
     }
 
     private fun decodeSampledBitmapFromBytes(data: ByteArray, maxDimension: Int): Bitmap? {

@@ -8,6 +8,8 @@ import takagi.ru.monica.data.PasswordArchiveSyncMeta
 import takagi.ru.monica.data.PasswordArchiveSyncMetaDao
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordEntryDao
+import takagi.ru.monica.data.PasswordHistoryDao
+import takagi.ru.monica.data.PasswordHistoryEntry
 import takagi.ru.monica.data.SecureItemDao
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenFolderDao
@@ -23,7 +25,8 @@ class PasswordRepository(
     private val bitwardenFolderDao: BitwardenFolderDao? = null,
     private val secureItemDao: SecureItemDao? = null,
     private val passkeyDao: PasskeyDao? = null,
-    private val passwordArchiveSyncMetaDao: PasswordArchiveSyncMetaDao? = null
+    private val passwordArchiveSyncMetaDao: PasswordArchiveSyncMetaDao? = null,
+    private val passwordHistoryDao: PasswordHistoryDao? = null
 ) {
     
     fun getAllPasswordEntries(): Flow<List<PasswordEntry>> {
@@ -193,6 +196,22 @@ class PasswordRepository(
     suspend fun deleteArchiveSyncMeta(entryId: Long) {
         passwordArchiveSyncMetaDao?.deleteByEntryId(entryId)
     }
+
+    fun getPasswordHistoryByEntryId(entryId: Long): Flow<List<PasswordHistoryEntry>> {
+        return passwordHistoryDao?.getHistoryByEntryId(entryId) ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    }
+
+    suspend fun getPasswordHistoryByEntryIdSync(entryId: Long): List<PasswordHistoryEntry> {
+        return passwordHistoryDao?.getHistoryByEntryIdSync(entryId) ?: emptyList()
+    }
+
+    suspend fun insertPasswordHistory(entry: PasswordHistoryEntry): Long {
+        return passwordHistoryDao?.insert(entry) ?: -1L
+    }
+
+    suspend fun trimPasswordHistory(entryId: Long, limit: Int) {
+        passwordHistoryDao?.trimToLimit(entryId, limit)
+    }
     
     suspend fun toggleFavorite(id: Long, isFavorite: Boolean) {
         passwordEntryDao.updateFavoriteStatus(id, isFavorite)
@@ -212,6 +231,20 @@ class PasswordRepository(
     
     suspend fun getPasswordEntriesCount(): Int {
         return passwordEntryDao.getPasswordEntriesCount()
+    }
+
+    /**
+     * 获取本地密码条目数量（排除 KeePass 和 Bitwarden 的数据）
+     */
+    suspend fun getLocalEntriesCount(): Int {
+        return passwordEntryDao.getLocalEntriesCount()
+    }
+
+    /**
+     * 获取本地已删除密码条目数量（排除 KeePass 和 Bitwarden 的数据）
+     */
+    suspend fun getLocalDeletedEntriesCount(): Int {
+        return passwordEntryDao.getLocalDeletedEntriesCount()
     }
     
     suspend fun deleteAllPasswordEntries() {

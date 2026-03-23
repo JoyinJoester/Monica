@@ -404,7 +404,9 @@ class WebDavHelper(
         private const val KEY_BACKUP_INCLUDE_NOTES = "backup_include_notes"
         private const val KEY_BACKUP_INCLUDE_TIMELINE = "backup_include_timeline"
         private const val KEY_BACKUP_INCLUDE_TRASH = "backup_include_trash"
+        private const val KEY_BACKUP_INCLUDE_TRASH_AND_HISTORY = "backup_include_trash_and_history"
         private const val KEY_BACKUP_INCLUDE_WEBDAV_CONFIG = "backup_include_webdav_config"
+        private const val KEY_BACKUP_INCLUDE_LOCAL_KEEPASS = "backup_include_local_keepass"
         private const val BACKUP_FOLDER_NAME = "Monica_Backups"
     }
     
@@ -646,7 +648,9 @@ class WebDavHelper(
             putBoolean(KEY_BACKUP_INCLUDE_NOTES, preferences.includeNotes)
             putBoolean(KEY_BACKUP_INCLUDE_TIMELINE, preferences.includeTimeline)
             putBoolean(KEY_BACKUP_INCLUDE_TRASH, preferences.includeTrash)
+            putBoolean(KEY_BACKUP_INCLUDE_TRASH_AND_HISTORY, preferences.includeTrashAndHistory)
             putBoolean(KEY_BACKUP_INCLUDE_WEBDAV_CONFIG, preferences.includeWebDavConfig)
+            putBoolean(KEY_BACKUP_INCLUDE_LOCAL_KEEPASS, preferences.includeLocalKeePass)
             apply()
         }
         android.util.Log.d("WebDavHelper", "Saved backup preferences: $preferences")
@@ -669,7 +673,9 @@ class WebDavHelper(
             includeNotes = prefs.getBoolean(KEY_BACKUP_INCLUDE_NOTES, true),
             includeTimeline = prefs.getBoolean(KEY_BACKUP_INCLUDE_TIMELINE, true),
             includeTrash = prefs.getBoolean(KEY_BACKUP_INCLUDE_TRASH, true),
-            includeWebDavConfig = prefs.getBoolean(KEY_BACKUP_INCLUDE_WEBDAV_CONFIG, false)
+            includeTrashAndHistory = prefs.getBoolean(KEY_BACKUP_INCLUDE_TRASH_AND_HISTORY, true),
+            includeWebDavConfig = prefs.getBoolean(KEY_BACKUP_INCLUDE_WEBDAV_CONFIG, false),
+            includeLocalKeePass = prefs.getBoolean(KEY_BACKUP_INCLUDE_LOCAL_KEEPASS, false)
         )
     }
     

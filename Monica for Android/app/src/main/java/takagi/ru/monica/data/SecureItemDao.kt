@@ -117,6 +117,29 @@ interface SecureItemDao {
           AND keepass_database_id IS NULL
     """)
     suspend fun getActiveLocalItemsByTypeSync(itemType: ItemType): List<SecureItem>
+
+    /**
+     * 获取本地安全项数量（排除 Bitwarden 和 KeePass 的数据）
+     */
+    @Query("""
+        SELECT COUNT(*) FROM secure_items
+        WHERE itemType = :itemType
+          AND isDeleted = 0
+          AND bitwarden_vault_id IS NULL
+          AND keepass_database_id IS NULL
+    """)
+    suspend fun getLocalItemCountByType(itemType: ItemType): Int
+
+    /**
+     * 获取本地已删除项目数量（排除 Bitwarden 和 KeePass 的数据）
+     */
+    @Query("""
+        SELECT COUNT(*) FROM secure_items
+        WHERE isDeleted = 1
+          AND bitwarden_vault_id IS NULL
+          AND keepass_database_id IS NULL
+    """)
+    suspend fun getLocalDeletedItemCount(): Int
     
     /**
      * 删除指定类型的所有项目

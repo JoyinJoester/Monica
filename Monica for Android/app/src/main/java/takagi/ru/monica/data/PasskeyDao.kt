@@ -86,6 +86,16 @@ interface PasskeyDao {
      */
     @Query("SELECT COUNT(*) FROM passkeys")
     fun getPasskeyCount(): Flow<Int>
+
+    /**
+     * 获取本地 Passkey 数量（排除 Bitwarden 和 KeePass 的数据）
+     */
+    @Query("""
+        SELECT COUNT(*) FROM passkeys
+        WHERE bitwarden_vault_id IS NULL
+          AND keepass_database_id IS NULL
+    """)
+    suspend fun getLocalPasskeyCount(): Int
     
     /**
      * 获取未备份的 Passkeys（用于 WebDAV 同步）

@@ -266,6 +266,20 @@ class SecureItemRepository(
         return secureItemDao.getActiveItemsByType(type)
     }
 
+    /**
+     * 获取本地安全项数量（排除 Bitwarden 和 KeePass 的数据）
+     */
+    suspend fun getLocalItemCountByType(type: ItemType): Int {
+        return secureItemDao.getLocalItemCountByType(type)
+    }
+
+    /**
+     * 获取本地已删除项目数量（排除 Bitwarden 和 KeePass 的数据）
+     */
+    suspend fun getLocalDeletedItemCount(): Int {
+        return secureItemDao.getLocalDeletedItemCount()
+    }
+
     private fun parseTotpFingerprint(itemData: String): TotpFingerprint? {
         runCatching {
             json.decodeFromString<TotpData>(itemData)

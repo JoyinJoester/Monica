@@ -27,14 +27,15 @@ fun MonicaExpressiveFilterChip(
     onClick: () -> Unit,
     label: String,
     modifier: Modifier = Modifier,
+    interactionSource: MutableInteractionSource? = null,
     leadingIcon: ImageVector? = null,
     selectedLeadingIcon: ImageVector? = leadingIcon,
     animated: Boolean = true
 ) {
     val colorScheme = MaterialTheme.colorScheme
     if (animated) {
-        val interactionSource = remember { MutableInteractionSource() }
-        val isPressed by interactionSource.collectIsPressedAsState()
+        val resolvedInteractionSource = interactionSource ?: remember { MutableInteractionSource() }
+        val isPressed by resolvedInteractionSource.collectIsPressedAsState()
         val targetCornerRadius = when {
             isPressed -> 8.dp
             selected -> 12.dp
@@ -124,7 +125,7 @@ fun MonicaExpressiveFilterChip(
                     )
                 }
             },
-            interactionSource = interactionSource,
+            interactionSource = resolvedInteractionSource,
             border = FilterChipDefaults.filterChipBorder(
                 enabled = true,
                 selected = selected,

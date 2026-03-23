@@ -665,6 +665,13 @@ interface PasswordEntryDao {
     suspend fun getLocalEntriesCount(): Int
 
     /**
+     * 获取本地已删除条目数量（非 Bitwarden、非 KeePass）
+     * 用于回收站统计
+     */
+    @Query("SELECT COUNT(*) FROM password_entries WHERE bitwarden_vault_id IS NULL AND keepassDatabaseId IS NULL AND isDeleted = 1")
+    suspend fun getLocalDeletedEntriesCount(): Int
+
+    /**
      * 获取指定 Bitwarden Vault 的条目数量
      * 用于 V2 多源密码库统计
      */

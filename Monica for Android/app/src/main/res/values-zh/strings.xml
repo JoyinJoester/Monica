@@ -82,10 +82,10 @@
     <string name="ime_unlock_message">Monica 安全键盘与本体共享同一锁定状态。</string>
     <string name="ime_unlock_password_label">主密码</string>
     <string name="ime_unlock_error">主密码不正确。</string>
-    <string name="ime_unlock_required">密码库已锁定，请打开 Monica 重新验证。</string>
-    <string name="ime_unlock_in_app_message">请在 Monica 本体中使用指纹或主密码完成验证，返回后即可继续填充。</string>
-    <string name="ime_unlock_open_app">打开 Monica 解锁</string>
-    <string name="ime_unlock_open_app_error">无法打开 Monica 验证页。</string>
+    <string name="ime_unlock_required">密码库已锁定，请先解锁后继续。</string>
+    <string name="ime_unlock_in_app_message">请使用指纹或主密码完成验证，然后继续填充。</string>
+    <string name="ime_unlock_open_app">解锁</string>
+    <string name="ime_unlock_open_app_error">无法打开解锁页面。</string>
     <string name="ime_search_accounts">搜索账号</string>
     <string name="ime_picker_title">密码选择器</string>
     <string name="ime_picker_subtitle">先选择数据库，再点条目即可直接填入当前表单。</string>
@@ -761,6 +761,8 @@
     
     <!-- Timeline Screen -->
     <string name="no_history_records">暂无历史记录</string>
+    <string name="password_history_title">历史密码</string>
+    <string name="password_history_last_used">上次使用：%1$s</string>
     <string name="sync_conflict">同步冲突</string>
     <string name="modified_field">修改了 %1$s</string>
     <string name="restore_version">恢复此版本</string>
@@ -1983,8 +1985,8 @@
     <string name="group_by_website">按网站分组</string>
     <string name="group_by_title">按标题分组</string>
     <string name="group_by_none">不分组</string>
-    <string name="new_category">新建分类</string>
-    <string name="edit_category">编辑分类</string>
+    <string name="new_category">新建</string>
+    <string name="edit_category">编辑</string>
     <string name="rename_category">重命名</string>
     <string name="category_name">分类名称</string>
     <string name="add_category">新建分类</string>
@@ -2224,6 +2226,12 @@
     <string name="photo_file_missing_or_empty">文件不存在或为空</string>
     <string name="photo_save_failed">保存图片失败</string>
     <string name="photo_process_failed">处理图片失败: %1$s</string>
+    <string name="photo_import_dialog_title">导入照片</string>
+    <string name="photo_import_dialog_quality">压缩质量：%1$d%%</string>
+    <string name="photo_import_dialog_original_size">原始大小：%1$s</string>
+    <string name="photo_import_dialog_estimated_size">预计保存大小：%1$s</string>
+    <string name="photo_import_dialog_hint">调低质量可以减小存储占用和备份体积，确认后会按当前质量压缩保存。</string>
+    <string name="photo_import_dialog_confirm">导入</string>
     <string name="photo_cannot_open_gallery">无法启动相册</string>
     <string name="photo_cannot_open_camera_use_gallery">无法启动相机，将使用图库选择</string>
     <string name="delete_image">删除图片</string>

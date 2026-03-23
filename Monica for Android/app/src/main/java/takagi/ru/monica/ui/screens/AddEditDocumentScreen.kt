@@ -142,9 +142,10 @@ fun AddEditDocumentScreen(
     }
     
     // 如果是编辑模式，加载现有数据
+    // 如果是添加模式，重置表单字段（防止保留上次添加的数据）
     LaunchedEffect(documentId) {
-        documentId?.let {
-            viewModel.getDocumentById(it)?.let { item ->
+        if (documentId != null) {
+            viewModel.getDocumentById(documentId)?.let { item ->
                 title = item.title
                 notes = item.notes
                 isFavorite = item.isFavorite
@@ -175,7 +176,7 @@ fun AddEditDocumentScreen(
                     issuedDate = data.issuedDate
                     expiryDate = data.expiryDate
                     issuedBy = data.issuedBy
-                    nationality = data.nationality // 加载国籍信息
+                    nationality = data.nationality
                     titlePrefix = data.title
                     firstName = data.firstName
                     middleName = data.middleName
@@ -199,6 +200,40 @@ fun AddEditDocumentScreen(
                     documentType = data.documentType
                 }
             }
+        } else {
+            // 添加模式：重置表单字段
+            title = ""
+            documentNumber = ""
+            fullName = ""
+            issuedDate = ""
+            expiryDate = ""
+            issuedBy = ""
+            nationality = ""
+            titlePrefix = ""
+            firstName = ""
+            middleName = ""
+            lastName = ""
+            address1 = ""
+            address2 = ""
+            address3 = ""
+            city = ""
+            stateProvince = ""
+            postalCode = ""
+            country = ""
+            company = ""
+            email = ""
+            phone = ""
+            ssn = ""
+            username = ""
+            passportNumber = ""
+            licenseNumber = ""
+            additionalInfo = ""
+            documentType = DocumentType.ID_CARD
+            notes = ""
+            isFavorite = false
+            customFields = emptyList()
+            frontImageFileName = null
+            backImageFileName = null
         }
     }
 

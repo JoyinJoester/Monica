@@ -56,6 +56,8 @@ class MonicaInputMethodService : InputMethodService() {
     private var recomposer: Recomposer? = null
     private var refreshJob: Job? = null
     private var pendingUnlockPanel: MonicaImePanel? = null
+    private var unlockFlowInProgress = false
+    private var suppressAutoUnlockUntilNextAttempt = false
     private val imeUnlockResultReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action != ACTION_IME_BIOMETRIC_RESULT) return
@@ -63,9 +65,11 @@ class MonicaInputMethodService : InputMethodService() {
             val success = intent.getBooleanExtra(EXTRA_IME_BIOMETRIC_SUCCESS, false)
             val errorMessage = intent.getStringExtra(EXTRA_IME_BIOMETRIC_ERROR)
             val targetPanel = pendingUnlockPanel ?: MonicaImePanel.PASSWORDS
+            unlockFlowInProgress = false
             pendingUnlockPanel = null
 
             if (success) {
+                suppressAutoUnlockUntilNextAttempt = false
                 uiState.update {
                     it.copy(
                         activePanel = targetPanel,
@@ -75,8 +79,12 @@ class MonicaInputMethodService : InputMethodService() {
                 }
                 requestRefreshVaultEntries(force = true)
             } else {
+                suppressAutoUnlockUntilNextAttempt = true
                 uiState.update {
                     it.copy(
+                        unlocked = false,
+                        activePanel = targetPanel,
+                        isAutofillPanelVisible = targetPanel != MonicaImePanel.KEYBOARD,
                         errorMessage = errorMessage ?: getString(takagi.ru.monica.R.string.ime_unlock_required)
                     )
                 }
@@ -214,18 +222,30 @@ class MonicaInputMethodService : InputMethodService() {
     }
 
     private fun openMonicaAppForUnlock() {
+        val targetPanel = pendingUnlockPanel
+            ?: uiState.value.activePanel.takeIf { it != MonicaImePanel.KEYBOARD }
+            ?: MonicaImePanel.PASSWORDS
+
+        pendingUnlockPanel = targetPanel
+        suppressAutoUnlockUntilNextAttempt = false
+
+        if (unlockFlowInProgress) {
+            return
+        }
+
+        unlockFlowInProgress = true
         runCatching {
-            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
-                ?.apply {
+            startActivity(
+                Intent(this, ImeUnlockActivity::class.java).apply {
                     addFlags(
                         Intent.FLAG_ACTIVITY_NEW_TASK or
                             Intent.FLAG_ACTIVITY_SINGLE_TOP or
                             Intent.FLAG_ACTIVITY_CLEAR_TOP
                     )
                 }
-                ?: error("No launch activity found")
-            startActivity(launchIntent)
+            )
         }.onFailure { error ->
+            unlockFlowInProgress = false
             uiState.update {
                 it.copy(errorMessage = error.message ?: getString(takagi.ru.monica.R.string.ime_unlock_open_app_error))
             }
@@ -241,6 +261,7 @@ class MonicaInputMethodService : InputMethodService() {
 
     private fun handlePanelSelection(panel: MonicaImePanel) {
         if (panel == MonicaImePanel.KEYBOARD) {
+            suppressAutoUnlockUntilNextAttempt = false
             uiState.update {
                 it.copy(
                     activePanel = MonicaImePanel.KEYBOARD,
@@ -258,6 +279,7 @@ class MonicaInputMethodService : InputMethodService() {
             val unlockedNow = updateUnlockState(settings.autoLockMinutes)
             if (!unlockedNow) {
                 pendingUnlockPanel = panel
+                suppressAutoUnlockUntilNextAttempt = false
                 uiState.update {
                     it.copy(
                         unlocked = false,
@@ -269,6 +291,7 @@ class MonicaInputMethodService : InputMethodService() {
                         errorMessage = getString(takagi.ru.monica.R.string.ime_unlock_required)
                     )
                 }
+                openMonicaAppForUnlock()
                 return@launch
             }
 
@@ -292,6 +315,17 @@ class MonicaInputMethodService : InputMethodService() {
         val settings = settingsManager.settingsFlow.first()
         val isUnlocked = updateUnlockState(settings.autoLockMinutes)
         if (!isUnlocked) {
+            val currentState = uiState.value
+            if (
+                force &&
+                currentState.activePanel != MonicaImePanel.KEYBOARD &&
+                currentState.isAutofillPanelVisible &&
+                !unlockFlowInProgress &&
+                !suppressAutoUnlockUntilNextAttempt
+            ) {
+                pendingUnlockPanel = currentState.activePanel
+                openMonicaAppForUnlock()
+            }
             uiState.update {
                 it.copy(
                     entries = emptyList(),
