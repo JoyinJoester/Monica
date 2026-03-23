@@ -1,5 +1,8 @@
 package takagi.ru.monica.ui.screens
 
+import android.content.Context
+import android.content.Intent
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -16,6 +19,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.DoNotDisturb
 import androidx.compose.material.icons.outlined.Language
+import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -43,11 +47,20 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.core.content.FileProvider
+import java.io.File
 import java.text.DateFormat
+import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import takagi.ru.monica.R
 import takagi.ru.monica.autofill_ng.AutofillPreferences
+
+private const val BLOCKED_FIELDS_SHARE_DIR = "temp_share"
+private const val BLOCKED_FIELDS_SHARE_PREFIX = "monica_blocked_fields_"
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -87,6 +100,39 @@ fun AutofillBlockedFieldsScreen(
                 },
                 actions = {
                     if (sortedRecords.isNotEmpty()) {
+                        IconButton(
+                            onClick = {
+                                scope.launch {
+                                    runCatching {
+                                        val shareIntent = createBlockedFieldsShareIntent(
+                                            context = context,
+                                            records = sortedRecords,
+                                            appLabels = appLabels,
+                                        )
+                                        context.startActivity(
+                                            Intent.createChooser(
+                                                shareIntent,
+                                                context.getString(R.string.autofill_blocked_fields_share_title),
+                                            ),
+                                        )
+                                    }.onFailure { error ->
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(
+                                                R.string.autofill_blocked_fields_share_failed,
+                                                error.message ?: error.javaClass.simpleName,
+                                            ),
+                                            Toast.LENGTH_SHORT,
+                                        ).show()
+                                    }
+                                }
+                            },
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Share,
+                                contentDescription = stringResource(R.string.autofill_blocked_fields_share),
+                            )
+                        }
                         TextButton(onClick = { showClearAllDialog = true }) {
                             Text(text = stringResource(R.string.autofill_blocked_fields_clear_all))
                         }
@@ -404,4 +450,83 @@ private fun AutofillPreferences.BlockedFieldSignatureRecord.primaryBlockedFieldT
         ?: appLabel
         ?: packageName
         ?: signatureKey.take(12)
+}
+
+private suspend fun createBlockedFieldsShareIntent(
+    context: Context,
+    records: List<AutofillPreferences.BlockedFieldSignatureRecord>,
+    appLabels: Map<String, String?>,
+): Intent = withContext(Dispatchers.IO) {
+    val shareDir = File(context.cacheDir, BLOCKED_FIELDS_SHARE_DIR).apply {
+        if (!exists()) {
+            mkdirs()
+        }
+    }
+    cleanupOldBlockedFieldExports(shareDir)
+
+    val formatter = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
+    val fileName = "$BLOCKED_FIELDS_SHARE_PREFIX${formatter.format(Date())}.txt"
+    val file = File(shareDir, fileName)
+    file.writeText(buildBlockedFieldsShareText(records, appLabels))
+
+    val uri = FileProvider.getUriForFile(
+        context,
+        "${context.packageName}.fileprovider",
+        file,
+    )
+
+    Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_SUBJECT, context.getString(R.string.autofill_blocked_fields_share_subject))
+        putExtra(Intent.EXTRA_STREAM, uri)
+        putExtra(Intent.EXTRA_TEXT, context.getString(R.string.autofill_blocked_fields_share_file_hint))
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    }
+}
+
+private fun cleanupOldBlockedFieldExports(dir: File) {
+    val exported = dir.listFiles { file ->
+        file.isFile && file.name.startsWith(BLOCKED_FIELDS_SHARE_PREFIX) && file.name.endsWith(".txt")
+    } ?: return
+    if (exported.size <= 10) return
+    exported.sortedByDescending { it.lastModified() }
+        .drop(10)
+        .forEach { stale ->
+            runCatching { stale.delete() }
+        }
+}
+
+private fun buildBlockedFieldsShareText(
+    records: List<AutofillPreferences.BlockedFieldSignatureRecord>,
+    appLabels: Map<String, String?>,
+): String {
+    val exportedAt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.US).format(Date())
+    val lineBreak = System.lineSeparator()
+    val builder = StringBuilder()
+
+    builder.appendLine("Monica Autofill Blocked Fields Export")
+    builder.appendLine("exported_at=$exportedAt")
+    builder.appendLine("record_count=${records.size}")
+    builder.appendLine()
+
+    records.forEachIndexed { index, record ->
+        builder.appendLine("[record_${index + 1}]")
+        builder.appendLine("signature_key=${record.signatureKey}")
+        builder.appendLine("blocked_at=${record.blockedAt}")
+        record.packageName?.takeIf { it.isNotBlank() }?.let { packageName ->
+            builder.appendLine("package_name=$packageName")
+            appLabels[packageName]
+                ?.takeIf { it.isNotBlank() }
+                ?.let { label ->
+                    builder.appendLine("app_label=$label")
+                }
+        }
+        record.webDomain?.takeIf { it.isNotBlank() }?.let { domain ->
+            builder.appendLine("web_domain=$domain")
+        }
+        builder.appendLine("hints=${record.hints.joinToString(",").ifBlank { "-" }}")
+        builder.append(lineBreak)
+    }
+
+    return builder.toString().trimEnd()
 }

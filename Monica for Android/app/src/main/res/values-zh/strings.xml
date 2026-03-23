@@ -2886,6 +2886,11 @@
     <string name="autofill_blocked_fields_domain_only">网页目标</string>
     <string name="autofill_blocked_fields_hints">提示类型：%1$s</string>
     <string name="autofill_blocked_fields_time">标记时间：%1$s</string>
+    <string name="autofill_blocked_fields_share">分享</string>
+    <string name="autofill_blocked_fields_share_title">分享非自动填充字段</string>
+    <string name="autofill_blocked_fields_share_subject">Monica 非自动填充字段</string>
+    <string name="autofill_blocked_fields_share_file_hint">已附加非自动填充字段导出文件。</string>
+    <string name="autofill_blocked_fields_share_failed">分享失败：%1$s</string>
     <string name="autofill_v2_set_system_service">设置 Monica 为系统自动填充服务</string>
     <string name="autofill_v2_set_system_service_desc">打开系统设置并将 Monica 设为默认自动填充提供方。</string>
     <string name="autofill_v2_privileged_apps">特权 App</string>

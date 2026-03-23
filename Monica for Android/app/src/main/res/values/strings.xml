@@ -3047,6 +3047,11 @@
     <string name="autofill_blocked_fields_domain_only">Website target</string>
     <string name="autofill_blocked_fields_hints">Hints: %1$s</string>
     <string name="autofill_blocked_fields_time">Blocked: %1$s</string>
+    <string name="autofill_blocked_fields_share">Share</string>
+    <string name="autofill_blocked_fields_share_title">Share blocked fields</string>
+    <string name="autofill_blocked_fields_share_subject">Monica blocked autofill fields</string>
+    <string name="autofill_blocked_fields_share_file_hint">Attached blocked autofill fields export file.</string>
+    <string name="autofill_blocked_fields_share_failed">Share failed: %1$s</string>
     <string name="autofill_v2_set_system_service">Set Monica as system autofill service</string>
     <string name="autofill_v2_set_system_service_desc">Open Android system settings and set Monica as your autofill provider.</string>
     <string name="autofill_v2_privileged_apps">Privileged apps</string>

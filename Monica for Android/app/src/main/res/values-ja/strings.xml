@@ -1772,4 +1772,9 @@
     <string name="plus_payment_links_title">支払いリンク</string>
     <string name="quick_database_maintenance_snapshot_retention_notice">各実行の前にメンテナンス用スナップショットを作成し、14日間保持します。</string>
 
+    <string name="autofill_blocked_fields_share">共有</string>
+    <string name="autofill_blocked_fields_share_title">ブロック項目を共有</string>
+    <string name="autofill_blocked_fields_share_subject">Monica 自動入力ブロック項目</string>
+    <string name="autofill_blocked_fields_share_file_hint">自動入力ブロック項目のエクスポートファイルを添付しました。</string>
+    <string name="autofill_blocked_fields_share_failed">共有に失敗しました: %1$s</string>
 </resources>

@@ -1778,4 +1778,9 @@
     <string name="plus_payment_links_title">Lien ket thanh toan</string>
     <string name="quick_database_maintenance_snapshot_retention_notice">Truoc moi lan chay se tao ban chup bao tri va chi luu trong 14 ngay.</string>
 
+    <string name="autofill_blocked_fields_share">Chia sẻ</string>
+    <string name="autofill_blocked_fields_share_title">Chia sẻ trường đã chặn</string>
+    <string name="autofill_blocked_fields_share_subject">Các trường autofill bị chặn của Monica</string>
+    <string name="autofill_blocked_fields_share_file_hint">Đã đính kèm tệp xuất các trường autofill bị chặn.</string>
+    <string name="autofill_blocked_fields_share_failed">Chia sẻ thất bại: %1$s</string>
 </resources>
