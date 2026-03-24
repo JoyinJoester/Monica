@@ -203,6 +203,21 @@ object NoteContentCodec {
             return DecodedNoteContent(content = fallbackNotes)
         }
 
+        if (raw.startsWith("{")) {
+            runCatching { Json.decodeFromString<NoteData>(raw) }
+                .getOrNull()
+                ?.let { noteData ->
+                    return DecodedNoteContent(
+                        content = noteData.content.ifBlank { fallbackNotes },
+                        tags = noteData.tags
+                            .map { it.trim() }
+                            .filter { it.isNotEmpty() }
+                            .distinct(),
+                        isMarkdown = noteData.isMarkdown
+                    )
+                }
+        }
+
         if (!raw.startsWith("{") && !raw.startsWith("\"")) {
             return DecodedNoteContent(content = raw)
         }
