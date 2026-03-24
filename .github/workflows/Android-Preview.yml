@@ -77,7 +77,16 @@ jobs:
           mv app-release.apk Monica-Android-Preview-${PREVIEW_VERSION_SUFFIX}.apk
         continue-on-error: true
 
+      - name: Move preview tag to current commit
+        if: github.event_name != 'pull_request'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -fa preview ${{ github.sha }} -m "Development Preview"
+          git push origin refs/tags/preview --force
+
       - name: Publish Preview to Release
+        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: preview
