@@ -77,6 +77,17 @@ jobs:
           mv app-release.apk Monica-Android-Preview-${PREVIEW_VERSION_SUFFIX}.apk
         continue-on-error: true
 
+      - name: Delete existing preview release
+        if: github.event_name != 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view preview >/dev/null 2>&1; then
+            gh release delete preview --yes --cleanup-tag
+          else
+            echo "No existing preview release to delete"
+          fi
+
       - name: Move preview tag to current commit
         if: github.event_name != 'pull_request'
         run: |
