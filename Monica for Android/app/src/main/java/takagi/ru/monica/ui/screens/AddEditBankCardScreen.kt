@@ -1,11 +1,22 @@
 package takagi.ru.monica.ui.screens
 
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -17,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.serialization.decodeFromString
@@ -25,6 +37,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
+import takagi.ru.monica.data.CommonAccountPreferences
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.BankCardData
@@ -34,9 +47,15 @@ import takagi.ru.monica.data.model.CardType
 import takagi.ru.monica.data.model.formatForDisplay
 import takagi.ru.monica.data.model.isEmpty
 import takagi.ru.monica.data.CustomFieldDraft
+import takagi.ru.monica.ui.components.CommonNameSuggestion
+import takagi.ru.monica.ui.components.CommonNameSuggestionState
+import takagi.ru.monica.ui.components.CommonNameSuggestionSource
+import takagi.ru.monica.ui.components.CommonNameSuggestionSheet
 import takagi.ru.monica.ui.components.CustomFieldEditorSection
 import takagi.ru.monica.ui.components.DualPhotoPicker
+import takagi.ru.monica.ui.components.MonicaExpressiveFilterChip
 import takagi.ru.monica.ui.components.StorageTargetSelectorCard
+import takagi.ru.monica.ui.components.rememberCommonNameSuggestionState
 import takagi.ru.monica.utils.RememberedStorageTarget
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.viewmodel.BankCardViewModel
@@ -61,6 +80,7 @@ fun AddEditBankCardScreen(
     val coroutineScope = rememberCoroutineScope()
     val bitwardenSyncViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel()
     val settingsManager = remember { SettingsManager(context) }
+    val commonAccountPreferences = remember { CommonAccountPreferences(context) }
     
     var title by rememberSaveable { mutableStateOf("") }
     var cardNumber by rememberSaveable { mutableStateOf("") }
@@ -87,6 +107,8 @@ fun AddEditBankCardScreen(
     var showCardTypeMenu by remember { mutableStateOf(false) }
     var showCardNumber by remember { mutableStateOf(false) }
     var showCvv by remember { mutableStateOf(false) }
+    var showCommonNamePicker by rememberSaveable { mutableStateOf(false) }
+    var isCardholderNameFocused by remember { mutableStateOf(false) }
     var hasBillingAddress by remember { mutableStateOf(false) }
     var billingAddress by remember { mutableStateOf(BillingAddress()) }
     var showBillingAddressDialog by remember { mutableStateOf(false) }
@@ -105,6 +127,14 @@ fun AddEditBankCardScreen(
     var bitwardenFolderId by rememberSaveable { mutableStateOf<String?>(null) }
     var hasAppliedInitialStorage by rememberSaveable { mutableStateOf(false) }
     val database = remember { PasswordDatabase.getDatabase(context) }
+    val commonNameSuggestions = rememberCommonNameSuggestionState(database)
+    val commonNameType = stringResource(R.string.common_account_type_name)
+    val inlineCardholderSuggestion = remember(commonNameSuggestions) {
+        commonNameSuggestions.firstInlineSuggestion()
+    }
+    val inlineCardholderSuggestionVisible = isCardholderNameFocused &&
+        cardholderName.isBlank() &&
+        inlineCardholderSuggestion != null
     val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList())
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
     val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
@@ -477,10 +507,72 @@ fun AddEditBankCardScreen(
                         label = { Text(stringResource(R.string.cardholder_name)) },
                         placeholder = { Text("ZHANG SAN") },
                         leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
-                        modifier = Modifier.fillMaxWidth(),
+                        trailingIcon = {
+                            if (commonNameSuggestions.hasAny || cardholderName.isNotBlank()) {
+                                IconButton(onClick = { showCommonNamePicker = true }) {
+                                    Icon(
+                                        imageVector = Icons.Default.PersonAdd,
+                                        contentDescription = stringResource(R.string.common_name_fill_title),
+                                        modifier = Modifier.size(20.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged { focusState ->
+                                isCardholderNameFocused = focusState.isFocused
+                            },
                         singleLine = true,
+                        keyboardActions = KeyboardActions(
+                            onDone = { isCardholderNameFocused = false }
+                        ),
                         shape = RoundedCornerShape(12.dp)
                     )
+
+                    AnimatedVisibility(
+                        visible = inlineCardholderSuggestionVisible,
+                        enter = slideInVertically(
+                            animationSpec = tween(
+                                durationMillis = 240,
+                                easing = FastOutSlowInEasing
+                            ),
+                            initialOffsetY = { -it / 2 }
+                        ) +
+                            fadeIn(animationSpec = tween(180)) +
+                            expandVertically(
+                                expandFrom = Alignment.Top,
+                                animationSpec = tween(
+                                    durationMillis = 240,
+                                    easing = FastOutSlowInEasing
+                                )
+                            ),
+                        exit = slideOutVertically(
+                            animationSpec = tween(
+                                durationMillis = 160,
+                                easing = FastOutSlowInEasing
+                            ),
+                            targetOffsetY = { -it / 4 }
+                        ) +
+                            fadeOut(animationSpec = tween(120)) +
+                            shrinkVertically(
+                                shrinkTowards = Alignment.Top,
+                                animationSpec = tween(
+                                    durationMillis = 160,
+                                    easing = FastOutSlowInEasing
+                                )
+                            )
+                    ) {
+                        inlineCardholderSuggestion?.let { suggestion ->
+                            InlineCommonNameSuggestionCard(
+                                suggestion = suggestion,
+                                onApply = {
+                                    cardholderName = suggestion.name
+                                }
+                            )
+                        }
+                    }
                     
                     // Expiry
                     Row(
@@ -880,6 +972,26 @@ fun AddEditBankCardScreen(
         screenContent(PaddingValues(0.dp))
     }
 
+    if (showCommonNamePicker) {
+        CommonNameSuggestionSheet(
+            suggestionState = commonNameSuggestions,
+            currentName = cardholderName,
+            onDismiss = { showCommonNamePicker = false },
+            onSelectName = { selectedName ->
+                cardholderName = selectedName
+                showCommonNamePicker = false
+            },
+            onSaveCurrentName = { currentName ->
+                coroutineScope.launch {
+                    commonAccountPreferences.addTemplate(
+                        type = commonNameType,
+                        content = currentName
+                    )
+                }
+            }
+        )
+    }
+
     if (showBillingAddressDialog) {
         var streetAddress by remember { mutableStateOf(billingAddress.streetAddress) }
         var apartment by remember { mutableStateOf(billingAddress.apartment) }
@@ -1001,5 +1113,35 @@ private fun InfoCard(
             )
             content()
         }
+    }
+}
+
+private fun CommonNameSuggestionState.firstInlineSuggestion(): CommonNameSuggestion? {
+    return templateSuggestions.firstOrNull() ?: analyzedSuggestions.firstOrNull()
+}
+
+@Composable
+private fun InlineCommonNameSuggestionCard(
+    suggestion: CommonNameSuggestion,
+    onApply: () -> Unit
+) {
+    val icon = when (suggestion.source) {
+        CommonNameSuggestionSource.TEMPLATE -> Icons.Default.Person
+        CommonNameSuggestionSource.ANALYZED -> Icons.Default.AutoAwesome
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        horizontalArrangement = Arrangement.Start
+    ) {
+        MonicaExpressiveFilterChip(
+            selected = true,
+            onClick = onApply,
+            label = suggestion.name,
+            leadingIcon = icon,
+            modifier = Modifier.heightIn(min = 44.dp)
+        )
     }
 }

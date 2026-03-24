@@ -70,6 +70,8 @@ private data class PasswordBackupEntry(
     val isFavorite: Boolean = false,
     val categoryId: Long? = null,
     val categoryName: String? = null,  // ✅ 添加分类名称用于跨设备同步
+    val appPackageName: String = "",
+    val appName: String = "",
     val email: String = "",
     val phone: String = "",
     val keepassDatabaseId: Long? = null,
@@ -919,6 +921,8 @@ class WebDavHelper(
                                 isFavorite = password.isFavorite,
                                 categoryId = password.categoryId,
                                 categoryName = categoryName,
+                                appPackageName = password.appPackageName,
+                                appName = password.appName,
                                 email = password.email,
                                 phone = password.phone,
                                 keepassDatabaseId = password.keepassDatabaseId,
@@ -1360,7 +1364,7 @@ class WebDavHelper(
                                 CommonAccountTemplateBackupEntry(
                                     id = template.id,
                                     type = template.type,
-                                    title = template.title,
+                                    title = "",
                                     content = template.content
                                 )
                             }
@@ -2369,7 +2373,7 @@ class WebDavHelper(
                                                     java.util.UUID.randomUUID().toString()
                                                 },
                                                 type = backupTemplate.type.trim(),
-                                                title = backupTemplate.title.trim(),
+                                                title = "",
                                                 content = content
                                             ).normalized()
                                         }
@@ -2379,7 +2383,6 @@ class WebDavHelper(
                                                 .filter { it.content.isNotBlank() }
                                                 .distinctBy {
                                                     "${it.type.trim().lowercase(Locale.ROOT)}|" +
-                                                        "${it.title.trim().lowercase(Locale.ROOT)}|" +
                                                         it.content.trim().lowercase(Locale.ROOT)
                                                 }
                                             if (mergedTemplates != currentTemplates) {
@@ -3095,6 +3098,8 @@ class WebDavHelper(
                 website = backup.website,
                 notes = backup.notes,
                 isFavorite = backup.isFavorite,
+                appPackageName = backup.appPackageName,
+                appName = backup.appName,
                 categoryId = null, // ✅ 先设为null，稍后根据categoryName解析
                 email = backup.email,
                 phone = backup.phone,

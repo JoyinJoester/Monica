@@ -1863,7 +1863,13 @@
     <string name="common_account_type_password">密码</string>
     <string name="common_account_type_account">账号</string>
     <string name="common_account_type_phone">手机号</string>
+    <string name="common_account_type_name">姓名</string>
     <string name="common_account_template_preview">预览</string>
+    <string name="common_name_fill_title">常用姓名</string>
+    <string name="common_name_fill_empty">暂无常用姓名</string>
+    <string name="common_name_fill_empty_hint">可以先创建姓名模板，或从已有证件和银行卡里保存常用姓名。</string>
+    <string name="common_name_fill_from_analysis">根据现有内容推荐</string>
+    <string name="common_name_fill_save_template">保存为常用姓名</string>
     
     <!-- SSO / Third-party Login -->
     <string name="login_type_label">登录方式</string>

@@ -2042,7 +2042,13 @@
     <string name="common_account_type_password">Password</string>
     <string name="common_account_type_account">Account</string>
     <string name="common_account_type_phone">Phone</string>
+    <string name="common_account_type_name">Name</string>
     <string name="common_account_template_preview">Preview</string>
+    <string name="common_name_fill_title">Common names</string>
+    <string name="common_name_fill_empty">No common names yet</string>
+    <string name="common_name_fill_empty_hint">Create a name template first, or save one from your existing cards and documents.</string>
+    <string name="common_name_fill_from_analysis">Suggested from existing items</string>
+    <string name="common_name_fill_save_template">Save as common name</string>
     
     <!-- SSO / Third-party Login -->
     <string name="login_type_label">Login Type</string>

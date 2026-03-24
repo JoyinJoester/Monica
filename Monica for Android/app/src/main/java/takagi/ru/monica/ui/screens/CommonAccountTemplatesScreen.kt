@@ -68,6 +68,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import java.util.Locale
 import takagi.ru.monica.R
 import takagi.ru.monica.data.CommonAccountPreferences
 import takagi.ru.monica.data.CommonAccountTemplate
@@ -92,20 +93,30 @@ fun CommonAccountTemplatesScreen(
     val accountType = stringResource(R.string.common_account_type_account)
     val phoneType = stringResource(R.string.common_account_type_phone)
     val passwordType = stringResource(R.string.common_account_type_password)
+    val nameType = stringResource(R.string.common_account_type_name)
     val allFilter = stringResource(R.string.filter_all)
-    val typeOptions = listOf(emailType, accountType, phoneType, passwordType)
+    val typeOptions = listOf(emailType, accountType, phoneType, passwordType, nameType)
 
     var showEditor by remember { mutableStateOf(false) }
     var editingId by remember { mutableStateOf<String?>(null) }
     var editingType by remember { mutableStateOf(accountType) }
-    var editingTitle by remember { mutableStateOf("") }
     var editingContent by remember { mutableStateOf("") }
     var templateToDelete by remember { mutableStateOf<CommonAccountTemplate?>(null) }
     var selectedFilter by remember { mutableStateOf(allFilter) }
 
     fun normalizeType(raw: String): String {
-        return when (raw) {
-            emailType, accountType, phoneType, passwordType -> raw
+        val normalized = raw.trim().lowercase(Locale.ROOT)
+        return when {
+            normalized == emailType.lowercase(Locale.ROOT) ||
+                normalized == "email" || normalized == "邮箱" -> emailType
+            normalized == accountType.lowercase(Locale.ROOT) ||
+                normalized == "account" || normalized == "账号" -> accountType
+            normalized == phoneType.lowercase(Locale.ROOT) ||
+                normalized == "phone" || normalized == "手机号" || normalized == "电话" -> phoneType
+            normalized == passwordType.lowercase(Locale.ROOT) ||
+                normalized == "password" || normalized == "密码" -> passwordType
+            normalized == nameType.lowercase(Locale.ROOT) ||
+                normalized == "name" || normalized == "姓名" -> nameType
             else -> accountType
         }
     }
@@ -113,7 +124,6 @@ fun CommonAccountTemplatesScreen(
     fun openCreateEditor(type: String = accountType) {
         editingId = null
         editingType = normalizeType(type)
-        editingTitle = ""
         editingContent = ""
         showEditor = true
     }
@@ -121,7 +131,6 @@ fun CommonAccountTemplatesScreen(
     fun openEditEditor(template: CommonAccountTemplate) {
         editingId = template.id
         editingType = normalizeType(template.type)
-        editingTitle = template.title
         editingContent = template.content
         showEditor = true
     }
@@ -201,6 +210,7 @@ fun CommonAccountTemplatesScreen(
                                         emailType -> Icons.Default.Email
                                         phoneType -> Icons.Default.Phone
                                         passwordType -> Icons.Default.Lock
+                                        nameType -> Icons.Default.Person
                                         else -> Icons.Default.Person
                                     },
                                     contentDescription = null,
@@ -282,6 +292,7 @@ fun CommonAccountTemplatesScreen(
                         accountType = accountType,
                         phoneType = phoneType,
                         passwordType = passwordType,
+                        nameType = nameType,
                         onEdit = { openEditEditor(template) },
                         onDelete = { templateToDelete = template }
                     )
@@ -292,7 +303,7 @@ fun CommonAccountTemplatesScreen(
 
     if (showEditor) {
         val isEditMode = editingId != null
-        val isValid = editingTitle.isNotBlank() && editingContent.isNotBlank()
+        val isValid = editingContent.isNotBlank()
 
         ModalBottomSheet(
             onDismissRequest = { showEditor = false },
@@ -304,7 +315,8 @@ fun CommonAccountTemplatesScreen(
                 type = editingType,
                 emailType = emailType,
                 phoneType = phoneType,
-                passwordType = passwordType
+                passwordType = passwordType,
+                nameType = nameType
             )
 
             Column(
@@ -383,15 +395,6 @@ fun CommonAccountTemplatesScreen(
                 }
 
                 OutlinedTextField(
-                    value = editingTitle,
-                    onValueChange = { editingTitle = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    label = { Text(stringResource(R.string.common_account_template_title)) },
-                    isError = editingTitle.isBlank()
-                )
-
-                OutlinedTextField(
                     value = editingContent,
                     onValueChange = { editingContent = it },
                     modifier = Modifier.fillMaxWidth(),
@@ -418,14 +421,14 @@ fun CommonAccountTemplatesScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
-                            text = editingTitle.ifBlank { stringResource(R.string.common_account_template_title) },
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Medium
+                            text = editingType,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary
                         )
                         Text(
                             text = editingContent.ifBlank { stringResource(R.string.common_account_template_content) },
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium
                         )
                     }
                 }
@@ -450,7 +453,6 @@ fun CommonAccountTemplatesScreen(
                                 if (id == null) {
                                     preferences.addTemplate(
                                         type = normalizeType(editingType),
-                                        title = editingTitle,
                                         content = editingContent
                                     )
                                 } else {
@@ -458,7 +460,6 @@ fun CommonAccountTemplatesScreen(
                                         CommonAccountTemplate(
                                             id = id,
                                             type = normalizeType(editingType),
-                                            title = editingTitle,
                                             content = editingContent
                                         )
                                     )
@@ -481,7 +482,7 @@ fun CommonAccountTemplatesScreen(
         AlertDialog(
             onDismissRequest = { templateToDelete = null },
             title = { Text(stringResource(R.string.common_account_template_delete_title)) },
-            text = { Text(target.title.ifBlank { stringResource(R.string.common_account_template_delete_message) }) },
+            text = { Text(target.content.ifBlank { stringResource(R.string.common_account_template_delete_message) }) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -510,18 +511,24 @@ private fun CommonAccountTemplateCard(
     accountType: String,
     phoneType: String,
     passwordType: String,
+    nameType: String,
     onEdit: () -> Unit,
     onDelete: () -> Unit
 ) {
-    val normalizedType = when (template.type) {
-        emailType, accountType, phoneType, passwordType -> template.type
+    val normalizedType = when (template.type.trim().lowercase(Locale.ROOT)) {
+        emailType.lowercase(Locale.ROOT), "email", "邮箱" -> emailType
+        accountType.lowercase(Locale.ROOT), "account", "账号" -> accountType
+        phoneType.lowercase(Locale.ROOT), "phone", "手机号", "电话" -> phoneType
+        passwordType.lowercase(Locale.ROOT), "password", "密码" -> passwordType
+        nameType.lowercase(Locale.ROOT), "name", "姓名" -> nameType
         else -> accountType
     }
     val style = templateTypeStyle(
         type = normalizedType,
         emailType = emailType,
         phoneType = phoneType,
-        passwordType = passwordType
+        passwordType = passwordType,
+        nameType = nameType
     )
 
     Card(
@@ -561,13 +568,18 @@ private fun CommonAccountTemplateCard(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = template.title.ifBlank { stringResource(R.string.common_account_template_title) },
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = normalizedType,
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                     Row(
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
                         verticalAlignment = Alignment.CenterVertically
@@ -599,8 +611,8 @@ private fun CommonAccountTemplateCard(
 
                 Text(
                     text = template.content,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -614,7 +626,8 @@ private fun templateTypeStyle(
     type: String,
     emailType: String,
     phoneType: String,
-    passwordType: String
+    passwordType: String,
+    nameType: String
 ): TemplateTypeStyle {
     return when (type) {
         emailType -> TemplateTypeStyle(
@@ -631,6 +644,11 @@ private fun templateTypeStyle(
             icon = Icons.Default.Lock,
             containerColor = MaterialTheme.colorScheme.errorContainer,
             contentColor = MaterialTheme.colorScheme.onErrorContainer
+        )
+        nameType -> TemplateTypeStyle(
+            icon = Icons.Default.Person,
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
         )
         else -> TemplateTypeStyle(
             icon = Icons.Default.Person,

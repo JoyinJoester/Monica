@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.animation.AnimatedVisibility
@@ -13,6 +14,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -23,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
+import takagi.ru.monica.data.CommonAccountPreferences
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.CustomFieldDraft
@@ -30,9 +33,11 @@ import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.DocumentType
 import takagi.ru.monica.data.model.displayFullName
+import takagi.ru.monica.ui.components.CommonNameSuggestionSheet
 import takagi.ru.monica.ui.components.CustomFieldEditorSection
 import takagi.ru.monica.ui.components.DualPhotoPicker
 import takagi.ru.monica.ui.components.StorageTargetSelectorCard
+import takagi.ru.monica.ui.components.rememberCommonNameSuggestionState
 import takagi.ru.monica.utils.RememberedStorageTarget
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.viewmodel.DocumentViewModel
@@ -60,6 +65,7 @@ fun AddEditDocumentScreen(
     val coroutineScope = rememberCoroutineScope()
     val bitwardenSyncViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel()
     val settingsManager = remember { SettingsManager(context) }
+    val commonAccountPreferences = remember { CommonAccountPreferences(context) }
     
     var title by rememberSaveable { mutableStateOf("") }
     var documentNumber by rememberSaveable { mutableStateOf("") }
@@ -94,6 +100,7 @@ fun AddEditDocumentScreen(
     var customFields by remember { mutableStateOf<List<CustomFieldDraft>>(emptyList()) }
     var identityDetailsExpanded by rememberSaveable { mutableStateOf(false) }
     var addressDetailsExpanded by rememberSaveable { mutableStateOf(false) }
+    var showCommonNamePicker by rememberSaveable { mutableStateOf(false) }
     
     // 防止重复点击保存按钮
     var isSaving by remember { mutableStateOf(false) }
@@ -109,6 +116,8 @@ fun AddEditDocumentScreen(
     var bitwardenFolderId by rememberSaveable { mutableStateOf<String?>(null) }
     var hasAppliedInitialStorage by rememberSaveable { mutableStateOf(false) }
     val database = remember { PasswordDatabase.getDatabase(context) }
+    val commonNameSuggestions = rememberCommonNameSuggestionState(database)
+    val commonNameType = stringResource(R.string.common_account_type_name)
     val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList())
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
     val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
@@ -172,7 +181,7 @@ fun AddEditDocumentScreen(
                 
                 viewModel.parseDocumentData(item.itemData)?.let { data -> 
                     documentNumber = data.documentNumber
-                    fullName = data.fullName
+                    fullName = data.displayFullName()
                     issuedDate = data.issuedDate
                     expiryDate = data.expiryDate
                     issuedBy = data.issuedBy
@@ -514,6 +523,29 @@ fun AddEditDocumentScreen(
                         },
                         shape = RoundedCornerShape(12.dp)
                     )
+
+                    OutlinedTextField(
+                        value = fullName,
+                        onValueChange = { fullName = it },
+                        label = { Text(stringResource(R.string.full_name)) },
+                        placeholder = { Text(stringResource(R.string.holder_name_example)) },
+                        leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
+                        trailingIcon = {
+                            if (commonNameSuggestions.hasAny || fullName.isNotBlank()) {
+                                IconButton(onClick = { showCommonNamePicker = true }) {
+                                    Icon(
+                                        imageVector = Icons.Default.PersonAdd,
+                                        contentDescription = stringResource(R.string.common_name_fill_title),
+                                        modifier = Modifier.size(20.dp),
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp)
+                    )
                     
                     // Dates
                     Row(
@@ -768,6 +800,59 @@ fun AddEditDocumentScreen(
         }
     } else {
         screenContent(PaddingValues(0.dp))
+    }
+
+    if (showCommonNamePicker) {
+        CommonNameSuggestionSheet(
+            suggestionState = commonNameSuggestions,
+            currentName = fullName,
+            onDismiss = { showCommonNamePicker = false },
+            onSelectName = { selectedName ->
+                fullName = selectedName
+                val splitName = splitDocumentSuggestedName(selectedName)
+                firstName = splitName.firstName
+                middleName = splitName.middleName
+                lastName = splitName.lastName
+                showCommonNamePicker = false
+            },
+            onSaveCurrentName = { currentName ->
+                coroutineScope.launch {
+                    commonAccountPreferences.addTemplate(
+                        type = commonNameType,
+                        content = currentName
+                    )
+                }
+            }
+        )
+    }
+}
+
+private data class SuggestedDocumentNameParts(
+    val firstName: String = "",
+    val middleName: String = "",
+    val lastName: String = ""
+)
+
+private fun splitDocumentSuggestedName(fullName: String): SuggestedDocumentNameParts {
+    val normalizedName = fullName.trim()
+    if (normalizedName.isBlank()) return SuggestedDocumentNameParts()
+
+    val parts = normalizedName
+        .split(Regex("[\\s·•・]+"))
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+
+    return when {
+        parts.size >= 3 -> SuggestedDocumentNameParts(
+            firstName = parts.first(),
+            middleName = parts.subList(1, parts.lastIndex).joinToString(" "),
+            lastName = parts.last()
+        )
+        parts.size == 2 -> SuggestedDocumentNameParts(
+            firstName = parts.first(),
+            lastName = parts.last()
+        )
+        else -> SuggestedDocumentNameParts()
     }
 }
 

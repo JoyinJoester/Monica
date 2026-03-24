@@ -6,12 +6,18 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -32,6 +38,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
@@ -48,7 +55,9 @@ import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -66,12 +75,15 @@ import takagi.ru.monica.data.PresetCustomField
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.model.BankCardData
+import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.ui.components.AppSelectorDialog
 import takagi.ru.monica.ui.components.CustomIconActionDialog
 import takagi.ru.monica.ui.components.CustomFieldEditorSection
 import takagi.ru.monica.ui.components.CustomFieldEditCard
 import takagi.ru.monica.ui.components.CustomFieldSectionHeader
+import takagi.ru.monica.ui.components.InlineTotpPreviewCard
+import takagi.ru.monica.ui.components.MonicaExpressiveFilterChip
 import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import takagi.ru.monica.ui.components.PasswordStrengthIndicator
 import takagi.ru.monica.ui.components.SimpleIconPickerBottomSheet
@@ -107,8 +119,25 @@ private const val ICON_PICKER_PAGE_SIZE = 120
 private data class CommonAccountFillOption(
     val id: String,
     val type: String,
-    val title: String,
     val content: String
+)
+
+private data class InlineAccountSuggestion(
+    val value: String,
+    val type: String,
+    val usageCount: Int,
+    val fromConfiguredCommonInfo: Boolean,
+    val fromTemplates: Boolean
+)
+
+private data class InlineAccountSuggestionAggregate(
+    val value: String,
+    var type: String,
+    var typeScore: Int,
+    var totalScore: Int = 0,
+    var usageCount: Int = 0,
+    var fromConfiguredCommonInfo: Boolean = false,
+    var fromTemplates: Boolean = false
 )
 
 private enum class PasswordFillMode {
@@ -159,6 +188,9 @@ fun AddEditPasswordScreen(
     var showCommonAccountSelector by remember { mutableStateOf(false) }
     var commonAccountSelectorField by remember { mutableStateOf("") } // "email", "phone", "username", "password"
     var commonAccountSelectorTargetIndex by remember { mutableStateOf(-1) }
+    var isUsernameFieldFocused by remember { mutableStateOf(false) }
+    var isSeparatedUsernameFieldFocused by remember { mutableStateOf(false) }
+    var focusedPasswordFieldIndex by remember { mutableStateOf<Int?>(null) }
 
     var title by rememberSaveable { mutableStateOf("") }
     var website by rememberSaveable { mutableStateOf("") }
@@ -227,6 +259,41 @@ fun AddEditPasswordScreen(
     val customFields = remember { mutableStateListOf<CustomFieldDraft>() }
     var customFieldsExpanded by remember { mutableStateOf(false) }
     var separatedUsername by rememberSaveable { mutableStateOf("") }
+    val inlineGeneratedPasswords = remember { mutableStateMapOf<Int, String>() }
+    val inlinePasswordGenerator = remember { PasswordGenerator() }
+    val authenticatorPreviewTotpData = remember(authenticatorKey, title, username) {
+        buildPasswordScreenInlinePreviewTotpData(
+            secret = authenticatorKey,
+            issuer = title,
+            accountName = username
+        )
+    }
+    val authenticatorPreviewVisible = authenticatorPreviewTotpData != null
+    val authenticatorPreviewCurrentSeconds by produceState(
+        initialValue = System.currentTimeMillis() / 1000,
+        key1 = authenticatorPreviewTotpData?.otpType
+    ) {
+        while (true) {
+            value = System.currentTimeMillis() / 1000
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+    val authenticatorPreviewProgressTimeMillis by produceState(
+        initialValue = System.currentTimeMillis(),
+        key1 = authenticatorPreviewTotpData?.otpType,
+        key2 = settings.validatorSmoothProgress
+    ) {
+        while (true) {
+            val now = System.currentTimeMillis()
+            value = now
+            val waitMillis = if (settings.validatorSmoothProgress) {
+                50L
+            } else {
+                (1000L - (now % 1000L)).coerceAtLeast(16L)
+            }
+            kotlinx.coroutines.delay(waitMillis)
+        }
+    }
 
     // 自定义图标状态
     var customIconType by rememberSaveable { mutableStateOf(PASSWORD_ICON_TYPE_NONE) }
@@ -277,6 +344,7 @@ fun AddEditPasswordScreen(
     val commonAccountTypeAccount = stringResource(R.string.common_account_type_account)
     val commonAccountTypePhone = stringResource(R.string.common_account_type_phone)
     val commonAccountTypePassword = stringResource(R.string.common_account_type_password)
+    val commonAccountTypeName = stringResource(R.string.common_account_type_name)
     val fieldAccountLabel = stringResource(R.string.field_account)
     val fieldEmailLabel = stringResource(R.string.field_email)
     val fieldPhoneLabel = stringResource(R.string.field_phone)
@@ -293,6 +361,8 @@ fun AddEditPasswordScreen(
                 normalized == "phone" || normalized == "手机号" || normalized == "电话" -> commonAccountTypePhone
             normalized == commonAccountTypePassword.lowercase(Locale.ROOT) ||
                 normalized == "password" || normalized == "密码" -> commonAccountTypePassword
+            normalized == commonAccountTypeName.lowercase(Locale.ROOT) ||
+                normalized == "name" || normalized == "姓名" -> commonAccountTypeName
             else -> commonAccountTypeAccount
         }
     }
@@ -333,7 +403,7 @@ fun AddEditPasswordScreen(
             looksLikePhoneByTitle || looksLikePhoneByPattern
         }
         (phoneTypeTemplates + legacyPhoneLikeFromAccount)
-            .distinctBy { "${it.title.trim()}|${it.content.trim().lowercase(Locale.ROOT)}" }
+            .distinctBy { it.content.trim().lowercase(Locale.ROOT) }
     }
 
     val canSelectUsernameTemplate = !isEditing && !commonAccountInfo.autoFillEnabled &&
@@ -351,7 +421,6 @@ fun AddEditPasswordScreen(
                             CommonAccountFillOption(
                                 id = template.id,
                                 type = commonAccountTypeAccount,
-                                title = template.title.ifBlank { commonAccountTypeAccount },
                                 content = template.content
                             )
                         )
@@ -361,7 +430,6 @@ fun AddEditPasswordScreen(
                             CommonAccountFillOption(
                                 id = "email_as_account_${template.id}",
                                 type = commonAccountTypeEmail,
-                                title = template.title.ifBlank { commonAccountTypeEmail },
                                 content = template.content
                             )
                         )
@@ -371,7 +439,6 @@ fun AddEditPasswordScreen(
                             CommonAccountFillOption(
                                 id = "phone_as_account_${template.id}",
                                 type = commonAccountTypePhone,
-                                title = template.title.ifBlank { commonAccountTypePhone },
                                 content = template.content
                             )
                         )
@@ -383,7 +450,6 @@ fun AddEditPasswordScreen(
                             CommonAccountFillOption(
                                 id = template.id,
                                 type = commonAccountTypeEmail,
-                                title = template.title.ifBlank { commonAccountTypeEmail },
                                 content = template.content
                             )
                         )
@@ -395,7 +461,6 @@ fun AddEditPasswordScreen(
                             CommonAccountFillOption(
                                 id = template.id,
                                 type = commonAccountTypePhone,
-                                title = template.title.ifBlank { commonAccountTypePhone },
                                 content = template.content
                             )
                         )
@@ -407,7 +472,6 @@ fun AddEditPasswordScreen(
                             CommonAccountFillOption(
                                 id = template.id,
                                 type = commonAccountTypePassword,
-                                title = template.title.ifBlank { commonAccountTypePassword },
                                 content = template.content
                             )
                         )
@@ -418,7 +482,45 @@ fun AddEditPasswordScreen(
 
         return options
             .filter { it.content.isNotBlank() }
-            .distinctBy { "${it.title.trim()}|${it.content.trim().lowercase(Locale.ROOT)}" }
+            .distinctBy { "${it.type.trim().lowercase(Locale.ROOT)}|${it.content.trim().lowercase(Locale.ROOT)}" }
+    }
+
+    val usernameInlineSuggestion = remember(
+        passwordId,
+        commonAccountInfo,
+        commonAccountTemplates,
+        allPasswordsForRef,
+        commonAccountTypeAccount,
+        commonAccountTypeEmail,
+        commonAccountTypePhone
+    ) {
+        buildInlineAccountSuggestion(
+            currentEntryId = passwordId,
+            commonAccountInfo = commonAccountInfo,
+            templateOptions = buildCommonAccountOptions("username"),
+            passwordEntries = allPasswordsForRef,
+            accountType = commonAccountTypeAccount,
+            emailType = commonAccountTypeEmail,
+            phoneType = commonAccountTypePhone
+        )
+    }
+
+    val usernameSuggestionVisible = isUsernameFieldFocused &&
+        username.isBlank() &&
+        usernameInlineSuggestion != null
+    val separatedUsernameSuggestionVisible = settings.separateUsernameAccountEnabled &&
+        isSeparatedUsernameFieldFocused &&
+        separatedUsername.isBlank() &&
+        usernameInlineSuggestion != null
+
+    fun generateInlinePasswordSuggestion(): String {
+        return inlinePasswordGenerator.generatePassword()
+    }
+
+    fun ensureInlinePasswordSuggestion(index: Int) {
+        if (inlineGeneratedPasswords[index].isNullOrBlank()) {
+            inlineGeneratedPasswords[index] = generateInlinePasswordSuggestion()
+        }
     }
 
     fun applyCommonAccountSelection(field: String, content: String) {
@@ -1248,11 +1350,59 @@ fun AddEditPasswordScreen(
                                         }
                                     }
                                 },
-                                modifier = Modifier.weight(1f),
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .onFocusChanged { focusState ->
+                                        isUsernameFieldFocused = focusState.isFocused
+                                    },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                                 shape = RoundedCornerShape(12.dp)
                             )
+                        }
+
+                        val usernameSuggestion = usernameInlineSuggestion
+                        val usernameSuggestionAnimationSpec = remember {
+                            spring<IntSize>(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            )
+                        }
+                        AnimatedVisibility(
+                            visible = usernameSuggestionVisible,
+                            enter = slideInVertically(
+                                animationSpec = tween(
+                                    durationMillis = 240,
+                                    easing = FastOutSlowInEasing
+                                ),
+                                initialOffsetY = { -it / 2 }
+                            ) +
+                                fadeIn(animationSpec = tween(180)) +
+                                expandVertically(
+                                    expandFrom = Alignment.Top,
+                                    animationSpec = usernameSuggestionAnimationSpec
+                                ),
+                            exit = slideOutVertically(
+                                animationSpec = tween(
+                                    durationMillis = 160,
+                                    easing = FastOutSlowInEasing
+                                ),
+                                targetOffsetY = { -it / 4 }
+                            ) +
+                                fadeOut(animationSpec = tween(120)) +
+                                shrinkVertically(
+                                    shrinkTowards = Alignment.Top,
+                                    animationSpec = tween(160, easing = FastOutSlowInEasing)
+                                )
+                        ) {
+                            usernameSuggestion?.let { suggestion ->
+                                InlineAccountSuggestionCard(
+                                    suggestion = suggestion,
+                                    onApply = {
+                                        applyCommonAccountSelection("username", suggestion.value)
+                                    }
+                                )
+                            }
                         }
 
                         AnimatedVisibility(
@@ -1260,16 +1410,59 @@ fun AddEditPasswordScreen(
                             enter = EnterTransition.None,
                             exit = ExitTransition.None
                         ) {
-                            OutlinedTextField(
-                                value = separatedUsername,
-                                onValueChange = { separatedUsername = it },
-                                label = { Text(stringResource(R.string.autofill_username)) },
-                                leadingIcon = { Icon(Icons.Default.Badge, null) },
-                                modifier = Modifier.fillMaxWidth(),
-                                singleLine = true,
-                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                                shape = RoundedCornerShape(12.dp)
-                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                                OutlinedTextField(
+                                    value = separatedUsername,
+                                    onValueChange = { separatedUsername = it },
+                                    label = { Text(stringResource(R.string.autofill_username)) },
+                                    leadingIcon = { Icon(Icons.Default.Badge, null) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .onFocusChanged { focusState ->
+                                            isSeparatedUsernameFieldFocused = focusState.isFocused
+                                        },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+
+                                AnimatedVisibility(
+                                    visible = separatedUsernameSuggestionVisible,
+                                    enter = slideInVertically(
+                                        animationSpec = tween(
+                                            durationMillis = 240,
+                                            easing = FastOutSlowInEasing
+                                        ),
+                                        initialOffsetY = { -it / 2 }
+                                    ) +
+                                        fadeIn(animationSpec = tween(180)) +
+                                        expandVertically(
+                                            expandFrom = Alignment.Top,
+                                            animationSpec = usernameSuggestionAnimationSpec
+                                        ),
+                                    exit = slideOutVertically(
+                                        animationSpec = tween(
+                                            durationMillis = 160,
+                                            easing = FastOutSlowInEasing
+                                        ),
+                                        targetOffsetY = { -it / 4 }
+                                    ) +
+                                        fadeOut(animationSpec = tween(120)) +
+                                        shrinkVertically(
+                                            shrinkTowards = Alignment.Top,
+                                            animationSpec = tween(160, easing = FastOutSlowInEasing)
+                                        )
+                                ) {
+                                    usernameSuggestion?.let { suggestion ->
+                                        InlineAccountSuggestionCard(
+                                            suggestion = suggestion,
+                                            onApply = {
+                                                separatedUsername = suggestion.value
+                                            }
+                                        )
+                                    }
+                                }
+                            }
                         }
                         
                         // 登录方式选择
@@ -1328,11 +1521,64 @@ fun AddEditPasswordScreen(
                                                         }
                                                     }
                                                 },
-                                                modifier = Modifier.weight(1f),
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .onFocusChanged { focusState ->
+                                                        if (focusState.isFocused) {
+                                                            focusedPasswordFieldIndex = index
+                                                            if (passwords[index].isBlank()) {
+                                                                ensureInlinePasswordSuggestion(index)
+                                                            }
+                                                        } else if (focusedPasswordFieldIndex == index) {
+                                                            focusedPasswordFieldIndex = null
+                                                        }
+                                                    },
                                                 singleLine = true,
                                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
                                                 shape = RoundedCornerShape(12.dp)
                                             )
+                                        }
+
+                                        val inlinePasswordSuggestion = inlineGeneratedPasswords[index]
+                                        val passwordSuggestionVisible = focusedPasswordFieldIndex == index &&
+                                            pwd.isBlank() &&
+                                            !inlinePasswordSuggestion.isNullOrBlank()
+                                        AnimatedVisibility(
+                                            visible = passwordSuggestionVisible,
+                                            enter = slideInVertically(
+                                                animationSpec = tween(
+                                                    durationMillis = 240,
+                                                    easing = FastOutSlowInEasing
+                                                ),
+                                                initialOffsetY = { -it / 2 }
+                                            ) +
+                                                fadeIn(animationSpec = tween(180)) +
+                                                expandVertically(
+                                                    expandFrom = Alignment.Top,
+                                                    animationSpec = usernameSuggestionAnimationSpec
+                                                ),
+                                            exit = slideOutVertically(
+                                                animationSpec = tween(
+                                                    durationMillis = 160,
+                                                    easing = FastOutSlowInEasing
+                                                ),
+                                                targetOffsetY = { -it / 4 }
+                                            ) +
+                                                fadeOut(animationSpec = tween(120)) +
+                                                shrinkVertically(
+                                                    shrinkTowards = Alignment.Top,
+                                                    animationSpec = tween(160, easing = FastOutSlowInEasing)
+                                                )
+                                        ) {
+                                            inlinePasswordSuggestion?.let { suggestion ->
+                                                InlineGeneratedPasswordSuggestionCard(
+                                                    password = suggestion,
+                                                    onApply = {
+                                                        passwords[index] = suggestion
+                                                        inlineGeneratedPasswords.remove(index)
+                                                    }
+                                                )
+                                            }
                                         }
                                         
                                         // Strength Indicator for EACH password or just hide it to avoid clutter?
@@ -1367,17 +1613,54 @@ fun AddEditPasswordScreen(
             if (shouldShowSecurityVerification()) {
                 item {
                     InfoCard(title = stringResource(R.string.section_security_verification)) {
-                        OutlinedTextField(
-                            value = authenticatorKey,
-                            onValueChange = { authenticatorKey = it },
-                            label = { Text(stringResource(R.string.authenticator_key_optional)) },
-                            placeholder = { Text(stringResource(R.string.authenticator_key_hint)) },
-                            leadingIcon = { Icon(Icons.Default.VpnKey, null) },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                            shape = RoundedCornerShape(12.dp)
-                        )
+                        Column {
+                            OutlinedTextField(
+                                value = authenticatorKey,
+                                onValueChange = { authenticatorKey = it },
+                                label = { Text(stringResource(R.string.authenticator_key_optional)) },
+                                placeholder = { Text(stringResource(R.string.authenticator_key_hint)) },
+                                leadingIcon = { Icon(Icons.Default.VpnKey, null) },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                                shape = RoundedCornerShape(12.dp)
+                            )
+
+                            AnimatedVisibility(
+                                visible = authenticatorPreviewVisible,
+                                enter = slideInVertically(
+                                    initialOffsetY = { -it / 3 },
+                                    animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing)
+                                ) + expandVertically(
+                                    expandFrom = Alignment.Top,
+                                    animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing)
+                                ) + fadeIn(
+                                    animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+                                ),
+                                exit = slideOutVertically(
+                                    targetOffsetY = { -it / 4 },
+                                    animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)
+                                ) + shrinkVertically(
+                                    shrinkTowards = Alignment.Top,
+                                    animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)
+                                ) + fadeOut(
+                                    animationSpec = tween(durationMillis = 140)
+                                )
+                            ) {
+                                authenticatorPreviewTotpData?.let { previewData ->
+                                    InlineTotpPreviewCard(
+                                        totpData = previewData,
+                                        currentSeconds = authenticatorPreviewCurrentSeconds,
+                                        progressTimeMillis = authenticatorPreviewProgressTimeMillis,
+                                        timeOffset = settings.totpTimeOffset,
+                                        smoothProgress = settings.validatorSmoothProgress,
+                                        modifier = Modifier.padding(top = 10.dp),
+                                        showHeader = false,
+                                        showProgress = false
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -2014,7 +2297,7 @@ fun AddEditPasswordScreen(
                                                 )
                                             }
                                             Text(
-                                                text = option.title,
+                                                text = option.type,
                                                 style = MaterialTheme.typography.titleSmall,
                                                 fontWeight = FontWeight.Medium
                                             )
@@ -2027,8 +2310,8 @@ fun AddEditPasswordScreen(
                                     }
                                     Text(
                                         text = option.content,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = MaterialTheme.colorScheme.onSurface
                                     )
                                 }
                             }
@@ -2039,6 +2322,285 @@ fun AddEditPasswordScreen(
         }
     }
 
+}
+
+private fun buildInlineAccountSuggestion(
+    currentEntryId: Long?,
+    commonAccountInfo: takagi.ru.monica.data.CommonAccountInfo,
+    templateOptions: List<CommonAccountFillOption>,
+    passwordEntries: List<PasswordEntry>,
+    accountType: String,
+    emailType: String,
+    phoneType: String
+): InlineAccountSuggestion? {
+    val aggregates = linkedMapOf<String, InlineAccountSuggestionAggregate>()
+
+    fun normalizeValue(raw: String): String {
+        return raw.trim().replace(Regex("\\s+"), " ")
+    }
+
+    fun addCandidate(
+        rawValue: String,
+        type: String,
+        score: Int,
+        usageIncrement: Int = 0,
+        fromConfiguredCommonInfo: Boolean = false,
+        fromTemplates: Boolean = false
+    ) {
+        val value = normalizeValue(rawValue)
+        if (value.isBlank()) return
+
+        val key = value.lowercase(Locale.ROOT)
+        val aggregate = aggregates.getOrPut(key) {
+            InlineAccountSuggestionAggregate(
+                value = value,
+                type = type,
+                typeScore = score
+            )
+        }
+
+        if (score > aggregate.typeScore) {
+            aggregate.type = type
+            aggregate.typeScore = score
+        }
+        aggregate.totalScore += score
+        aggregate.usageCount += usageIncrement
+        aggregate.fromConfiguredCommonInfo = aggregate.fromConfiguredCommonInfo || fromConfiguredCommonInfo
+        aggregate.fromTemplates = aggregate.fromTemplates || fromTemplates
+    }
+
+    addCandidate(
+        rawValue = commonAccountInfo.username,
+        type = accountType,
+        score = 5,
+        fromConfiguredCommonInfo = true
+    )
+    addCandidate(
+        rawValue = commonAccountInfo.email,
+        type = emailType,
+        score = 4,
+        fromConfiguredCommonInfo = true
+    )
+    addCandidate(
+        rawValue = commonAccountInfo.phone,
+        type = phoneType,
+        score = 3,
+        fromConfiguredCommonInfo = true
+    )
+
+    templateOptions.forEach { option ->
+        val templateScore = when (option.type) {
+            accountType -> 4
+            emailType -> 3
+            phoneType -> 2
+            else -> 2
+        }
+        addCandidate(
+            rawValue = option.content,
+            type = option.type,
+            score = templateScore,
+            fromTemplates = true
+        )
+    }
+
+    passwordEntries
+        .asSequence()
+        .filter { entry -> currentEntryId == null || entry.id != currentEntryId }
+        .forEach { entry ->
+            val perEntryCandidates = linkedMapOf<String, Triple<String, String, Int>>()
+
+            fun collectFromEntry(rawValue: String, type: String, score: Int) {
+                val value = normalizeValue(rawValue)
+                if (value.isBlank()) return
+                val key = value.lowercase(Locale.ROOT)
+                val existing = perEntryCandidates[key]
+                if (existing == null || score > existing.third) {
+                    perEntryCandidates[key] = Triple(value, type, score)
+                }
+            }
+
+            collectFromEntry(entry.username, accountType, 4)
+            collectFromEntry(entry.email, emailType, 3)
+            collectFromEntry(entry.phone, phoneType, 2)
+
+            perEntryCandidates.values.forEach { (value, type, score) ->
+                addCandidate(
+                    rawValue = value,
+                    type = type,
+                    score = score,
+                    usageIncrement = 1
+                )
+            }
+        }
+
+    return aggregates.values
+        .asSequence()
+        .filter { it.value.isNotBlank() }
+        .sortedWith(
+            compareByDescending<InlineAccountSuggestionAggregate> { it.totalScore }
+                .thenByDescending { it.usageCount }
+                .thenByDescending { it.fromConfiguredCommonInfo }
+                .thenByDescending { it.fromTemplates }
+                .thenBy { it.value.lowercase(Locale.ROOT) }
+        )
+        .map { aggregate ->
+            InlineAccountSuggestion(
+                value = aggregate.value,
+                type = aggregate.type,
+                usageCount = aggregate.usageCount,
+                fromConfiguredCommonInfo = aggregate.fromConfiguredCommonInfo,
+                fromTemplates = aggregate.fromTemplates
+            )
+        }
+        .firstOrNull()
+}
+
+@Composable
+private fun InlineAccountSuggestionCard(
+    suggestion: InlineAccountSuggestion,
+    onApply: () -> Unit
+) {
+    val icon = when (suggestion.type) {
+        stringResource(R.string.common_account_type_email) -> MonicaIcons.General.email
+        stringResource(R.string.common_account_type_phone) -> MonicaIcons.General.phone
+        else -> Icons.Default.Person
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        InlinePrimarySuggestionCard(
+            label = suggestion.value,
+            leadingIcon = icon,
+            onClick = onApply,
+            modifier = Modifier.weight(1f)
+        )
+        InlineNumericSuggestionBadge(
+            value = suggestion.usageCount.coerceAtLeast(1).toString(),
+            onClick = onApply
+        )
+    }
+}
+
+@Composable
+private fun InlineGeneratedPasswordSuggestionCard(
+    password: String,
+    onApply: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        InlinePrimarySuggestionCard(
+            label = password,
+            leadingIcon = Icons.Default.Key,
+            onClick = onApply,
+            modifier = Modifier
+                .weight(1f),
+            containerColor = MaterialTheme.colorScheme.secondaryContainer,
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+        )
+        InlineNumericSuggestionBadge(
+            value = password.length.toString(),
+            onClick = onApply
+        )
+    }
+}
+
+@Composable
+private fun InlinePrimarySuggestionCard(
+    label: String,
+    leadingIcon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    containerColor: Color = MaterialTheme.colorScheme.secondaryContainer,
+    contentColor: Color = MaterialTheme.colorScheme.onSecondaryContainer
+) {
+    Surface(
+        modifier = modifier
+            .heightIn(min = 48.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(22.dp),
+        color = containerColor,
+        contentColor = contentColor,
+        tonalElevation = 1.dp,
+        shadowElevation = 0.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Icon(
+                imageVector = leadingIcon,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun InlineNumericSuggestionBadge(
+    value: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .size(44.dp)
+            .clickable(onClick = onClick),
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.primaryContainer,
+        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+        tonalElevation = 1.dp
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+private fun buildPasswordScreenInlinePreviewTotpData(
+    secret: String,
+    issuer: String,
+    accountName: String
+): TotpData? {
+    val normalizedSecret = secret
+        .uppercase()
+        .filter { it in 'A'..'Z' || it in '2'..'7' }
+    if (normalizedSecret.isBlank()) return null
+
+    return TotpData(
+        secret = normalizedSecret,
+        issuer = issuer.trim(),
+        accountName = accountName.trim(),
+        period = 30,
+        digits = 6,
+        otpType = OtpType.TOTP,
+        algorithm = "SHA1"
+    )
 }
 
 /**
@@ -2404,7 +2966,7 @@ private fun PasswordGeneratorDialog(
                                                 }
                                                 Column(modifier = Modifier.weight(1f)) {
                                                     Text(
-                                                        text = option.title,
+                                                        text = option.type,
                                                         style = MaterialTheme.typography.titleSmall,
                                                         fontWeight = FontWeight.Medium
                                                     )

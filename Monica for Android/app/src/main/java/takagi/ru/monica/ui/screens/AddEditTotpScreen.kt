@@ -4,9 +4,13 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
@@ -51,6 +55,8 @@ import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.ui.components.AppSelectorField
 import takagi.ru.monica.ui.components.CustomIconActionDialog
+import takagi.ru.monica.ui.components.InlineTotpPreviewCard
+import takagi.ru.monica.ui.components.MonicaExpressiveFilterChip
 import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import takagi.ru.monica.ui.components.SimpleIconPickerBottomSheet
 import takagi.ru.monica.ui.components.StorageTargetSelectorCard
@@ -341,6 +347,41 @@ fun AddEditTotpScreen(
     }
 
     val canSave = title.isNotBlank() && secret.isNotBlank()
+    val previewTotpData = remember(secret, issuer, accountName, period, digits, selectedOtpType, counter, pin) {
+        buildInlinePreviewTotpData(
+            secret = secret,
+            issuer = issuer,
+            accountName = accountName,
+            period = period,
+            digits = digits,
+            otpType = selectedOtpType,
+            counter = counter,
+            pin = pin
+        )
+    }
+    val inlinePreviewVisible = previewTotpData != null
+    val inlinePreviewCurrentSeconds by produceState(initialValue = System.currentTimeMillis() / 1000, key1 = previewTotpData?.otpType) {
+        while (true) {
+            value = System.currentTimeMillis() / 1000
+            kotlinx.coroutines.delay(1000)
+        }
+    }
+    val inlinePreviewProgressTimeMillis by produceState(
+        initialValue = System.currentTimeMillis(),
+        key1 = previewTotpData?.otpType,
+        key2 = settings.validatorSmoothProgress
+    ) {
+        while (true) {
+            val now = System.currentTimeMillis()
+            value = now
+            val waitMillis = if (settings.validatorSmoothProgress) {
+                50L
+            } else {
+                (1000L - (now % 1000L)).coerceAtLeast(16L)
+            }
+            kotlinx.coroutines.delay(waitMillis)
+        }
+    }
     val save: () -> Unit = saveAction@{
         if (!canSave || isSaving) return@saveAction
         isSaving = true // 防止重复点击
@@ -605,6 +646,41 @@ fun AddEditTotpScreen(
                                 color = if (secret.isBlank()) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.padding(start = 16.dp, top = 4.dp)
                             )
+
+                            AnimatedVisibility(
+                                visible = inlinePreviewVisible,
+                                enter = slideInVertically(
+                                    initialOffsetY = { -it / 3 },
+                                    animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing)
+                                ) + expandVertically(
+                                    expandFrom = Alignment.Top,
+                                    animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing)
+                                ) + fadeIn(
+                                    animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+                                ),
+                                exit = slideOutVertically(
+                                    targetOffsetY = { -it / 4 },
+                                    animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)
+                                ) + shrinkVertically(
+                                    shrinkTowards = Alignment.Top,
+                                    animationSpec = tween(durationMillis = 180, easing = FastOutSlowInEasing)
+                                ) + fadeOut(
+                                    animationSpec = tween(durationMillis = 140)
+                                )
+                            ) {
+                                previewTotpData?.let { previewData ->
+                                    InlineTotpPreviewCard(
+                                        totpData = previewData,
+                                        currentSeconds = inlinePreviewCurrentSeconds,
+                                        progressTimeMillis = inlinePreviewProgressTimeMillis,
+                                        timeOffset = settings.totpTimeOffset,
+                                        smoothProgress = settings.validatorSmoothProgress,
+                                        modifier = Modifier.padding(top = 10.dp),
+                                        showHeader = true,
+                                        showProgress = true
+                                    )
+                                }
+                            }
 
                             if (!isEditing) {
                                 Row(
@@ -1122,6 +1198,59 @@ private fun CollapsibleCard(
                 }
             }
         }
+    }
+}
+
+private fun buildInlinePreviewTotpData(
+    secret: String,
+    issuer: String,
+    accountName: String,
+    period: String,
+    digits: String,
+    otpType: OtpType,
+    counter: String,
+    pin: String
+): TotpData? {
+    val normalizedSecret = secret
+        .uppercase()
+        .filter { it in 'A'..'Z' || it in '2'..'7' }
+    if (normalizedSecret.isBlank()) return null
+
+    val resolvedPeriod = when (otpType) {
+        OtpType.HOTP -> 30
+        else -> period.toIntOrNull()?.takeIf { it > 0 } ?: 30
+    }
+    val resolvedDigits = when (otpType) {
+        OtpType.STEAM -> 5
+        else -> digits.toIntOrNull()?.takeIf { it in 5..8 } ?: 6
+    }
+    val resolvedCounter = counter.toLongOrNull()?.coerceAtLeast(0L) ?: 0L
+    val resolvedPin = pin.trim()
+
+    return normalizeInlinePreviewTotpData(
+        TotpData(
+            secret = normalizedSecret,
+            issuer = issuer.trim(),
+            accountName = accountName.trim(),
+            period = resolvedPeriod,
+            digits = resolvedDigits,
+            otpType = otpType,
+            counter = resolvedCounter,
+            pin = resolvedPin
+        )
+    )
+}
+
+private fun normalizeInlinePreviewTotpData(data: TotpData): TotpData {
+    val safePeriod = data.period.takeIf { it > 0 } ?: 30
+    val safeDigits = when (data.otpType) {
+        OtpType.STEAM -> 5
+        else -> data.digits.coerceIn(5, 8)
+    }
+    return if (safePeriod == data.period && safeDigits == data.digits) {
+        data
+    } else {
+        data.copy(period = safePeriod, digits = safeDigits)
     }
 }
 

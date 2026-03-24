@@ -96,10 +96,14 @@ class CommonAccountPreferences(private val context: Context) {
     }
 
     /**
-     * 常用账号模板列表（支持多个“类型/标题/内容”）
+     * 常用账号模板列表（新结构仅保留“类型/内容”，title 作为旧数据兼容字段读取后即丢弃）
      */
     val templatesFlow: Flow<List<CommonAccountTemplate>> = context.commonAccountDataStore.data.map { preferences ->
         decodeTemplates(preferences[KEY_TEMPLATES_JSON])
+    }
+
+    suspend fun addTemplate(type: String, content: String): CommonAccountTemplate {
+        return addTemplate(type = type, title = "", content = content)
     }
 
     suspend fun addTemplate(type: String, title: String, content: String): CommonAccountTemplate {
@@ -108,7 +112,7 @@ class CommonAccountPreferences(private val context: Context) {
             type = type.trim(),
             title = title.trim(),
             content = content.trim()
-        )
+        ).normalized()
         context.commonAccountDataStore.edit { preferences ->
             val current = decodeTemplates(preferences[KEY_TEMPLATES_JSON])
             preferences[KEY_TEMPLATES_JSON] = encodeTemplates(current + template)
@@ -190,7 +194,7 @@ class CommonAccountPreferences(private val context: Context) {
                 currentTemplates += CommonAccountTemplate(
                     id = UUID.randomUUID().toString(),
                     type = accountType.trim(),
-                    title = accountTitle.trim(),
+                    title = "",
                     content = username
                 )
             }
@@ -199,7 +203,7 @@ class CommonAccountPreferences(private val context: Context) {
                 currentTemplates += CommonAccountTemplate(
                     id = UUID.randomUUID().toString(),
                     type = emailType.trim(),
-                    title = emailTitle.trim(),
+                    title = "",
                     content = email
                 )
             }
@@ -208,7 +212,7 @@ class CommonAccountPreferences(private val context: Context) {
                 currentTemplates += CommonAccountTemplate(
                     id = UUID.randomUUID().toString(),
                     type = phoneType.trim(),
-                    title = phoneTitle.trim(),
+                    title = "",
                     content = phone
                 )
             }
@@ -237,7 +241,7 @@ class CommonAccountPreferences(private val context: Context) {
                             type = item.optString("type").trim(),
                             title = item.optString("title").trim(),
                             content = item.optString("content").trim()
-                        )
+                        ).normalized()
                     )
                 }
             }
@@ -287,7 +291,8 @@ data class CommonAccountTemplate(
         return copy(
             id = id.trim(),
             type = type.trim(),
-            title = title.trim(),
+            // 新版不再使用标题；这里统一清空，确保旧数据在一次读写后自动兼容到新结构。
+            title = "",
             content = content.trim()
         )
     }
