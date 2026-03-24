@@ -22,6 +22,3 @@ dependencyResolutionManagement {
 
 rootProject.name = "Monica"
 include ':app'
-include ':test-app'
-include ':Monica-wear'
-project(':Monica-wear').projectDir = file('../Monica for wear')

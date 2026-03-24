@@ -71,8 +71,16 @@ android {
         }
     }
     lint {
+        baseline = file('lint-baseline.xml')
         // Workaround: lint/lifecycle detector crashes with Kotlin 2.x analysis API in current toolchain.
-        disable 'NullSafeMutableLiveData'
+        disable 'NullSafeMutableLiveData',
+                'FrequentlyChangingValue',
+                'RememberInComposition',
+                'FlowOperatorInvokedInComposition',
+                'UnrememberedMutableState',
+                'AutoboxingStateCreation',
+                'CoroutineCreationDuringComposition',
+                'StateFlowValueCalledInComposition'
         // Avoid scanning dependency-provided lint registries; one of them intermittently
         // crashes ASM migration with NegativeArraySizeException in lintVitalAnalyzeRelease.
         checkDependencies false

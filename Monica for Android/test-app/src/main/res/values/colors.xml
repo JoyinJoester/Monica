@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <color name="debug_primary">#006A62</color>
-    <color name="debug_on_primary">#FFFFFF</color>
-    <color name="debug_background">#FAFDFC</color>
-    <color name="debug_on_background">#161D1B</color>
-</resources>

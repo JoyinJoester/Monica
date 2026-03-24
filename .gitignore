@@ -56,4 +56,6 @@ SteamTools-develop/
 EasyNotes-master/
 Android-浏览器插件功能差异排查报告.md
 bitwarden/
+!Monica for Android/app/src/main/java/takagi/ru/monica/bitwarden/
+!Monica for Android/app/src/main/java/takagi/ru/monica/bitwarden/**
 fdroiddata/
