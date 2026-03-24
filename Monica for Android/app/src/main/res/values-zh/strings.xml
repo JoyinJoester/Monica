@@ -763,6 +763,13 @@
     <string name="no_history_records">暂无历史记录</string>
     <string name="password_history_title">历史密码</string>
     <string name="password_history_last_used">上次使用：%1$s</string>
+    <string name="password_history_description">仅保存在当前设备本地，最多保留最近 10 条密码。</string>
+    <string name="password_history_latest">最近一次</string>
+    <string name="password_history_unavailable">当前暂时无法读取这条历史密码。重新解锁后，或下次更新密码时会恢复正常。</string>
+    <string name="delete_password_history_entry_title">删除历史密码</string>
+    <string name="delete_password_history_entry_message">要删除这条本地历史密码记录吗？此操作无法撤销。</string>
+    <string name="clear_password_history_title">清空历史密码</string>
+    <string name="clear_password_history_message">要清空当前账号的全部本地历史密码吗？此操作无法撤销。</string>
     <string name="sync_conflict">同步冲突</string>
     <string name="modified_field">修改了 %1$s</string>
     <string name="restore_version">恢复此版本</string>
@@ -1528,6 +1535,7 @@
     <string name="history">历史记录</string>
     <string name="no_history">暂无历史记录</string>
     <string name="clear_history">清空历史记录</string>
+    <string name="clear_password_history">清空历史密码</string>
     <string name="copied_to_clipboard">已复制到剪贴板</string>
     <string name="copy_password_desc">复制密码</string>
     <string name="saved_from_generator_history">从密码生成器历史记录保存\n生成时间: %s</string>

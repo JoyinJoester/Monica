@@ -9,6 +9,7 @@ import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
@@ -154,6 +155,8 @@ fun PasswordDetailScreen(
 
     var showDeleteDialog by remember { mutableStateOf(false) }
     var itemToDelete by remember { mutableStateOf<PasswordEntry?>(null) } // For specific password deletion
+    var historyItemToDelete by remember { mutableStateOf<PasswordHistoryEntry?>(null) }
+    var showClearHistoryDialog by remember { mutableStateOf(false) }
     
     // Verification State
     var showMasterPasswordDialog by remember { mutableStateOf(false) }
@@ -734,11 +737,21 @@ fun PasswordDetailScreen(
                     )
                 }
 
-                if (passwordHistory.isNotEmpty()) {
+                AnimatedVisibility(
+                    visible = passwordHistory.isNotEmpty(),
+                    enter = expandVertically(),
+                    exit = shrinkVertically()
+                ) {
                     PasswordHistorySection(
                         history = passwordHistory,
                         visibilityState = passwordHistoryVisibility,
-                        context = context
+                        context = context,
+                        onDeleteHistoryItem = { item ->
+                            historyItemToDelete = item
+                        },
+                        onClearHistory = {
+                            showClearHistoryDialog = true
+                        }
                     )
                 }
                 
@@ -775,6 +788,34 @@ fun PasswordDetailScreen(
             containerColor = MaterialTheme.colorScheme.surface,
             titleContentColor = MaterialTheme.colorScheme.onSurface,
             textContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+
+    historyItemToDelete?.let { historyItem ->
+        HistoryPasswordConfirmDialog(
+            title = stringResource(R.string.delete_password_history_entry_title),
+            message = stringResource(R.string.delete_password_history_entry_message),
+            confirmText = stringResource(R.string.delete),
+            onDismiss = { historyItemToDelete = null },
+            onConfirm = {
+                passwordHistoryVisibility.remove(historyItem.id)
+                viewModel.deletePasswordHistoryEntry(historyItem.id)
+                historyItemToDelete = null
+            }
+        )
+    }
+
+    if (showClearHistoryDialog) {
+        HistoryPasswordConfirmDialog(
+            title = stringResource(R.string.clear_password_history_title),
+            message = stringResource(R.string.clear_password_history_message),
+            confirmText = stringResource(R.string.clear_password_history),
+            onDismiss = { showClearHistoryDialog = false },
+            onConfirm = {
+                passwordHistoryVisibility.clear()
+                viewModel.clearPasswordHistory(passwordId)
+                showClearHistoryDialog = false
+            }
         )
     }
 
@@ -846,55 +887,353 @@ fun PasswordDetailScreen(
 private fun PasswordHistorySection(
     history: List<PasswordHistoryEntry>,
     visibilityState: MutableMap<Long, Boolean>,
-    context: Context
+    context: Context,
+    onDeleteHistoryItem: (PasswordHistoryEntry) -> Unit,
+    onClearHistory: () -> Unit
 ) {
     val dateFormatter = remember { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT) }
+    var sectionMenuExpanded by remember { mutableStateOf(false) }
 
     ElevatedCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(),
+        shape = RoundedCornerShape(28.dp, 28.dp, 20.dp, 20.dp),
         colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
         )
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            modifier = Modifier
+                .padding(16.dp)
+                .animateContentSize(),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Text(
-                text = stringResource(R.string.password_history_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
-            history.forEachIndexed { index, item ->
-                if (index > 0) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                }
-
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
                     Text(
-                        text = stringResource(
-                            R.string.password_history_last_used,
-                            dateFormatter.format(item.lastUsedAt)
-                        ),
+                        text = stringResource(R.string.password_history_title),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = stringResource(R.string.password_history_description),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    PasswordField(
-                        label = stringResource(R.string.password),
-                        value = item.password,
-                        visible = visibilityState[item.id] == true,
-                        onToggleVisibility = {
-                            val current = visibilityState[item.id] == true
-                            visibilityState[item.id] = !current
-                        },
-                        context = context
-                    )
+                }
+
+                Box {
+                    IconButton(onClick = { sectionMenuExpanded = true }) {
+                        Icon(
+                            imageVector = MonicaIcons.Action.more,
+                            contentDescription = stringResource(R.string.more_options),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = sectionMenuExpanded,
+                        onDismissRequest = { sectionMenuExpanded = false }
+                    ) {
+                        DropdownMenuItem(
+                            text = { Text(stringResource(R.string.clear_password_history)) },
+                            onClick = {
+                                sectionMenuExpanded = false
+                                onClearHistory()
+                            },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = MonicaIcons.Action.delete,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error
+                                )
+                            }
+                        )
+                    }
+                }
+            }
+
+            history.forEachIndexed { index, item ->
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = if (index == 0) {
+                        RoundedCornerShape(24.dp, 18.dp, 24.dp, 18.dp)
+                    } else {
+                        RoundedCornerShape(18.dp)
+                    },
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    tonalElevation = if (index == 0) 2.dp else 1.dp
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                if (index == 0) {
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = MaterialTheme.colorScheme.primaryContainer
+                                    ) {
+                                        Text(
+                                            text = stringResource(R.string.password_history_latest),
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    }
+                                }
+                                Text(
+                                    text = stringResource(
+                                        R.string.password_history_last_used,
+                                        dateFormatter.format(item.lastUsedAt)
+                                    ),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                                tonalElevation = 1.dp
+                            ) {
+                                IconButton(onClick = { onDeleteHistoryItem(item) }) {
+                                    Icon(
+                                        imageVector = MonicaIcons.Action.delete,
+                                        contentDescription = stringResource(R.string.delete),
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
+                        }
+
+                        HistoryPasswordValue(
+                            value = item.password,
+                            visible = visibilityState[item.id] == true,
+                            onToggleVisibility = {
+                                val current = visibilityState[item.id] == true
+                                visibilityState[item.id] = !current
+                            },
+                            context = context
+                        )
+                    }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun HistoryPasswordValue(
+    value: String,
+    visible: Boolean,
+    onToggleVisibility: () -> Unit,
+    context: Context
+) {
+    val hasReadableValue = value.isNotBlank()
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = stringResource(R.string.password),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (hasReadableValue) {
+                Text(
+                    text = if (visible) value else "•".repeat(value.length),
+                    style = if (visible) {
+                        MaterialTheme.typography.bodyLarge.copy(
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                        )
+                    } else {
+                        MaterialTheme.typography.bodyLarge.copy(
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            letterSpacing = 3.sp
+                        )
+                    },
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f)
+                )
+            } else {
+                Text(
+                    text = stringResource(R.string.password_history_unavailable),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (hasReadableValue) {
+                    IconButton(onClick = onToggleVisibility) {
+                        Icon(
+                            imageVector = if (visible) MonicaIcons.Security.visibilityOff else MonicaIcons.Security.visibility,
+                            contentDescription = if (visible) stringResource(R.string.hide) else stringResource(R.string.show),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            val clipboard =
+                                context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            val clip = ClipData.newPlainText(
+                                context.getString(R.string.password),
+                                value
+                            )
+                            clipboard.setPrimaryClip(clip)
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.password_copied),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    ) {
+                        Icon(
+                            imageVector = MonicaIcons.Action.copy,
+                            contentDescription = stringResource(R.string.copy),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HistoryPasswordConfirmDialog(
+    title: String,
+    message: String,
+    confirmText: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(32.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 8.dp,
+        icon = {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.88f),
+                tonalElevation = 2.dp
+            ) {
+                Box(
+                    modifier = Modifier.size(60.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = MonicaIcons.Action.delete,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+        },
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = stringResource(R.string.password_history_description),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Surface(
+                    shape = RoundedCornerShape(22.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    tonalElevation = 1.dp
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = message,
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            lineHeight = 24.sp
+                        )
+                        Surface(
+                            shape = RoundedCornerShape(14.dp),
+                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.45f)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Warning,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = stringResource(R.string.delete_password_confirmation),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            FilledTonalButton(
+                onClick = onConfirm,
+                shape = RoundedCornerShape(18.dp),
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                )
+            ) {
+                Text(confirmText)
+            }
+        },
+        dismissButton = {
+            OutlinedButton(
+                onClick = onDismiss,
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
 }
 
 // ============================================
@@ -2272,6 +2611,7 @@ private fun MultiDeleteConfirmDialog(
         textContentColor = MaterialTheme.colorScheme.onSurfaceVariant
     )
 }
+
 
 
 

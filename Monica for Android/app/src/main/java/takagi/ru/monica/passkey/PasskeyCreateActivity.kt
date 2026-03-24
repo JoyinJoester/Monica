@@ -154,11 +154,17 @@ class PasskeyCreateActivity : FragmentActivity() {
                 Log.d(TAG, "clientDataHash: ${pendingClientDataHash?.contentToString()}")
             }
         }
-        
+
         val requestJson = intent.getStringExtra(MonicaCredentialProviderService.EXTRA_REQUEST_JSON) ?: ""
         val rpId = intent.getStringExtra(MonicaCredentialProviderService.EXTRA_RP_ID) ?: ""
         val userName = intent.getStringExtra(MonicaCredentialProviderService.EXTRA_USER_NAME) ?: ""
         val userDisplayName = intent.getStringExtra(MonicaCredentialProviderService.EXTRA_USER_DISPLAY_NAME) ?: userName
+
+        recordPasskeyEvent(
+            stage = "request_received",
+            requestJson = requestJson,
+            rpId = rpId,
+        )
         
         Log.i(
             TAG,
@@ -168,6 +174,13 @@ class PasskeyCreateActivity : FragmentActivity() {
         // 检查必要参数
         if (requestJson.isBlank()) {
             Log.e(TAG, "requestJson is empty!")
+            recordPasskeyEvent(
+                stage = "request_rejected",
+                requestJson = requestJson,
+                rpId = rpId,
+                errorType = "CreateCredentialUnknownException",
+                errorMessage = "Missing request JSON",
+            )
             val resultIntent = Intent()
             PendingIntentHandler.setCreateCredentialException(
                 resultIntent,
@@ -180,6 +193,13 @@ class PasskeyCreateActivity : FragmentActivity() {
         
         if (rpId.isBlank()) {
             Log.e(TAG, "rpId is empty!")
+            recordPasskeyEvent(
+                stage = "request_rejected",
+                requestJson = requestJson,
+                rpId = rpId,
+                errorType = "CreateCredentialUnknownException",
+                errorMessage = "Missing RP ID",
+            )
             val resultIntent = Intent()
             PendingIntentHandler.setCreateCredentialException(
                 resultIntent,
@@ -199,6 +219,12 @@ class PasskeyCreateActivity : FragmentActivity() {
                 rpId = rpId,
                 callingAppInfo = pendingCallingAppInfo
             )
+            recordPasskeyEvent(
+                stage = "validation_done",
+                requestJson = requestJson,
+                rpId = rpId,
+                verdict = verdict,
+            )
             PasskeyRequestValidator.logShadow(
                 flowTag = "CREATE",
                 rpId = rpId,
@@ -217,6 +243,14 @@ class PasskeyCreateActivity : FragmentActivity() {
                 "rpId=$rpId|source=${verdict.resolvedSource}|reasons=${verdict.reasons.joinToString(",")}"
             )
             if (strictEnabled && verdict.strictBlock) {
+                recordPasskeyEvent(
+                    stage = "request_blocked",
+                    requestJson = requestJson,
+                    rpId = rpId,
+                    verdict = verdict,
+                    errorType = "CreateCredentialUnknownException",
+                    errorMessage = "Passkey request validation failed",
+                )
                 val resultIntent = Intent()
                 PendingIntentHandler.setCreateCredentialException(
                     resultIntent,
@@ -394,6 +428,7 @@ class PasskeyCreateActivity : FragmentActivity() {
      */
     private fun requestBiometricAuth() {
         repository.logAudit("PASSKEY_CREATE_BIOMETRIC_REQUESTED", pendingRpId)
+        recordPasskeyEvent(stage = "biometric_requested")
         
         biometricHelper.authenticate(
             activity = this,
@@ -402,12 +437,18 @@ class PasskeyCreateActivity : FragmentActivity() {
             negativeButtonText = getString(R.string.cancel),
             onSuccess = {
                 repository.logAudit("PASSKEY_CREATE_BIOMETRIC_SUCCESS", pendingRpId)
+                recordPasskeyEvent(stage = "biometric_success")
                 createPasskey(pendingRequestJson, pendingRpId, pendingUserName, pendingUserDisplayName)
             },
             onError = { errorCode, errString ->
                 repository.logAudit("PASSKEY_CREATE_BIOMETRIC_FAILED", 
                     "$pendingRpId|error=$errorCode|$errString")
                 Log.e(TAG, "Biometric auth failed: $errorCode - $errString")
+                recordPasskeyEvent(
+                    stage = "biometric_failed",
+                    errorType = "BiometricError:$errorCode",
+                    errorMessage = errString.toString(),
+                )
                 // 生物识别失败，必须使用 PendingIntentHandler 设置异常响应
                 val resultIntent = Intent()
                 PendingIntentHandler.setCreateCredentialException(
@@ -420,6 +461,11 @@ class PasskeyCreateActivity : FragmentActivity() {
             onCancel = {
                 repository.logAudit("PASSKEY_CREATE_BIOMETRIC_CANCELLED", pendingRpId)
                 Log.d(TAG, "Biometric auth cancelled by user")
+                recordPasskeyEvent(
+                    stage = "biometric_cancelled",
+                    errorType = "CreateCredentialCancellationException",
+                    errorMessage = "User cancelled",
+                )
                 // 用户取消，使用 PendingIntentHandler 设置取消异常
                 val resultIntent = Intent()
                 PendingIntentHandler.setCreateCredentialException(
@@ -478,6 +524,11 @@ class PasskeyCreateActivity : FragmentActivity() {
         userDisplayName: String
     ) {
         try {
+            recordPasskeyEvent(
+                stage = "create_started",
+                requestJson = requestJson,
+                rpId = rpId,
+            )
             val json = JSONObject(requestJson)
             
             // 解析用户 ID
@@ -641,6 +692,12 @@ class PasskeyCreateActivity : FragmentActivity() {
             Log.d(TAG, "Passkey created successfully: $credentialIdB64")
             repository.logAudit("PASSKEY_CREATE_SUCCESS", 
                 "$credentialIdB64|rpId=$rpId|userName=$userName")
+            recordPasskeyEvent(
+                stage = "result_sent",
+                requestJson = requestJson,
+                rpId = normalizedRpId,
+                credentialId = credentialIdB64,
+            )
             
             // 返回结果
             val credentialResponse = CreatePublicKeyCredentialResponse(responseJson.toString())
@@ -653,6 +710,13 @@ class PasskeyCreateActivity : FragmentActivity() {
             Log.e(TAG, "Failed to create passkey", e)
             repository.logAudit("PASSKEY_CREATE_ERROR", 
                 "rpId=$rpId|error=${e.message}")
+            recordPasskeyEvent(
+                stage = "create_failed",
+                requestJson = requestJson,
+                rpId = rpId,
+                errorType = e.javaClass.simpleName,
+                errorMessage = e.message,
+            )
             val resultIntent = Intent()
             PendingIntentHandler.setCreateCredentialException(
                 resultIntent,
@@ -661,6 +725,42 @@ class PasskeyCreateActivity : FragmentActivity() {
             setResult(Activity.RESULT_OK, resultIntent)
             finish()
         }
+    }
+
+    private fun recordPasskeyEvent(
+        stage: String,
+        requestJson: String = pendingRequestJson,
+        rpId: String? = pendingRpId,
+        credentialId: String? = null,
+        verdict: PasskeyValidationVerdict? = null,
+        errorType: String? = null,
+        errorMessage: String? = null,
+    ) {
+        PasskeyValidationDiagnostics.recordEvent(
+            context = this,
+            flowTag = "CREATE",
+            stage = stage,
+            rpId = rpId,
+            callingPackage = pendingCallingAppInfo?.packageName,
+            requestOrigin = extractRequestOrigin(requestJson),
+            callingOrigin = pendingCallingAppInfo?.origin,
+            resolvedOrigin = verdict?.resolvedOrigin,
+            resolvedSource = verdict?.resolvedSource?.name,
+            reasons = verdict?.reasons ?: emptyList(),
+            strictBlock = verdict?.strictBlock ?: false,
+            requestJsonSize = requestJson.length,
+            credentialId = credentialId,
+            clientDataHashPresent = pendingClientDataHash != null,
+            errorType = errorType,
+            errorMessage = errorMessage,
+        )
+    }
+
+    private fun extractRequestOrigin(requestJson: String): String? {
+        if (requestJson.isBlank()) return null
+        return runCatching {
+            JSONObject(requestJson).optString("origin").takeIf { it.isNotBlank() }
+        }.getOrNull()
     }
     
     private fun getPreferredAlgorithm(pubKeyCredParams: JSONArray?): Int {

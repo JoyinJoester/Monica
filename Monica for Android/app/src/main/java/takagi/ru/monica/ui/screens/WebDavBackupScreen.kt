@@ -34,6 +34,7 @@ import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.utils.BackupFile
 import takagi.ru.monica.utils.BackupContent
+import takagi.ru.monica.utils.BackupRestoreApplier
 import takagi.ru.monica.utils.RestoreResult
 import takagi.ru.monica.utils.WebDavHelper
 import takagi.ru.monica.utils.AutoBackupManager
@@ -999,277 +1000,15 @@ private fun BackupItem(
     suspend fun handleRestoreResult(result: Result<RestoreResult>, localOnlyDedup: Boolean) {
         if (result.isSuccess) {
             val restoreResult = result.getOrNull() ?: return
-            val content = restoreResult.content
             val report = restoreResult.report
-            val passwords: List<PasswordEntry> = content.passwords
-            val secureItems: List<DataExportImportManager.ExportItem> = content.secureItems
-            val passkeys = content.passkeys
-            
-            // 注意：清除本地数据的逻辑已移动到 WebDavHelper.restoreFromBackupFile 中
-            // 这样做是为了确保在恢复 Trash、Categories 等辅助数据之前执行清除操作
-            // 从而避免"先恢复辅助数据，然后被此处的清除逻辑误删"的 bug
-            
-            // 调试日志：记录备份中的数据统计
-            android.util.Log.d("WebDavBackup", "===== 开始恢复 =====")
-            android.util.Log.d("WebDavBackup", "备份中密码数量: ${passwords.size}")
-            android.util.Log.d("WebDavBackup", "备份中安全项数量: ${secureItems.size}")
-            android.util.Log.d("WebDavBackup", "备份中通行密钥数量: ${passkeys.size}")
-            android.util.Log.d("WebDavBackup", "报告: ${report.getSummary()}")
-            
-            // ID Mapping: Old ID -> New ID
-            val passwordIdMap = mutableMapOf<Long, Long>()
-            
-            // 导入密码数据到数据库(带去重)
-            var passwordCount = 0
-            var passwordSkipped = 0
-            var passwordFailed = 0
-            val failedPasswordDetails = mutableListOf<String>()
-            passwords.forEach { password ->
-                try {
-                    val existingEntry = if (localOnlyDedup) {
-                        passwordRepository.getLocalDuplicateEntry(
-                            password.title,
-                            password.username,
-                            password.website
-                        )
-                    } else {
-                        passwordRepository.getDuplicateEntry(
-                            password.title,
-                            password.username,
-                            password.website
-                        )
-                    }
-                    val isDuplicate = existingEntry != null
-                    
-                    // Keep track of the original ID from the backup
-                    val originalId = password.id
-                    
-                    if (!isDuplicate) {
-                        val newPassword = password.copy(id = 0)
-                        // Capture the new ID returned by insert
-                        val newId = passwordRepository.insertPasswordEntry(newPassword)
-                        if (newId > 0) {
-                            passwordIdMap[originalId] = newId
-                            passwordCount++
-                        } else {
-                            passwordFailed++
-                            android.util.Log.e("WebDavBackup", "Failed to insert password, returned ID <= 0")
-                        }
-                    } else {
-                        // If duplicate, try to find the existing entry to map the ID
-                        // This ensures TOTP items can still bind to the existing password
-                        if (existingEntry != null) {
-                             passwordIdMap[originalId] = existingEntry.id
-                             if (
-                                 !password.customIconType.equals("NONE", ignoreCase = true) &&
-                                 existingEntry.customIconType.equals("NONE", ignoreCase = true)
-                             ) {
-                                 val patchedEntry = existingEntry.copy(
-                                     customIconType = password.customIconType,
-                                     customIconValue = password.customIconValue?.let { java.io.File(it).name },
-                                     customIconUpdatedAt = password.customIconUpdatedAt
-                                 )
-                                 passwordRepository.updatePasswordEntry(patchedEntry)
-                             }
-                        }
-                        passwordSkipped++
-                    }
-                } catch (e: Exception) {
-                    passwordFailed++
-                    val detail = "${password.title} (${password.username}): ${e.message}"
-                    failedPasswordDetails.add(detail)
-                    android.util.Log.e("WebDavBackup", "Failed to import password: $detail")
-                }
-            }
-            
-            // ✅ 更新SSO引用的密码ID (ssoRefEntryId)
-            // 需要在所有密码插入后更新，因为被引用的密码可能在引用者之后插入
-            passwords.forEach { password ->
-                if (password.ssoRefEntryId != null && password.ssoRefEntryId > 0) {
-                    try {
-                        val originalRefId = password.ssoRefEntryId
-                        val originalId = password.id
-                        val currentId = passwordIdMap[originalId]
-                        
-                        if (currentId != null) {
-                            val newRefId = passwordIdMap[originalRefId]
-                            val existingEntry = passwordRepository.getPasswordEntryById(currentId)
-                            
-                            if (existingEntry != null) {
-                                if (newRefId != null) {
-                                    // 找到了新的引用ID，更新它
-                                    if (newRefId != existingEntry.ssoRefEntryId) {
-                                        val updatedEntry = existingEntry.copy(ssoRefEntryId = newRefId)
-                                        passwordRepository.updatePasswordEntry(updatedEntry)
-                                        android.util.Log.d("WebDavBackup", "Updated ssoRefEntryId from $originalRefId to $newRefId for password: ${password.title}")
-                                    }
-                                } else {
-                                    // 找不到引用的密码（可能已删除或未包含在备份中），清空引用以避免无效引用
-                                    if (existingEntry.ssoRefEntryId != null) {
-                                        val updatedEntry = existingEntry.copy(ssoRefEntryId = null)
-                                        passwordRepository.updatePasswordEntry(updatedEntry)
-                                        android.util.Log.w("WebDavBackup", "Cleared invalid ssoRefEntryId $originalRefId for password: ${password.title} (referenced password not found)")
-                                    }
-                                }
-                            }
-                        }
-                    } catch (e: Exception) {
-                        android.util.Log.w("WebDavBackup", "Failed to update ssoRefEntryId for ${password.title}: ${e.message}")
-                    }
-                }
-            }
-            
-            // ✅ 恢复自定义字段
-            val customFieldsMap = content.customFieldsMap
-            if (customFieldsMap.isNotEmpty()) {
-                val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
-                val customFieldDao = database.customFieldDao()
-                var customFieldCount = 0
-                
-                customFieldsMap.forEach { (originalId, fields) ->
-                    val newId = passwordIdMap[originalId]
-                    if (newId != null && fields.isNotEmpty()) {
-                        try {
-                            fields.forEachIndexed { index, fieldBackup ->
-                                val customField = CustomField(
-                                    id = 0,
-                                    entryId = newId,
-                                    title = fieldBackup.title,
-                                    value = fieldBackup.value,
-                                    isProtected = fieldBackup.isProtected,
-                                    sortOrder = index
-                                )
-                                customFieldDao.insert(customField)
-                                customFieldCount++
-                            }
-                        } catch (e: Exception) {
-                            android.util.Log.w("WebDavBackup", "Failed to restore custom fields for password $originalId -> $newId: ${e.message}")
-                        }
-                    }
-                }
-                
-                if (customFieldCount > 0) {
-                    android.util.Log.d("WebDavBackup", "Restored $customFieldCount custom fields")
-                }
-            }
-            
-            // 导入其他数据到数据库(带去重)
-            var secureItemCount = 0
-            var secureItemSkipped = 0
-            var secureItemFailed = 0
-            val failedSecureItemDetails = mutableListOf<String>()
-            var passkeyCountImported = 0
-            var passkeySkipped = 0
-            var passkeyFailed = 0
-            
-            // JSON Parser for TOTP data
-            val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
-            
-            secureItems.forEach { exportItem ->
-                try {
-                    val itemType = takagi.ru.monica.data.ItemType.valueOf(exportItem.itemType)
-                    // 使用智能重复检测：根据类型比较不同的唯一标识字段
-                    val existingItem = secureItemRepository.findDuplicateSecureItem(
-                        itemType,
-                        exportItem.itemData,
-                        exportItem.title,
-                        localOnly = localOnlyDedup
-                    )
-                    val isDuplicate = existingItem != null
-                    
-                    if (!isDuplicate) {
-                        // Handle TOTP binding update
-                        var finalItemData = exportItem.itemData
-                        if (itemType == takagi.ru.monica.data.ItemType.TOTP) {
-                            try {
-                                val totpData = json.decodeFromString<takagi.ru.monica.data.model.TotpData>(exportItem.itemData)
-                                if (totpData.boundPasswordId != null && totpData.boundPasswordId > 0) {
-                                    val newBoundId = passwordIdMap[totpData.boundPasswordId]
-                                    if (newBoundId != null) {
-                                        val updatedTotpData = totpData.copy(boundPasswordId = newBoundId)
-                                        finalItemData = json.encodeToString(updatedTotpData)
-                                        android.util.Log.d("WebDavBackup", "Updated TOTP binding: ${exportItem.title} -> Password ID $newBoundId")
-                                    } else {
-                                        android.util.Log.w("WebDavBackup", "Could not find new password ID for TOTP binding: ${exportItem.title} (Old ID: ${totpData.boundPasswordId})")
-                                    }
-                                }
-                            } catch (e: Exception) {
-                                android.util.Log.w("WebDavBackup", "Failed to parse/update TOTP data for ${exportItem.title}: ${e.message}")
-                            }
-                        }
-
-                        val secureItem = takagi.ru.monica.data.SecureItem(
-                            id = 0,
-                            itemType = itemType,
-                            title = exportItem.title,
-                            itemData = finalItemData, // Use potentially updated data
-                            notes = exportItem.notes,
-                            isFavorite = exportItem.isFavorite,
-                            imagePaths = exportItem.imagePaths,
-                            createdAt = java.util.Date(exportItem.createdAt),
-                            updatedAt = java.util.Date(exportItem.updatedAt),
-                            categoryId = exportItem.categoryId
-                        )
-                        secureItemRepository.insertItem(secureItem)
-                        secureItemCount++
-                    } else {
-                        secureItemSkipped++
-                    }
-                } catch (e: Exception) {
-                    secureItemFailed++
-                    val detail = "${exportItem.title} (${exportItem.itemType}): ${e.message}"
-                    failedSecureItemDetails.add(detail)
-                    android.util.Log.e("WebDavBackup", "Failed to import secure item: $detail")
-                }
-            }
-
-            if (passkeys.isNotEmpty()) {
-                val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
-                val passkeyDao = database.passkeyDao()
-
-                passkeys.forEach { passkey ->
-                    try {
-                        val existing = if (localOnlyDedup) {
-                            passkeyDao.getLocalPasskeyById(passkey.credentialId)
-                        } else {
-                            passkeyDao.getPasskeyById(passkey.credentialId)
-                        }
-                        if (existing == null) {
-                            val mappedBoundPasswordId = passkey.boundPasswordId?.let { oldId ->
-                                passwordIdMap[oldId]
-                            }
-                            passkeyDao.insert(
-                                passkey.copy(
-                                    boundPasswordId = mappedBoundPasswordId
-                                )
-                            )
-                            passkeyCountImported++
-                        } else {
-                            passkeySkipped++
-                        }
-                    } catch (e: Exception) {
-                        passkeyFailed++
-                        android.util.Log.e(
-                            "WebDavBackup",
-                            "Failed to import passkey ${passkey.credentialId}: ${e.message}",
-                            e
-                        )
-                    }
-                }
-            }
-            
-            // 调试日志：记录导入统计
-            android.util.Log.d("WebDavBackup", "===== 导入统计 =====")
-            android.util.Log.d("WebDavBackup", "成功导入密码: $passwordCount")
-            android.util.Log.d("WebDavBackup", "跳过重复密码: $passwordSkipped")
-            android.util.Log.d("WebDavBackup", "导入失败密码: $passwordFailed")
-            android.util.Log.d("WebDavBackup", "成功导入安全项: $secureItemCount")
-            android.util.Log.d("WebDavBackup", "跳过重复安全项: $secureItemSkipped")
-            android.util.Log.d("WebDavBackup", "导入失败安全项: $secureItemFailed")
-            android.util.Log.d("WebDavBackup", "成功导入通行密钥: $passkeyCountImported")
-            android.util.Log.d("WebDavBackup", "跳过重复通行密钥: $passkeySkipped")
-            android.util.Log.d("WebDavBackup", "导入失败通行密钥: $passkeyFailed")
-            android.util.Log.d("WebDavBackup", "总计: ${passwordCount + passwordSkipped + passwordFailed} vs 备份中: ${passwords.size}")
+            val stats = BackupRestoreApplier.applyRestoreResult(
+                context = context,
+                restoreResult = restoreResult,
+                passwordRepository = passwordRepository,
+                secureItemRepository = secureItemRepository,
+                localOnlyDedup = localOnlyDedup,
+                logTag = "WebDavBackup"
+            )
             
             isRestoring = false
             // P0修复：显示详细报告
@@ -1280,10 +1019,10 @@ private fun BackupItem(
                 // 无问题，显示简洁消息
                 buildString {
                     val summaryParts = mutableListOf<String>()
-                    summaryParts += context.getString(R.string.webdav_restore_summary_part_passwords, passwordCount)
-                    summaryParts += context.getString(R.string.webdav_restore_summary_part_other_data, secureItemCount)
-                    if (passkeyCountImported > 0) {
-                        summaryParts += "通行密钥 $passkeyCountImported"
+                    summaryParts += context.getString(R.string.webdav_restore_summary_part_passwords, stats.passwordImported)
+                    summaryParts += context.getString(R.string.webdav_restore_summary_part_other_data, stats.secureItemImported)
+                    if (stats.passkeyImported > 0) {
+                        summaryParts += "通行密钥 ${stats.passkeyImported}"
                     }
                     append(
                         context.getString(
@@ -1293,35 +1032,35 @@ private fun BackupItem(
                     )
                     
                     val issuesParts = mutableListOf<String>()
-                    if (passwordSkipped > 0) {
+                    if (stats.passwordSkipped > 0) {
                         issuesParts += context.getString(
                             R.string.webdav_restore_summary_part_duplicate_passwords,
-                            passwordSkipped
+                            stats.passwordSkipped
                         )
                     }
-                    if (secureItemSkipped > 0) {
+                    if (stats.secureItemSkipped > 0) {
                         issuesParts += context.getString(
                             R.string.webdav_restore_summary_part_duplicate_data,
-                            secureItemSkipped
+                            stats.secureItemSkipped
                         )
                     }
-                    if (passwordFailed > 0) {
+                    if (stats.passwordFailed > 0) {
                         issuesParts += context.getString(
                             R.string.webdav_restore_summary_part_password_failed,
-                            passwordFailed
+                            stats.passwordFailed
                         )
                     }
-                    if (secureItemFailed > 0) {
+                    if (stats.secureItemFailed > 0) {
                         issuesParts += context.getString(
                             R.string.webdav_restore_summary_part_data_failed,
-                            secureItemFailed
+                            stats.secureItemFailed
                         )
                     }
-                    if (passkeySkipped > 0) {
-                        issuesParts += "重复通行密钥 $passkeySkipped"
+                    if (stats.passkeySkipped > 0) {
+                        issuesParts += "重复通行密钥 ${stats.passkeySkipped}"
                     }
-                    if (passkeyFailed > 0) {
-                        issuesParts += "通行密钥失败 $passkeyFailed"
+                    if (stats.passkeyFailed > 0) {
+                        issuesParts += "通行密钥失败 ${stats.passkeyFailed}"
                     }
                     
                     if (issuesParts.isNotEmpty()) {
@@ -1334,11 +1073,11 @@ private fun BackupItem(
                     }
                     
                     // 如果有导入失败，显示详细信息
-                    if (passwordFailed > 0 || secureItemFailed > 0) {
+                    if (stats.passwordFailed > 0 || stats.secureItemFailed > 0) {
                         append("\n\n${context.getString(R.string.webdav_restore_summary_failed_details)}")
-                        failedPasswordDetails.take(5).forEach { append("\n• $it") }
-                        failedSecureItemDetails.take(5).forEach { append("\n• $it") }
-                        if (passwordFailed + secureItemFailed > 10) {
+                        stats.failedPasswordDetails.take(5).forEach { append("\n• $it") }
+                        stats.failedSecureItemDetails.take(5).forEach { append("\n• $it") }
+                        if (stats.passwordFailed + stats.secureItemFailed > 10) {
                             append("\n${context.getString(R.string.webdav_restore_summary_more_logs)}")
                         }
                     }

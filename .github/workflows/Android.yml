@@ -40,7 +40,7 @@ jobs:
 
       - name: Build Release APK (signed & obfuscated)
         run: |
-          ./gradlew assembleRelease --stacktrace \
+          ./gradlew :app:assembleRelease --stacktrace \
             -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/release.jks \
             -Pandroid.injected.signing.store.password=${{ secrets.DEBUG_STORE_PASSWORD }} \
             -Pandroid.injected.signing.key.alias=${{ secrets.DEBUG_KEY_ALIAS }} \

@@ -11,6 +11,14 @@ interface PasswordHistoryDao {
     @Query(
         """
         SELECT * FROM password_history_entries
+        ORDER BY entry_id ASC, last_used_at DESC, id DESC
+        """
+    )
+    suspend fun getAllHistorySync(): List<PasswordHistoryEntry>
+
+    @Query(
+        """
+        SELECT * FROM password_history_entries
         WHERE entry_id = :entryId
         ORDER BY last_used_at DESC, id DESC
         """
@@ -28,6 +36,12 @@ interface PasswordHistoryDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(entry: PasswordHistoryEntry): Long
+
+    @Query("UPDATE password_history_entries SET password = :password WHERE id = :id")
+    suspend fun updatePasswordById(id: Long, password: String)
+
+    @Query("DELETE FROM password_history_entries WHERE id = :id")
+    suspend fun deleteById(id: Long)
 
     @Query(
         """

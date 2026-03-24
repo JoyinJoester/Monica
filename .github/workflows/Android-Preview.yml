@@ -57,27 +57,31 @@ jobs:
         env:
           GITHUB_WORKSPACE: ${{ github.workspace }}
 
+      - name: Generate preview version suffix
+        run: echo "PREVIEW_VERSION_SUFFIX=build.$(date -u +%Y%m%d%H%M)" >> $GITHUB_ENV
+
       - name: Build Release APK
         run: |
-          ./gradlew assembleRelease --stacktrace \
+          ./gradlew :app:assembleRelease --stacktrace \
             -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/release.jks \
             -Pandroid.injected.signing.store.password=${{ secrets.DEBUG_STORE_PASSWORD }} \
             -Pandroid.injected.signing.key.alias=${{ secrets.DEBUG_KEY_ALIAS }} \
-            -Pandroid.injected.signing.key.password=${{ secrets.DEBUG_KEY_PASSWORD }}
+            -Pandroid.injected.signing.key.password=${{ secrets.DEBUG_KEY_PASSWORD }} \
+            -PpreviewVersionSuffix=$PREVIEW_VERSION_SUFFIX
         env:
           GITHUB_WORKSPACE: ${{ github.workspace }}
 
       - name: Rename APK
         run: |
           cd app/build/outputs/apk/release
-          mv app-release.apk Monica-Android-Preview.apk
+          mv app-release.apk Monica-Android-Preview-${PREVIEW_VERSION_SUFFIX}.apk
         continue-on-error: true
 
       - name: Publish Preview to Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: preview
-          name: "⚠️ Development Preview (Auto-updated)"
+          name: "⚠️ Development Preview (${{ env.PREVIEW_VERSION_SUFFIX }})"
           body: |
             > **⚠️ 注意：这是一个自动构建的开发预览版本 (Development Preview)**
             > 
@@ -86,6 +90,7 @@ jobs:
             >
             > ---
             > **构建信息：**
+            > *   **Build Suffix**: `${{ env.PREVIEW_VERSION_SUFFIX }}`
             > *   **Commit SHA**: `${{ github.sha }}`
             > *   **Ref**: `${{ github.ref }}`
           files: |

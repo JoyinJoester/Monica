@@ -13,6 +13,7 @@ import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.utils.BackupRestoreApplier
 import takagi.ru.monica.util.DataExportImportManager
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -876,235 +877,15 @@ class DataExportImportViewModel(
                 
                 result.fold(
                     onSuccess = { restoreResult ->
-                        // 3. 将解析出的数据插入数据库
-                        // restoreFromBackupFile 已经处理了分类、图片和历史记录，
-                        // 但我们需要手动处理密码和安全项目
-                        
-                        var count = 0
-                        var errorCount = 0
-                        var skippedCount = 0
-                        
-                        val content = restoreResult.content
-                        val passwordIdMap = mutableMapOf<Long, Long>() // originalId -> newId (or existingId)
-                        val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
-                        val customFieldDao = database.customFieldDao()
-                        
-                        // 1. 插入密码并建立ID映射
-                        content.passwords.forEach { entry ->
-                            try {
-                                val originalId = entry.id
-                                val encryptedImportedPassword = encryptImportedPasswordForDisplay(entry.password)
-                                val existingEntry = passwordRepository.getDuplicateEntry(
-                                    entry.title,
-                                    entry.username,
-                                    entry.website
-                                )
-                                
-                                if (existingEntry == null) {
-                                    // 重置ID为0以让数据库生成新ID
-                                    val newEntry = entry.copy(
-                                        id = 0,
-                                        password = encryptedImportedPassword
-                                    )
-                                    val newId = passwordRepository.insertPasswordEntry(newEntry)
-                                    if (originalId > 0) {
-                                        passwordIdMap[originalId] = newId
-                                    }
-                                    count++
-                                } else {
-                                    // ✅ 已存在，检查哪个版本更新
-                                    if (originalId > 0) {
-                                        passwordIdMap[originalId] = existingEntry.id
-                                    }
-                                    
-                                    // ✅ 比较更新时间，如果备份的更新，则覆盖现有数据
-                                    if (entry.updatedAt.after(existingEntry.updatedAt)) {
-                                        val shouldPreserveExistingPassword =
-                                            entry.loginType.equals("PASSWORD", ignoreCase = true) &&
-                                                entry.password.isBlank() &&
-                                                existingEntry.password.isNotBlank()
-
-                                        // 备份的版本更新，覆盖现有条目（保留现有ID）
-                                        val updatedEntry = entry.copy(
-                                            id = existingEntry.id,
-                                            password = if (shouldPreserveExistingPassword) {
-                                                android.util.Log.w(
-                                                    "DataImport",
-                                                    "Skip blank-password overwrite during restore for ${entry.title} (id=${existingEntry.id})"
-                                                )
-                                                existingEntry.password
-                                            } else {
-                                                encryptedImportedPassword
-                                            },
-                                            categoryId = entry.categoryId ?: existingEntry.categoryId,
-                                            isFavorite = existingEntry.isFavorite, // 保留收藏状态
-                                            sortOrder = existingEntry.sortOrder,    // 保留排序
-                                            isGroupCover = existingEntry.isGroupCover // 保留分组封面
-                                        )
-                                        passwordRepository.updatePasswordEntry(updatedEntry)
-                                        android.util.Log.d("DataImport", "Updated existing password with newer version: ${entry.title}")
-                                        count++ // 计入更新数量
-                                    } else if (entry.authenticatorKey.isNotBlank() && existingEntry.authenticatorKey.isBlank()) {
-                                        // 备份版本不是更新的，但有authenticatorKey，现有条目没有，则只更新密钥
-                                        val updatedEntry = existingEntry.copy(
-                                            authenticatorKey = entry.authenticatorKey,
-                                            updatedAt = java.util.Date()
-                                        )
-                                        passwordRepository.updatePasswordEntry(updatedEntry)
-                                        android.util.Log.d("DataImport", "Updated authenticatorKey for existing password: ${entry.title}")
-                                        count++
-                                    } else if (
-                                        !entry.customIconType.equals("NONE", ignoreCase = true) &&
-                                        existingEntry.customIconType.equals("NONE", ignoreCase = true)
-                                    ) {
-                                        val updatedEntry = existingEntry.copy(
-                                            customIconType = entry.customIconType,
-                                            customIconValue = entry.customIconValue?.let { java.io.File(it).name },
-                                            customIconUpdatedAt = entry.customIconUpdatedAt,
-                                            updatedAt = java.util.Date()
-                                        )
-                                        passwordRepository.updatePasswordEntry(updatedEntry)
-                                        android.util.Log.d("DataImport", "Restored custom icon for existing password: ${entry.title}")
-                                        count++
-                                    } else {
-                                        // 现有版本更新或相同，跳过
-                                        skippedCount++
-                                    }
-                                }
-                            } catch (e: Exception) {
-                                errorCount++
-                                android.util.Log.e("DataImport", "Failed to insert password: ${entry.title}", e)
-                            }
-                        }
-
-                        // 1.8 恢复自定义字段（覆盖同条目已有字段，避免旧值残留）
-                        if (content.customFieldsMap.isNotEmpty()) {
-                            var restoredFieldCount = 0
-                            content.customFieldsMap.forEach { (originalId, fieldBackups) ->
-                                val mappedId = passwordIdMap[originalId] ?: return@forEach
-                                val fields = fieldBackups.mapIndexed { index, backup ->
-                                    takagi.ru.monica.data.CustomField(
-                                        id = 0,
-                                        entryId = mappedId,
-                                        title = backup.title,
-                                        value = backup.value,
-                                        isProtected = backup.isProtected,
-                                        sortOrder = index
-                                    )
-                                }
-                                try {
-                                    customFieldDao.replaceFieldsForEntry(mappedId, fields)
-                                    restoredFieldCount += fields.size
-                                } catch (e: Exception) {
-                                    android.util.Log.w(
-                                        "DataImport",
-                                        "Failed to restore custom fields for password $originalId -> $mappedId: ${e.message}"
-                                    )
-                                }
-                            }
-                            if (restoredFieldCount > 0) {
-                                android.util.Log.d("DataImport", "Restored $restoredFieldCount custom fields from ZIP backup")
-                            }
-                        }
-                        
-                        // 1.5 ✅ 更新SSO引用的密码ID (ssoRefEntryId)
-                        // 需要在所有密码插入后更新，因为被引用的密码可能在引用者之后插入
-                        content.passwords.forEach { entry ->
-                            if (entry.ssoRefEntryId != null && entry.ssoRefEntryId > 0) {
-                                try {
-                                    val originalRefId = entry.ssoRefEntryId
-                                    val originalId = entry.id
-                                    val currentId = passwordIdMap[originalId]
-                                    
-                                    if (currentId != null) {
-                                        val newRefId = passwordIdMap[originalRefId]
-                                        val existingEntry = passwordRepository.getPasswordEntryById(currentId)
-                                        
-                                        if (existingEntry != null) {
-                                            if (newRefId != null) {
-                                                // 找到了新的引用ID，更新它
-                                                if (newRefId != existingEntry.ssoRefEntryId) {
-                                                    val updatedEntry = existingEntry.copy(ssoRefEntryId = newRefId)
-                                                    passwordRepository.updatePasswordEntry(updatedEntry)
-                                                    android.util.Log.d("DataImport", "Updated ssoRefEntryId from $originalRefId to $newRefId for password: ${entry.title}")
-                                                }
-                                            } else {
-                                                // 找不到引用的密码（可能已删除或未包含在备份中），清空引用以避免无效引用
-                                                if (existingEntry.ssoRefEntryId != null) {
-                                                    val updatedEntry = existingEntry.copy(ssoRefEntryId = null)
-                                                    passwordRepository.updatePasswordEntry(updatedEntry)
-                                                    android.util.Log.w("DataImport", "Cleared invalid ssoRefEntryId $originalRefId for password: ${entry.title} (referenced password not found)")
-                                                }
-                                            }
-                                        }
-                                    }
-                                } catch (e: Exception) {
-                                    android.util.Log.w("DataImport", "Failed to update ssoRefEntryId for ${entry.title}: ${e.message}")
-                                }
-                            }
-                        }
-                        
-                        // 2. 插入其他安全项目并修复TOTP关联
-                        content.secureItems.forEach { item ->
-                            try {
-                                val itemType = ItemType.valueOf(item.itemType)
-                                // 使用智能重复检测：根据类型比较不同的唯一标识字段
-                                val existingItem = secureItemRepository.findDuplicateSecureItem(
-                                    itemType,
-                                    item.itemData,
-                                    item.title
-                                )
-                                val isDuplicate = existingItem != null
-                                if (!isDuplicate) {
-                                    var itemData = item.itemData
-                                    
-                                    // 如果是TOTP，尝试更新关联的密码ID
-                                    if (itemType == ItemType.TOTP) {
-                                        try {
-                                            val totpData = Json.decodeFromString<TotpData>(itemData)
-                                            val originalBoundId = totpData.boundPasswordId
-                                            if (originalBoundId != null && originalBoundId > 0) {
-                                                val newBoundId = passwordIdMap[originalBoundId]
-                                                if (newBoundId != null) {
-                                                    val updatedTotpData = totpData.copy(boundPasswordId = newBoundId)
-                                                    itemData = Json.encodeToString(updatedTotpData)
-                                                    android.util.Log.d("DataImport", "Updated TOTP boundPasswordId from $originalBoundId to $newBoundId")
-                                                }
-                                            }
-                                        } catch (e: Exception) {
-                                            android.util.Log.w("DataImport", "Failed to parse/update TotpData for linkage", e)
-                                        }
-                                    }
-                                    
-                                    val secureItem = SecureItem(
-                                        id = 0,
-                                        itemType = itemType,
-                                        title = item.title,
-                                        itemData = itemData,
-                                        notes = item.notes,
-                                        isFavorite = item.isFavorite,
-                                        imagePaths = item.imagePaths,
-                                        createdAt = Date(item.createdAt),
-                                        updatedAt = Date(item.updatedAt),
-                                        categoryId = item.categoryId,
-                                        keepassDatabaseId = item.keepassDatabaseId,
-                                        keepassGroupPath = item.keepassGroupPath,
-                                        bitwardenVaultId = item.bitwardenVaultId,
-                                        bitwardenFolderId = item.bitwardenFolderId
-                                    )
-                                    secureItemRepository.insertItem(secureItem)
-                                    count++
-                                } else {
-                                    skippedCount++
-                                }
-                            } catch (e: Exception) {
-                                errorCount++
-                                android.util.Log.e("DataImport", "Failed to insert item: ${item.title}", e)
-                            }
-                        }
-                        
-                        android.util.Log.d("DataImport", "ZIP Import complete: success=$count, skipped=$skippedCount, failed=$errorCount")
-                        Result.success(count)
+                        val stats = BackupRestoreApplier.applyRestoreResult(
+                            context = context,
+                            restoreResult = restoreResult,
+                            passwordRepository = passwordRepository,
+                            secureItemRepository = secureItemRepository,
+                            localOnlyDedup = true,
+                            logTag = "DataImport"
+                        )
+                        Result.success(stats.totalImported())
                     },
                     onFailure = { error ->
                         // 如果是密码错误，抛出特定的异常以便UI处理
@@ -1184,33 +965,4 @@ class DataExportImportViewModel(
         return Result.success(count)
     }
 
-    private fun encryptImportedPasswordForDisplay(plainPassword: String): String {
-        val primaryEncrypted = securityManager.encryptData(plainPassword)
-        val primaryReadable = runCatching { securityManager.decryptData(primaryEncrypted) }
-            .getOrNull()
-            ?.let { it == plainPassword }
-            ?: false
-        if (primaryReadable) {
-            return primaryEncrypted
-        }
-
-        android.util.Log.w(
-            "DataImport",
-            "Imported password encrypted payload is not immediately readable; fallback to legacy V1"
-        )
-        val legacyEncrypted = securityManager.encryptDataLegacyCompat(plainPassword)
-        val legacyReadable = runCatching { securityManager.decryptData(legacyEncrypted) }
-            .getOrNull()
-            ?.let { it == plainPassword }
-            ?: false
-        return if (legacyReadable) {
-            legacyEncrypted
-        } else {
-            android.util.Log.w(
-                "DataImport",
-                "Legacy fallback is still unreadable; keep primary encrypted payload"
-            )
-            primaryEncrypted
-        }
-    }
 }

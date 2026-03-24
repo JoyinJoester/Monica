@@ -769,6 +769,13 @@
     <string name="no_history_records">No history records</string>
     <string name="password_history_title">Password History</string>
     <string name="password_history_last_used">Last used: %1$s</string>
+    <string name="password_history_description">Stored locally on this device. Keeps the 10 most recent passwords.</string>
+    <string name="password_history_latest">Latest</string>
+    <string name="password_history_unavailable">Temporarily unavailable. Unlock again or update the password to refresh this history entry.</string>
+    <string name="delete_password_history_entry_title">Delete history password</string>
+    <string name="delete_password_history_entry_message">Delete this local history password record? This cannot be undone.</string>
+    <string name="clear_password_history_title">Clear password history</string>
+    <string name="clear_password_history_message">Clear all local history passwords for this account? This cannot be undone.</string>
     <string name="sync_conflict">Sync Conflict</string>
     <string name="modified_field">Modified %1$s</string>
     <string name="restore_version">Restore Version</string>
@@ -1679,6 +1686,7 @@
     <string name="history">History</string>
     <string name="no_history">No history yet</string>
     <string name="clear_history">Clear History</string>
+    <string name="clear_password_history">Clear Password History</string>
     <string name="copied_to_clipboard">Copied to clipboard</string>
     <string name="copy_password_desc">Copy password</string>
     <string name="saved_from_generator_history">Saved from password generator history\nGenerated at: %s</string>

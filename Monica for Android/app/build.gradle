@@ -11,12 +11,14 @@ android {
     namespace 'takagi.ru.monica'
     compileSdk 35
 
+    def previewVersionSuffix = project.findProperty('previewVersionSuffix')?.toString()?.trim()
+
     defaultConfig {
         applicationId "takagi.ru.monica"
         minSdk 26
         targetSdk 34
         versionCode 10
-        versionName "1.0.281"
+        versionName previewVersionSuffix ? "1.0.281-${previewVersionSuffix}" : "1.0.281"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -85,6 +87,11 @@ android {
 
 configurations.configureEach {
     resolutionStrategy.force(
+        "org.jetbrains.kotlin:kotlin-bom:2.1.20",
+        "org.jetbrains.kotlin:kotlin-stdlib:2.1.20",
+        "org.jetbrains.kotlin:kotlin-stdlib-common:2.1.20",
+        "org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.1.20",
+        "org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.1.20",
         "org.jetbrains.kotlinx:kotlinx-serialization-bom:1.6.0",
         "org.jetbrains.kotlinx:kotlinx-serialization-core:1.6.0",
         "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.6.0",
@@ -232,3 +239,4 @@ dependencies {
     debugImplementation libs.androidx.ui.tooling
     debugImplementation libs.androidx.ui.test.manifest
 }
+

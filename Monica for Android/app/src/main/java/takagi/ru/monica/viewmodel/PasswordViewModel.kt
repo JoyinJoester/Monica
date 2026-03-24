@@ -29,6 +29,7 @@ import takagi.ru.monica.utils.KeePassEntryData
 import takagi.ru.monica.utils.KeePassKdbxService
 import takagi.ru.monica.utils.buildKeePassPathKey
 import kotlinx.serialization.json.Json
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -709,6 +710,17 @@ class PasswordViewModel(
             current = decrypted
         }
         return current
+    }
+
+    private suspend fun decodeHistoryPasswordForDisplay(entry: PasswordHistoryEntry): String {
+        val decoded = decryptForDisplay(entry.password)
+        if (decoded.isBlank()) return ""
+
+        val stableEncoded = securityManager.encryptDataLegacyCompat(decoded)
+        if (stableEncoded != entry.password) {
+            repository.updatePasswordHistoryPassword(entry.id, stableEncoded)
+        }
+        return decoded
     }
 
     private fun syncKeePassDatabase(databaseId: Long, forceRefresh: Boolean = false) {
@@ -1477,7 +1489,7 @@ class PasswordViewModel(
         repository.insertPasswordHistory(
             PasswordHistoryEntry(
                 entryId = entryId,
-                password = securityManager.encryptData(plainPassword),
+                password = securityManager.encryptDataLegacyCompat(plainPassword),
                 lastUsedAt = Date()
             )
         )
@@ -1877,10 +1889,28 @@ class PasswordViewModel(
     fun getPasswordHistoryFlow(passwordId: Long): Flow<List<PasswordHistoryEntry>> {
         return repository.getPasswordHistoryByEntryId(passwordId)
             .map { entries ->
-                entries.map { entry ->
-                    entry.copy(password = decryptForDisplay(entry.password))
+                entries.mapNotNull { entry ->
+                    val decoded = decodeHistoryPasswordForDisplay(entry)
+                    if (decoded.isBlank()) {
+                        null
+                    } else {
+                        entry.copy(password = decoded)
+                    }
                 }
             }
+            .flowOn(Dispatchers.IO)
+    }
+
+    fun deletePasswordHistoryEntry(historyId: Long) {
+        viewModelScope.launch {
+            repository.deletePasswordHistoryById(historyId)
+        }
+    }
+
+    fun clearPasswordHistory(entryId: Long) {
+        viewModelScope.launch {
+            repository.clearPasswordHistory(entryId)
+        }
     }
 
     /**

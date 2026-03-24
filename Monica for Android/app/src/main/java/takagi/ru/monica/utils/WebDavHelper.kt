@@ -12,6 +12,7 @@ import kotlinx.coroutines.withContext
 import takagi.ru.monica.autofill_ng.AutofillPreferences
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.PasswordHistoryEntry
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.PasswordHistoryManager
 import takagi.ru.monica.data.BackupPreferences
@@ -23,6 +24,7 @@ import takagi.ru.monica.data.ItemCounts
 import takagi.ru.monica.data.FailedItem
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.util.DataExportImportManager
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -87,6 +89,13 @@ private data class PasswordBackupEntry(
     val customIconUpdatedAt: Long = 0L,
     // ✅ 自定义字段
     val customFields: List<CustomFieldBackupEntry> = emptyList()
+)
+
+@Serializable
+data class PasswordHistoryBackupEntry(
+    val entryId: Long = 0,
+    val password: String = "",
+    val lastUsedAt: Long = System.currentTimeMillis()
 )
 
 @Serializable
@@ -826,6 +835,7 @@ class WebDavHelper(
             val passwordsCsvFile = File(cacheBackupDir, "Monica_${timestamp}_password.csv")
             val cardsDocsCsvFile = File(cacheBackupDir, "Monica_${timestamp}_cards_docs.csv")
             val foldersRootDir = File(cacheBackupDir, "folders")
+            val passwordHistoryJsonFile = File(cacheBackupDir, "password_history.json")
             
             val historyJsonFile = File(context.cacheDir, "Monica_${timestamp}_generated_history.json")
             val zipFile = File(context.cacheDir, "monica_backup_$timestamp.zip")
@@ -858,7 +868,9 @@ class WebDavHelper(
                 val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
                 val categoryDao = database.categoryDao()
                 val customFieldDao = database.customFieldDao()
+                val passwordHistoryDao = database.passwordHistoryDao()
                 val passkeyDao = database.passkeyDao()
+                val securityManager = SecurityManager(context)
                 val allCategories = try { categoryDao.getAllCategories().first() } catch (e: Exception) { emptyList() }
                 val categoryMap = allCategories.associateBy { it.id }
                 val passwordCategoryById = filteredPasswords.associate { it.id to it.categoryId }
@@ -955,6 +967,28 @@ class WebDavHelper(
                         exportPasswordsToCSV(filteredPasswords, passwordsCsvFile, allCustomFieldsMap)
                     } catch (e: Exception) {
                         android.util.Log.w("WebDavHelper", "CSV backup failed: ${e.message}")
+                    }
+
+                    try {
+                        val historyByEntryId = passwordHistoryDao.getAllHistorySync()
+                            .groupBy(PasswordHistoryEntry::entryId)
+                        val passwordHistoryBackups = filteredPasswords.flatMap { password ->
+                            historyByEntryId[password.id].orEmpty().mapNotNull { historyEntry ->
+                                normalizePasswordHistoryForBackup(historyEntry, securityManager)
+                            }
+                        }
+                        if (passwordHistoryBackups.isNotEmpty()) {
+                            passwordHistoryJsonFile.writeText(
+                                Json.encodeToString(
+                                    kotlinx.serialization.builtins.ListSerializer(PasswordHistoryBackupEntry.serializer()),
+                                    passwordHistoryBackups
+                                ),
+                                Charsets.UTF_8
+                            )
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.w("WebDavHelper", "Password history backup failed: ${e.message}")
+                        warnings.add("历史密码备份失败: ${e.message}")
                     }
 
                     if (uploadedPasswordIconFiles.isNotEmpty()) {
@@ -1127,6 +1161,9 @@ class WebDavHelper(
                     }
                     if (preferences.includePasswords && passwordsCsvFile.exists()) {
                         addFileToZip(zipOut, passwordsCsvFile, passwordsCsvFile.name)
+                    }
+                    if (preferences.includePasswords && passwordHistoryJsonFile.exists()) {
+                        addFileToZip(zipOut, passwordHistoryJsonFile, passwordHistoryJsonFile.name)
                     }
                     if (cardsDocsCsvFile.exists()) addFileToZip(zipOut, cardsDocsCsvFile, cardsDocsCsvFile.name)
                     if (preferences.includeGeneratorHistory) {
@@ -1935,6 +1972,7 @@ class WebDavHelper(
                 val passwords = mutableListOf<PasswordEntry>()
                 val secureItems = mutableListOf<DataExportImportManager.ExportItem>()
                 val passkeys = mutableListOf<PasskeyEntry>()
+                val passwordHistory = mutableListOf<PasswordHistoryBackupEntry>()
                 
                 // 临时存储CSV文件路径，延后处理
                 var passwordsCsvFile: File? = null
@@ -2046,6 +2084,19 @@ class WebDavHelper(
                                             title = entryName,
                                             reason = "JSON解析失败"
                                         ))
+                                    }
+                                }
+                                entryName.equals("password_history.json", ignoreCase = true) -> {
+                                    try {
+                                        val historyJson = tempFile.readText(Charsets.UTF_8)
+                                        val json = Json { ignoreUnknownKeys = true }
+                                        passwordHistory += json.decodeFromString(
+                                            kotlinx.serialization.builtins.ListSerializer(PasswordHistoryBackupEntry.serializer()),
+                                            historyJson
+                                        )
+                                    } catch (e: Exception) {
+                                        android.util.Log.w("WebDavHelper", "Failed to restore password history: ${e.message}")
+                                        warnings.add("历史密码恢复失败: ${e.message}")
                                     }
                                 }
                                 entryName.endsWith("_generated_history.json", ignoreCase = true) -> {
@@ -2846,7 +2897,8 @@ class WebDavHelper(
                         passwords = passwords,
                         secureItems = normalizedSecureItems,
                         passkeys = passkeys,
-                        customFieldsMap = pendingCustomFields.toMap()
+                        customFieldsMap = pendingCustomFields.toMap(),
+                        passwordHistory = passwordHistory
                     ),
                     report = report
                 ))
@@ -3075,6 +3127,56 @@ class WebDavHelper(
     
     // 临时存储待恢复的自定义字段（原始ID -> 字段列表）
     private val pendingCustomFields = mutableMapOf<Long, List<CustomFieldBackupEntry>>()
+
+    private fun normalizePasswordHistoryForBackup(
+        entry: PasswordHistoryEntry,
+        securityManager: SecurityManager
+    ): PasswordHistoryBackupEntry? {
+        val decoded = decodePasswordHistoryForBackup(entry.password, securityManager) ?: return null
+        return PasswordHistoryBackupEntry(
+            entryId = entry.entryId,
+            password = securityManager.encryptDataLegacyCompat(decoded),
+            lastUsedAt = entry.lastUsedAt.time
+        )
+    }
+
+    private fun decodePasswordHistoryForBackup(
+        value: String,
+        securityManager: SecurityManager
+    ): String? {
+        if (value.isEmpty()) return ""
+
+        var current = value
+        var changed = false
+        repeat(3) {
+            val decrypted = runCatching { securityManager.decryptData(current) }.getOrNull() ?: return@repeat
+            if (decrypted == current) {
+                return current
+            }
+            current = decrypted
+            changed = true
+        }
+        if (changed) {
+            return current
+        }
+
+        return if (looksLikeEncryptedHistoryPayload(value)) {
+            null
+        } else {
+            value
+        }
+    }
+
+    private fun looksLikeEncryptedHistoryPayload(value: String): Boolean {
+        val trimmed = value.trim()
+        if (trimmed.startsWith("MDK|") || trimmed.startsWith("V2|")) {
+            return true
+        }
+        return runCatching {
+            val decoded = android.util.Base64.decode(trimmed, android.util.Base64.DEFAULT)
+            decoded.size >= 28
+        }.getOrDefault(false)
+    }
 
     private fun restoreNoteFromJson(file: File): Pair<DataExportImportManager.ExportItem, String?>? {
         return try {
@@ -3939,7 +4041,8 @@ data class BackupContent(
     val passwords: List<PasswordEntry>,
     val secureItems: List<DataExportImportManager.ExportItem>,
     val passkeys: List<PasskeyEntry> = emptyList(),
-    val customFieldsMap: Map<Long, List<CustomFieldBackupEntry>> = emptyMap()
+    val customFieldsMap: Map<Long, List<CustomFieldBackupEntry>> = emptyMap(),
+    val passwordHistory: List<PasswordHistoryBackupEntry> = emptyList()
 )
 
 /**

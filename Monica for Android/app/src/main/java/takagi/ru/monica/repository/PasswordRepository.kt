@@ -209,8 +209,20 @@ class PasswordRepository(
         return passwordHistoryDao?.insert(entry) ?: -1L
     }
 
+    suspend fun updatePasswordHistoryPassword(historyId: Long, password: String) {
+        passwordHistoryDao?.updatePasswordById(historyId, password)
+    }
+
     suspend fun trimPasswordHistory(entryId: Long, limit: Int) {
         passwordHistoryDao?.trimToLimit(entryId, limit)
+    }
+
+    suspend fun deletePasswordHistoryById(id: Long) {
+        passwordHistoryDao?.deleteById(id)
+    }
+
+    suspend fun clearPasswordHistory(entryId: Long) {
+        passwordHistoryDao?.deleteByEntryId(entryId)
     }
     
     suspend fun toggleFavorite(id: Long, isFavorite: Boolean) {

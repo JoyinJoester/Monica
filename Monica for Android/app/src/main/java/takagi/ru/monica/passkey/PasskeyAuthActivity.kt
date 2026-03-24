@@ -118,6 +118,12 @@ class PasskeyAuthActivity : FragmentActivity() {
         
         val requestJson = intent.getStringExtra(MonicaCredentialProviderService.EXTRA_REQUEST_JSON) ?: ""
         val credentialId = intent.getStringExtra(MonicaCredentialProviderService.EXTRA_CREDENTIAL_ID) ?: ""
+
+        recordPasskeyEvent(
+            stage = "request_received",
+            requestJson = requestJson,
+            credentialId = credentialId,
+        )
         
         Log.i(
             TAG,
@@ -127,6 +133,13 @@ class PasskeyAuthActivity : FragmentActivity() {
         // 检查必要参数
         if (credentialId.isBlank()) {
             Log.e(TAG, "credentialId is empty!")
+            recordPasskeyEvent(
+                stage = "request_rejected",
+                requestJson = requestJson,
+                credentialId = credentialId,
+                errorType = "GetCredentialUnknownException",
+                errorMessage = "Missing credential ID",
+            )
             val resultIntent = Intent()
             PendingIntentHandler.setGetCredentialException(
                 resultIntent,
@@ -139,6 +152,13 @@ class PasskeyAuthActivity : FragmentActivity() {
         
         if (requestJson.isBlank()) {
             Log.e(TAG, "requestJson is empty!")
+            recordPasskeyEvent(
+                stage = "request_rejected",
+                requestJson = requestJson,
+                credentialId = credentialId,
+                errorType = "GetCredentialUnknownException",
+                errorMessage = "Missing request JSON",
+            )
             val resultIntent = Intent()
             PendingIntentHandler.setGetCredentialException(
                 resultIntent,
@@ -164,6 +184,13 @@ class PasskeyAuthActivity : FragmentActivity() {
         val currentPasskey = passkey
         if (currentPasskey == null) {
             Log.e(TAG, "Passkey not found: $credentialId")
+            recordPasskeyEvent(
+                stage = "request_rejected",
+                requestJson = requestJson,
+                credentialId = credentialId,
+                errorType = "GetCredentialUnknownException",
+                errorMessage = "Passkey not found",
+            )
             // 必须使用 PendingIntentHandler 设置异常，否则系统会显示 Authentication failed
             val resultIntent = Intent()
             PendingIntentHandler.setGetCredentialException(
@@ -184,6 +211,13 @@ class PasskeyAuthActivity : FragmentActivity() {
                 rpId = currentPasskey.rpId,
                 callingAppInfo = pendingCallingAppInfo
             )
+            recordPasskeyEvent(
+                stage = "validation_done",
+                requestJson = requestJson,
+                rpId = currentPasskey.rpId,
+                credentialId = currentPasskey.credentialId,
+                verdict = verdict,
+            )
             PasskeyRequestValidator.logShadow(
                 flowTag = "AUTH",
                 rpId = currentPasskey.rpId,
@@ -202,6 +236,15 @@ class PasskeyAuthActivity : FragmentActivity() {
                 "rpId=${currentPasskey.rpId}|source=${verdict.resolvedSource}|reasons=${verdict.reasons.joinToString(",")}"
             )
             if (strictEnabled && verdict.strictBlock) {
+                recordPasskeyEvent(
+                    stage = "request_blocked",
+                    requestJson = requestJson,
+                    rpId = currentPasskey.rpId,
+                    credentialId = currentPasskey.credentialId,
+                    verdict = verdict,
+                    errorType = "GetCredentialUnknownException",
+                    errorMessage = "Passkey request validation failed",
+                )
                 val resultIntent = Intent()
                 PendingIntentHandler.setGetCredentialException(
                     resultIntent,
@@ -265,10 +308,22 @@ class PasskeyAuthActivity : FragmentActivity() {
                                 masterPasswordError.value = false
                                 showMasterPasswordDialog.value = false
                                 repository.logAudit("PASSKEY_AUTH_MASTER_PASSWORD_SUCCESS", currentPasskey.credentialId)
+                                recordPasskeyEvent(
+                                    stage = "master_password_success",
+                                    rpId = currentPasskey.rpId,
+                                    credentialId = currentPasskey.credentialId,
+                                )
                                 authenticateWithPasskey(pendingRequestJson, currentPasskey)
                             } else {
                                 masterPasswordError.value = true
                                 repository.logAudit("PASSKEY_AUTH_MASTER_PASSWORD_FAILED", currentPasskey.credentialId)
+                                recordPasskeyEvent(
+                                    stage = "master_password_failed",
+                                    rpId = currentPasskey.rpId,
+                                    credentialId = currentPasskey.credentialId,
+                                    errorType = "MasterPasswordVerificationFailed",
+                                    errorMessage = "Invalid master password",
+                                )
                             }
                         },
                         isError = masterPasswordError.value
@@ -284,9 +339,21 @@ class PasskeyAuthActivity : FragmentActivity() {
      */
     private fun requestBiometricAuth(passkey: PasskeyEntry) {
         repository.logAudit("PASSKEY_AUTH_BIOMETRIC_REQUESTED", passkey.credentialId)
+        recordPasskeyEvent(
+            stage = "biometric_requested",
+            rpId = passkey.rpId,
+            credentialId = passkey.credentialId,
+        )
 
         if (!biometricHelper.isBiometricAvailable()) {
             repository.logAudit("PASSKEY_AUTH_BIOMETRIC_UNAVAILABLE", passkey.credentialId)
+            recordPasskeyEvent(
+                stage = "biometric_unavailable",
+                rpId = passkey.rpId,
+                credentialId = passkey.credentialId,
+                errorType = "BiometricUnavailable",
+                errorMessage = "Biometric unavailable, fallback to master password",
+            )
             showMasterPasswordDialog.value = true
             return
         }
@@ -298,18 +365,37 @@ class PasskeyAuthActivity : FragmentActivity() {
             negativeButtonText = getString(R.string.cancel),
             onSuccess = {
                 repository.logAudit("PASSKEY_AUTH_BIOMETRIC_SUCCESS", passkey.credentialId)
+                recordPasskeyEvent(
+                    stage = "biometric_success",
+                    rpId = passkey.rpId,
+                    credentialId = passkey.credentialId,
+                )
                 authenticateWithPasskey(pendingRequestJson, passkey)
             },
             onError = { errorCode, errString ->
                 repository.logAudit("PASSKEY_AUTH_BIOMETRIC_FAILED", 
                     "${passkey.credentialId}|error=$errorCode|$errString")
                 Log.e(TAG, "Biometric auth failed: $errorCode - $errString")
+                recordPasskeyEvent(
+                    stage = "biometric_failed",
+                    rpId = passkey.rpId,
+                    credentialId = passkey.credentialId,
+                    errorType = "BiometricError:$errorCode",
+                    errorMessage = errString.toString(),
+                )
                 // 生物识别失败时，提供主密码验证回退
                 showMasterPasswordDialog.value = true
             },
             onCancel = {
                 repository.logAudit("PASSKEY_AUTH_BIOMETRIC_CANCELLED", passkey.credentialId)
                 Log.d(TAG, "Biometric auth cancelled by user")
+                recordPasskeyEvent(
+                    stage = "biometric_cancelled",
+                    rpId = passkey.rpId,
+                    credentialId = passkey.credentialId,
+                    errorType = "BiometricCancelled",
+                    errorMessage = "User cancelled biometric auth",
+                )
                 // 用户取消时，提供主密码验证回退
                 showMasterPasswordDialog.value = true
             }
@@ -321,6 +407,12 @@ class PasskeyAuthActivity : FragmentActivity() {
         passkey: PasskeyEntry
     ) {
         try {
+            recordPasskeyEvent(
+                stage = "auth_started",
+                requestJson = requestJson,
+                rpId = passkey.rpId,
+                credentialId = passkey.credentialId,
+            )
             val json = JSONObject(requestJson)
             
             // 解析 challenge
@@ -416,6 +508,12 @@ class PasskeyAuthActivity : FragmentActivity() {
             Log.d(TAG, "Authentication successful for: ${passkey.credentialId}")
             repository.logAudit("PASSKEY_AUTH_SUCCESS", 
                 "${passkey.credentialId}|rpId=${passkey.rpId}|signCount=$newSignCount")
+            recordPasskeyEvent(
+                stage = "result_sent",
+                requestJson = requestJson,
+                rpId = passkey.rpId,
+                credentialId = passkey.credentialId,
+            )
             
             // 返回结果
             val credentialResponse = PublicKeyCredential(responseJson.toString())
@@ -431,6 +529,14 @@ class PasskeyAuthActivity : FragmentActivity() {
             Log.e(TAG, "Failed to authenticate with passkey", e)
             repository.logAudit("PASSKEY_AUTH_ERROR", 
                 "${passkey.credentialId}|error=${e.message}")
+            recordPasskeyEvent(
+                stage = "auth_failed",
+                requestJson = requestJson,
+                rpId = passkey.rpId,
+                credentialId = passkey.credentialId,
+                errorType = e.javaClass.simpleName,
+                errorMessage = e.message,
+            )
             val resultIntent = Intent()
             PendingIntentHandler.setGetCredentialException(
                 resultIntent,
@@ -439,6 +545,42 @@ class PasskeyAuthActivity : FragmentActivity() {
             setResult(Activity.RESULT_OK, resultIntent)
             finish()
         }
+    }
+
+    private fun recordPasskeyEvent(
+        stage: String,
+        requestJson: String = pendingRequestJson,
+        rpId: String? = passkey?.rpId,
+        credentialId: String? = passkey?.credentialId,
+        verdict: PasskeyValidationVerdict? = null,
+        errorType: String? = null,
+        errorMessage: String? = null,
+    ) {
+        PasskeyValidationDiagnostics.recordEvent(
+            context = this,
+            flowTag = "AUTH",
+            stage = stage,
+            rpId = rpId,
+            callingPackage = pendingCallingAppInfo?.packageName,
+            requestOrigin = extractRequestOrigin(requestJson),
+            callingOrigin = pendingCallingAppInfo?.origin,
+            resolvedOrigin = verdict?.resolvedOrigin,
+            resolvedSource = verdict?.resolvedSource?.name,
+            reasons = verdict?.reasons ?: emptyList(),
+            strictBlock = verdict?.strictBlock ?: false,
+            requestJsonSize = requestJson.length,
+            credentialId = credentialId,
+            clientDataHashPresent = pendingClientDataHash != null,
+            errorType = errorType,
+            errorMessage = errorMessage,
+        )
+    }
+
+    private fun extractRequestOrigin(requestJson: String): String? {
+        if (requestJson.isBlank()) return null
+        return runCatching {
+            JSONObject(requestJson).optString("origin").takeIf { it.isNotBlank() }
+        }.getOrNull()
     }
     
     private fun createAuthenticatorData(rpId: String, signCount: Int): ByteArray {
