@@ -1,21 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-   Backup configuration for Monica password manager
-   保护用户数据,包括密码数据库、设置等
+   System backup is intentionally disabled in AndroidManifest.xml.
+
+   Monica stores vault data that may be encrypted with Android Keystore /
+   device-bound secrets. Restoring app data onto another device can leave
+   the database present but the secrets undecryptable, which then surfaces
+   as "password disappeared" style failures.
+
+   Keep this file so the rationale stays close to the Android backup config.
 -->
-<full-backup-content>
-    <!-- 备份 SharedPreferences (应用设置) -->
-    <include domain="sharedpref" path="."/>
-    
-    <!-- 备份数据库文件 (密码数据) -->
-    <include domain="database" path="."/>
-    
-    <!-- 备份应用内部文件 -->
-    <include domain="file" path="."/>
-    
-    <!-- 排除敏感的设备特定文件 -->
-    <exclude domain="sharedpref" path="device.xml"/>
-    
-    <!-- 排除临时缓存 -->
-    <exclude domain="file" path="cache"/>
-</full-backup-content>
+<full-backup-content />

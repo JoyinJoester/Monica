@@ -85,6 +85,8 @@ import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.isKeePassOwned
+import takagi.ru.monica.data.isLocalOnlyItem
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
@@ -541,99 +543,166 @@ fun CardWalletScreen(
     }
 
     fun performBatchMove(target: UnifiedMoveCategoryTarget, action: UnifiedMoveAction) {
-        val targetCategoryId: Long? = when (target) {
-            UnifiedMoveCategoryTarget.Uncategorized -> null
-            is UnifiedMoveCategoryTarget.MonicaCategory -> target.categoryId
-            else -> null
-        }
-        val targetKeepassDatabaseId: Long? = when (target) {
-            is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> target.databaseId
-            is UnifiedMoveCategoryTarget.KeePassGroupTarget -> target.databaseId
-            else -> null
-        }
-        val targetKeepassGroupPath: String? = when (target) {
-            is UnifiedMoveCategoryTarget.KeePassGroupTarget -> target.groupPath
-            else -> null
-        }
-        val targetBitwardenVaultId: Long? = when (target) {
-            is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> target.vaultId
-            is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> target.vaultId
-            else -> null
-        }
-        val targetBitwardenFolderId: String? = when (target) {
-            is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> target.folderId
-            else -> null
-        }
+        scope.launch {
+            val targetCategoryId: Long? = when (target) {
+                UnifiedMoveCategoryTarget.Uncategorized -> null
+                is UnifiedMoveCategoryTarget.MonicaCategory -> target.categoryId
+                else -> null
+            }
+            val targetKeepassDatabaseId: Long? = when (target) {
+                is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> target.databaseId
+                is UnifiedMoveCategoryTarget.KeePassGroupTarget -> target.databaseId
+                else -> null
+            }
+            val targetKeepassGroupPath: String? = when (target) {
+                is UnifiedMoveCategoryTarget.KeePassGroupTarget -> target.groupPath
+                else -> null
+            }
+            val targetBitwardenVaultId: Long? = when (target) {
+                is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> target.vaultId
+                is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> target.vaultId
+                else -> null
+            }
+            val targetBitwardenFolderId: String? = when (target) {
+                is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> target.folderId
+                else -> null
+            }
+            val isMonicaLocalTarget = target == UnifiedMoveCategoryTarget.Uncategorized ||
+                target is UnifiedMoveCategoryTarget.MonicaCategory
 
-        val selectedItems = allItems.filter { selectedIds.contains(it.id) }
-        selectedItems.forEach { item ->
-            when {
-                action == UnifiedMoveAction.COPY && item.itemType == ItemType.BANK_CARD -> {
-                    val cardData = bankCardViewModel.parseCardData(item.itemData) ?: return@forEach
-                    bankCardViewModel.addCard(
-                        title = item.title,
-                        cardData = cardData,
-                        notes = item.notes,
-                        isFavorite = item.isFavorite,
-                        imagePaths = item.imagePaths,
-                        categoryId = targetCategoryId,
-                        keepassDatabaseId = targetKeepassDatabaseId,
-                        keepassGroupPath = targetKeepassGroupPath,
-                        bitwardenVaultId = targetBitwardenVaultId,
-                        bitwardenFolderId = targetBitwardenFolderId
-                    )
-                }
-                action == UnifiedMoveAction.COPY && item.itemType == ItemType.DOCUMENT -> {
-                    val documentData = documentViewModel.parseDocumentData(item.itemData) ?: return@forEach
-                    documentViewModel.addDocument(
-                        title = item.title,
-                        documentData = documentData,
-                        notes = item.notes,
-                        isFavorite = item.isFavorite,
-                        imagePaths = item.imagePaths,
-                        categoryId = targetCategoryId,
-                        keepassDatabaseId = targetKeepassDatabaseId,
-                        keepassGroupPath = targetKeepassGroupPath,
-                        bitwardenVaultId = targetBitwardenVaultId,
-                        bitwardenFolderId = targetBitwardenFolderId
-                    )
-                }
-                item.itemType == ItemType.BANK_CARD -> {
-                    bankCardViewModel.moveCardToStorage(
-                        id = item.id,
-                        categoryId = targetCategoryId,
-                        keepassDatabaseId = targetKeepassDatabaseId,
-                        keepassGroupPath = targetKeepassGroupPath,
-                        bitwardenVaultId = targetBitwardenVaultId,
-                        bitwardenFolderId = targetBitwardenFolderId
-                    )
-                }
-                item.itemType == ItemType.DOCUMENT -> {
-                    documentViewModel.moveDocumentToStorage(
-                        id = item.id,
-                        categoryId = targetCategoryId,
-                        keepassDatabaseId = targetKeepassDatabaseId,
-                        keepassGroupPath = targetKeepassGroupPath,
-                        bitwardenVaultId = targetBitwardenVaultId,
-                        bitwardenFolderId = targetBitwardenFolderId
-                    )
+            val selectedItems = allItems.filter { selectedIds.contains(it.id) }
+            val effectiveAction = if (action == UnifiedMoveAction.MOVE && selectedItems.any { it.isKeePassOwned() }) {
+                android.widget.Toast.makeText(
+                    context,
+                    context.getString(R.string.keepass_copy_only_hint),
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+                UnifiedMoveAction.COPY
+            } else {
+                action
+            }
+            var successCount = 0
+            var failedCount = 0
+
+            selectedItems.forEach { item ->
+                when {
+                    effectiveAction == UnifiedMoveAction.COPY && item.itemType == ItemType.BANK_CARD && isMonicaLocalTarget -> {
+                        if (bankCardViewModel.copyCardToMonicaLocal(item, targetCategoryId) != null) successCount++ else failedCount++
+                    }
+                    effectiveAction == UnifiedMoveAction.COPY && item.itemType == ItemType.BANK_CARD -> {
+                        val cardData = bankCardViewModel.parseCardData(item.itemData) ?: run {
+                            failedCount++
+                            return@forEach
+                        }
+                        bankCardViewModel.addCard(
+                            title = item.title,
+                            cardData = cardData,
+                            notes = item.notes,
+                            isFavorite = item.isFavorite,
+                            imagePaths = item.imagePaths,
+                            categoryId = targetCategoryId,
+                            keepassDatabaseId = targetKeepassDatabaseId,
+                            keepassGroupPath = targetKeepassGroupPath,
+                            bitwardenVaultId = targetBitwardenVaultId,
+                            bitwardenFolderId = targetBitwardenFolderId
+                        )
+                        successCount++
+                    }
+                    effectiveAction == UnifiedMoveAction.COPY && item.itemType == ItemType.DOCUMENT && isMonicaLocalTarget -> {
+                        if (documentViewModel.copyDocumentToMonicaLocal(item, targetCategoryId) != null) successCount++ else failedCount++
+                    }
+                    effectiveAction == UnifiedMoveAction.COPY && item.itemType == ItemType.DOCUMENT -> {
+                        val documentData = documentViewModel.parseDocumentData(item.itemData) ?: run {
+                            failedCount++
+                            return@forEach
+                        }
+                        documentViewModel.addDocument(
+                            title = item.title,
+                            documentData = documentData,
+                            notes = item.notes,
+                            isFavorite = item.isFavorite,
+                            imagePaths = item.imagePaths,
+                            categoryId = targetCategoryId,
+                            keepassDatabaseId = targetKeepassDatabaseId,
+                            keepassGroupPath = targetKeepassGroupPath,
+                            bitwardenVaultId = targetBitwardenVaultId,
+                            bitwardenFolderId = targetBitwardenFolderId
+                        )
+                        successCount++
+                    }
+                    item.itemType == ItemType.BANK_CARD && isMonicaLocalTarget -> {
+                        val moved = if (item.isLocalOnlyItem()) {
+                            bankCardViewModel.moveCardToStorage(
+                                id = item.id,
+                                categoryId = targetCategoryId,
+                                keepassDatabaseId = null,
+                                keepassGroupPath = null,
+                                bitwardenVaultId = null,
+                                bitwardenFolderId = null
+                            )
+                            true
+                        } else {
+                            bankCardViewModel.moveCardToMonicaLocal(item, targetCategoryId).isSuccess
+                        }
+                        if (moved) successCount++ else failedCount++
+                    }
+                    item.itemType == ItemType.BANK_CARD -> {
+                        bankCardViewModel.moveCardToStorage(
+                            id = item.id,
+                            categoryId = targetCategoryId,
+                            keepassDatabaseId = targetKeepassDatabaseId,
+                            keepassGroupPath = targetKeepassGroupPath,
+                            bitwardenVaultId = targetBitwardenVaultId,
+                            bitwardenFolderId = targetBitwardenFolderId
+                        )
+                        successCount++
+                    }
+                    item.itemType == ItemType.DOCUMENT && isMonicaLocalTarget -> {
+                        val moved = if (item.isLocalOnlyItem()) {
+                            documentViewModel.moveDocumentToStorage(
+                                id = item.id,
+                                categoryId = targetCategoryId,
+                                keepassDatabaseId = null,
+                                keepassGroupPath = null,
+                                bitwardenVaultId = null,
+                                bitwardenFolderId = null
+                            )
+                            true
+                        } else {
+                            documentViewModel.moveDocumentToMonicaLocal(item, targetCategoryId).isSuccess
+                        }
+                        if (moved) successCount++ else failedCount++
+                    }
+                    item.itemType == ItemType.DOCUMENT -> {
+                        documentViewModel.moveDocumentToStorage(
+                            id = item.id,
+                            categoryId = targetCategoryId,
+                            keepassDatabaseId = targetKeepassDatabaseId,
+                            keepassGroupPath = targetKeepassGroupPath,
+                            bitwardenVaultId = targetBitwardenVaultId,
+                            bitwardenFolderId = targetBitwardenFolderId
+                        )
+                        successCount++
+                    }
                 }
             }
-        }
-        val affectedVaultIds = buildSet {
-            selectedItems.mapNotNullTo(this) { it.bitwardenVaultId }
-            targetBitwardenVaultId?.let { add(it) }
-        }
-        affectedVaultIds.forEach(bitwardenViewModel::requestLocalMutationSync)
 
-        android.widget.Toast.makeText(
-            context,
-            context.getString(R.string.selected_items, selectedItems.size),
-            android.widget.Toast.LENGTH_SHORT
-        ).show()
-        showBatchMoveCategoryDialog = false
-        isSelectionMode = false
-        selectedIds = emptySet()
+            buildSet {
+                selectedItems.mapNotNullTo(this) { it.bitwardenVaultId }
+                targetBitwardenVaultId?.let { add(it) }
+            }.forEach(bitwardenViewModel::requestLocalMutationSync)
+
+            val baseMessage = context.getString(R.string.selected_items, successCount)
+            val toastMessage = if (failedCount > 0) "$baseMessage，失败$failedCount" else baseMessage
+            android.widget.Toast.makeText(
+                context,
+                toastMessage,
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+            showBatchMoveCategoryDialog = false
+            isSelectionMode = false
+            selectedIds = emptySet()
+        }
     }
 
     val filteredItems = remember(allItems, currentTab, searchQuery, selectedCategoryFilter) {
@@ -1344,6 +1413,7 @@ fun CardWalletScreen(
         getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
         getKeePassGroups = getKeePassGroups,
         allowCopy = true,
+        allowMove = allItems.filter { selectedIds.contains(it.id) }.none { it.isKeePassOwned() },
         onTargetSelected = ::performBatchMove
         )
     }

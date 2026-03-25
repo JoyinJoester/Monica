@@ -756,6 +756,7 @@
     <string name="passkey_bitwarden_move_failed">Bitwarden 操作失败，未移动。</string>
     <string name="passkey_bitwarden_move_blocked_count">%1$d 个通行密钥无法迁移到 Bitwarden。</string>
     <string name="passkey_copy_uses_move_hint">通行密钥是唯一凭据，复制将按安全移动处理。</string>
+    <string name="keepass_copy_only_hint">KeePass 来源条目不能移动到其他数据库，只能复制。</string>
     
     <string name="dismiss">关闭</string>
     
@@ -2119,6 +2120,18 @@
     <string name="sync_status_failed_full">同步失败</string>
     <string name="sync_status_conflict_full">存在同步冲突</string>
     <string name="sync_status_local_full">仅本地存储</string>
+    <string name="bitwarden_password_unreadable_inline">这个 Bitwarden 密码当前在本地无法解密，留空保存会保留现有值。</string>
+    <string name="bitwarden_password_unreadable_display">这个密码当前在本机暂时无法读取，请重新解锁或重新同步 Bitwarden。</string>
+    <string name="bitwarden_password_unreadable_copy">这个密码当前暂时无法读取，不能复制。</string>
+    <string name="bitwarden_password_resync_action">重新同步 Bitwarden</string>
+    <string name="bitwarden_password_resync_success">Bitwarden 重新同步完成。</string>
+    <string name="bitwarden_password_resync_failed">Bitwarden 重新同步失败：%1$s</string>
+    <string name="bitwarden_password_resync_blocked">Bitwarden 重新同步被阻止：%1$s</string>
+    <string name="password_owner_conflict_short">来源冲突</string>
+    <string name="password_owner_conflict_database">存储归属冲突</string>
+    <string name="password_owner_conflict_inline">这条数据同时绑定了多个密码库，修复归属冲突前已禁止编辑保存。</string>
+    <string name="password_owner_conflict_display">这条数据当前存在存储归属冲突。需要先修复 Monica 本地、KeePass 与 Bitwarden 的所有权冲突，才能继续编辑。</string>
+    <string name="password_owner_conflict_copy">这条数据存在归属冲突，当前不能安全复制密码。</string>
     <string name="pull_release_to_search">松手搜索</string>
     <string name="pull_release_to_sync_bitwarden">松手进行 Bitwarden 同步</string>
     <string name="pull_syncing_bitwarden">正在同步 Bitwarden...</string>

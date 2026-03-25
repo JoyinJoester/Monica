@@ -4,6 +4,12 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import takagi.ru.monica.domain.provider.BitwardenPasswordProvider
+import takagi.ru.monica.domain.provider.DefaultPasswordProvider
+import takagi.ru.monica.domain.provider.KeePassPasswordProvider
+import takagi.ru.monica.domain.provider.PasswordCommandStateFactory
+import takagi.ru.monica.domain.provider.PasswordProviderRegistry
+import takagi.ru.monica.domain.provider.PasswordSource
 import takagi.ru.monica.keepass.KeePassPasswordCreateExecutor
 import takagi.ru.monica.keepass.KeePassPasswordUpdateExecutor
 import takagi.ru.monica.keepass.KeePassPasswordDeleteExecutor
@@ -11,11 +17,13 @@ import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.CustomField
 import takagi.ru.monica.data.CustomFieldDraft
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
+import takagi.ru.monica.data.PasswordOwnership
 import takagi.ru.monica.data.PasswordArchiveSyncMeta
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordHistoryEntry
 import takagi.ru.monica.data.PasswordHistoryManager
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.resolveOwnership
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.repository.CustomFieldRepository
@@ -28,6 +36,8 @@ import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.utils.KeePassEntryData
 import takagi.ru.monica.utils.KeePassKdbxService
 import takagi.ru.monica.utils.buildKeePassPathKey
+import takagi.ru.monica.ui.model.SecretValueState
+import takagi.ru.monica.ui.model.plainValueOrEmpty
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
@@ -60,6 +70,12 @@ sealed class CategoryFilter {
     data class BitwardenFolderFilter(val folderId: String, val vaultId: Long) : CategoryFilter()
     data class BitwardenVaultStarred(val vaultId: Long) : CategoryFilter()
     data class BitwardenVaultUncategorized(val vaultId: Long) : CategoryFilter()
+}
+
+sealed class BitwardenRecoveryResult {
+    object Success : BitwardenRecoveryResult()
+    data class Error(val message: String) : BitwardenRecoveryResult()
+    data class EmptyVaultBlocked(val reason: String) : BitwardenRecoveryResult()
 }
 
 /**
@@ -123,6 +139,24 @@ class PasswordViewModel(
     private val keepassPasswordDeleteExecutor = KeePassPasswordDeleteExecutor(keepassBridge)
     private val keepassPasswordCreateExecutor = KeePassPasswordCreateExecutor(keepassBridge)
     private val keepassPasswordUpdateExecutor = KeePassPasswordUpdateExecutor(keepassBridge)
+    private val defaultPasswordProvider = DefaultPasswordProvider(
+        decodePassword = ::decodePasswordOrNull,
+        encryptPassword = securityManager::encryptData
+    )
+    private val passwordCommandStateFactory = PasswordCommandStateFactory()
+    private val passwordProviderRegistry = PasswordProviderRegistry(
+        providers = listOf(
+            KeePassPasswordProvider(
+                decodePassword = ::decodePasswordOrNull,
+                encryptPassword = securityManager::encryptData
+            ),
+            BitwardenPasswordProvider(
+                decodePassword = ::decodePasswordOrNull,
+                encryptPassword = securityManager::encryptData
+            )
+        ),
+        fallbackProvider = defaultPasswordProvider
+    )
     
     // Trash settings
     private val trashSettings = settingsManager?.settingsFlow?.map { 
@@ -170,6 +204,9 @@ class PasswordViewModel(
     init {
         restoreLastCategoryFilter()
         observeInvalidCustomCategoryFilter()
+        viewModelScope.launch {
+            repairLegacyDetachedKeePassEntries()
+        }
     }
     
     fun getBitwardenFolders(vaultId: Long): Flow<List<BitwardenFolder>> {
@@ -263,7 +300,7 @@ class PasswordViewModel(
                     is CategoryFilter.All -> repository.getAllPasswordEntries()
                     is CategoryFilter.Archived -> repository.getArchivedEntries()
                     is CategoryFilter.Local -> repository.getAllPasswordEntries().map { list ->
-                        list.filter { it.keepassDatabaseId == null && it.bitwardenVaultId == null }
+                        list.filter { it.isLocalOnlyEntry() }
                     }
                     is CategoryFilter.LocalOnly -> repository.getAllPasswordEntries().map { list ->
                         filterLocalOnlyComparedToBitwarden(list)
@@ -271,12 +308,13 @@ class PasswordViewModel(
                     is CategoryFilter.Starred -> repository.getFavoritePasswordEntries()
                     is CategoryFilter.Uncategorized -> repository.getUncategorizedPasswordEntries()
                     is CategoryFilter.LocalStarred -> repository.getAllPasswordEntries().map { list ->
-                        list.filter { it.keepassDatabaseId == null && it.bitwardenVaultId == null && it.isFavorite }
+                        list.filter { it.isLocalOnlyEntry() && it.isFavorite }
                     }
                     is CategoryFilter.LocalUncategorized -> repository.getAllPasswordEntries().map { list ->
-                        list.filter { it.keepassDatabaseId == null && it.bitwardenVaultId == null && it.categoryId == null }
+                        list.filter { it.isLocalOnlyEntry() && it.categoryId == null }
                     }
                     is CategoryFilter.Custom -> repository.getPasswordEntriesByCategory(filter.categoryId)
+                        .map { list -> list.filter { it.isLocalOnlyEntry() } }
                     is CategoryFilter.KeePassDatabase -> repository.getPasswordEntriesByKeePassDatabase(filter.databaseId)
                     is CategoryFilter.KeePassGroupFilter -> repository.getPasswordEntriesByKeePassGroup(filter.databaseId, filter.groupPath)
                     is CategoryFilter.KeePassDatabaseStarred -> repository.getAllPasswordEntries().map { list ->
@@ -329,7 +367,7 @@ class PasswordViewModel(
                 }
                 val exactDeduped = dedupeExactEntries(filtered)
                 val decrypted = exactDeduped.map { entry ->
-                    entry.copy(password = decryptForDisplay(entry.password))
+                    entry.copy(password = inspectSecretState(entry).plainValueOrEmpty())
                 }
                 filterGhostEntriesForDisplay(decrypted)
             }
@@ -344,7 +382,7 @@ class PasswordViewModel(
     val allPasswords: StateFlow<List<PasswordEntry>> = repository.getAllPasswordEntries()
         .map { entries ->
             entries.map { entry ->
-                entry.copy(password = decryptForDisplay(entry.password))
+                entry.copy(password = inspectSecretState(entry).plainValueOrEmpty())
             }
         }
         .flowOn(kotlinx.coroutines.Dispatchers.Default)
@@ -372,7 +410,7 @@ class PasswordViewModel(
     val archivedPasswords: StateFlow<List<PasswordEntry>> = repository.getArchivedEntries()
         .map { entries ->
             entries.map { entry ->
-                entry.copy(password = decryptForDisplay(entry.password))
+                entry.copy(password = inspectSecretState(entry).plainValueOrEmpty())
             }
         }
         .flowOn(kotlinx.coroutines.Dispatchers.Default)
@@ -431,17 +469,13 @@ class PasswordViewModel(
         return when (filter) {
             is CategoryFilter.All -> entries
             is CategoryFilter.Archived -> entries
-            is CategoryFilter.Local -> entries.filter { it.keepassDatabaseId == null && it.bitwardenVaultId == null }
+            is CategoryFilter.Local -> entries.filter { it.isLocalOnlyEntry() }
             is CategoryFilter.LocalOnly -> entries // handled separately because it needs full dataset comparison
             is CategoryFilter.Starred -> entries.filter { it.isFavorite }
             is CategoryFilter.Uncategorized -> entries.filter { it.categoryId == null }
-            is CategoryFilter.LocalStarred -> entries.filter {
-                it.keepassDatabaseId == null && it.bitwardenVaultId == null && it.isFavorite
-            }
-            is CategoryFilter.LocalUncategorized -> entries.filter {
-                it.keepassDatabaseId == null && it.bitwardenVaultId == null && it.categoryId == null
-            }
-            is CategoryFilter.Custom -> entries.filter { it.categoryId == filter.categoryId }
+            is CategoryFilter.LocalStarred -> entries.filter { it.isLocalOnlyEntry() && it.isFavorite }
+            is CategoryFilter.LocalUncategorized -> entries.filter { it.isLocalOnlyEntry() && it.categoryId == null }
+            is CategoryFilter.Custom -> entries.filter { it.categoryId == filter.categoryId && it.isLocalOnlyEntry() }
             is CategoryFilter.KeePassDatabase -> entries.filter { it.keepassDatabaseId == filter.databaseId }
             is CategoryFilter.KeePassGroupFilter -> entries.filter {
                 it.keepassDatabaseId == filter.databaseId && it.keepassGroupPath == filter.groupPath
@@ -504,10 +538,11 @@ class PasswordViewModel(
     }
 
     private fun buildExactDisplayKey(entry: PasswordEntry): String {
-        val sourceKey = when {
-            entry.keepassDatabaseId != null -> "kp:${entry.keepassDatabaseId}:${entry.keepassEntryUuid.orEmpty()}:${entry.keepassGroupPath.orEmpty()}"
-            entry.bitwardenVaultId != null -> "bw:${entry.bitwardenVaultId}:${entry.bitwardenCipherId.orEmpty()}:${entry.bitwardenFolderId.orEmpty()}"
-            else -> "local:${entry.categoryId ?: -1}"
+        val sourceKey = when (val ownership = entry.resolveOwnership()) {
+            is PasswordOwnership.KeePass -> "kp:${ownership.databaseId}:${entry.keepassEntryUuid.orEmpty()}:${entry.keepassGroupPath.orEmpty()}"
+            is PasswordOwnership.Bitwarden -> "bw:${ownership.vaultId}:${entry.bitwardenCipherId.orEmpty()}:${entry.bitwardenFolderId.orEmpty()}"
+            is PasswordOwnership.Conflict -> "conflict:${entry.keepassDatabaseId}:${entry.bitwardenVaultId}:${entry.keepassEntryUuid.orEmpty()}:${entry.bitwardenCipherId.orEmpty()}"
+            PasswordOwnership.MonicaLocal -> "local:${entry.categoryId ?: -1}"
         }
 
         return listOf(
@@ -520,14 +555,18 @@ class PasswordViewModel(
     }
 
     private fun buildGhostGroupKey(entry: PasswordEntry): String {
-        val sourceKey = when {
-            !entry.bitwardenCipherId.isNullOrBlank() ->
-                "bw:${entry.bitwardenVaultId}:${entry.bitwardenCipherId}"
-            entry.bitwardenVaultId != null ->
-                "bw-local:${entry.bitwardenVaultId}:${entry.bitwardenFolderId.orEmpty()}"
-            entry.keepassDatabaseId != null ->
-                "kp:${entry.keepassDatabaseId}:${entry.keepassGroupPath.orEmpty()}"
-            else -> "local"
+        val sourceKey = when (val ownership = entry.resolveOwnership()) {
+            is PasswordOwnership.Conflict ->
+                "conflict:${entry.keepassDatabaseId}:${entry.bitwardenVaultId}:${entry.keepassEntryUuid.orEmpty()}:${entry.bitwardenCipherId.orEmpty()}"
+            is PasswordOwnership.Bitwarden ->
+                if (!entry.bitwardenCipherId.isNullOrBlank()) {
+                    "bw:${ownership.vaultId}:${entry.bitwardenCipherId}"
+                } else {
+                    "bw-local:${ownership.vaultId}:${entry.bitwardenFolderId.orEmpty()}"
+                }
+            is PasswordOwnership.KeePass ->
+                "kp:${ownership.databaseId}:${entry.keepassGroupPath.orEmpty()}"
+            PasswordOwnership.MonicaLocal -> "local"
         }
 
         val title = normalizeComparableText(entry.title)
@@ -553,7 +592,7 @@ class PasswordViewModel(
                 .thenBy { it.website.length }
                 .thenBy { it.username.length }
                 .thenBy { if (it.isFavorite) 1 else 0 }
-                .thenBy { if (it.keepassDatabaseId != null || it.bitwardenVaultId != null) 1 else 0 }
+                .thenBy { if (it.hasOwnershipConflict()) 2 else if (!it.isLocalOnlyEntry()) 1 else 0 }
                 .thenBy { it.updatedAt.time }
         )
     }
@@ -595,7 +634,7 @@ class PasswordViewModel(
         entry: PasswordEntry,
         bitwardenIndexByUsername: Map<String, List<BitwardenComparableSignature>>
     ): Boolean {
-        if (entry.keepassDatabaseId != null) return false
+        if (!entry.isLocalOnlyEntry()) return false
         if (entry.bitwardenCipherId != null) return false
 
         val username = normalizeComparableText(entry.username)
@@ -684,16 +723,109 @@ class PasswordViewModel(
     }
 
     private fun decryptForDisplay(encryptedPassword: String): String {
-        if (encryptedPassword.isEmpty()) return ""
-        return runCatching {
-            unwrapPasswordLayersForDisplay(encryptedPassword)
-        }.getOrElse { error ->
+        return decodePasswordOrNull(encryptedPassword).orEmpty()
+    }
+
+    fun inspectSecretState(entry: PasswordEntry): SecretValueState {
+        return passwordProviderRegistry.inspectSecret(entry)
+    }
+
+    fun hasOwnershipConflict(entry: PasswordEntry): Boolean = entry.hasOwnershipConflict()
+
+    suspend fun getRawPasswordEntryById(id: Long): PasswordEntry? {
+        val entry = repository.getPasswordEntryById(id) ?: return null
+        return normalizeLegacyDetachedKeePassEntry(entry)
+    }
+
+    suspend fun getRawActivePasswordEntries(): List<PasswordEntry> {
+        val entries = repository.getAllPasswordEntries().first()
+        val normalizedEntries = ArrayList<PasswordEntry>(entries.size)
+        entries.forEach { entry ->
+            normalizedEntries += normalizeLegacyDetachedKeePassEntry(entry)
+        }
+        return normalizedEntries
+    }
+
+    suspend fun getSecretValueStates(ids: List<Long>): Map<Long, SecretValueState> {
+        return repository.getPasswordsByIds(ids).associate { entry ->
+            entry.id to inspectSecretState(entry)
+        }
+    }
+
+    private fun decodePasswordOrNull(rawPassword: String): String? {
+        if (rawPassword.isEmpty()) return ""
+        return try {
+            unwrapPasswordLayersForDisplay(rawPassword)
+        } catch (error: Exception) {
             if (!hasLoggedDecryptAuthStateWarning) {
                 Log.w("PasswordViewModel", "Skip decrypt due to auth/key state: ${error.message}")
                 hasLoggedDecryptAuthStateWarning = true
             }
-            ""
+            null
         }
+    }
+
+    private suspend fun repairLegacyDetachedKeePassEntries() {
+        val entries = repository.getAllPasswordEntries().first()
+        val staleIds = mutableListOf<Long>()
+        entries.forEach { entry ->
+            if (isLegacyDetachedKeePassEntry(entry)) {
+                staleIds += entry.id
+            }
+        }
+        if (staleIds.isEmpty()) return
+
+        repository.updateKeePassDatabaseForPasswords(staleIds, null)
+        Log.i(
+            "PasswordViewModel",
+            "Detached legacy KeePass-local password bindings: count=${staleIds.size}"
+        )
+    }
+
+    private suspend fun normalizeLegacyDetachedKeePassEntry(entry: PasswordEntry): PasswordEntry {
+        if (!isLegacyDetachedKeePassEntry(entry)) return entry
+        repository.updateKeePassDatabaseForPasswords(listOf(entry.id), null)
+        return repository.getPasswordEntryById(entry.id) ?: entry.copy(
+            keepassDatabaseId = null,
+            keepassGroupPath = null,
+            keepassEntryUuid = null,
+            keepassGroupUuid = null
+        )
+    }
+
+    private suspend fun isLegacyDetachedKeePassEntry(entry: PasswordEntry): Boolean {
+        val keepassDatabaseId = entry.keepassDatabaseId ?: return false
+        if (entry.bitwardenVaultId != null || !entry.bitwardenCipherId.isNullOrBlank()) return false
+        if (entry.categoryId != null) return true
+
+        val keepassDatabaseExists = localKeePassDatabaseDao
+            ?.getDatabaseById(keepassDatabaseId) != null
+        if (keepassDatabaseExists) return false
+
+        return entry.keepassEntryUuid.isNullOrBlank() && entry.keepassGroupUuid.isNullOrBlank()
+    }
+
+    private fun shouldPreserveUnreadableBitwardenPassword(
+        existing: PasswordEntry?,
+        incomingPassword: String
+    ): Boolean {
+        if (existing == null || incomingPassword.isNotEmpty()) return false
+        if (existing.bitwardenVaultId == null || existing.bitwardenCipherId.isNullOrBlank()) return false
+        if (existing.password.isBlank()) return false
+        val secretState = inspectSecretState(existing)
+        return secretState is SecretValueState.Unreadable && secretState.source is PasswordSource.Bitwarden
+    }
+
+    private fun resolvePasswordForUpdate(
+        existing: PasswordEntry?,
+        pendingEntry: PasswordEntry,
+        incomingPassword: String
+    ): String {
+        return passwordProviderRegistry.resolvePasswordForStorage(
+            existingEntry = existing,
+            pendingEntry = pendingEntry,
+            incomingPassword = incomingPassword
+        )
     }
 
     /**
@@ -1235,6 +1367,8 @@ class PasswordViewModel(
                     folderId = targetFolderId
                 )
             } else {
+                // Monica categories represent Monica local storage rather than external vault ownership.
+                repository.updateKeePassDatabaseForPasswords(ids, null)
                 // 仅清理尚未上传（无 cipherId）的待绑定条目，避免误改已同步条目
                 repository.clearPendingBitwardenBinding(ids)
             }
@@ -1323,12 +1457,14 @@ class PasswordViewModel(
     fun addPasswordEntryWithResult(
         entry: PasswordEntry,
         includeDetailedLog: Boolean = true,
+        skipCategoryBinding: Boolean = false,
         onResult: (Long?) -> Unit = {}
     ) {
         viewModelScope.launch {
             val id = createPasswordEntryInternal(
                 entry = entry,
-                includeDetailedLog = includeDetailedLog
+                includeDetailedLog = includeDetailedLog,
+                skipCategoryBinding = skipCategoryBinding
             )
             onResult(id)
         }
@@ -1336,14 +1472,22 @@ class PasswordViewModel(
 
     private suspend fun createPasswordEntryInternal(
         entry: PasswordEntry,
-        includeDetailedLog: Boolean
+        includeDetailedLog: Boolean,
+        skipCategoryBinding: Boolean = false
     ): Long? {
-        val boundEntry = applyCategoryBinding(entry).let { candidate ->
+        val boundEntry = (if (skipCategoryBinding) entry else applyCategoryBinding(entry)).let { candidate ->
             if (candidate.keepassDatabaseId != null && candidate.keepassEntryUuid.isNullOrBlank()) {
                 candidate.copy(keepassEntryUuid = UUID.randomUUID().toString())
             } else {
                 candidate
             }
+        }
+        if (boundEntry.hasOwnershipConflict()) {
+            Log.w(
+                "PasswordViewModel",
+                "Blocked password create because of ownership conflict"
+            )
+            return null
         }
         val encryptedEntry = boundEntry.copy(
             password = securityManager.encryptData(boundEntry.password),
@@ -1383,6 +1527,68 @@ class PasswordViewModel(
         return id
     }
 
+    suspend fun copyPasswordToMonicaLocal(
+        entry: PasswordEntry,
+        categoryId: Long?
+    ): Long? {
+        return createPasswordEntryInternal(
+            entry = buildMonicaLocalCopy(entry, categoryId),
+            includeDetailedLog = false,
+            skipCategoryBinding = true
+        )
+    }
+
+    suspend fun moveBitwardenPasswordToMonicaLocal(
+        entry: PasswordEntry,
+        categoryId: Long?
+    ): Result<Long> {
+        val newId = copyPasswordToMonicaLocal(entry, categoryId)
+            ?: return Result.failure(IllegalStateException("创建 Monica 本地副本失败"))
+
+        val vaultId = entry.bitwardenVaultId
+        val cipherId = entry.bitwardenCipherId
+        if (vaultId != null && !cipherId.isNullOrBlank()) {
+            val queueResult = bitwardenRepository?.queueCipherDelete(
+                vaultId = vaultId,
+                cipherId = cipherId,
+                entryId = entry.id
+            ) ?: Result.failure(IllegalStateException("Bitwarden 仓库不可用"))
+            if (queueResult.isFailure) {
+                repository.deletePasswordEntryById(newId)
+                return Result.failure(
+                    queueResult.exceptionOrNull() ?: IllegalStateException("排队删除 Bitwarden 条目失败")
+                )
+            }
+        }
+
+        repository.deletePasswordEntry(entry)
+        repository.deleteArchiveSyncMeta(entry.id)
+        return Result.success(newId)
+    }
+
+    private fun buildMonicaLocalCopy(
+        entry: PasswordEntry,
+        categoryId: Long?
+    ): PasswordEntry {
+        return entry.copy(
+            id = 0,
+            categoryId = categoryId,
+            keepassDatabaseId = null,
+            keepassGroupPath = null,
+            keepassEntryUuid = null,
+            keepassGroupUuid = null,
+            bitwardenVaultId = null,
+            bitwardenCipherId = null,
+            bitwardenFolderId = null,
+            bitwardenRevisionDate = null,
+            bitwardenLocalModified = false,
+            isArchived = false,
+            archivedAt = null,
+            isDeleted = false,
+            deletedAt = null
+        )
+    }
+
     fun addSecureItem(item: SecureItem) {
         viewModelScope.launch {
             secureItemRepository?.insertItem(item)
@@ -1417,6 +1623,13 @@ class PasswordViewModel(
         
         // 应用分类绑定
         val boundEntry = applyCategoryBinding(entry)
+        if (boundEntry.hasOwnershipConflict()) {
+            Log.w(
+                "PasswordViewModel",
+                "Blocked password update because of ownership conflict: entryId=${boundEntry.id}"
+            )
+            return false
+        }
         val entryToUpdate = if (boundEntry.bitwardenVaultId != null) {
             boundEntry.copy(bitwardenLocalModified = true)
         } else {
@@ -1424,9 +1637,14 @@ class PasswordViewModel(
         }
         
         val oldPassword = oldEntry?.let { decryptForDisplay(it.password) } ?: ""
+        val resolvedPassword = resolvePasswordForUpdate(
+            existing = oldEntry,
+            pendingEntry = entryToUpdate,
+            incomingPassword = entryToUpdate.password
+        )
         repository.updatePasswordEntry(
             entryToUpdate.copy(
-                password = securityManager.encryptData(entryToUpdate.password),
+                password = resolvedPassword,
                 updatedAt = Date()
             )
         )
@@ -1499,105 +1717,127 @@ class PasswordViewModel(
     fun deletePasswordEntry(entry: PasswordEntry) {
         viewModelScope.launch {
             val trashEnabled = trashSettings?.value?.first ?: true
+            val commandPolicy = passwordProviderRegistry.commandPolicy(entry)
             val keepassId = entry.keepassDatabaseId
             val bitwardenVaultId = entry.bitwardenVaultId
             val bitwardenCipherId = entry.bitwardenCipherId
-            val isBitwardenCipher = bitwardenVaultId != null && !bitwardenCipherId.isNullOrBlank()
+            val isBitwardenCipher = bitwardenVaultId != null && commandPolicy.usesRemoteDeleteQueue
             Log.i(
                 "PasswordViewModel",
                 "Delete requested: id=${entry.id}, title=${entry.title}, keepassId=$keepassId, trashEnabled=$trashEnabled, bitwardenCipher=$isBitwardenCipher"
             )
 
             if (isBitwardenCipher) {
-                val queueResult = bitwardenRepository?.queueCipherDelete(
+                handleBitwardenQueuedDelete(
+                    entry = entry,
                     vaultId = bitwardenVaultId!!,
                     cipherId = bitwardenCipherId!!,
-                    entryId = entry.id
+                    commandPolicy = commandPolicy
                 )
-                if (queueResult?.isFailure == true) {
-                    Log.e(
-                        "PasswordViewModel",
-                        "Queue Bitwarden delete failed: ${queueResult.exceptionOrNull()?.message}"
-                    )
-                    return@launch
-                }
-
-                if (!keepassPasswordDeleteExecutor.delete(entry, useRecycleBin = true)) {
-                    return@launch
-                }
-
-                // Bitwarden 删除采用 tombstone，防止下一次拉取把条目复活。
-                val softDeletedEntry = entry.copy(
-                    isDeleted = true,
-                    deletedAt = Date(),
-                    isArchived = false,
-                    archivedAt = null,
-                    updatedAt = Date(),
-                    bitwardenLocalModified = true
-                )
-                repository.updatePasswordEntry(softDeletedEntry)
-                repository.deleteArchiveSyncMeta(entry.id)
-                takagi.ru.monica.utils.OperationLogger.logDelete(
-                    itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
-                    itemId = entry.id,
-                    itemTitle = entry.title,
-                    detail = "移入回收站（待同步删除）"
-                )
-                Log.i("PasswordViewModel", "Delete queued as tombstone: id=${entry.id}")
                 return@launch
             }
               
             if (trashEnabled) {
-                // 软删除：移动到回收站
-                val softDeletedEntry = entry.copy(
-                    isDeleted = true,
-                    deletedAt = Date(),
-                    isArchived = false,
-                    archivedAt = null,
-                    updatedAt = Date()
+                moveEntryToTrash(
+                    entry = entry,
+                    keepassId = keepassId,
+                    commandPolicy = commandPolicy
                 )
-                repository.updatePasswordEntry(softDeletedEntry)
-                repository.deleteArchiveSyncMeta(entry.id)
-                // 记录移入回收站操作
-                takagi.ru.monica.utils.OperationLogger.logDelete(
-                    itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
-                    itemId = entry.id,
-                    itemTitle = entry.title,
-                    detail = "移入回收站"
-                )
-                Log.i("PasswordViewModel", "Delete moved to trash: id=${entry.id}")
-
-                if (keepassId != null) {
-                    viewModelScope.launch keepassDeleteSync@{
-                        if (keepassPasswordDeleteExecutor.delete(entry, useRecycleBin = true)) {
-                            Log.i("PasswordViewModel", "KeePass trash delete synced: id=${entry.id}")
-                            return@keepassDeleteSync
-                        }
-
-                        Log.e("PasswordViewModel", "KeePass trash delete failed, reverting local trash state: id=${entry.id}")
-                        repository.updatePasswordEntry(
-                            entry.copy(
-                                updatedAt = Date()
-                            )
-                        )
-                    }
-                }
             } else {
-                if (!keepassPasswordDeleteExecutor.delete(entry, useRecycleBin = false)) {
-                    return@launch
-                }
-                // 直接永久删除
-                repository.deletePasswordEntry(entry)
-                repository.deleteArchiveSyncMeta(entry.id)
-                // 记录删除操作
-                takagi.ru.monica.utils.OperationLogger.logDelete(
-                    itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
-                    itemId = entry.id,
-                    itemTitle = entry.title
-                )
-                Log.i("PasswordViewModel", "Delete permanently removed: id=${entry.id}")
+                permanentlyDeleteEntry(entry)
             }
         }
+    }
+
+    private suspend fun handleBitwardenQueuedDelete(
+        entry: PasswordEntry,
+        vaultId: Long,
+        cipherId: String,
+        commandPolicy: takagi.ru.monica.domain.provider.PasswordCommandPolicy
+    ) {
+        val queueResult = bitwardenRepository?.queueCipherDelete(
+            vaultId = vaultId,
+            cipherId = cipherId,
+            entryId = entry.id
+        )
+        if (queueResult?.isFailure == true) {
+            Log.e(
+                "PasswordViewModel",
+                "Queue Bitwarden delete failed: ${queueResult.exceptionOrNull()?.message}"
+            )
+            return
+        }
+        if (!keepassPasswordDeleteExecutor.delete(entry, useRecycleBin = true)) return
+
+        val tombstone = passwordCommandStateFactory.createQueuedDeleteTombstone(
+            entry = entry,
+            now = Date(),
+            commandPolicy = commandPolicy
+        )
+        repository.updatePasswordEntry(tombstone)
+        repository.deleteArchiveSyncMeta(entry.id)
+        takagi.ru.monica.utils.OperationLogger.logDelete(
+            itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
+            itemId = entry.id,
+            itemTitle = entry.title,
+            detail = "移入回收站（待同步删除）"
+        )
+        Log.i("PasswordViewModel", "Delete queued as tombstone: id=${entry.id}")
+    }
+
+    private suspend fun moveEntryToTrash(
+        entry: PasswordEntry,
+        keepassId: Long?,
+        commandPolicy: takagi.ru.monica.domain.provider.PasswordCommandPolicy
+    ) {
+        val softDeletedEntry = passwordCommandStateFactory.createSoftDeletedEntry(
+            entry = entry,
+            now = Date(),
+            commandPolicy = commandPolicy
+        )
+        repository.updatePasswordEntry(softDeletedEntry)
+        repository.deleteArchiveSyncMeta(entry.id)
+        takagi.ru.monica.utils.OperationLogger.logDelete(
+            itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
+            itemId = entry.id,
+            itemTitle = entry.title,
+            detail = "移入回收站"
+        )
+        Log.i("PasswordViewModel", "Delete moved to trash: id=${entry.id}")
+
+        if (keepassId != null) {
+            syncKeePassTrashDelete(entry)
+        }
+    }
+
+    private fun syncKeePassTrashDelete(entry: PasswordEntry) {
+        viewModelScope.launch keepassDeleteSync@{
+            if (keepassPasswordDeleteExecutor.delete(entry, useRecycleBin = true)) {
+                Log.i("PasswordViewModel", "KeePass trash delete synced: id=${entry.id}")
+                return@keepassDeleteSync
+            }
+
+            Log.e("PasswordViewModel", "KeePass trash delete failed, reverting local trash state: id=${entry.id}")
+            repository.updatePasswordEntry(
+                passwordCommandStateFactory.createTrashRevertedEntry(
+                    entry = entry,
+                    now = Date()
+                )
+            )
+        }
+    }
+
+    private suspend fun permanentlyDeleteEntry(entry: PasswordEntry) {
+        if (!keepassPasswordDeleteExecutor.delete(entry, useRecycleBin = false)) return
+
+        repository.deletePasswordEntry(entry)
+        repository.deleteArchiveSyncMeta(entry.id)
+        takagi.ru.monica.utils.OperationLogger.logDelete(
+            itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
+            itemId = entry.id,
+            itemTitle = entry.title
+        )
+        Log.i("PasswordViewModel", "Delete permanently removed: id=${entry.id}")
     }
     
     fun toggleFavorite(id: Long, isFavorite: Boolean) {
@@ -1652,60 +1892,31 @@ class PasswordViewModel(
         if (entry.isArchived || entry.isDeleted) return
 
         val now = Date()
-        val providerType = resolveArchiveProviderType(entry)
+        val commandPolicy = passwordProviderRegistry.commandPolicy(entry)
+        val providerType = commandPolicy.archiveProviderType
         val keepassDatabaseId = entry.keepassDatabaseId
 
-        var archivedEntry = entry.copy(
-            isArchived = true,
-            archivedAt = entry.archivedAt ?: now,
-            updatedAt = now,
-            bitwardenLocalModified = if (entry.bitwardenVaultId != null) true else entry.bitwardenLocalModified
+        var archivedEntry = passwordCommandStateFactory.createArchivedEntry(
+            entry = entry,
+            now = now,
+            commandPolicy = commandPolicy
         )
         repository.updatePasswordEntry(archivedEntry)
 
-        var syncStatus = when (providerType) {
-            PasswordArchiveSyncMeta.PROVIDER_LOCAL -> PasswordArchiveSyncMeta.STATUS_SYNCED
-            else -> PasswordArchiveSyncMeta.STATUS_PENDING
-        }
-        var lastError: String? = null
-
-        if (providerType == PasswordArchiveSyncMeta.PROVIDER_KEEPASS_GROUP) {
-            val targetArchivePath = ensureKeePassArchiveGroupPath(keepassDatabaseId)
-            if (targetArchivePath == null) {
-                syncStatus = PasswordArchiveSyncMeta.STATUS_FAILED
-                lastError = "KeePass archive group unavailable"
-            } else {
-                val moveResult = moveKeePassEntryGroupPath(
-                    entry = archivedEntry,
-                    targetGroupPath = targetArchivePath
-                )
-                if (moveResult.isSuccess) {
-                    archivedEntry = archivedEntry.copy(
-                        keepassGroupPath = targetArchivePath,
-                        updatedAt = Date()
-                    )
-                    repository.updatePasswordEntry(archivedEntry)
-                    syncStatus = PasswordArchiveSyncMeta.STATUS_SYNCED
-                    lastError = null
-                } else {
-                    syncStatus = PasswordArchiveSyncMeta.STATUS_FAILED
-                    lastError = moveResult.exceptionOrNull()?.message ?: "KeePass archive move failed"
-                }
-            }
-        }
-
-        repository.upsertArchiveSyncMeta(
-            PasswordArchiveSyncMeta(
-                entryId = entry.id,
-                providerType = providerType,
-                originKeePassDatabaseId = keepassDatabaseId,
-                originKeePassGroupPath = entry.keepassGroupPath,
-                originBitwardenFolderId = entry.bitwardenFolderId,
-                syncStatus = syncStatus,
-                lastError = lastError,
-                updatedAt = System.currentTimeMillis()
-            )
+        val archiveResult = archiveEntryByProvider(
+            entry = archivedEntry,
+            keepassDatabaseId = keepassDatabaseId,
+            providerType = providerType
         )
+        archivedEntry = archiveResult.entry
+
+        repository.upsertArchiveSyncMeta(buildArchiveSyncMeta(
+            entry = entry,
+            providerType = providerType,
+            keepassDatabaseId = keepassDatabaseId,
+            syncStatus = archiveResult.syncStatus,
+            lastError = archiveResult.lastError
+        ))
     }
 
     private suspend fun unarchiveSingleEntry(entry: PasswordEntry) {
@@ -1713,59 +1924,163 @@ class PasswordViewModel(
 
         val now = Date()
         val archiveMeta = repository.getArchiveSyncMeta(entry.id)
-        val providerType = archiveMeta?.providerType ?: resolveArchiveProviderType(entry)
+        val commandPolicy = passwordProviderRegistry.commandPolicy(entry)
+        val providerType = archiveMeta?.providerType ?: commandPolicy.archiveProviderType
         val keepassDatabaseId = entry.keepassDatabaseId
 
-        var unarchivedEntry = entry.copy(
-            isArchived = false,
-            archivedAt = null,
-            updatedAt = now,
-            bitwardenLocalModified = if (entry.bitwardenVaultId != null) true else entry.bitwardenLocalModified
+        var unarchivedEntry = passwordCommandStateFactory.createUnarchivedEntry(
+            entry = entry,
+            now = now,
+            commandPolicy = commandPolicy
         )
         repository.updatePasswordEntry(unarchivedEntry)
 
-        var syncStatus = when (providerType) {
-            PasswordArchiveSyncMeta.PROVIDER_LOCAL -> PasswordArchiveSyncMeta.STATUS_SYNCED
-            else -> PasswordArchiveSyncMeta.STATUS_PENDING
-        }
-        var lastError: String? = null
+        val unarchiveResult = unarchiveEntryByProvider(
+            entry = unarchivedEntry,
+            archiveMeta = archiveMeta,
+            keepassDatabaseId = keepassDatabaseId,
+            providerType = providerType
+        )
+        unarchivedEntry = unarchiveResult.entry
 
-        if (providerType == PasswordArchiveSyncMeta.PROVIDER_KEEPASS_GROUP) {
-            val preferredPath = archiveMeta?.originKeePassGroupPath
-            val restorePath = resolveKeePassRestorePathOrRoot(keepassDatabaseId, preferredPath)
-            val moveResult = moveKeePassEntryGroupPath(
-                entry = unarchivedEntry,
-                targetGroupPath = restorePath
+        repository.upsertArchiveSyncMeta(buildUnarchiveSyncMeta(
+            entry = entry,
+            archiveMeta = archiveMeta,
+            providerType = providerType,
+            keepassDatabaseId = keepassDatabaseId,
+            syncStatus = unarchiveResult.syncStatus,
+            lastError = unarchiveResult.lastError
+        ))
+    }
+
+    private data class ArchiveOperationResult(
+        val entry: PasswordEntry,
+        val syncStatus: String,
+        val lastError: String?
+    )
+
+    private suspend fun archiveEntryByProvider(
+        entry: PasswordEntry,
+        keepassDatabaseId: Long?,
+        providerType: String
+    ): ArchiveOperationResult {
+        if (providerType != PasswordArchiveSyncMeta.PROVIDER_KEEPASS_GROUP) {
+            return ArchiveOperationResult(
+                entry = entry,
+                syncStatus = defaultArchiveSyncStatus(providerType),
+                lastError = null
             )
-            if (moveResult.isSuccess) {
-                unarchivedEntry = unarchivedEntry.copy(
-                    keepassGroupPath = restorePath,
-                    updatedAt = Date()
-                )
-                repository.updatePasswordEntry(unarchivedEntry)
-                syncStatus = PasswordArchiveSyncMeta.STATUS_SYNCED
-                lastError = if (preferredPath != null && preferredPath != restorePath) {
-                    "Origin group missing, restored to root"
-                } else {
-                    null
-                }
-            } else {
-                syncStatus = PasswordArchiveSyncMeta.STATUS_FAILED
+        }
+
+        val targetArchivePath = ensureKeePassArchiveGroupPath(keepassDatabaseId)
+        if (targetArchivePath == null) {
+            return ArchiveOperationResult(
+                entry = entry,
+                syncStatus = PasswordArchiveSyncMeta.STATUS_FAILED,
+                lastError = "KeePass archive group unavailable"
+            )
+        }
+        val moveResult = moveKeePassEntryGroupPath(entry = entry, targetGroupPath = targetArchivePath)
+        if (moveResult.isFailure) {
+            return ArchiveOperationResult(
+                entry = entry,
+                syncStatus = PasswordArchiveSyncMeta.STATUS_FAILED,
+                lastError = moveResult.exceptionOrNull()?.message ?: "KeePass archive move failed"
+            )
+        }
+
+        val archivedEntry = entry.copy(keepassGroupPath = targetArchivePath, updatedAt = Date())
+        repository.updatePasswordEntry(archivedEntry)
+        return ArchiveOperationResult(
+            entry = archivedEntry,
+            syncStatus = PasswordArchiveSyncMeta.STATUS_SYNCED,
+            lastError = null
+        )
+    }
+
+    private suspend fun unarchiveEntryByProvider(
+        entry: PasswordEntry,
+        archiveMeta: PasswordArchiveSyncMeta?,
+        keepassDatabaseId: Long?,
+        providerType: String
+    ): ArchiveOperationResult {
+        if (providerType != PasswordArchiveSyncMeta.PROVIDER_KEEPASS_GROUP) {
+            return ArchiveOperationResult(
+                entry = entry,
+                syncStatus = defaultArchiveSyncStatus(providerType),
+                lastError = null
+            )
+        }
+
+        val preferredPath = archiveMeta?.originKeePassGroupPath
+        val restorePath = resolveKeePassRestorePathOrRoot(keepassDatabaseId, preferredPath)
+        val moveResult = moveKeePassEntryGroupPath(entry = entry, targetGroupPath = restorePath)
+        if (moveResult.isFailure) {
+            return ArchiveOperationResult(
+                entry = entry,
+                syncStatus = PasswordArchiveSyncMeta.STATUS_FAILED,
                 lastError = moveResult.exceptionOrNull()?.message ?: "KeePass unarchive move failed"
-            }
+            )
         }
 
-        repository.upsertArchiveSyncMeta(
-            PasswordArchiveSyncMeta(
-                entryId = entry.id,
-                providerType = providerType,
-                originKeePassDatabaseId = archiveMeta?.originKeePassDatabaseId ?: keepassDatabaseId,
-                originKeePassGroupPath = archiveMeta?.originKeePassGroupPath,
-                originBitwardenFolderId = archiveMeta?.originBitwardenFolderId ?: entry.bitwardenFolderId,
-                syncStatus = syncStatus,
-                lastError = lastError,
-                updatedAt = System.currentTimeMillis()
-            )
+        val restoredEntry = entry.copy(keepassGroupPath = restorePath, updatedAt = Date())
+        repository.updatePasswordEntry(restoredEntry)
+        val lastError = if (preferredPath != null && preferredPath != restorePath) {
+            "Origin group missing, restored to root"
+        } else {
+            null
+        }
+        return ArchiveOperationResult(
+            entry = restoredEntry,
+            syncStatus = PasswordArchiveSyncMeta.STATUS_SYNCED,
+            lastError = lastError
+        )
+    }
+
+    private fun defaultArchiveSyncStatus(providerType: String): String {
+        return if (providerType == PasswordArchiveSyncMeta.PROVIDER_LOCAL) {
+            PasswordArchiveSyncMeta.STATUS_SYNCED
+        } else {
+            PasswordArchiveSyncMeta.STATUS_PENDING
+        }
+    }
+
+    private fun buildArchiveSyncMeta(
+        entry: PasswordEntry,
+        providerType: String,
+        keepassDatabaseId: Long?,
+        syncStatus: String,
+        lastError: String?
+    ): PasswordArchiveSyncMeta {
+        return PasswordArchiveSyncMeta(
+            entryId = entry.id,
+            providerType = providerType,
+            originKeePassDatabaseId = keepassDatabaseId,
+            originKeePassGroupPath = entry.keepassGroupPath,
+            originBitwardenFolderId = entry.bitwardenFolderId,
+            syncStatus = syncStatus,
+            lastError = lastError,
+            updatedAt = System.currentTimeMillis()
+        )
+    }
+
+    private fun buildUnarchiveSyncMeta(
+        entry: PasswordEntry,
+        archiveMeta: PasswordArchiveSyncMeta?,
+        providerType: String,
+        keepassDatabaseId: Long?,
+        syncStatus: String,
+        lastError: String?
+    ): PasswordArchiveSyncMeta {
+        return PasswordArchiveSyncMeta(
+            entryId = entry.id,
+            providerType = providerType,
+            originKeePassDatabaseId = archiveMeta?.originKeePassDatabaseId ?: keepassDatabaseId,
+            originKeePassGroupPath = archiveMeta?.originKeePassGroupPath,
+            originBitwardenFolderId = archiveMeta?.originBitwardenFolderId ?: entry.bitwardenFolderId,
+            syncStatus = syncStatus,
+            lastError = lastError,
+            updatedAt = System.currentTimeMillis()
         )
     }
 
@@ -1827,14 +2142,6 @@ class PasswordViewModel(
         return groups.firstOrNull { it.path == preferredPath }?.path
     }
 
-    private fun resolveArchiveProviderType(entry: PasswordEntry): String {
-        return when {
-            entry.keepassDatabaseId != null -> PasswordArchiveSyncMeta.PROVIDER_KEEPASS_GROUP
-            entry.bitwardenVaultId != null -> PasswordArchiveSyncMeta.PROVIDER_BITWARDEN_NATIVE
-            else -> PasswordArchiveSyncMeta.PROVIDER_LOCAL
-        }
-    }
-
     private fun resolvePlainPasswordForKeePass(storedPassword: String): String {
         if (storedPassword.isBlank()) return ""
         return try {
@@ -1881,8 +2188,25 @@ class PasswordViewModel(
     }
     
     suspend fun getPasswordEntryById(id: Long): PasswordEntry? {
-        return repository.getPasswordEntryById(id)?.let { entry ->
-            entry.copy(password = decryptForDisplay(entry.password))
+        return getRawPasswordEntryById(id)?.let { entry ->
+            entry.copy(password = inspectSecretState(entry).plainValueOrEmpty())
+        }
+    }
+
+    suspend fun recoverUnreadableBitwardenEntry(entryId: Long): BitwardenRecoveryResult {
+        val entry = repository.getPasswordEntryById(entryId)
+            ?: return BitwardenRecoveryResult.Error("Entry not found")
+        val vaultId = entry.bitwardenVaultId
+            ?: return BitwardenRecoveryResult.Error("Entry is not backed by Bitwarden")
+        val repositoryInstance = bitwardenRepository
+            ?: return BitwardenRecoveryResult.Error("Bitwarden repository unavailable")
+
+        return when (val result = repositoryInstance.sync(vaultId)) {
+            is BitwardenRepository.SyncResult.Success -> BitwardenRecoveryResult.Success
+            is BitwardenRepository.SyncResult.Error -> BitwardenRecoveryResult.Error(result.message)
+            is BitwardenRepository.SyncResult.EmptyVaultBlocked -> {
+                BitwardenRecoveryResult.EmptyVaultBlocked(result.reason)
+            }
         }
     }
 
@@ -2127,21 +2451,28 @@ class PasswordViewModel(
     ) {
         viewModelScope.launch {
             var firstId: Long? = null
-            val normalizedInput = passwords
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
+            val normalizedPasswords = passwords.map { it.trim() }
+            val normalizedInput = normalizedPasswords.filter { it.isNotEmpty() }
             val preservedExistingPasswords = if (normalizedInput.isEmpty() && originalIds.isNotEmpty()) {
                 originalIds.mapNotNull { id ->
-                    repository.getPasswordEntryById(id)?.let { decryptForDisplay(it.password).trim() }
-                }.filter { it.isNotEmpty() }
+                    val existing = repository.getPasswordEntryById(id) ?: return@mapNotNull null
+                    val secretState = inspectSecretState(existing)
+                    when {
+                        secretState.plainValueOrEmpty().isNotEmpty() -> secretState.plainValueOrEmpty()
+                        shouldPreserveUnreadableBitwardenPassword(existing, "") -> ""
+                        else -> null
+                    }
+                }
             } else {
                 emptyList()
             }
+            val hasPreservedUnreadablePassword = preservedExistingPasswords.any { it.isEmpty() }
+            val hasRetainedExistingPassword = preservedExistingPasswords.any { it.isNotEmpty() }
 
             val effectivePasswords = when {
                 normalizedInput.isNotEmpty() -> normalizedInput
                 commonEntry.loginType.equals("SSO", ignoreCase = true) -> listOf("")
-                preservedExistingPasswords.isNotEmpty() -> preservedExistingPasswords
+                hasRetainedExistingPassword || hasPreservedUnreadablePassword -> preservedExistingPasswords
                 else -> emptyList()
             }
 

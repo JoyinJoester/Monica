@@ -106,6 +106,8 @@ import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.PasskeyEntry
+import takagi.ru.monica.data.isKeePassOwned
+import takagi.ru.monica.data.isLocalOnlyItem
 import takagi.ru.monica.data.model.PasskeyBindingCodec
 import takagi.ru.monica.data.model.TimelineEvent
 import takagi.ru.monica.data.model.TotpData
@@ -432,82 +434,124 @@ fun TotpListContent(
         getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
         getKeePassGroups = getKeePassGroups,
         allowCopy = true,
+        allowMove = totpItems.filter { it.id in selectedItems.filter { selected -> selected > 0L } }.none { it.isKeePassOwned() },
         onTargetSelected = { target, action ->
             val movableIds = selectedItems.filter { it > 0L }
-            if (action == UnifiedMoveAction.COPY) {
-                val selectedTotpItems = totpItems.filter { it.id in movableIds }
-                selectedTotpItems.forEach { item ->
-                    val totpData = runCatching { Json.decodeFromString<TotpData>(item.itemData) }.getOrNull() ?: return@forEach
-                    val detachedTotpData = totpData.copy(
-                        boundPasswordId = null,
-                        categoryId = null,
-                        keepassDatabaseId = null
-                    )
-                    val targetCategoryId = when (target) {
-                        UnifiedMoveCategoryTarget.Uncategorized -> null
-                        is UnifiedMoveCategoryTarget.MonicaCategory -> target.categoryId
-                        else -> null
-                    }
-                    val targetKeepassDatabaseId = when (target) {
-                        is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> target.databaseId
-                        is UnifiedMoveCategoryTarget.KeePassGroupTarget -> target.databaseId
-                        else -> null
-                    }
-                    val targetBitwardenVaultId = when (target) {
-                        is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> target.vaultId
-                        is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> target.vaultId
-                        else -> null
-                    }
-                    val targetBitwardenFolderId = when (target) {
-                        is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> target.folderId
-                        is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> ""
-                        else -> null
-                    }
-                    viewModel.saveTotpItem(
-                        id = null,
-                        title = item.title,
-                        notes = item.notes,
-                        totpData = detachedTotpData,
-                        isFavorite = item.isFavorite,
-                        categoryId = targetCategoryId,
-                        keepassDatabaseId = targetKeepassDatabaseId,
-                        bitwardenVaultId = targetBitwardenVaultId,
-                        bitwardenFolderId = targetBitwardenFolderId
-                    )
-                }
+            val targetCategoryId = when (target) {
+                UnifiedMoveCategoryTarget.Uncategorized -> null
+                is UnifiedMoveCategoryTarget.MonicaCategory -> target.categoryId
+                else -> null
+            }
+            val isMonicaLocalTarget = target == UnifiedMoveCategoryTarget.Uncategorized ||
+                target is UnifiedMoveCategoryTarget.MonicaCategory
+            val selectedTotpItems = totpItems.filter { it.id in movableIds }
+            val effectiveAction = if (action == UnifiedMoveAction.MOVE && selectedTotpItems.any { it.isKeePassOwned() }) {
                 Toast.makeText(
                     context,
-                    context.getString(R.string.selected_items, selectedTotpItems.size),
+                    context.getString(R.string.keepass_copy_only_hint),
                     Toast.LENGTH_SHORT
                 ).show()
+                UnifiedMoveAction.COPY
             } else {
-                when (target) {
-                    UnifiedMoveCategoryTarget.Uncategorized -> {
-                        viewModel.moveToCategory(movableIds, null)
-                        Toast.makeText(context, context.getString(R.string.category_none), Toast.LENGTH_SHORT).show()
+                action
+            }
+            if (effectiveAction == UnifiedMoveAction.COPY) {
+                coroutineScope.launch {
+                    var copiedCount = 0
+                    selectedTotpItems.forEach { item ->
+                        if (isMonicaLocalTarget) {
+                            if (viewModel.copyTotpToMonicaLocal(item, targetCategoryId) != null) {
+                                copiedCount++
+                            }
+                            return@forEach
+                        }
+                        val totpData = runCatching { Json.decodeFromString<TotpData>(item.itemData) }.getOrNull() ?: return@forEach
+                        val detachedTotpData = totpData.copy(
+                            boundPasswordId = null,
+                            categoryId = null,
+                            keepassDatabaseId = null
+                        )
+                        val targetKeepassDatabaseId = when (target) {
+                            is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> target.databaseId
+                            is UnifiedMoveCategoryTarget.KeePassGroupTarget -> target.databaseId
+                            else -> null
+                        }
+                        val targetBitwardenVaultId = when (target) {
+                            is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> target.vaultId
+                            is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> target.vaultId
+                            else -> null
+                        }
+                        val targetBitwardenFolderId = when (target) {
+                            is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> target.folderId
+                            is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> ""
+                            else -> null
+                        }
+                        viewModel.saveTotpItem(
+                            id = null,
+                            title = item.title,
+                            notes = item.notes,
+                            totpData = detachedTotpData,
+                            isFavorite = item.isFavorite,
+                            categoryId = targetCategoryId,
+                            keepassDatabaseId = targetKeepassDatabaseId,
+                            bitwardenVaultId = targetBitwardenVaultId,
+                            bitwardenFolderId = targetBitwardenFolderId
+                        )
+                        copiedCount++
                     }
-                    is UnifiedMoveCategoryTarget.MonicaCategory -> {
-                        viewModel.moveToCategory(movableIds, target.categoryId)
-                        val name = categories.find { it.id == target.categoryId }?.name ?: ""
-                        Toast.makeText(context, "${context.getString(R.string.move_to_category)} $name", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.selected_items, copiedCount),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            } else {
+                if (isMonicaLocalTarget) {
+                    coroutineScope.launch {
+                        var movedCount = 0
+                        selectedTotpItems.forEach { item ->
+                            if (item.isLocalOnlyItem()) {
+                                viewModel.moveToCategory(listOf(item.id), targetCategoryId)
+                                movedCount++
+                            } else if (viewModel.moveTotpToMonicaLocal(item, targetCategoryId).isSuccess) {
+                                movedCount++
+                            }
+                        }
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.selected_items, movedCount),
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
-                    is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> {
-                        viewModel.moveToBitwardenFolder(movableIds, target.vaultId, "")
-                        Toast.makeText(context, context.getString(R.string.filter_bitwarden), Toast.LENGTH_SHORT).show()
-                    }
-                    is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> {
-                        viewModel.moveToBitwardenFolder(movableIds, target.vaultId, target.folderId)
-                        Toast.makeText(context, context.getString(R.string.filter_bitwarden), Toast.LENGTH_SHORT).show()
-                    }
-                    is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> {
-                        viewModel.moveToKeePassDatabase(movableIds, target.databaseId)
-                        val name = keepassDatabases.find { it.id == target.databaseId }?.name ?: "KeePass"
-                        Toast.makeText(context, "${context.getString(R.string.move_to_category)} $name", Toast.LENGTH_SHORT).show()
-                    }
-                    is UnifiedMoveCategoryTarget.KeePassGroupTarget -> {
-                        viewModel.moveToKeePassGroup(movableIds, target.databaseId, target.groupPath)
-                        val groupName = decodeKeePassPathForDisplay(target.groupPath)
-                        Toast.makeText(context, "${context.getString(R.string.move_to_category)} $groupName", Toast.LENGTH_SHORT).show()
+                } else {
+                    when (target) {
+                        UnifiedMoveCategoryTarget.Uncategorized -> {
+                            viewModel.moveToCategory(movableIds, null)
+                            Toast.makeText(context, context.getString(R.string.category_none), Toast.LENGTH_SHORT).show()
+                        }
+                        is UnifiedMoveCategoryTarget.MonicaCategory -> {
+                            viewModel.moveToCategory(movableIds, target.categoryId)
+                            val name = categories.find { it.id == target.categoryId }?.name ?: ""
+                            Toast.makeText(context, "${context.getString(R.string.move_to_category)} $name", Toast.LENGTH_SHORT).show()
+                        }
+                        is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> {
+                            viewModel.moveToBitwardenFolder(movableIds, target.vaultId, "")
+                            Toast.makeText(context, context.getString(R.string.filter_bitwarden), Toast.LENGTH_SHORT).show()
+                        }
+                        is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> {
+                            viewModel.moveToBitwardenFolder(movableIds, target.vaultId, target.folderId)
+                            Toast.makeText(context, context.getString(R.string.filter_bitwarden), Toast.LENGTH_SHORT).show()
+                        }
+                        is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> {
+                            viewModel.moveToKeePassDatabase(movableIds, target.databaseId)
+                            val name = keepassDatabases.find { it.id == target.databaseId }?.name ?: "KeePass"
+                            Toast.makeText(context, "${context.getString(R.string.move_to_category)} $name", Toast.LENGTH_SHORT).show()
+                        }
+                        is UnifiedMoveCategoryTarget.KeePassGroupTarget -> {
+                            viewModel.moveToKeePassGroup(movableIds, target.databaseId, target.groupPath)
+                            val groupName = decodeKeePassPathForDisplay(target.groupPath)
+                            Toast.makeText(context, "${context.getString(R.string.move_to_category)} $groupName", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
             }

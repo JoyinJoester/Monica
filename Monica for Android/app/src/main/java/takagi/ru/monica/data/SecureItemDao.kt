@@ -109,6 +109,18 @@ interface SecureItemDao {
     )
     suspend fun clearKeePassBindingForDatabase(databaseId: Long)
 
+    @Query(
+        """
+        UPDATE secure_items
+        SET keepass_database_id = NULL,
+            keepass_group_path = NULL,
+            keepass_entry_uuid = NULL,
+            keepass_group_uuid = NULL
+        WHERE id IN (:ids)
+        """
+    )
+    suspend fun clearKeePassBindingForIds(ids: List<Long>)
+
     @Query("""
         SELECT * FROM secure_items
         WHERE itemType = :itemType

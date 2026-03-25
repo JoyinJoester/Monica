@@ -67,9 +67,13 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.SecureItemOwnership
+import takagi.ru.monica.data.isKeePassOwned
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.isLocalOnlyItem
+import takagi.ru.monica.data.resolveOwnership
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.KeePassStorageLocation
 import takagi.ru.monica.data.bitwarden.BitwardenVault
@@ -300,33 +304,7 @@ fun NoteListScreen(
     
     // 过滤笔记
     val filteredNotes = remember(notes, searchQuery, selectedCategoryFilter, selectedTag) {
-        val categoryFiltered = when (val filter = selectedCategoryFilter) {
-            NoteCategoryFilter.All -> notes
-            NoteCategoryFilter.Local -> notes.filter { it.bitwardenVaultId == null && it.keepassDatabaseId == null }
-            NoteCategoryFilter.Starred -> notes.filter { it.isFavorite }
-            NoteCategoryFilter.Uncategorized -> notes.filter { it.categoryId == null }
-            NoteCategoryFilter.LocalStarred -> notes.filter {
-                it.bitwardenVaultId == null && it.keepassDatabaseId == null && it.isFavorite
-            }
-            NoteCategoryFilter.LocalUncategorized -> notes.filter {
-                it.bitwardenVaultId == null && it.keepassDatabaseId == null && it.categoryId == null
-            }
-            is NoteCategoryFilter.Custom -> notes.filter { it.categoryId == filter.categoryId }
-            is NoteCategoryFilter.BitwardenVault -> notes.filter { it.bitwardenVaultId == filter.vaultId }
-            is NoteCategoryFilter.BitwardenFolderFilter -> notes.filter { it.bitwardenFolderId == filter.folderId }
-            is NoteCategoryFilter.BitwardenVaultStarred -> notes.filter { it.bitwardenVaultId == filter.vaultId && it.isFavorite }
-            is NoteCategoryFilter.BitwardenVaultUncategorized -> notes.filter { it.bitwardenVaultId == filter.vaultId && it.bitwardenFolderId == null }
-            is NoteCategoryFilter.KeePassDatabase -> notes.filter { it.keepassDatabaseId == filter.databaseId }
-            is NoteCategoryFilter.KeePassGroupFilter -> notes.filter {
-                it.keepassDatabaseId == filter.databaseId && it.keepassGroupPath == filter.groupPath
-            }
-            is NoteCategoryFilter.KeePassDatabaseStarred -> notes.filter {
-                it.keepassDatabaseId == filter.databaseId && it.isFavorite
-            }
-            is NoteCategoryFilter.KeePassDatabaseUncategorized -> notes.filter {
-                it.keepassDatabaseId == filter.databaseId && it.keepassGroupPath.isNullOrBlank()
-            }
-        }
+        val categoryFiltered = filterNotesByCategory(notes, selectedCategoryFilter)
         val searchFiltered = if (searchQuery.isBlank()) {
             categoryFiltered
         } else {
@@ -347,33 +325,7 @@ fun NoteListScreen(
         }
     }
     val availableTags = remember(notes, selectedCategoryFilter) {
-        val categoryFiltered = when (val filter = selectedCategoryFilter) {
-            NoteCategoryFilter.All -> notes
-            NoteCategoryFilter.Local -> notes.filter { it.bitwardenVaultId == null && it.keepassDatabaseId == null }
-            NoteCategoryFilter.Starred -> notes.filter { it.isFavorite }
-            NoteCategoryFilter.Uncategorized -> notes.filter { it.categoryId == null }
-            NoteCategoryFilter.LocalStarred -> notes.filter {
-                it.bitwardenVaultId == null && it.keepassDatabaseId == null && it.isFavorite
-            }
-            NoteCategoryFilter.LocalUncategorized -> notes.filter {
-                it.bitwardenVaultId == null && it.keepassDatabaseId == null && it.categoryId == null
-            }
-            is NoteCategoryFilter.Custom -> notes.filter { it.categoryId == filter.categoryId }
-            is NoteCategoryFilter.BitwardenVault -> notes.filter { it.bitwardenVaultId == filter.vaultId }
-            is NoteCategoryFilter.BitwardenFolderFilter -> notes.filter { it.bitwardenFolderId == filter.folderId }
-            is NoteCategoryFilter.BitwardenVaultStarred -> notes.filter { it.bitwardenVaultId == filter.vaultId && it.isFavorite }
-            is NoteCategoryFilter.BitwardenVaultUncategorized -> notes.filter { it.bitwardenVaultId == filter.vaultId && it.bitwardenFolderId == null }
-            is NoteCategoryFilter.KeePassDatabase -> notes.filter { it.keepassDatabaseId == filter.databaseId }
-            is NoteCategoryFilter.KeePassGroupFilter -> notes.filter {
-                it.keepassDatabaseId == filter.databaseId && it.keepassGroupPath == filter.groupPath
-            }
-            is NoteCategoryFilter.KeePassDatabaseStarred -> notes.filter {
-                it.keepassDatabaseId == filter.databaseId && it.isFavorite
-            }
-            is NoteCategoryFilter.KeePassDatabaseUncategorized -> notes.filter {
-                it.keepassDatabaseId == filter.databaseId && it.keepassGroupPath.isNullOrBlank()
-            }
-        }
+        val categoryFiltered = filterNotesByCategory(notes, selectedCategoryFilter)
         categoryFiltered
             .flatMap { NoteContentCodec.decodeFromItem(it).tags }
             .map { it.trim() }
@@ -438,30 +390,53 @@ fun NoteListScreen(
                 }
 
                 if (action == UnifiedMoveAction.COPY) {
-                    val decodedNote = NoteContentCodec.decodeFromItem(item)
-                    viewModel.addNote(
-                        content = decodedNote.content,
-                        title = item.title,
-                        tags = decodedNote.tags,
-                        isMarkdown = decodedNote.isMarkdown,
-                        isFavorite = item.isFavorite,
-                        categoryId = targetCategoryId,
-                        imagePaths = item.imagePaths,
-                        keepassDatabaseId = targetKeepassDatabaseId,
-                        keepassGroupPath = targetKeepassGroupPath,
-                        bitwardenVaultId = targetBitwardenVaultId,
-                        bitwardenFolderId = targetBitwardenFolderId
-                    )
-                    movedCount++
+                    if (target is UnifiedMoveCategoryTarget.MonicaCategory || target == UnifiedMoveCategoryTarget.Uncategorized) {
+                        if (viewModel.copyNoteToMonicaLocal(item, targetCategoryId) != null) {
+                            movedCount++
+                        } else {
+                            failedCount++
+                        }
+                    } else {
+                        val decodedNote = NoteContentCodec.decodeFromItem(item)
+                        viewModel.addNote(
+                            content = decodedNote.content,
+                            title = item.title,
+                            tags = decodedNote.tags,
+                            isMarkdown = decodedNote.isMarkdown,
+                            isFavorite = item.isFavorite,
+                            categoryId = targetCategoryId,
+                            imagePaths = item.imagePaths,
+                            keepassDatabaseId = targetKeepassDatabaseId,
+                            keepassGroupPath = targetKeepassGroupPath,
+                            bitwardenVaultId = targetBitwardenVaultId,
+                            bitwardenFolderId = targetBitwardenFolderId
+                        )
+                        movedCount++
+                    }
                 } else {
-                    val moved = viewModel.moveNoteToStorage(
-                        item = item,
-                        categoryId = targetCategoryId,
-                        keepassDatabaseId = targetKeepassDatabaseId,
-                        keepassGroupPath = targetKeepassGroupPath,
-                        bitwardenVaultId = targetBitwardenVaultId,
-                        bitwardenFolderId = targetBitwardenFolderId
-                    )
+                    val moved = if (target is UnifiedMoveCategoryTarget.MonicaCategory || target == UnifiedMoveCategoryTarget.Uncategorized) {
+                        if (item.isLocalOnlyItem()) {
+                            viewModel.moveNoteToStorage(
+                                item = item,
+                                categoryId = targetCategoryId,
+                                keepassDatabaseId = null,
+                                keepassGroupPath = null,
+                                bitwardenVaultId = null,
+                                bitwardenFolderId = null
+                            )
+                        } else {
+                            viewModel.moveNoteToMonicaLocal(item, targetCategoryId).isSuccess
+                        }
+                    } else {
+                        viewModel.moveNoteToStorage(
+                            item = item,
+                            categoryId = targetCategoryId,
+                            keepassDatabaseId = targetKeepassDatabaseId,
+                            keepassGroupPath = targetKeepassGroupPath,
+                            bitwardenVaultId = targetBitwardenVaultId,
+                            bitwardenFolderId = targetBitwardenFolderId
+                        )
+                    }
                     if (moved) movedCount++ else failedCount++
                 }
             }
@@ -901,17 +876,28 @@ fun NoteListScreen(
             getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
             getKeePassGroups = getKeePassGroups,
             allowCopy = true,
+            allowMove = notes.filter { selectedNoteIds.contains(it.id) }.none { it.isKeePassOwned() },
             onTargetSelected = { target, action ->
                 val selectedItems = notes.filter { selectedNoteIds.contains(it.id) }
+                val effectiveAction = if (action == UnifiedMoveAction.MOVE && selectedItems.any { it.isKeePassOwned() }) {
+                    android.widget.Toast.makeText(
+                        context,
+                        context.getString(R.string.keepass_copy_only_hint),
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                    UnifiedMoveAction.COPY
+                } else {
+                    action
+                }
                 val (shouldWarn, count) = shouldWarnBitwardenImageLoss(target, selectedItems)
                 if (shouldWarn) {
                     showBatchMoveCategoryDialog = false
                     pendingBitwardenMoveTarget = target
-                    pendingBitwardenMoveAction = action
+                    pendingBitwardenMoveAction = effectiveAction
                     bitwardenImageWarningCount = count
                     showBitwardenImageWarningDialog = true
                 } else {
-                    performBatchMove(target, action)
+                    performBatchMove(target, effectiveAction)
                 }
             }
         )
@@ -995,5 +981,49 @@ fun NoteListScreen(
             },
             modifier = Modifier.padding(paddingValues)
         )
+    }
+}
+
+private fun filterNotesByCategory(
+    notes: List<SecureItem>,
+    filter: NoteCategoryFilter
+): List<SecureItem> {
+    return when (filter) {
+        NoteCategoryFilter.All -> notes
+        NoteCategoryFilter.Local -> notes.filter { it.isLocalOnlyItem() }
+        NoteCategoryFilter.Starred -> notes.filter { it.isFavorite }
+        NoteCategoryFilter.Uncategorized -> notes.filter { it.categoryId == null }
+        NoteCategoryFilter.LocalStarred -> notes.filter { it.isLocalOnlyItem() && it.isFavorite }
+        NoteCategoryFilter.LocalUncategorized -> notes.filter { it.isLocalOnlyItem() && it.categoryId == null }
+        is NoteCategoryFilter.Custom -> notes.filter { it.categoryId == filter.categoryId && it.isLocalOnlyItem() }
+        is NoteCategoryFilter.BitwardenVault -> notes.filter {
+            (it.resolveOwnership() as? SecureItemOwnership.Bitwarden)?.vaultId == filter.vaultId
+        }
+        is NoteCategoryFilter.BitwardenFolderFilter -> notes.filter {
+            val ownership = it.resolveOwnership() as? SecureItemOwnership.Bitwarden
+            ownership?.vaultId == filter.vaultId && it.bitwardenFolderId == filter.folderId
+        }
+        is NoteCategoryFilter.BitwardenVaultStarred -> notes.filter {
+            (it.resolveOwnership() as? SecureItemOwnership.Bitwarden)?.vaultId == filter.vaultId && it.isFavorite
+        }
+        is NoteCategoryFilter.BitwardenVaultUncategorized -> notes.filter {
+            (it.resolveOwnership() as? SecureItemOwnership.Bitwarden)?.vaultId == filter.vaultId &&
+                it.bitwardenFolderId == null
+        }
+        is NoteCategoryFilter.KeePassDatabase -> notes.filter {
+            (it.resolveOwnership() as? SecureItemOwnership.KeePass)?.databaseId == filter.databaseId
+        }
+        is NoteCategoryFilter.KeePassGroupFilter -> notes.filter {
+            (it.resolveOwnership() as? SecureItemOwnership.KeePass)?.databaseId == filter.databaseId &&
+                it.keepassGroupPath == filter.groupPath
+        }
+        is NoteCategoryFilter.KeePassDatabaseStarred -> notes.filter {
+            (it.resolveOwnership() as? SecureItemOwnership.KeePass)?.databaseId == filter.databaseId &&
+                it.isFavorite
+        }
+        is NoteCategoryFilter.KeePassDatabaseUncategorized -> notes.filter {
+            (it.resolveOwnership() as? SecureItemOwnership.KeePass)?.databaseId == filter.databaseId &&
+                it.keepassGroupPath.isNullOrBlank()
+        }
     }
 }

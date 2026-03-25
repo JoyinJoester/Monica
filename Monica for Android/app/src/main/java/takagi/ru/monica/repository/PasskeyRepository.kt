@@ -36,6 +36,18 @@ class PasskeyRepository(private val passkeyDao: PasskeyDao) {
      */
     suspend fun getPasskeyById(credentialId: String): PasskeyEntry? = 
         passkeyDao.getPasskeyById(credentialId)
+
+    suspend fun normalizeLegacyDetachedKeePassPasskey(
+        passkey: PasskeyEntry,
+        databaseExists: suspend (Long) -> Boolean = { false }
+    ): PasskeyEntry {
+        if (!isLegacyDetachedKeePassPasskey(passkey, databaseExists)) return passkey
+        passkeyDao.clearKeePassBindingForCredentialIds(listOf(passkey.credentialId))
+        return passkeyDao.getPasskeyById(passkey.credentialId) ?: passkey.copy(
+            keepassDatabaseId = null,
+            keepassGroupPath = null
+        )
+    }
     
     /**
      * 根据域名获取 Passkeys
@@ -77,6 +89,19 @@ class PasskeyRepository(private val passkeyDao: PasskeyDao) {
      */
     suspend fun getUnbackedPasskeys(): List<PasskeyEntry> = 
         passkeyDao.getUnbackedPasskeys()
+
+    suspend fun repairLegacyDetachedKeePassPasskeys(
+        databaseExists: suspend (Long) -> Boolean = { false }
+    ): Int {
+        val staleCredentialIds = passkeyDao.getAllPasskeysSync()
+            .filter { isLegacyDetachedKeePassPasskey(it, databaseExists) }
+            .map { it.credentialId }
+        if (staleCredentialIds.isEmpty()) return 0
+
+        passkeyDao.clearKeePassBindingForCredentialIds(staleCredentialIds)
+        Log.i(TAG, "Detached legacy KeePass-local passkey bindings: count=${staleCredentialIds.size}")
+        return staleCredentialIds.size
+    }
 
     /**
      * 获取绑定到指定密码的 Passkeys
@@ -210,5 +235,15 @@ class PasskeyRepository(private val passkeyDao: PasskeyDao) {
      */
     fun logAudit(action: String, details: String) {
         Log.i("PasskeyAudit", "[$action] $details")
+    }
+
+    private suspend fun isLegacyDetachedKeePassPasskey(
+        passkey: PasskeyEntry,
+        databaseExists: suspend (Long) -> Boolean
+    ): Boolean {
+        val keepassDatabaseId = passkey.keepassDatabaseId ?: return false
+        if (passkey.bitwardenVaultId != null || !passkey.bitwardenCipherId.isNullOrBlank()) return false
+        if (passkey.categoryId != null) return true
+        return !databaseExists(keepassDatabaseId) && passkey.keepassGroupPath.isNullOrBlank()
     }
 }

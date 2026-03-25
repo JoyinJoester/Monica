@@ -922,6 +922,31 @@ class LocalKeePassViewModel(
             Result.failure(e)
         }
     }
+
+    suspend fun movePasswordEntriesToMonicaLocal(
+        entries: List<PasswordEntry>
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            val keepassEntries = entries.filter { it.keepassDatabaseId != null }
+            if (keepassEntries.isEmpty()) {
+                return@withContext Result.success(0)
+            }
+
+            keepassEntries
+                .groupBy { it.keepassDatabaseId }
+                .forEach { (databaseId, databaseEntries) ->
+                    val resolvedDatabaseId = databaseId ?: return@forEach
+                    compatibilityBridge.deleteLegacyPasswordEntries(
+                        databaseId = resolvedDatabaseId,
+                        entries = databaseEntries
+                    ).getOrThrow()
+                }
+
+            Result.success(keepassEntries.size)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
     
     /**
      * 清除操作状态

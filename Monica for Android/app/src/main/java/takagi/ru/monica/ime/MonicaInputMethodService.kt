@@ -28,6 +28,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import takagi.ru.monica.data.AppSettings
+import takagi.ru.monica.data.isLocalPasswordOwnership
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
@@ -440,7 +441,7 @@ class MonicaInputMethodService : InputMethodService() {
     ): Boolean {
         return when (scope) {
             MonicaImeDatabaseScope.All -> true
-            MonicaImeDatabaseScope.Local -> entry.keepassDatabaseId == null && entry.bitwardenVaultId == null
+            MonicaImeDatabaseScope.Local -> isLocalPasswordOwnership(entry.keepassDatabaseId, entry.bitwardenVaultId)
             is MonicaImeDatabaseScope.KeePass -> entry.keepassDatabaseId == scope.databaseId
             is MonicaImeDatabaseScope.Bitwarden -> entry.bitwardenVaultId == scope.vaultId
         }

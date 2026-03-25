@@ -61,6 +61,7 @@ import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.Category
+import takagi.ru.monica.data.isKeePassOwned
 import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
@@ -1464,10 +1465,21 @@ fun PasskeyListScreen(
         getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
         getKeePassGroups = getKeePassGroups,
         allowCopy = true,
+        allowMove = passkeyToMoveCategory?.isKeePassOwned() != true,
         onTargetSelected = { target, action ->
             val passkey = passkeyToMoveCategory ?: return@UnifiedMoveToCategoryBottomSheet
             scope.launch {
-                if (action == UnifiedMoveAction.COPY) {
+                val effectiveAction = if (action == UnifiedMoveAction.MOVE && passkey.isKeePassOwned()) {
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.keepass_copy_only_hint),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    UnifiedMoveAction.COPY
+                } else {
+                    action
+                }
+                if (effectiveAction == UnifiedMoveAction.COPY && action == UnifiedMoveAction.COPY) {
                     Toast.makeText(
                         context,
                         context.getString(R.string.passkey_copy_uses_move_hint),
@@ -1509,6 +1521,9 @@ fun PasskeyListScreen(
         getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
         getKeePassGroups = getKeePassGroups,
         allowCopy = true,
+        allowMove = combinedPasskeys
+            .filter { selectedPasskeys.contains(it.credentialId) }
+            .none { it.isKeePassOwned() },
         onTargetSelected = { target, action ->
             scope.launch {
                 val selectedItems = combinedPasskeys.filter { selectedPasskeys.contains(it.credentialId) }
@@ -1518,7 +1533,18 @@ fun PasskeyListScreen(
                 var failedCount = 0
                 var blockedCount = 0
 
-                if (action == UnifiedMoveAction.COPY) {
+                val effectiveAction = if (action == UnifiedMoveAction.MOVE && movable.any { it.isKeePassOwned() }) {
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.keepass_copy_only_hint),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    UnifiedMoveAction.COPY
+                } else {
+                    action
+                }
+
+                if (effectiveAction == UnifiedMoveAction.COPY && action == UnifiedMoveAction.COPY) {
                     Toast.makeText(
                         context,
                         context.getString(R.string.passkey_copy_uses_move_hint),

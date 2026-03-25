@@ -16,6 +16,10 @@ import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.OperationLogItemType
+import takagi.ru.monica.data.SecureItemOwnership
+import takagi.ru.monica.data.asMonicaLocalCopy
+import takagi.ru.monica.data.hasOwnershipConflict
+import takagi.ru.monica.data.resolveOwnership
 import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
@@ -57,6 +61,12 @@ class DocumentViewModel(
     private val keepassSecureItemCreateExecutor = KeePassSecureItemCreateExecutor(keepassBridge)
     private val keepassSecureItemDeleteExecutor = KeePassSecureItemDeleteExecutor(keepassBridge)
     private val keepassSecureItemUpdateExecutor = KeePassSecureItemUpdateExecutor(keepassBridge)
+
+    init {
+        viewModelScope.launch {
+            repairLegacyDetachedKeePassItems()
+        }
+    }
     
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
@@ -73,7 +83,8 @@ class DocumentViewModel(
     
     // 根据ID获取证件
     suspend fun getDocumentById(id: Long): SecureItem? {
-        return repository.getItemById(id)
+        val item = repository.getItemById(id) ?: return null
+        return repository.normalizeLegacyDetachedKeePassItem(item, ::hasKeePassDatabase)
     }
 
     fun syncAllKeePassDocuments() {
@@ -299,6 +310,69 @@ class DocumentViewModel(
         }
     }
 
+    suspend fun copyDocumentToMonicaLocal(
+        item: SecureItem,
+        categoryId: Long?
+    ): Long? {
+        if (item.itemType != ItemType.DOCUMENT || item.hasOwnershipConflict()) return null
+        val localCopy = item.asMonicaLocalCopy(categoryId).copy(
+            createdAt = Date(),
+            updatedAt = Date()
+        )
+        return repository.insertItem(localCopy)
+    }
+
+    suspend fun moveDocumentToMonicaLocal(
+        item: SecureItem,
+        categoryId: Long?
+    ): Result<Long> {
+        if (item.itemType != ItemType.DOCUMENT) {
+            return Result.failure(IllegalArgumentException("仅支持证件项目"))
+        }
+        if (item.hasOwnershipConflict()) {
+            return Result.failure(IllegalStateException("证件来源冲突，无法移动到 Monica 本地"))
+        }
+
+        val newId = copyDocumentToMonicaLocal(item, categoryId)
+            ?: return Result.failure(IllegalStateException("创建 Monica 本地证件副本失败"))
+
+        val sourceDelete = when (val ownership = item.resolveOwnership()) {
+            is SecureItemOwnership.Bitwarden -> {
+                val vaultId = ownership.vaultId
+                val cipherId = ownership.cipherId
+                if (vaultId == null || cipherId.isNullOrBlank()) {
+                    Result.failure(IllegalStateException("Bitwarden 证件缺少同步标识"))
+                } else {
+                    bitwardenRepository?.queueCipherDelete(
+                        vaultId = vaultId,
+                        cipherId = cipherId,
+                        entryId = item.id,
+                        itemType = BitwardenPendingOperation.ITEM_TYPE_DOCUMENT
+                    ) ?: Result.failure(IllegalStateException("Bitwarden 仓库不可用"))
+                }
+            }
+            is SecureItemOwnership.KeePass -> {
+                if (keepassSecureItemDeleteExecutor.delete(item, useRecycleBin = false)) {
+                    Result.success(Unit)
+                } else {
+                    Result.failure(IllegalStateException("KeePass 证件源删除失败"))
+                }
+            }
+            is SecureItemOwnership.MonicaLocal -> Result.success(Unit)
+            is SecureItemOwnership.Conflict -> Result.failure(IllegalStateException("证件来源冲突，无法移动到 Monica 本地"))
+        }
+
+        if (sourceDelete.isFailure) {
+            repository.deleteItemById(newId)
+            return Result.failure(
+                sourceDelete.exceptionOrNull() ?: IllegalStateException("删除证件源失败")
+            )
+        }
+
+        repository.deleteItem(item)
+        return Result.success(newId)
+    }
+
     private fun resolveKeePassMutationIdentity(
         existingItem: SecureItem?,
         targetDatabaseId: Long?,
@@ -435,5 +509,13 @@ class DocumentViewModel(
     // 解析证件数据
     fun parseDocumentData(jsonData: String): DocumentData? {
         return CardWalletDataCodec.parseDocumentData(jsonData)
+    }
+
+    private suspend fun repairLegacyDetachedKeePassItems() {
+        repository.repairLegacyDetachedKeePassItems(::hasKeePassDatabase)
+    }
+
+    private suspend fun hasKeePassDatabase(databaseId: Long): Boolean {
+        return localKeePassDatabaseDao?.getDatabaseById(databaseId) != null
     }
 }

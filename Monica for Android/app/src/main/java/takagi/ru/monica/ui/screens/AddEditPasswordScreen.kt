@@ -108,6 +108,9 @@ import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.autofill_ng.ui.rememberFavicon
+import takagi.ru.monica.domain.provider.PasswordSource
+import takagi.ru.monica.ui.model.SecretValueState
+import takagi.ru.monica.ui.model.plainValueOrEmpty
 import java.io.File
 import java.util.Locale
 
@@ -198,6 +201,8 @@ fun AddEditPasswordScreen(
     // CHANGE: Support multiple passwords
     val passwords = rememberSaveable(saver = takagi.ru.monica.utils.StringListSaver) { mutableStateListOf("") }
     var originalIds by remember { mutableStateOf<List<Long>>(emptyList()) }
+    var unreadablePasswordIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var hasOwnershipConflict by remember { mutableStateOf(false) }
     
     var authenticatorKey by rememberSaveable { mutableStateOf("") }
     var passkeyBindings by rememberSaveable { mutableStateOf("") }
@@ -679,7 +684,12 @@ fun AddEditPasswordScreen(
         if (passwordId != null) {
             coroutineScope.launch {
                 val actualId = if (passwordId < 0) -passwordId else passwordId
-                viewModel.getPasswordEntryById(actualId)?.let { entry ->
+                viewModel.getRawPasswordEntryById(actualId)?.let { rawEntry ->
+                    hasOwnershipConflict = rawEntry.hasOwnershipConflict()
+                    val secretState = viewModel.inspectSecretState(rawEntry)
+                    val entry = rawEntry.copy(
+                        password = secretState.plainValueOrEmpty()
+                    )
                     title = entry.title
                     website = entry.website
                     username = entry.username
@@ -731,7 +741,7 @@ fun AddEditPasswordScreen(
                         isFavorite = entry.isFavorite
                         
                         // Fetch all passwords in the group
-                        val allEntries = viewModel.allPasswords.first()
+                        val allEntries = viewModel.getRawActivePasswordEntries()
                         val key = buildPasswordSiblingGroupKey(entry)
                         val siblings = allEntries.filter { item: PasswordEntry -> 
                             val itKey = buildPasswordSiblingGroupKey(item)
@@ -740,11 +750,32 @@ fun AddEditPasswordScreen(
                         
                         passwords.clear()
                         if (siblings.isNotEmpty()) {
-                            passwords.addAll(siblings.map { s: PasswordEntry -> s.password })
+                            val unreadableIds = mutableSetOf<Long>()
+                            passwords.addAll(
+                                siblings.map { sibling ->
+                                    val secretState = viewModel.inspectSecretState(sibling)
+                                    if (
+                                        secretState is SecretValueState.Unreadable &&
+                                        secretState.source is PasswordSource.Bitwarden
+                                    ) {
+                                        unreadableIds += sibling.id
+                                    }
+                                    secretState.plainValueOrEmpty()
+                                }
+                            )
                             originalIds = siblings.map { s: PasswordEntry -> s.id }
+                            unreadablePasswordIds = unreadableIds
                         } else {
                             passwords.add(entry.password)
                             originalIds = listOf(entry.id)
+                            unreadablePasswordIds = if (
+                                secretState is SecretValueState.Unreadable &&
+                                secretState.source is PasswordSource.Bitwarden
+                            ) {
+                                setOf(entry.id)
+                            } else {
+                                emptySet()
+                            }
                         }
                         
                         // 加载自定义字段
@@ -814,10 +845,14 @@ fun AddEditPasswordScreen(
                     }
                 } ?: run {
                      // Fallback if entry not found or new
+                     hasOwnershipConflict = false
+                     unreadablePasswordIds = emptySet()
                      if (passwords.isEmpty()) passwords.add("")
                 }
             }
         } else {
+             hasOwnershipConflict = false
+             unreadablePasswordIds = emptySet()
              if (passwords.isEmpty()) passwords.add("")
              if (!initialDraftApplied && initialDraft != null) {
                  if (title.isBlank()) title = initialDraft.title
@@ -834,12 +869,26 @@ fun AddEditPasswordScreen(
         }
     }
 
-    val canSave = title.isNotEmpty() && !isSaving
+    val canSave = title.isNotEmpty() && !isSaving && !hasOwnershipConflict
     val handleSave: () -> Unit = handleSave@{
         if (title.isNotEmpty() && !isSaving) {
+            if (hasOwnershipConflict) {
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.password_owner_conflict_display),
+                    Toast.LENGTH_SHORT
+                ).show()
+                return@handleSave
+            }
             isSaving = true // 防止重复点击
             val normalizedPasswords = passwords.map { it.trim() }
-            if (loginType == "PASSWORD" && normalizedPasswords.none { it.isNotEmpty() }) {
+            val canPreserveUnreadableBitwardenPassword =
+                isEditing && unreadablePasswordIds.isNotEmpty()
+            if (
+                loginType == "PASSWORD" &&
+                normalizedPasswords.none { it.isNotEmpty() } &&
+                !canPreserveUnreadableBitwardenPassword
+            ) {
                 Toast.makeText(context, context.getString(R.string.password_required), Toast.LENGTH_SHORT).show()
                 isSaving = false
                 return@handleSave
@@ -1167,6 +1216,36 @@ fun AddEditPasswordScreen(
                     }
                 )
             }
+
+            if (hasOwnershipConflict) {
+                item {
+                    ElevatedCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.elevatedCardColors(
+                            containerColor = MaterialTheme.colorScheme.errorContainer
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 14.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onErrorContainer
+                            )
+                            Text(
+                                text = stringResource(R.string.password_owner_conflict_display),
+                                color = MaterialTheme.colorScheme.onErrorContainer,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                }
+            }
             
             // Credentials Card
             item {
@@ -1484,6 +1563,8 @@ fun AddEditPasswordScreen(
                         ) {
                             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 passwords.forEachIndexed { index, pwd ->
+                                    val isUnreadablePassword =
+                                        isEditing && originalIds.getOrNull(index) in unreadablePasswordIds
                                     Column {
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
@@ -1535,7 +1616,18 @@ fun AddEditPasswordScreen(
                                                     },
                                                 singleLine = true,
                                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
-                                                shape = RoundedCornerShape(12.dp)
+                                                shape = RoundedCornerShape(12.dp),
+                                                supportingText = if (isUnreadablePassword) {
+                                                    {
+                                                        Text(stringResource(R.string.bitwarden_password_unreadable_inline))
+                                                    }
+                                                } else if (hasOwnershipConflict) {
+                                                    {
+                                                        Text(stringResource(R.string.password_owner_conflict_inline))
+                                                    }
+                                                } else {
+                                                    null
+                                                }
                                             )
                                         }
 
@@ -2466,24 +2558,14 @@ private fun InlineAccountSuggestionCard(
         else -> Icons.Default.Person
     }
 
-    Row(
+    InlinePrimarySuggestionCard(
+        label = suggestion.value,
+        leadingIcon = icon,
+        onClick = onApply,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        InlinePrimarySuggestionCard(
-            label = suggestion.value,
-            leadingIcon = icon,
-            onClick = onApply,
-            modifier = Modifier.weight(1f)
-        )
-        InlineNumericSuggestionBadge(
-            value = suggestion.usageCount.coerceAtLeast(1).toString(),
-            onClick = onApply
-        )
-    }
+            .padding(top = 8.dp)
+    )
 }
 
 @Composable
@@ -2491,27 +2573,16 @@ private fun InlineGeneratedPasswordSuggestionCard(
     password: String,
     onApply: () -> Unit
 ) {
-    Row(
+    InlinePrimarySuggestionCard(
+        label = password,
+        leadingIcon = Icons.Default.Key,
+        onClick = onApply,
         modifier = Modifier
             .fillMaxWidth()
             .padding(top = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        InlinePrimarySuggestionCard(
-            label = password,
-            leadingIcon = Icons.Default.Key,
-            onClick = onApply,
-            modifier = Modifier
-                .weight(1f),
-            containerColor = MaterialTheme.colorScheme.secondaryContainer,
-            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
-        )
-        InlineNumericSuggestionBadge(
-            value = password.length.toString(),
-            onClick = onApply
-        )
-    }
+        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+    )
 }
 
 @Composable
@@ -2549,34 +2620,6 @@ private fun InlinePrimarySuggestionCard(
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-@Composable
-private fun InlineNumericSuggestionBadge(
-    value: String,
-    onClick: () -> Unit
-) {
-    Surface(
-        modifier = Modifier
-            .size(44.dp)
-            .clickable(onClick = onClick),
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.primaryContainer,
-        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-        tonalElevation = 1.dp
-    ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Text(
-                text = value,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1
             )
         }
     }

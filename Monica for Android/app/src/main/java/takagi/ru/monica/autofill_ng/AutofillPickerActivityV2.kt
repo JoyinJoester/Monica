@@ -76,6 +76,7 @@ import takagi.ru.monica.autofill_ng.utils.SmartCopyNotificationHelper
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.isLocalPasswordOwnership
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.SecureItem
@@ -1363,7 +1364,7 @@ private fun AutofillPickerContent(
                 when (sourceFilter) {
                     AutofillStorageSourceFilter.ALL -> true
                     AutofillStorageSourceFilter.LOCAL ->
-                        entry.keepassDatabaseId == null && entry.bitwardenVaultId == null
+                        entry.isLocalOnlyEntry()
                     AutofillStorageSourceFilter.KEEPASS -> {
                         val keepassId = entry.keepassDatabaseId
                         keepassId != null &&
@@ -2150,7 +2151,7 @@ private fun SecureItem.matchesAutofillSourceFilter(
     return when (sourceFilter) {
         AutofillStorageSourceFilter.ALL -> true
         AutofillStorageSourceFilter.LOCAL ->
-            keepassDatabaseId == null && bitwardenVaultId == null
+            isLocalPasswordOwnership(keepassDatabaseId, bitwardenVaultId)
         AutofillStorageSourceFilter.KEEPASS -> {
             val keepassId = keepassDatabaseId
             keepassId != null &&

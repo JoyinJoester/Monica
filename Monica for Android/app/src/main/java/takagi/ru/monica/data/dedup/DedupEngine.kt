@@ -15,6 +15,8 @@ import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.isLocalOnlyPasskey
+import takagi.ru.monica.data.isLocalOnlyItem
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.bitwarden.BitwardenVaultDao
 import takagi.ru.monica.repository.PasskeyRepository
@@ -771,11 +773,11 @@ class DedupEngine(
     }
 
     private fun isLocalItem(item: SecureItem): Boolean {
-        return item.keepassDatabaseId == null && item.bitwardenVaultId == null
+        return item.isLocalOnlyItem()
     }
 
     private fun isLocalPasskey(entry: PasskeyEntry): Boolean {
-        return entry.keepassDatabaseId == null && entry.bitwardenVaultId == null
+        return entry.isLocalOnlyPasskey()
     }
 
     private fun normalizeText(value: String): String {

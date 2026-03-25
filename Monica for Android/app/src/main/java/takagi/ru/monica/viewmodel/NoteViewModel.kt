@@ -14,6 +14,10 @@ import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.OperationLogItemType
+import takagi.ru.monica.data.SecureItemOwnership
+import takagi.ru.monica.data.asMonicaLocalCopy
+import takagi.ru.monica.data.hasOwnershipConflict
+import takagi.ru.monica.data.resolveOwnership
 import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
@@ -38,7 +42,7 @@ data class NoteDraftStorageTarget(
 class NoteViewModel(
     private val repository: SecureItemRepository,
     context: Context? = null,
-    localKeePassDatabaseDao: LocalKeePassDatabaseDao? = null,
+    private val localKeePassDatabaseDao: LocalKeePassDatabaseDao? = null,
     securityManager: SecurityManager? = null
 ) : ViewModel() {
 
@@ -86,6 +90,12 @@ class NoteViewModel(
 
     private val _draftStorageTarget = MutableStateFlow(NoteDraftStorageTarget())
     val draftStorageTarget: StateFlow<NoteDraftStorageTarget> = _draftStorageTarget.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            repairLegacyDetachedKeePassItems()
+        }
+    }
     
     fun setGridLayout(isGrid: Boolean) {
         _isGridLayout.value = isGrid
@@ -157,7 +167,8 @@ class NoteViewModel(
     
     // 根据ID获取笔记
     suspend fun getNoteById(id: Long): SecureItem? {
-        return repository.getItemById(id)
+        val item = repository.getItemById(id) ?: return null
+        return repository.normalizeLegacyDetachedKeePassItem(item, ::hasKeePassDatabase)
     }
 
     fun observeNoteById(id: Long): Flow<SecureItem?> {
@@ -165,6 +176,14 @@ class NoteViewModel(
             .map { item ->
                 item?.takeIf { it.itemType == ItemType.NOTE }
             }
+    }
+
+    private suspend fun repairLegacyDetachedKeePassItems() {
+        repository.repairLegacyDetachedKeePassItems(::hasKeePassDatabase)
+    }
+
+    private suspend fun hasKeePassDatabase(databaseId: Long): Boolean {
+        return localKeePassDatabaseDao?.getDatabaseById(databaseId) != null
     }
     
     /**
@@ -383,6 +402,69 @@ class NoteViewModel(
         repository.updateItem(updated)
         keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = item, updatedItem = updated)
         return true
+    }
+
+    suspend fun copyNoteToMonicaLocal(
+        item: SecureItem,
+        categoryId: Long?
+    ): Long? {
+        if (item.itemType != ItemType.NOTE || item.hasOwnershipConflict()) return null
+        val localCopy = item.asMonicaLocalCopy(categoryId).copy(
+            createdAt = Date(),
+            updatedAt = Date()
+        )
+        return repository.insertItem(localCopy)
+    }
+
+    suspend fun moveNoteToMonicaLocal(
+        item: SecureItem,
+        categoryId: Long?
+    ): Result<Long> {
+        if (item.itemType != ItemType.NOTE) {
+            return Result.failure(IllegalArgumentException("仅支持笔记项目"))
+        }
+        if (item.hasOwnershipConflict()) {
+            return Result.failure(IllegalStateException("笔记来源冲突，无法移动到 Monica 本地"))
+        }
+
+        val newId = copyNoteToMonicaLocal(item, categoryId)
+            ?: return Result.failure(IllegalStateException("创建 Monica 本地笔记副本失败"))
+
+        val sourceDelete = when (val ownership = item.resolveOwnership()) {
+            is SecureItemOwnership.Bitwarden -> {
+                val vaultId = ownership.vaultId
+                val cipherId = ownership.cipherId
+                if (vaultId == null || cipherId.isNullOrBlank()) {
+                    Result.failure(IllegalStateException("Bitwarden 笔记缺少同步标识"))
+                } else {
+                    bitwardenRepository?.queueCipherDelete(
+                        vaultId = vaultId,
+                        cipherId = cipherId,
+                        entryId = item.id,
+                        itemType = BitwardenPendingOperation.ITEM_TYPE_NOTE
+                    ) ?: Result.failure(IllegalStateException("Bitwarden 仓库不可用"))
+                }
+            }
+            is SecureItemOwnership.KeePass -> {
+                if (keepassSecureItemDeleteExecutor.delete(item, useRecycleBin = false)) {
+                    Result.success(Unit)
+                } else {
+                    Result.failure(IllegalStateException("KeePass 笔记源删除失败"))
+                }
+            }
+            is SecureItemOwnership.MonicaLocal -> Result.success(Unit)
+            is SecureItemOwnership.Conflict -> Result.failure(IllegalStateException("笔记来源冲突，无法移动到 Monica 本地"))
+        }
+
+        if (sourceDelete.isFailure) {
+            repository.deleteItemById(newId)
+            return Result.failure(
+                sourceDelete.exceptionOrNull() ?: IllegalStateException("删除源笔记失败")
+            )
+        }
+
+        repository.deleteItem(item)
+        return Result.success(newId)
     }
 
     private fun resolveKeePassMutationIdentity(

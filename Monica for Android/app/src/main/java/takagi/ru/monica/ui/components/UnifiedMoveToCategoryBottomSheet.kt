@@ -44,6 +44,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -94,19 +95,25 @@ fun UnifiedMoveToCategoryBottomSheet(
     getBitwardenFolders: (Long) -> Flow<List<BitwardenFolder>>,
     getKeePassGroups: (Long) -> Flow<List<KeePassGroupInfo>>,
     allowCopy: Boolean = false,
+    allowMove: Boolean = true,
     allowArchiveTarget: Boolean = false,
     onTargetSelected: (UnifiedMoveCategoryTarget, UnifiedMoveAction) -> Unit
 ) {
     if (!visible) return
 
     val monicaExpanded = remember { mutableStateOf(false) }
-    val selectedAction = remember { mutableStateOf(UnifiedMoveAction.MOVE) }
+    val selectedAction = remember { mutableStateOf(if (allowMove) UnifiedMoveAction.MOVE else UnifiedMoveAction.COPY) }
     val bitwardenExpanded = remember { mutableStateOf<Map<Long, Boolean>>(emptyMap()) }
     val keepassExpanded = remember { mutableStateOf<Map<Long, Boolean>>(emptyMap()) }
     val expandCollapseSpec = spring<IntSize>(
         dampingRatio = Spring.DampingRatioNoBouncy,
         stiffness = Spring.StiffnessMediumLow
     )
+    LaunchedEffect(allowMove) {
+        if (!allowMove && selectedAction.value == UnifiedMoveAction.MOVE) {
+            selectedAction.value = UnifiedMoveAction.COPY
+        }
+    }
     val localKeePassDatabases = keepassDatabases
     val monicaCategoryNodes = remember(categories) { buildMonicaCategoryNodes(categories) }
 
@@ -146,11 +153,13 @@ fun UnifiedMoveToCategoryBottomSheet(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
-                    FilterChip(
-                        selected = selectedAction.value == UnifiedMoveAction.MOVE,
-                        onClick = { selectedAction.value = UnifiedMoveAction.MOVE },
-                        label = { Text(text = stringResource(R.string.move)) }
-                    )
+                    if (allowMove) {
+                        FilterChip(
+                            selected = selectedAction.value == UnifiedMoveAction.MOVE,
+                            onClick = { selectedAction.value = UnifiedMoveAction.MOVE },
+                            label = { Text(text = stringResource(R.string.move)) }
+                        )
+                    }
                     FilterChip(
                         selected = selectedAction.value == UnifiedMoveAction.COPY,
                         onClick = { selectedAction.value = UnifiedMoveAction.COPY },

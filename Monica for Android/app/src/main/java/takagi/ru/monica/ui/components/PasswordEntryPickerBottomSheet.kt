@@ -141,7 +141,7 @@ fun PasswordEntryPickerBottomSheet(
 
             val matchesSource = when (sourceFilter) {
                 PasswordPickerSourceFilter.ALL -> true
-                PasswordPickerSourceFilter.LOCAL -> entry.keepassDatabaseId == null && entry.bitwardenVaultId == null
+                PasswordPickerSourceFilter.LOCAL -> entry.isLocalOnlyEntry()
                 PasswordPickerSourceFilter.KEEPASS -> {
                     val keepassId = entry.keepassDatabaseId
                     keepassId != null && (selectedKeePassDatabaseId == null || keepassId == selectedKeePassDatabaseId)

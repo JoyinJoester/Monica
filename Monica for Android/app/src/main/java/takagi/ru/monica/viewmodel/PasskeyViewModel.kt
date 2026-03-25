@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.repository.PasskeyRepository
 
@@ -14,7 +15,8 @@ import takagi.ru.monica.repository.PasskeyRepository
  * 管理 Passkey 数据和 UI 状态
  */
 class PasskeyViewModel(
-    private val repository: PasskeyRepository
+    private val repository: PasskeyRepository,
+    private val localKeePassDatabaseDao: LocalKeePassDatabaseDao? = null
 ) : ViewModel() {
     
     // ==================== UI 状态 ====================
@@ -27,6 +29,12 @@ class PasskeyViewModel(
     
     private val _errorMessage = MutableStateFlow<String?>(null)
     val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            repairLegacyDetachedKeePassPasskeys()
+        }
+    }
     
     // ==================== 数据流 ====================
     
@@ -126,7 +134,8 @@ class PasskeyViewModel(
      * 获取指定 Passkey
      */
     suspend fun getPasskeyById(credentialId: String): PasskeyEntry? {
-        return repository.getPasskeyById(credentialId)
+        val passkey = repository.getPasskeyById(credentialId) ?: return null
+        return repository.normalizeLegacyDetachedKeePassPasskey(passkey, ::hasKeePassDatabase)
     }
     
     /**
@@ -240,5 +249,13 @@ class PasskeyViewModel(
      */
     suspend fun getDiscoverablePasskeysByRpId(rpId: String): List<PasskeyEntry> {
         return repository.getDiscoverablePasskeysByRpId(rpId)
+    }
+
+    private suspend fun repairLegacyDetachedKeePassPasskeys() {
+        repository.repairLegacyDetachedKeePassPasskeys(::hasKeePassDatabase)
+    }
+
+    private suspend fun hasKeePassDatabase(databaseId: Long): Boolean {
+        return localKeePassDatabaseDao?.getDatabaseById(databaseId) != null
     }
 }

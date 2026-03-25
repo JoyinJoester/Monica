@@ -271,6 +271,16 @@ interface PasskeyDao {
         """
     )
     suspend fun clearKeePassBindingForDatabase(databaseId: Long)
+
+    @Query(
+        """
+        UPDATE passkeys
+        SET keepass_database_id = NULL,
+            keepass_group_path = NULL
+        WHERE credential_id IN (:credentialIds)
+        """
+    )
+    suspend fun clearKeePassBindingForCredentialIds(credentialIds: List<String>)
     
     /**
      * 获取待上传到 Bitwarden 的 Passkeys

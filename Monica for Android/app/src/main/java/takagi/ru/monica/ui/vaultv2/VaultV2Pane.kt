@@ -84,6 +84,8 @@ import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
+import takagi.ru.monica.data.isLocalOnlyItem
+import takagi.ru.monica.data.isLocalOnlyPasskey
 import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.SecureItem
@@ -163,15 +165,15 @@ private val vaultV2Transliterator: Transliterator by lazy(LazyThreadSafetyMode.N
 }
 
 private fun PasswordEntry.isVaultV2LocalOnly(): Boolean {
-	return keepassDatabaseId == null && bitwardenVaultId == null
+	return isLocalOnlyEntry()
 }
 
 private fun SecureItem.isVaultV2LocalOnly(): Boolean {
-	return keepassDatabaseId == null && bitwardenVaultId == null
+	return isLocalOnlyItem()
 }
 
 private fun PasskeyEntry.isVaultV2LocalOnly(): Boolean {
-	return keepassDatabaseId == null && bitwardenVaultId == null
+	return isLocalOnlyPasskey()
 }
 
 @OptIn(

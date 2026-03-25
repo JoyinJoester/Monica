@@ -14,6 +14,7 @@ import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordHistoryEntry
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.SecureItemOwnership
 import takagi.ru.monica.data.PasswordHistoryManager
 import takagi.ru.monica.data.BackupPreferences
 import takagi.ru.monica.data.ItemType
@@ -22,6 +23,8 @@ import takagi.ru.monica.data.BackupReport
 import takagi.ru.monica.data.RestoreReport
 import takagi.ru.monica.data.ItemCounts
 import takagi.ru.monica.data.FailedItem
+import takagi.ru.monica.data.isLocalOnlyItem
+import takagi.ru.monica.data.resolveOwnership
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.security.SecurityManager
@@ -428,6 +431,140 @@ class WebDavHelper(
     init {
         // 启动时自动加载保存的配置
         loadConfig()
+    }
+
+    private fun isLikelyDetachedKeePassPassword(entry: PasswordEntry): Boolean {
+        if (entry.keepassDatabaseId == null) return false
+        if (entry.bitwardenVaultId != null || !entry.bitwardenCipherId.isNullOrBlank()) return false
+        val hasLocalCategory = entry.categoryId != null
+        val missingKeePassIdentity =
+            entry.keepassEntryUuid.isNullOrBlank() && entry.keepassGroupUuid.isNullOrBlank()
+        return hasLocalCategory || missingKeePassIdentity
+    }
+
+    private fun shouldIncludePasswordInMonicaBackup(entry: PasswordEntry): Boolean {
+        return entry.isLocalOnlyEntry() || isLikelyDetachedKeePassPassword(entry)
+    }
+
+    private fun sanitizePasswordForMonicaBackup(entry: PasswordEntry): PasswordEntry {
+        return entry.copy(
+            keepassDatabaseId = null,
+            keepassGroupPath = null,
+            keepassEntryUuid = null,
+            keepassGroupUuid = null,
+            bitwardenVaultId = null,
+            bitwardenCipherId = null,
+            bitwardenFolderId = null,
+            bitwardenRevisionDate = null,
+            bitwardenLocalModified = false
+        )
+    }
+
+    private fun isLikelyDetachedKeePassSecureItem(item: SecureItem): Boolean {
+        if (item.resolveOwnership() !is SecureItemOwnership.KeePass) return false
+        val hasLocalCategory = item.categoryId != null
+        val missingKeePassIdentity =
+            item.keepassEntryUuid.isNullOrBlank() && item.keepassGroupUuid.isNullOrBlank()
+        return hasLocalCategory || missingKeePassIdentity
+    }
+
+    private fun shouldIncludeSecureItemInMonicaBackup(item: SecureItem): Boolean {
+        return item.isLocalOnlyItem() || isLikelyDetachedKeePassSecureItem(item)
+    }
+
+    private fun sanitizeSecureItemForMonicaBackup(item: SecureItem): SecureItem {
+        return item.copy(
+            keepassDatabaseId = null,
+            keepassGroupPath = null,
+            keepassEntryUuid = null,
+            keepassGroupUuid = null,
+            bitwardenVaultId = null,
+            bitwardenCipherId = null,
+            bitwardenFolderId = null,
+            bitwardenRevisionDate = null,
+            bitwardenLocalModified = false,
+            syncStatus = "NONE"
+        )
+    }
+
+    private fun sanitizeSecureExportItemForMonicaRestore(
+        item: DataExportImportManager.ExportItem
+    ): DataExportImportManager.ExportItem {
+        return item.copy(
+            keepassDatabaseId = null,
+            keepassGroupPath = null,
+            bitwardenVaultId = null,
+            bitwardenFolderId = null
+        )
+    }
+
+    private fun isLocalSecureItem(item: SecureItem): Boolean {
+        return item.isLocalOnlyItem()
+    }
+
+    private fun restorePasswordAsMonicaLocal(backup: PasswordBackupEntry): PasswordEntry {
+        val normalizedIconValue = normalizeBackupIconValue(backup.customIconType, backup.customIconValue)
+        return PasswordEntry(
+            id = backup.id,
+            title = backup.title,
+            username = backup.username,
+            password = backup.password,
+            website = backup.website,
+            notes = backup.notes,
+            isFavorite = backup.isFavorite,
+            appPackageName = backup.appPackageName,
+            appName = backup.appName,
+            categoryId = null,
+            email = backup.email,
+            phone = backup.phone,
+            keepassDatabaseId = null,
+            keepassGroupPath = null,
+            keepassEntryUuid = null,
+            keepassGroupUuid = null,
+            bitwardenVaultId = null,
+            bitwardenCipherId = null,
+            bitwardenFolderId = null,
+            bitwardenRevisionDate = null,
+            bitwardenLocalModified = false,
+            createdAt = Date(backup.createdAt),
+            updatedAt = Date(backup.updatedAt),
+            authenticatorKey = backup.authenticatorKey,
+            passkeyBindings = backup.passkeyBindings,
+            loginType = backup.loginType,
+            ssoProvider = backup.ssoProvider,
+            ssoRefEntryId = backup.ssoRefEntryId,
+            customIconType = backup.customIconType,
+            customIconValue = normalizedIconValue,
+            customIconUpdatedAt = backup.customIconUpdatedAt
+        )
+    }
+
+    private fun restoreSecureItemAsMonicaLocal(
+        itemType: ItemType,
+        title: String,
+        itemData: String,
+        notes: String,
+        isFavorite: Boolean,
+        imagePaths: String,
+        createdAt: Long,
+        updatedAt: Long
+    ): DataExportImportManager.ExportItem {
+        return DataExportImportManager.ExportItem(
+            id = 0,
+            itemType = itemType.name,
+            title = title,
+            itemData = itemData,
+            notes = notes,
+            isFavorite = isFavorite,
+            imagePaths = imagePaths,
+            createdAt = createdAt,
+            updatedAt = updatedAt,
+            categoryId = null,
+            keepassDatabaseId = null,
+            keepassGroupPath = null,
+            bitwardenVaultId = null,
+            bitwardenFolderId = null
+        )
     }
     
     /**
@@ -849,10 +986,21 @@ class WebDavHelper(
 
             try {
                 // 2. 根据偏好设置过滤密码数据
-                val filteredPasswords = if (preferences.includePasswords) passwords else emptyList()
+                val backupPasswordCandidates = if (preferences.includePasswords) passwords else emptyList()
+                val filteredPasswords = backupPasswordCandidates
+                    .filter(::shouldIncludePasswordInMonicaBackup)
+                    .map(::sanitizePasswordForMonicaBackup)
+                val skippedExternalPasswordCount = backupPasswordCandidates.size - filteredPasswords.size
+                val repairedDetachedPasswordCount = backupPasswordCandidates.count(::isLikelyDetachedKeePassPassword)
+                if (skippedExternalPasswordCount > 0) {
+                    warnings.add("已跳过 $skippedExternalPasswordCount 条非 Monica 本地密码")
+                }
+                if (repairedDetachedPasswordCount > 0) {
+                    warnings.add("已按 Monica 本地修复 $repairedDetachedPasswordCount 条遗留 KeePass 标记的密码")
+                }
                 
                 // 3. 根据偏好设置过滤安全项目
-                val filteredSecureItems = secureItems.filter { item ->
+                val backupSecureItemCandidates = secureItems.filter { item ->
                     when (item.itemType) {
                         ItemType.TOTP -> preferences.includeAuthenticators
                         ItemType.DOCUMENT -> preferences.includeDocuments
@@ -860,6 +1008,19 @@ class WebDavHelper(
                         ItemType.NOTE -> preferences.includeNotes
                         else -> true
                     }
+                }
+                val filteredSecureItems = backupSecureItemCandidates
+                    .filter(::shouldIncludeSecureItemInMonicaBackup)
+                    .map(::sanitizeSecureItemForMonicaBackup)
+                val skippedExternalSecureItemCount =
+                    backupSecureItemCandidates.size - filteredSecureItems.size
+                val repairedDetachedSecureItemCount =
+                    backupSecureItemCandidates.count(::isLikelyDetachedKeePassSecureItem)
+                if (skippedExternalSecureItemCount > 0) {
+                    warnings.add("已跳过 $skippedExternalSecureItemCount 条非 Monica 本地安全项")
+                }
+                if (repairedDetachedSecureItemCount > 0) {
+                    warnings.add("已按 Monica 本地修复 $repairedDetachedSecureItemCount 条遗留 KeePass 标记的安全项")
                 }
 
                 // 分类过滤后的项目
@@ -925,10 +1086,10 @@ class WebDavHelper(
                                 appName = password.appName,
                                 email = password.email,
                                 phone = password.phone,
-                                keepassDatabaseId = password.keepassDatabaseId,
-                                keepassGroupPath = password.keepassGroupPath,
-                                bitwardenVaultId = password.bitwardenVaultId,
-                                bitwardenFolderId = password.bitwardenFolderId,
+                                keepassDatabaseId = null,
+                                keepassGroupPath = null,
+                                bitwardenVaultId = null,
+                                bitwardenFolderId = null,
                                 createdAt = password.createdAt.time,
                                 updatedAt = password.updatedAt.time,
                                 authenticatorKey = password.authenticatorKey,  // ✅ 直接备份验证器密钥
@@ -1036,10 +1197,10 @@ class WebDavHelper(
                                 notes = item.notes,
                                 isFavorite = item.isFavorite,
                                 imagePaths = item.imagePaths,
-                                keepassDatabaseId = item.keepassDatabaseId,
-                                keepassGroupPath = item.keepassGroupPath,
-                                bitwardenVaultId = item.bitwardenVaultId,
-                                bitwardenFolderId = item.bitwardenFolderId,
+                                keepassDatabaseId = null,
+                                keepassGroupPath = null,
+                                bitwardenVaultId = null,
+                                bitwardenFolderId = null,
                                 createdAt = item.createdAt.time,
                                 updatedAt = item.updatedAt.time,
                                 categoryName = categoryName
@@ -1066,7 +1227,10 @@ class WebDavHelper(
                 // 6. 导出 Cards & Docs
                 if (cardsDocsItems.isNotEmpty()) {
                     val exportManager = DataExportImportManager(context)
-                    val exportResult = exportManager.exportData(cardsDocsItems, Uri.fromFile(cardsDocsCsvFile))
+                    val exportResult = exportManager.exportData(
+                        cardsDocsItems.map(::sanitizeSecureItemForMonicaBackup),
+                        Uri.fromFile(cardsDocsCsvFile)
+                    )
                     if (exportResult.isFailure) throw exportResult.exceptionOrNull()!!
                 }
 
@@ -1083,10 +1247,10 @@ class WebDavHelper(
                                 itemData = item.itemData,
                                 isFavorite = item.isFavorite,
                                 imagePaths = item.imagePaths,
-                                keepassDatabaseId = item.keepassDatabaseId,
-                                keepassGroupPath = item.keepassGroupPath,
-                                bitwardenVaultId = item.bitwardenVaultId,
-                                bitwardenFolderId = item.bitwardenFolderId,
+                                keepassDatabaseId = null,
+                                keepassGroupPath = null,
+                                bitwardenVaultId = null,
+                                bitwardenFolderId = null,
                                 createdAt = item.createdAt.time,
                                 updatedAt = item.updatedAt.time,
                                 categoryName = categoryName
@@ -2820,7 +2984,9 @@ class WebDavHelper(
                             val importResult = exportManager.importData(Uri.fromFile(csvFile))
                             if (importResult.isSuccess) {
                                 val imported = importResult.getOrNull() ?: emptyList()
-                                val normalizedImported = imported.map(::normalizeRestoredTotpItem)
+                                val normalizedImported = imported
+                                    .map(::normalizeRestoredTotpItem)
+                                    .map(::sanitizeSecureExportItemForMonicaRestore)
                                 if (totpWithMetadata.isNotEmpty()) {
                                     secureItems.addAll(normalizedImported.filterNot { it.itemType == ItemType.TOTP.name })
                                 } else {
@@ -3089,36 +3255,7 @@ class WebDavHelper(
             val content = file.readText(Charsets.UTF_8)
             val json = Json { ignoreUnknownKeys = true }
             val backup = json.decodeFromString<PasswordBackupEntry>(content)
-            val normalizedIconValue = normalizeBackupIconValue(backup.customIconType, backup.customIconValue)
-            val entry = PasswordEntry(
-                id = backup.id, // 暂存原始ID，用于后续TOTP关联映射
-                title = backup.title,
-                username = backup.username,
-                password = backup.password,
-                website = backup.website,
-                notes = backup.notes,
-                isFavorite = backup.isFavorite,
-                appPackageName = backup.appPackageName,
-                appName = backup.appName,
-                categoryId = null, // ✅ 先设为null，稍后根据categoryName解析
-                email = backup.email,
-                phone = backup.phone,
-                keepassDatabaseId = backup.keepassDatabaseId,
-                keepassGroupPath = backup.keepassGroupPath,
-                bitwardenVaultId = backup.bitwardenVaultId,
-                bitwardenFolderId = backup.bitwardenFolderId,
-                createdAt = Date(backup.createdAt),
-                updatedAt = Date(backup.updatedAt),
-                authenticatorKey = backup.authenticatorKey,  // ✅ 直接恢复验证器密钥
-                passkeyBindings = backup.passkeyBindings,
-                // ✅ 第三方登录(SSO)字段
-                loginType = backup.loginType,
-                ssoProvider = backup.ssoProvider,
-                ssoRefEntryId = backup.ssoRefEntryId,
-                customIconType = backup.customIconType,
-                customIconValue = normalizedIconValue,
-                customIconUpdatedAt = backup.customIconUpdatedAt
-            )
+            val entry = restorePasswordAsMonicaLocal(backup)
             // 临时存储自定义字段到全局 map（将在恢复时使用）
             if (backup.customFields.isNotEmpty()) {
                 pendingCustomFields[backup.id] = backup.customFields
@@ -3189,20 +3326,15 @@ class WebDavHelper(
             val text = file.readText(Charsets.UTF_8)
             val entry = json.decodeFromString(NoteBackupEntry.serializer(), text)
             Pair(
-                DataExportImportManager.ExportItem(
-                id = entry.id,
-                itemType = ItemType.NOTE.name,
-                title = entry.title,
-                itemData = entry.itemData,
-                notes = entry.notes,
-                isFavorite = entry.isFavorite,
-                imagePaths = entry.imagePaths,
-                createdAt = entry.createdAt,
+                restoreSecureItemAsMonicaLocal(
+                    itemType = ItemType.NOTE,
+                    title = entry.title,
+                    itemData = entry.itemData,
+                    notes = entry.notes,
+                    isFavorite = entry.isFavorite,
+                    imagePaths = entry.imagePaths,
+                    createdAt = entry.createdAt,
                     updatedAt = entry.updatedAt,
-                    keepassDatabaseId = entry.keepassDatabaseId,
-                    keepassGroupPath = entry.keepassGroupPath,
-                    bitwardenVaultId = entry.bitwardenVaultId,
-                    bitwardenFolderId = entry.bitwardenFolderId
                 ),
                 entry.categoryName
             )
@@ -3218,9 +3350,8 @@ class WebDavHelper(
             val text = file.readText(Charsets.UTF_8)
             val entry = json.decodeFromString(TotpBackupEntry.serializer(), text)
             Pair(
-                DataExportImportManager.ExportItem(
-                    id = entry.id,
-                    itemType = ItemType.TOTP.name,
+                restoreSecureItemAsMonicaLocal(
+                    itemType = ItemType.TOTP,
                     title = entry.title,
                     itemData = normalizeRestoredTotpItemData(entry.itemData, entry.title),
                     notes = entry.notes,
@@ -3228,10 +3359,6 @@ class WebDavHelper(
                     imagePaths = entry.imagePaths,
                     createdAt = entry.createdAt,
                     updatedAt = entry.updatedAt,
-                    keepassDatabaseId = entry.keepassDatabaseId,
-                    keepassGroupPath = entry.keepassGroupPath,
-                    bitwardenVaultId = entry.bitwardenVaultId,
-                    bitwardenFolderId = entry.bitwardenFolderId
                 ),
                 entry.categoryName
             )
@@ -3400,11 +3527,6 @@ class WebDavHelper(
                 val createdAt = fields.getOrNull(7)?.toLongOrNull()?.let { Date(it) } ?: Date()
                 val updatedAt = fields.getOrNull(8)?.toLongOrNull()?.let { Date(it) } ?: Date()
                 val categoryId = fields.getOrNull(9)?.toLongOrNull()
-                val keepassDatabaseId = fields.getOrNull(10)?.toLongOrNull()
-                val keepassGroupPath = fields.getOrNull(11)?.takeIf { it.isNotBlank() }
-                val bitwardenVaultId = fields.getOrNull(12)?.toLongOrNull()
-                val bitwardenFolderId = fields.getOrNull(13)?.takeIf { it.isNotBlank() }
-
                 // Parse Data string (username:x;password:y;...)
                 val dataMap = parsePasswordDataString(dataStr)
                 
@@ -3421,10 +3543,15 @@ class WebDavHelper(
                     createdAt = createdAt,
                     updatedAt = updatedAt,
                     categoryId = categoryId,
-                    keepassDatabaseId = keepassDatabaseId,
-                    keepassGroupPath = keepassGroupPath,
-                    bitwardenVaultId = bitwardenVaultId,
-                    bitwardenFolderId = bitwardenFolderId
+                    keepassDatabaseId = null,
+                    keepassGroupPath = null,
+                    keepassEntryUuid = null,
+                    keepassGroupUuid = null,
+                    bitwardenVaultId = null,
+                    bitwardenCipherId = null,
+                    bitwardenFolderId = null,
+                    bitwardenRevisionDate = null,
+                    bitwardenLocalModified = false
                 )
             } else {
                 null

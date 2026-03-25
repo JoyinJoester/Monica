@@ -26,6 +26,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,15 +57,19 @@ import takagi.ru.monica.data.UnmatchedIconHandlingStrategy
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.utils.FieldValidation
 import takagi.ru.monica.utils.SettingsManager
+import takagi.ru.monica.domain.provider.PasswordSource
 import takagi.ru.monica.viewmodel.CategoryFilter
+import takagi.ru.monica.viewmodel.BitwardenRecoveryResult
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.PasskeyViewModel
 import takagi.ru.monica.util.TotpGenerator
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.model.PasskeyBinding
 import takagi.ru.monica.data.model.PasskeyBindingCodec
+import takagi.ru.monica.ui.model.SecretValueState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -137,6 +142,7 @@ fun PasswordDetailScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
     val settingsManager = remember { SettingsManager(context) }
     val settings by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
@@ -149,6 +155,7 @@ fun PasswordDetailScreen(
     // 密码条目状态
     var passwordEntry by remember { mutableStateOf<PasswordEntry?>(null) }
     var groupPasswords by remember { mutableStateOf<List<PasswordEntry>>(emptyList()) }
+    var passwordSecretState by remember { mutableStateOf<SecretValueState?>(null) }
     var bitwardenFoldersByVault by remember {
         mutableStateOf<Map<Long, List<BitwardenFolder>>>(emptyMap())
     }
@@ -291,6 +298,8 @@ fun PasswordDetailScreen(
     // 密码可见性
     var passwordVisible by remember { mutableStateOf(false) }
     var cvvVisible by remember { mutableStateOf(false) }
+    var isResyncingUnreadablePassword by remember { mutableStateOf(false) }
+    var unavailablePasswordSources by remember { mutableStateOf<Map<Long, PasswordSource>>(emptyMap()) }
 
     // 加载密码详情
     // We need to observe all passwords to detect updates/siblings
@@ -301,6 +310,10 @@ fun PasswordDetailScreen(
             val entry = allPasswords.find { it.id == passwordId }
             if (entry != null) {
                 passwordEntry = entry
+                passwordSecretState = withContext(Dispatchers.IO) {
+                    viewModel.getRawPasswordEntryById(passwordId)
+                        ?.let(viewModel::inspectSecretState)
+                }
                 
                 // Find siblings
                 val key = buildPasswordSiblingGroupKey(entry)
@@ -318,6 +331,17 @@ fun PasswordDetailScreen(
                         .thenBy { it.bitwardenVaultId ?: Long.MAX_VALUE }
                         .thenBy { it.id }
                 )
+                unavailablePasswordSources = withContext(Dispatchers.IO) {
+                    buildMap {
+                        listOf(entry).forEach { current ->
+                            val rawCurrent = viewModel.getRawPasswordEntryById(current.id) ?: current
+                            val secretState = viewModel.inspectSecretState(rawCurrent)
+                            if (secretState is SecretValueState.Unreadable) {
+                                put(current.id, secretState.source)
+                            }
+                        }
+                    }
+                }
                 
                 // 加载自定义字段 (添加错误处理)
                 try {
@@ -486,6 +510,9 @@ fun PasswordDetailScreen(
                             localSourceLabel = context.getString(R.string.database_source_local),
                             keepassSourceLabel = context.getString(R.string.database_source_keepass),
                             bitwardenSourceLabel = context.getString(R.string.filter_bitwarden),
+                            passwordOwnerConflictShortLabel = context.getString(R.string.password_owner_conflict_short),
+                            passwordOwnerConflictDatabaseLabel = context.getString(R.string.password_owner_conflict_database),
+                            passwordOwnerConflictDisplayLabel = context.getString(R.string.password_owner_conflict_display),
                             rootLabel = context.getString(R.string.folder_no_folder_root)
                         )
                     }
@@ -512,6 +539,9 @@ fun PasswordDetailScreen(
                                     localSourceLabel = context.getString(R.string.database_source_local),
                                     keepassSourceLabel = context.getString(R.string.database_source_keepass),
                                     bitwardenSourceLabel = context.getString(R.string.filter_bitwarden),
+                                    passwordOwnerConflictShortLabel = context.getString(R.string.password_owner_conflict_short),
+                                    passwordOwnerConflictDatabaseLabel = context.getString(R.string.password_owner_conflict_database),
+                                    passwordOwnerConflictDisplayLabel = context.getString(R.string.password_owner_conflict_display),
                                     rootLabel = context.getString(R.string.folder_no_folder_root)
                                 )
                         )
@@ -561,6 +591,25 @@ fun PasswordDetailScreen(
                 // ==========================================
                 PasswordListCard(
                     passwords = listOf(entry),
+                    unavailablePasswordSources = unavailablePasswordSources,
+                    onResyncUnreadable = {
+                        if (isResyncingUnreadablePassword) return@PasswordListCard
+                        coroutineScope.launch {
+                            isResyncingUnreadablePassword = true
+                            val result = viewModel.recoverUnreadableBitwardenEntry(entry.id)
+                            val message = when (result) {
+                                BitwardenRecoveryResult.Success ->
+                                    context.getString(R.string.bitwarden_password_resync_success)
+                                is BitwardenRecoveryResult.Error ->
+                                    context.getString(R.string.bitwarden_password_resync_failed, result.message)
+                                is BitwardenRecoveryResult.EmptyVaultBlocked ->
+                                    context.getString(R.string.bitwarden_password_resync_blocked, result.reason)
+                            }
+                            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                            isResyncingUnreadablePassword = false
+                        }
+                    },
+                    isResyncingUnreadable = isResyncingUnreadablePassword,
                     onDelete = {
                         itemToDelete = entry
                         showDeleteDialog = true
@@ -2305,9 +2354,13 @@ private fun buildPasswordStorageInfo(
     localSourceLabel: String,
     keepassSourceLabel: String,
     bitwardenSourceLabel: String,
+    passwordOwnerConflictShortLabel: String,
+    passwordOwnerConflictDatabaseLabel: String,
+    passwordOwnerConflictDisplayLabel: String,
     rootLabel: String
 ): PasswordStorageInfo {
     val containerKey = when {
+        entry.hasOwnershipConflict() -> "conflict:${entry.id}"
         entry.bitwardenVaultId != null -> "bw:${entry.bitwardenVaultId}"
         entry.keepassDatabaseId != null -> "kp:${entry.keepassDatabaseId}"
         else -> "local"
@@ -2325,16 +2378,19 @@ private fun buildPasswordStorageInfo(
         }
 
     val sourceName = when {
+        entry.hasOwnershipConflict() -> passwordOwnerConflictShortLabel
         entry.isBitwardenEntry() -> bitwardenSourceLabel
         entry.isKeePassEntry() -> keepassSourceLabel
         else -> localSourceLabel
     }
     val databaseName = when {
+        entry.hasOwnershipConflict() -> passwordOwnerConflictDatabaseLabel
         entry.isBitwardenEntry() -> bitwardenVaultName ?: bitwardenSourceLabel
         entry.isKeePassEntry() -> keepassDatabaseName ?: keepassSourceLabel
         else -> localSourceLabel
     }
     val folderPath = when {
+        entry.hasOwnershipConflict() -> passwordOwnerConflictDisplayLabel
         entry.isBitwardenEntry() -> bitwardenFolderName
             ?: entry.bitwardenFolderId
             ?: rootLabel
@@ -2398,6 +2454,9 @@ private fun hasPaymentInfo(entry: PasswordEntry): Boolean {
 @Composable
 private fun PasswordListCard(
     passwords: List<PasswordEntry>,
+    unavailablePasswordSources: Map<Long, PasswordSource>,
+    onResyncUnreadable: () -> Unit,
+    isResyncingUnreadable: Boolean,
     onDelete: (PasswordEntry) -> Unit,
     context: Context
 ) {
@@ -2422,6 +2481,9 @@ private fun PasswordListCard(
             passwords.forEachIndexed { index, entry ->
                 PasswordItemRow(
                     entry = entry,
+                    unavailableSource = unavailablePasswordSources[entry.id],
+                    onResyncUnreadable = onResyncUnreadable,
+                    isResyncingUnreadable = isResyncingUnreadable,
                     index = index + 1,
                     showIndex = passwords.size > 1,
                     onDelete = { onDelete(entry) },
@@ -2439,6 +2501,9 @@ private fun PasswordListCard(
 @Composable
 private fun PasswordItemRow(
     entry: PasswordEntry,
+    unavailableSource: PasswordSource?,
+    onResyncUnreadable: () -> Unit,
+    isResyncingUnreadable: Boolean,
     index: Int,
     showIndex: Boolean,
     onDelete: () -> Unit,
@@ -2446,6 +2511,18 @@ private fun PasswordItemRow(
     canDelete: Boolean
 ) {
     var visible by remember { mutableStateOf(false) }
+    val isUnavailable = unavailableSource != null
+    val isBitwardenUnreadable = unavailableSource is PasswordSource.Bitwarden
+    val unavailableMessage = when (unavailableSource) {
+        is PasswordSource.Bitwarden -> stringResource(R.string.bitwarden_password_unreadable_display)
+        is PasswordSource.Conflict -> stringResource(R.string.password_owner_conflict_display)
+        else -> stringResource(R.string.password_owner_conflict_display)
+    }
+    val unavailableCopyMessage = when (unavailableSource) {
+        is PasswordSource.Bitwarden -> stringResource(R.string.bitwarden_password_unreadable_copy)
+        is PasswordSource.Conflict -> stringResource(R.string.password_owner_conflict_copy)
+        else -> stringResource(R.string.password_owner_conflict_copy)
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
@@ -2469,6 +2546,14 @@ private fun PasswordItemRow(
                 }
                 
                 IconButton(onClick = {
+                    if (isUnavailable) {
+                        Toast.makeText(
+                            context,
+                            unavailableCopyMessage,
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        return@IconButton
+                    }
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                     val clip = ClipData.newPlainText("password", entry.password)
                     clipboard.setPrimaryClip(clip)
@@ -2491,12 +2576,33 @@ private fun PasswordItemRow(
         }
         
         Text(
-            text = if (visible) entry.password else "•".repeat(8),
+            text = when {
+                isUnavailable -> unavailableMessage
+                visible -> entry.password
+                else -> "•".repeat(8)
+            },
             style = MaterialTheme.typography.bodyLarge.copy(
                 fontFamily = if (visible) androidx.compose.ui.text.font.FontFamily.Monospace else androidx.compose.ui.text.font.FontFamily.Default
             ),
             color = MaterialTheme.colorScheme.onSurface
         )
+
+        if (isBitwardenUnreadable) {
+            TextButton(
+                onClick = onResyncUnreadable,
+                enabled = !isResyncingUnreadable,
+                contentPadding = PaddingValues(0.dp)
+            ) {
+                if (isResyncingUnreadable) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(14.dp),
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                Text(stringResource(R.string.bitwarden_password_resync_action))
+            }
+        }
     }
 }
 

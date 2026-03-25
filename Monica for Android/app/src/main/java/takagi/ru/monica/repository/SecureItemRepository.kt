@@ -1,9 +1,13 @@
 package takagi.ru.monica.repository
 
+import android.util.Log
+import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.SecureItemDao
-import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.SecureItemOwnership
+import takagi.ru.monica.data.resolveOwnership
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.contentOrNull
@@ -19,6 +23,10 @@ import java.util.Locale
 class SecureItemRepository(
     private val secureItemDao: SecureItemDao
 ) {
+    companion object {
+        private const val TAG = "SecureItemRepository"
+    }
+
     private val json = Json { ignoreUnknownKeys = true }
 
     private data class TotpFingerprint(
@@ -50,6 +58,20 @@ class SecureItemRepository(
     
     suspend fun getItemById(id: Long): SecureItem? {
         return secureItemDao.getItemById(id)
+    }
+
+    suspend fun normalizeLegacyDetachedKeePassItem(
+        item: SecureItem,
+        databaseExists: suspend (Long) -> Boolean = { false }
+    ): SecureItem {
+        if (!isLegacyDetachedKeePassItem(item, databaseExists)) return item
+        secureItemDao.clearKeePassBindingForIds(listOf(item.id))
+        return secureItemDao.getItemById(item.id) ?: item.copy(
+            keepassDatabaseId = null,
+            keepassGroupPath = null,
+            keepassEntryUuid = null,
+            keepassGroupUuid = null
+        )
     }
 
     suspend fun getItemByKeePassUuid(databaseId: Long, entryUuid: String): SecureItem? {
@@ -278,6 +300,34 @@ class SecureItemRepository(
      */
     suspend fun getLocalDeletedItemCount(): Int {
         return secureItemDao.getLocalDeletedItemCount()
+    }
+
+    suspend fun repairLegacyDetachedKeePassItems(
+        databaseExists: suspend (Long) -> Boolean = { false }
+    ): Int {
+        val items = secureItemDao.getAllItems().first()
+        val staleIds = items
+            .filter { isLegacyDetachedKeePassItem(it, databaseExists) }
+            .map { it.id }
+        if (staleIds.isEmpty()) return 0
+
+        secureItemDao.clearKeePassBindingForIds(staleIds)
+        Log.i(TAG, "Detached legacy KeePass-local secure item bindings: count=${staleIds.size}")
+        return staleIds.size
+    }
+
+    private suspend fun isLegacyDetachedKeePassItem(
+        item: SecureItem,
+        databaseExists: suspend (Long) -> Boolean
+    ): Boolean {
+        val ownership = item.resolveOwnership()
+        if (ownership !is SecureItemOwnership.KeePass) return false
+        if (item.categoryId != null) return true
+
+        val keepassDatabaseStillExists = databaseExists(ownership.databaseId)
+        if (keepassDatabaseStillExists) return false
+
+        return item.keepassEntryUuid.isNullOrBlank() && item.keepassGroupUuid.isNullOrBlank()
     }
 
     private fun parseTotpFingerprint(itemData: String): TotpFingerprint? {

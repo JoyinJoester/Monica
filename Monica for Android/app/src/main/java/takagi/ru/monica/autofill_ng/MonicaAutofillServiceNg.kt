@@ -319,7 +319,7 @@ class MonicaAutofillServiceNg : AutofillService() {
         return when (sourceFilter) {
             AutofillPreferences.AutofillDefaultSourceFilter.ALL -> entries
             AutofillPreferences.AutofillDefaultSourceFilter.LOCAL -> entries.filter { entry ->
-                entry.keepassDatabaseId == null && entry.bitwardenVaultId == null
+                entry.isLocalOnlyEntry()
             }
             AutofillPreferences.AutofillDefaultSourceFilter.KEEPASS -> entries.filter { entry ->
                 entry.keepassDatabaseId != null &&

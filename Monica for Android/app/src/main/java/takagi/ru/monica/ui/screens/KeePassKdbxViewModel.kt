@@ -27,6 +27,7 @@ import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.CustomField
+import takagi.ru.monica.data.isLocalOnlyItem
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.KeePassCodecSupport
@@ -674,7 +675,7 @@ class KeePassKdbxViewModel {
                             val duplicateByTitle = secureItemDao.findDuplicateItem(ItemType.TOTP, normalizedTitle)
                             val existingItem = duplicateByTitle?.takeIf { candidate ->
                                 (candidate.keepassDatabaseId == keepassDatabaseId && candidate.keepassGroupPath == groupPath) ||
-                                    (candidate.keepassDatabaseId == null && candidate.bitwardenVaultId == null)
+                                    candidate.isLocalOnlyItem()
                             }
                             if (existingItem != null) {
                                 val updatedItem = existingItem.copy(

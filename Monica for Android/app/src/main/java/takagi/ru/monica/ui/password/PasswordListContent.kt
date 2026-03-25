@@ -376,6 +376,8 @@ private fun buildCopiedEntryForTarget(
             categoryId = null,
             keepassDatabaseId = null,
             keepassGroupPath = null,
+            keepassEntryUuid = null,
+            keepassGroupUuid = null,
             bitwardenVaultId = null,
             bitwardenCipherId = null,
             bitwardenFolderId = null,
@@ -396,6 +398,8 @@ private fun buildCopiedEntryForTarget(
                     categoryId = null,
                     keepassDatabaseId = null,
                     keepassGroupPath = null,
+                    keepassEntryUuid = null,
+                    keepassGroupUuid = null,
                     bitwardenVaultId = null,
                     bitwardenCipherId = null,
                     bitwardenFolderId = null,
@@ -414,6 +418,8 @@ private fun buildCopiedEntryForTarget(
                     categoryId = target.categoryId,
                     keepassDatabaseId = null,
                     keepassGroupPath = null,
+                    keepassEntryUuid = null,
+                    keepassGroupUuid = null,
                     bitwardenVaultId = null,
                     bitwardenCipherId = null,
                     bitwardenFolderId = null,
@@ -434,6 +440,8 @@ private fun buildCopiedEntryForTarget(
             categoryId = null,
             keepassDatabaseId = null,
             keepassGroupPath = null,
+            keepassEntryUuid = null,
+            keepassGroupUuid = null,
             bitwardenVaultId = target.vaultId,
             bitwardenCipherId = null,
             bitwardenFolderId = "",
@@ -452,6 +460,8 @@ private fun buildCopiedEntryForTarget(
             categoryId = null,
             keepassDatabaseId = null,
             keepassGroupPath = null,
+            keepassEntryUuid = null,
+            keepassGroupUuid = null,
             bitwardenVaultId = target.vaultId,
             bitwardenCipherId = null,
             bitwardenFolderId = target.folderId,
@@ -470,6 +480,8 @@ private fun buildCopiedEntryForTarget(
             categoryId = null,
             keepassDatabaseId = target.databaseId,
             keepassGroupPath = null,
+            keepassEntryUuid = null,
+            keepassGroupUuid = null,
             bitwardenVaultId = null,
             bitwardenCipherId = null,
             bitwardenFolderId = null,
@@ -488,6 +500,8 @@ private fun buildCopiedEntryForTarget(
             categoryId = null,
             keepassDatabaseId = target.databaseId,
             keepassGroupPath = target.groupPath,
+            keepassEntryUuid = null,
+            keepassGroupUuid = null,
             bitwardenVaultId = null,
             bitwardenCipherId = null,
             bitwardenFolderId = null,
@@ -1179,7 +1193,7 @@ fun PasswordListContent(
         }
         if (quickFilterLocalOnly && takagi.ru.monica.data.PasswordListQuickFilterItem.LOCAL_ONLY in configuredQuickFilterItems) {
             filtered = filtered.filter {
-                it.keepassDatabaseId == null && it.bitwardenVaultId == null
+                it.isLocalOnlyEntry()
             }
         }
         if (quickFilterManualStackOnly && takagi.ru.monica.data.PasswordListQuickFilterItem.MANUAL_STACK_ONLY in configuredQuickFilterItems) {
@@ -1942,26 +1956,46 @@ private fun PasswordBatchMoveSheet(
         getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
         getKeePassGroups = localKeePassViewModel::getGroups,
         allowCopy = true,
+        allowMove = passwordEntries.filter { it.id in selectedPasswords }.none { it.isKeePassEntry() },
         allowArchiveTarget = true,
         onTargetSelected = { target, action ->
             val selectedIds = selectedPasswords.toList()
             val selectedEntries = passwordEntries.filter { it.id in selectedPasswords }
+            val effectiveAction = if (action == UnifiedMoveAction.MOVE && selectedEntries.any { it.isKeePassEntry() }) {
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.keepass_copy_only_hint),
+                    Toast.LENGTH_SHORT
+                ).show()
+                UnifiedMoveAction.COPY
+            } else {
+                action
+            }
             val isArchiveTarget = target is UnifiedMoveCategoryTarget.MonicaCategory &&
                 target.categoryId == UNIFIED_MOVE_ARCHIVE_SENTINEL_CATEGORY_ID
-            if (action == UnifiedMoveAction.COPY) {
-                val copiedIds = mutableListOf<Long>()
-                var remaining = selectedEntries.size
-                selectedEntries.forEach { entry ->
-                    val copiedEntry = buildCopiedEntryForTarget(entry, target)
-                    viewModel.addPasswordEntryWithResult(
-                        entry = copiedEntry,
-                        includeDetailedLog = false
-                    ) { createdId ->
-                        if (createdId != null && createdId > 0) {
-                            copiedIds.add(createdId)
+            val monicaCategoryId = when (target) {
+                UnifiedMoveCategoryTarget.Uncategorized -> null
+                is UnifiedMoveCategoryTarget.MonicaCategory ->
+                    target.categoryId.takeUnless { it == UNIFIED_MOVE_ARCHIVE_SENTINEL_CATEGORY_ID }
+                else -> null
+            }
+            if (effectiveAction == UnifiedMoveAction.COPY) {
+                val isMonicaTarget = target == UnifiedMoveCategoryTarget.Uncategorized ||
+                    (target is UnifiedMoveCategoryTarget.MonicaCategory &&
+                        target.categoryId != UNIFIED_MOVE_ARCHIVE_SENTINEL_CATEGORY_ID)
+                if (isMonicaTarget) {
+                    coroutineScope.launch {
+                        val copiedIds = mutableListOf<Long>()
+                        selectedEntries.forEach { entry ->
+                            val createdId = viewModel.copyPasswordToMonicaLocal(
+                                entry = entry,
+                                categoryId = monicaCategoryId
+                            )
+                            if (createdId != null && createdId > 0) {
+                                copiedIds += createdId
+                            }
                         }
-                        remaining -= 1
-                        if (remaining == 0 && copiedIds.isNotEmpty()) {
+                        if (copiedIds.isNotEmpty()) {
                             val payload = TimelineBatchCopyPayload(
                                 copiedEntryIds = copiedIds.toList()
                             )
@@ -1986,13 +2020,58 @@ private fun PasswordBatchMoveSheet(
                                 )
                             )
                         }
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.selected_items, copiedIds.size),
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
+                } else {
+                    val copiedIds = mutableListOf<Long>()
+                    var remaining = selectedEntries.size
+                    selectedEntries.forEach { entry ->
+                        val copiedEntry = buildCopiedEntryForTarget(entry, target)
+                        viewModel.addPasswordEntryWithResult(
+                            entry = copiedEntry,
+                            includeDetailedLog = false
+                        ) { createdId ->
+                            if (createdId != null && createdId > 0) {
+                                copiedIds.add(createdId)
+                            }
+                            remaining -= 1
+                            if (remaining == 0 && copiedIds.isNotEmpty()) {
+                                val payload = TimelineBatchCopyPayload(
+                                    copiedEntryIds = copiedIds.toList()
+                                )
+                                OperationLogger.logUpdate(
+                                    itemType = OperationLogItemType.PASSWORD,
+                                    itemId = System.currentTimeMillis(),
+                                    itemTitle = context.getString(
+                                        R.string.timeline_batch_copy_title,
+                                        copiedIds.size
+                                    ),
+                                    changes = listOf(
+                                        FieldChange(
+                                            fieldName = context.getString(R.string.timeline_field_batch_copy),
+                                            oldValue = "0",
+                                            newValue = copiedIds.size.toString()
+                                        ),
+                                        FieldChange(
+                                            fieldName = TIMELINE_FIELD_BATCH_COPY_PAYLOAD,
+                                            oldValue = "{}",
+                                            newValue = timelineBatchJson.encodeToString(payload)
+                                        )
+                                    )
+                                )
+                            }
+                        }
+                    }
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.selected_items, selectedEntries.size),
+                        Toast.LENGTH_SHORT
+                    ).show()
                 }
-                Toast.makeText(
-                    context,
-                    context.getString(R.string.selected_items, selectedEntries.size),
-                    Toast.LENGTH_SHORT
-                ).show()
             } else {
                 val oldStates = selectedEntries.map(::toLocationState)
                 val newStates = selectedEntries.map { toMovedLocationState(it, target) }
@@ -2006,15 +2085,118 @@ private fun PasswordBatchMoveSheet(
                         ).show()
                     }
                     target == UnifiedMoveCategoryTarget.Uncategorized -> {
-                        viewModel.unarchivePasswords(selectedIds)
-                        viewModel.movePasswordsToCategory(selectedIds, null)
-                        Toast.makeText(context, context.getString(R.string.category_none), Toast.LENGTH_SHORT).show()
+                        coroutineScope.launch {
+                            try {
+                                val keepassEntries = selectedEntries.filter { it.isKeePassEntry() }
+                                val bitwardenEntries = selectedEntries.filter { it.isBitwardenEntry() }
+                                val localIds = selectedEntries
+                                    .filter { it.isLocalOnlyEntry() }
+                                    .map { it.id }
+
+                                if (keepassEntries.isNotEmpty()) {
+                                    val result = localKeePassViewModel.movePasswordEntriesToMonicaLocal(keepassEntries)
+                                    if (result.isFailure) {
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.webdav_operation_failed, result.exceptionOrNull()?.message ?: ""),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        return@launch
+                                    }
+                                    val keepassIds = keepassEntries.map { it.id }
+                                    viewModel.unarchivePasswords(keepassIds)
+                                    viewModel.movePasswordsToCategory(keepassIds, null)
+                                }
+
+                                bitwardenEntries.forEach { entry ->
+                                    val result = viewModel.moveBitwardenPasswordToMonicaLocal(entry, null)
+                                    if (result.isFailure) {
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.webdav_operation_failed, result.exceptionOrNull()?.message ?: ""),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        return@launch
+                                    }
+                                }
+
+                                if (localIds.isNotEmpty()) {
+                                    viewModel.unarchivePasswords(localIds)
+                                    viewModel.movePasswordsToCategory(localIds, null)
+                                }
+
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.category_none),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            } catch (e: Exception) {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.webdav_operation_failed, e.message ?: ""),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
                     }
                     target is UnifiedMoveCategoryTarget.MonicaCategory -> {
-                        viewModel.unarchivePasswords(selectedIds)
-                        viewModel.movePasswordsToCategory(selectedIds, target.categoryId)
-                        val name = categories.find { it.id == target.categoryId }?.name ?: ""
-                        Toast.makeText(context, "${context.getString(R.string.move_to_category)} $name", Toast.LENGTH_SHORT).show()
+                        coroutineScope.launch {
+                            try {
+                                val keepassEntries = selectedEntries.filter { it.isKeePassEntry() }
+                                val bitwardenEntries = selectedEntries.filter { it.isBitwardenEntry() }
+                                val localIds = selectedEntries
+                                    .filter { it.isLocalOnlyEntry() }
+                                    .map { it.id }
+
+                                if (keepassEntries.isNotEmpty()) {
+                                    val result = localKeePassViewModel.movePasswordEntriesToMonicaLocal(keepassEntries)
+                                    if (result.isFailure) {
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.webdav_operation_failed, result.exceptionOrNull()?.message ?: ""),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        return@launch
+                                    }
+                                    val keepassIds = keepassEntries.map { it.id }
+                                    viewModel.unarchivePasswords(keepassIds)
+                                    viewModel.movePasswordsToCategory(keepassIds, target.categoryId)
+                                }
+
+                                bitwardenEntries.forEach { entry ->
+                                    val result = viewModel.moveBitwardenPasswordToMonicaLocal(
+                                        entry = entry,
+                                        categoryId = target.categoryId
+                                    )
+                                    if (result.isFailure) {
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.webdav_operation_failed, result.exceptionOrNull()?.message ?: ""),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                        return@launch
+                                    }
+                                }
+
+                                if (localIds.isNotEmpty()) {
+                                    viewModel.unarchivePasswords(localIds)
+                                    viewModel.movePasswordsToCategory(localIds, target.categoryId)
+                                }
+
+                                val name = categories.find { it.id == target.categoryId }?.name ?: ""
+                                Toast.makeText(
+                                    context,
+                                    "${context.getString(R.string.move_to_category)} $name",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            } catch (e: Exception) {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.webdav_operation_failed, e.message ?: ""),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
                     }
                     target is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> {
                         viewModel.unarchivePasswords(selectedIds)
@@ -4354,7 +4536,7 @@ private fun buildLocalQuickFolderPasswordCountByCategoryId(
     return entries
         .asSequence()
         .mapNotNull { entry ->
-            val isLocalEntry = entry.keepassDatabaseId == null && entry.bitwardenVaultId == null
+            val isLocalEntry = entry.isLocalOnlyEntry()
             if (!isLocalEntry) {
                 null
             } else {

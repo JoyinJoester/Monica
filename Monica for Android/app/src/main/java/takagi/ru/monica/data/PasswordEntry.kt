@@ -143,20 +143,35 @@ data class PasswordEntry(
     /**
      * 是否来自 Bitwarden
      */
-    fun isBitwardenEntry(): Boolean = bitwardenVaultId != null && bitwardenCipherId != null
+    fun isBitwardenEntry(): Boolean = resolveOwnership() is PasswordOwnership.Bitwarden
+
+    /**
+     * 是否有 Bitwarden 归属
+     */
+    fun hasBitwardenBinding(): Boolean = bitwardenVaultId != null
+
+    /**
+     * 是否已绑定到 Bitwarden 远端 cipher
+     */
+    fun hasBitwardenCipherBinding(): Boolean = bitwardenVaultId != null && !bitwardenCipherId.isNullOrBlank()
     
     /**
      * 是否有待同步的 Bitwarden 修改
      */
-    fun hasPendingBitwardenSync(): Boolean = isBitwardenEntry() && bitwardenLocalModified
+    fun hasPendingBitwardenSync(): Boolean = hasBitwardenBinding() && bitwardenLocalModified
     
     /**
      * 是否来自 KeePass
      */
-    fun isKeePassEntry(): Boolean = keepassDatabaseId != null
+    fun isKeePassEntry(): Boolean = resolveOwnership() is PasswordOwnership.KeePass
+
+    /**
+     * 是否存在多重 owner 冲突
+     */
+    fun hasOwnershipConflict(): Boolean = resolveOwnership() is PasswordOwnership.Conflict
     
     /**
      * 是否为本地条目 (不关联任何外部数据库)
      */
-    fun isLocalOnlyEntry(): Boolean = !isBitwardenEntry() && !isKeePassEntry()
+    fun isLocalOnlyEntry(): Boolean = resolveOwnership() is PasswordOwnership.MonicaLocal
 }

@@ -346,7 +346,10 @@ fun MonicaApp(
     // Passkey 通行密钥
     val passkeyRepository = remember { takagi.ru.monica.repository.PasskeyRepository(database.passkeyDao()) }
     val passkeyViewModel: takagi.ru.monica.viewmodel.PasskeyViewModel = viewModel {
-        takagi.ru.monica.viewmodel.PasskeyViewModel(passkeyRepository)
+        takagi.ru.monica.viewmodel.PasskeyViewModel(
+            repository = passkeyRepository,
+            localKeePassDatabaseDao = database.localKeePassDatabaseDao()
+        )
     }
     
     // KeePass KDBX 导出/导入

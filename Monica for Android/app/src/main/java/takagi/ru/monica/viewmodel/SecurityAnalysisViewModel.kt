@@ -848,7 +848,7 @@ class SecurityAnalysisViewModel(
     }
 
     private fun isMonicaDatabaseEntry(entry: PasswordEntry): Boolean {
-        return entry.keepassDatabaseId == null && entry.bitwardenVaultId == null
+        return entry.isLocalOnlyEntry()
     }
 
     private fun isIncludedInVisibleSources(entry: PasswordEntry): Boolean {

@@ -15,9 +15,15 @@ import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.SecureItemOwnership
+import takagi.ru.monica.data.asMonicaLocalCopy
+import takagi.ru.monica.data.hasBitwardenBinding
+import takagi.ru.monica.data.hasOwnershipConflict
+import takagi.ru.monica.data.isLocalOnlyItem
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
+import takagi.ru.monica.data.resolveOwnership
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.repository.PasswordRepository
@@ -62,7 +68,7 @@ class TotpViewModel(
     private val repository: SecureItemRepository,
     private val passwordRepository: PasswordRepository,
     context: Context? = null,
-    localKeePassDatabaseDao: LocalKeePassDatabaseDao? = null,
+    private val localKeePassDatabaseDao: LocalKeePassDatabaseDao? = null,
     securityManager: SecurityManager? = null
 ) : ViewModel() {
     private data class KeePassMutationIdentity(
@@ -116,6 +122,9 @@ class TotpViewModel(
 
     init {
         restoreLastCategoryFilter()
+        viewModelScope.launch {
+            repairLegacyDetachedKeePassItems()
+        }
     }
     
     // 分类列表（使用 PasswordRepository 获取）
@@ -196,7 +205,7 @@ class TotpViewModel(
         // 首先应用分类过滤
         val categoryFiltered = when (filter) {
             is TotpCategoryFilter.All -> allTotps
-            is TotpCategoryFilter.Local -> allTotps.filter { it.bitwardenVaultId == null && it.keepassDatabaseId == null }
+            is TotpCategoryFilter.Local -> allTotps.filter { it.isLocalOnlyItem() }
             is TotpCategoryFilter.Starred -> allTotps.filter { it.isFavorite }
             is TotpCategoryFilter.Uncategorized -> allTotps.filter { 
                 it.categoryId == null && try {
@@ -204,42 +213,51 @@ class TotpViewModel(
                 } catch (e: Exception) { true }
             }
             is TotpCategoryFilter.LocalStarred -> allTotps.filter {
-                it.bitwardenVaultId == null && it.keepassDatabaseId == null && it.isFavorite
+                it.isLocalOnlyItem() && it.isFavorite
             }
             is TotpCategoryFilter.LocalUncategorized -> allTotps.filter {
-                it.bitwardenVaultId == null && it.keepassDatabaseId == null && (
+                it.isLocalOnlyItem() && (
                     it.categoryId == null && try {
                         Json.decodeFromString<TotpData>(it.itemData).categoryId == null
                     } catch (e: Exception) { true }
                 )
             }
             is TotpCategoryFilter.Custom -> allTotps.filter { item ->
-                item.categoryId == filter.categoryId || try {
-                    Json.decodeFromString<TotpData>(item.itemData).categoryId == filter.categoryId
-                } catch (e: Exception) { false }
+                item.isLocalOnlyItem() && (
+                    item.categoryId == filter.categoryId || try {
+                        Json.decodeFromString<TotpData>(item.itemData).categoryId == filter.categoryId
+                    } catch (e: Exception) { false }
+                )
             }
-            is TotpCategoryFilter.KeePassDatabase -> allTotps.filter { it.keepassDatabaseId == filter.databaseId }
+            is TotpCategoryFilter.KeePassDatabase -> allTotps.filter {
+                (it.resolveOwnership() as? SecureItemOwnership.KeePass)?.databaseId == filter.databaseId
+            }
             is TotpCategoryFilter.KeePassGroupFilter -> allTotps.filter {
-                it.keepassDatabaseId == filter.databaseId && it.keepassGroupPath == filter.groupPath
+                (it.resolveOwnership() as? SecureItemOwnership.KeePass)?.databaseId == filter.databaseId &&
+                    it.keepassGroupPath == filter.groupPath
             }
             is TotpCategoryFilter.KeePassDatabaseStarred -> allTotps.filter {
-                it.keepassDatabaseId == filter.databaseId && it.isFavorite
+                (it.resolveOwnership() as? SecureItemOwnership.KeePass)?.databaseId == filter.databaseId &&
+                    it.isFavorite
             }
             is TotpCategoryFilter.KeePassDatabaseUncategorized -> allTotps.filter {
-                it.keepassDatabaseId == filter.databaseId && it.keepassGroupPath.isNullOrBlank()
+                (it.resolveOwnership() as? SecureItemOwnership.KeePass)?.databaseId == filter.databaseId &&
+                    it.keepassGroupPath.isNullOrBlank()
             }
             is TotpCategoryFilter.BitwardenVault -> allTotps.filter {
-                it.bitwardenVaultId == filter.vaultId ||
+                ((it.resolveOwnership() as? SecureItemOwnership.Bitwarden)?.vaultId == filter.vaultId) ||
                     (
                         it.bitwardenVaultId == null &&
                             !it.bitwardenFolderId.isNullOrBlank() &&
                             it.bitwardenFolderId in selectedVaultFolderIds
                         )
             }
-            is TotpCategoryFilter.BitwardenFolderFilter -> allTotps.filter { it.bitwardenFolderId == filter.folderId }
+            is TotpCategoryFilter.BitwardenFolderFilter -> allTotps.filter {
+                it.hasBitwardenBinding() && it.bitwardenFolderId == filter.folderId
+            }
             is TotpCategoryFilter.BitwardenVaultStarred -> allTotps.filter {
                 (
-                    it.bitwardenVaultId == filter.vaultId ||
+                    (it.resolveOwnership() as? SecureItemOwnership.Bitwarden)?.vaultId == filter.vaultId ||
                         (
                             it.bitwardenVaultId == null &&
                                 !it.bitwardenFolderId.isNullOrBlank() &&
@@ -248,7 +266,8 @@ class TotpViewModel(
                     ) && it.isFavorite
             }
             is TotpCategoryFilter.BitwardenVaultUncategorized -> allTotps.filter {
-                it.bitwardenVaultId == filter.vaultId && it.bitwardenFolderId == null
+                (it.resolveOwnership() as? SecureItemOwnership.Bitwarden)?.vaultId == filter.vaultId &&
+                    it.bitwardenFolderId == null
             }
         }
         
@@ -300,6 +319,11 @@ class TotpViewModel(
         syncKeePassTotp(databaseId)
     }
 
+    suspend fun getTotpById(id: Long): SecureItem? {
+        val item = repository.getItemById(id) ?: return null
+        return repository.normalizeLegacyDetachedKeePassItem(item, ::hasKeePassDatabase)
+    }
+
     private fun persistCategoryFilter(filter: TotpCategoryFilter) {
         val manager = settingsManager ?: return
         viewModelScope.launch {
@@ -319,6 +343,14 @@ class TotpViewModel(
                 _categoryFilter.value = decodeCategoryFilter(state)
             }
         }
+    }
+
+    private suspend fun repairLegacyDetachedKeePassItems() {
+        repository.repairLegacyDetachedKeePassItems(::hasKeePassDatabase)
+    }
+
+    private suspend fun hasKeePassDatabase(databaseId: Long): Boolean {
+        return localKeePassDatabaseDao?.getDatabaseById(databaseId) != null
     }
 
     private fun encodeCategoryFilter(filter: TotpCategoryFilter): SavedCategoryFilterState = when (filter) {
@@ -454,7 +486,8 @@ class TotpViewModel(
      * 根据ID获取TOTP项目
      */
     suspend fun getTotpItemById(id: Long): SecureItem? {
-        return repository.getItemById(id)
+        val item = repository.getItemById(id) ?: return null
+        return repository.normalizeLegacyDetachedKeePassItem(item, ::hasKeePassDatabase)
     }
     
     /**
@@ -907,6 +940,76 @@ class TotpViewModel(
                 }
             }
         }
+    }
+
+    suspend fun copyTotpToMonicaLocal(
+        item: SecureItem,
+        categoryId: Long?
+    ): Long? {
+        if (item.itemType != ItemType.TOTP || item.hasOwnershipConflict()) return null
+        val totpData = runCatching { Json.decodeFromString<TotpData>(item.itemData) }.getOrNull() ?: return null
+        val detachedTotpData = totpData.copy(
+            boundPasswordId = null,
+            categoryId = categoryId,
+            keepassDatabaseId = null
+        )
+        val localCopy = item.asMonicaLocalCopy(categoryId).copy(
+            itemData = Json.encodeToString(detachedTotpData),
+            createdAt = Date(),
+            updatedAt = Date()
+        )
+        return repository.insertItem(localCopy)
+    }
+
+    suspend fun moveTotpToMonicaLocal(
+        item: SecureItem,
+        categoryId: Long?
+    ): Result<Long> {
+        if (item.itemType != ItemType.TOTP) {
+            return Result.failure(IllegalArgumentException("仅支持验证器项目"))
+        }
+        if (item.hasOwnershipConflict()) {
+            return Result.failure(IllegalStateException("验证器来源冲突，无法移动到 Monica 本地"))
+        }
+
+        val newId = copyTotpToMonicaLocal(item, categoryId)
+            ?: return Result.failure(IllegalStateException("创建 Monica 本地验证器副本失败"))
+
+        val sourceDelete = when (val ownership = item.resolveOwnership()) {
+            is SecureItemOwnership.Bitwarden -> {
+                val vaultId = ownership.vaultId
+                val cipherId = ownership.cipherId
+                if (vaultId == null || cipherId.isNullOrBlank()) {
+                    Result.failure(IllegalStateException("Bitwarden 验证器缺少同步标识"))
+                } else {
+                    bitwardenRepository?.queueCipherDelete(
+                        vaultId = vaultId,
+                        cipherId = cipherId,
+                        entryId = item.id,
+                        itemType = BitwardenPendingOperation.ITEM_TYPE_TOTP
+                    ) ?: Result.failure(IllegalStateException("Bitwarden 仓库不可用"))
+                }
+            }
+            is SecureItemOwnership.KeePass -> {
+                if (keepassSecureItemDeleteExecutor.delete(item, useRecycleBin = false)) {
+                    Result.success(Unit)
+                } else {
+                    Result.failure(IllegalStateException("KeePass 验证器源删除失败"))
+                }
+            }
+            is SecureItemOwnership.MonicaLocal -> Result.success(Unit)
+            is SecureItemOwnership.Conflict -> Result.failure(IllegalStateException("验证器来源冲突，无法移动到 Monica 本地"))
+        }
+
+        if (sourceDelete.isFailure) {
+            repository.deleteItemById(newId)
+            return Result.failure(
+                sourceDelete.exceptionOrNull() ?: IllegalStateException("删除验证器源失败")
+            )
+        }
+
+        repository.deleteItem(item)
+        return Result.success(newId)
     }
 
     fun moveToKeePassDatabase(ids: List<Long>, databaseId: Long?) {

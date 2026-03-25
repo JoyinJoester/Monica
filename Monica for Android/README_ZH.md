@@ -330,6 +330,10 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 感谢所有为 Monica 做出贡献的开发者!
 
 特别感谢:
+- [Keyguard](https://github.com/AChep/keyguard-app) - 在 Android 端密码管理器设计与体验上提供了很多启发
+- [Bitwarden](https://bitwarden.com/) - 开源密码管理生态与 Vault/同步能力参考
+- [KeePass](https://keepass.info/) - 本地密码库与跨平台密码管理理念的重要来源
+- [Stratum](https://github.com/stratumauthapp/stratum) - 身份验证器与相关导入/兼容能力的参考项目
 - [Jetpack Compose](https://developer.android.com/jetpack/compose) - 现代化 UI 框架
 - [Material Design](https://m3.material.io/) - 设计规范
 - [ZXing](https://github.com/zxing/zxing) - QR 码库

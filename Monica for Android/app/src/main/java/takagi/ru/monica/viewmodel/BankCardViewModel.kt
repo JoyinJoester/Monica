@@ -16,6 +16,10 @@ import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.OperationLogItemType
+import takagi.ru.monica.data.SecureItemOwnership
+import takagi.ru.monica.data.asMonicaLocalCopy
+import takagi.ru.monica.data.hasOwnershipConflict
+import takagi.ru.monica.data.resolveOwnership
 import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
@@ -58,6 +62,12 @@ class BankCardViewModel(
     private val keepassSecureItemCreateExecutor = KeePassSecureItemCreateExecutor(keepassBridge)
     private val keepassSecureItemDeleteExecutor = KeePassSecureItemDeleteExecutor(keepassBridge)
     private val keepassSecureItemUpdateExecutor = KeePassSecureItemUpdateExecutor(keepassBridge)
+
+    init {
+        viewModelScope.launch {
+            repairLegacyDetachedKeePassItems()
+        }
+    }
 
     fun syncAllKeePassCards() {
         viewModelScope.launch {
@@ -132,7 +142,8 @@ class BankCardViewModel(
     
     // 根据ID获取银行卡
     suspend fun getCardById(id: Long): SecureItem? {
-        return repository.getItemById(id)
+        val item = repository.getItemById(id) ?: return null
+        return repository.normalizeLegacyDetachedKeePassItem(item, ::hasKeePassDatabase)
     }
     
     /**
@@ -321,6 +332,69 @@ class BankCardViewModel(
         }
     }
 
+    suspend fun copyCardToMonicaLocal(
+        item: SecureItem,
+        categoryId: Long?
+    ): Long? {
+        if (item.itemType != ItemType.BANK_CARD || item.hasOwnershipConflict()) return null
+        val localCopy = item.asMonicaLocalCopy(categoryId).copy(
+            createdAt = Date(),
+            updatedAt = Date()
+        )
+        return repository.insertItem(localCopy)
+    }
+
+    suspend fun moveCardToMonicaLocal(
+        item: SecureItem,
+        categoryId: Long?
+    ): Result<Long> {
+        if (item.itemType != ItemType.BANK_CARD) {
+            return Result.failure(IllegalArgumentException("仅支持银行卡项目"))
+        }
+        if (item.hasOwnershipConflict()) {
+            return Result.failure(IllegalStateException("银行卡来源冲突，无法移动到 Monica 本地"))
+        }
+
+        val newId = copyCardToMonicaLocal(item, categoryId)
+            ?: return Result.failure(IllegalStateException("创建 Monica 本地银行卡副本失败"))
+
+        val sourceDelete = when (val ownership = item.resolveOwnership()) {
+            is SecureItemOwnership.Bitwarden -> {
+                val vaultId = ownership.vaultId
+                val cipherId = ownership.cipherId
+                if (vaultId == null || cipherId.isNullOrBlank()) {
+                    Result.failure(IllegalStateException("Bitwarden 银行卡缺少同步标识"))
+                } else {
+                    bitwardenRepository?.queueCipherDelete(
+                        vaultId = vaultId,
+                        cipherId = cipherId,
+                        entryId = item.id,
+                        itemType = BitwardenPendingOperation.ITEM_TYPE_CARD
+                    ) ?: Result.failure(IllegalStateException("Bitwarden 仓库不可用"))
+                }
+            }
+            is SecureItemOwnership.KeePass -> {
+                if (keepassSecureItemDeleteExecutor.delete(item, useRecycleBin = false)) {
+                    Result.success(Unit)
+                } else {
+                    Result.failure(IllegalStateException("KeePass 银行卡源删除失败"))
+                }
+            }
+            is SecureItemOwnership.MonicaLocal -> Result.success(Unit)
+            is SecureItemOwnership.Conflict -> Result.failure(IllegalStateException("银行卡来源冲突，无法移动到 Monica 本地"))
+        }
+
+        if (sourceDelete.isFailure) {
+            repository.deleteItemById(newId)
+            return Result.failure(
+                sourceDelete.exceptionOrNull() ?: IllegalStateException("删除银行卡源失败")
+            )
+        }
+
+        repository.deleteItem(item)
+        return Result.success(newId)
+    }
+
     private fun resolveKeePassMutationIdentity(
         existingItem: SecureItem?,
         targetDatabaseId: Long?,
@@ -457,5 +531,13 @@ class BankCardViewModel(
     // 解析银行卡数据
     fun parseCardData(jsonData: String): BankCardData? {
         return CardWalletDataCodec.parseBankCardData(jsonData)
+    }
+
+    private suspend fun repairLegacyDetachedKeePassItems() {
+        repository.repairLegacyDetachedKeePassItems(::hasKeePassDatabase)
+    }
+
+    private suspend fun hasKeePassDatabase(databaseId: Long): Boolean {
+        return localKeePassDatabaseDao?.getDatabaseById(databaseId) != null
     }
 }
