@@ -15,14 +15,77 @@ internal data class AutofillPickerRequestProfile(
 )
 
 internal fun buildAutofillPickerRequestProfile(hints: List<String>?): AutofillPickerRequestProfile {
-    val normalizedHints = hints.orEmpty()
-    val wantsBankCards = normalizedHints.any(::isBankCardAutofillHint)
-    val wantsDocuments = normalizedHints.any(::isDocumentAutofillHint)
+    val normalizedHints = hints.orEmpty().map(::normalizeAutofillHint)
+    val loginHintCount = normalizedHints.count(::isLoginAutofillHint)
+    val bankCardHintCount = normalizedHints.count(::isBankCardAutofillHint)
+    val documentHintCount = normalizedHints.count(::isDocumentAutofillHint)
+    val bankCardKeyHintCount = normalizedHints.count(::isBankCardKeyAutofillHint)
+    val documentKeyHintCount = normalizedHints.count(::isDocumentKeyAutofillHint)
+
+    val hasLoginHints = loginHintCount > 0
+    val dominantBankCard = bankCardHintCount >= 2 &&
+        bankCardKeyHintCount >= 1 &&
+        bankCardHintCount >= documentHintCount + 1
+    val dominantDocument = documentHintCount >= 2 &&
+        documentKeyHintCount >= 1 &&
+        documentHintCount >= bankCardHintCount + 1
+    val wantsBankCards = !hasLoginHints && dominantBankCard
+    val wantsDocuments = !hasLoginHints && dominantDocument
+
+    // Keep login suggestions as the default path whenever login hints are present.
+    // Structured entry points are enabled only for high-confidence non-login requests.
+    val wantsPasswords = hasLoginHints || (!wantsBankCards && !wantsDocuments)
+
     return AutofillPickerRequestProfile(
-        wantsPasswords = !wantsBankCards && !wantsDocuments,
+        wantsPasswords = wantsPasswords,
         wantsBankCards = wantsBankCards,
         wantsDocuments = wantsDocuments,
     )
+}
+
+internal fun isBankCardKeyAutofillHint(rawHint: String?): Boolean {
+    val hint = normalizeAutofillHint(rawHint)
+    if (hint.isBlank()) return false
+    return hint == EnhancedAutofillStructureParserV2.FieldHint.CREDIT_CARD_NUMBER.name.lowercase() ||
+        hint == EnhancedAutofillStructureParserV2.FieldHint.CREDIT_CARD_SECURITY_CODE.name.lowercase() ||
+        hint == EnhancedAutofillStructureParserV2.FieldHint.CREDIT_CARD_EXPIRATION_DATE.name.lowercase() ||
+        hint == EnhancedAutofillStructureParserV2.FieldHint.CREDIT_CARD_EXPIRATION_MONTH.name.lowercase() ||
+        hint == EnhancedAutofillStructureParserV2.FieldHint.CREDIT_CARD_EXPIRATION_YEAR.name.lowercase() ||
+        hint.contains("card_number") ||
+        hint.contains("cc_number") ||
+        hint.contains("cvv") ||
+        hint.contains("cvc") ||
+        hint.contains("expiration") ||
+        hint.contains("expiry")
+}
+
+internal fun isDocumentKeyAutofillHint(rawHint: String?): Boolean {
+    val hint = normalizeAutofillHint(rawHint)
+    if (hint.isBlank()) return false
+    return hint == EnhancedAutofillStructureParserV2.FieldHint.IDENTITY_NUMBER.name.lowercase() ||
+        hint == EnhancedAutofillStructureParserV2.FieldHint.PERSON_NAME.name.lowercase() ||
+        hint == EnhancedAutofillStructureParserV2.FieldHint.POSTAL_ADDRESS.name.lowercase() ||
+        hint.contains("identity") ||
+        hint.contains("document") ||
+        hint.contains("passport") ||
+        hint.contains("license") ||
+        hint.contains("street_address") ||
+        hint.contains("address_line")
+}
+
+internal fun isLoginAutofillHint(rawHint: String?): Boolean {
+    val hint = normalizeAutofillHint(rawHint)
+    if (hint.isBlank()) return false
+    return hint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME.name.lowercase() ||
+        hint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS.name.lowercase() ||
+        hint == EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER.name.lowercase() ||
+        hint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD.name.lowercase() ||
+        hint == EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD.name.lowercase() ||
+        hint.contains("username") ||
+        hint.contains("email") ||
+        hint.contains("phone") ||
+        hint.contains("mobile") ||
+        hint.contains("password")
 }
 
 internal fun isBankCardAutofillHint(rawHint: String?): Boolean {

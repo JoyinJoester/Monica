@@ -27,27 +27,28 @@ class FilledDataBuilderNg(
     private val securityManager: SecurityManager,
 ) {
 
-    private fun syncAutoLockTimeoutForAutofill() {
-        runCatching {
+    private fun resolveAutoLockTimeoutForAutofill(): Int {
+        return runCatching {
             val settingsManager = SettingsManager(context.applicationContext)
             val autoLockMinutes = runBlocking {
                 settingsManager.settingsFlow.first().autoLockMinutes
             }
             SessionManager.updateAutoLockTimeout(autoLockMinutes)
+            autoLockMinutes
         }.onFailure { error ->
             android.util.Log.w(
                 "FilledDataBuilderNg",
                 "Failed to sync auto-lock timeout for autofill: ${error.message}"
             )
-        }
+        }.getOrDefault(5)
     }
 
     fun build(
         request: AutofillRequest.Fillable,
         passwords: List<PasswordEntry>,
     ): FilledData {
-        syncAutoLockTimeoutForAutofill()
-        val isVaultLocked = !SessionManager.canSkipVerification(context)
+        val autoLockMinutes = resolveAutoLockTimeoutForAutofill()
+        val isVaultLocked = !securityManager.canAccessVaultNow(context, autoLockMinutes)
         val maxCipherInlineSuggestionsCount = (request.maxInlineSuggestionsCount - 1)
             .coerceAtMost(MAX_INLINE_SUGGESTION_COUNT)
 

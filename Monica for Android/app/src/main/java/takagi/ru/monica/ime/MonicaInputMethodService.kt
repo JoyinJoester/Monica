@@ -409,8 +409,7 @@ class MonicaInputMethodService : InputMethodService() {
     }
 
     private fun updateUnlockState(autoLockMinutes: Int): Boolean {
-        SessionManager.updateAutoLockTimeout(autoLockMinutes)
-        val unlocked = SessionManager.canSkipVerification(this)
+        val unlocked = securityManager.canAccessVaultNow(this, autoLockMinutes)
         if (unlocked) {
             uiState.update { it.copy(unlocked = true, errorMessage = null) }
         } else {

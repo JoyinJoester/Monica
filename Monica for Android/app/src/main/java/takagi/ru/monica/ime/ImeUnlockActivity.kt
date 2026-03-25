@@ -8,11 +8,11 @@ import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
 import androidx.biometric.BiometricPrompt
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.security.SecurityManager
-import takagi.ru.monica.security.SessionManager
 import takagi.ru.monica.ui.components.MonicaPasswordDialogAuthScreen
 import takagi.ru.monica.utils.BiometricAuthHelper
 import takagi.ru.monica.utils.SettingsManager
@@ -38,7 +38,13 @@ class ImeUnlockActivity : AppCompatActivity() {
         settingsManager = SettingsManager(applicationContext)
         biometricAuthHelper = BiometricAuthHelper(this)
 
-        if (!securityManager.isMasterPasswordSet() || SessionManager.canSkipVerification(this)) {
+        val startupAutoLockMinutes = runCatching {
+            runBlocking { settingsManager.settingsFlow.first().autoLockMinutes }
+        }
+            .getOrDefault(5)
+        if (!securityManager.isMasterPasswordSet() ||
+            securityManager.canAccessVaultNow(this, startupAutoLockMinutes)
+        ) {
             publishResult(success = true, errorMessage = null)
             return
         }

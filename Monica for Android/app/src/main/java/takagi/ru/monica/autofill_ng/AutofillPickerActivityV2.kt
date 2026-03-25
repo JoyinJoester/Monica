@@ -530,29 +530,63 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
 
         val datasetBuilder = Dataset.Builder()
 
-        val hasUsernameHint = hints?.contains(EnhancedAutofillStructureParserV2.FieldHint.USERNAME.name) == true
-        val hasPhoneHint = hints?.contains(EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER.name) == true
-        val hasEmailHint = hints?.contains(EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS.name) == true
+        val normalizedHints = hints.orEmpty().map { it.trim().lowercase() }
+        val hasUsernameHint = normalizedHints.any {
+            it == EnhancedAutofillStructureParserV2.FieldHint.USERNAME.name.lowercase() || it.contains("username")
+        }
+        val hasPhoneHint = normalizedHints.any {
+            it == EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER.name.lowercase() ||
+                it.contains("phone") ||
+                it.contains("mobile") ||
+                it.contains("tel")
+        }
+        val hasEmailHint = normalizedHints.any {
+            it == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS.name.lowercase() || it.contains("email")
+        }
         val hasAccountHint = hasUsernameHint || hasPhoneHint
         val allowAccountInEmailField =
             fillEmailWithAccount || accountValue.contains("@") || (!hasAccountHint && hasEmailHint)
         var filledCount = 0
+        var strictFilledCount = 0
+        var fallbackFilledCount = 0
+        val unmatchedHintPreview = mutableListOf<String>()
         autofillIds.forEachIndexed { index, autofillId ->
-            val hint = hints?.getOrNull(index)
-            val value = when (hint) {
-                EnhancedAutofillStructureParserV2.FieldHint.USERNAME.name -> accountValue
-                EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER.name -> accountValue
-                EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS.name ->
-                    if (allowAccountInEmailField) accountValue else null
-                EnhancedAutofillStructureParserV2.FieldHint.PASSWORD.name,
-                EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD.name -> decryptedPassword
+            val normalizedHint = hints?.getOrNull(index)?.trim()?.lowercase().orEmpty()
+            val value = when {
+                normalizedHint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME.name.lowercase() ||
+                    normalizedHint.contains("username") -> accountValue
+                normalizedHint == EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER.name.lowercase() ||
+                    normalizedHint.contains("phone") ||
+                    normalizedHint.contains("mobile") ||
+                    normalizedHint.contains("tel") -> accountValue
+                normalizedHint == EnhancedAutofillStructureParserV2.FieldHint.EMAIL_ADDRESS.name.lowercase() ||
+                    normalizedHint.contains("email") -> if (allowAccountInEmailField) accountValue else null
+                normalizedHint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD.name.lowercase() ||
+                    normalizedHint == EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD.name.lowercase() ||
+                    normalizedHint.contains("password") ||
+                    normalizedHint.contains("pass") -> decryptedPassword
                 else -> null
             }
             if (value != null) {
                 datasetBuilder.setValue(autofillId, AutofillValue.forText(value))
                 filledCount++
+                strictFilledCount++
+            } else if (unmatchedHintPreview.size < 6) {
+                unmatchedHintPreview += if (normalizedHint.isBlank()) "(blank)" else normalizedHint
             }
         }
+
+        AutofillLogger.i(
+            "PICKER",
+            "Auth strict mapping diagnostics",
+            metadata = mapOf(
+                "idCount" to autofillIds.size,
+                "hintCount" to (hints?.size ?: 0),
+                "strictFilledCount" to strictFilledCount,
+                "allowAccountInEmailField" to allowAccountInEmailField,
+                "unmatchedHintPreview" to if (unmatchedHintPreview.isEmpty()) "none" else unmatchedHintPreview.joinToString(","),
+            )
+        )
 
         if (filledCount == 0) {
             android.util.Log.w("AutofillPickerV2", "No strict hint matched, trying controlled fallback")
@@ -577,8 +611,20 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                 if (!fallbackValue.isNullOrBlank()) {
                     datasetBuilder.setValue(autofillId, AutofillValue.forText(fallbackValue))
                     filledCount++
+                    fallbackFilledCount++
                 }
             }
+
+            AutofillLogger.i(
+                "PICKER",
+                "Auth fallback mapping diagnostics",
+                metadata = mapOf(
+                    "idCount" to autofillIds.size,
+                    "hintCount" to (hints?.size ?: 0),
+                    "fallbackFilledCount" to fallbackFilledCount,
+                    "strictFilledCount" to strictFilledCount,
+                )
+            )
         }
 
         if (filledCount == 0) {
@@ -1084,6 +1130,15 @@ private fun AutofillPickerContent(
     val requestProfile = remember(args.autofillHints) {
         buildAutofillPickerRequestProfile(args.autofillHints)
     }
+    val loginHintCount = remember(args.autofillHints) {
+        args.autofillHints.orEmpty().count(::isLoginAutofillHint)
+    }
+    val bankCardHintCount = remember(args.autofillHints) {
+        args.autofillHints.orEmpty().count(::isBankCardAutofillHint)
+    }
+    val documentHintCount = remember(args.autofillHints) {
+        args.autofillHints.orEmpty().count(::isDocumentAutofillHint)
+    }
     val appDb = remember(context) { PasswordDatabase.getDatabase(context.applicationContext) }
     val secureItemRepository = remember(appDb) { SecureItemRepository(appDb.secureItemDao()) }
     val customFieldRepository = remember(appDb) { CustomFieldRepository(appDb.customFieldDao()) }
@@ -1180,6 +1235,12 @@ private fun AutofillPickerContent(
                 "responseAuth" to args.responseAuthMode,
                 "idCount" to (args.autofillIds?.size ?: 0),
                 "hintCount" to (args.autofillHints?.size ?: 0),
+                "loginHintCount" to loginHintCount,
+                "bankCardHintCount" to bankCardHintCount,
+                "documentHintCount" to documentHintCount,
+                "wantsPasswords" to requestProfile.wantsPasswords,
+                "wantsBankCards" to requestProfile.wantsBankCards,
+                "wantsDocuments" to requestProfile.wantsDocuments,
             )
         )
     }

@@ -56,6 +56,8 @@ class AutofillParserNg {
     ): List<AutofillView> {
         if (fillableTargets.isEmpty()) return emptyList()
 
+        val promoteCandidateId = resolveUsernamePromotionCandidate(fillableTargets)
+
         val prioritized = fillableTargets.sortedWith(
             compareByDescending<ParsedItem> { it.isFocused }
                 .thenByDescending { it.accuracy.score }
@@ -64,7 +66,12 @@ class AutofillParserNg {
 
         val deduped = linkedMapOf<String, AutofillView>()
         prioritized.forEach { item ->
-            val view = item.toAutofillView(website = website) ?: return@forEach
+            val shouldPromoteToUsername =
+                promoteCandidateId != null && item.id.toString() == promoteCandidateId
+            val view = item.toAutofillView(
+                website = website,
+                promoteToUsername = shouldPromoteToUsername,
+            ) ?: return@forEach
             val key = view.data.autofillId.toString()
             val existing = deduped[key]
             if (existing == null || isHigherPriorityView(candidate = view, existing = existing)) {
@@ -75,7 +82,40 @@ class AutofillParserNg {
         return deduped.values.toList()
     }
 
-    private fun ParsedItem.toAutofillView(website: String): AutofillView? {
+    private fun resolveUsernamePromotionCandidate(fillableTargets: List<ParsedItem>): String? {
+        val hasPassword = fillableTargets.any {
+            it.hint == FieldHint.PASSWORD || it.hint == FieldHint.NEW_PASSWORD
+        }
+        if (!hasPassword) return null
+
+        val hasExplicitAccountTarget = fillableTargets.any {
+            it.hint == FieldHint.USERNAME ||
+                it.hint == FieldHint.EMAIL_ADDRESS ||
+                it.hint == FieldHint.PHONE_NUMBER
+        }
+        if (hasExplicitAccountTarget) return null
+
+        val candidate = fillableTargets
+            .asSequence()
+            .filter {
+                it.hint == FieldHint.PERSON_NAME ||
+                    it.hint == FieldHint.PERSON_FIRST_NAME ||
+                    it.hint == FieldHint.PERSON_LAST_NAME
+            }
+            .sortedWith(
+                compareByDescending<ParsedItem> { it.isFocused }
+                    .thenByDescending { it.accuracy.score }
+                    .thenBy { it.traversalIndex }
+            )
+            .firstOrNull()
+
+        return candidate?.id?.toString()
+    }
+
+    private fun ParsedItem.toAutofillView(
+        website: String,
+        promoteToUsername: Boolean,
+    ): AutofillView? {
         val data = AutofillView.Data(
             autofillId = id,
             autofillType = View.AUTOFILL_TYPE_TEXT,
@@ -86,6 +126,14 @@ class AutofillParserNg {
         return when (hint) {
             FieldHint.PASSWORD, FieldHint.NEW_PASSWORD -> AutofillView.Login.Password(data)
             FieldHint.USERNAME, FieldHint.EMAIL_ADDRESS, FieldHint.PHONE_NUMBER -> AutofillView.Login.Username(data)
+            FieldHint.PERSON_NAME,
+            FieldHint.PERSON_FIRST_NAME,
+            FieldHint.PERSON_LAST_NAME,
+            -> if (promoteToUsername) {
+                AutofillView.Login.Username(data)
+            } else {
+                AutofillView.Field(hint = hint, data = data)
+            }
             FieldHint.CREDIT_CARD_NUMBER,
             FieldHint.CREDIT_CARD_EXPIRATION_DATE,
             FieldHint.CREDIT_CARD_EXPIRATION_MONTH,
@@ -94,9 +142,6 @@ class AutofillParserNg {
             FieldHint.CREDIT_CARD_HOLDER_NAME,
             FieldHint.POSTAL_ADDRESS,
             FieldHint.POSTAL_CODE,
-            FieldHint.PERSON_NAME,
-            FieldHint.PERSON_FIRST_NAME,
-            FieldHint.PERSON_LAST_NAME,
             FieldHint.ADDRESS_CITY,
             FieldHint.ADDRESS_REGION,
             FieldHint.ADDRESS_COUNTRY,

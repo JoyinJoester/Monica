@@ -37,6 +37,7 @@ import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.utils.DeviceUtils
 import java.security.MessageDigest
+import kotlin.math.abs
 
 /**
  * Autofill service (Bitwarden engine).
@@ -48,7 +49,19 @@ class MonicaAutofillServiceNg : AutofillService() {
     private companion object {
         private val PACKAGE_NAME_REGEX =
             Regex("^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+$")
+        private const val PARSED_ITEM_ACCURACY_THRESHOLD = 1.5f
     }
+
+    private data class StructuredConfidenceDecision(
+        val highConfidence: Boolean,
+        val reason: String,
+        val structuredCount: Int,
+        val bankCardCount: Int,
+        val documentCount: Int,
+        val dominantCount: Int,
+        val keyHintCount: Int,
+        val confidentCount: Int,
+    )
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
 
@@ -145,15 +158,56 @@ class MonicaAutofillServiceNg : AutofillService() {
                 "compatMode" to isCompatMode,
             )
         )
-        if (packageName.isBlank()) return null
-
-        val fillableTargets = selectFillableTargets(parsed.items)
-        if (fillableTargets.isEmpty()) {
-            AutofillLogger.i("AF", "No supported autofill fields detected")
+        if (packageName.isBlank()) {
+            AutofillLogger.i(
+                "AF",
+                "Skip request: empty resolved package name",
+                metadata = mapOf(
+                    "fallbackPackage" to if (fallbackPackage.isBlank()) "none" else fallbackPackage,
+                    "parsedApplicationId" to (parsed.applicationId ?: "none"),
+                    "parsedItemCount" to parsed.items.size,
+                )
+            )
             return null
         }
 
+        val fillableTargets = selectFillableTargets(parsed.items)
+        if (fillableTargets.isEmpty()) {
+            AutofillLogger.i(
+                "AF",
+                "No supported autofill fields detected",
+                metadata = mapOf(
+                    "packageName" to packageName,
+                    "parsedItemCount" to parsed.items.size,
+                    "parsedHintPreview" to parsed.items.take(8).joinToString(",") { it.hint.name },
+                )
+            )
+            return null
+        }
         val webDomain = parsed.webDomain?.takeIf { it.isNotBlank() }
+        val loginTargetCount = fillableTargets.count { isLoginHint(it.hint) }
+        val structuredTargetCount = fillableTargets.size - loginTargetCount
+        val structuredDecision = evaluateStructuredConfidence(fillableTargets)
+        if (loginTargetCount == 0 && !structuredDecision.highConfidence) {
+            AutofillLogger.i(
+                "AF",
+                "Skip weak structured autofill request",
+                metadata = mapOf(
+                    "packageName" to packageName,
+                    "webDomain" to (webDomain ?: "none"),
+                    "targetCount" to fillableTargets.size,
+                    "structuredTargetCount" to structuredTargetCount,
+                    "structuredReason" to structuredDecision.reason,
+                    "structuredCount" to structuredDecision.structuredCount,
+                    "bankCardCount" to structuredDecision.bankCardCount,
+                    "documentCount" to structuredDecision.documentCount,
+                    "dominantCount" to structuredDecision.dominantCount,
+                    "keyHintCount" to structuredDecision.keyHintCount,
+                    "confidentCount" to structuredDecision.confidentCount,
+                ),
+            )
+            return null
+        }
         val fieldSignatureKey = buildFieldSignatureKey(
             packageName = packageName,
             webDomain = webDomain,
@@ -166,6 +220,16 @@ class MonicaAutofillServiceNg : AutofillService() {
                 "packageName" to packageName,
                 "webDomain" to (webDomain ?: "none"),
                 "targetCount" to fillableTargets.size,
+                "loginTargetCount" to loginTargetCount,
+                "structuredTargetCount" to structuredTargetCount,
+                "structuredHighConfidence" to structuredDecision.highConfidence,
+                "structuredReason" to structuredDecision.reason,
+                "structuredCount" to structuredDecision.structuredCount,
+                "bankCardCount" to structuredDecision.bankCardCount,
+                "documentCount" to structuredDecision.documentCount,
+                "dominantCount" to structuredDecision.dominantCount,
+                "keyHintCount" to structuredDecision.keyHintCount,
+                "confidentCount" to structuredDecision.confidentCount,
                 "fieldSignaturePresent" to !fieldSignatureKey.isNullOrBlank(),
                 "fieldSignatureKey" to (fieldSignatureKey ?: "none"),
                 "focusedTargetCount" to fillableTargets.count { it.isFocused },
@@ -341,6 +405,7 @@ class MonicaAutofillServiceNg : AutofillService() {
     private fun selectFillableTargets(items: List<ParsedItem>): List<ParsedItem> {
         if (items.isEmpty()) return emptyList()
 
+        val rawCount = items.size
         val filtered = items.filter { item ->
             isSupportedFillableHint(item.hint)
         }
@@ -349,13 +414,14 @@ class MonicaAutofillServiceNg : AutofillService() {
         // Keep targets close to Bitwarden behavior:
         // when a field is already populated, avoid anchoring manual-entry datasets on that
         // non-focused field as it can cause the framework to suppress the suggestion row.
-        val hasFocusedCredential = filtered.any { it.isFocused }
+        val hasFocusedTarget = filtered.any { it.isFocused }
         val preferredTargets = filtered.filter { item ->
             val hasValue = !item.value.isNullOrBlank()
             when {
                 item.isFocused -> true
                 !hasValue -> true
-                hasFocusedCredential -> false
+                hasFocusedTarget && isLoginHint(item.hint) -> true
+                hasFocusedTarget -> false
                 else -> true
             }
         }.ifEmpty { filtered }
@@ -368,6 +434,24 @@ class MonicaAutofillServiceNg : AutofillService() {
                 .thenBy { it.traversalIndex },
         ).forEach { item ->
             deduped.putIfAbsent(item.id.toString(), item)
+        }
+
+        val droppedByHint = rawCount - filtered.size
+        val droppedByValueSuppression = filtered.size - preferredTargets.size
+        if (droppedByHint > 0 || droppedByValueSuppression > 0) {
+            AutofillLogger.d(
+                "AF",
+                "Target selection pruned candidates",
+                metadata = mapOf(
+                    "rawCount" to rawCount,
+                    "supportedCount" to filtered.size,
+                    "preferredCount" to preferredTargets.size,
+                    "finalCount" to deduped.size,
+                    "droppedByHint" to droppedByHint,
+                    "droppedByValueSuppression" to droppedByValueSuppression,
+                    "hasFocusedTarget" to hasFocusedTarget,
+                ),
+            )
         }
 
         return deduped.values.toList()
@@ -395,6 +479,96 @@ class MonicaAutofillServiceNg : AutofillService() {
         FieldHint.COMPANY_NAME,
         -> 1
         else -> 0
+    }
+
+    private fun evaluateStructuredConfidence(targets: List<ParsedItem>): StructuredConfidenceDecision {
+        if (targets.isEmpty()) {
+            return StructuredConfidenceDecision(
+                highConfidence = false,
+                reason = "empty_targets",
+                structuredCount = 0,
+                bankCardCount = 0,
+                documentCount = 0,
+                dominantCount = 0,
+                keyHintCount = 0,
+                confidentCount = 0,
+            )
+        }
+        val structured = targets.filterNot { isLoginHint(it.hint) }
+        if (structured.size < 2) {
+            return StructuredConfidenceDecision(
+                highConfidence = false,
+                reason = "insufficient_structured_targets",
+                structuredCount = structured.size,
+                bankCardCount = 0,
+                documentCount = 0,
+                dominantCount = 0,
+                keyHintCount = 0,
+                confidentCount = 0,
+            )
+        }
+        val bankCardTargets = structured.filter { isBankCardAutofillHint(it.hint.name) }
+        val documentTargets = structured.filter { isDocumentAutofillHint(it.hint.name) }
+        val dominantTargets = if (bankCardTargets.size >= documentTargets.size) bankCardTargets else documentTargets
+        val secondaryCount = if (bankCardTargets.size >= documentTargets.size) documentTargets.size else bankCardTargets.size
+
+        if (dominantTargets.size < 2) {
+            return StructuredConfidenceDecision(
+                highConfidence = false,
+                reason = "insufficient_dominant_category",
+                structuredCount = structured.size,
+                bankCardCount = bankCardTargets.size,
+                documentCount = documentTargets.size,
+                dominantCount = dominantTargets.size,
+                keyHintCount = 0,
+                confidentCount = 0,
+            )
+        }
+        if (abs(bankCardTargets.size - documentTargets.size) < 1 && secondaryCount > 0) {
+            return StructuredConfidenceDecision(
+                highConfidence = false,
+                reason = "mixed_structured_categories",
+                structuredCount = structured.size,
+                bankCardCount = bankCardTargets.size,
+                documentCount = documentTargets.size,
+                dominantCount = dominantTargets.size,
+                keyHintCount = 0,
+                confidentCount = 0,
+            )
+        }
+
+        val keyHintCount = dominantTargets.count {
+            if (bankCardTargets.size >= documentTargets.size) {
+                isBankCardKeyAutofillHint(it.hint.name)
+            } else {
+                isDocumentKeyAutofillHint(it.hint.name)
+            }
+        }
+        if (keyHintCount < 1) {
+            return StructuredConfidenceDecision(
+                highConfidence = false,
+                reason = "missing_key_structured_hint",
+                structuredCount = structured.size,
+                bankCardCount = bankCardTargets.size,
+                documentCount = documentTargets.size,
+                dominantCount = dominantTargets.size,
+                keyHintCount = keyHintCount,
+                confidentCount = 0,
+            )
+        }
+
+        val confidentCount = dominantTargets.count { it.accuracy.score >= PARSED_ITEM_ACCURACY_THRESHOLD }
+        val highConfidence = confidentCount >= 2
+        return StructuredConfidenceDecision(
+            highConfidence = highConfidence,
+            reason = if (highConfidence) "high_confidence" else "insufficient_confident_targets",
+            structuredCount = structured.size,
+            bankCardCount = bankCardTargets.size,
+            documentCount = documentTargets.size,
+            dominantCount = dominantTargets.size,
+            keyHintCount = keyHintCount,
+            confidentCount = confidentCount,
+        )
     }
 
     private fun isSupportedFillableHint(hint: FieldHint): Boolean {

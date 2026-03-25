@@ -28,6 +28,7 @@ fun LoginScreen(
         isFirstTime = isFirstTime,
         disablePasswordVerification = disablePasswordVerification,
         biometricEnabled = biometricEnabled,
+        forceShowBiometricOption = true,
         onVerifyPassword = { password -> 
             viewModel.authenticate(password)
         },

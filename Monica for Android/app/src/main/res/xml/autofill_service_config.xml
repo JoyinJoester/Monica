@@ -109,6 +109,12 @@
         android:name="com.opera.touch"
         android:maxLongVersionCode="@string/version_code_max" />
     <compatibility-package
+        android:name="com.huawei.browser"
+        android:maxLongVersionCode="@string/version_code_max" />
+    <compatibility-package
+        android:name="com.huawei.browser.beta"
+        android:maxLongVersionCode="@string/version_code_max" />
+    <compatibility-package
         android:name="com.qwant.liberty"
         android:maxLongVersionCode="@string/version_code_max" />
     <compatibility-package
@@ -230,6 +236,12 @@
         android:maxLongVersionCode="@string/version_code_max" />
     <compatibility-package
         android:name="org.ungoogled.chromium.stable"
+        android:maxLongVersionCode="@string/version_code_max" />
+    <compatibility-package
+        android:name="com.huawei.android.finder"
+        android:maxLongVersionCode="@string/version_code_max" />
+    <compatibility-package
+        android:name="com.huawei.android.finddevice"
         android:maxLongVersionCode="@string/version_code_max" />
     <compatibility-package
         android:name="us.spotco.fennec_dos"

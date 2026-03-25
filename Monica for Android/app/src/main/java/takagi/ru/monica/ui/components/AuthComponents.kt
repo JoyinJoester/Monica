@@ -22,7 +22,16 @@ import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import takagi.ru.monica.R
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.utils.BiometricAuthHelper
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
+
+private enum class PasswordVerificationBiometricAccessResult {
+    PROCEED,
+    REQUIRE_PASSWORD_REENTRY,
+    LOCKED
+}
 
 /**
  * 统一的密码验证组件
@@ -35,6 +44,7 @@ fun PasswordVerificationContent(
     isConfirmingPassword: Boolean = false,
     disablePasswordVerification: Boolean = false,
     biometricEnabled: Boolean = false,
+    forceShowBiometricOption: Boolean = false,
     onVerifyPassword: (String) -> Boolean,
     onSetPassword: (String) -> Unit = {},
     onSuccess: () -> Unit,
@@ -55,29 +65,79 @@ fun PasswordVerificationContent(
     // 生物识别帮助类
     val biometricHelper = remember { BiometricAuthHelper(context) }
     val securityManager = remember(context) { SecurityManager(context.applicationContext) }
+    val settingsManager = remember(context) { SettingsManager(context.applicationContext) }
     val isBiometricAvailable = remember { biometricHelper.isBiometricAvailable() }
+    val canUseBiometric = !isFirstTime && isBiometricAvailable && (biometricEnabled || forceShowBiometricOption)
     var autoBiometricTried by remember { mutableStateOf(false) }
 
     fun completeAuthentication() {
         securityManager.markVaultAuthenticated()
         onSuccess()
     }
+
+    fun canProceedAfterBiometricAuth(): PasswordVerificationBiometricAccessResult {
+        if (!securityManager.isMasterPasswordSet()) return PasswordVerificationBiometricAccessResult.PROCEED
+        val directUnlock = runCatching {
+            securityManager.unlockVaultWithBiometric()
+        }.getOrDefault(false)
+        if (directUnlock) {
+            android.util.Log.d("PasswordVerification", "Biometric post-check: direct unlock succeeded")
+            return PasswordVerificationBiometricAccessResult.PROCEED
+        }
+        val autoLockMinutes = runCatching {
+            runBlocking { settingsManager.settingsFlow.first().autoLockMinutes }
+        }.getOrDefault(5)
+        val vaultState = securityManager.getVaultAccessState(context.applicationContext, autoLockMinutes)
+        if (vaultState == SecurityManager.VaultAccessState.REQUIRES_PASSWORD_REENTRY) {
+            val rebuilt = securityManager.rebuildKeystoreWrapperFromRuntimeCacheIfNeeded()
+            if (rebuilt) {
+                android.util.Log.d("PasswordVerification", "Biometric post-check: wrapper rebuilt from runtime cache")
+                return PasswordVerificationBiometricAccessResult.PROCEED
+            }
+            if (securityManager.isVaultRuntimeUnlocked()) {
+                android.util.Log.w(
+                    "PasswordVerification",
+                    "Biometric post-check: wrapper rebuild failed but runtime MDK exists; allowing access to avoid lock loop"
+                )
+                return PasswordVerificationBiometricAccessResult.PROCEED
+            }
+        }
+        val result = when (vaultState) {
+            SecurityManager.VaultAccessState.ACCESSIBLE -> PasswordVerificationBiometricAccessResult.PROCEED
+            SecurityManager.VaultAccessState.REQUIRES_PASSWORD_REENTRY -> PasswordVerificationBiometricAccessResult.REQUIRE_PASSWORD_REENTRY
+            SecurityManager.VaultAccessState.LOCKED -> PasswordVerificationBiometricAccessResult.LOCKED
+        }
+        android.util.Log.w(
+            "PasswordVerification",
+            "Biometric post-check: direct unlock failed, result=$result, autoLockMinutes=$autoLockMinutes"
+        )
+        return result
+    }
+
+    fun updateBiometricFailureMessage(result: PasswordVerificationBiometricAccessResult) {
+        errorMessage = when (result) {
+            PasswordVerificationBiometricAccessResult.REQUIRE_PASSWORD_REENTRY -> {
+                context.getString(R.string.biometric_requires_password_reentry)
+            }
+            PasswordVerificationBiometricAccessResult.LOCKED -> {
+                context.getString(R.string.ime_unlock_required)
+            }
+            PasswordVerificationBiometricAccessResult.PROCEED -> {
+                ""
+            }
+        }
+    }
     
     // 自动触发生物识别
-    LaunchedEffect(isFirstTime, isBiometricAvailable, biometricEnabled, activity) {
-        if (!autoBiometricTried && !isFirstTime && isBiometricAvailable && biometricEnabled && activity != null) {
+    LaunchedEffect(isFirstTime, isBiometricAvailable, biometricEnabled, forceShowBiometricOption, activity) {
+        if (!autoBiometricTried && canUseBiometric && activity != null) {
             autoBiometricTried = true
             biometricHelper.authenticate(
                 activity = activity,
                 onSuccess = {
-                    val unlocked = runCatching {
-                        securityManager.unlockVaultWithBiometric()
-                    }.getOrDefault(false)
-
-                    if (unlocked || !securityManager.isMasterPasswordSet()) {
-                        completeAuthentication()
-                    } else {
-                        errorMessage = context.getString(R.string.ime_unlock_required)
+                    when (val result = canProceedAfterBiometricAuth()) {
+                        PasswordVerificationBiometricAccessResult.PROCEED -> completeAuthentication()
+                        else -> updateBiometricFailureMessage(result)
                     }
                 },
                 onError = { _, errorMsg ->
@@ -266,21 +326,16 @@ fun PasswordVerificationContent(
         }
         
         // 生物识别按钮（仅在非首次使用、生物识别可用且已启用时显示）
-        if (!isFirstTime && isBiometricAvailable && biometricEnabled && activity != null) {
+        if (canUseBiometric && activity != null) {
             Spacer(modifier = Modifier.height(12.dp))
             OutlinedButton(
                 onClick = {
                     biometricHelper.authenticate(
                         activity = activity,
                         onSuccess = {
-                            val unlocked = runCatching {
-                                securityManager.unlockVaultWithBiometric()
-                            }.getOrDefault(false)
-
-                            if (unlocked || !securityManager.isMasterPasswordSet()) {
-                                completeAuthentication()
-                            } else {
-                                errorMessage = context.getString(R.string.ime_unlock_required)
+                            when (val result = canProceedAfterBiometricAuth()) {
+                                PasswordVerificationBiometricAccessResult.PROCEED -> completeAuthentication()
+                                else -> updateBiometricFailureMessage(result)
                             }
                         },
                         onError = { _, errorMsg ->
