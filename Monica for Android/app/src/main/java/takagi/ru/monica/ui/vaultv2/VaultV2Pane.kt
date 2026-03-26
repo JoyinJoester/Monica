@@ -57,6 +57,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -78,6 +79,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
@@ -208,6 +210,7 @@ fun VaultV2Pane(
 	val listState = rememberLazyListState()
 	val context = LocalContext.current
 	val density = LocalDensity.current
+	val scope = rememberCoroutineScope()
 	val bitwardenRepository = remember(context) {
 		takagi.ru.monica.bitwarden.repository.BitwardenRepository.getInstance(context)
 	}
@@ -750,7 +753,11 @@ fun VaultV2Pane(
 							}
 
 							VaultV2ItemType.PASSKEY -> {
-								item.passkeyEntry?.let(passkeyViewModel::deletePasskey)
+								item.passkeyEntry?.let { passkey ->
+									scope.launch {
+										passkeyViewModel.deletePasskey(passkey)
+									}
+								}
 							}
 
 							VaultV2ItemType.BANK_CARD -> {

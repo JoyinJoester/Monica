@@ -1,6 +1,7 @@
 package takagi.ru.monica.repository
 
 import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.utils.KeePassRestoreTarget
@@ -40,6 +41,9 @@ class KeePassCompatibilityBridge(
         allowedTypes: Set<ItemType>? = null
     ) = workspaceRepository.readSecureItems(databaseId, allowedTypes)
 
+    suspend fun readLegacyPasskeys(databaseId: Long) =
+        workspaceRepository.readPasskeyEntries(databaseId)
+
     suspend fun listLegacyGroups(
         databaseId: Long,
         includeRecycleBin: Boolean = false
@@ -68,10 +72,25 @@ class KeePassCompatibilityBridge(
         resolvePassword: (PasswordEntry) -> String
     ) = workspaceRepository.updatePasswordEntry(databaseId, entry, resolvePassword)
 
+    suspend fun upsertLegacyPasskeys(
+        databaseId: Long,
+        passkeys: List<PasskeyEntry>
+    ) = workspaceRepository.addOrUpdatePasskeys(databaseId, passkeys)
+
     suspend fun deleteLegacyPasswordEntries(
         databaseId: Long,
         entries: List<PasswordEntry>
     ) = workspaceRepository.deletePasswordEntries(databaseId, entries)
+
+    suspend fun updateLegacyPasskey(
+        databaseId: Long,
+        passkey: PasskeyEntry
+    ) = workspaceRepository.updatePasskey(databaseId, passkey)
+
+    suspend fun deleteLegacyPasskeys(
+        databaseId: Long,
+        passkeys: List<PasskeyEntry>
+    ) = workspaceRepository.deletePasskeys(databaseId, passkeys)
 
     suspend fun moveLegacyPasswordEntriesToRecycleBin(
         databaseId: Long,

@@ -48,7 +48,6 @@ import takagi.ru.monica.utils.BiometricAuthHelper
 import takagi.ru.monica.utils.SettingsManager
 import java.security.KeyStore
 import java.security.MessageDigest
-import java.security.Signature
 
 /**
  * Passkey 认证 Activity
@@ -459,7 +458,11 @@ class PasskeyAuthActivity : FragmentActivity() {
             }
             
             val signedData = authenticatorData + clientDataHash
-            val signature = signWithPrivateKey(passkey.privateKeyAlias, signedData)
+            val signature = signWithPrivateKey(
+                privateKeyData = passkey.privateKeyAlias,
+                publicKeyAlgorithm = passkey.publicKeyAlgorithm,
+                data = signedData
+            )
             
             // 更新数据库
             runBlocking {
@@ -614,13 +617,14 @@ class PasskeyAuthActivity : FragmentActivity() {
      * 使用存储的私钥签名数据
      * @param privateKeyData Base64编码的私钥，或者AndroidKeyStore别名（向后兼容）
      */
-    private fun signWithPrivateKey(privateKeyData: String, data: ByteArray): ByteArray {
+    private fun signWithPrivateKey(
+        privateKeyData: String,
+        publicKeyAlgorithm: Int,
+        data: ByteArray
+    ): ByteArray {
         val privateKey: java.security.PrivateKey = try {
-            // 尝试作为Base64私钥解码
-            val keyBytes = Base64.decode(privateKeyData, Base64.NO_WRAP)
-            val keySpec = java.security.spec.PKCS8EncodedKeySpec(keyBytes)
-            val keyFactory = java.security.KeyFactory.getInstance("EC")
-            keyFactory.generatePrivate(keySpec)
+            PasskeyPrivateKeySupport.decodeFlexiblePrivateKey(privateKeyData)?.privateKey
+                ?: throw IllegalStateException("Private key data is not exportable")
         } catch (e: Exception) {
             // 回退到AndroidKeyStore（向后兼容旧数据）
             Log.d(TAG, "Falling back to AndroidKeyStore for key: $privateKeyData")
@@ -631,9 +635,11 @@ class PasskeyAuthActivity : FragmentActivity() {
                 ?: throw IllegalStateException("Private key not found: $privateKeyData")
             privateKeyEntry.privateKey
         }
-        
-        val signature = Signature.getInstance("SHA256withECDSA")
-        signature.initSign(privateKey)
+
+        val signature = PasskeyPrivateKeySupport.createSignature(
+            privateKey = privateKey,
+            publicKeyAlgorithm = publicKeyAlgorithm
+        )
         signature.update(data)
         return signature.sign()
     }

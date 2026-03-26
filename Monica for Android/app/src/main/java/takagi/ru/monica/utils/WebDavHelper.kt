@@ -3489,6 +3489,7 @@ class WebDavHelper(
     private fun normalizePasskeyMode(value: String?): String {
         return when (value) {
             PasskeyEntry.MODE_BW_COMPAT -> PasskeyEntry.MODE_BW_COMPAT
+            PasskeyEntry.MODE_KEEPASS_COMPAT -> PasskeyEntry.MODE_KEEPASS_COMPAT
             else -> PasskeyEntry.MODE_LEGACY
         }
     }

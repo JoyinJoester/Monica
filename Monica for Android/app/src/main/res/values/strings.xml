@@ -757,6 +757,10 @@
     <string name="passkey_category_updated">Category updated: %1$s</string>
     <string name="passkey_category_follow_binding">Category is inherited from the bound password.</string>
     <string name="passkey_category_empty">No categories yet. You can create one in folder management.</string>
+    <string name="passkey_format_keepass">KeePass format</string>
+    <string name="passkey_format_keepass_hint">Stored as Monica private KeePass passkey data. It can sync with Monica local and KeePass, but not Bitwarden.</string>
+    <string name="passkey_keepass_create_failed">Failed to create KeePass-format passkey.</string>
+    <string name="passkey_update_failed">Failed to update passkey.</string>
     <string name="passkey_bitwarden_legacy_hint">This legacy passkey cannot be migrated to Bitwarden.</string>
     <string name="passkey_bitwarden_move_blocked">This passkey cannot be moved to Bitwarden.</string>
     <string name="passkey_bitwarden_move_failed">Bitwarden action failed, item was not moved.</string>

@@ -52,6 +52,9 @@ import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.PasskeyBinding
 import takagi.ru.monica.data.model.PasskeyBindingCodec
+import takagi.ru.monica.keepass.KeePassPasskeyCreateExecutor
+import takagi.ru.monica.repository.KeePassCompatibilityBridge
+import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.repository.PasskeyRepository
 import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
@@ -102,6 +105,24 @@ class PasskeyCreateActivity : FragmentActivity() {
     
     private val repository: PasskeyRepository by lazy {
         PasskeyRepository(database.passkeyDao())
+    }
+
+    private val securityManager by lazy {
+        takagi.ru.monica.security.SecurityManager(applicationContext)
+    }
+
+    private val keepassBridge: KeePassCompatibilityBridge by lazy {
+        KeePassCompatibilityBridge(
+            KeePassWorkspaceRepository(
+                context = applicationContext,
+                dao = database.localKeePassDatabaseDao(),
+                securityManager = securityManager
+            )
+        )
+    }
+
+    private val keepassPasskeyCreateExecutor by lazy {
+        KeePassPasskeyCreateExecutor(keepassBridge)
     }
     
     // 存储待处理的请求数据
@@ -611,6 +632,12 @@ class PasskeyCreateActivity : FragmentActivity() {
             val initialBitwardenVaultId = resolvedBoundTarget?.bitwardenVaultId ?: pendingBitwardenVaultId
             val initialBitwardenFolderId = resolvedBoundTarget?.bitwardenFolderId ?: pendingBitwardenFolderId
              
+            val passkeyMode = if (initialKeepassDatabaseId != null) {
+                PasskeyEntry.MODE_KEEPASS_COMPAT
+            } else {
+                PasskeyEntry.MODE_BW_COMPAT
+            }
+
             // 保存到数据库
             val passkeyEntry = PasskeyEntry(
                 credentialId = credentialIdB64,
@@ -633,13 +660,24 @@ class PasskeyCreateActivity : FragmentActivity() {
                 keepassGroupPath = initialKeepassGroupPath,
                 bitwardenVaultId = initialBitwardenVaultId,
                 bitwardenFolderId = initialBitwardenFolderId,
-                syncStatus = if (initialBitwardenVaultId != null) "PENDING" else "NONE",
-                passkeyMode = PasskeyEntry.MODE_BW_COMPAT
+                syncStatus = if (initialBitwardenVaultId != null && passkeyMode == PasskeyEntry.MODE_BW_COMPAT) {
+                    "PENDING"
+                } else {
+                    "NONE"
+                },
+                passkeyMode = passkeyMode
             )
             
             // 在协程中保存
             kotlinx.coroutines.runBlocking {
-                database.passkeyDao().insert(passkeyEntry)
+                val created = keepassPasskeyCreateExecutor.create(
+                    passkey = passkeyEntry,
+                    insertPasskey = database.passkeyDao()::insert,
+                    rollbackPasskey = database.passkeyDao()::deleteById
+                )
+                if (!created) {
+                    throw IllegalStateException(getString(R.string.passkey_keepass_create_failed))
+                }
 
                 // 同步写入密码条目的通行密钥绑定（用于备份/恢复）
                 val boundPasswordId = pendingBoundPasswordId

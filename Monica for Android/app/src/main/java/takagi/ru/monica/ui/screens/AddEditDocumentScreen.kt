@@ -385,7 +385,7 @@ fun AddEditDocumentScreen(
                     } else {
                         keepassGroupPath = null
                     }
-                }, 
+                },
                 bitwardenVaults = bitwardenVaults,
                 selectedBitwardenVaultId = bitwardenVaultId,
                 onBitwardenVaultSelected = {

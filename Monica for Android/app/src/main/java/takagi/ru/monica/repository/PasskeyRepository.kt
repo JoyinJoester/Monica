@@ -126,6 +126,38 @@ class PasskeyRepository(private val passkeyDao: PasskeyDao) {
      */
     suspend fun updatePasskey(passkey: PasskeyEntry) = passkeyDao.update(passkey)
 
+    suspend fun syncKeePassPasskeys(
+        databaseId: Long,
+        importedPasskeys: List<PasskeyEntry>
+    ) {
+        val existingByCredentialId = passkeyDao
+            .getKeePassCompatPasskeysByDatabaseId(databaseId)
+            .associateBy { it.credentialId }
+
+        val mergedPasskeys = importedPasskeys.map { imported ->
+            val existing = existingByCredentialId[imported.credentialId]
+            if (existing == null) {
+                imported
+            } else {
+                imported.copy(
+                    boundPasswordId = existing.boundPasswordId,
+                    categoryId = existing.categoryId,
+                    isBackedUp = existing.isBackedUp || imported.isBackedUp
+                )
+            }
+        }
+
+        if (mergedPasskeys.isNotEmpty()) {
+            passkeyDao.insertAll(mergedPasskeys)
+            passkeyDao.deleteKeePassCompatPasskeysNotIn(
+                databaseId = databaseId,
+                credentialIds = mergedPasskeys.map { it.credentialId }
+            )
+        } else {
+            passkeyDao.deleteAllKeePassCompatPasskeysByDatabaseId(databaseId)
+        }
+    }
+
     /**
      * 更新绑定的密码 ID
      */
@@ -155,11 +187,7 @@ class PasskeyRepository(private val passkeyDao: PasskeyDao) {
      * 删除 Passkey 并清理 Keystore 私钥
      */
     suspend fun deletePasskey(passkey: PasskeyEntry) {
-        // 先清理 Keystore 中的私钥
-        deletePrivateKey(passkey.privateKeyAlias)
-        logAudit("PASSKEY_DELETED", "${passkey.credentialId}|rpId=${passkey.rpId}")
-        // 再从数据库删除
-        passkeyDao.delete(passkey)
+        deletePasskeyLocalOnly(passkey)
     }
     
     /**
@@ -169,8 +197,8 @@ class PasskeyRepository(private val passkeyDao: PasskeyDao) {
         // 先获取 Passkey 以获取私钥别名
         val passkey = passkeyDao.getPasskeyById(credentialId)
         if (passkey != null) {
-            deletePrivateKey(passkey.privateKeyAlias)
-            logAudit("PASSKEY_DELETED", "${credentialId}|rpId=${passkey.rpId}")
+            deletePasskeyLocalOnly(passkey)
+            return
         }
         passkeyDao.deleteById(credentialId)
     }
@@ -199,6 +227,12 @@ class PasskeyRepository(private val passkeyDao: PasskeyDao) {
         }
         logAudit("PASSKEY_CLEAR_ALL", "count=${passkeys.size}")
         passkeyDao.deleteAll()
+    }
+
+    suspend fun deletePasskeyLocalOnly(passkey: PasskeyEntry) {
+        deletePrivateKey(passkey.privateKeyAlias)
+        logAudit("PASSKEY_DELETED", "${passkey.credentialId}|rpId=${passkey.rpId}")
+        passkeyDao.delete(passkey)
     }
     
     // ==================== Keystore 管理 ====================

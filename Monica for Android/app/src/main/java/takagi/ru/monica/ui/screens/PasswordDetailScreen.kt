@@ -1980,26 +1980,57 @@ private fun PasskeyBoundCard(
                 )
             }
 
-            val summaries = if (passkeys.isNotEmpty()) {
-                passkeys.map { passkey ->
-                    listOf(
-                        passkey.rpName,
-                        passkey.userDisplayName.ifBlank { passkey.userName },
-                        passkey.rpId
-                    ).filter { it.isNotBlank() }.joinToString(" · ")
+            if (passkeys.isNotEmpty()) {
+                passkeys.forEach { passkey ->
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = listOf(
+                                passkey.rpName,
+                                passkey.userDisplayName.ifBlank { passkey.userName },
+                                passkey.rpId
+                            ).filter { it.isNotBlank() }.joinToString(" · "),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        if (passkey.isKeePassCompatible()) {
+                            PasskeyFormatBadge(text = stringResource(R.string.passkey_format_keepass))
+                            Text(
+                                text = stringResource(R.string.passkey_format_keepass_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 }
             } else {
-                bindingSummaries
-            }
-
-            summaries.forEach { summary ->
-                Text(
-                    text = summary,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                bindingSummaries.forEach { summary ->
+                    Text(
+                        text = summary,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun PasskeyFormatBadge(
+    text: String,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(999.dp),
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
     }
 }
 

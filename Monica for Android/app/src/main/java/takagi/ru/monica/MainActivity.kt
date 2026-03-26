@@ -348,7 +348,9 @@ fun MonicaApp(
     val passkeyViewModel: takagi.ru.monica.viewmodel.PasskeyViewModel = viewModel {
         takagi.ru.monica.viewmodel.PasskeyViewModel(
             repository = passkeyRepository,
-            localKeePassDatabaseDao = database.localKeePassDatabaseDao()
+            context = navController.context,
+            localKeePassDatabaseDao = database.localKeePassDatabaseDao(),
+            securityManager = securityManager
         )
     }
     

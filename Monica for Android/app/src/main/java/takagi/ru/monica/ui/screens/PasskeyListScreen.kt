@@ -168,6 +168,9 @@ fun PasskeyListScreen(
         }
     }
     val categoryMap = remember(categories) { categories.associateBy { it.id } }
+    LaunchedEffect(keepassDatabases.map { it.id }) {
+        viewModel.refreshKeePassPasskeys()
+    }
 
     val bindingPasskeys = remember(passwords, searchQuery) {
         val rawList = passwords.flatMap { password ->
@@ -757,9 +760,21 @@ fun PasskeyListScreen(
             keepExistingCipher -> if (passkey.syncStatus == "SYNCED") "SYNCED" else "PENDING"
             else -> "PENDING"
         }
+        val resolvedMode = when (target) {
+            is UnifiedMoveCategoryTarget.BitwardenVaultTarget,
+            is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> PasskeyEntry.MODE_BW_COMPAT
+            is UnifiedMoveCategoryTarget.KeePassDatabaseTarget,
+            is UnifiedMoveCategoryTarget.KeePassGroupTarget -> PasskeyEntry.MODE_KEEPASS_COMPAT
+            else -> if (passkey.isKeePassCompatible()) {
+                PasskeyEntry.MODE_KEEPASS_COMPAT
+            } else {
+                passkey.passkeyMode
+            }
+        }
 
         return Result.success(
             moved.copy(
+                passkeyMode = resolvedMode,
                 bitwardenCipherId = if (keepExistingCipher) currentCipherId else null,
                 syncStatus = resolvedSyncStatus
             )
@@ -789,7 +804,9 @@ fun PasskeyListScreen(
                     return false
                 }
             }
-            viewModel.deletePasskey(passkey)
+            if (viewModel.deletePasskey(passkey).isFailure) {
+                return false
+            }
         }
         return true
     }
@@ -1434,8 +1451,14 @@ fun PasskeyListScreen(
                         keepExistingCipher -> if (passkey.syncStatus == "SYNCED") "SYNCED" else "PENDING"
                         else -> "PENDING"
                     }
+                    val resolvedMode = when {
+                        targetVaultId != null -> PasskeyEntry.MODE_BW_COMPAT
+                        password.keepassDatabaseId != null -> PasskeyEntry.MODE_KEEPASS_COMPAT
+                        passkey.isKeePassCompatible() -> PasskeyEntry.MODE_KEEPASS_COMPAT
+                        else -> passkey.passkeyMode
+                    }
 
-                    viewModel.updatePasskey(
+                    val updateResult = viewModel.updatePasskey(
                         passkey.copy(
                             boundPasswordId = password.id,
                             categoryId = password.categoryId,
@@ -1444,9 +1467,14 @@ fun PasskeyListScreen(
                             bitwardenVaultId = targetVaultId,
                             bitwardenFolderId = targetFolderId,
                             bitwardenCipherId = if (keepExistingCipher) currentCipherId else null,
-                            syncStatus = resolvedSyncStatus
+                            syncStatus = resolvedSyncStatus,
+                            passkeyMode = resolvedMode
                         )
                     )
+                    if (updateResult.isFailure) {
+                        Toast.makeText(context, context.getString(R.string.passkey_update_failed), Toast.LENGTH_SHORT).show()
+                        return@launch
+                    }
                 }
                 if (nonMigratableForBitwarden) {
                     Toast.makeText(context, context.getString(R.string.passkey_bitwarden_legacy_hint), Toast.LENGTH_SHORT).show()
@@ -1497,7 +1525,10 @@ fun PasskeyListScreen(
                     return@launch
                 }
 
-                viewModel.updatePasskey(updateResult.getOrThrow())
+                if (viewModel.updatePasskey(updateResult.getOrThrow()).isFailure) {
+                    Toast.makeText(context, context.getString(R.string.passkey_update_failed), Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
                 val targetLabel = when (target) {
                     UnifiedMoveCategoryTarget.Uncategorized -> context.getString(R.string.category_none)
                     is UnifiedMoveCategoryTarget.MonicaCategory -> categoryMap[target.categoryId]?.name ?: context.getString(R.string.category_none)
@@ -1555,8 +1586,11 @@ fun PasskeyListScreen(
                 movable.forEach { passkey ->
                     val updateResult = applyStorageTarget(passkey, target)
                     if (updateResult.isSuccess) {
-                        viewModel.updatePasskey(updateResult.getOrThrow())
-                        movedCount++
+                        if (viewModel.updatePasskey(updateResult.getOrThrow()).isSuccess) {
+                            movedCount++
+                        } else {
+                            failedCount++
+                        }
                     } else {
                         if (updateResult.exceptionOrNull() is PasskeyBitwardenMoveBlockedException) {
                             blockedCount++
@@ -1796,10 +1830,21 @@ private fun PasskeyListItem(
 ) {
     var expanded by remember { mutableStateOf(false) }
     val syncStatus = remember(passkey.syncStatus) { SyncStatus.fromDbValue(passkey.syncStatus) }
-    var canMoveToBitwarden by remember(passkey.credentialId, passkey.privateKeyAlias, passkey.syncStatus) {
+    var canMoveToBitwarden by remember(
+        passkey.credentialId,
+        passkey.privateKeyAlias,
+        passkey.syncStatus,
+        passkey.passkeyMode
+    ) {
         mutableStateOf<Boolean?>(null)
     }
-    LaunchedEffect(expanded, passkey.credentialId, passkey.privateKeyAlias, passkey.syncStatus) {
+    LaunchedEffect(
+        expanded,
+        passkey.credentialId,
+        passkey.privateKeyAlias,
+        passkey.syncStatus,
+        passkey.passkeyMode
+    ) {
         if (expanded) {
             canMoveToBitwarden = withContext(Dispatchers.IO) { isPasskeyMigratableToBitwarden(passkey) }
         } else {
@@ -1996,6 +2041,10 @@ private fun PasskeyListItem(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
+                        if (passkey.isKeePassCompatible()) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            PasskeyFormatBadge(text = stringResource(R.string.passkey_format_keepass))
+                        }
                     }
                 }
 
@@ -2099,6 +2148,17 @@ private fun PasskeyListItem(
                         value = currentCategoryName,
                         icon = Icons.Default.Folder
                     )
+
+                    if (passkey.isKeePassCompatible()) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        PasskeyFormatBadge(text = stringResource(R.string.passkey_format_keepass))
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = stringResource(R.string.passkey_format_keepass_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
 
                     if (isCategoryLocked) {
                         Spacer(modifier = Modifier.height(6.dp))
@@ -2318,6 +2378,25 @@ private fun DetailRow(
                 style = MaterialTheme.typography.bodyMedium
             )
         }
+    }
+}
+
+@Composable
+private fun PasskeyFormatBadge(
+    text: String,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(999.dp),
+        color = MaterialTheme.colorScheme.tertiaryContainer,
+        contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+        )
     }
 }
 

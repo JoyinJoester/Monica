@@ -253,6 +253,18 @@ interface PasskeyDao {
     @Query("SELECT * FROM passkeys WHERE bound_password_id IN (:passwordIds)")
     suspend fun getByBoundPasswordIds(passwordIds: List<Long>): List<PasskeyEntry>
 
+    @Query(
+        """
+        SELECT * FROM passkeys
+        WHERE keepass_database_id = :databaseId
+          AND passkey_mode = :passkeyMode
+        """
+    )
+    suspend fun getKeePassCompatPasskeysByDatabaseId(
+        databaseId: Long,
+        passkeyMode: String = PasskeyEntry.MODE_KEEPASS_COMPAT
+    ): List<PasskeyEntry>
+
     /**
      * 更新绑定的密码 ID
      */
@@ -281,6 +293,32 @@ interface PasskeyDao {
         """
     )
     suspend fun clearKeePassBindingForCredentialIds(credentialIds: List<String>)
+
+    @Query(
+        """
+        DELETE FROM passkeys
+        WHERE keepass_database_id = :databaseId
+          AND passkey_mode = :passkeyMode
+        """
+    )
+    suspend fun deleteAllKeePassCompatPasskeysByDatabaseId(
+        databaseId: Long,
+        passkeyMode: String = PasskeyEntry.MODE_KEEPASS_COMPAT
+    )
+
+    @Query(
+        """
+        DELETE FROM passkeys
+        WHERE keepass_database_id = :databaseId
+          AND passkey_mode = :passkeyMode
+          AND credential_id NOT IN (:credentialIds)
+        """
+    )
+    suspend fun deleteKeePassCompatPasskeysNotIn(
+        databaseId: Long,
+        credentialIds: List<String>,
+        passkeyMode: String = PasskeyEntry.MODE_KEEPASS_COMPAT
+    )
     
     /**
      * 获取待上传到 Bitwarden 的 Passkeys

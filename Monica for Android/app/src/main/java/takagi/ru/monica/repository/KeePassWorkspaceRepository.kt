@@ -3,6 +3,7 @@ package takagi.ru.monica.repository
 import android.content.Context
 import android.net.Uri
 import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.SecureItem
@@ -69,6 +70,10 @@ class KeePassWorkspaceRepository(
         allowedTypes: Set<ItemType>? = null
     ): Result<List<KeePassSecureItemData>> {
         return service.readSecureItems(databaseId, allowedTypes)
+    }
+
+    suspend fun readPasskeyEntries(databaseId: Long): Result<List<PasskeyEntry>> {
+        return service.readPasskeyEntries(databaseId)
     }
 
     suspend fun verifyDatabase(databaseId: Long): Result<Int> {
@@ -199,6 +204,16 @@ class KeePassWorkspaceRepository(
         )
     }
 
+    suspend fun addOrUpdatePasskeys(
+        databaseId: Long,
+        passkeys: List<PasskeyEntry>
+    ): Result<Int> {
+        return service.addOrUpdatePasskeys(
+            databaseId = databaseId,
+            passkeys = passkeys
+        )
+    }
+
     suspend fun updateSecureItem(
         databaseId: Long,
         item: SecureItem
@@ -206,11 +221,25 @@ class KeePassWorkspaceRepository(
         return service.updateSecureItem(databaseId, item)
     }
 
+    suspend fun updatePasskey(
+        databaseId: Long,
+        passkey: PasskeyEntry
+    ): Result<Unit> {
+        return service.updatePasskey(databaseId, passkey)
+    }
+
     suspend fun deleteSecureItems(
         databaseId: Long,
         items: List<SecureItem>
     ): Result<Int> {
         return service.deleteSecureItems(databaseId, items)
+    }
+
+    suspend fun deletePasskeys(
+        databaseId: Long,
+        passkeys: List<PasskeyEntry>
+    ): Result<Int> {
+        return service.deletePasskeys(databaseId, passkeys)
     }
 
     suspend fun moveSecureItemsToRecycleBin(

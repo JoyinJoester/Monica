@@ -136,8 +136,9 @@ data class PasskeyEntry(
     val syncStatus: String = "NONE",              // 同步状态: NONE, PENDING, SYNCING, SYNCED, FAILED
 
     // Passkey 模式:
-    // LEGACY    -> 旧 Monica 通行密钥（保留本地兼容，不参与 Bitwarden 可用同步）
-    // BW_COMPAT -> Bitwarden 兼容模式（可参与 Bitwarden/Keyguard 同步）
+    // LEGACY         -> 旧 Monica 通行密钥（保留本地兼容，不参与 Bitwarden 可用同步）
+    // BW_COMPAT      -> Bitwarden 兼容模式（可参与 Bitwarden/Keyguard 同步）
+    // KEEPASS_COMPAT -> KeePassDX/KeePassXC KPEX_PASSKEY_* 兼容格式（可与 Monica 写入/回读的 KDBX 互通）
     @ColumnInfo(name = "passkey_mode", defaultValue = "'LEGACY'")
     val passkeyMode: String = MODE_LEGACY
 ) {
@@ -176,6 +177,7 @@ data class PasskeyEntry(
         // Passkey 模式
         const val MODE_LEGACY = "LEGACY"
         const val MODE_BW_COMPAT = "BW_COMPAT"
+        const val MODE_KEEPASS_COMPAT = "KEEPASS_COMPAT"
 
         // COSE 算法常量
         const val ALGORITHM_ES256 = -7
@@ -190,4 +192,8 @@ data class PasskeyEntry(
         const val TRANSPORT_BLE = "ble"
         const val TRANSPORT_HYBRID = "hybrid"
     }
+
+    fun isBitwardenCompatible(): Boolean = passkeyMode == MODE_BW_COMPAT
+
+    fun isKeePassCompatible(): Boolean = passkeyMode == MODE_KEEPASS_COMPAT
 }

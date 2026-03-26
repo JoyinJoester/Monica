@@ -1,13 +1,22 @@
 package takagi.ru.monica.viewmodel
 
+import android.content.Context
 import android.os.Build
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.PasskeyEntry
+import takagi.ru.monica.keepass.KeePassPasskeyDeleteExecutor
+import takagi.ru.monica.keepass.KeePassPasskeyUpdateExecutor
+import takagi.ru.monica.repository.KeePassCompatibilityBridge
+import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.repository.PasskeyRepository
+import takagi.ru.monica.security.SecurityManager
 
 /**
  * Passkey ViewModel
@@ -16,8 +25,23 @@ import takagi.ru.monica.repository.PasskeyRepository
  */
 class PasskeyViewModel(
     private val repository: PasskeyRepository,
-    private val localKeePassDatabaseDao: LocalKeePassDatabaseDao? = null
+    context: Context? = null,
+    private val localKeePassDatabaseDao: LocalKeePassDatabaseDao? = null,
+    securityManager: SecurityManager? = null
 ) : ViewModel() {
+    private val keepassBridge = if (context != null && localKeePassDatabaseDao != null && securityManager != null) {
+        KeePassCompatibilityBridge(
+            KeePassWorkspaceRepository(
+                context = context.applicationContext,
+                dao = localKeePassDatabaseDao,
+                securityManager = securityManager
+            )
+        )
+    } else {
+        null
+    }
+    private val keepassPasskeyUpdateExecutor = KeePassPasskeyUpdateExecutor(keepassBridge)
+    private val keepassPasskeyDeleteExecutor = KeePassPasskeyDeleteExecutor(keepassBridge)
     
     // ==================== UI 状态 ====================
     
@@ -33,6 +57,7 @@ class PasskeyViewModel(
     init {
         viewModelScope.launch {
             repairLegacyDetachedKeePassPasskeys()
+            refreshKeePassPasskeys()
         }
     }
     
@@ -171,13 +196,18 @@ class PasskeyViewModel(
     /**
      * 更新 Passkey
      */
-    fun updatePasskey(passkey: PasskeyEntry) {
-        viewModelScope.launch {
-            try {
-                repository.updatePasskey(passkey)
-            } catch (e: Exception) {
-                _errorMessage.value = "更新 Passkey 失败: ${e.message}"
-            }
+    suspend fun updatePasskey(passkey: PasskeyEntry): Result<PasskeyEntry> {
+        val existing = repository.getPasskeyById(passkey.credentialId)
+            ?: return Result.failure(IllegalArgumentException("Passkey 不存在"))
+        return try {
+            keepassPasskeyUpdateExecutor.update(
+                existing = existing,
+                updated = passkey,
+                persistUpdate = repository::updatePasskey
+            )
+        } catch (e: Exception) {
+            _errorMessage.value = "更新 Passkey 失败: ${e.message}"
+            Result.failure(e)
         }
     }
 
@@ -211,13 +241,15 @@ class PasskeyViewModel(
      * 删除 Passkey
      * 注：PasskeyRepository 会自动处理 Android Keystore 私钥清理
      */
-    fun deletePasskey(passkey: PasskeyEntry) {
-        viewModelScope.launch {
-            try {
-                repository.deletePasskey(passkey)
-            } catch (e: Exception) {
-                _errorMessage.value = "删除 Passkey 失败: ${e.message}"
-            }
+    suspend fun deletePasskey(passkey: PasskeyEntry): Result<Unit> {
+        return try {
+            keepassPasskeyDeleteExecutor.delete(
+                passkey = passkey,
+                deleteLocal = repository::deletePasskeyLocalOnly
+            )
+        } catch (e: Exception) {
+            _errorMessage.value = "删除 Passkey 失败: ${e.message}"
+            Result.failure(e)
         }
     }
     
@@ -228,7 +260,12 @@ class PasskeyViewModel(
     fun deletePasskeyById(credentialId: String) {
         viewModelScope.launch {
             try {
-                repository.deletePasskeyById(credentialId)
+                val passkey = repository.getPasskeyById(credentialId)
+                if (passkey != null) {
+                    deletePasskey(passkey).getOrThrow()
+                } else {
+                    repository.deletePasskeyById(credentialId)
+                }
             } catch (e: Exception) {
                 _errorMessage.value = "删除 Passkey 失败: ${e.message}"
             }
@@ -251,11 +288,31 @@ class PasskeyViewModel(
         return repository.getDiscoverablePasskeysByRpId(rpId)
     }
 
+    suspend fun refreshKeePassPasskeys() {
+        val bridge = keepassBridge ?: return
+        val dao = localKeePassDatabaseDao ?: return
+        withContext(Dispatchers.IO) {
+            dao.getAllDatabasesSync().forEach { database ->
+                bridge.readLegacyPasskeys(database.id)
+                    .onSuccess { imported ->
+                        repository.syncKeePassPasskeys(database.id, imported)
+                    }
+                    .onFailure { error ->
+                        Log.w(TAG, "Failed to refresh KeePass passkeys for database ${database.id}: ${error.message}")
+                    }
+            }
+        }
+    }
+
     private suspend fun repairLegacyDetachedKeePassPasskeys() {
         repository.repairLegacyDetachedKeePassPasskeys(::hasKeePassDatabase)
     }
 
     private suspend fun hasKeePassDatabase(databaseId: Long): Boolean {
         return localKeePassDatabaseDao?.getDatabaseById(databaseId) != null
+    }
+
+    private companion object {
+        const val TAG = "PasskeyViewModel"
     }
 }

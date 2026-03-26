@@ -32,11 +32,15 @@ import takagi.ru.monica.data.KeePassFormatVersion
 import takagi.ru.monica.data.KeePassKdfAlgorithm
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
+import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.keepass.KeePassDxPasskeyCodec
+import takagi.ru.monica.keepass.KeePassPasskeySyncCodec
 import takagi.ru.monica.notes.domain.NoteContentCodec
+import takagi.ru.monica.passkey.PasskeyCredentialIdCodec
 import takagi.ru.monica.security.SecurityManager
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -124,6 +128,9 @@ class KeePassKdbxService(
         private const val FIELD_MONICA_ITEM_DATA = "MonicaItemData"
         private const val FIELD_MONICA_IMAGE_PATHS = "MonicaImagePaths"
         private const val FIELD_MONICA_IS_FAVORITE = "MonicaIsFavorite"
+        private const val FIELD_MONICA_PASSKEY_CREDENTIAL_ID = "MonicaPasskeyCredentialId"
+        private const val FIELD_MONICA_PASSKEY_DATA = "MonicaPasskeyData"
+        private const val FIELD_MONICA_PASSKEY_MODE = "MonicaPasskeyMode"
         // kotpass decode 在并发下可能触发 native 崩溃，必须跨实例串行化。
         private val globalDecodeMutex = Mutex()
         // 部分设备/ABI 下 decode 在不同工作线程切换时更易触发 native 崩溃，固定到单线程执行更稳。
@@ -711,6 +718,26 @@ class KeePassKdbxService(
         }
     }
 
+    suspend fun readPasskeyEntries(databaseId: Long): Result<List<PasskeyEntry>> = withContext(Dispatchers.IO) {
+        try {
+            val (_, _, keePassDatabase) = loadDatabase(databaseId)
+            val (entries, _) = collectEntryContexts(keePassDatabase)
+            val resolutionContext = KeePassFieldReferenceResolver.buildContext(entries.map { it.entry })
+            val data = entries.mapNotNull { context ->
+                entryToPasskey(
+                    entry = context.entry,
+                    databaseId = databaseId,
+                    groupPath = context.groupPath,
+                    groupUuid = context.groupUuid,
+                    resolutionContext = resolutionContext
+                )
+            }
+            Result.success(data)
+        } catch (e: Exception) {
+            Result.failure(normalizeError(e))
+        }
+    }
+
     suspend fun addOrUpdateSecureItems(
         databaseId: Long,
         items: List<SecureItem>,
@@ -746,6 +773,37 @@ class KeePassKdbxService(
         }
     }
 
+    suspend fun addOrUpdatePasskeys(
+        databaseId: Long,
+        passkeys: List<PasskeyEntry>
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            val addedCount = mutateDatabase(databaseId = databaseId) { loaded ->
+                var updatedDatabase = loaded.keePassDatabase
+                var addedCount = 0
+                passkeys.forEach { passkey ->
+                    val updateResult = updatePasskeyInternal(updatedDatabase, passkey)
+                    if (updateResult.second) {
+                        updatedDatabase = updateResult.first
+                    } else {
+                        val newEntry = buildPasskeyEntry(passkey)
+                        val updatedRoot = addEntryToGroupPath(
+                            rootGroup = updatedDatabase.content.group,
+                            groupPath = passkey.keepassGroupPath,
+                            entry = newEntry
+                        )
+                        updatedDatabase = updatedDatabase.modifyParentGroup { updatedRoot }
+                        addedCount++
+                    }
+                }
+                MutationPlan(updatedDatabase = updatedDatabase, result = addedCount)
+            }
+            Result.success(addedCount)
+        } catch (e: Exception) {
+            Result.failure(normalizeError(e))
+        }
+    }
+
     suspend fun updateSecureItem(
         databaseId: Long,
         item: SecureItem
@@ -760,6 +818,32 @@ class KeePassKdbxService(
                     val updatedRoot = addEntryToGroupPath(
                         rootGroup = loaded.keePassDatabase.content.group,
                         groupPath = item.keepassGroupPath,
+                        entry = newEntry
+                    )
+                    loaded.keePassDatabase.modifyParentGroup { updatedRoot }
+                }
+                MutationPlan(updatedDatabase = updatedDatabase, result = Unit)
+            }
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(normalizeError(e))
+        }
+    }
+
+    suspend fun updatePasskey(
+        databaseId: Long,
+        passkey: PasskeyEntry
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            mutateDatabase(databaseId) { loaded ->
+                val updateResult = updatePasskeyInternal(loaded.keePassDatabase, passkey)
+                val updatedDatabase = if (updateResult.second) {
+                    updateResult.first
+                } else {
+                    val newEntry = buildPasskeyEntry(passkey)
+                    val updatedRoot = addEntryToGroupPath(
+                        rootGroup = loaded.keePassDatabase.content.group,
+                        groupPath = passkey.keepassGroupPath,
                         entry = newEntry
                     )
                     loaded.keePassDatabase.modifyParentGroup { updatedRoot }
@@ -939,6 +1023,27 @@ class KeePassKdbxService(
         }
     }
 
+    suspend fun deletePasskeys(
+        databaseId: Long,
+        passkeys: List<PasskeyEntry>
+    ): Result<Int> = withContext(Dispatchers.IO) {
+        try {
+            val removedCount = mutateDatabase(databaseId = databaseId) { loaded ->
+                var updatedDatabase = loaded.keePassDatabase
+                var removedCount = 0
+                passkeys.forEach { passkey ->
+                    val result = removePasskey(updatedDatabase, passkey)
+                    updatedDatabase = result.first
+                    removedCount += result.second
+                }
+                MutationPlan(updatedDatabase = updatedDatabase, result = removedCount)
+            }
+            Result.success(removedCount)
+        } catch (e: Exception) {
+            Result.failure(normalizeError(e))
+        }
+    }
+
     suspend fun moveSecureItemsToRecycleBin(
         databaseId: Long,
         items: List<SecureItem>,
@@ -1005,6 +1110,13 @@ class KeePassKdbxService(
         )
     }
 
+    private fun buildPasskeyEntry(passkey: PasskeyEntry): Entry {
+        return Entry(
+            uuid = UUID.randomUUID(),
+            fields = buildPasskeyFields(passkey)
+        )
+    }
+
     private fun buildEntryFields(entry: PasswordEntry, plainPassword: String): EntryFields {
         val monicaId = if (entry.id > 0) entry.id.toString() else ""
         val pairs = mutableListOf<Pair<String, EntryValue>>(
@@ -1016,6 +1128,34 @@ class KeePassKdbxService(
         )
         if (monicaId.isNotEmpty()) {
             pairs.add(FIELD_MONICA_LOCAL_ID to EntryValue.Plain(monicaId))
+        }
+        return EntryFields.of(*pairs.toTypedArray())
+    }
+
+    private fun buildPasskeyFields(
+        passkey: PasskeyEntry,
+        existingEntry: Entry? = null
+    ): EntryFields {
+        val readableTitle = passkey.rpName.ifBlank { passkey.rpId }.ifBlank { "Passkey" }
+        val payload = KeePassPasskeySyncCodec.encode(passkey)
+        val pairs = mutableListOf<Pair<String, EntryValue>>(
+            "Title" to EntryValue.Plain("$readableTitle [Passkey]"),
+            "UserName" to EntryValue.Plain(passkey.userName.ifBlank { passkey.userDisplayName }),
+            "Password" to EntryValue.Encrypted(EncryptedValue.fromString("")),
+            "URL" to EntryValue.Plain(
+                when {
+                    passkey.rpId.isBlank() -> ""
+                    "://" in passkey.rpId -> passkey.rpId
+                    else -> "https://${passkey.rpId}"
+                }
+            ),
+            "Notes" to EntryValue.Plain(passkey.notes),
+            FIELD_MONICA_PASSKEY_CREDENTIAL_ID to EntryValue.Plain(passkey.credentialId),
+            FIELD_MONICA_PASSKEY_MODE to EntryValue.Plain(PasskeyEntry.MODE_KEEPASS_COMPAT),
+            FIELD_MONICA_PASSKEY_DATA to EntryValue.Encrypted(EncryptedValue.fromString(payload))
+        )
+        pairs += KeePassDxPasskeyCodec.buildCustomFieldPairs(passkey) { fieldName ->
+            existingEntry?.let { getFieldValue(it, fieldName) }.orEmpty()
         }
         return EntryFields.of(*pairs.toTypedArray())
     }
@@ -1098,6 +1238,42 @@ class KeePassKdbxService(
         return updatedDatabase to result.second
     }
 
+    private fun updatePasskeyInternal(
+        keePassDatabase: KeePassDatabase,
+        passkey: PasskeyEntry
+    ): Pair<KeePassDatabase, Boolean> {
+        val resolutionContext = buildResolutionContext(keePassDatabase)
+        val matcher: (Entry) -> Boolean = { existing ->
+            matchesPasskeyEntry(existing, passkey, resolutionContext)
+        }
+        val updater: (Entry) -> Entry = { existing ->
+            existing.copy(fields = buildPasskeyFields(passkey, existing))
+        }
+        val result = updateEntryInGroup(keePassDatabase.content.group, matcher, updater)
+        val updatedDatabase = if (result.second) {
+            keePassDatabase.modifyParentGroup { result.first }
+        } else {
+            keePassDatabase
+        }
+        return updatedDatabase to result.second
+    }
+
+    private fun upsertPasskey(
+        keePassDatabase: KeePassDatabase,
+        passkey: PasskeyEntry
+    ): KeePassDatabase {
+        val updateResult = updatePasskeyInternal(keePassDatabase, passkey)
+        if (updateResult.second) return updateResult.first
+
+        val newEntry = buildPasskeyEntry(passkey)
+        val updatedRoot = addEntryToGroupPath(
+            rootGroup = keePassDatabase.content.group,
+            groupPath = passkey.keepassGroupPath,
+            entry = newEntry
+        )
+        return keePassDatabase.modifyParentGroup { updatedRoot }
+    }
+
     private fun removeEntry(
         keePassDatabase: KeePassDatabase,
         entry: PasswordEntry
@@ -1122,6 +1298,23 @@ class KeePassKdbxService(
         val resolutionContext = buildResolutionContext(keePassDatabase)
         val matcher: (Entry) -> Boolean = { existing ->
             matchesSecureItemEntry(existing, item, resolutionContext)
+        }
+        val result = removeEntryInGroup(keePassDatabase.content.group, matcher)
+        val updatedDatabase = if (result.second > 0) {
+            keePassDatabase.modifyParentGroup { result.first }
+        } else {
+            keePassDatabase
+        }
+        return updatedDatabase to result.second
+    }
+
+    private fun removePasskey(
+        keePassDatabase: KeePassDatabase,
+        passkey: PasskeyEntry
+    ): Pair<KeePassDatabase, Int> {
+        val resolutionContext = buildResolutionContext(keePassDatabase)
+        val matcher: (Entry) -> Boolean = { existing ->
+            matchesPasskeyEntry(existing, passkey, resolutionContext)
         }
         val result = removeEntryInGroup(keePassDatabase.content.group, matcher)
         val updatedDatabase = if (result.second > 0) {
@@ -1309,6 +1502,39 @@ class KeePassKdbxService(
         return matchSecureItemByKey(entry, target, resolutionContext)
     }
 
+    private fun matchesPasskeyEntry(
+        entry: Entry,
+        target: PasskeyEntry,
+        resolutionContext: KeePassEntryResolutionContext? = null
+    ): Boolean {
+        val targetCredentialId = PasskeyCredentialIdCodec.normalize(target.credentialId) ?: target.credentialId
+        val credentialId = getFieldValue(entry, FIELD_MONICA_PASSKEY_CREDENTIAL_ID, resolutionContext)
+        if (credentialId.isNotBlank()) {
+            val normalized = PasskeyCredentialIdCodec.normalize(credentialId) ?: credentialId
+            if (normalized == targetCredentialId) {
+                return true
+            }
+        }
+
+        val keepassDxCredentialId = getFieldValue(entry, KeePassDxPasskeyCodec.FIELD_CREDENTIAL_ID, resolutionContext)
+        if (keepassDxCredentialId.isNotBlank()) {
+            val normalized = PasskeyCredentialIdCodec.normalize(keepassDxCredentialId) ?: keepassDxCredentialId
+            if (normalized == targetCredentialId) {
+                return true
+            }
+        }
+
+        val payload = getFieldValue(entry, FIELD_MONICA_PASSKEY_DATA, resolutionContext)
+        val decoded = KeePassPasskeySyncCodec.decode(
+            raw = payload,
+            databaseId = target.keepassDatabaseId ?: -1L,
+            groupPath = target.keepassGroupPath,
+            groupUuid = null
+        )
+        val decodedCredentialId = PasskeyCredentialIdCodec.normalize(decoded?.credentialId) ?: decoded?.credentialId
+        return decodedCredentialId == targetCredentialId
+    }
+
     private fun entryToData(
         entry: Entry,
         groupPath: String?,
@@ -1319,6 +1545,9 @@ class KeePassKdbxService(
     ): KeePassEntryData? {
         // Monica 安全项（TOTP/笔记/卡片等）会写入 MonicaItemType，不应进入密码列表。
         if (getFieldValue(entry, FIELD_MONICA_ITEM_TYPE, resolutionContext).isNotBlank()) {
+            return null
+        }
+        if (isPasskeyEntry(entry, resolutionContext)) {
             return null
         }
 
@@ -1360,6 +1589,9 @@ class KeePassKdbxService(
         allowedTypes: Set<ItemType>?,
         resolutionContext: KeePassEntryResolutionContext? = null
     ): KeePassSecureItemData? {
+        if (isPasskeyEntry(entry, resolutionContext)) {
+            return null
+        }
         val typeRaw = getFieldValue(entry, FIELD_MONICA_ITEM_TYPE, resolutionContext)
         if (typeRaw.isNotBlank()) {
             val itemType = runCatching { ItemType.valueOf(typeRaw) }.getOrNull() ?: return null
@@ -1440,6 +1672,57 @@ class KeePassKdbxService(
         )
     }
 
+    private fun entryToPasskey(
+        entry: Entry,
+        databaseId: Long,
+        groupPath: String?,
+        groupUuid: UUID?,
+        resolutionContext: KeePassEntryResolutionContext? = null
+    ): PasskeyEntry? {
+        val title = getFieldValue(entry, "Title", resolutionContext)
+        val notes = getFieldValue(entry, "Notes", resolutionContext)
+        val rawCredentialId = getFieldValue(entry, FIELD_MONICA_PASSKEY_CREDENTIAL_ID, resolutionContext)
+        val rawPayload = getFieldValue(entry, FIELD_MONICA_PASSKEY_DATA, resolutionContext)
+        val decoded = if (rawCredentialId.isBlank() && rawPayload.isBlank()) {
+            null
+        } else {
+            KeePassPasskeySyncCodec.decode(
+                raw = rawPayload,
+                databaseId = databaseId,
+                groupPath = groupPath,
+                groupUuid = groupUuid?.toString()
+            )
+        }
+
+        val passkey = decoded?.copy(
+            credentialId = rawCredentialId.ifBlank { decoded.credentialId },
+            keepassDatabaseId = databaseId,
+            keepassGroupPath = groupPath,
+            bitwardenVaultId = null,
+            bitwardenFolderId = null,
+            bitwardenCipherId = null,
+            syncStatus = "NONE",
+            passkeyMode = PasskeyEntry.MODE_KEEPASS_COMPAT
+        ) ?: KeePassDxPasskeyCodec.decode(
+            getField = { key -> getFieldValue(entry, key, resolutionContext) },
+            title = title,
+            notes = notes,
+            databaseId = databaseId,
+            groupPath = groupPath,
+            groupUuid = groupUuid?.toString()
+        )
+
+        return passkey?.copy(
+            keepassDatabaseId = databaseId,
+            keepassGroupPath = groupPath,
+            bitwardenVaultId = null,
+            bitwardenFolderId = null,
+            bitwardenCipherId = null,
+            syncStatus = "NONE",
+            passkeyMode = PasskeyEntry.MODE_KEEPASS_COMPAT
+        )
+    }
+
     private fun isLikelyRecycleBinPath(groupPath: String?): Boolean {
         if (groupPath.isNullOrBlank()) return false
         val normalized = decodeKeePassPathForDisplay(groupPath)
@@ -1506,7 +1789,17 @@ class KeePassKdbxService(
             "otp", "TOTP Seed", "TOTP Settings",
             FIELD_MONICA_LOCAL_ID, FIELD_MONICA_ITEM_ID,
             FIELD_MONICA_ITEM_TYPE, FIELD_MONICA_ITEM_DATA,
-            FIELD_MONICA_IMAGE_PATHS, FIELD_MONICA_IS_FAVORITE
+            FIELD_MONICA_IMAGE_PATHS, FIELD_MONICA_IS_FAVORITE,
+            FIELD_MONICA_PASSKEY_CREDENTIAL_ID, FIELD_MONICA_PASSKEY_DATA,
+            FIELD_MONICA_PASSKEY_MODE,
+            KeePassDxPasskeyCodec.FIELD_PASSKEY,
+            KeePassDxPasskeyCodec.FIELD_USERNAME,
+            KeePassDxPasskeyCodec.FIELD_PRIVATE_KEY,
+            KeePassDxPasskeyCodec.FIELD_CREDENTIAL_ID,
+            KeePassDxPasskeyCodec.FIELD_USER_HANDLE,
+            KeePassDxPasskeyCodec.FIELD_RELYING_PARTY,
+            KeePassDxPasskeyCodec.FIELD_FLAG_BE,
+            KeePassDxPasskeyCodec.FIELD_FLAG_BS
         )
         entry.fields.forEach { (key, value) ->
             if (key in standardFields || key.startsWith("_etm_")) return@forEach
@@ -1543,6 +1836,21 @@ class KeePassKdbxService(
             context = resolutionContext,
             *keys
         )
+    }
+
+    private fun isPasskeyEntry(
+        entry: Entry,
+        resolutionContext: KeePassEntryResolutionContext? = null
+    ): Boolean {
+        if (getFieldValue(entry, FIELD_MONICA_PASSKEY_CREDENTIAL_ID, resolutionContext).isNotBlank()) {
+            return true
+        }
+        if (getFieldValue(entry, FIELD_MONICA_PASSKEY_DATA, resolutionContext).isNotBlank()) {
+            return true
+        }
+        return KeePassDxPasskeyCodec.isPasskey { key ->
+            getFieldValue(entry, key, resolutionContext)
+        }
     }
 
     private fun parseStandardTotpFromEntry(
@@ -2471,5 +2779,3 @@ class KeePassKdbxService(
         return throwable.toKeePassOperationException()
     }
 }
-
-
