@@ -330,7 +330,11 @@ enum class PasswordListQuickFilterItem {
     LOCAL_ONLY,
     MANUAL_STACK_ONLY,
     NEVER_STACK,
-    UNSTACKED;
+    UNSTACKED,
+    CARD_WALLET,
+    AUTHENTICATOR,
+    PASSKEY,
+    NOTE;
 
     companion object {
         val DEFAULT_ORDER: List<PasswordListQuickFilterItem> = listOf(
@@ -338,15 +342,22 @@ enum class PasswordListQuickFilterItem {
             TWO_FA,
             NOTES,
             UNCATEGORIZED,
-            LOCAL_ONLY
+            LOCAL_ONLY,
+            CARD_WALLET,
+            PASSKEY,
+            NOTE
         )
 
         fun sanitizeOrder(order: List<PasswordListQuickFilterItem>): List<PasswordListQuickFilterItem> {
             val result = mutableListOf<PasswordListQuickFilterItem>()
             val allowed = values().toSet()
             order.forEach { item ->
-                if (item in allowed && item !in result) {
-                    result.add(item)
+                val normalized = when (item) {
+                    AUTHENTICATOR -> TWO_FA
+                    else -> item
+                }
+                if (normalized in allowed && normalized != AUTHENTICATOR && normalized !in result) {
+                    result.add(normalized)
                 }
             }
             return result
@@ -360,6 +371,88 @@ enum class PasswordListQuickFilterItem {
 enum class PasswordListQuickFolderStyle {
     CLASSIC,    // 经典快捷卡片（含返回上级）
     M3_CARD     // M3 卡片模式
+}
+
+enum class AddButtonBehaviorMode {
+    DIRECT_PASSWORD,
+    EXPANDABLE_MENU
+}
+
+enum class AddButtonMenuAction {
+    PASSWORD,
+    NOTE,
+    AUTHENTICATOR,
+    BANK_CARD;
+
+    companion object {
+        val DEFAULT_ORDER: List<AddButtonMenuAction> = listOf(
+            BANK_CARD,
+            AUTHENTICATOR,
+            NOTE,
+            PASSWORD
+        )
+
+        val DEFAULT_ENABLED_ACTIONS: List<AddButtonMenuAction> = DEFAULT_ORDER
+
+        fun sanitizeOrder(order: List<AddButtonMenuAction>): List<AddButtonMenuAction> {
+            val result = mutableListOf<AddButtonMenuAction>()
+            val allowed = values().toSet()
+            order.forEach { action ->
+                if (action in allowed && action !in result) {
+                    result.add(action)
+                }
+            }
+            values().forEach { action ->
+                if (action !in result) {
+                    result.add(action)
+                }
+            }
+            return result
+        }
+
+        fun normalizeEnabledActions(
+            actions: List<AddButtonMenuAction>,
+            order: List<AddButtonMenuAction> = DEFAULT_ORDER
+        ): List<AddButtonMenuAction> {
+            val enabled = actions.toMutableSet().apply {
+                add(PASSWORD)
+            }
+            return sanitizeOrder(order).filter { it in enabled }
+        }
+    }
+}
+
+enum class PasswordPageContentType {
+    PASSWORD,
+    CARD_WALLET,
+    NOTE,
+    AUTHENTICATOR,
+    PASSKEY;
+
+    companion object {
+        val DEFAULT_VISIBLE_TYPES: List<PasswordPageContentType> = listOf(
+            PASSWORD,
+            CARD_WALLET,
+            NOTE,
+            AUTHENTICATOR,
+            PASSKEY
+        )
+
+        fun sanitizeVisibleTypes(types: List<PasswordPageContentType>): List<PasswordPageContentType> {
+            val result = mutableListOf(PASSWORD)
+            types.forEach { type ->
+                if (type != PASSWORD && type !in result) {
+                    result.add(type)
+                }
+            }
+            return result
+        }
+
+        fun normalizeEnabledTypes(types: List<PasswordPageContentType>): List<PasswordPageContentType> {
+            val allowed = values().toSet()
+            return sanitizeVisibleTypes(types.filter { it in allowed })
+        }
+    }
 }
 
 enum class CategorySelectionUiMode {
@@ -421,6 +514,12 @@ data class AppSettings(
     val passwordListQuickFoldersEnabled: Boolean = false, // 密码列表快捷文件夹开关
     val passwordListQuickFolderStyle: PasswordListQuickFolderStyle = PasswordListQuickFolderStyle.CLASSIC, // 密码列表快捷文件夹展示样式
     val passwordListQuickFolderPathBannerEnabled: Boolean = false, // 密码列表路径横幅开关
+    val addButtonBehaviorMode: AddButtonBehaviorMode = AddButtonBehaviorMode.DIRECT_PASSWORD, // 添加按钮行为
+    val addButtonMenuOrder: List<AddButtonMenuAction> = AddButtonMenuAction.DEFAULT_ORDER, // 添加按钮展开菜单顺序
+    val addButtonMenuEnabledActions: List<AddButtonMenuAction> = AddButtonMenuAction.DEFAULT_ENABLED_ACTIONS, // 添加按钮展开菜单启用项
+    val passwordPageAggregateEnabled: Boolean = false, // 密码页聚合内容开关（默认关闭）
+    val passwordPageVisibleContentTypes: List<PasswordPageContentType> =
+        PasswordPageContentType.DEFAULT_VISIBLE_TYPES, // 密码页可显示内容类型
     val categorySelectionUiMode: CategorySelectionUiMode = CategorySelectionUiMode.DEFAULT, // 分类选择 UI 形式
     val passwordListQuickAccessEnabled: Boolean = true, // 密码列表“最近打开/经常打开”快捷入口开关
     val passwordListTopModulesOrder: List<PasswordListTopModule> = PasswordListTopModule.DEFAULT_ORDER, // 密码列表顶部模块顺序

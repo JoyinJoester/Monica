@@ -76,6 +76,10 @@ data class PasswordEntry(
     // 绑定的通行密钥元数据（JSON）
     @ColumnInfo(name = "passkey_bindings", defaultValue = "")
     val passkeyBindings: String = "",
+
+    // SSH 密钥对元数据（JSON）
+    @ColumnInfo(name = "ssh_key_data", defaultValue = "")
+    val sshKeyData: String = "",
     
     // 第三方登录(SSO)字段
     @ColumnInfo(defaultValue = "PASSWORD")

@@ -167,6 +167,7 @@ import takagi.ru.monica.ui.common.layout.ListPane
 import takagi.ru.monica.ui.common.pull.PullActionVisualState
 import takagi.ru.monica.ui.common.pull.PullGestureIndicator
 import takagi.ru.monica.ui.common.pull.rememberPullActionState
+import takagi.ru.monica.ui.common.state.rememberSaveableLazyListState
 import takagi.ru.monica.ui.common.selection.CategoryListItem
 import takagi.ru.monica.ui.common.selection.SelectionActionBar
 import takagi.ru.monica.ui.common.selection.SelectionModeTopBar
@@ -344,7 +345,7 @@ fun TotpListContent(
     }
     val syncTriggerDistance = remember(density) { with(density) { 72.dp.toPx() } }
     val maxDragDistance = remember(density) { with(density) { 100.dp.toPx() } }
-    val lazyListState = rememberLazyListState()
+    val lazyListState = rememberSaveableLazyListState()
     val pullAction = rememberPullActionState(
         isBitwardenDatabaseView = enableBitwardenPullSync,
         isSearchExpanded = isSearchExpanded,

@@ -28,6 +28,8 @@ import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.CustomField
 import takagi.ru.monica.data.isLocalOnlyItem
+import takagi.ru.monica.data.model.SshKeyData
+import takagi.ru.monica.data.model.SshKeyDataCodec
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.KeePassCodecSupport
@@ -550,6 +552,7 @@ class KeePassKdbxViewModel {
                             website = url,
                             groupPath = groupPath
                         )
+                        val sshKeyData = resolveSshKeyData(entry, resolutionContext)
 
                         val isNewPasswordEntry = existingEntry == null
                         val insertedPasswordId = if (existingEntry != null) {
@@ -561,6 +564,7 @@ class KeePassKdbxViewModel {
                                 notes = notes,
                                 keepassDatabaseId = keepassDatabaseId,
                                 keepassGroupPath = groupPath,
+                                sshKeyData = sshKeyData,
                                 isDeleted = false,
                                 deletedAt = null,
                                 updatedAt = Date()
@@ -578,7 +582,8 @@ class KeePassKdbxViewModel {
                                 createdAt = Date(),
                                 updatedAt = Date(),
                                 keepassDatabaseId = keepassDatabaseId,
-                                keepassGroupPath = groupPath
+                                keepassGroupPath = groupPath,
+                                sshKeyData = sshKeyData
                             )
                             val newPasswordId = passwordDao.insertPasswordEntry(passwordEntry)
                             passwordImportedCount++
@@ -593,6 +598,8 @@ class KeePassKdbxViewModel {
                             val standardFields = setOf(
                                 "Title", "UserName", "Password", "URL", "Notes",
                                 "otp", "TOTP Seed", "TOTP Settings", "MonicaItemType",
+                                "MonicaSshAlgorithm", "MonicaSshKeySize", "MonicaSshPublicKey",
+                                "MonicaSshPrivateKey", "MonicaSshFingerprint", "MonicaSshComment", "MonicaSshFormat",
                                 // 非标准密码别名：已用于主密码提取，不再作为自定义字段重复导入
                                 "密码", "口令", "PIN", "Pin", "pin", "pwd", "PWD", "pass", "Pass", "password"
                             )
@@ -756,6 +763,24 @@ class KeePassKdbxViewModel {
     ): Boolean {
         return KeePassFieldReferenceResolver.getFieldValue(entry, "otp", resolutionContext).isNotBlank() ||
             KeePassFieldReferenceResolver.getFieldValue(entry, "TOTP Seed", resolutionContext).isNotBlank()
+    }
+
+    private fun resolveSshKeyData(
+        entry: Entry,
+        resolutionContext: KeePassEntryResolutionContext? = null
+    ): String {
+        fun field(key: String): String = KeePassFieldReferenceResolver.getFieldValue(entry, key, resolutionContext)
+        return SshKeyDataCodec.encode(
+            SshKeyData(
+                algorithm = field("MonicaSshAlgorithm"),
+                keySize = field("MonicaSshKeySize").toIntOrNull() ?: 0,
+                publicKeyOpenSsh = field("MonicaSshPublicKey"),
+                privateKeyOpenSsh = field("MonicaSshPrivateKey"),
+                fingerprintSha256 = field("MonicaSshFingerprint"),
+                comment = field("MonicaSshComment"),
+                format = field("MonicaSshFormat").ifBlank { SshKeyData.FORMAT_OPENSSH }
+            )
+        )
     }
 
     /**

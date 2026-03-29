@@ -207,6 +207,7 @@ fun AddEditPasswordScreen(
     var authenticatorKey by rememberSaveable { mutableStateOf("") }
     var passkeyBindings by rememberSaveable { mutableStateOf("") }
     var originalAuthenticatorKey by rememberSaveable { mutableStateOf("") }
+    var existingSshKeyData by rememberSaveable { mutableStateOf("") }
     var existingTotpId by remember { mutableStateOf<Long?>(null) }
     var notes by rememberSaveable { mutableStateOf("") }
     var isFavorite by rememberSaveable { mutableStateOf(false) }
@@ -726,6 +727,7 @@ fun AddEditPasswordScreen(
                     authenticatorKey = entry.authenticatorKey  // ✅ 从密码条目中读取验证器密钥
                     originalAuthenticatorKey = entry.authenticatorKey
                     passkeyBindings = entry.passkeyBindings
+                    existingSshKeyData = entry.sshKeyData
                     
                     // 加载SSO登录方式字段
                     loginType = entry.loginType
@@ -853,6 +855,7 @@ fun AddEditPasswordScreen(
         } else {
              hasOwnershipConflict = false
              unreadablePasswordIds = emptySet()
+             existingSshKeyData = ""
              if (passwords.isEmpty()) passwords.add("")
              if (!initialDraftApplied && initialDraft != null) {
                  if (title.isBlank()) title = initialDraft.title
@@ -931,6 +934,7 @@ fun AddEditPasswordScreen(
                 bitwardenFolderId = bitwardenFolderId,
                 authenticatorKey = currentAuthKey,  // ✅ 保存验证器密钥
                 passkeyBindings = passkeyBindings,
+                sshKeyData = existingSshKeyData,
                 loginType = loginType,
                 ssoProvider = ssoProvider,
                 ssoRefEntryId = ssoRefEntryId,
@@ -1172,7 +1176,7 @@ fun AddEditPasswordScreen(
                 .imePadding()
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
-            contentPadding = PaddingValues(bottom = 32.dp)
+            contentPadding = PaddingValues(bottom = 120.dp)
         ) {
             // Vault/Storage Selector - 保管库选择器（类似Bitwarden）
             item {

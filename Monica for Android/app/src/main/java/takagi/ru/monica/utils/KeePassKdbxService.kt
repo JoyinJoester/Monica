@@ -36,6 +36,8 @@ import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.OtpType
+import takagi.ru.monica.data.model.SshKeyData
+import takagi.ru.monica.data.model.SshKeyDataCodec
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.keepass.KeePassDxPasskeyCodec
 import takagi.ru.monica.keepass.KeePassPasskeySyncCodec
@@ -61,6 +63,7 @@ data class KeePassEntryData(
     val password: String,
     val url: String,
     val notes: String,
+    val sshKeyData: String = "",
     val monicaLocalId: Long?,
     val entryUuid: String?,
     val groupPath: String?,
@@ -131,6 +134,14 @@ class KeePassKdbxService(
         private const val FIELD_MONICA_PASSKEY_CREDENTIAL_ID = "MonicaPasskeyCredentialId"
         private const val FIELD_MONICA_PASSKEY_DATA = "MonicaPasskeyData"
         private const val FIELD_MONICA_PASSKEY_MODE = "MonicaPasskeyMode"
+        private const val FIELD_MONICA_SSH_ALGORITHM = "MonicaSshAlgorithm"
+        private const val FIELD_MONICA_SSH_KEY_SIZE = "MonicaSshKeySize"
+        private const val FIELD_MONICA_SSH_PUBLIC_KEY = "MonicaSshPublicKey"
+        private const val FIELD_MONICA_SSH_PRIVATE_KEY = "MonicaSshPrivateKey"
+        private const val FIELD_MONICA_SSH_FINGERPRINT = "MonicaSshFingerprint"
+        private const val FIELD_MONICA_SSH_COMMENT = "MonicaSshComment"
+        private const val FIELD_MONICA_SSH_FORMAT = "MonicaSshFormat"
+        private const val FIELD_KEEPASS_XC_TEMPLATE = "_etm_template"
         // kotpass decode 在并发下可能触发 native 崩溃，必须跨实例串行化。
         private val globalDecodeMutex = Mutex()
         // 部分设备/ABI 下 decode 在不同工作线程切换时更易触发 native 崩溃，固定到单线程执行更稳。
@@ -1129,6 +1140,31 @@ class KeePassKdbxService(
         if (monicaId.isNotEmpty()) {
             pairs.add(FIELD_MONICA_LOCAL_ID to EntryValue.Plain(monicaId))
         }
+        SshKeyDataCodec.decode(entry.sshKeyData)?.let { ssh ->
+            if (ssh.algorithm.isNotBlank()) {
+                pairs += FIELD_MONICA_SSH_ALGORITHM to EntryValue.Plain(ssh.algorithm)
+            }
+            if (ssh.keySize > 0) {
+                pairs += FIELD_MONICA_SSH_KEY_SIZE to EntryValue.Plain(ssh.keySize.toString())
+            }
+            if (ssh.publicKeyOpenSsh.isNotBlank()) {
+                pairs += FIELD_MONICA_SSH_PUBLIC_KEY to EntryValue.Plain(ssh.publicKeyOpenSsh)
+            }
+            if (ssh.privateKeyOpenSsh.isNotBlank()) {
+                pairs += FIELD_MONICA_SSH_PRIVATE_KEY to EntryValue.Encrypted(
+                    EncryptedValue.fromString(ssh.privateKeyOpenSsh)
+                )
+            }
+            if (ssh.fingerprintSha256.isNotBlank()) {
+                pairs += FIELD_MONICA_SSH_FINGERPRINT to EntryValue.Plain(ssh.fingerprintSha256)
+            }
+            if (ssh.comment.isNotBlank()) {
+                pairs += FIELD_MONICA_SSH_COMMENT to EntryValue.Plain(ssh.comment)
+            }
+            if (ssh.format.isNotBlank()) {
+                pairs += FIELD_MONICA_SSH_FORMAT to EntryValue.Plain(ssh.format)
+            }
+        }
         return EntryFields.of(*pairs.toTypedArray())
     }
 
@@ -1556,6 +1592,22 @@ class KeePassKdbxService(
         val password = resolveEntryPassword(entry, resolutionContext)
         val url = getFieldValue(entry, "URL", resolutionContext)
         val notes = getFieldValue(entry, "Notes", resolutionContext)
+        if (isEnhancedEntryTemplate(entry, title, username, password, url, notes, resolutionContext)) {
+            Log.d(TAG, "Skip KeePassXC template entry from password sync: title=$title uuid=${entry.uuid}")
+            return null
+        }
+        val sshKeyData = SshKeyDataCodec.encode(
+            SshKeyData(
+                algorithm = getFieldValue(entry, FIELD_MONICA_SSH_ALGORITHM, resolutionContext),
+                keySize = getFieldValue(entry, FIELD_MONICA_SSH_KEY_SIZE, resolutionContext).toIntOrNull() ?: 0,
+                publicKeyOpenSsh = getFieldValue(entry, FIELD_MONICA_SSH_PUBLIC_KEY, resolutionContext),
+                privateKeyOpenSsh = getFieldValue(entry, FIELD_MONICA_SSH_PRIVATE_KEY, resolutionContext),
+                fingerprintSha256 = getFieldValue(entry, FIELD_MONICA_SSH_FINGERPRINT, resolutionContext),
+                comment = getFieldValue(entry, FIELD_MONICA_SSH_COMMENT, resolutionContext),
+                format = getFieldValue(entry, FIELD_MONICA_SSH_FORMAT, resolutionContext)
+                    .ifBlank { SshKeyData.FORMAT_OPENSSH }
+            )
+        )
         if (title.isEmpty() && username.isEmpty() && password.isEmpty() && url.isEmpty() && notes.isEmpty()) {
             return null
         }
@@ -1571,6 +1623,7 @@ class KeePassKdbxService(
             password = password,
             url = url,
             notes = notes,
+            sshKeyData = sshKeyData,
             monicaLocalId = monicaId,
             entryUuid = entry.uuid.toString(),
             groupPath = groupPath,
@@ -1836,6 +1889,34 @@ class KeePassKdbxService(
             context = resolutionContext,
             *keys
         )
+    }
+
+    private fun isEnhancedEntryTemplate(
+        entry: Entry,
+        title: String,
+        username: String,
+        password: String,
+        url: String,
+        notes: String,
+        resolutionContext: KeePassEntryResolutionContext? = null
+    ): Boolean {
+        val templateFlag = getFieldValue(entry, FIELD_KEEPASS_XC_TEMPLATE, resolutionContext)
+            .trim()
+            .lowercase(Locale.ROOT)
+        if (templateFlag.isEmpty() || templateFlag == "0" || templateFlag == "false") {
+            return false
+        }
+        if (title.isBlank() || username.isNotBlank() || password.isNotBlank() || url.isNotBlank() || notes.isNotBlank()) {
+            return false
+        }
+
+        val standardFields = setOf("Title", "UserName", "Password", "URL", "Notes")
+        val hasFilledUserField = entry.fields.keys.any { key ->
+            key !in standardFields &&
+                !key.startsWith("_etm_") &&
+                getFieldValue(entry, key, resolutionContext).isNotBlank()
+        }
+        return !hasFilledUserField
     }
 
     private fun isPasskeyEntry(

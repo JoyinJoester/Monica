@@ -19,10 +19,13 @@ import android.view.autofill.AutofillManager
 import android.view.autofill.AutofillValue
 import android.widget.RemoteViews
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.clickable
@@ -34,11 +37,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.Smartphone
@@ -46,6 +52,7 @@ import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.outlined.Block
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -92,11 +99,15 @@ import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.ui.components.PasswordVerificationContent
 import takagi.ru.monica.ui.base.BaseMonicaActivity
+import takagi.ru.monica.ui.screens.AddEditBankCardScreen
+import takagi.ru.monica.ui.screens.AddEditDocumentScreen
 import takagi.ru.monica.ui.screens.AddEditPasswordInitialDraft
 import takagi.ru.monica.ui.screens.AddEditPasswordScreen
 import takagi.ru.monica.security.SessionManager
 import takagi.ru.monica.util.TotpGenerator
 import takagi.ru.monica.util.TotpUriParser
+import takagi.ru.monica.viewmodel.BankCardViewModel
+import takagi.ru.monica.viewmodel.DocumentViewModel
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
 
@@ -1139,6 +1150,16 @@ private fun AutofillPickerContent(
     val documentHintCount = remember(args.autofillHints) {
         args.autofillHints.orEmpty().count(::isDocumentAutofillHint)
     }
+    val addTargets = remember(requestProfile, loginHintCount, bankCardHintCount, documentHintCount) {
+        resolveAutofillAddTargets(
+            requestProfile = requestProfile,
+            loginHintCount = loginHintCount,
+            bankCardHintCount = bankCardHintCount,
+            documentHintCount = documentHintCount,
+        )
+    }
+    val defaultAddTarget = addTargets.lastOrNull()
+    var pendingAddTarget by rememberSaveable { mutableStateOf<AutofillAddTarget?>(null) }
     val appDb = remember(context) { PasswordDatabase.getDatabase(context.applicationContext) }
     val secureItemRepository = remember(appDb) { SecureItemRepository(appDb.secureItemDao()) }
     val customFieldRepository = remember(appDb) { CustomFieldRepository(appDb.customFieldDao()) }
@@ -1664,6 +1685,67 @@ private fun AutofillPickerContent(
             }
         }
     )
+    val autofillBankCardViewModel: BankCardViewModel = viewModel(
+        factory = remember(secureItemRepository, appDb, securityManager, context) {
+            object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    if (modelClass.isAssignableFrom(BankCardViewModel::class.java)) {
+                        return BankCardViewModel(
+                            repository = secureItemRepository,
+                            context = context.applicationContext,
+                            localKeePassDatabaseDao = appDb.localKeePassDatabaseDao(),
+                            securityManager = securityManager,
+                        ) as T
+                    }
+                    throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
+                }
+            }
+        }
+    )
+    val autofillDocumentViewModel: DocumentViewModel = viewModel(
+        factory = remember(secureItemRepository, appDb, securityManager, context) {
+            object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    if (modelClass.isAssignableFrom(DocumentViewModel::class.java)) {
+                        return DocumentViewModel(
+                            repository = secureItemRepository,
+                            context = context.applicationContext,
+                            localKeePassDatabaseDao = appDb.localKeePassDatabaseDao(),
+                            securityManager = securityManager,
+                        ) as T
+                    }
+                    throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")
+                }
+            }
+        }
+    )
+    val addMenuActions = remember(addTargets) {
+        addTargets.map { target ->
+            when (target) {
+                AutofillAddTarget.PASSWORD -> AutofillFabMenuAction(
+                    icon = Icons.Default.Lock,
+                    labelRes = R.string.item_type_password,
+                    onClick = { pendingAddTarget = AutofillAddTarget.PASSWORD; currentScreen = "add" }
+                )
+                AutofillAddTarget.DOCUMENT -> AutofillFabMenuAction(
+                    icon = Icons.Default.Badge,
+                    labelRes = R.string.item_type_document,
+                    onClick = { pendingAddTarget = AutofillAddTarget.DOCUMENT; currentScreen = "add" }
+                )
+                AutofillAddTarget.BANK_CARD -> AutofillFabMenuAction(
+                    icon = Icons.Default.CreditCard,
+                    labelRes = R.string.item_type_bank_card,
+                    onClick = { pendingAddTarget = AutofillAddTarget.BANK_CARD; currentScreen = "add" }
+                )
+            }
+        }
+    }
+    val navigateBackToList: () -> Unit = {
+        pendingAddTarget = null
+        currentScreen = "list"
+    }
 
     if (showMarkAsNonAutofillDialog && canMarkAsNonAutofill) {
         AlertDialog(
@@ -2066,14 +2148,12 @@ private fun AutofillPickerContent(
                         }
                     }
 
-                    if (requestProfile.wantsPasswords) {
-                        ExtendedFloatingActionButton(
-                            onClick = { currentScreen = "add" },
+                    if (addMenuActions.isNotEmpty()) {
+                        AutofillFabMenu(
+                            menuActions = addMenuActions,
                             modifier = Modifier
                                 .align(Alignment.BottomEnd)
-                                .padding(16.dp),
-                            icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                            text = { Text(stringResource(R.string.create_new)) }
+                                .padding(16.dp)
                         )
                     }
                 }
@@ -2099,35 +2179,58 @@ private fun AutofillPickerContent(
                 !appName.isNullOrBlank() -> appName
                 else -> args.applicationId.orEmpty()
             }.orEmpty()
-            AddEditPasswordScreen(
-                viewModel = autofillPasswordViewModel,
-                localKeePassViewModel = autofillLocalKeePassViewModel,
-                passwordId = null,
-                initialDraft = AddEditPasswordInitialDraft(
-                    title = initialTitle,
-                    website = args.webDomain.orEmpty(),
-                    username = args.capturedUsername.orEmpty(),
-                    password = args.capturedPassword.orEmpty(),
-                    appPackageName = if (isWebFlow) "" else args.applicationId.orEmpty(),
-                    appName = if (isWebFlow) "" else appName.orEmpty(),
-                ),
-                forceShowAppBinding = true,
-                onSaveCompleted = { firstPasswordId ->
-                    if (firstPasswordId == null) {
-                        currentScreen = "list"
-                        return@AddEditPasswordScreen
+            when (pendingAddTarget ?: defaultAddTarget) {
+                AutofillAddTarget.PASSWORD -> {
+                    AddEditPasswordScreen(
+                        viewModel = autofillPasswordViewModel,
+                        localKeePassViewModel = autofillLocalKeePassViewModel,
+                        passwordId = null,
+                        initialDraft = AddEditPasswordInitialDraft(
+                            title = initialTitle,
+                            website = args.webDomain.orEmpty(),
+                            username = args.capturedUsername.orEmpty(),
+                            password = args.capturedPassword.orEmpty(),
+                            appPackageName = if (isWebFlow) "" else args.applicationId.orEmpty(),
+                            appName = if (isWebFlow) "" else appName.orEmpty(),
+                        ),
+                        forceShowAppBinding = true,
+                        onSaveCompleted = { firstPasswordId ->
+                            if (firstPasswordId == null) {
+                                navigateBackToList()
+                                return@AddEditPasswordScreen
+                            }
+                            coroutineScope.launch {
+                                val savedEntry = repository.getPasswordEntryById(firstPasswordId)
+                                if (savedEntry != null) {
+                                    onAutofill(savedEntry, true)
+                                } else {
+                                    navigateBackToList()
+                                }
+                            }
+                        },
+                        onNavigateBack = navigateBackToList
+                    )
+                }
+                AutofillAddTarget.DOCUMENT -> {
+                    AddEditDocumentScreen(
+                        viewModel = autofillDocumentViewModel,
+                        documentId = null,
+                        onNavigateBack = navigateBackToList
+                    )
+                }
+                AutofillAddTarget.BANK_CARD -> {
+                    AddEditBankCardScreen(
+                        viewModel = autofillBankCardViewModel,
+                        cardId = null,
+                        onNavigateBack = navigateBackToList
+                    )
+                }
+                null -> {
+                    LaunchedEffect(Unit) {
+                        navigateBackToList()
                     }
-                    coroutineScope.launch {
-                        val savedEntry = repository.getPasswordEntryById(firstPasswordId)
-                        if (savedEntry != null) {
-                            onAutofill(savedEntry, true)
-                        } else {
-                            currentScreen = "list"
-                        }
-                    }
-                },
-                onNavigateBack = { currentScreen = "list" }
-            )
+                }
+            }
         }
         }
     }
@@ -2197,6 +2300,155 @@ private fun AutofillPreferences.AutofillDefaultSourceFilter.toUiFilter(): Autofi
         AutofillPreferences.AutofillDefaultSourceFilter.KEEPASS -> AutofillStorageSourceFilter.KEEPASS
         AutofillPreferences.AutofillDefaultSourceFilter.BITWARDEN -> AutofillStorageSourceFilter.BITWARDEN
     }
+}
+
+private data class AutofillFabMenuAction(
+    val icon: ImageVector,
+    val labelRes: Int,
+    val onClick: () -> Unit,
+)
+
+@Composable
+private fun AutofillFabMenu(
+    menuActions: List<AutofillFabMenuAction>,
+    modifier: Modifier = Modifier,
+) {
+    var isExpanded by rememberSaveable { mutableStateOf(false) }
+    val animatedCornerRadius by animateDpAsState(
+        targetValue = if (isExpanded) 28.dp else 16.dp,
+        animationSpec = spring(),
+        label = "autofill_fab_corner"
+    )
+
+    fun updateExpanded(next: Boolean) {
+        isExpanded = next
+    }
+
+    BackHandler(enabled = isExpanded) {
+        updateExpanded(false)
+    }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        AnimatedVisibility(
+            visible = isExpanded,
+            enter = fadeIn(animationSpec = tween(durationMillis = 120)),
+            exit = fadeOut(animationSpec = tween(durationMillis = 90)),
+            modifier = Modifier.matchParentSize()
+        ) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                    ) {
+                        updateExpanded(false)
+                    }
+            )
+        }
+
+        Column(
+            modifier = modifier,
+            horizontalAlignment = Alignment.End,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            menuActions.forEachIndexed { index, action ->
+                AnimatedVisibility(
+                    visible = isExpanded,
+                    enter = fadeIn(
+                        animationSpec = tween(durationMillis = 160, delayMillis = index * 28)
+                    ) + slideInVertically(
+                        initialOffsetY = { it / 3 },
+                        animationSpec = tween(
+                            durationMillis = 220,
+                            delayMillis = index * 28,
+                            easing = LinearEasing
+                        )
+                    ),
+                    exit = fadeOut(animationSpec = tween(durationMillis = 90)) + slideOutVertically(
+                        targetOffsetY = { it / 4 },
+                        animationSpec = tween(durationMillis = 120)
+                    )
+                ) {
+                    Surface(
+                        onClick = {
+                            updateExpanded(false)
+                            action.onClick()
+                        },
+                        shape = RoundedCornerShape(24.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                        tonalElevation = 4.dp,
+                        shadowElevation = 3.dp
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 18.dp, vertical = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = action.icon,
+                                contentDescription = null,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Text(
+                                text = stringResource(action.labelRes),
+                                style = MaterialTheme.typography.labelLarge
+                            )
+                        }
+                    }
+                }
+            }
+
+            Surface(
+                modifier = Modifier.size(56.dp),
+                shape = RoundedCornerShape(animatedCornerRadius),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                tonalElevation = 6.dp,
+                shadowElevation = 6.dp,
+                onClick = { updateExpanded(!isExpanded) }
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = if (isExpanded) Icons.Default.Close else Icons.Default.Add,
+                        contentDescription = stringResource(R.string.add)
+                    )
+                }
+            }
+        }
+    }
+}
+
+private enum class AutofillAddTarget {
+    PASSWORD,
+    DOCUMENT,
+    BANK_CARD
+}
+
+private fun resolveAutofillAddTargets(
+    requestProfile: AutofillPickerRequestProfile,
+    loginHintCount: Int,
+    bankCardHintCount: Int,
+    documentHintCount: Int,
+): List<AutofillAddTarget> {
+    val requestedTargets = buildList {
+        if (requestProfile.wantsPasswords) add(AutofillAddTarget.PASSWORD to loginHintCount)
+        if (requestProfile.wantsDocuments) add(AutofillAddTarget.DOCUMENT to documentHintCount)
+        if (requestProfile.wantsBankCards) add(AutofillAddTarget.BANK_CARD to bankCardHintCount)
+    }
+    if (requestedTargets.isEmpty()) return emptyList()
+
+    fun priorityOf(target: AutofillAddTarget): Int = when (target) {
+        AutofillAddTarget.PASSWORD -> 3
+        AutofillAddTarget.DOCUMENT -> 2
+        AutofillAddTarget.BANK_CARD -> 1
+    }
+
+    return requestedTargets.sortedWith(
+        compareBy<Pair<AutofillAddTarget, Int>> { it.second }
+            .thenBy { priorityOf(it.first) }
+    ).map { it.first }
 }
 
 private const val KEEPASS_GROUP_UNCATEGORIZED = "__keepass_uncategorized__"

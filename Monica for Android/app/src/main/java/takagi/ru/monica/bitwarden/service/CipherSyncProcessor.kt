@@ -17,6 +17,8 @@ import takagi.ru.monica.data.model.DocumentType
 import takagi.ru.monica.data.model.NoteData
 import takagi.ru.monica.data.model.SecureCustomField
 import takagi.ru.monica.data.model.SecureCustomFieldType
+import takagi.ru.monica.data.model.SshKeyData
+import takagi.ru.monica.data.model.SshKeyDataCodec
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.passkey.PasskeyCredentialIdCodec
@@ -156,6 +158,7 @@ class CipherSyncProcessor(
             ?: ""
         val remoteCountry = customFields["monica_country"] ?: customFields["country"] ?: ""
         val remotePasskeyBindings = customFields["monica_passkey_bindings"].orEmpty()
+        val remoteSshKeyData = buildSshKeyDataFromCustomFields(customFields)
         val encryptedPassword = encryptBitwardenPasswordForOfflineDisplay(password, cipher.id)
         
         if (existing == null) {
@@ -180,6 +183,7 @@ class CipherSyncProcessor(
                 zipCode = remoteZip,
                 country = remoteCountry,
                 passkeyBindings = remotePasskeyBindings,
+                sshKeyData = remoteSshKeyData,
                 isFavorite = cipher.favorite == true,
                 createdAt = Date(),
                 updatedAt = Date(),
@@ -219,6 +223,7 @@ class CipherSyncProcessor(
                         zipCode = remoteZip.ifBlank { existing.zipCode },
                         country = remoteCountry.ifBlank { existing.country },
                         passkeyBindings = remotePasskeyBindings.ifBlank { existing.passkeyBindings },
+                        sshKeyData = remoteSshKeyData.ifBlank { existing.sshKeyData },
                         isFavorite = cipher.favorite == true,
                         isDeleted = true,
                         deletedAt = serverDeletedAt,
@@ -267,6 +272,7 @@ class CipherSyncProcessor(
                 zipCode = remoteZip.ifBlank { existing.zipCode },
                 country = remoteCountry.ifBlank { existing.country },
                 passkeyBindings = remotePasskeyBindings.ifBlank { existing.passkeyBindings },
+                sshKeyData = remoteSshKeyData.ifBlank { existing.sshKeyData },
                 isFavorite = cipher.favorite == true,
                 isDeleted = false,
                 deletedAt = null,
@@ -315,6 +321,20 @@ class CipherSyncProcessor(
             decrypted.isBlank() -> false
             else -> true
         }
+    }
+
+    private fun buildSshKeyDataFromCustomFields(fields: Map<String, String>): String {
+        return SshKeyDataCodec.encode(
+            SshKeyData(
+                algorithm = fields["monica_ssh_algorithm"].orEmpty(),
+                keySize = fields["monica_ssh_key_size"]?.toIntOrNull() ?: 0,
+                publicKeyOpenSsh = fields["monica_ssh_public_key"].orEmpty(),
+                privateKeyOpenSsh = fields["monica_ssh_private_key"].orEmpty(),
+                fingerprintSha256 = fields["monica_ssh_fingerprint"].orEmpty(),
+                comment = fields["monica_ssh_comment"].orEmpty(),
+                format = fields["monica_ssh_format"].orEmpty().ifBlank { SshKeyData.FORMAT_OPENSSH }
+            )
+        )
     }
 
     /**

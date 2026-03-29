@@ -53,6 +53,7 @@ import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.PasskeyBinding
 import takagi.ru.monica.data.model.PasskeyBindingCodec
 import takagi.ru.monica.keepass.KeePassPasskeyCreateExecutor
+import takagi.ru.monica.keepass.KeePassPasskeyDeleteExecutor
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.repository.PasskeyRepository
@@ -64,10 +65,13 @@ import takagi.ru.monica.utils.BiometricAuthHelper
 import takagi.ru.monica.utils.KeePassKdbxService
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
+import java.io.ByteArrayOutputStream
 import java.security.KeyPairGenerator
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.Signature
+import java.security.interfaces.ECPublicKey
+import java.security.interfaces.RSAPublicKey
 import java.security.spec.ECGenParameterSpec
 import java.util.UUID
 
@@ -123,6 +127,10 @@ class PasskeyCreateActivity : FragmentActivity() {
 
     private val keepassPasskeyCreateExecutor by lazy {
         KeePassPasskeyCreateExecutor(keepassBridge)
+    }
+
+    private val keepassPasskeyDeleteExecutor by lazy {
+        KeePassPasskeyDeleteExecutor(keepassBridge)
     }
     
     // 存储待处理的请求数据
@@ -544,6 +552,8 @@ class PasskeyCreateActivity : FragmentActivity() {
         userName: String,
         userDisplayName: String
     ) {
+        var createdCredentialIdForRollback: String? = null
+        var boundPasswordIdForRollback: Long? = null
         try {
             recordPasskeyEvent(
                 stage = "create_started",
@@ -562,6 +572,9 @@ class PasskeyCreateActivity : FragmentActivity() {
             // 解析算法偏好
             val pubKeyCredParams = json.optJSONArray("pubKeyCredParams")
             val algorithm = getPreferredAlgorithm(pubKeyCredParams)
+                ?: throw IllegalStateException(
+                    "No supported algorithm in pubKeyCredParams: ${extractRequestedAlgorithms(pubKeyCredParams).joinToString(",")}"
+                )
             
             // 生成凭据 ID
             val credentialId = generateCredentialId()
@@ -570,11 +583,12 @@ class PasskeyCreateActivity : FragmentActivity() {
                 Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
             )
             
-            // 生成密钥对（使用普通 EC 密钥生成器，不使用 AndroidKeyStore）
-            val keyPair = generateEcKeyPair()
-            
-            // 创建 COSE 公钥（直接从 KeyPair 提取坐标）
-            val cosePublicKey = createCosePublicKeyFromKeyPair(keyPair)
+            // 根据调用方请求算法生成密钥对，并构建对应 COSE 公钥
+            val keyPair = generateKeyPairForAlgorithm(algorithm)
+            val cosePublicKey = createCosePublicKeyFromKeyPair(
+                keyPair = keyPair,
+                algorithm = algorithm
+            )
             
             // 创建 attestation object
             val authenticatorData = createAuthenticatorData(
@@ -587,32 +601,22 @@ class PasskeyCreateActivity : FragmentActivity() {
             // 创建 attestation object (使用 "none" attestation)
             val attestationObject = createAttestationObject(authenticatorData)
             
-            // 构建 clientDataJSON
-            val clientDataJsonValue: String
-            if (pendingClientDataHash != null) {
-                // 调用方已提供 clientDataHash，按照平台约定返回占位符
-                clientDataJsonValue = "<placeholder>"
-                Log.d(TAG, "Using placeholder clientDataJSON (clientDataHash provided)")
-            } else {
-                val origin = PasskeyOriginResolver.resolveOrigin(
-                    context = this,
-                    requestJson = requestJson,
-                    callingAppInfo = pendingCallingAppInfo,
-                    rpIdFallback = rpId
-                )
-                val androidPackageName = pendingCallingAppInfo?.packageName
-                val clientDataJson = createClientDataJson(
-                    type = "webauthn.create",
-                    challenge = challengeB64,
-                    origin = origin,
-                    androidPackageName = androidPackageName
-                )
-                val clientDataJsonBytes = clientDataJson.toByteArray()
-                clientDataJsonValue = Base64.encodeToString(
-                    clientDataJsonBytes,
-                    Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
-                )
-                Log.d(TAG, "Built clientDataJSON with origin: $origin")
+            // 无论调用方是否提供 clientDataHash，始终回传真实 clientDataJSON，
+            // 避免部分调用方因 placeholder 拒绝注册响应。
+            val clientDataJsonBytes = buildCreateClientDataJsonBytes(
+                requestJson = requestJson,
+                challengeB64 = challengeB64,
+                rpId = rpId
+            )
+            val clientDataJsonValue = Base64.encodeToString(
+                clientDataJsonBytes,
+                Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+            )
+            pendingClientDataHash?.let { providedHash ->
+                val computedHash = MessageDigest.getInstance("SHA-256").digest(clientDataJsonBytes)
+                if (!providedHash.contentEquals(computedHash)) {
+                    Log.w(TAG, "Provided clientDataHash differs from locally built clientDataJSON hash")
+                }
             }
             
             // 将私钥编码为 Base64 存储
@@ -637,6 +641,10 @@ class PasskeyCreateActivity : FragmentActivity() {
             } else {
                 PasskeyEntry.MODE_BW_COMPAT
             }
+            Log.i(
+                TAG,
+                "Passkey create target mode=$passkeyMode keepassDatabaseId=$initialKeepassDatabaseId bitwardenVaultId=$initialBitwardenVaultId algorithm=$algorithm"
+            )
 
             // 保存到数据库
             val passkeyEntry = PasskeyEntry(
@@ -678,6 +686,8 @@ class PasskeyCreateActivity : FragmentActivity() {
                 if (!created) {
                     throw IllegalStateException(getString(R.string.passkey_keepass_create_failed))
                 }
+                createdCredentialIdForRollback = credentialIdB64
+                boundPasswordIdForRollback = pendingBoundPasswordId
 
                 // 同步写入密码条目的通行密钥绑定（用于备份/恢复）
                 val boundPasswordId = pendingBoundPasswordId
@@ -746,6 +756,10 @@ class PasskeyCreateActivity : FragmentActivity() {
             
         } catch (e: Exception) {
             Log.e(TAG, "Failed to create passkey", e)
+            rollbackCreatedPasskeyIfNeeded(
+                credentialId = createdCredentialIdForRollback,
+                boundPasswordId = boundPasswordIdForRollback
+            )
             repository.logAudit("PASSKEY_CREATE_ERROR", 
                 "rpId=$rpId|error=${e.message}")
             recordPasskeyEvent(
@@ -763,6 +777,67 @@ class PasskeyCreateActivity : FragmentActivity() {
             setResult(Activity.RESULT_OK, resultIntent)
             finish()
         }
+    }
+
+    private fun rollbackCreatedPasskeyIfNeeded(
+        credentialId: String?,
+        boundPasswordId: Long?
+    ) {
+        if (credentialId.isNullOrBlank()) return
+        runCatching {
+            kotlinx.coroutines.runBlocking {
+                val createdPasskey = database.passkeyDao().getPasskeyById(credentialId)
+                if (createdPasskey != null) {
+                    val deleteResult = keepassPasskeyDeleteExecutor.delete(
+                        passkey = createdPasskey,
+                        deleteLocal = repository::deletePasskeyLocalOnly
+                    )
+                    deleteResult.getOrThrow()
+                } else {
+                    database.passkeyDao().deleteById(credentialId)
+                }
+                if (boundPasswordId != null) {
+                    val passwordDao = database.passwordEntryDao()
+                    val passwordEntry = passwordDao.getPasswordEntryById(boundPasswordId)
+                    if (passwordEntry != null) {
+                        val updatedBindings = PasskeyBindingCodec.removeBinding(
+                            passwordEntry.passkeyBindings,
+                            credentialId
+                        )
+                        passwordDao.updatePasskeyBindings(boundPasswordId, updatedBindings)
+                    }
+                }
+            }
+            repository.logAudit(
+                "PASSKEY_CREATE_ROLLBACK",
+                "$credentialId|boundPasswordId=${boundPasswordId ?: "null"}"
+            )
+            Log.w(TAG, "Rolled back passkey creation for credentialId=$credentialId")
+        }.onFailure { rollbackError ->
+            Log.e(TAG, "Failed to rollback created passkey: $credentialId", rollbackError)
+        }
+    }
+
+    private fun buildCreateClientDataJsonBytes(
+        requestJson: String,
+        challengeB64: String,
+        rpId: String
+    ): ByteArray {
+        val origin = PasskeyOriginResolver.resolveOrigin(
+            context = this,
+            requestJson = requestJson,
+            callingAppInfo = pendingCallingAppInfo,
+            rpIdFallback = rpId
+        )
+        val androidPackageName = pendingCallingAppInfo?.packageName
+        val clientDataJson = createClientDataJson(
+            type = "webauthn.create",
+            challenge = challengeB64,
+            origin = origin,
+            androidPackageName = androidPackageName
+        )
+        Log.d(TAG, "Built clientDataJSON with origin: $origin")
+        return clientDataJson.toByteArray()
     }
 
     private fun recordPasskeyEvent(
@@ -801,19 +876,36 @@ class PasskeyCreateActivity : FragmentActivity() {
         }.getOrNull()
     }
     
-    private fun getPreferredAlgorithm(pubKeyCredParams: JSONArray?): Int {
-        // 默认使用 ES256 (-7)
-        if (pubKeyCredParams == null) return -7
-        
-        for (i in 0 until pubKeyCredParams.length()) {
-            val param = pubKeyCredParams.optJSONObject(i)
-            val alg = param?.optInt("alg", 0) ?: 0
-            // 只支持 ES256 (-7)
-            if (alg == -7) {
-                return alg
-            }
+    private fun getPreferredAlgorithm(pubKeyCredParams: JSONArray?): Int? {
+        // 对缺失字段保持兼容，默认 ES256
+        if (pubKeyCredParams == null || pubKeyCredParams.length() == 0) {
+            return PasskeyEntry.ALGORITHM_ES256
         }
-        return -7 // 默认 ES256
+
+        val requestedAlgorithms = extractRequestedAlgorithms(pubKeyCredParams)
+        val supportedAlgorithms = setOf(
+            PasskeyEntry.ALGORITHM_ES256,
+            PasskeyEntry.ALGORITHM_RS256
+        )
+        val preferred = requestedAlgorithms.firstOrNull { it in supportedAlgorithms }
+        if (preferred != null) {
+            return preferred
+        }
+
+        Log.w(TAG, "No supported algorithm in request: ${requestedAlgorithms.joinToString(",")}")
+        return null
+    }
+
+    private fun extractRequestedAlgorithms(pubKeyCredParams: JSONArray?): List<Int> {
+        if (pubKeyCredParams == null || pubKeyCredParams.length() == 0) return emptyList()
+        val requested = linkedSetOf<Int>()
+        for (i in 0 until pubKeyCredParams.length()) {
+            val param = pubKeyCredParams.optJSONObject(i) ?: continue
+            if (param.optString("type", "public-key") != "public-key") continue
+            val alg = param.optInt("alg", 0)
+            if (alg != 0) requested += alg
+        }
+        return requested.toList()
     }
     
     private fun generateCredentialId(): ByteArray {
@@ -828,24 +920,42 @@ class PasskeyCreateActivity : FragmentActivity() {
         return bytes
     }
     
-    /**
-     * 生成 EC 密钥对（使用普通密钥生成器，不使用 AndroidKeyStore）
-     * 这样可以正确提取公钥的 X/Y 坐标用于 COSE 编码
-     */
-    private fun generateEcKeyPair(): java.security.KeyPair {
-        val generator = KeyPairGenerator.getInstance("EC").apply {
-            val spec = ECGenParameterSpec("secp256r1")
-            initialize(spec)
+    private fun generateKeyPairForAlgorithm(algorithm: Int): java.security.KeyPair {
+        return when (algorithm) {
+            PasskeyEntry.ALGORITHM_ES256 -> {
+                val generator = KeyPairGenerator.getInstance("EC").apply {
+                    val spec = ECGenParameterSpec("secp256r1")
+                    initialize(spec)
+                }
+                generator.genKeyPair()
+            }
+            PasskeyEntry.ALGORITHM_RS256 -> {
+                val generator = KeyPairGenerator.getInstance("RSA").apply {
+                    initialize(2048)
+                }
+                generator.genKeyPair()
+            }
+            else -> throw IllegalStateException("Unsupported algorithm: $algorithm")
         }
-        return generator.genKeyPair()
     }
-    
+
+    private fun createCosePublicKeyFromKeyPair(
+        keyPair: java.security.KeyPair,
+        algorithm: Int
+    ): ByteArray {
+        return when (algorithm) {
+            PasskeyEntry.ALGORITHM_ES256 -> createEs256CosePublicKey(keyPair.public as ECPublicKey)
+            PasskeyEntry.ALGORITHM_RS256 -> createRs256CosePublicKey(keyPair.public as RSAPublicKey)
+            else -> throw IllegalStateException("Unsupported COSE algorithm: $algorithm")
+        }
+    }
+
     /**
-     * 从 KeyPair 创建 COSE 公钥
-     * 参考 RFC 9052 Section 7 和 Keyguard 实现
+     * 构建 ES256 的 COSE_Key。
+     * 参考 RFC 9052 / WebAuthn:
+     * {1:2, 3:-7, -1:1, -2:x, -3:y}
      */
-    private fun createCosePublicKeyFromKeyPair(keyPair: java.security.KeyPair): ByteArray {
-        val ecPubKey = keyPair.public as java.security.interfaces.ECPublicKey
+    private fun createEs256CosePublicKey(ecPubKey: ECPublicKey): ByteArray {
         val ecPoint = ecPubKey.w
         
         // 验证坐标长度
@@ -855,14 +965,37 @@ class PasskeyCreateActivity : FragmentActivity() {
         
         val byteX = bigIntToByteArray32(ecPoint.affineX)
         val byteY = bigIntToByteArray32(ecPoint.affineY)
-        
-        // CBOR 编码的 COSE_Key (ES256):
-        // A5 01 02 03 26 20 01 21 58 20 <x> 22 58 20 <y>
-        // 参考: https://www.iana.org/assignments/cose/cose.xhtml
-        val header = "A5010203262001215820".chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-        val yHeader = "225820".chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-        
-        return header + byteX + yHeader + byteY
+        return encodeCborMap(
+            encodeCborInt(1) to encodeCborInt(2),
+            encodeCborInt(3) to encodeCborInt(PasskeyEntry.ALGORITHM_ES256),
+            encodeCborInt(-1) to encodeCborInt(1),
+            encodeCborInt(-2) to encodeCborByteString(byteX),
+            encodeCborInt(-3) to encodeCborByteString(byteY)
+        )
+    }
+
+    /**
+     * 构建 RS256 的 COSE_Key。
+     * 参考 RFC 9053:
+     * {1:3, 3:-257, -1:n, -2:e}
+     */
+    private fun createRs256CosePublicKey(rsaPubKey: RSAPublicKey): ByteArray {
+        val modulus = bigIntToUnsignedByteArray(rsaPubKey.modulus)
+        val exponent = bigIntToUnsignedByteArray(rsaPubKey.publicExponent)
+        return encodeCborMap(
+            encodeCborInt(1) to encodeCborInt(3),
+            encodeCborInt(3) to encodeCborInt(PasskeyEntry.ALGORITHM_RS256),
+            encodeCborInt(-1) to encodeCborByteString(modulus),
+            encodeCborInt(-2) to encodeCborByteString(exponent)
+        )
+    }
+
+    private fun bigIntToUnsignedByteArray(bigInteger: java.math.BigInteger): ByteArray {
+        val bytes = bigInteger.toByteArray()
+        if (bytes.size > 1 && bytes[0] == 0.toByte()) {
+            return bytes.copyOfRange(1, bytes.size)
+        }
+        return bytes
     }
     
     private fun bigIntToByteArray32(bigInteger: java.math.BigInteger): ByteArray {
@@ -875,6 +1008,63 @@ class PasskeyCreateActivity : FragmentActivity() {
         }
         // 如果长度超过 32（由于符号位），取最后 32 字节
         return ba.copyOfRange(ba.size - 32, ba.size)
+    }
+
+    private fun encodeCborMap(vararg entries: Pair<ByteArray, ByteArray>): ByteArray {
+        val output = ByteArrayOutputStream()
+        output.write(encodeCborMajorTypeAndLength(5, entries.size.toLong()))
+        entries.forEach { (key, value) ->
+            output.write(key)
+            output.write(value)
+        }
+        return output.toByteArray()
+    }
+
+    private fun encodeCborInt(value: Int): ByteArray {
+        return if (value >= 0) {
+            encodeCborMajorTypeAndLength(0, value.toLong())
+        } else {
+            val encoded = -1L - value.toLong()
+            encodeCborMajorTypeAndLength(1, encoded)
+        }
+    }
+
+    private fun encodeCborByteString(value: ByteArray): ByteArray {
+        return encodeCborMajorTypeAndLength(2, value.size.toLong()) + value
+    }
+
+    private fun encodeCborMajorTypeAndLength(majorType: Int, length: Long): ByteArray {
+        require(majorType in 0..7) { "Invalid CBOR major type: $majorType" }
+        require(length >= 0) { "CBOR length must be non-negative" }
+
+        val head = (majorType shl 5)
+        return when {
+            length < 24 -> byteArrayOf((head or length.toInt()).toByte())
+            length <= 0xFF -> byteArrayOf((head or 24).toByte(), length.toByte())
+            length <= 0xFFFF -> byteArrayOf(
+                (head or 25).toByte(),
+                ((length shr 8) and 0xFF).toByte(),
+                (length and 0xFF).toByte()
+            )
+            length <= 0xFFFFFFFFL -> byteArrayOf(
+                (head or 26).toByte(),
+                ((length shr 24) and 0xFF).toByte(),
+                ((length shr 16) and 0xFF).toByte(),
+                ((length shr 8) and 0xFF).toByte(),
+                (length and 0xFF).toByte()
+            )
+            else -> byteArrayOf(
+                (head or 27).toByte(),
+                ((length shr 56) and 0xFF).toByte(),
+                ((length shr 48) and 0xFF).toByte(),
+                ((length shr 40) and 0xFF).toByte(),
+                ((length shr 32) and 0xFF).toByte(),
+                ((length shr 24) and 0xFF).toByte(),
+                ((length shr 16) and 0xFF).toByte(),
+                ((length shr 8) and 0xFF).toByte(),
+                (length and 0xFF).toByte()
+            )
+        }
     }
     
     private fun createAuthenticatorData(

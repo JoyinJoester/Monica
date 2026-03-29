@@ -26,6 +26,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.DragIndicator
 import androidx.compose.material.icons.filled.ExpandLess
@@ -37,6 +39,7 @@ import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.LinearScale
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Speed
@@ -60,6 +63,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Switch
@@ -86,6 +90,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -97,11 +102,14 @@ import androidx.compose.animation.core.animateDpAsState
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
+import takagi.ru.monica.data.AddButtonBehaviorMode
+import takagi.ru.monica.data.AddButtonMenuAction
 import takagi.ru.monica.data.AuthenticatorCardDisplayField
 import takagi.ru.monica.data.CategorySelectionUiMode
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordCardDisplayField
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.PasswordPageContentType
 import takagi.ru.monica.data.PasswordListQuickFilterItem
 import takagi.ru.monica.data.PasswordListQuickFolderStyle
 import takagi.ru.monica.data.ProgressBarStyle
@@ -110,6 +118,7 @@ import takagi.ru.monica.data.UnifiedProgressBarMode
 import takagi.ru.monica.data.UnmatchedIconHandlingStrategy
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.ui.components.TotpCodeCard
+import takagi.ru.monica.ui.password.appendAggregateContentQuickFilterItems
 import takagi.ru.monica.ui.password.PasswordEntryCard
 import takagi.ru.monica.ui.password.StackCardMode
 import takagi.ru.monica.viewmodel.SettingsViewModel
@@ -121,6 +130,7 @@ import sh.calvin.reorderable.rememberReorderableLazyListState
 fun PageAdjustmentCustomizationScreen(
     onNavigateBack: () -> Unit,
     onNavigateToPasswordListCustomization: () -> Unit,
+    onNavigateToAddButtonCustomization: () -> Unit,
     onNavigateToPasswordCardAdjustment: () -> Unit,
     onNavigateToAuthenticatorCardAdjustment: () -> Unit,
     onNavigateToPasswordFieldCustomization: () -> Unit,
@@ -163,6 +173,13 @@ fun PageAdjustmentCustomizationScreen(
             )
 
             PageAdjustmentEntryCard(
+                title = stringResource(R.string.add_button_customization_title),
+                subtitle = stringResource(R.string.add_button_customization_subtitle),
+                icon = Icons.Default.Add,
+                onClick = onNavigateToAddButtonCustomization
+            )
+
+            PageAdjustmentEntryCard(
                 title = stringResource(R.string.password_card_adjust_title),
                 subtitle = stringResource(R.string.password_card_adjust_subtitle),
                 icon = Icons.Default.Apps,
@@ -195,11 +212,366 @@ fun PageAdjustmentCustomizationScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+fun AddButtonCustomizationScreen(
+    viewModel: SettingsViewModel,
+    onNavigateBack: () -> Unit
+) {
+    val settings by viewModel.settings.collectAsState()
+    val supportedActions = remember {
+        listOf(
+            AddButtonMenuAction.PASSWORD,
+            AddButtonMenuAction.NOTE,
+            AddButtonMenuAction.AUTHENTICATOR,
+            AddButtonMenuAction.BANK_CARD
+        )
+    }
+    val enabledActions = remember(settings.addButtonMenuEnabledActions, settings.addButtonMenuOrder) {
+        mutableStateListOf<AddButtonMenuAction>().apply {
+            addAll(
+                AddButtonMenuAction.normalizeEnabledActions(
+                    settings.addButtonMenuEnabledActions,
+                    settings.addButtonMenuOrder
+                ).filter { supportedActions.contains(it) }
+            )
+        }
+    }
+    var actionOrder by remember(settings.addButtonMenuOrder) {
+        mutableStateOf(
+            buildList {
+                settings.addButtonMenuOrder
+                    .filter { supportedActions.contains(it) }
+                    .forEach { add(it) }
+                supportedActions
+                    .filter { !contains(it) }
+                    .forEach { add(it) }
+            }
+        )
+    }
+    val listState = rememberLazyListState()
+    val reorderableState = rememberReorderableLazyListState(listState) { from, to ->
+        actionOrder = actionOrder.toMutableList().apply {
+            add(to.index, removeAt(from.index))
+        }
+        viewModel.updateAddButtonMenuOrder(actionOrder)
+    }
+    val previewActions = remember(actionOrder, enabledActions) {
+        actionOrder.filter { enabledActions.contains(it) }
+    }
+
+    LaunchedEffect(settings.addButtonMenuEnabledActions, settings.addButtonMenuOrder) {
+        val normalized = AddButtonMenuAction.normalizeEnabledActions(
+            settings.addButtonMenuEnabledActions,
+            settings.addButtonMenuOrder
+        )
+        if (normalized != settings.addButtonMenuEnabledActions) {
+            viewModel.updateAddButtonMenuEnabledActions(normalized)
+        }
+    }
+
+    Scaffold(
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = { Text(stringResource(R.string.add_button_customization_title)) },
+                navigationIcon = {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.back)
+                        )
+                    }
+                }
+            )
+        }
+    ) { paddingValues ->
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                horizontal = 16.dp,
+                vertical = 12.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            userScrollEnabled = !reorderableState.isAnyItemDragging
+        ) {
+            item {
+                Text(
+                    text = stringResource(R.string.add_button_customization_desc),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.add_button_preview_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            text = if (settings.addButtonBehaviorMode == AddButtonBehaviorMode.DIRECT_PASSWORD) {
+                                stringResource(R.string.add_button_mode_direct_desc)
+                            } else {
+                                stringResource(R.string.add_button_mode_expand_desc)
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.86f)
+                        )
+
+                        if (settings.addButtonBehaviorMode == AddButtonBehaviorMode.DIRECT_PASSWORD) {
+                            Surface(
+                                shape = RoundedCornerShape(18.dp),
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.12f),
+                                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = AddButtonMenuAction.PASSWORD.toIcon(),
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = stringResource(AddButtonMenuAction.PASSWORD.toLabelRes()),
+                                        style = MaterialTheme.typography.labelLarge
+                                    )
+                                }
+                            }
+                        } else if (previewActions.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                previewActions.forEach { action ->
+                                    FilterChip(
+                                        selected = true,
+                                        onClick = {},
+                                        label = { Text(stringResource(action.toLabelRes())) },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = action.toIcon(),
+                                                contentDescription = null
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.add_button_mode_title),
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Text(
+                            text = stringResource(R.string.add_button_mode_subtitle),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                            listOf(
+                                AddButtonBehaviorMode.DIRECT_PASSWORD to stringResource(R.string.add_button_mode_direct),
+                                AddButtonBehaviorMode.EXPANDABLE_MENU to stringResource(R.string.add_button_mode_expand)
+                            ).forEachIndexed { index, (mode, label) ->
+                                SegmentedButton(
+                                    selected = settings.addButtonBehaviorMode == mode,
+                                    onClick = { viewModel.updateAddButtonBehaviorMode(mode) },
+                                    shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(
+                                        index = index,
+                                        count = 2
+                                    ),
+                                    label = { Text(text = label) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (settings.addButtonBehaviorMode == AddButtonBehaviorMode.EXPANDABLE_MENU) {
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier.padding(16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.add_button_actions_title),
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Text(
+                                text = stringResource(R.string.add_button_actions_desc),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                items(
+                    items = actionOrder,
+                    key = { it.name }
+                ) { action ->
+                    val enabled = enabledActions.contains(action)
+                    val switchEnabled = action != AddButtonMenuAction.PASSWORD
+                    ReorderableItem(
+                        reorderableState,
+                        key = action.name,
+                        enabled = true
+                    ) { isDragging ->
+                        val elevation by animateDpAsState(
+                            targetValue = if (isDragging) 8.dp else 0.dp,
+                            label = "add_button_action_drag_elevation"
+                        )
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .shadow(elevation, RoundedCornerShape(18.dp)),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(action.toIcon(), contentDescription = null)
+                                Spacer(modifier = Modifier.size(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = stringResource(action.toLabelRes()),
+                                        style = MaterialTheme.typography.bodyLarge
+                                    )
+                                    Text(
+                                        text = if (action == AddButtonMenuAction.PASSWORD) {
+                                            stringResource(R.string.add_button_password_required)
+                                        } else {
+                                            stringResource(R.string.add_button_action_toggle_hint)
+                                        },
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Text(
+                                    text = if (enabled) {
+                                        "${previewActions.indexOf(action) + 1}"
+                                    } else {
+                                        stringResource(R.string.hide)
+                                    },
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .longPressDraggableHandle(),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Default.DragIndicator, contentDescription = null)
+                                }
+                                Switch(
+                                    checked = enabled,
+                                    enabled = switchEnabled,
+                                    onCheckedChange = { checked ->
+                                        if (switchEnabled) {
+                                            val newEnabled = actionOrder.filter { current ->
+                                                if (current == action) checked else enabledActions.contains(current)
+                                            }
+                                            enabledActions.clear()
+                                            enabledActions.addAll(newEnabled)
+                                            viewModel.updateAddButtonMenuEnabledActions(newEnabled)
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 fun PasswordListCustomizationScreen(
     viewModel: SettingsViewModel,
     onNavigateBack: () -> Unit
 ) {
     val settings by viewModel.settings.collectAsState()
+    val supportedContentTypes = remember {
+        listOf(
+            PasswordPageContentType.PASSWORD,
+            PasswordPageContentType.CARD_WALLET,
+            PasswordPageContentType.NOTE,
+            PasswordPageContentType.AUTHENTICATOR,
+            PasswordPageContentType.PASSKEY
+        )
+    }
+    val selectedContentTypes = remember(settings.passwordPageVisibleContentTypes) {
+        mutableStateListOf<PasswordPageContentType>().apply {
+            addAll(
+                PasswordPageContentType.normalizeEnabledTypes(
+                    settings.passwordPageVisibleContentTypes
+                ).filter { supportedContentTypes.contains(it) }
+            )
+        }
+    }
+    LaunchedEffect(settings.passwordPageVisibleContentTypes) {
+        val normalized = PasswordPageContentType.normalizeEnabledTypes(
+            settings.passwordPageVisibleContentTypes
+        ).filter { supportedContentTypes.contains(it) }
+        if (normalized != settings.passwordPageVisibleContentTypes) {
+            viewModel.updatePasswordPageVisibleContentTypes(normalized)
+        }
+        selectedContentTypes.clear()
+        selectedContentTypes.addAll(normalized)
+    }
+    var contentTypeOrder by remember(settings.passwordPageVisibleContentTypes) {
+        mutableStateOf(
+            buildList {
+                PasswordPageContentType.normalizeEnabledTypes(settings.passwordPageVisibleContentTypes)
+                    .filter { supportedContentTypes.contains(it) }
+                    .forEach { add(it) }
+                supportedContentTypes
+                    .filter { !contains(it) }
+                    .forEach { add(it) }
+            }
+        )
+    }
+    val contentTypeOptions = supportedContentTypes.map { type ->
+        PasswordPageContentTypeOption(
+            type = type,
+            title = stringResource(type.toLabelRes()),
+            icon = type.toIcon()
+        )
+    }
     val supportedQuickFilterItems = remember {
         listOf(
             PasswordListQuickFilterItem.FAVORITE,
@@ -209,30 +581,44 @@ fun PasswordListCustomizationScreen(
             PasswordListQuickFilterItem.LOCAL_ONLY,
             PasswordListQuickFilterItem.MANUAL_STACK_ONLY,
             PasswordListQuickFilterItem.NEVER_STACK,
-            PasswordListQuickFilterItem.UNSTACKED
+            PasswordListQuickFilterItem.UNSTACKED,
+            PasswordListQuickFilterItem.CARD_WALLET,
+            PasswordListQuickFilterItem.PASSKEY,
+            PasswordListQuickFilterItem.NOTE
         )
     }
-    val selectedQuickFilterItems = remember(settings.passwordListQuickFilterItems) {
+    val effectiveQuickFilterItems = remember(
+        settings.passwordListQuickFilterItems,
+        settings.passwordPageVisibleContentTypes,
+        settings.passwordPageAggregateEnabled
+    ) {
+        appendAggregateContentQuickFilterItems(
+            configuredItems = settings.passwordListQuickFilterItems,
+            visibleTypes = settings.passwordPageVisibleContentTypes,
+            aggregateEnabled = settings.passwordPageAggregateEnabled
+        )
+    }
+    val selectedQuickFilterItems = remember(effectiveQuickFilterItems) {
         mutableStateListOf<PasswordListQuickFilterItem>().apply {
             addAll(
-                settings.passwordListQuickFilterItems
+                effectiveQuickFilterItems
                     .filter { supportedQuickFilterItems.contains(it) }
                     .distinct()
             )
         }
     }
-    LaunchedEffect(settings.passwordListQuickFilterItems) {
-        val normalized = settings.passwordListQuickFilterItems
+    LaunchedEffect(effectiveQuickFilterItems) {
+        val normalized = effectiveQuickFilterItems
             .filter { supportedQuickFilterItems.contains(it) }
             .distinct()
         if (normalized != settings.passwordListQuickFilterItems) {
             viewModel.updatePasswordListQuickFilterItems(normalized)
         }
     }
-    var quickFilterOrder by remember(settings.passwordListQuickFilterItems) {
+    var quickFilterOrder by remember(effectiveQuickFilterItems) {
         mutableStateOf(
             buildList {
-                settings.passwordListQuickFilterItems
+                effectiveQuickFilterItems
                     .filter { supportedQuickFilterItems.contains(it) }
                     .forEach { add(it) }
                 supportedQuickFilterItems
@@ -285,6 +671,21 @@ fun PasswordListCustomizationScreen(
             item = PasswordListQuickFilterItem.UNSTACKED,
             title = stringResource(R.string.password_list_quick_filter_unstacked),
             icon = Icons.Default.Straighten
+        ),
+        PasswordListQuickFilterOption(
+            item = PasswordListQuickFilterItem.CARD_WALLET,
+            title = stringResource(R.string.nav_card_wallet),
+            icon = Icons.Default.CreditCard
+        ),
+        PasswordListQuickFilterOption(
+            item = PasswordListQuickFilterItem.PASSKEY,
+            title = stringResource(R.string.nav_passkey),
+            icon = Icons.Default.VpnKey
+        ),
+        PasswordListQuickFilterOption(
+            item = PasswordListQuickFilterItem.NOTE,
+            title = stringResource(R.string.nav_notes),
+            icon = Icons.Default.Description
         )
     )
 
@@ -338,6 +739,28 @@ fun PasswordListCustomizationScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.86f)
                         )
+                        if (settings.passwordPageAggregateEnabled && selectedContentTypes.size > 1) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                selectedContentTypes.forEach { type ->
+                                    FilterChip(
+                                        selected = type == PasswordPageContentType.PASSWORD,
+                                        onClick = {},
+                                        label = { Text(text = stringResource(type.toLabelRes())) },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = type.toIcon(),
+                                                contentDescription = null
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+                        }
                         if (settings.passwordListQuickFiltersEnabled && selectedQuickFilterItems.isNotEmpty()) {
                             Row(
                                 modifier = Modifier
@@ -428,6 +851,34 @@ fun PasswordListCustomizationScreen(
                                                 label = { Text(text = stringResource(R.string.password_list_quick_filter_unstacked)) }
                                             )
                                         }
+
+                                        PasswordListQuickFilterItem.CARD_WALLET,
+                                        PasswordListQuickFilterItem.PASSKEY,
+                                        PasswordListQuickFilterItem.NOTE -> {
+                                            val type = when (item) {
+                                                PasswordListQuickFilterItem.CARD_WALLET -> PasswordPageContentType.CARD_WALLET
+                                                PasswordListQuickFilterItem.PASSKEY -> PasswordPageContentType.PASSKEY
+                                                PasswordListQuickFilterItem.NOTE -> PasswordPageContentType.NOTE
+                                                else -> PasswordPageContentType.PASSWORD
+                                            }
+                                            if (settings.passwordPageAggregateEnabled &&
+                                                settings.passwordPageVisibleContentTypes.contains(type)
+                                            ) {
+                                                FilterChip(
+                                                    selected = false,
+                                                    onClick = {},
+                                                    label = { Text(text = stringResource(type.toLabelRes())) },
+                                                    leadingIcon = {
+                                                        Icon(
+                                                            imageVector = type.toIcon(),
+                                                            contentDescription = null
+                                                        )
+                                                    }
+                                                )
+                                            }
+                                        }
+
+                                        PasswordListQuickFilterItem.AUTHENTICATOR -> Unit
                                     }
                                 }
                             }
@@ -639,7 +1090,8 @@ fun PasswordListCustomizationScreen(
                             }
                         }
 
-                        if ((!settings.passwordListQuickFiltersEnabled || selectedQuickFilterItems.isEmpty()) &&
+                        if ((!settings.passwordPageAggregateEnabled || selectedContentTypes.size <= 1) &&
+                            (!settings.passwordListQuickFiltersEnabled || selectedQuickFilterItems.isEmpty()) &&
                             !settings.passwordListQuickFoldersEnabled &&
                             !settings.passwordListQuickAccessEnabled
                         ) {
@@ -648,6 +1100,148 @@ fun PasswordListCustomizationScreen(
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
                             )
+                        }
+                    }
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Apps, contentDescription = null)
+                        Spacer(modifier = Modifier.size(10.dp))
+                        Text(
+                            text = stringResource(R.string.password_page_aggregate_switch_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Switch(
+                            checked = settings.passwordPageAggregateEnabled,
+                            onCheckedChange = viewModel::updatePasswordPageAggregateEnabled
+                        )
+                    }
+                    Text(
+                        text = stringResource(R.string.password_page_aggregate_switch_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                    Text(
+                        text = stringResource(R.string.password_page_aggregate_content_title),
+                        style = MaterialTheme.typography.titleSmall
+                    )
+                    Text(
+                        text = stringResource(R.string.password_page_aggregate_content_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    val contentTypeListState = rememberLazyListState()
+                    val contentTypeReorderableState =
+                        rememberReorderableLazyListState(contentTypeListState) { from, to ->
+                            contentTypeOrder = contentTypeOrder.toMutableList().apply {
+                                add(to.index, removeAt(from.index))
+                            }
+                            val newSelected = contentTypeOrder.filter { selectedContentTypes.contains(it) }
+                            selectedContentTypes.clear()
+                            selectedContentTypes.addAll(newSelected)
+                            viewModel.updatePasswordPageVisibleContentTypes(newSelected)
+                        }
+
+                    LazyColumn(
+                        state = contentTypeListState,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height((contentTypeOrder.size * 92).dp),
+                        userScrollEnabled = false,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(contentTypeOrder, key = { it.name }) { type ->
+                            val option = contentTypeOptions.first { it.type == type }
+                            val enabled = selectedContentTypes.contains(type)
+                            val selectedIndex = selectedContentTypes.indexOf(type)
+                            val isRequired = type == PasswordPageContentType.PASSWORD
+
+                            ReorderableItem(
+                                contentTypeReorderableState,
+                                key = type.name,
+                                enabled = true
+                            ) { isDragging ->
+                                val elevation by animateDpAsState(
+                                    if (isDragging) 6.dp else 0.dp,
+                                    label = "password_page_content_type_drag_elevation"
+                                )
+
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .graphicsLayer { shadowElevation = elevation.toPx() },
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (enabled) {
+                                            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)
+                                        } else {
+                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                                        }
+                                    )
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(option.icon, contentDescription = null)
+                                        Spacer(modifier = Modifier.size(10.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = option.title,
+                                                style = MaterialTheme.typography.bodyMedium
+                                            )
+                                        }
+                                        Text(
+                                            text = if (enabled) {
+                                                "${selectedIndex + 1}"
+                                            } else {
+                                                stringResource(R.string.hide)
+                                            },
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .size(36.dp)
+                                                .longPressDraggableHandle(),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Default.DragIndicator, contentDescription = null)
+                                        }
+                                        Switch(
+                                            checked = enabled,
+                                            enabled = !isRequired,
+                                            onCheckedChange = { checked ->
+                                                val newSelected = contentTypeOrder.filter { current ->
+                                                    when {
+                                                        current == PasswordPageContentType.PASSWORD -> true
+                                                        current == type -> checked
+                                                        else -> selectedContentTypes.contains(current)
+                                                    }
+                                                }
+                                                selectedContentTypes.clear()
+                                                selectedContentTypes.addAll(newSelected)
+                                                viewModel.updatePasswordPageVisibleContentTypes(newSelected)
+                                            }
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -1043,6 +1637,42 @@ private data class PasswordListQuickFilterOption(
     val title: String,
     val icon: ImageVector
 )
+
+private data class PasswordPageContentTypeOption(
+    val type: PasswordPageContentType,
+    val title: String,
+    val icon: ImageVector
+)
+
+private fun PasswordPageContentType.toLabelRes(): Int = when (this) {
+    PasswordPageContentType.PASSWORD -> R.string.nav_passwords
+    PasswordPageContentType.CARD_WALLET -> R.string.nav_card_wallet
+    PasswordPageContentType.NOTE -> R.string.nav_notes
+    PasswordPageContentType.AUTHENTICATOR -> R.string.nav_authenticator
+    PasswordPageContentType.PASSKEY -> R.string.nav_passkey
+}
+
+private fun PasswordPageContentType.toIcon(): ImageVector = when (this) {
+    PasswordPageContentType.PASSWORD -> Icons.Default.Lock
+    PasswordPageContentType.CARD_WALLET -> Icons.Default.CreditCard
+    PasswordPageContentType.NOTE -> Icons.Default.Description
+    PasswordPageContentType.AUTHENTICATOR -> Icons.Default.Security
+    PasswordPageContentType.PASSKEY -> Icons.Default.VpnKey
+}
+
+private fun AddButtonMenuAction.toLabelRes(): Int = when (this) {
+    AddButtonMenuAction.PASSWORD -> R.string.item_type_password
+    AddButtonMenuAction.NOTE -> R.string.v2_create_note
+    AddButtonMenuAction.AUTHENTICATOR -> R.string.item_type_authenticator
+    AddButtonMenuAction.BANK_CARD -> R.string.add_button_action_card
+}
+
+private fun AddButtonMenuAction.toIcon(): ImageVector = when (this) {
+    AddButtonMenuAction.PASSWORD -> Icons.Default.Lock
+    AddButtonMenuAction.NOTE -> Icons.Default.Description
+    AddButtonMenuAction.AUTHENTICATOR -> Icons.Default.Security
+    AddButtonMenuAction.BANK_CARD -> Icons.Default.CreditCard
+}
 
 private data class DisplayFieldOption(
     val field: PasswordCardDisplayField,

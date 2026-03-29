@@ -85,6 +85,7 @@ private data class PasswordBackupEntry(
     val updatedAt: Long = System.currentTimeMillis(),
     val authenticatorKey: String = "",  // ✅ 直接存储验证器密钥
     val passkeyBindings: String = "",   // ✅ 绑定通行密钥元数据
+    val sshKeyData: String = "",
     // ✅ 第三方登录(SSO)字段
     val loginType: String = "PASSWORD",  // 登录类型: PASSWORD 或 SSO
     val ssoProvider: String = "",        // SSO提供商: GOOGLE, APPLE, FACEBOOK 等
@@ -201,6 +202,7 @@ private data class TrashPasswordBackupEntry(
     val updatedAt: Long = System.currentTimeMillis(),
     val authenticatorKey: String = "",
     val passkeyBindings: String = "",
+    val sshKeyData: String = "",
     val deletedAt: Long? = null,
     // ✅ 第三方登录(SSO)字段
     val loginType: String = "PASSWORD",
@@ -305,6 +307,9 @@ private data class PageAdjustmentSettingsBackupEntry(
     val passwordListQuickFoldersEnabled: Boolean = false,
     val passwordListQuickFolderStyle: String = "CLASSIC",
     val passwordListQuickFolderPathBannerEnabled: Boolean = false,
+    val addButtonBehaviorMode: String = "DIRECT_PASSWORD",
+    val addButtonMenuOrder: List<String> = emptyList(),
+    val addButtonMenuEnabledActions: List<String> = emptyList(),
     val passwordListQuickAccessEnabled: Boolean = true,
     val passwordListTopModulesOrder: List<String> = emptyList(),
     val passwordCardDisplayMode: String = "SHOW_ALL",
@@ -530,6 +535,7 @@ class WebDavHelper(
             updatedAt = Date(backup.updatedAt),
             authenticatorKey = backup.authenticatorKey,
             passkeyBindings = backup.passkeyBindings,
+            sshKeyData = backup.sshKeyData,
             loginType = backup.loginType,
             ssoProvider = backup.ssoProvider,
             ssoRefEntryId = backup.ssoRefEntryId,
@@ -1094,6 +1100,7 @@ class WebDavHelper(
                                 updatedAt = password.updatedAt.time,
                                 authenticatorKey = password.authenticatorKey,  // ✅ 直接备份验证器密钥
                                 passkeyBindings = password.passkeyBindings,
+                                sshKeyData = password.sshKeyData,
                                 // ✅ 第三方登录(SSO)字段
                                 loginType = password.loginType,
                                 ssoProvider = password.ssoProvider,
@@ -1454,6 +1461,7 @@ class WebDavHelper(
                                         updatedAt = password.updatedAt.time,
                                         authenticatorKey = password.authenticatorKey,
                                         passkeyBindings = password.passkeyBindings,
+                                        sshKeyData = password.sshKeyData,
                                         deletedAt = password.deletedAt?.time,
                                         // ✅ 第三方登录(SSO)字段
                                         loginType = password.loginType,
@@ -1643,6 +1651,10 @@ class WebDavHelper(
                                 passwordListQuickFolderStyle = pageAdjustmentSettingsSnapshot.passwordListQuickFolderStyle,
                                 passwordListQuickFolderPathBannerEnabled =
                                     pageAdjustmentSettingsSnapshot.passwordListQuickFolderPathBannerEnabled,
+                                addButtonBehaviorMode = pageAdjustmentSettingsSnapshot.addButtonBehaviorMode,
+                                addButtonMenuOrder = pageAdjustmentSettingsSnapshot.addButtonMenuOrder,
+                                addButtonMenuEnabledActions =
+                                    pageAdjustmentSettingsSnapshot.addButtonMenuEnabledActions,
                                 passwordListQuickAccessEnabled = pageAdjustmentSettingsSnapshot.passwordListQuickAccessEnabled,
                                 passwordListTopModulesOrder = pageAdjustmentSettingsSnapshot.passwordListTopModulesOrder,
                                 passwordCardDisplayMode = pageAdjustmentSettingsSnapshot.passwordCardDisplayMode,
@@ -2394,6 +2406,7 @@ class WebDavHelper(
                                                             updatedAt = java.util.Date(backup.updatedAt),
                                                             authenticatorKey = backup.authenticatorKey,
                                                             passkeyBindings = backup.passkeyBindings,
+                                                            sshKeyData = backup.sshKeyData,
                                                             isDeleted = true,
                                                             deletedAt = backup.deletedAt?.let { java.util.Date(it) },
                                                             // ✅ 第三方登录(SSO)字段
@@ -2631,6 +2644,12 @@ class WebDavHelper(
                                                     pageAdjustmentBackup.passwordListQuickFolderStyle,
                                                 passwordListQuickFolderPathBannerEnabled =
                                                     pageAdjustmentBackup.passwordListQuickFolderPathBannerEnabled,
+                                                addButtonBehaviorMode =
+                                                    pageAdjustmentBackup.addButtonBehaviorMode,
+                                                addButtonMenuOrder =
+                                                    pageAdjustmentBackup.addButtonMenuOrder,
+                                                addButtonMenuEnabledActions =
+                                                    pageAdjustmentBackup.addButtonMenuEnabledActions,
                                                 passwordListQuickAccessEnabled =
                                                     pageAdjustmentBackup.passwordListQuickAccessEnabled,
                                                 passwordListTopModulesOrder =

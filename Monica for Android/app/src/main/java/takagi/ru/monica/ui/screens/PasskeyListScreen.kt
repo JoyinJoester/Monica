@@ -98,6 +98,7 @@ import takagi.ru.monica.viewmodel.PasswordViewModel
 import kotlinx.coroutines.flow.flowOf
 import takagi.ru.monica.autofill_ng.ui.rememberAppIcon
 import takagi.ru.monica.autofill_ng.ui.rememberFavicon
+import takagi.ru.monica.ui.common.state.rememberSaveableLazyListState
 import takagi.ru.monica.ui.icons.UnmatchedIconFallback
 import takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon
 import takagi.ru.monica.ui.icons.shouldShowFallbackSlot
@@ -238,7 +239,7 @@ fun PasskeyListScreen(
     val isFullySupported = viewModel.isPasskeyFullySupported
     
     // 列表状态
-    val listState = rememberLazyListState()
+    val listState = rememberSaveableLazyListState()
     
     // 搜索栏展开状态
     var isSearchExpanded by remember { mutableStateOf(false) }

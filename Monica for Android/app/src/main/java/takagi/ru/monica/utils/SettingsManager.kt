@@ -15,11 +15,14 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.shareIn
 import takagi.ru.monica.data.AppSettings
+import takagi.ru.monica.data.AddButtonBehaviorMode
+import takagi.ru.monica.data.AddButtonMenuAction
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.BottomNavVisibility
 import takagi.ru.monica.data.CategorySelectionUiMode
 import takagi.ru.monica.data.ColorScheme
 import takagi.ru.monica.data.Language
+import takagi.ru.monica.data.PasswordPageContentType
 import takagi.ru.monica.data.PasswordListQuickFilterItem
 import takagi.ru.monica.data.PasswordListQuickFolderStyle
 import takagi.ru.monica.data.PasswordListTopModule
@@ -60,6 +63,11 @@ data class PageAdjustmentSettingsSnapshot(
     val passwordListQuickFoldersEnabled: Boolean = false,
     val passwordListQuickFolderStyle: String = takagi.ru.monica.data.PasswordListQuickFolderStyle.CLASSIC.name,
     val passwordListQuickFolderPathBannerEnabled: Boolean = false,
+    val addButtonBehaviorMode: String = takagi.ru.monica.data.AddButtonBehaviorMode.DIRECT_PASSWORD.name,
+    val addButtonMenuOrder: List<String> = emptyList(),
+    val addButtonMenuEnabledActions: List<String> = emptyList(),
+    val passwordPageAggregateEnabled: Boolean = false,
+    val passwordPageVisibleContentTypes: List<String> = emptyList(),
     val categorySelectionUiMode: String = takagi.ru.monica.data.CategorySelectionUiMode.DEFAULT.name,
     val passwordListQuickAccessEnabled: Boolean = true,
     val passwordListTopModulesOrder: List<String> = emptyList(),
@@ -144,6 +152,13 @@ class SettingsManager(private val context: Context) {
         private val PASSWORD_LIST_QUICK_FOLDERS_ENABLED_KEY = booleanPreferencesKey("password_list_quick_folders_enabled") // 密码列表快捷文件夹开关
         private val PASSWORD_LIST_QUICK_FOLDER_STYLE_KEY = stringPreferencesKey("password_list_quick_folder_style") // 密码列表快捷文件夹展示样式
         private val PASSWORD_LIST_QUICK_FOLDER_PATH_BANNER_ENABLED_KEY = booleanPreferencesKey("password_list_quick_folder_path_banner_enabled") // 密码列表路径横幅开关
+        private val ADD_BUTTON_BEHAVIOR_MODE_KEY = stringPreferencesKey("add_button_behavior_mode") // 添加按钮行为
+        private val ADD_BUTTON_MENU_ORDER_KEY = stringPreferencesKey("add_button_menu_order") // 添加按钮菜单顺序
+        private val ADD_BUTTON_MENU_ENABLED_ACTIONS_KEY = stringPreferencesKey("add_button_menu_enabled_actions") // 添加按钮菜单启用项
+        private val PASSWORD_PAGE_AGGREGATE_ENABLED_KEY =
+            booleanPreferencesKey("password_page_aggregate_enabled")
+        private val PASSWORD_PAGE_VISIBLE_CONTENT_TYPES_KEY =
+            stringPreferencesKey("password_page_visible_content_types")
         private val CATEGORY_SELECTION_UI_MODE_KEY = stringPreferencesKey("category_selection_ui_mode") // 分类选择 UI 形式
         private val PASSWORD_LIST_QUICK_ACCESS_ENABLED_KEY = booleanPreferencesKey("password_list_quick_access_enabled") // 密码列表“最近/常用”快捷入口开关
         private val PASSWORD_LIST_TOP_MODULES_ORDER_KEY = stringPreferencesKey("password_list_top_modules_order") // 密码列表顶部模块顺序
@@ -292,6 +307,45 @@ class SettingsManager(private val context: Context) {
             }
         return PasswordListQuickFilterItem.sanitizeOrder(parsed)
     }
+
+    private fun parseAddButtonMenuOrder(
+        raw: String?
+    ): List<AddButtonMenuAction>? {
+        if (raw.isNullOrBlank()) return null
+        val parsed = raw.split(",")
+            .mapNotNull { value ->
+                runCatching { AddButtonMenuAction.valueOf(value.trim()) }.getOrNull()
+            }
+        if (parsed.isEmpty()) return null
+        return AddButtonMenuAction.sanitizeOrder(parsed)
+    }
+
+    private fun parseAddButtonMenuEnabledActions(
+        raw: String?,
+        order: List<AddButtonMenuAction>
+    ): List<AddButtonMenuAction>? {
+        if (raw == null) return null
+        if (raw.isBlank()) {
+            return listOf(AddButtonMenuAction.PASSWORD)
+        }
+        val parsed = raw.split(",")
+            .mapNotNull { value ->
+                runCatching { AddButtonMenuAction.valueOf(value.trim()) }.getOrNull()
+            }
+        return AddButtonMenuAction.normalizeEnabledActions(parsed, order)
+    }
+
+    private fun parsePasswordPageVisibleContentTypes(
+        raw: String?
+    ): List<PasswordPageContentType>? {
+        if (raw == null) return null
+        if (raw.isBlank()) return listOf(PasswordPageContentType.PASSWORD)
+        val parsed = raw.split(",")
+            .mapNotNull { value ->
+                runCatching { PasswordPageContentType.valueOf(value.trim()) }.getOrNull()
+            }
+        return PasswordPageContentType.normalizeEnabledTypes(parsed)
+    }
     
     val settingsFlow: Flow<AppSettings> by lazy(LazyThreadSafetyMode.PUBLICATION) {
         sharedSettingsFlow ?: synchronized(sharedSettingsFlowLock) {
@@ -322,6 +376,16 @@ class SettingsManager(private val context: Context) {
         val parsedQuickFilterItems = parsePasswordListQuickFilterItems(
             preferences[PASSWORD_LIST_QUICK_FILTER_ITEMS_KEY]
         ) ?: PasswordListQuickFilterItem.DEFAULT_ORDER
+        val parsedAddButtonMenuOrder = parseAddButtonMenuOrder(
+            preferences[ADD_BUTTON_MENU_ORDER_KEY]
+        ) ?: AddButtonMenuAction.DEFAULT_ORDER
+        val parsedAddButtonMenuEnabledActions = parseAddButtonMenuEnabledActions(
+            preferences[ADD_BUTTON_MENU_ENABLED_ACTIONS_KEY],
+            parsedAddButtonMenuOrder
+        ) ?: AddButtonMenuAction.DEFAULT_ENABLED_ACTIONS
+        val parsedPasswordPageVisibleContentTypes = parsePasswordPageVisibleContentTypes(
+            preferences[PASSWORD_PAGE_VISIBLE_CONTENT_TYPES_KEY]
+        ) ?: PasswordPageContentType.DEFAULT_VISIBLE_TYPES
 
         return AppSettings(
             themeMode = ThemeMode.valueOf(
@@ -436,6 +500,17 @@ class SettingsManager(private val context: Context) {
                         }.getOrDefault(PasswordListQuickFolderStyle.CLASSIC) ==
                             PasswordListQuickFolderStyle.M3_CARD
                     ),
+            addButtonBehaviorMode = runCatching {
+                AddButtonBehaviorMode.valueOf(
+                    preferences[ADD_BUTTON_BEHAVIOR_MODE_KEY]
+                        ?: AddButtonBehaviorMode.DIRECT_PASSWORD.name
+                )
+            }.getOrDefault(AddButtonBehaviorMode.DIRECT_PASSWORD),
+            addButtonMenuOrder = parsedAddButtonMenuOrder,
+            addButtonMenuEnabledActions = parsedAddButtonMenuEnabledActions,
+            passwordPageAggregateEnabled =
+                preferences[PASSWORD_PAGE_AGGREGATE_ENABLED_KEY] ?: false,
+            passwordPageVisibleContentTypes = parsedPasswordPageVisibleContentTypes,
             categorySelectionUiMode = runCatching {
                 CategorySelectionUiMode.valueOf(
                     preferences[CATEGORY_SELECTION_UI_MODE_KEY]
@@ -793,6 +868,44 @@ class SettingsManager(private val context: Context) {
         }
     }
 
+    suspend fun updateAddButtonBehaviorMode(mode: AddButtonBehaviorMode) {
+        dataStore.edit { preferences ->
+            preferences[ADD_BUTTON_BEHAVIOR_MODE_KEY] = mode.name
+        }
+    }
+
+    suspend fun updateAddButtonMenuOrder(order: List<AddButtonMenuAction>) {
+        dataStore.edit { preferences ->
+            val normalizedOrder = AddButtonMenuAction.sanitizeOrder(order)
+            preferences[ADD_BUTTON_MENU_ORDER_KEY] =
+                normalizedOrder.joinToString(",") { it.name }
+        }
+    }
+
+    suspend fun updateAddButtonMenuEnabledActions(actions: List<AddButtonMenuAction>) {
+        dataStore.edit { preferences ->
+            val currentOrder = parseAddButtonMenuOrder(preferences[ADD_BUTTON_MENU_ORDER_KEY])
+                ?: AddButtonMenuAction.DEFAULT_ORDER
+            val normalizedActions = AddButtonMenuAction.normalizeEnabledActions(actions, currentOrder)
+            preferences[ADD_BUTTON_MENU_ENABLED_ACTIONS_KEY] =
+                normalizedActions.joinToString(",") { it.name }
+        }
+    }
+
+    suspend fun updatePasswordPageAggregateEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PASSWORD_PAGE_AGGREGATE_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun updatePasswordPageVisibleContentTypes(types: List<PasswordPageContentType>) {
+        dataStore.edit { preferences ->
+            val normalizedTypes = PasswordPageContentType.normalizeEnabledTypes(types)
+            preferences[PASSWORD_PAGE_VISIBLE_CONTENT_TYPES_KEY] =
+                normalizedTypes.joinToString(",") { it.name }
+        }
+    }
+
     suspend fun updateCategorySelectionUiMode(mode: CategorySelectionUiMode) {
         dataStore.edit { preferences ->
             preferences[CATEGORY_SELECTION_UI_MODE_KEY] = mode.name
@@ -852,6 +965,11 @@ class SettingsManager(private val context: Context) {
             passwordListQuickFoldersEnabled = settings.passwordListQuickFoldersEnabled,
             passwordListQuickFolderStyle = settings.passwordListQuickFolderStyle.name,
             passwordListQuickFolderPathBannerEnabled = settings.passwordListQuickFolderPathBannerEnabled,
+            addButtonBehaviorMode = settings.addButtonBehaviorMode.name,
+            addButtonMenuOrder = settings.addButtonMenuOrder.map { it.name },
+            addButtonMenuEnabledActions = settings.addButtonMenuEnabledActions.map { it.name },
+            passwordPageAggregateEnabled = settings.passwordPageAggregateEnabled,
+            passwordPageVisibleContentTypes = settings.passwordPageVisibleContentTypes.map { it.name },
             categorySelectionUiMode = settings.categorySelectionUiMode.name,
             passwordListQuickAccessEnabled = settings.passwordListQuickAccessEnabled,
             passwordListTopModulesOrder = settings.passwordListTopModulesOrder.map { it.name },
@@ -911,6 +1029,30 @@ class SettingsManager(private val context: Context) {
         val parsedQuickFolderStyle = runCatching {
             PasswordListQuickFolderStyle.valueOf(snapshot.passwordListQuickFolderStyle.trim())
         }.getOrDefault(PasswordListQuickFolderStyle.CLASSIC)
+        val parsedAddButtonBehaviorMode = runCatching {
+            AddButtonBehaviorMode.valueOf(snapshot.addButtonBehaviorMode.trim())
+        }.getOrDefault(AddButtonBehaviorMode.DIRECT_PASSWORD)
+        val parsedAddButtonOrder = AddButtonMenuAction.sanitizeOrder(
+            snapshot.addButtonMenuOrder.mapNotNull { value ->
+                runCatching { AddButtonMenuAction.valueOf(value.trim()) }.getOrNull()
+            }
+        )
+        val normalizedAddButtonOrder = if (parsedAddButtonOrder.isEmpty()) {
+            AddButtonMenuAction.DEFAULT_ORDER
+        } else {
+            parsedAddButtonOrder
+        }
+        val normalizedAddButtonEnabledActions = AddButtonMenuAction.normalizeEnabledActions(
+            snapshot.addButtonMenuEnabledActions.mapNotNull { value ->
+                runCatching { AddButtonMenuAction.valueOf(value.trim()) }.getOrNull()
+            },
+            normalizedAddButtonOrder
+        )
+        val normalizedPasswordPageVisibleContentTypes = PasswordPageContentType.normalizeEnabledTypes(
+            snapshot.passwordPageVisibleContentTypes.mapNotNull { value ->
+                runCatching { PasswordPageContentType.valueOf(value.trim()) }.getOrNull()
+            }
+        )
         val parsedCategorySelectionUiMode = runCatching {
             CategorySelectionUiMode.valueOf(snapshot.categorySelectionUiMode.trim())
         }.getOrDefault(CategorySelectionUiMode.DEFAULT)
@@ -928,6 +1070,14 @@ class SettingsManager(private val context: Context) {
             preferences[PASSWORD_LIST_QUICK_FOLDER_STYLE_KEY] = parsedQuickFolderStyle.name
             preferences[PASSWORD_LIST_QUICK_FOLDER_PATH_BANNER_ENABLED_KEY] =
                 snapshot.passwordListQuickFolderPathBannerEnabled
+            preferences[ADD_BUTTON_BEHAVIOR_MODE_KEY] = parsedAddButtonBehaviorMode.name
+            preferences[ADD_BUTTON_MENU_ORDER_KEY] =
+                normalizedAddButtonOrder.joinToString(",") { it.name }
+            preferences[ADD_BUTTON_MENU_ENABLED_ACTIONS_KEY] =
+                normalizedAddButtonEnabledActions.joinToString(",") { it.name }
+            preferences[PASSWORD_PAGE_AGGREGATE_ENABLED_KEY] = snapshot.passwordPageAggregateEnabled
+            preferences[PASSWORD_PAGE_VISIBLE_CONTENT_TYPES_KEY] =
+                normalizedPasswordPageVisibleContentTypes.joinToString(",") { it.name }
             preferences[CATEGORY_SELECTION_UI_MODE_KEY] = parsedCategorySelectionUiMode.name
             preferences[PASSWORD_LIST_QUICK_ACCESS_ENABLED_KEY] = snapshot.passwordListQuickAccessEnabled
             preferences[PASSWORD_LIST_TOP_MODULES_ORDER_KEY] =

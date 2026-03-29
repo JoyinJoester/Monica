@@ -74,6 +74,7 @@ import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.*
 import androidx.compose.runtime.NonRestartableComposable
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
@@ -109,8 +110,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import takagi.ru.monica.R
+import takagi.ru.monica.data.AddButtonBehaviorMode
+import takagi.ru.monica.data.AddButtonMenuAction
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.PasskeyEntry
+import takagi.ru.monica.data.PasswordPageContentType
 import takagi.ru.monica.data.PasswordQuickAccessManager
 import takagi.ru.monica.data.model.PasskeyBindingCodec
 import takagi.ru.monica.data.model.TimelineEvent
@@ -183,6 +187,10 @@ import takagi.ru.monica.ui.password.MultiPasswordEntryCard
 import takagi.ru.monica.ui.password.StackedPasswordGroup
 import takagi.ru.monica.ui.password.PasswordEntryCard
 import takagi.ru.monica.ui.password.StackCardMode
+import takagi.ru.monica.ui.password.resolvePasswordPageDisplayedTypes
+import takagi.ru.monica.ui.password.resolvePasswordPageVisibleTypes
+import takagi.ru.monica.ui.password.sanitizeSelectedPasswordPageTypes
+import takagi.ru.monica.ui.password.PasswordListAggregateConfig
 import takagi.ru.monica.ui.password.getGroupKeyForMode
 import takagi.ru.monica.ui.password.getPasswordGroupTitle
 import takagi.ru.monica.ui.password.getPasswordInfoKey
@@ -215,9 +223,36 @@ private enum class PasswordHistoryPageMode(val tab: HistoryTab?) {
 private val PasswordHistoryPageMode.isVisible: Boolean
     get() = this != PasswordHistoryPageMode.NONE
 
+private val passwordPageContentTypeSetSaver = Saver<Set<PasswordPageContentType>, ArrayList<String>>(
+    save = { selectedTypes ->
+        ArrayList(selectedTypes.map(PasswordPageContentType::name))
+    },
+    restore = { savedNames ->
+        savedNames
+            .mapNotNull { name -> PasswordPageContentType.entries.find { it.name == name } }
+            .toSet()
+    }
+)
+
+private fun togglePasswordPageContentType(
+    currentTypes: Set<PasswordPageContentType>,
+    toggledType: PasswordPageContentType,
+    visibleTypes: List<PasswordPageContentType>
+): Set<PasswordPageContentType> {
+    val nextTypes = if (toggledType in currentTypes) {
+        currentTypes - toggledType
+    } else {
+        currentTypes + toggledType
+    }
+    return sanitizeSelectedPasswordPageTypes(
+        visibleTypes = visibleTypes,
+        selectedTypes = nextTypes
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun UnifiedWalletAddScreen(
+fun UnifiedWalletAddScreen(
     selectedType: CardWalletTab,
     onTypeSelected: (CardWalletTab) -> Unit,
     onNavigateBack: () -> Unit,
@@ -445,6 +480,8 @@ private data class MainScreenHandlers(
     val timelineLogOpen: (TimelineEvent.StandardLog) -> Unit
 )
 
+// Keep this file as orchestration layer: state wiring + tab routing + pane transitions.
+// Feature-specific rendering should stay in dedicated composables/files.
 private const val MAX_BOTTOM_MINI_HINTS = 2
 
 @Composable
@@ -650,8 +687,10 @@ fun SimpleMainScreen(
     onNavigateToQuickTotpScan: () -> Unit,
     onNavigateToAddBankCard: (Long?) -> Unit,
     onNavigateToAddDocument: (Long?) -> Unit,
+    onNavigateToWalletAdd: (CardWalletTab) -> Unit,
     onNavigateToAddNote: (Long?) -> Unit,
     onNavigateToPasswordDetail: (Long) -> Unit = {},
+    onNavigateToPasskeyDetail: (String) -> Unit,
     onNavigateToBankCardDetail: (Long) -> Unit, // Add this
     onNavigateToDocumentDetail: (Long) -> Unit, // Keep this
     onNavigateToChangePassword: () -> Unit = {},
@@ -673,6 +712,7 @@ fun SimpleMainScreen(
     initialTab: Int = 0
 ) {
 
+    // --- ViewModel wiring and global app-level state ---
     // Bitwarden ViewModel
     val bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel()
     val timelineViewModel: TimelineViewModel = viewModel()
@@ -684,7 +724,23 @@ fun SimpleMainScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val bitwardenRepository = remember { takagi.ru.monica.bitwarden.repository.BitwardenRepository.getInstance(context) }
+    val appSettings by settingsViewModel.settings.collectAsState()
+    val passwordPageVisibleContentTypes = remember(
+        appSettings.passwordPageAggregateEnabled,
+        appSettings.passwordPageVisibleContentTypes
+    ) {
+        resolvePasswordPageVisibleTypes(
+            aggregateEnabled = appSettings.passwordPageAggregateEnabled,
+            configuredTypes = appSettings.passwordPageVisibleContentTypes
+        )
+    }
+    var passwordPageSelectedContentTypes by rememberSaveable(
+        stateSaver = passwordPageContentTypeSetSaver
+    ) {
+        mutableStateOf(emptySet())
+    }
     
+    // --- Global back behavior ---
     // 处理返回键 - 需要按两次才能退出
     // 只有在没有子页面（如添加页面）打开时才启用
     // FAB 展开状态由内部 SwipeableAddFab 管理，这里不需要干预，除非我们需要在 FAB 展开时拦截返回键
@@ -716,20 +772,26 @@ fun SimpleMainScreen(
         }
     }
     
+    // --- Cross-tab selection/action-bar state ---
     // 密码列表的选择模式状态
     var isPasswordSelectionMode by remember { mutableStateOf(false) }
     var selectedPasswordCount by remember { mutableIntStateOf(0) }
     var onExitPasswordSelection by remember { mutableStateOf({}) }
     var onSelectAllPasswords by remember { mutableStateOf({}) }
-    var onFavoriteSelectedPasswords by remember { mutableStateOf({}) }
-    var onMoveToCategoryPasswords by remember { mutableStateOf({}) }
-    var onManualStackPasswords by remember { mutableStateOf({}) }
+    var onFavoriteSelectedPasswords by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var onMoveToCategoryPasswords by remember { mutableStateOf<(() -> Unit)?>(null) }
+    var onManualStackPasswords by remember { mutableStateOf<(() -> Unit)?>(null) }
     var onDeleteSelectedPasswords by remember { mutableStateOf({}) }
     var passwordListShowBackToTop by remember { mutableStateOf(false) }
     var passwordScrollToTopRequestKey by remember { mutableIntStateOf(0) }
     var showPasswordQuickAccessSheet by rememberSaveable { mutableStateOf(false) }
     
-    val appSettings by settingsViewModel.settings.collectAsState()
+    LaunchedEffect(passwordPageVisibleContentTypes) {
+        passwordPageSelectedContentTypes = sanitizeSelectedPasswordPageTypes(
+            visibleTypes = passwordPageVisibleContentTypes,
+            selectedTypes = passwordPageSelectedContentTypes
+        )
+    }
     
     // 密码分组模式: smart(备注>网站>应用>标题), note, website, app, title
     // 从设置中读取，如果设置中没有则默认为 "smart"
@@ -821,29 +883,21 @@ fun SimpleMainScreen(
 
     val currentTab = tabs.firstOrNull { it.key == selectedTabKey } ?: tabs.first()
 
-    // 切换离开密码 tab 时重置堆叠展开状态
-    LaunchedEffect(currentTab) {
-        if (currentTab != BottomNavItem.Passwords) {
-            passwordViewModel.clearExpandedGroups()
-        }
+    var passwordPaneState by rememberSaveable(stateSaver = PasswordPaneUiStateSaver) {
+        mutableStateOf(PasswordPaneUiState())
     }
-    var selectedPasswordId by rememberSaveable { mutableStateOf<Long?>(null) }
-    var inlinePasswordEditorId by rememberSaveable { mutableStateOf<Long?>(null) }
-    var isAddingPasswordInline by rememberSaveable { mutableStateOf(false) }
-    var selectedTotpId by rememberSaveable { mutableStateOf<Long?>(null) }
-    var isAddingTotpInline by rememberSaveable { mutableStateOf(false) }
-    var selectedBankCardId by rememberSaveable { mutableStateOf<Long?>(null) }
-    var inlineBankCardEditorId by rememberSaveable { mutableStateOf<Long?>(null) }
-    var isAddingBankCardInline by rememberSaveable { mutableStateOf(false) }
-    var selectedDocumentId by rememberSaveable { mutableStateOf<Long?>(null) }
-    var inlineDocumentEditorId by rememberSaveable { mutableStateOf<Long?>(null) }
-    var isAddingDocumentInline by rememberSaveable { mutableStateOf(false) }
-    var inlineNoteEditorId by rememberSaveable { mutableStateOf<Long?>(null) }
-    var isAddingNoteInline by rememberSaveable { mutableStateOf(false) }
-    var isAddingSendInline by rememberSaveable { mutableStateOf(false) }
+    var totpPaneState by rememberSaveable(stateSaver = TotpPaneUiStateSaver) {
+        mutableStateOf(TotpPaneUiState())
+    }
+    var cardWalletPaneState by rememberSaveable(stateSaver = CardWalletPaneUiStateSaver) {
+        mutableStateOf(CardWalletPaneUiState())
+    }
+    var notePaneState by rememberSaveable(stateSaver = NotePaneUiStateSaver) {
+        mutableStateOf(NotePaneUiState())
+    }
+    var sendPaneState by remember { mutableStateOf(SendPaneUiState()) }
     var selectedPasskey by remember { mutableStateOf<PasskeyEntry?>(null) }
     var pendingPasskeyDelete by remember { mutableStateOf<PasskeyEntry?>(null) }
-    var selectedSend by remember { mutableStateOf<BitwardenSend?>(null) }
     var selectedTimelineLog by remember { mutableStateOf<TimelineEvent.StandardLog?>(null) }
     val sendState by bitwardenViewModel.sendState.collectAsState()
     val activeBitwardenVault by bitwardenViewModel.activeVault.collectAsState()
@@ -860,6 +914,106 @@ fun SimpleMainScreen(
         GeneratorType.PASSWORD -> passwordGeneratorResult
         GeneratorType.PASSPHRASE -> passphraseGeneratorResult
         GeneratorType.PIN -> pinGeneratorResult
+    }
+
+    val selectedPasswordId = passwordPaneState.selectedPasswordId
+    val inlinePasswordEditorId = passwordPaneState.inlinePasswordEditorId
+    val isAddingPasswordInline = passwordPaneState.isAddingPasswordInline
+    val selectedTotpId = totpPaneState.selectedTotpId
+    val isAddingTotpInline = totpPaneState.isAddingInline
+    val selectedBankCardId = cardWalletPaneState.selectedBankCardId
+    val inlineBankCardEditorId = cardWalletPaneState.inlineBankCardEditorId
+    val isAddingBankCardInline = cardWalletPaneState.isAddingBankCardInline
+    val selectedDocumentId = cardWalletPaneState.selectedDocumentId
+    val inlineDocumentEditorId = cardWalletPaneState.inlineDocumentEditorId
+    val isAddingDocumentInline = cardWalletPaneState.isAddingDocumentInline
+    val inlineNoteEditorId = notePaneState.inlineNoteEditorId
+    val isAddingNoteInline = notePaneState.isAddingInline
+    val selectedSend = sendPaneState.selectedSend
+    val isAddingSendInline = sendPaneState.isAddingInline
+    val resetPasswordPaneState: () -> Unit = {
+        passwordPaneState = PasswordPaneUiStateTransitions.reset()
+    }
+    val openInlinePasswordAdd: () -> Unit = {
+        passwordPaneState = PasswordPaneUiStateTransitions.openInlineAdd()
+    }
+    val openInlinePasswordEditor: (Long) -> Unit = { passwordId ->
+        passwordPaneState = PasswordPaneUiStateTransitions.openInlineEditor(passwordId)
+    }
+    val openInlinePasswordDetail: (Long) -> Unit = { passwordId ->
+        passwordPaneState = PasswordPaneUiStateTransitions.openDetail(passwordId)
+    }
+    val closeInlinePasswordEditor: () -> Unit = {
+        passwordPaneState = PasswordPaneUiStateTransitions.closeInlineEditor(passwordPaneState)
+    }
+    val clearSelectedPasswordPaneItem: () -> Unit = {
+        passwordPaneState = PasswordPaneUiStateTransitions.clearSelected(passwordPaneState)
+    }
+    val resetTotpPaneState: () -> Unit = {
+        totpPaneState = TotpPaneUiStateTransitions.reset()
+    }
+    val openInlineTotpAdd: () -> Unit = {
+        totpPaneState = TotpPaneUiStateTransitions.openInlineAdd()
+    }
+    val openInlineTotpDetail: (Long) -> Unit = { totpId ->
+        totpPaneState = TotpPaneUiStateTransitions.openDetail(totpId)
+    }
+    val resetCardWalletPaneState: () -> Unit = {
+        cardWalletPaneState = CardWalletPaneUiStateTransitions.resetAll()
+    }
+    val openInlineBankCardAdd: () -> Unit = {
+        cardWalletPaneState = CardWalletPaneUiStateTransitions.openBankCardAddInline()
+    }
+    val openInlineBankCardEditor: (Long) -> Unit = { cardId ->
+        cardWalletPaneState = CardWalletPaneUiStateTransitions.openBankCardEditInline(cardId)
+    }
+    val openInlineBankCardDetail: (Long) -> Unit = { cardId ->
+        cardWalletPaneState = CardWalletPaneUiStateTransitions.openBankCardDetail(cardId)
+    }
+    val closeInlineBankCardEditor: () -> Unit = {
+        cardWalletPaneState = CardWalletPaneUiStateTransitions.closeBankCardEditor(cardWalletPaneState)
+    }
+    val clearSelectedBankCardPaneItem: () -> Unit = {
+        cardWalletPaneState = CardWalletPaneUiStateTransitions.clearSelectedBankCard(cardWalletPaneState)
+    }
+    val openInlineDocumentAdd: () -> Unit = {
+        cardWalletPaneState = CardWalletPaneUiStateTransitions.openDocumentAddInline()
+    }
+    val openInlineDocumentEditor: (Long) -> Unit = { documentId ->
+        cardWalletPaneState = CardWalletPaneUiStateTransitions.openDocumentEditInline(documentId)
+    }
+    val openInlineDocumentDetail: (Long) -> Unit = { documentId ->
+        cardWalletPaneState = CardWalletPaneUiStateTransitions.openDocumentDetail(documentId)
+    }
+    val closeInlineDocumentEditor: () -> Unit = {
+        cardWalletPaneState = CardWalletPaneUiStateTransitions.closeDocumentEditor(cardWalletPaneState)
+    }
+    val clearSelectedDocumentPaneItem: () -> Unit = {
+        cardWalletPaneState = CardWalletPaneUiStateTransitions.clearSelectedDocument(cardWalletPaneState)
+    }
+    val resetDocumentPaneState: () -> Unit = {
+        cardWalletPaneState = CardWalletPaneUiStateTransitions.resetDocumentPane(cardWalletPaneState)
+    }
+    val resetBankCardPaneState: () -> Unit = {
+        cardWalletPaneState = CardWalletPaneUiStateTransitions.resetBankCardPane(cardWalletPaneState)
+    }
+    val resetNotePaneState: () -> Unit = {
+        notePaneState = NotePaneUiStateTransitions.reset()
+    }
+    val openInlineNoteEditor: (Long?) -> Unit = { noteId ->
+        notePaneState = NotePaneUiStateTransitions.openInlineEditor(noteId)
+    }
+    val resetSendPaneState: () -> Unit = {
+        sendPaneState = SendPaneUiStateTransitions.reset()
+    }
+    val openInlineSendDetail: (BitwardenSend) -> Unit = { send ->
+        sendPaneState = SendPaneUiStateTransitions.openDetail(send)
+    }
+    val openInlineSendAdd: () -> Unit = {
+        sendPaneState = SendPaneUiStateTransitions.openInlineAdd()
+    }
+    val closeInlineSendEditor: () -> Unit = {
+        sendPaneState = SendPaneUiStateTransitions.closeInlineEditor(sendPaneState)
     }
 
     // 监听滚动以隐藏/显示 FAB
@@ -1028,95 +1182,69 @@ fun SimpleMainScreen(
     val wideNavigationRailWidth = 80.dp
     val wideFabHostWidth = wideNavigationRailWidth + wideListPaneWidth
 
+    // --- Navigation/interaction handlers hub ---
+    // This function centralizes open/edit/back intents so tab/pane switching stays consistent.
     fun buildMainScreenHandlers(): MainScreenHandlers {
         val handlePasswordAddOpen: () -> Unit = {
             if (isCompactWidth) {
                 onNavigateToAddPassword(null)
             } else {
-                isAddingPasswordInline = true
-                inlinePasswordEditorId = null
-                selectedPasswordId = null
+                openInlinePasswordAdd()
             }
         }
         val handlePasswordEditOpen: (Long) -> Unit = { passwordId ->
             if (isCompactWidth) {
                 onNavigateToAddPassword(passwordId)
             } else {
-                isAddingPasswordInline = false
-                inlinePasswordEditorId = passwordId
+                openInlinePasswordEditor(passwordId)
             }
         }
         val handleInlinePasswordEditorBack: () -> Unit = {
-            isAddingPasswordInline = false
-            inlinePasswordEditorId = null
+            closeInlinePasswordEditor()
         }
         val handleTotpAddOpen: () -> Unit = {
             if (isCompactWidth) {
                 onNavigateToAddTotp(null)
             } else {
-                isAddingTotpInline = true
-                selectedTotpId = null
+                openInlineTotpAdd()
             }
         }
         val handleInlineTotpEditorBack: () -> Unit = {
-            isAddingTotpInline = false
-            selectedTotpId = null
+            resetTotpPaneState()
         }
         val handleBankCardAddOpen: () -> Unit = {
             if (isCompactWidth) {
                 onNavigateToAddBankCard(null)
             } else {
-                isAddingBankCardInline = true
-                inlineBankCardEditorId = null
-                selectedBankCardId = null
-                isAddingDocumentInline = false
-                inlineDocumentEditorId = null
-                selectedDocumentId = null
+                openInlineBankCardAdd()
             }
         }
         val handleBankCardEditOpen: (Long) -> Unit = { cardId ->
             if (isCompactWidth) {
                 onNavigateToAddBankCard(cardId)
             } else {
-                isAddingBankCardInline = false
-                inlineBankCardEditorId = cardId
-                selectedBankCardId = null
-                isAddingDocumentInline = false
-                inlineDocumentEditorId = null
-                selectedDocumentId = null
+                openInlineBankCardEditor(cardId)
             }
         }
         val handleInlineBankCardEditorBack: () -> Unit = {
-            isAddingBankCardInline = false
-            inlineBankCardEditorId = null
+            closeInlineBankCardEditor()
         }
         val handleDocumentAddOpen: () -> Unit = {
             if (isCompactWidth) {
                 onNavigateToAddDocument(null)
             } else {
-                isAddingDocumentInline = true
-                inlineDocumentEditorId = null
-                selectedDocumentId = null
-                isAddingBankCardInline = false
-                inlineBankCardEditorId = null
-                selectedBankCardId = null
+                openInlineDocumentAdd()
             }
         }
         val handleDocumentEditOpen: (Long) -> Unit = { documentId ->
             if (isCompactWidth) {
                 onNavigateToAddDocument(documentId)
             } else {
-                isAddingDocumentInline = false
-                inlineDocumentEditorId = documentId
-                selectedDocumentId = null
-                isAddingBankCardInline = false
-                inlineBankCardEditorId = null
-                selectedBankCardId = null
+                openInlineDocumentEditor(documentId)
             }
         }
         val handleInlineDocumentEditorBack: () -> Unit = {
-            isAddingDocumentInline = false
-            inlineDocumentEditorId = null
+            closeInlineDocumentEditor()
         }
         val handleWalletAddOpen: () -> Unit = {
             when (cardWalletSubTab) {
@@ -1129,18 +1257,11 @@ fun SimpleMainScreen(
             if (isCompactWidth) {
                 onNavigateToAddNote(noteId)
             } else {
-                if (noteId == null) {
-                    isAddingNoteInline = true
-                    inlineNoteEditorId = null
-                } else {
-                    isAddingNoteInline = false
-                    inlineNoteEditorId = noteId
-                }
+                openInlineNoteEditor(noteId)
             }
         }
         val handleInlineNoteEditorBack: () -> Unit = {
-            isAddingNoteInline = false
-            inlineNoteEditorId = null
+            resetNotePaneState()
         }
         val handlePasswordDetailOpen: (Long) -> Unit = { passwordId ->
             if (appSettings.passwordListQuickAccessEnabled) {
@@ -1151,41 +1272,28 @@ fun SimpleMainScreen(
             if (isCompactWidth) {
                 onNavigateToPasswordDetail(passwordId)
             } else {
-                isAddingPasswordInline = false
-                inlinePasswordEditorId = null
-                selectedPasswordId = passwordId
+                openInlinePasswordDetail(passwordId)
             }
         }
         val handleTotpOpen: (Long) -> Unit = { totpId ->
             if (isCompactWidth) {
                 onNavigateToAddTotp(totpId)
             } else {
-                isAddingTotpInline = false
-                selectedTotpId = totpId
+                openInlineTotpDetail(totpId)
             }
         }
         val handleBankCardOpen: (Long) -> Unit = { cardId ->
             if (isCompactWidth) {
                 onNavigateToBankCardDetail(cardId)
             } else {
-                isAddingBankCardInline = false
-                inlineBankCardEditorId = null
-                selectedBankCardId = cardId
-                isAddingDocumentInline = false
-                inlineDocumentEditorId = null
-                selectedDocumentId = null
+                openInlineBankCardDetail(cardId)
             }
         }
         val handleDocumentOpen: (Long) -> Unit = { documentId ->
             if (isCompactWidth) {
                 onNavigateToDocumentDetail(documentId)
             } else {
-                isAddingDocumentInline = false
-                inlineDocumentEditorId = null
-                selectedDocumentId = documentId
-                isAddingBankCardInline = false
-                inlineBankCardEditorId = null
-                selectedBankCardId = null
+                openInlineDocumentDetail(documentId)
             }
         }
         val handlePasskeyOpen: (PasskeyEntry) -> Unit = { passkey ->
@@ -1260,18 +1368,16 @@ fun SimpleMainScreen(
         }
         val handleSendOpen: (BitwardenSend) -> Unit = { send ->
             if (!isCompactWidth) {
-                isAddingSendInline = false
-                selectedSend = send
+                openInlineSendDetail(send)
             }
         }
         val handleSendAddOpen: () -> Unit = {
             if (!isCompactWidth) {
-                selectedSend = null
-                isAddingSendInline = true
+                openInlineSendAdd()
             }
         }
         val handleInlineSendEditorBack: () -> Unit = {
-            isAddingSendInline = false
+            closeInlineSendEditor()
         }
         val handleTimelineLogOpen: (TimelineEvent.StandardLog) -> Unit = { log ->
             if (!isCompactWidth) {
@@ -1335,49 +1441,37 @@ fun SimpleMainScreen(
     val handleInlineSendEditorBack = handlers.inlineSendEditorBack
     val handleTimelineLogOpen = handlers.timelineLogOpen
 
+    // --- Tab switch cleanup effects ---
+    // Reset detail/editor panes on tab changes to avoid stale selection or mixed mode state.
     MainScreenTabResetEffects(
         currentTab = currentTab,
         isCompactWidth = isCompactWidth,
         cardWalletSubTab = cardWalletSubTab,
         passwordHistoryPageMode = passwordHistoryPageMode,
         onResetPasswordPane = {
-            selectedPasswordId = null
-            inlinePasswordEditorId = null
-            isAddingPasswordInline = false
+            resetPasswordPaneState()
             passwordHistoryPageMode = PasswordHistoryPageMode.NONE
         },
         onHideBackToTop = { passwordListShowBackToTop = false },
         onResetTotpPane = {
-            selectedTotpId = null
-            isAddingTotpInline = false
+            resetTotpPaneState()
         },
         onResetCardWalletPaneAll = {
-            selectedBankCardId = null
-            selectedDocumentId = null
-            inlineBankCardEditorId = null
-            isAddingBankCardInline = false
-            inlineDocumentEditorId = null
-            isAddingDocumentInline = false
+            resetCardWalletPaneState()
         },
         onResetCardWalletDocumentPane = {
-            selectedDocumentId = null
-            inlineDocumentEditorId = null
-            isAddingDocumentInline = false
+            resetDocumentPaneState()
         },
         onResetCardWalletBankCardPane = {
-            selectedBankCardId = null
-            inlineBankCardEditorId = null
-            isAddingBankCardInline = false
+            resetBankCardPaneState()
         },
         onSyncWalletUnifiedAddType = { walletUnifiedAddType = it },
         onResetNotePane = {
-            inlineNoteEditorId = null
-            isAddingNoteInline = false
+            resetNotePaneState()
         },
         onResetPasskeyPane = { selectedPasskey = null },
         onResetSendPane = {
-            selectedSend = null
-            isAddingSendInline = false
+            resetSendPaneState()
         },
         onResetTimelineSelection = { selectedTimelineLog = null }
     )
@@ -1516,6 +1610,8 @@ fun SimpleMainScreen(
         tryActivateQueuedMiniHints()
     }
 
+    // --- Main surface composition ---
+    // Decides draggable nav vs classic scaffold and dispatches per-tab content.
     @Composable
     fun RenderMainSurface() {
     // 根据设置选择导航模式
@@ -1578,6 +1674,7 @@ fun SimpleMainScreen(
                     passwordScrollToTopRequestKey = passwordScrollToTopRequestKey,
                     totpViewModel = totpViewModel,
                     onTotpOpen = handleTotpOpen,
+                    onNavigateToAddTotp = onNavigateToAddTotp,
                     onNavigateToQuickTotpScan = onNavigateToQuickTotpScan,
                     onTotpSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onMoveToCategory, onDelete ->
                         isTotpSelectionMode = isSelectionMode
@@ -1596,6 +1693,9 @@ fun SimpleMainScreen(
                     onGeneratorRefreshRequestConsumed = { generatorRefreshRequestKey = 0 },
                     noteViewModel = noteViewModel,
                     onNavigateToAddNote = handleNoteOpen,
+                    onNavigateToBankCardDetail = onNavigateToBankCardDetail,
+                    onNavigateToDocumentDetail = onNavigateToDocumentDetail,
+                    onNavigateToPasskeyDetail = onNavigateToPasskeyDetail,
                     onNoteSelectionModeChange = { isSelectionMode ->
                         isNoteSelectionMode = isSelectionMode
                     },
@@ -1768,7 +1868,21 @@ fun SimpleMainScreen(
                         timelineViewModel = timelineViewModel,
                         groupMode = passwordGroupMode,
                         stackCardMode = stackCardMode,
+                        visibleContentTypes = passwordPageVisibleContentTypes,
+                        selectedContentTypes = passwordPageSelectedContentTypes,
+                        onToggleContentType = { type ->
+                            passwordPageSelectedContentTypes = togglePasswordPageContentType(
+                                currentTypes = passwordPageSelectedContentTypes,
+                                toggledType = type,
+                                visibleTypes = passwordPageVisibleContentTypes
+                            )
+                        },
                         onPasswordOpen = handlePasswordDetailOpen,
+                        onNavigateToAddTotp = onNavigateToAddTotp,
+                        onNavigateToBankCardDetail = onNavigateToBankCardDetail,
+                        onNavigateToDocumentDetail = onNavigateToDocumentDetail,
+                        onNavigateToAddNote = handleNoteOpen,
+                        onNavigateToPasskeyDetail = onNavigateToPasskeyDetail,
                         onOpenHistoryPage = openHistoryPage,
                         onOpenTrashPage = openTrashPage,
                         onOpenCommonAccountTemplatesPage = onNavigateToCommonAccountTemplates,
@@ -1796,12 +1910,14 @@ fun SimpleMainScreen(
                         onInlinePasswordEditorBack = handleInlinePasswordEditorBack,
                         totpViewModel = totpViewModel,
                         bankCardViewModel = bankCardViewModel,
+                        noteViewModel = noteViewModel,
+                        documentViewModel = documentViewModel,
                         passkeyViewModel = passkeyViewModel,
                         disablePasswordVerification = appSettings.disablePasswordVerification,
                         biometricEnabled = appSettings.biometricEnabled,
                         iconCardsEnabled = appSettings.iconCardsEnabled && appSettings.passwordPageIconEnabled,
                         unmatchedIconHandlingStrategy = appSettings.unmatchedIconHandlingStrategy,
-                        onClearSelectedPassword = { selectedPasswordId = null },
+                        onClearSelectedPassword = clearSelectedPasswordPaneItem,
                         onEditPassword = handlePasswordEditOpen
                     )
                 }
@@ -1843,10 +1959,10 @@ fun SimpleMainScreen(
                         inlineDocumentEditorId = inlineDocumentEditorId,
                         onInlineDocumentEditorBack = handleInlineDocumentEditorBack,
                         selectedBankCardId = selectedBankCardId,
-                        onClearSelectedBankCard = { selectedBankCardId = null },
+                        onClearSelectedBankCard = clearSelectedBankCardPaneItem,
                         onEditBankCard = handleBankCardEditOpen,
                         selectedDocumentId = selectedDocumentId,
-                        onClearSelectedDocument = { selectedDocumentId = null },
+                        onClearSelectedDocument = clearSelectedDocumentPaneItem,
                         onEditDocument = handleDocumentEditOpen
                     )
                 }
@@ -2043,6 +2159,7 @@ fun SimpleMainScreen(
         currentTab = currentTab,
         isCompactWidth = isCompactWidth,
         wideFabHostWidth = wideFabHostWidth,
+        appSettings = appSettings,
         passwordHistoryPageMode = passwordHistoryPageMode,
         isAnySelectionMode = isAnySelectionMode,
         isAddingPasswordInline = isAddingPasswordInline,
@@ -2077,6 +2194,7 @@ fun SimpleMainScreen(
         onTotpAddOpen = handleTotpAddOpen,
         onBankCardAddOpen = handleBankCardAddOpen,
         onWalletAddOpen = handleWalletAddOpen,
+        onNavigateToWalletAdd = onNavigateToWalletAdd,
         onNoteAddOpen = { handleNoteOpen(null) },
         onSendAddOpen = handleSendAddOpen,
         onGeneratorRefresh = { generatorRefreshRequestKey++ },
@@ -2194,7 +2312,15 @@ private fun PasswordTabPane(
     timelineViewModel: TimelineViewModel,
     groupMode: String,
     stackCardMode: StackCardMode,
+    visibleContentTypes: List<PasswordPageContentType>,
+    selectedContentTypes: Set<PasswordPageContentType>,
+    onToggleContentType: (PasswordPageContentType) -> Unit,
     onPasswordOpen: (Long) -> Unit,
+    onNavigateToAddTotp: (Long?) -> Unit,
+    onNavigateToBankCardDetail: (Long) -> Unit,
+    onNavigateToDocumentDetail: (Long) -> Unit,
+    onNavigateToAddNote: (Long?) -> Unit,
+    onNavigateToPasskeyDetail: (String) -> Unit,
     onOpenHistoryPage: () -> Unit,
     onOpenTrashPage: () -> Unit,
     onOpenCommonAccountTemplatesPage: () -> Unit,
@@ -2207,9 +2333,9 @@ private fun PasswordTabPane(
         Int,
         () -> Unit,
         () -> Unit,
-        () -> Unit,
-        () -> Unit,
-        () -> Unit,
+        (() -> Unit)?,
+        (() -> Unit)?,
+        (() -> Unit)?,
         () -> Unit
     ) -> Unit,
     onBackToTopVisibilityChange: (Boolean) -> Unit,
@@ -2220,6 +2346,8 @@ private fun PasswordTabPane(
     onInlinePasswordEditorBack: () -> Unit,
     totpViewModel: takagi.ru.monica.viewmodel.TotpViewModel,
     bankCardViewModel: takagi.ru.monica.viewmodel.BankCardViewModel,
+    noteViewModel: NoteViewModel,
+    documentViewModel: DocumentViewModel,
     passkeyViewModel: PasskeyViewModel,
     disablePasswordVerification: Boolean,
     biometricEnabled: Boolean,
@@ -2228,6 +2356,15 @@ private fun PasswordTabPane(
     onClearSelectedPassword: () -> Unit,
     onEditPassword: (Long) -> Unit
 ) {
+    val appSettings by settingsViewModel.settings.collectAsState()
+    val displayedContentTypes = remember(visibleContentTypes, selectedContentTypes) {
+        resolvePasswordPageDisplayedTypes(
+            visibleTypes = visibleContentTypes,
+            selectedTypes = selectedContentTypes
+        )
+    }
+    val isPasswordOnlyMode = displayedContentTypes == setOf(PasswordPageContentType.PASSWORD)
+
     val listPaneContent: @Composable ColumnScope.() -> Unit = {
         PasswordListContent(
             viewModel = passwordViewModel,
@@ -2252,11 +2389,26 @@ private fun PasswordTabPane(
             scrollToTopRequestKey = scrollToTopRequestKey,
             onOpenHistory = onOpenHistoryPage,
             onOpenTrash = onOpenTrashPage,
-            onOpenCommonAccountTemplates = onOpenCommonAccountTemplatesPage
+            onOpenCommonAccountTemplates = onOpenCommonAccountTemplatesPage,
+            aggregateConfig = PasswordListAggregateConfig(
+                visibleContentTypes = visibleContentTypes,
+                selectedContentTypes = selectedContentTypes,
+                onToggleContentType = onToggleContentType,
+                totpViewModel = totpViewModel,
+                bankCardViewModel = bankCardViewModel,
+                documentViewModel = documentViewModel,
+                noteViewModel = noteViewModel,
+                passkeyViewModel = passkeyViewModel,
+                onOpenTotp = { onNavigateToAddTotp(it) },
+                onOpenBankCard = onNavigateToBankCardDetail,
+                onOpenDocument = onNavigateToDocumentDetail,
+                onOpenNote = onNavigateToAddNote,
+                onOpenPasskey = onNavigateToPasskeyDetail
+            )
         )
     }
 
-    if (passwordHistoryPageMode.isVisible) {
+    if (isPasswordOnlyMode && passwordHistoryPageMode.isVisible) {
         TimelineScreen(
             viewModel = timelineViewModel,
             onLogSelected = onTimelineLogSelected,
@@ -2508,14 +2660,18 @@ private fun CompactDraggableTabContent(
     onDocumentOpen: (Long) -> Unit,
     onNoteOpen: (Long) -> Unit,
     onPasskeyOpen: (PasskeyEntry) -> Unit,
+    onNavigateToAddTotp: (Long?) -> Unit,
+    onNavigateToBankCardDetail: (Long) -> Unit,
+    onNavigateToDocumentDetail: (Long) -> Unit,
+    onNavigateToPasskeyDetail: (String) -> Unit,
     onPasswordSelectionModeChange: (
         Boolean,
         Int,
         () -> Unit,
         () -> Unit,
-        () -> Unit,
-        () -> Unit,
-        () -> Unit,
+        (() -> Unit)?,
+        (() -> Unit)?,
+        (() -> Unit)?,
         () -> Unit
     ) -> Unit,
     onBackToTopVisibilityChange: (Boolean) -> Unit,
@@ -2571,9 +2727,9 @@ private fun CompactDraggableTabContent(
     selectedPasswordCount: Int,
     onExitPasswordSelection: () -> Unit,
     onSelectAllPasswords: () -> Unit,
-    onFavoriteSelectedPasswords: () -> Unit,
-    onMoveToCategoryPasswords: () -> Unit,
-    onManualStackPasswords: () -> Unit,
+    onFavoriteSelectedPasswords: (() -> Unit)?,
+    onMoveToCategoryPasswords: (() -> Unit)?,
+    onManualStackPasswords: (() -> Unit)?,
     onDeleteSelectedPasswords: () -> Unit,
     isTotpSelectionMode: Boolean,
     selectedTotpCount: Int,
@@ -2596,6 +2752,26 @@ private fun CompactDraggableTabContent(
     onDeleteSelectedDocuments: () -> Unit
 ) {
     val appSettings by settingsViewModel.settings.collectAsState()
+    val passwordPageVisibleContentTypes = remember(
+        appSettings.passwordPageAggregateEnabled,
+        appSettings.passwordPageVisibleContentTypes
+    ) {
+        resolvePasswordPageVisibleTypes(
+            aggregateEnabled = appSettings.passwordPageAggregateEnabled,
+            configuredTypes = appSettings.passwordPageVisibleContentTypes
+        )
+    }
+    var passwordPageSelectedContentTypes by rememberSaveable(
+        stateSaver = passwordPageContentTypeSetSaver
+    ) {
+        mutableStateOf(emptySet())
+    }
+    LaunchedEffect(passwordPageVisibleContentTypes) {
+        passwordPageSelectedContentTypes = sanitizeSelectedPasswordPageTypes(
+            visibleTypes = passwordPageVisibleContentTypes,
+            selectedTypes = passwordPageSelectedContentTypes
+        )
+    }
 
     Box(
         modifier = Modifier
@@ -2625,43 +2801,59 @@ private fun CompactDraggableTabContent(
                 )
             }
             BottomNavItem.Passwords -> {
-                if (passwordHistoryPageMode.isVisible) {
-                    TimelineScreen(
-                        viewModel = timelineViewModel,
-                        splitPaneMode = false,
-                        initialTab = passwordHistoryPageMode.tab ?: HistoryTab.TIMELINE,
-                        initialTrashScopeKey = passwordHistoryInitialTrashScopeKey,
-                        enableTabSwitch = false,
-                        showBackButton = true,
-                        onNavigateBack = onCloseHistoryPage
-                    )
-                } else {
-                    PasswordListContent(
-                        viewModel = passwordViewModel,
-                        settingsViewModel = settingsViewModel,
-                        securityManager = securityManager,
-                        keepassDatabases = keepassDatabases,
-                        bitwardenVaults = bitwardenVaults,
-                        localKeePassViewModel = localKeePassViewModel,
-                        groupMode = passwordGroupMode,
-                        stackCardMode = stackCardMode,
-                        onRenameCategory = { category ->
-                            passwordViewModel.updateCategory(category)
-                        },
-                        onDeleteCategory = { category ->
-                            passwordViewModel.deleteCategory(category)
-                        },
-                        onPasswordClick = { password ->
-                            onPasswordOpen(password.id)
-                        },
-                        onSelectionModeChange = onPasswordSelectionModeChange,
-                        onBackToTopVisibilityChange = onBackToTopVisibilityChange,
-                        scrollToTopRequestKey = passwordScrollToTopRequestKey,
-                        onOpenHistory = onOpenHistoryPage,
-                        onOpenTrash = onOpenTrashPage,
-                        onOpenCommonAccountTemplates = onNavigateToCommonAccountTemplates
-                    )
-                }
+                PasswordTabPane(
+                    isCompactWidth = true,
+                    wideListPaneWidth = 0.dp,
+                    passwordViewModel = passwordViewModel,
+                    settingsViewModel = settingsViewModel,
+                    securityManager = securityManager,
+                    keepassDatabases = keepassDatabases,
+                    bitwardenVaults = bitwardenVaults,
+                    localKeePassViewModel = localKeePassViewModel,
+                    timelineViewModel = timelineViewModel,
+                    groupMode = passwordGroupMode,
+                    stackCardMode = stackCardMode,
+                    visibleContentTypes = passwordPageVisibleContentTypes,
+                    selectedContentTypes = passwordPageSelectedContentTypes,
+                    onToggleContentType = { type ->
+                        passwordPageSelectedContentTypes = togglePasswordPageContentType(
+                            currentTypes = passwordPageSelectedContentTypes,
+                            toggledType = type,
+                            visibleTypes = passwordPageVisibleContentTypes
+                        )
+                    },
+                    onPasswordOpen = onPasswordOpen,
+                    onNavigateToAddTotp = onNavigateToAddTotp,
+                    onNavigateToBankCardDetail = onNavigateToBankCardDetail,
+                    onNavigateToDocumentDetail = onNavigateToDocumentDetail,
+                    onNavigateToAddNote = onNavigateToAddNote,
+                    onNavigateToPasskeyDetail = onNavigateToPasskeyDetail,
+                    onOpenHistoryPage = onOpenHistoryPage,
+                    onOpenTrashPage = onOpenTrashPage,
+                    onOpenCommonAccountTemplatesPage = onNavigateToCommonAccountTemplates,
+                    onCloseHistoryPage = onCloseHistoryPage,
+                    passwordHistoryPageMode = passwordHistoryPageMode,
+                    passwordHistoryInitialTrashScopeKey = passwordHistoryInitialTrashScopeKey,
+                    onTimelineLogSelected = {},
+                    onSelectionModeChange = onPasswordSelectionModeChange,
+                    onBackToTopVisibilityChange = onBackToTopVisibilityChange,
+                    scrollToTopRequestKey = passwordScrollToTopRequestKey,
+                    isAddingPasswordInline = false,
+                    inlinePasswordEditorId = null,
+                    selectedPasswordId = null,
+                    onInlinePasswordEditorBack = {},
+                    totpViewModel = totpViewModel,
+                    bankCardViewModel = bankCardViewModel,
+                    noteViewModel = noteViewModel,
+                    documentViewModel = documentViewModel,
+                    passkeyViewModel = passkeyViewModel,
+                    disablePasswordVerification = appSettings.disablePasswordVerification,
+                    biometricEnabled = appSettings.biometricEnabled,
+                    iconCardsEnabled = appSettings.iconCardsEnabled && appSettings.passwordPageIconEnabled,
+                    unmatchedIconHandlingStrategy = appSettings.unmatchedIconHandlingStrategy,
+                    onClearSelectedPassword = {},
+                    onEditPassword = {}
+                )
             }
             BottomNavItem.Authenticator -> {
                 TotpListContent(
@@ -2792,6 +2984,7 @@ private fun MainScreenTabResetEffects(
     onResetSendPane: () -> Unit,
     onResetTimelineSelection: () -> Unit,
 ) {
+    // Each effect owns one tab domain reset. Keep them split to avoid hidden coupling.
     LaunchedEffect(currentTab.key, isCompactWidth) {
         if (isCompactWidth || currentTab != BottomNavItem.Passwords) {
             onResetPasswordPane()
@@ -2850,6 +3043,7 @@ private fun BoxScope.MainScreenFabOverlay(
     currentTab: BottomNavItem,
     isCompactWidth: Boolean,
     wideFabHostWidth: Dp,
+    appSettings: takagi.ru.monica.data.AppSettings,
     passwordHistoryPageMode: PasswordHistoryPageMode,
     isAnySelectionMode: Boolean,
     isAddingPasswordInline: Boolean,
@@ -2884,6 +3078,7 @@ private fun BoxScope.MainScreenFabOverlay(
     onTotpAddOpen: () -> Unit,
     onBankCardAddOpen: () -> Unit,
     onWalletAddOpen: () -> Unit,
+    onNavigateToWalletAdd: (CardWalletTab) -> Unit,
     onNoteAddOpen: () -> Unit,
     onSendAddOpen: () -> Unit,
     onGeneratorRefresh: () -> Unit,
@@ -2901,6 +3096,8 @@ private fun BoxScope.MainScreenFabOverlay(
     sendState: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel.SendState,
     bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel,
 ) {
+    // FAB visibility is computed from tab context + selection mode + detail pane occupancy.
+    // This avoids conflicting gestures between fast-scroll, quick access, and expandable add menu.
     val fastScrollStripProgress by passwordViewModel.fastScrollProgress.collectAsState()
 
     val hasWideDetailSelection = !isCompactWidth && when (currentTab) {
@@ -3081,6 +3278,9 @@ private fun BoxScope.MainScreenFabOverlay(
                 fabBottomOffset = fabBottomOffset,
                 fabContainerColor = fabContainerColor,
                 fabIconTint = fabIconTint,
+                addButtonBehaviorMode = appSettings.addButtonBehaviorMode,
+                addButtonMenuOrder = appSettings.addButtonMenuOrder,
+                addButtonMenuEnabledActions = appSettings.addButtonMenuEnabledActions,
                 currentTab = currentTab,
                 isCompactWidth = isCompactWidth,
                 cardWalletSubTab = cardWalletSubTab,
@@ -3088,6 +3288,7 @@ private fun BoxScope.MainScreenFabOverlay(
                 onTotpAddOpen = onTotpAddOpen,
                 onBankCardAddOpen = onBankCardAddOpen,
                 onWalletAddOpen = onWalletAddOpen,
+                onNavigateToWalletAdd = onNavigateToWalletAdd,
                 onNoteAddOpen = onNoteAddOpen,
                 onSendAddOpen = onSendAddOpen,
                 onGeneratorRefresh = onGeneratorRefresh,
@@ -3366,9 +3567,9 @@ private fun MainScreenSelectionBars(
     selectedPasswordCount: Int,
     onExitPasswordSelection: () -> Unit,
     onSelectAllPasswords: () -> Unit,
-    onFavoriteSelectedPasswords: () -> Unit,
-    onMoveToCategoryPasswords: () -> Unit,
-    onManualStackPasswords: () -> Unit,
+    onFavoriteSelectedPasswords: (() -> Unit)?,
+    onMoveToCategoryPasswords: (() -> Unit)?,
+    onManualStackPasswords: (() -> Unit)?,
     onDeleteSelectedPasswords: () -> Unit,
     isTotpSelectionMode: Boolean,
     selectedTotpCount: Int,
@@ -3447,6 +3648,9 @@ private fun MainScreenAddFab(
     fabBottomOffset: Dp,
     fabContainerColor: Color,
     fabIconTint: Color,
+    addButtonBehaviorMode: AddButtonBehaviorMode,
+    addButtonMenuOrder: List<AddButtonMenuAction>,
+    addButtonMenuEnabledActions: List<AddButtonMenuAction>,
     currentTab: BottomNavItem,
     isCompactWidth: Boolean,
     cardWalletSubTab: CardWalletTab,
@@ -3454,6 +3658,7 @@ private fun MainScreenAddFab(
     onTotpAddOpen: () -> Unit,
     onBankCardAddOpen: () -> Unit,
     onWalletAddOpen: () -> Unit,
+    onNavigateToWalletAdd: (CardWalletTab) -> Unit,
     onNoteAddOpen: () -> Unit,
     onSendAddOpen: () -> Unit,
     onGeneratorRefresh: () -> Unit,
@@ -3472,6 +3677,13 @@ private fun MainScreenAddFab(
     sendState: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel.SendState,
     bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel
 ) {
+    var showVaultWalletAddScreen by rememberSaveable(currentTab.key) { mutableStateOf(false) }
+    val compactWalletAddType = when (cardWalletSubTab) {
+        CardWalletTab.DOCUMENTS -> CardWalletTab.DOCUMENTS
+        CardWalletTab.BANK_CARDS -> CardWalletTab.BANK_CARDS
+        CardWalletTab.ALL -> walletUnifiedAddType
+    }
+
     AnimatedVisibility(
         visible = visible,
         enter = scaleIn(
@@ -3483,17 +3695,116 @@ private fun MainScreenAddFab(
         ) + fadeIn(),
         exit = scaleOut(targetScale = 0.85f) + fadeOut()
     ) {
-        if (currentTab == BottomNavItem.VaultV2) {
-            VaultV2FabMenu(
-                fabBottomOffset = fabBottomOffset,
-                fabContainerColor = fabContainerColor,
-                fabIconTint = fabIconTint,
-                onExpandStateChanged = onExpandStateChanged,
-                onCreatePassword = onPasswordAddOpen,
-                onCreateNote = onNoteAddOpen,
-                onCreateAuthenticator = onTotpAddOpen,
-                onCreateCard = onBankCardAddOpen,
-            )
+        if (currentTab == BottomNavItem.VaultV2 || currentTab == BottomNavItem.Passwords) {
+            val menuActions = remember(
+                addButtonMenuOrder,
+                addButtonMenuEnabledActions,
+                onPasswordAddOpen,
+                onNoteAddOpen,
+                onTotpAddOpen,
+                onNavigateToWalletAdd,
+                isCompactWidth,
+                compactWalletAddType,
+                showVaultWalletAddScreen
+            ) {
+                addButtonMenuOrder
+                    .filter { addButtonMenuEnabledActions.contains(it) }
+                    .map { action ->
+                        when (action) {
+                            AddButtonMenuAction.PASSWORD -> {
+                                VaultV2FabMenuAction(
+                                    icon = Icons.Default.Lock,
+                                    labelRes = R.string.item_type_password,
+                                    onClick = onPasswordAddOpen
+                                )
+                            }
+
+                            AddButtonMenuAction.NOTE -> {
+                                VaultV2FabMenuAction(
+                                    icon = Icons.Default.Description,
+                                    labelRes = R.string.v2_create_note,
+                                    onClick = onNoteAddOpen
+                                )
+                            }
+
+                            AddButtonMenuAction.AUTHENTICATOR -> {
+                                VaultV2FabMenuAction(
+                                    icon = Icons.Default.Security,
+                                    labelRes = R.string.item_type_authenticator,
+                                    onClick = onTotpAddOpen
+                                )
+                            }
+
+                            AddButtonMenuAction.BANK_CARD -> {
+                                VaultV2FabMenuAction(
+                                    icon = Icons.Default.CreditCard,
+                                    labelRes = R.string.add_button_action_card,
+                                    onClick = {
+                                        if (isCompactWidth) {
+                                            onNavigateToWalletAdd(compactWalletAddType)
+                                        } else {
+                                            showVaultWalletAddScreen = true
+                                        }
+                                    }
+                                )
+                            }
+                        }
+                    }
+            }
+            if (showVaultWalletAddScreen) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(MaterialTheme.colorScheme.surface)
+                ) {
+                    UnifiedWalletAddScreen(
+                        selectedType = walletUnifiedAddType,
+                        onTypeSelected = onWalletUnifiedAddTypeChange,
+                        onNavigateBack = { showVaultWalletAddScreen = false },
+                        bankCardViewModel = bankCardViewModel,
+                        documentViewModel = documentViewModel,
+                        stateHolder = walletAddSaveableStateHolder
+                    )
+                }
+            } else if (addButtonBehaviorMode == AddButtonBehaviorMode.EXPANDABLE_MENU) {
+                VaultV2FabMenu(
+                    fabBottomOffset = fabBottomOffset,
+                    fabContainerColor = fabContainerColor,
+                    fabIconTint = fabIconTint,
+                    onExpandStateChanged = onExpandStateChanged,
+                    menuActions = menuActions
+                )
+            } else {
+                SwipeableAddFab(
+                    fabBottomOffset = fabBottomOffset,
+                    fabContainerColor = fabContainerColor,
+                    modifier = Modifier,
+                    onExpandStateChanged = onExpandStateChanged,
+                    fabContent = {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = stringResource(R.string.add),
+                            tint = fabIconTint
+                        )
+                    },
+                    expandedContent = { collapse ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(MaterialTheme.colorScheme.surface)
+                        ) {
+                            AddEditPasswordScreen(
+                                viewModel = passwordViewModel,
+                                totpViewModel = totpViewModel,
+                                bankCardViewModel = bankCardViewModel,
+                                localKeePassViewModel = localKeePassViewModel,
+                                passwordId = null,
+                                onNavigateBack = collapse
+                            )
+                        }
+                    }
+                )
+            }
         } else {
             SwipeableAddFab(
                 // 通过内部参数控制 FAB 位置，确保容器本身是全屏的
@@ -3505,10 +3816,10 @@ private fun MainScreenAddFab(
                     BottomNavItem.VaultV2 -> if (isCompactWidth) null else ({ onPasswordAddOpen() })
                     BottomNavItem.Passwords -> if (isCompactWidth) null else ({ onPasswordAddOpen() })
                     BottomNavItem.Authenticator -> if (isCompactWidth) null else ({ onTotpAddOpen() })
-                    BottomNavItem.CardWallet -> if (isCompactWidth || cardWalletSubTab == CardWalletTab.ALL) {
-                        null
-                    } else {
-                        ({ onWalletAddOpen() })
+                    BottomNavItem.CardWallet -> when {
+                        isCompactWidth -> ({ onNavigateToWalletAdd(compactWalletAddType) })
+                        cardWalletSubTab == CardWalletTab.ALL -> null
+                        else -> ({ onWalletAddOpen() })
                     }
                     BottomNavItem.Notes -> if (isCompactWidth) null else ({ onNoteAddOpen() })
                     BottomNavItem.Send -> if (isCompactWidth) null else ({ onSendAddOpen() })
@@ -3654,10 +3965,7 @@ private fun VaultV2FabMenu(
     fabContainerColor: Color,
     fabIconTint: Color,
     onExpandStateChanged: (Boolean) -> Unit,
-    onCreatePassword: () -> Unit,
-    onCreateNote: () -> Unit,
-    onCreateAuthenticator: () -> Unit,
-    onCreateCard: () -> Unit,
+    menuActions: List<VaultV2FabMenuAction>,
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     val animatedCornerRadius by animateDpAsState(
@@ -3668,30 +3976,6 @@ private fun VaultV2FabMenu(
         ),
         label = "vault_v2_fab_corner"
     )
-    val menuActions = remember(onCreatePassword, onCreateNote, onCreateAuthenticator, onCreateCard) {
-        listOf(
-            VaultV2FabMenuAction(
-                icon = Icons.Default.CreditCard,
-                labelRes = R.string.item_type_bank_card,
-                onClick = onCreateCard
-            ),
-            VaultV2FabMenuAction(
-                icon = Icons.Default.Security,
-                labelRes = R.string.item_type_authenticator,
-                onClick = onCreateAuthenticator
-            ),
-            VaultV2FabMenuAction(
-                icon = Icons.Default.Description,
-                labelRes = R.string.v2_create_note,
-                onClick = onCreateNote
-            ),
-            VaultV2FabMenuAction(
-                icon = Icons.Default.Lock,
-                labelRes = R.string.item_type_password,
-                onClick = onCreatePassword
-            ),
-        )
-    }
 
     fun updateExpanded(next: Boolean) {
         if (expanded == next) return

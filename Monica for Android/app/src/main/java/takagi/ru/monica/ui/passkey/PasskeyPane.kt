@@ -68,8 +68,6 @@ internal fun PasskeyPane(
                     PasskeyDetailPane(
                         passkey = passkey,
                         boundPasswordTitle = boundPasswordTitle,
-                        totalPasskeys = passkeyTotalCount,
-                        boundPasskeys = passkeyBoundCount,
                         onOpenBoundPassword = passkey.boundPasswordId?.let { boundId ->
                             { onOpenPasswordDetail(boundId) }
                         },

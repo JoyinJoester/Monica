@@ -63,40 +63,32 @@ fun StackedPasswordGroup(
     if (stackCardMode == StackCardMode.ALWAYS_EXPANDED) {
         passwords.forEach { password ->
             key(password.id) {
-                takagi.ru.monica.ui.gestures.SwipeActions(
+                PasswordListSingleCardItem(
+                    entry = password,
+                    onClick = {
+                        if (isSelectionMode) {
+                            onToggleSelection(password.id)
+                        } else {
+                            onPasswordClick(password)
+                        }
+                    },
+                    onLongClick = { onLongClick(password) },
                     onSwipeLeft = { onSwipeLeft(password) },
                     onSwipeRight = { onSwipeRight(password) },
                     isSwiped = password.id == swipedItemId,
-                    enabled = true
-                ) {
-                    PasswordEntryCard(
-                        entry = password,
-                        onClick = {
-                            if (isSelectionMode) {
-                                onToggleSelection(password.id)
-                            } else {
-                                onPasswordClick(password)
-                            }
-                        },
-                        onLongClick = { onLongClick(password) },
-                        onToggleFavorite = { onToggleFavorite(password) },
-                        onToggleGroupCover = null,
-                        isSelectionMode = isSelectionMode,
-                        isSelected = selectedPasswords.contains(password.id),
-                        canSetGroupCover = false,
-                        isInExpandedGroup = false,
-                        isSingleCard = true,
-                        iconCardsEnabled = iconCardsEnabled,
-                        unmatchedIconHandlingStrategy = unmatchedIconHandlingStrategy,
-                        passwordCardDisplayMode = passwordCardDisplayMode,
-                        passwordCardDisplayFields = passwordCardDisplayFields,
-                        showAuthenticator = showAuthenticator,
-                        hideOtherContentWhenAuthenticator = hideOtherContentWhenAuthenticator,
-                        totpTimeOffsetSeconds = totpTimeOffsetSeconds,
-                        smoothAuthenticatorProgress = smoothAuthenticatorProgress,
-                        enableSharedBounds = enableSharedBounds
-                    )
-                }
+                    isSelectionMode = isSelectionMode,
+                    isSelected = selectedPasswords.contains(password.id),
+                    onToggleFavorite = { onToggleFavorite(password) },
+                    unmatchedIconHandlingStrategy = unmatchedIconHandlingStrategy,
+                    passwordCardDisplayMode = passwordCardDisplayMode,
+                    passwordCardDisplayFields = passwordCardDisplayFields,
+                    showAuthenticator = showAuthenticator,
+                    hideOtherContentWhenAuthenticator = hideOtherContentWhenAuthenticator,
+                    totpTimeOffsetSeconds = totpTimeOffsetSeconds,
+                    smoothAuthenticatorProgress = smoothAuthenticatorProgress,
+                    iconCardsEnabled = iconCardsEnabled,
+                    enableSharedBounds = enableSharedBounds
+                )
             }
         }
         return
@@ -105,40 +97,32 @@ fun StackedPasswordGroup(
     // 单个密码直接显示，不堆叠 (且不是合并卡片)
     if (passwords.size == 1 && !isMergedPasswordCard) {
         val password = passwords.first()
-        takagi.ru.monica.ui.gestures.SwipeActions(
+        PasswordListSingleCardItem(
+            entry = password,
+            onClick = {
+                if (isSelectionMode) {
+                    onToggleSelection(password.id)
+                } else {
+                    onPasswordClick(password)
+                }
+            },
+            onLongClick = { onLongClick(password) },
             onSwipeLeft = { onSwipeLeft(password) },
             onSwipeRight = { onSwipeRight(password) },
             isSwiped = password.id == swipedItemId,
-            enabled = true
-        ) {
-            PasswordEntryCard(
-                entry = password,
-                onClick = {
-                    if (isSelectionMode) {
-                        onToggleSelection(password.id)
-                    } else {
-                        onPasswordClick(password)
-                    }
-                },
-                onLongClick = { onLongClick(password) },
-                onToggleFavorite = { onToggleFavorite(password) },
-                onToggleGroupCover = null,
-                isSelectionMode = isSelectionMode,
-                isSelected = selectedPasswords.contains(password.id),
-                canSetGroupCover = false,
-                isInExpandedGroup = false,
-                isSingleCard = true,
-                iconCardsEnabled = iconCardsEnabled,
-                unmatchedIconHandlingStrategy = unmatchedIconHandlingStrategy,
-                passwordCardDisplayMode = passwordCardDisplayMode,
-                passwordCardDisplayFields = passwordCardDisplayFields,
-                showAuthenticator = showAuthenticator,
-                hideOtherContentWhenAuthenticator = hideOtherContentWhenAuthenticator,
-                totpTimeOffsetSeconds = totpTimeOffsetSeconds,
-                smoothAuthenticatorProgress = smoothAuthenticatorProgress,
-                enableSharedBounds = enableSharedBounds
-            )
-        }
+            isSelectionMode = isSelectionMode,
+            isSelected = selectedPasswords.contains(password.id),
+            onToggleFavorite = { onToggleFavorite(password) },
+            unmatchedIconHandlingStrategy = unmatchedIconHandlingStrategy,
+            passwordCardDisplayMode = passwordCardDisplayMode,
+            passwordCardDisplayFields = passwordCardDisplayFields,
+            showAuthenticator = showAuthenticator,
+            hideOtherContentWhenAuthenticator = hideOtherContentWhenAuthenticator,
+            totpTimeOffsetSeconds = totpTimeOffsetSeconds,
+            smoothAuthenticatorProgress = smoothAuthenticatorProgress,
+            iconCardsEnabled = iconCardsEnabled,
+            enableSharedBounds = enableSharedBounds
+        )
         return
     }
 

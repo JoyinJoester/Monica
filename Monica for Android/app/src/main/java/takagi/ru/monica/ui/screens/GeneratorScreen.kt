@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,6 +46,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import takagi.ru.monica.R
@@ -88,7 +90,12 @@ fun colorizePassword(password: String): AnnotatedString {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class, ExperimentalFoundationApi::class)
+@OptIn(
+    ExperimentalMaterial3Api::class,
+    ExperimentalLayoutApi::class,
+    ExperimentalFoundationApi::class,
+    ExperimentalMaterial3ExpressiveApi::class
+)
 @Composable
 fun GeneratorScreen(
     onNavigateBack: () -> Unit,
@@ -378,22 +385,24 @@ fun GeneratorScreen(
             }
         }
     }
-    
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
             .imePadding()
     ) {
+        var generatorMenuExpanded by remember { mutableStateOf(false) }
         val currentResult = when (selectedGenerator) {
             GeneratorType.SYMBOL -> symbolResult
             GeneratorType.PASSWORD -> passwordResult
             GeneratorType.PASSPHRASE -> passphraseResult
             GeneratorType.PIN -> pinResult
         }
-        val isResultCardPinned by remember(listState, currentResult) {
+        val shouldShowResultCard = currentResult.isNotEmpty()
+        val isResultCardPinned by remember(listState, shouldShowResultCard) {
             derivedStateOf {
-                currentResult.isNotEmpty() &&
+                shouldShowResultCard &&
                     (listState.firstVisibleItemIndex > 2 ||
                         (listState.firstVisibleItemIndex == 2 && listState.firstVisibleItemScrollOffset > 0))
             }
@@ -434,50 +443,26 @@ fun GeneratorScreen(
             }
 
             item {
-                // 生成器类型选择按钮 - Pill 样式按钮
-                Surface(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 20.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(4.dp),
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        FilterChipTab(
-                            text = stringResource(R.string.generator_symbol),
-                            isSelected = selectedGenerator == GeneratorType.SYMBOL,
-                            onClick = { viewModel.updateSelectedGenerator(GeneratorType.SYMBOL) },
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        FilterChipTab(
-                            text = stringResource(R.string.generator_word),
-                            isSelected = selectedGenerator == GeneratorType.PASSWORD,
-                            onClick = { viewModel.updateSelectedGenerator(GeneratorType.PASSWORD) },
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        FilterChipTab(
-                            text = stringResource(R.string.generator_passphrase),
-                            isSelected = selectedGenerator == GeneratorType.PASSPHRASE,
-                            onClick = { viewModel.updateSelectedGenerator(GeneratorType.PASSPHRASE) },
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        FilterChipTab(
-                            text = stringResource(R.string.generator_pin),
-                            isSelected = selectedGenerator == GeneratorType.PIN,
-                            onClick = { viewModel.updateSelectedGenerator(GeneratorType.PIN) },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
+                    GeneratorTypeSplitButton(
+                        selectedGenerator = selectedGenerator,
+                        expanded = generatorMenuExpanded,
+                        onExpandedChange = { generatorMenuExpanded = it },
+                        onGenerateCurrent = regenerateNow,
+                        onSelectType = {
+                            generatorMenuExpanded = false
+                            viewModel.updateSelectedGenerator(it)
+                        }
+                    )
                 }
             }
 
-            if (currentResult.isNotEmpty()) {
+            if (shouldShowResultCard) {
                 stickyHeader {
                     Surface(
                         color = MaterialTheme.colorScheme.background.copy(alpha = 0.98f)
@@ -1436,6 +1421,9 @@ private fun FilterChipTab(
 @Composable
 private fun ResultCard(
     result: String,
+    title: String? = null,
+    showStrengthSection: Boolean = true,
+    supportingInfo: String? = null,
     modifier: Modifier = Modifier,
     compactMode: Boolean = false,
     onCopy: (String) -> Unit
@@ -1535,7 +1523,7 @@ private fun ResultCard(
                             modifier = Modifier.size(if (isCompact) 18.dp else 24.dp)
                         )
                         Text(
-                            text = stringResource(R.string.generated_password),
+                            text = title ?: stringResource(R.string.generated_password),
                             style = if (isCompact) MaterialTheme.typography.labelLarge else MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.SemiBold,
                             color = if (isCompact) colorScheme.onSurfaceVariant else colorScheme.onPrimaryContainer,
@@ -1613,38 +1601,43 @@ private fun ResultCard(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(if (isCompact) 6.dp else 12.dp))
+                val infoText = supportingInfo ?: stringResource(R.string.length_chars, result.length)
+                if (showStrengthSection || infoText.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(if (isCompact) 6.dp else 12.dp))
+                }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "安全程度",
-                        style = if (isCompact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
-                        color = if (isCompact) {
-                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
-                        } else {
-                            MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
-                        }
-                    )
-                    Surface(
-                        shape = RoundedCornerShape(99.dp),
-                        color = strengthColor.copy(alpha = if (isCompact) 0.18f else 0.16f),
-                        contentColor = strengthColor
+                if (showStrengthSection) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = strengthResult.level.displayName,
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                            text = "安全程度",
                             style = if (isCompact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.SemiBold
+                            color = if (isCompact) {
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
+                            } else {
+                                MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.75f)
+                            }
                         )
+                        Surface(
+                            shape = RoundedCornerShape(99.dp),
+                            color = strengthColor.copy(alpha = if (isCompact) 0.18f else 0.16f),
+                            contentColor = strengthColor
+                        ) {
+                            Text(
+                                text = strengthResult.level.displayName,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                                style = if (isCompact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                 }
 
                 AnimatedVisibility(
-                    visible = result.isNotEmpty(),
+                    visible = result.isNotEmpty() && infoText.isNotBlank(),
                     enter = fadeIn(animationSpec = tween(300, delayMillis = 100)) + slideInVertically(),
                     exit = fadeOut(animationSpec = tween(200))
                 ) {
@@ -1663,7 +1656,7 @@ private fun ResultCard(
                             modifier = Modifier.size(if (isCompact) 14.dp else 16.dp)
                         )
                         Text(
-                            text = stringResource(R.string.length_chars, result.length),
+                            text = infoText,
                             style = if (isCompact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
                             color = if (isCompact) {
                                 MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
@@ -1673,6 +1666,154 @@ private fun ResultCard(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+private fun generatorTypeLabel(type: GeneratorType, context: Context): String = when (type) {
+    GeneratorType.SYMBOL -> context.getString(R.string.generator_symbol)
+    GeneratorType.PASSWORD -> context.getString(R.string.generator_word)
+    GeneratorType.PASSPHRASE -> context.getString(R.string.generator_passphrase)
+    GeneratorType.PIN -> context.getString(R.string.generator_pin)
+}
+
+private fun generatorTypeTitle(type: GeneratorType, context: Context): String = when (type) {
+    GeneratorType.SYMBOL -> context.getString(R.string.random_symbol_generator)
+    GeneratorType.PASSWORD -> context.getString(R.string.password_generator)
+    GeneratorType.PASSPHRASE -> context.getString(R.string.passphrase_generator)
+    GeneratorType.PIN -> context.getString(R.string.pin_generator)
+}
+
+@Composable
+private fun generatorTypeIcon(type: GeneratorType) = when (type) {
+    GeneratorType.SYMBOL -> Icons.Default.Refresh
+    GeneratorType.PASSWORD -> Icons.Default.Key
+    GeneratorType.PASSPHRASE -> Icons.Default.Info
+    GeneratorType.PIN -> Icons.Default.Visibility
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+private fun GeneratorTypeSplitButton(
+    selectedGenerator: GeneratorType,
+    expanded: Boolean,
+    onExpandedChange: (Boolean) -> Unit,
+    onGenerateCurrent: () -> Unit,
+    onSelectType: (GeneratorType) -> Unit
+) {
+    val context = LocalContext.current
+    val rotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+        label = "generator_split_rotation"
+    )
+
+    Box(modifier = Modifier.wrapContentSize(Alignment.TopStart)) {
+        SplitButtonLayout(
+            leadingButton = {
+                SplitButtonDefaults.TonalLeadingButton(
+                    onClick = onGenerateCurrent
+                ) {
+                    Icon(
+                        imageVector = generatorTypeIcon(selectedGenerator),
+                        contentDescription = null,
+                        modifier = Modifier.size(SplitButtonDefaults.LeadingIconSize)
+                    )
+                    Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                    Text(generatorTypeLabel(selectedGenerator, context))
+                }
+            },
+            trailingButton = {
+                SplitButtonDefaults.TonalTrailingButton(
+                    checked = expanded,
+                    onCheckedChange = onExpandedChange
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ExpandMore,
+                        contentDescription = stringResource(R.string.generator_switch_type),
+                        modifier = Modifier
+                            .size(SplitButtonDefaults.TrailingIconSize)
+                            .graphicsLayer { rotationZ = rotation }
+                    )
+                }
+            }
+        )
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { onExpandedChange(false) },
+            modifier = Modifier.width(240.dp),
+            offset = DpOffset(x = 0.dp, y = 10.dp),
+            shape = RoundedCornerShape(24.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            tonalElevation = 8.dp,
+            shadowElevation = 12.dp
+        ) {
+            Column(
+                modifier = Modifier.padding(vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                GeneratorType.entries.forEach { type ->
+                    GeneratorTypeMenuItem(
+                        title = generatorTypeLabel(type, context),
+                        selected = type == selectedGenerator,
+                        icon = generatorTypeIcon(type),
+                        onClick = { onSelectType(type) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GeneratorTypeMenuItem(
+    title: String,
+    selected: Boolean,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.padding(horizontal = 8.dp),
+        shape = RoundedCornerShape(18.dp),
+        color = if (selected) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f)
+        } else {
+            Color.Transparent
+        },
+        tonalElevation = if (selected) 2.dp else 0.dp
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (selected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                modifier = Modifier.size(20.dp)
+            )
+            Text(
+                text = title,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium
+            )
+            if (selected) {
+                Icon(
+                    imageVector = Icons.Default.Done,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
             }
         }
     }

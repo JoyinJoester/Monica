@@ -1,14 +1,10 @@
 package takagi.ru.monica
 
 import android.app.Application
-import android.content.ComponentName
-import android.content.pm.PackageManager
-import android.os.Build
 import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
@@ -18,7 +14,6 @@ import takagi.ru.monica.bitwarden.sync.NetworkMonitor
 import takagi.ru.monica.bitwarden.sync.SyncQueueManager
 import takagi.ru.monica.bitwarden.sync.SyncQueueManagerHolder
 import takagi.ru.monica.data.PasswordDatabase
-import takagi.ru.monica.passkey.MonicaCredentialProviderService
 
 /**
  * Monica 应用程序入口
@@ -34,7 +29,6 @@ class MonicaApplication : Application() {
     
     companion object {
         private const val TAG = "MonicaApplication"
-        private const val CREDENTIAL_REFRESH_DELAY_MS = 1500L
     }
 
     private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -44,7 +38,6 @@ class MonicaApplication : Application() {
         
         initKoin()
         initBitwardenSyncInfrastructure()
-        scheduleCredentialProviderRefresh()
     }
     
     /**
@@ -78,53 +71,5 @@ class MonicaApplication : Application() {
         }
     }
     
-    /**
-     * 启动后做一次软刷新，不进入 DISABLED 状态，尽量避免体验抖动。
-     */
-    private fun maybeSoftRefreshCredentialProviderServiceState() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
-        try {
-            val componentName = ComponentName(this, MonicaCredentialProviderService::class.java)
-            val currentState = packageManager.getComponentEnabledSetting(componentName)
-            when (currentState) {
-                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-                PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER -> {
-                    return
-                }
-
-                PackageManager.COMPONENT_ENABLED_STATE_DEFAULT -> {
-                    packageManager.setComponentEnabledSetting(
-                        componentName,
-                        PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                        PackageManager.DONT_KILL_APP
-                    )
-                    packageManager.setComponentEnabledSetting(
-                        componentName,
-                        PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,
-                        PackageManager.DONT_KILL_APP
-                    )
-                }
-
-                PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> {
-                    packageManager.setComponentEnabledSetting(
-                        componentName,
-                        PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,
-                        PackageManager.DONT_KILL_APP
-                    )
-                }
-            }
-            Log.d(TAG, "CredentialProviderService state soft-refreshed")
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to soft-refresh CredentialProviderService state", e)
-        }
-    }
-
-    private fun scheduleCredentialProviderRefresh() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
-        appScope.launch {
-            delay(CREDENTIAL_REFRESH_DELAY_MS)
-            maybeSoftRefreshCredentialProviderServiceState()
-        }
-    }
 }
 

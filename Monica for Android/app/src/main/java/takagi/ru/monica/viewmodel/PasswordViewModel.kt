@@ -193,6 +193,16 @@ class PasswordViewModel(
     val fastScrollRequestKey: StateFlow<Int> = _fastScrollRequestKey.asStateFlow()
     private val _fastScrollProgress = MutableStateFlow(0f)
     val fastScrollProgress: StateFlow<Float> = _fastScrollProgress.asStateFlow()
+    private val _passwordListScrollIndex = MutableStateFlow(0)
+    val passwordListScrollIndex: StateFlow<Int> = _passwordListScrollIndex.asStateFlow()
+    private val _passwordListScrollOffset = MutableStateFlow(0)
+    val passwordListScrollOffset: StateFlow<Int> = _passwordListScrollOffset.asStateFlow()
+    private val _passwordListScrollAnchorKey = MutableStateFlow<String?>(null)
+    val passwordListScrollAnchorKey: StateFlow<String?> = _passwordListScrollAnchorKey.asStateFlow()
+    private val _vaultV2ScrollIndex = MutableStateFlow(0)
+    val vaultV2ScrollIndex: StateFlow<Int> = _vaultV2ScrollIndex.asStateFlow()
+    private val _vaultV2ScrollOffset = MutableStateFlow(0)
+    val vaultV2ScrollOffset: StateFlow<Int> = _vaultV2ScrollOffset.asStateFlow()
 
     val categories = repository.getAllCategories()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
@@ -220,6 +230,31 @@ class PasswordViewModel(
 
     fun updateFastScrollProgress(progress: Float) {
         _fastScrollProgress.value = progress.coerceIn(0f, 1f)
+    }
+
+    fun updatePasswordListScrollPosition(index: Int, offset: Int, anchorKey: String? = null) {
+        val safeIndex = index.coerceAtLeast(0)
+        val safeOffset = offset.coerceAtLeast(0)
+        if (_passwordListScrollIndex.value != safeIndex) {
+            _passwordListScrollIndex.value = safeIndex
+        }
+        if (_passwordListScrollOffset.value != safeOffset) {
+            _passwordListScrollOffset.value = safeOffset
+        }
+        if (_passwordListScrollAnchorKey.value != anchorKey) {
+            _passwordListScrollAnchorKey.value = anchorKey
+        }
+    }
+
+    fun updateVaultV2ScrollPosition(index: Int, offset: Int) {
+        val safeIndex = index.coerceAtLeast(0)
+        val safeOffset = offset.coerceAtLeast(0)
+        if (_vaultV2ScrollIndex.value != safeIndex) {
+            _vaultV2ScrollIndex.value = safeIndex
+        }
+        if (_vaultV2ScrollOffset.value != safeOffset) {
+            _vaultV2ScrollOffset.value = safeOffset
+        }
     }
     
     private val debouncedSearchQuery: Flow<String> = searchQuery
@@ -857,7 +892,7 @@ class PasswordViewModel(
 
     private fun syncKeePassDatabase(databaseId: Long, forceRefresh: Boolean = false) {
         val bridge = keepassBridge ?: return
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.Default) {
             runCatching {
                 if (forceRefresh) {
                     KeePassKdbxService.invalidateProcessCache(databaseId)
@@ -873,7 +908,6 @@ class PasswordViewModel(
     }
 
     fun refreshKeePassFromSourceForCurrentContext() {
-        val bridge = keepassBridge ?: return
         val current = _categoryFilter.value
         val activeDatabaseId = when (current) {
             is CategoryFilter.KeePassDatabase -> current.databaseId
@@ -882,29 +916,8 @@ class PasswordViewModel(
             is CategoryFilter.KeePassDatabaseUncategorized -> current.databaseId
             else -> null
         }
-        if (activeDatabaseId != null) {
-            syncKeePassDatabase(activeDatabaseId, forceRefresh = true)
-            return
-        }
-
-        val dao = localKeePassDatabaseDao ?: return
-        viewModelScope.launch {
-            val databaseIds = runCatching { dao.getAllDatabasesSync().map { it.id } }.getOrDefault(emptyList())
-            databaseIds.forEach { databaseId ->
-                KeePassKdbxService.invalidateProcessCache(databaseId)
-                runCatching {
-                    val data = bridge.readLegacyPasswordEntries(databaseId).getOrNull() ?: return@forEach
-                    upsertKeePassEntries(databaseId, data)
-                    syncKeePassTotpEntries(databaseId)
-                }.onFailure { error ->
-                    Log.w(
-                        "PasswordViewModel",
-                        "Foreground KeePass refresh failed for databaseId=$databaseId",
-                        error
-                    )
-                }
-            }
-        }
+        val resolvedDatabaseId = activeDatabaseId ?: return
+        syncKeePassDatabase(resolvedDatabaseId, forceRefresh = true)
     }
 
     private suspend fun upsertKeePassEntries(databaseId: Long, entries: List<KeePassEntryData>) {
@@ -957,6 +970,7 @@ class PasswordViewModel(
                     keepassGroupPath = item.groupPath,
                     keepassEntryUuid = item.entryUuid,
                     keepassGroupUuid = item.groupUuid,
+                    sshKeyData = item.sshKeyData,
                     isDeleted = isInRecycleBin,
                     deletedAt = if (isInRecycleBin) (existing.deletedAt ?: Date()) else null,
                     updatedAt = Date()
@@ -976,6 +990,7 @@ class PasswordViewModel(
                     keepassGroupPath = item.groupPath,
                     keepassEntryUuid = item.entryUuid,
                     keepassGroupUuid = item.groupUuid,
+                    sshKeyData = item.sshKeyData,
                     isDeleted = isInRecycleBin,
                     deletedAt = if (isInRecycleBin) Date() else null
                 )
@@ -1048,8 +1063,8 @@ class PasswordViewModel(
     }
 
     private fun shouldImportKeePassPasswordEntry(item: KeePassEntryData): Boolean {
-        // KeepassXC 默认模板条目通常只有标题（登录字段为空）。
-        // 若这里过滤太严格，会导致“数据库可解密但显示为空”。
+        // KeePass 纯模板条目已在解析层过滤。
+        // 这里保留“只有标题”的真实条目，避免误伤用户手工维护的极简记录。
         return item.title.isNotBlank() ||
             item.username.isNotBlank() ||
             item.password.isNotBlank() ||
@@ -2520,6 +2535,7 @@ class PasswordViewModel(
                         keepassDatabaseId = draftEntry.keepassDatabaseId,
                         authenticatorKey = draftEntry.authenticatorKey,
                         passkeyBindings = draftEntry.passkeyBindings,
+                        sshKeyData = draftEntry.sshKeyData,
                         loginType = draftEntry.loginType,
                         ssoProvider = draftEntry.ssoProvider,
                         ssoRefEntryId = draftEntry.ssoRefEntryId,

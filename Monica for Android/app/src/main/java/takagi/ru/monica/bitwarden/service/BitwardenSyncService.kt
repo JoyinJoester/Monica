@@ -11,6 +11,8 @@ import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto.SymmetricCryptoKey
 import takagi.ru.monica.bitwarden.sync.EmptyVaultProtection
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.model.SshKeyData
+import takagi.ru.monica.data.model.SshKeyDataCodec
 import takagi.ru.monica.data.bitwarden.*
 import takagi.ru.monica.security.SecurityManager
 import java.time.Instant
@@ -422,6 +424,7 @@ class BitwardenSyncService(
                     ?: "",
                 country = customFields["monica_country"] ?: customFields["country"] ?: "",
                 passkeyBindings = customFields["monica_passkey_bindings"].orEmpty(),
+                sshKeyData = buildSshKeyDataFromCustomFields(customFields),
                 isFavorite = cipher.favorite,
                 createdAt = Date(),
                 updatedAt = Date(),
@@ -484,6 +487,7 @@ class BitwardenSyncService(
                 ?: ""
             val remoteCountry = customFields["monica_country"] ?: customFields["country"] ?: ""
             val remotePasskeyBindings = customFields["monica_passkey_bindings"].orEmpty()
+            val remoteSshKeyData = buildSshKeyDataFromCustomFields(customFields)
             
             return entry.copy(
                 title = name,
@@ -502,6 +506,7 @@ class BitwardenSyncService(
                 zipCode = remoteZip.ifBlank { entry.zipCode },
                 country = remoteCountry.ifBlank { entry.country },
                 passkeyBindings = remotePasskeyBindings.ifBlank { entry.passkeyBindings },
+                sshKeyData = remoteSshKeyData.ifBlank { entry.sshKeyData },
                 isFavorite = cipher.favorite,
                 updatedAt = Date(),
                 bitwardenVaultId = vaultId,
@@ -1153,6 +1158,15 @@ class BitwardenSyncService(
         addField("monica_zip_code", entry.zipCode)
         addField("monica_country", entry.country)
         addField("monica_passkey_bindings", entry.passkeyBindings)
+        SshKeyDataCodec.decode(entry.sshKeyData)?.let { ssh ->
+            addField("monica_ssh_algorithm", ssh.algorithm)
+            addField("monica_ssh_key_size", ssh.keySize.takeIf { it > 0 }?.toString().orEmpty())
+            addField("monica_ssh_public_key", ssh.publicKeyOpenSsh)
+            addField("monica_ssh_private_key", ssh.privateKeyOpenSsh)
+            addField("monica_ssh_fingerprint", ssh.fingerprintSha256)
+            addField("monica_ssh_comment", ssh.comment)
+            addField("monica_ssh_format", ssh.format)
+        }
 
         val legacyAddress = listOf(entry.addressLine, entry.city, entry.state, entry.zipCode, entry.country)
             .filter { it.isNotBlank() }
@@ -1219,6 +1233,20 @@ class BitwardenSyncService(
         val dotIndex = value.indexOf('.')
         if (dotIndex <= 0) return false
         return value.substring(0, dotIndex).all(Char::isDigit)
+    }
+
+    private fun buildSshKeyDataFromCustomFields(fields: Map<String, String>): String {
+        return SshKeyDataCodec.encode(
+            SshKeyData(
+                algorithm = fields["monica_ssh_algorithm"].orEmpty(),
+                keySize = fields["monica_ssh_key_size"]?.toIntOrNull() ?: 0,
+                publicKeyOpenSsh = fields["monica_ssh_public_key"].orEmpty(),
+                privateKeyOpenSsh = fields["monica_ssh_private_key"].orEmpty(),
+                fingerprintSha256 = fields["monica_ssh_fingerprint"].orEmpty(),
+                comment = fields["monica_ssh_comment"].orEmpty(),
+                format = fields["monica_ssh_format"].orEmpty().ifBlank { SshKeyData.FORMAT_OPENSSH }
+            )
+        )
     }
 
     /**

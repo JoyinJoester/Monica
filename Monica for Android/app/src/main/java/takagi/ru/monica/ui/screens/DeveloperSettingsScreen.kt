@@ -77,6 +77,7 @@ import takagi.ru.monica.R
 import takagi.ru.monica.autofill_ng.AutofillPickerActivityV2
 import takagi.ru.monica.autofill_ng.core.AutofillLogger
 import takagi.ru.monica.bitwarden.service.BitwardenDiagLogger
+import takagi.ru.monica.passkey.PasskeyValidationDiagnostics
 import takagi.ru.monica.security.SecurityDiagLogger
 import takagi.ru.monica.security.SessionManager
 import takagi.ru.monica.viewmodel.SettingsViewModel
@@ -643,6 +644,11 @@ private object DeveloperLogDebugHelper {
         }.getOrElse {
             "Security persisted logs unavailable: ${it.message}"
         }
+        val persistedPasskeyLogs = runCatching {
+            PasskeyValidationDiagnostics.buildReport(context)
+        }.getOrElse {
+            "Passkey diagnostics unavailable: ${it.message}"
+        }
 
         val report = buildString {
             appendLine("=== Monica Developer Log Report ===")
@@ -679,6 +685,13 @@ private object DeveloperLogDebugHelper {
                 appendLine(context.getString(R.string.developer_no_logs))
             } else {
                 appendLine(persistedSecurityLogs.trim())
+            }
+            appendLine()
+            appendLine("=== Passkey Persisted Logs ===")
+            if (persistedPasskeyLogs.isBlank()) {
+                appendLine(context.getString(R.string.developer_no_logs))
+            } else {
+                appendLine(persistedPasskeyLogs.trim())
             }
         }
 

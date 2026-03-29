@@ -29,7 +29,7 @@ import takagi.ru.monica.data.bitwarden.*
         BitwardenConflictBackup::class,
         BitwardenPendingOperation::class
     ],
-    version = 49,
+    version = 50,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -1314,6 +1314,24 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Migration 49 -> 50:
+         * 为密码条目增加结构化 SSH 密钥字段。
+         */
+        private val MIGRATION_49_50 = object : androidx.room.migration.Migration(49, 50) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 49→50: ssh key data column")
+                    database.execSQL(
+                        "ALTER TABLE password_entries ADD COLUMN ssh_key_data TEXT NOT NULL DEFAULT ''"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 49→50 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 49→50 failed: ${e.message}")
+                }
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -1369,7 +1387,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_45_46,  // KeePass KDBX 配置字段
                         MIGRATION_46_47,  // KeePass 原生 UUID 字段
                         MIGRATION_47_48,  // Bitwarden TLS/证书字段
-                        MIGRATION_48_49   // 历史密码表
+                        MIGRATION_48_49,  // 历史密码表
+                        MIGRATION_49_50   // SSH 密钥结构化字段
                     )
                     .build()
                 INSTANCE = instance

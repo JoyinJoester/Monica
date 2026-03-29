@@ -207,7 +207,12 @@ fun VaultV2Pane(
 	var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
 	var filter by rememberSaveable { mutableStateOf(VaultV2Filter.ALL) }
 	val selectedKeys = remember { mutableStateListOf<String>() }
-	val listState = rememberLazyListState()
+	val savedListIndex by passwordViewModel.vaultV2ScrollIndex.collectAsState()
+	val savedListOffset by passwordViewModel.vaultV2ScrollOffset.collectAsState()
+	val listState = rememberLazyListState(
+		initialFirstVisibleItemIndex = savedListIndex,
+		initialFirstVisibleItemScrollOffset = savedListOffset
+	)
 	val context = LocalContext.current
 	val density = LocalDensity.current
 	val scope = rememberCoroutineScope()
@@ -412,6 +417,10 @@ fun VaultV2Pane(
 	var allItems by remember { mutableStateOf(allItemsRaw) }
 	var pendingAllItems by remember { mutableStateOf<List<VaultV2Item>?>(null) }
 	var isAutoScrollingToTop by remember { mutableStateOf(false) }
+	var lastHandledScrollToTopRequestKey by rememberSaveable { mutableStateOf(0) }
+	var lastHandledFastScrollRequestKey by remember {
+		mutableStateOf(fastScrollRequestKey)
+	}
 	LaunchedEffect(allItemsRaw) {
 		if (isAutoScrollingToTop) {
 			pendingAllItems = allItemsRaw
@@ -516,7 +525,7 @@ fun VaultV2Pane(
 	}
 
 	LaunchedEffect(scrollToTopRequestKey) {
-		if (scrollToTopRequestKey > 0) {
+		if (scrollToTopRequestKey > lastHandledScrollToTopRequestKey) {
 			isAutoScrollingToTop = true
 			try {
 				runCatching {
@@ -525,19 +534,34 @@ fun VaultV2Pane(
 				listState.scrollToItem(0)
 			} finally {
 				isAutoScrollingToTop = false
+				lastHandledScrollToTopRequestKey = scrollToTopRequestKey
 			}
 		}
 	}
 
+	LaunchedEffect(listState) {
+		snapshotFlow {
+			listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset
+		}
+			.distinctUntilChanged()
+			.collect { (index, offset) ->
+				passwordViewModel.updateVaultV2ScrollPosition(index, offset)
+			}
+	}
+
 	LaunchedEffect(listState, sectionLayouts, filteredItems.size) {
 		snapshotFlow {
-			if (fastScrollRequestKey <= 0 || filteredItems.isEmpty() || sectionLayouts.isEmpty()) {
+			if (
+				fastScrollRequestKey <= lastHandledFastScrollRequestKey ||
+				filteredItems.isEmpty() ||
+				sectionLayouts.isEmpty()
+			) {
 				null
 			} else {
 				val targetItemIndex = (
 					fastScrollProgress.coerceIn(0f, 1f) * (filteredItems.size - 1)
 				).roundToInt().coerceIn(0, filteredItems.size - 1)
-				vaultV2LazyIndexForItemIndex(
+				fastScrollRequestKey to vaultV2LazyIndexForItemIndex(
 					sectionLayouts = sectionLayouts,
 					targetItemIndex = targetItemIndex,
 				)
@@ -546,17 +570,22 @@ fun VaultV2Pane(
 			.filterNotNull()
 			.distinctUntilChanged()
 			.conflate()
-			.collectLatest { targetLazyIndex ->
-				if (listState.firstVisibleItemIndex == targetLazyIndex) return@collectLatest
-				runCatching {
-					listState.scrollToItem(index = targetLazyIndex)
-				}.onFailure { throwable ->
-					if (throwable is CancellationException) return@onFailure
-					Log.e(
-						VAULT_V2_FAST_SCROLL_LOG_TAG,
-						"scrollToItem failed: targetLazyIndex=$targetLazyIndex filteredSize=${filteredItems.size}",
-						throwable
-					)
+			.collectLatest { (requestKey, targetLazyIndex) ->
+				try {
+					if (listState.firstVisibleItemIndex != targetLazyIndex) {
+						runCatching {
+							listState.scrollToItem(index = targetLazyIndex)
+						}.onFailure { throwable ->
+							if (throwable is CancellationException) return@onFailure
+							Log.e(
+								VAULT_V2_FAST_SCROLL_LOG_TAG,
+								"scrollToItem failed: targetLazyIndex=$targetLazyIndex filteredSize=${filteredItems.size}",
+								throwable
+							)
+						}
+					}
+				} finally {
+					lastHandledFastScrollRequestKey = requestKey
 				}
 			}
 	}

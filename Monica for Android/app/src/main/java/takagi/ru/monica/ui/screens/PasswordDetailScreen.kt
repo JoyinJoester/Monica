@@ -76,8 +76,6 @@ import kotlinx.coroutines.withContext
 import takagi.ru.monica.ui.components.InfoField
 import takagi.ru.monica.ui.components.InfoFieldWithCopy
 import takagi.ru.monica.ui.components.PasswordField
-import takagi.ru.monica.ui.components.CustomFieldDisplayCard
-import takagi.ru.monica.ui.components.CustomFieldDetailCard
 import takagi.ru.monica.data.CustomField
 import takagi.ru.monica.data.LoginType
 import takagi.ru.monica.data.SsoProvider
@@ -174,6 +172,7 @@ fun PasswordDetailScreen(
     var customFields by remember { mutableStateOf<List<CustomField>>(emptyList()) }
     val passwordHistory by viewModel.getPasswordHistoryFlow(passwordId).collectAsState(initial = emptyList())
     val passwordHistoryVisibility = remember { mutableStateMapOf<Long, Boolean>() }
+    val customFieldVisibility = remember { mutableStateMapOf<Long, Boolean>() }
     val usernameAliasFallbackTitle = stringResource(R.string.autofill_username)
     val hasAliasMeta = customFields.any {
         it.title == MONICA_USERNAME_ALIAS_META_FIELD_TITLE && it.value == MONICA_USERNAME_ALIAS_META_VALUE
@@ -624,6 +623,14 @@ fun PasswordDetailScreen(
                     )
                 }
 
+                if (displayCustomFields.isNotEmpty()) {
+                    CustomFieldsCard(
+                        fields = displayCustomFields,
+                        visibilityState = customFieldVisibility,
+                        context = context
+                    )
+                }
+
                 StorageInfoCard(
                     storageInfos = storageInfoEntries,
                     onEditPassword = onEditPassword
@@ -701,7 +708,7 @@ fun PasswordDetailScreen(
                         bindingSummaries = bindingSummaries
                     )
                 }
-                
+
                 // ==========================================
                 // 📧 个人信息区块
                 // ==========================================
@@ -754,36 +761,6 @@ fun PasswordDetailScreen(
                 // ==========================================
                 if (entry.notes.isNotEmpty()) {
                     NotesCard(notes = entry.notes)
-                }
-                
-                // ==========================================
-                // 📋 自定义字段区块 (独立卡片样式)
-                // ==========================================
-                displayCustomFields.forEach { field ->
-                    CustomFieldDetailCard(
-                        field = field,
-                        onCopy = { fieldName ->
-                            val isProtected = field.isProtected
-                            
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            val clip = ClipData.newPlainText(fieldName, field.value)
-                            
-                            // 敏感字段标记为敏感剪贴板（Android 13+）
-                            if (isProtected && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                                clip.description.extras = android.os.PersistableBundle().apply {
-                                    putBoolean(android.content.ClipDescription.EXTRA_IS_SENSITIVE, true)
-                                }
-                            }
-                            
-                            clipboard.setPrimaryClip(clip)
-                            val message = if (isProtected) {
-                                context.getString(R.string.copied_sensitive_field, fieldName)
-                            } else {
-                                context.getString(R.string.copied_field_name, fieldName)
-                            }
-                            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                        }
-                    )
                 }
 
                 AnimatedVisibility(
@@ -2255,6 +2232,70 @@ private fun NotesCard(notes: String) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
+        }
+    }
+}
+
+@Composable
+private fun CustomFieldsCard(
+    fields: List<CustomField>,
+    visibilityState: MutableMap<Long, Boolean>,
+    context: Context
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.EditNote,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = stringResource(R.string.custom_field_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            fields.forEachIndexed { index, field ->
+                if (index > 0) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
+
+                val label = field.title.ifBlank { stringResource(R.string.custom_field_new_field) }
+                val isVisible = visibilityState[field.id] ?: false
+
+                if (field.isProtected) {
+                    PasswordField(
+                        label = label,
+                        value = field.value,
+                        visible = isVisible,
+                        onToggleVisibility = {
+                            visibilityState[field.id] = !isVisible
+                        },
+                        context = context
+                    )
+                } else {
+                    InfoFieldWithCopy(
+                        label = label,
+                        value = field.value.ifBlank { "-" },
+                        context = context
+                    )
+                }
+            }
         }
     }
 }

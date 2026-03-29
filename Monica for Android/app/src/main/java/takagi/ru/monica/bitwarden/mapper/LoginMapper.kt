@@ -2,6 +2,8 @@ package takagi.ru.monica.bitwarden.mapper
 
 import takagi.ru.monica.bitwarden.api.*
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.model.SshKeyData
+import takagi.ru.monica.data.model.SshKeyDataCodec
 import java.util.Date
 
 /**
@@ -56,6 +58,17 @@ class LoginMapper : BitwardenMapper<PasswordEntry> {
             phone = customFields["phone"] ?: "",
             appPackageName = customFields["appPackageName"] ?: "",
             appName = customFields["appName"] ?: "",
+            sshKeyData = SshKeyDataCodec.encode(
+                SshKeyData(
+                    algorithm = customFields["monica_ssh_algorithm"].orEmpty(),
+                    keySize = customFields["monica_ssh_key_size"]?.toIntOrNull() ?: 0,
+                    publicKeyOpenSsh = customFields["monica_ssh_public_key"].orEmpty(),
+                    privateKeyOpenSsh = customFields["monica_ssh_private_key"].orEmpty(),
+                    fingerprintSha256 = customFields["monica_ssh_fingerprint"].orEmpty(),
+                    comment = customFields["monica_ssh_comment"].orEmpty(),
+                    format = customFields["monica_ssh_format"].orEmpty().ifBlank { SshKeyData.FORMAT_OPENSSH }
+                )
+            ),
             // Bitwarden 关联
             bitwardenVaultId = vaultId,
             bitwardenCipherId = cipher.id,
@@ -180,6 +193,15 @@ class LoginMapper : BitwardenMapper<PasswordEntry> {
                 name = "appName",
                 value = item.appName
             ))
+        }
+        SshKeyDataCodec.decode(item.sshKeyData)?.let { ssh ->
+            fields.add(CipherFieldApiData(type = 0, name = "monica_ssh_algorithm", value = ssh.algorithm))
+            fields.add(CipherFieldApiData(type = 0, name = "monica_ssh_key_size", value = ssh.keySize.toString()))
+            fields.add(CipherFieldApiData(type = 0, name = "monica_ssh_public_key", value = ssh.publicKeyOpenSsh))
+            fields.add(CipherFieldApiData(type = 1, name = "monica_ssh_private_key", value = ssh.privateKeyOpenSsh))
+            fields.add(CipherFieldApiData(type = 0, name = "monica_ssh_fingerprint", value = ssh.fingerprintSha256))
+            fields.add(CipherFieldApiData(type = 0, name = "monica_ssh_comment", value = ssh.comment))
+            fields.add(CipherFieldApiData(type = 0, name = "monica_ssh_format", value = ssh.format))
         }
         
         // 地址信息

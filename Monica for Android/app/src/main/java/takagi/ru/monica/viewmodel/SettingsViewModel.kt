@@ -7,10 +7,13 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.launch
 import takagi.ru.monica.data.AppSettings
+import takagi.ru.monica.data.AddButtonBehaviorMode
+import takagi.ru.monica.data.AddButtonMenuAction
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.CategorySelectionUiMode
 import takagi.ru.monica.data.ColorScheme
 import takagi.ru.monica.data.Language
+import takagi.ru.monica.data.PasswordPageContentType
 import takagi.ru.monica.data.PresetCustomField
 import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.data.SecureItem
@@ -319,6 +322,36 @@ class SettingsViewModel(
     fun updatePasswordListQuickFolderPathBannerEnabled(enabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updatePasswordListQuickFolderPathBannerEnabled(enabled)
+        }
+    }
+
+    fun updateAddButtonBehaviorMode(mode: AddButtonBehaviorMode) {
+        viewModelScope.launch {
+            settingsManager.updateAddButtonBehaviorMode(mode)
+        }
+    }
+
+    fun updateAddButtonMenuOrder(order: List<AddButtonMenuAction>) {
+        viewModelScope.launch {
+            settingsManager.updateAddButtonMenuOrder(order)
+        }
+    }
+
+    fun updateAddButtonMenuEnabledActions(actions: List<AddButtonMenuAction>) {
+        viewModelScope.launch {
+            settingsManager.updateAddButtonMenuEnabledActions(actions)
+        }
+    }
+
+    fun updatePasswordPageAggregateEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updatePasswordPageAggregateEnabled(enabled)
+        }
+    }
+
+    fun updatePasswordPageVisibleContentTypes(types: List<PasswordPageContentType>) {
+        viewModelScope.launch {
+            settingsManager.updatePasswordPageVisibleContentTypes(types)
         }
     }
 

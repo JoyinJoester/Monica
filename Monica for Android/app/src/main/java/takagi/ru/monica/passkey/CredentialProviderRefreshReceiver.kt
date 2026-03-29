@@ -9,11 +9,12 @@ import android.os.Build
 import android.util.Log
 
 /**
- * Soft-refreshes CredentialProviderService component state right after app update.
+ * Records CredentialProviderService state right after app update.
  *
- * We avoid DISABLED state to keep provider continuously available, but still
- * force a state transition (DEFAULT <-> ENABLED) so OEM caches can re-discover
- * this provider without requiring manual settings toggles.
+ * Note:
+ * Avoid force-toggling component state on upgrade/startup. Some OEM builds may
+ * invalidate provider selection when component state is flipped programmatically,
+ * causing users to re-enter system passkey settings manually.
  */
 class CredentialProviderRefreshReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
@@ -22,10 +23,9 @@ class CredentialProviderRefreshReceiver : BroadcastReceiver() {
         if (!shouldHandleAction(context, intent, action)) return
 
         runCatching {
-            softRefreshCredentialProviderComponentState(context)
-            Log.d(TAG, "CredentialProviderService state soft-refreshed on action=$action")
+            logCredentialProviderComponentState(context, action)
         }.onFailure { error ->
-            Log.w(TAG, "Failed to soft-refresh CredentialProviderService on action=$action", error)
+            Log.w(TAG, "Failed to inspect CredentialProviderService on action=$action", error)
         }
     }
 
@@ -41,39 +41,19 @@ class CredentialProviderRefreshReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun softRefreshCredentialProviderComponentState(context: Context) {
+    private fun logCredentialProviderComponentState(context: Context, action: String) {
         val componentName = ComponentName(context, MonicaCredentialProviderService::class.java)
         val pm = context.packageManager
         val currentState = pm.getComponentEnabledSetting(componentName)
-
-        when (currentState) {
-            PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
-            PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER -> {
-                // Respect explicit disable from user/system.
-                return
-            }
-
-            PackageManager.COMPONENT_ENABLED_STATE_DEFAULT -> {
-                pm.setComponentEnabledSetting(
-                    componentName,
-                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED,
-                    PackageManager.DONT_KILL_APP
-                )
-                pm.setComponentEnabledSetting(
-                    componentName,
-                    PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,
-                    PackageManager.DONT_KILL_APP
-                )
-            }
-
-            PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> {
-                pm.setComponentEnabledSetting(
-                    componentName,
-                    PackageManager.COMPONENT_ENABLED_STATE_DEFAULT,
-                    PackageManager.DONT_KILL_APP
-                )
-            }
+        val stateLabel = when (currentState) {
+            PackageManager.COMPONENT_ENABLED_STATE_DEFAULT -> "DEFAULT"
+            PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> "ENABLED"
+            PackageManager.COMPONENT_ENABLED_STATE_DISABLED -> "DISABLED"
+            PackageManager.COMPONENT_ENABLED_STATE_DISABLED_USER -> "DISABLED_USER"
+            PackageManager.COMPONENT_ENABLED_STATE_DISABLED_UNTIL_USED -> "DISABLED_UNTIL_USED"
+            else -> currentState.toString()
         }
+        Log.d(TAG, "CredentialProviderService state on action=$action is $stateLabel")
     }
 
     companion object {
