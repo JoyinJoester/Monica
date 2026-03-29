@@ -259,6 +259,11 @@ fun UnifiedWalletAddScreen(
     bankCardViewModel: BankCardViewModel,
     documentViewModel: DocumentViewModel,
     stateHolder: androidx.compose.runtime.saveable.SaveableStateHolder,
+    initialCategoryId: Long? = null,
+    initialKeePassDatabaseId: Long? = null,
+    initialKeePassGroupPath: String? = null,
+    initialBitwardenVaultId: Long? = null,
+    initialBitwardenFolderId: String? = null,
     modifier: Modifier = Modifier
 ) {
     var isFavorite by remember { mutableStateOf(false) }
@@ -366,6 +371,11 @@ fun UnifiedWalletAddScreen(
                         viewModel = documentViewModel,
                         documentId = null,
                         onNavigateBack = onNavigateBack,
+                        initialCategoryId = initialCategoryId,
+                        initialKeePassDatabaseId = initialKeePassDatabaseId,
+                        initialKeePassGroupPath = initialKeePassGroupPath,
+                        initialBitwardenVaultId = initialBitwardenVaultId,
+                        initialBitwardenFolderId = initialBitwardenFolderId,
                         showTopBar = false,
                         showFab = false,
                         onFavoriteStateChanged = { isFavorite = it },
@@ -381,6 +391,11 @@ fun UnifiedWalletAddScreen(
                         viewModel = bankCardViewModel,
                         cardId = null,
                         onNavigateBack = onNavigateBack,
+                        initialCategoryId = initialCategoryId,
+                        initialKeePassDatabaseId = initialKeePassDatabaseId,
+                        initialKeePassGroupPath = initialKeePassGroupPath,
+                        initialBitwardenVaultId = initialBitwardenVaultId,
+                        initialBitwardenFolderId = initialBitwardenFolderId,
                         showTopBar = false,
                         showFab = false,
                         onFavoriteStateChanged = { isFavorite = it },
@@ -436,6 +451,45 @@ private fun defaultsFromTotpFilter(filter: takagi.ru.monica.viewmodel.TotpCatego
             NewItemStorageDefaults(bitwardenVaultId = filter.vaultId)
         }
         is takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenVaultUncategorized -> {
+            NewItemStorageDefaults(bitwardenVaultId = filter.vaultId)
+        }
+        else -> NewItemStorageDefaults()
+    }
+}
+
+private fun defaultsFromPasswordFilter(filter: CategoryFilter): NewItemStorageDefaults {
+    return when (filter) {
+        is CategoryFilter.Custom -> {
+            NewItemStorageDefaults(categoryId = filter.categoryId)
+        }
+        is CategoryFilter.KeePassDatabase -> {
+            NewItemStorageDefaults(keepassDatabaseId = filter.databaseId)
+        }
+        is CategoryFilter.KeePassGroupFilter -> {
+            NewItemStorageDefaults(
+                keepassDatabaseId = filter.databaseId,
+                keepassGroupPath = filter.groupPath
+            )
+        }
+        is CategoryFilter.KeePassDatabaseStarred -> {
+            NewItemStorageDefaults(keepassDatabaseId = filter.databaseId)
+        }
+        is CategoryFilter.KeePassDatabaseUncategorized -> {
+            NewItemStorageDefaults(keepassDatabaseId = filter.databaseId)
+        }
+        is CategoryFilter.BitwardenVault -> {
+            NewItemStorageDefaults(bitwardenVaultId = filter.vaultId)
+        }
+        is CategoryFilter.BitwardenFolderFilter -> {
+            NewItemStorageDefaults(
+                bitwardenVaultId = filter.vaultId,
+                bitwardenFolderId = filter.folderId
+            )
+        }
+        is CategoryFilter.BitwardenVaultStarred -> {
+            NewItemStorageDefaults(bitwardenVaultId = filter.vaultId)
+        }
+        is CategoryFilter.BitwardenVaultUncategorized -> {
             NewItemStorageDefaults(bitwardenVaultId = filter.vaultId)
         }
         else -> NewItemStorageDefaults()
@@ -688,6 +742,9 @@ fun SimpleMainScreen(
     onNavigateToAddBankCard: (Long?) -> Unit,
     onNavigateToAddDocument: (Long?) -> Unit,
     onNavigateToWalletAdd: (CardWalletTab) -> Unit,
+    onPrepareTotpAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit = { _, _, _, _, _ -> },
+    onPrepareNoteAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit = { _, _, _, _, _ -> },
+    onPrepareWalletAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit = { _, _, _, _, _ -> },
     onNavigateToAddNote: (Long?) -> Unit,
     onNavigateToPasswordDetail: (Long) -> Unit = {},
     onNavigateToPasskeyDetail: (String) -> Unit,
@@ -1084,6 +1141,7 @@ fun SimpleMainScreen(
     }
 
     val currentFilter by passwordViewModel.categoryFilter.collectAsState()
+    val passwordNewItemDefaults = remember(currentFilter) { defaultsFromPasswordFilter(currentFilter) }
     val openHistoryPage: () -> Unit = {
         passwordHistoryInitialTrashScopeKey = null
         passwordHistoryPageMode = PasswordHistoryPageMode.TIMELINE
@@ -2195,6 +2253,11 @@ fun SimpleMainScreen(
         onBankCardAddOpen = handleBankCardAddOpen,
         onWalletAddOpen = handleWalletAddOpen,
         onNavigateToWalletAdd = onNavigateToWalletAdd,
+        passwordPageAggregateEnabled = appSettings.passwordPageAggregateEnabled,
+        passwordNewItemDefaults = passwordNewItemDefaults,
+        onPrepareTotpAddStorageDefaults = onPrepareTotpAddStorageDefaults,
+        onPrepareNoteAddStorageDefaults = onPrepareNoteAddStorageDefaults,
+        onPrepareWalletAddStorageDefaults = onPrepareWalletAddStorageDefaults,
         onNoteAddOpen = { handleNoteOpen(null) },
         onSendAddOpen = handleSendAddOpen,
         onGeneratorRefresh = { generatorRefreshRequestKey++ },
@@ -3079,6 +3142,11 @@ private fun BoxScope.MainScreenFabOverlay(
     onBankCardAddOpen: () -> Unit,
     onWalletAddOpen: () -> Unit,
     onNavigateToWalletAdd: (CardWalletTab) -> Unit,
+    passwordPageAggregateEnabled: Boolean,
+    passwordNewItemDefaults: NewItemStorageDefaults,
+    onPrepareTotpAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit,
+    onPrepareNoteAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit,
+    onPrepareWalletAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit,
     onNoteAddOpen: () -> Unit,
     onSendAddOpen: () -> Unit,
     onGeneratorRefresh: () -> Unit,
@@ -3289,6 +3357,11 @@ private fun BoxScope.MainScreenFabOverlay(
                 onBankCardAddOpen = onBankCardAddOpen,
                 onWalletAddOpen = onWalletAddOpen,
                 onNavigateToWalletAdd = onNavigateToWalletAdd,
+                passwordPageAggregateEnabled = passwordPageAggregateEnabled,
+                passwordNewItemDefaults = passwordNewItemDefaults,
+                onPrepareTotpAddStorageDefaults = onPrepareTotpAddStorageDefaults,
+                onPrepareNoteAddStorageDefaults = onPrepareNoteAddStorageDefaults,
+                onPrepareWalletAddStorageDefaults = onPrepareWalletAddStorageDefaults,
                 onNoteAddOpen = onNoteAddOpen,
                 onSendAddOpen = onSendAddOpen,
                 onGeneratorRefresh = onGeneratorRefresh,
@@ -3659,6 +3732,11 @@ private fun MainScreenAddFab(
     onBankCardAddOpen: () -> Unit,
     onWalletAddOpen: () -> Unit,
     onNavigateToWalletAdd: (CardWalletTab) -> Unit,
+    passwordPageAggregateEnabled: Boolean,
+    passwordNewItemDefaults: NewItemStorageDefaults,
+    onPrepareTotpAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit,
+    onPrepareNoteAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit,
+    onPrepareWalletAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit,
     onNoteAddOpen: () -> Unit,
     onSendAddOpen: () -> Unit,
     onGeneratorRefresh: () -> Unit,
@@ -3683,6 +3761,13 @@ private fun MainScreenAddFab(
         CardWalletTab.BANK_CARDS -> CardWalletTab.BANK_CARDS
         CardWalletTab.ALL -> walletUnifiedAddType
     }
+    val shouldApplyPasswordAggregateDefaults = passwordPageAggregateEnabled &&
+        (currentTab == BottomNavItem.Passwords || currentTab == BottomNavItem.VaultV2)
+    val aggregateStorageDefaults = if (shouldApplyPasswordAggregateDefaults) {
+        passwordNewItemDefaults
+    } else {
+        null
+    }
 
     AnimatedVisibility(
         visible = visible,
@@ -3705,7 +3790,11 @@ private fun MainScreenAddFab(
                 onNavigateToWalletAdd,
                 isCompactWidth,
                 compactWalletAddType,
-                showVaultWalletAddScreen
+                showVaultWalletAddScreen,
+                aggregateStorageDefaults,
+                onPrepareTotpAddStorageDefaults,
+                onPrepareNoteAddStorageDefaults,
+                onPrepareWalletAddStorageDefaults
             ) {
                 addButtonMenuOrder
                     .filter { addButtonMenuEnabledActions.contains(it) }
@@ -3723,7 +3812,18 @@ private fun MainScreenAddFab(
                                 VaultV2FabMenuAction(
                                     icon = Icons.Default.Description,
                                     labelRes = R.string.v2_create_note,
-                                    onClick = onNoteAddOpen
+                                    onClick = {
+                                        if (isCompactWidth && aggregateStorageDefaults != null) {
+                                            onPrepareNoteAddStorageDefaults(
+                                                aggregateStorageDefaults.categoryId,
+                                                aggregateStorageDefaults.keepassDatabaseId,
+                                                aggregateStorageDefaults.keepassGroupPath,
+                                                aggregateStorageDefaults.bitwardenVaultId,
+                                                aggregateStorageDefaults.bitwardenFolderId
+                                            )
+                                        }
+                                        onNoteAddOpen()
+                                    }
                                 )
                             }
 
@@ -3731,7 +3831,18 @@ private fun MainScreenAddFab(
                                 VaultV2FabMenuAction(
                                     icon = Icons.Default.Security,
                                     labelRes = R.string.item_type_authenticator,
-                                    onClick = onTotpAddOpen
+                                    onClick = {
+                                        if (isCompactWidth && aggregateStorageDefaults != null) {
+                                            onPrepareTotpAddStorageDefaults(
+                                                aggregateStorageDefaults.categoryId,
+                                                aggregateStorageDefaults.keepassDatabaseId,
+                                                aggregateStorageDefaults.keepassGroupPath,
+                                                aggregateStorageDefaults.bitwardenVaultId,
+                                                aggregateStorageDefaults.bitwardenFolderId
+                                            )
+                                        }
+                                        onTotpAddOpen()
+                                    }
                                 )
                             }
 
@@ -3741,6 +3852,15 @@ private fun MainScreenAddFab(
                                     labelRes = R.string.add_button_action_card,
                                     onClick = {
                                         if (isCompactWidth) {
+                                            if (aggregateStorageDefaults != null) {
+                                                onPrepareWalletAddStorageDefaults(
+                                                    aggregateStorageDefaults.categoryId,
+                                                    aggregateStorageDefaults.keepassDatabaseId,
+                                                    aggregateStorageDefaults.keepassGroupPath,
+                                                    aggregateStorageDefaults.bitwardenVaultId,
+                                                    aggregateStorageDefaults.bitwardenFolderId
+                                                )
+                                            }
                                             onNavigateToWalletAdd(compactWalletAddType)
                                         } else {
                                             showVaultWalletAddScreen = true
@@ -3763,7 +3883,12 @@ private fun MainScreenAddFab(
                         onNavigateBack = { showVaultWalletAddScreen = false },
                         bankCardViewModel = bankCardViewModel,
                         documentViewModel = documentViewModel,
-                        stateHolder = walletAddSaveableStateHolder
+                        stateHolder = walletAddSaveableStateHolder,
+                        initialCategoryId = aggregateStorageDefaults?.categoryId,
+                        initialKeePassDatabaseId = aggregateStorageDefaults?.keepassDatabaseId,
+                        initialKeePassGroupPath = aggregateStorageDefaults?.keepassGroupPath,
+                        initialBitwardenVaultId = aggregateStorageDefaults?.bitwardenVaultId,
+                        initialBitwardenFolderId = aggregateStorageDefaults?.bitwardenFolderId
                     )
                 }
             } else if (addButtonBehaviorMode == AddButtonBehaviorMode.EXPANDABLE_MENU) {

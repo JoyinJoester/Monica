@@ -54,6 +54,7 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavHostController
 import androidx.navigation.NavOptionsBuilder
@@ -131,6 +132,83 @@ import takagi.ru.monica.util.FileOperationHelper
 import takagi.ru.monica.util.PhotoPickerHelper
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.utils.AutoBackupManager
+
+private data class PendingAddStorageDefaults(
+    val categoryId: Long? = null,
+    val keepassDatabaseId: Long? = null,
+    val keepassGroupPath: String? = null,
+    val bitwardenVaultId: Long? = null,
+    val bitwardenFolderId: String? = null
+)
+
+private const val KEY_PENDING_ADD_CATEGORY_ID = "pending_add_category_id"
+private const val KEY_PENDING_ADD_KEEPASS_DATABASE_ID = "pending_add_keepass_database_id"
+private const val KEY_PENDING_ADD_KEEPASS_GROUP_PATH = "pending_add_keepass_group_path"
+private const val KEY_PENDING_ADD_BITWARDEN_VAULT_ID = "pending_add_bitwarden_vault_id"
+private const val KEY_PENDING_ADD_BITWARDEN_FOLDER_ID = "pending_add_bitwarden_folder_id"
+
+private fun PendingAddStorageDefaults.hasAnyValue(): Boolean {
+    return categoryId != null ||
+        keepassDatabaseId != null ||
+        !keepassGroupPath.isNullOrBlank() ||
+        bitwardenVaultId != null ||
+        !bitwardenFolderId.isNullOrBlank()
+}
+
+private fun SavedStateHandle.clearPendingAddStorageDefaults() {
+    remove<Long>(KEY_PENDING_ADD_CATEGORY_ID)
+    remove<Long>(KEY_PENDING_ADD_KEEPASS_DATABASE_ID)
+    remove<String>(KEY_PENDING_ADD_KEEPASS_GROUP_PATH)
+    remove<Long>(KEY_PENDING_ADD_BITWARDEN_VAULT_ID)
+    remove<String>(KEY_PENDING_ADD_BITWARDEN_FOLDER_ID)
+}
+
+private fun SavedStateHandle.setPendingAddStorageDefaults(defaults: PendingAddStorageDefaults?) {
+    if (defaults == null || !defaults.hasAnyValue()) {
+        clearPendingAddStorageDefaults()
+        return
+    }
+
+    if (defaults.categoryId != null) {
+        set(KEY_PENDING_ADD_CATEGORY_ID, defaults.categoryId)
+    } else {
+        remove<Long>(KEY_PENDING_ADD_CATEGORY_ID)
+    }
+    if (defaults.keepassDatabaseId != null) {
+        set(KEY_PENDING_ADD_KEEPASS_DATABASE_ID, defaults.keepassDatabaseId)
+    } else {
+        remove<Long>(KEY_PENDING_ADD_KEEPASS_DATABASE_ID)
+    }
+    val keepassGroupPath = defaults.keepassGroupPath?.takeIf { it.isNotBlank() }
+    if (keepassGroupPath != null) {
+        set(KEY_PENDING_ADD_KEEPASS_GROUP_PATH, keepassGroupPath)
+    } else {
+        remove<String>(KEY_PENDING_ADD_KEEPASS_GROUP_PATH)
+    }
+    if (defaults.bitwardenVaultId != null) {
+        set(KEY_PENDING_ADD_BITWARDEN_VAULT_ID, defaults.bitwardenVaultId)
+    } else {
+        remove<Long>(KEY_PENDING_ADD_BITWARDEN_VAULT_ID)
+    }
+    val bitwardenFolderId = defaults.bitwardenFolderId?.takeIf { it.isNotBlank() }
+    if (bitwardenFolderId != null) {
+        set(KEY_PENDING_ADD_BITWARDEN_FOLDER_ID, bitwardenFolderId)
+    } else {
+        remove<String>(KEY_PENDING_ADD_BITWARDEN_FOLDER_ID)
+    }
+}
+
+private fun SavedStateHandle.consumePendingAddStorageDefaults(): PendingAddStorageDefaults? {
+    val defaults = PendingAddStorageDefaults(
+        categoryId = get<Long>(KEY_PENDING_ADD_CATEGORY_ID),
+        keepassDatabaseId = get<Long>(KEY_PENDING_ADD_KEEPASS_DATABASE_ID),
+        keepassGroupPath = get<String>(KEY_PENDING_ADD_KEEPASS_GROUP_PATH)?.takeIf { it.isNotBlank() },
+        bitwardenVaultId = get<Long>(KEY_PENDING_ADD_BITWARDEN_VAULT_ID),
+        bitwardenFolderId = get<String>(KEY_PENDING_ADD_BITWARDEN_FOLDER_ID)?.takeIf { it.isNotBlank() }
+    )
+    clearPendingAddStorageDefaults()
+    return defaults.takeIf { it.hasAnyValue() }
+}
 
 class MainActivity : BaseMonicaActivity() {
     private lateinit var permissionLauncher: ActivityResultLauncher<String>
@@ -645,6 +723,45 @@ fun MonicaContent(
                 onNavigateToWalletAdd = { initialType ->
                     navController.navigate(Screen.WalletAdd.createRoute(initialType.name))
                 },
+                onPrepareTotpAddStorageDefaults = { categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
+                    navController.currentBackStackEntry
+                        ?.savedStateHandle
+                        ?.setPendingAddStorageDefaults(
+                            PendingAddStorageDefaults(
+                                categoryId = categoryId,
+                                keepassDatabaseId = keepassDatabaseId,
+                                keepassGroupPath = keepassGroupPath,
+                                bitwardenVaultId = bitwardenVaultId,
+                                bitwardenFolderId = bitwardenFolderId
+                            )
+                        )
+                },
+                onPrepareNoteAddStorageDefaults = { categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
+                    navController.currentBackStackEntry
+                        ?.savedStateHandle
+                        ?.setPendingAddStorageDefaults(
+                            PendingAddStorageDefaults(
+                                categoryId = categoryId,
+                                keepassDatabaseId = keepassDatabaseId,
+                                keepassGroupPath = keepassGroupPath,
+                                bitwardenVaultId = bitwardenVaultId,
+                                bitwardenFolderId = bitwardenFolderId
+                            )
+                        )
+                },
+                onPrepareWalletAddStorageDefaults = { categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
+                    navController.currentBackStackEntry
+                        ?.savedStateHandle
+                        ?.setPendingAddStorageDefaults(
+                            PendingAddStorageDefaults(
+                                categoryId = categoryId,
+                                keepassDatabaseId = keepassDatabaseId,
+                                keepassGroupPath = keepassGroupPath,
+                                bitwardenVaultId = bitwardenVaultId,
+                                bitwardenFolderId = bitwardenFolderId
+                            )
+                        )
+                },
                 onNavigateToAddNote = { noteId ->
                     if (noteId == null) {
                         navController.navigate(Screen.AddEditNote.createRoute())
@@ -809,6 +926,14 @@ fun MonicaContent(
             val totpId = backStackEntry.arguments?.getString("totpId")?.toLongOrNull() ?: -1L
             val currentTotpFilter by totpViewModel.categoryFilter.collectAsState()
             val context = LocalContext.current
+            val pendingStorageDefaults = remember(backStackEntry, totpId) {
+                if (totpId > 0) {
+                    navController.previousBackStackEntry?.savedStateHandle?.clearPendingAddStorageDefaults()
+                    null
+                } else {
+                    navController.previousBackStackEntry?.savedStateHandle?.consumePendingAddStorageDefaults()
+                }
+            }
 
             var initialData by remember { mutableStateOf<takagi.ru.monica.data.model.TotpData?>(null) }
             var initialTitle by remember { mutableStateOf("") }
@@ -934,11 +1059,32 @@ fun MonicaContent(
                         else -> TotpStorageDefaults()
                     }
                 }
-                val initialCategoryId = initialData?.categoryId ?: filterDefaults.categoryId
-                val initialKeePassDatabaseId = initialData?.keepassDatabaseId ?: filterDefaults.keepassDatabaseId
-                val resolvedInitialKeePassGroupPath = initialKeePassGroupPath ?: filterDefaults.keepassGroupPath
-                val initialVaultId = initialBitwardenVaultId ?: filterDefaults.bitwardenVaultId
-                val initialFolderId = initialBitwardenFolderId ?: filterDefaults.bitwardenFolderId
+                val hasPendingStorageDefaults = pendingStorageDefaults?.hasAnyValue() == true
+                val initialCategoryId = when {
+                    initialData?.categoryId != null -> initialData?.categoryId
+                    hasPendingStorageDefaults -> pendingStorageDefaults?.categoryId
+                    else -> filterDefaults.categoryId
+                }
+                val initialKeePassDatabaseId = when {
+                    initialData?.keepassDatabaseId != null -> initialData?.keepassDatabaseId
+                    hasPendingStorageDefaults -> pendingStorageDefaults?.keepassDatabaseId
+                    else -> filterDefaults.keepassDatabaseId
+                }
+                val resolvedInitialKeePassGroupPath = when {
+                    !initialKeePassGroupPath.isNullOrBlank() -> initialKeePassGroupPath
+                    hasPendingStorageDefaults -> pendingStorageDefaults?.keepassGroupPath
+                    else -> filterDefaults.keepassGroupPath
+                }
+                val initialVaultId = when {
+                    initialBitwardenVaultId != null -> initialBitwardenVaultId
+                    hasPendingStorageDefaults -> pendingStorageDefaults?.bitwardenVaultId
+                    else -> filterDefaults.bitwardenVaultId
+                }
+                val initialFolderId = when {
+                    !initialBitwardenFolderId.isNullOrBlank() -> initialBitwardenFolderId
+                    hasPendingStorageDefaults -> pendingStorageDefaults?.bitwardenFolderId
+                    else -> filterDefaults.bitwardenFolderId
+                }
                 takagi.ru.monica.ui.screens.AddEditTotpScreen(
                     totpId = if (totpId > 0) totpId else null,
                     initialData = initialData,
@@ -987,6 +1133,9 @@ fun MonicaContent(
             val initialType = runCatching {
                 takagi.ru.monica.ui.screens.CardWalletTab.valueOf(initialTypeRaw)
             }.getOrDefault(takagi.ru.monica.ui.screens.CardWalletTab.BANK_CARDS)
+            val pendingStorageDefaults = remember(backStackEntry) {
+                navController.previousBackStackEntry?.savedStateHandle?.consumePendingAddStorageDefaults()
+            }
             val walletAddStateHolder = androidx.compose.runtime.saveable.rememberSaveableStateHolder()
             var selectedType by androidx.compose.runtime.saveable.rememberSaveable(initialTypeRaw) {
                 mutableStateOf(initialType)
@@ -1013,7 +1162,12 @@ fun MonicaContent(
                     },
                     bankCardViewModel = bankCardViewModel,
                     documentViewModel = documentViewModel,
-                    stateHolder = walletAddStateHolder
+                    stateHolder = walletAddStateHolder,
+                    initialCategoryId = pendingStorageDefaults?.categoryId,
+                    initialKeePassDatabaseId = pendingStorageDefaults?.keepassDatabaseId,
+                    initialKeePassGroupPath = pendingStorageDefaults?.keepassGroupPath,
+                    initialBitwardenVaultId = pendingStorageDefaults?.bitwardenVaultId,
+                    initialBitwardenFolderId = pendingStorageDefaults?.bitwardenFolderId
                 )
             }
         }
@@ -1026,10 +1180,23 @@ fun MonicaContent(
             popExitTransition = { rightSlidePopExitTransition() }
         ) { backStackEntry ->
             val cardId = backStackEntry.arguments?.getString("cardId")?.toLongOrNull() ?: -1L
+            val pendingStorageDefaults = remember(backStackEntry, cardId) {
+                if (cardId > 0) {
+                    navController.previousBackStackEntry?.savedStateHandle?.clearPendingAddStorageDefaults()
+                    null
+                } else {
+                    navController.previousBackStackEntry?.savedStateHandle?.consumePendingAddStorageDefaults()
+                }
+            }
 
             takagi.ru.monica.ui.screens.AddEditBankCardScreen(
                 viewModel = bankCardViewModel,
                 cardId = if (cardId > 0) cardId else null,
+                initialCategoryId = pendingStorageDefaults?.categoryId,
+                initialKeePassDatabaseId = pendingStorageDefaults?.keepassDatabaseId,
+                initialKeePassGroupPath = pendingStorageDefaults?.keepassGroupPath,
+                initialBitwardenVaultId = pendingStorageDefaults?.bitwardenVaultId,
+                initialBitwardenFolderId = pendingStorageDefaults?.bitwardenFolderId,
                 onNavigateBack = {
                     navController.popBackStack()
                 }
@@ -1044,10 +1211,23 @@ fun MonicaContent(
             popExitTransition = { rightSlidePopExitTransition() }
         ) { backStackEntry ->
             val documentId = backStackEntry.arguments?.getString("documentId")?.toLongOrNull() ?: -1L
+            val pendingStorageDefaults = remember(backStackEntry, documentId) {
+                if (documentId > 0) {
+                    navController.previousBackStackEntry?.savedStateHandle?.clearPendingAddStorageDefaults()
+                    null
+                } else {
+                    navController.previousBackStackEntry?.savedStateHandle?.consumePendingAddStorageDefaults()
+                }
+            }
 
             takagi.ru.monica.ui.screens.AddEditDocumentScreen(
                 viewModel = documentViewModel,
                 documentId = if (documentId > 0) documentId else null,
+                initialCategoryId = pendingStorageDefaults?.categoryId,
+                initialKeePassDatabaseId = pendingStorageDefaults?.keepassDatabaseId,
+                initialKeePassGroupPath = pendingStorageDefaults?.keepassGroupPath,
+                initialBitwardenVaultId = pendingStorageDefaults?.bitwardenVaultId,
+                initialBitwardenFolderId = pendingStorageDefaults?.bitwardenFolderId,
                 onNavigateBack = {
                     navController.popBackStack()
                 }
@@ -1085,9 +1265,22 @@ fun MonicaContent(
             popExitTransition = { rightSlidePopExitTransition() }
         ) { backStackEntry ->
             val noteId = backStackEntry.arguments?.getString("noteId")?.toLongOrNull() ?: -1L
+            val pendingStorageDefaults = remember(backStackEntry, noteId) {
+                if (noteId > 0) {
+                    navController.previousBackStackEntry?.savedStateHandle?.clearPendingAddStorageDefaults()
+                    null
+                } else {
+                    navController.previousBackStackEntry?.savedStateHandle?.consumePendingAddStorageDefaults()
+                }
+            }
 
             takagi.ru.monica.ui.screens.AddEditNoteScreen(
                 noteId = noteId,
+                initialCategoryId = pendingStorageDefaults?.categoryId,
+                initialKeePassDatabaseId = pendingStorageDefaults?.keepassDatabaseId,
+                initialKeePassGroupPath = pendingStorageDefaults?.keepassGroupPath,
+                initialBitwardenVaultId = pendingStorageDefaults?.bitwardenVaultId,
+                initialBitwardenFolderId = pendingStorageDefaults?.bitwardenFolderId,
                 onNavigateBack = {
                     navController.popBackStack()
                 },

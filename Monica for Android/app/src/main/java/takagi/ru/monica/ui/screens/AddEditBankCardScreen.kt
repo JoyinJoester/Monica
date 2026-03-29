@@ -66,6 +66,11 @@ fun AddEditBankCardScreen(
     viewModel: BankCardViewModel,
     cardId: Long? = null,
     onNavigateBack: () -> Unit,
+    initialCategoryId: Long? = null,
+    initialKeePassDatabaseId: Long? = null,
+    initialKeePassGroupPath: String? = null,
+    initialBitwardenVaultId: Long? = null,
+    initialBitwardenFolderId: String? = null,
     showTypeSwitcher: Boolean = false,
     onSwitchToDocument: (() -> Unit)? = null,
     showTopBar: Boolean = true,
@@ -145,9 +150,26 @@ fun AddEditBankCardScreen(
         .categoryFilterStateFlow(SettingsManager.CategoryFilterScope.CARD_WALLET)
         .collectAsState(initial = null)
 
-    LaunchedEffect(cardId, hasAppliedInitialStorage, rememberedStorageTarget, cardWalletCategoryFilterState) {
+    LaunchedEffect(
+        cardId,
+        hasAppliedInitialStorage,
+        initialCategoryId,
+        initialKeePassDatabaseId,
+        initialKeePassGroupPath,
+        initialBitwardenVaultId,
+        initialBitwardenFolderId,
+        rememberedStorageTarget,
+        cardWalletCategoryFilterState
+    ) {
         if (cardId != null || hasAppliedInitialStorage) return@LaunchedEffect
         val remembered = rememberedStorageTarget
+        val explicitGroupPath = initialKeePassGroupPath?.takeIf { it.isNotBlank() }
+        val explicitFolderId = initialBitwardenFolderId?.takeIf { it.isNotBlank() }
+        val hasExplicitInitialStorage = initialCategoryId != null ||
+            initialKeePassDatabaseId != null ||
+            explicitGroupPath != null ||
+            initialBitwardenVaultId != null ||
+            explicitFolderId != null
         val filterKeepassDatabaseId = when (cardWalletCategoryFilterState?.type) {
             "keepass_database", "keepass_group", "keepass_database_starred", "keepass_database_uncategorized" ->
                 cardWalletCategoryFilterState?.primaryId
@@ -158,12 +180,34 @@ fun AddEditBankCardScreen(
         } else {
             null
         }
-        if (remembered == null && filterKeepassDatabaseId == null && filterKeepassGroupPath == null) return@LaunchedEffect
-        selectedCategoryId = remembered?.categoryId
-        keepassDatabaseId = filterKeepassDatabaseId ?: remembered?.keepassDatabaseId
-        keepassGroupPath = filterKeepassGroupPath ?: remembered?.keepassGroupPath
-        bitwardenVaultId = remembered?.bitwardenVaultId
-        bitwardenFolderId = remembered?.bitwardenFolderId
+        if (!hasExplicitInitialStorage && remembered == null && filterKeepassDatabaseId == null && filterKeepassGroupPath == null) {
+            return@LaunchedEffect
+        }
+        selectedCategoryId = if (hasExplicitInitialStorage) {
+            initialCategoryId
+        } else {
+            remembered?.categoryId
+        }
+        keepassDatabaseId = if (hasExplicitInitialStorage) {
+            initialKeePassDatabaseId
+        } else {
+            filterKeepassDatabaseId ?: remembered?.keepassDatabaseId
+        }
+        keepassGroupPath = if (hasExplicitInitialStorage) {
+            explicitGroupPath
+        } else {
+            filterKeepassGroupPath ?: remembered?.keepassGroupPath
+        }
+        bitwardenVaultId = if (hasExplicitInitialStorage) {
+            initialBitwardenVaultId
+        } else {
+            remembered?.bitwardenVaultId
+        }
+        bitwardenFolderId = if (hasExplicitInitialStorage) {
+            explicitFolderId
+        } else {
+            remembered?.bitwardenFolderId
+        }
         hasAppliedInitialStorage = true
     }
     

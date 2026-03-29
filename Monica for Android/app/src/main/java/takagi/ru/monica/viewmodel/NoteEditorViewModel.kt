@@ -94,6 +94,7 @@ class NoteEditorViewModel : ViewModel() {
         isEditing: Boolean,
         initialCategoryId: Long?,
         initialKeePassDatabaseId: Long?,
+        initialKeePassGroupPath: String?,
         initialBitwardenVaultId: Long?,
         initialBitwardenFolderId: String?,
         draftStorageTarget: NoteDraftStorageTarget,
@@ -101,15 +102,59 @@ class NoteEditorViewModel : ViewModel() {
     ) {
         val current = _uiState.value
         if (isEditing || current.hasAppliedInitialStorage) return
-        val remembered = rememberedStorageTarget ?: return
+        val normalizedInitialKeePassGroupPath = initialKeePassGroupPath?.takeIf { it.isNotBlank() }
+        val normalizedInitialBitwardenFolderId = initialBitwardenFolderId?.takeIf { it.isNotBlank() }
+        val normalizedDraftKeePassGroupPath = draftStorageTarget.keepassGroupPath?.takeIf { it.isNotBlank() }
+        val normalizedDraftBitwardenFolderId = draftStorageTarget.bitwardenFolderId?.takeIf { it.isNotBlank() }
+        val normalizedRememberedKeePassGroupPath = rememberedStorageTarget?.keepassGroupPath?.takeIf { it.isNotBlank() }
+        val normalizedRememberedBitwardenFolderId = rememberedStorageTarget?.bitwardenFolderId?.takeIf { it.isNotBlank() }
+
+        val hasExplicitInitialStorage = initialCategoryId != null ||
+            initialKeePassDatabaseId != null ||
+            normalizedInitialKeePassGroupPath != null ||
+            initialBitwardenVaultId != null ||
+            normalizedInitialBitwardenFolderId != null
+
+        val resolvedCategoryId = if (hasExplicitInitialStorage) {
+            initialCategoryId
+        } else {
+            initialCategoryId ?: draftStorageTarget.categoryId ?: rememberedStorageTarget?.categoryId
+        }
+        val resolvedKeepassDatabaseId = if (hasExplicitInitialStorage) {
+            initialKeePassDatabaseId
+        } else {
+            initialKeePassDatabaseId ?: draftStorageTarget.keepassDatabaseId ?: rememberedStorageTarget?.keepassDatabaseId
+        }
+        val resolvedKeepassGroupPath = if (hasExplicitInitialStorage) {
+            normalizedInitialKeePassGroupPath
+        } else {
+            normalizedInitialKeePassGroupPath ?: normalizedDraftKeePassGroupPath ?: normalizedRememberedKeePassGroupPath
+        }
+        val resolvedBitwardenVaultId = if (hasExplicitInitialStorage) {
+            initialBitwardenVaultId
+        } else {
+            initialBitwardenVaultId ?: draftStorageTarget.bitwardenVaultId ?: rememberedStorageTarget?.bitwardenVaultId
+        }
+        val resolvedBitwardenFolderId = if (hasExplicitInitialStorage) {
+            normalizedInitialBitwardenFolderId
+        } else {
+            normalizedInitialBitwardenFolderId ?: normalizedDraftBitwardenFolderId ?: normalizedRememberedBitwardenFolderId
+        }
+
+        val hasResolvedStorage = resolvedCategoryId != null ||
+            resolvedKeepassDatabaseId != null ||
+            resolvedKeepassGroupPath != null ||
+            resolvedBitwardenVaultId != null ||
+            resolvedBitwardenFolderId != null
+        if (!hasResolvedStorage) return
 
         _uiState.update {
             it.copy(
-                selectedCategoryId = initialCategoryId ?: draftStorageTarget.categoryId ?: remembered.categoryId,
-                keepassDatabaseId = initialKeePassDatabaseId ?: draftStorageTarget.keepassDatabaseId ?: remembered.keepassDatabaseId,
-                keepassGroupPath = draftStorageTarget.keepassGroupPath ?: remembered.keepassGroupPath,
-                bitwardenVaultId = initialBitwardenVaultId ?: draftStorageTarget.bitwardenVaultId ?: remembered.bitwardenVaultId,
-                bitwardenFolderId = initialBitwardenFolderId ?: draftStorageTarget.bitwardenFolderId ?: remembered.bitwardenFolderId,
+                selectedCategoryId = resolvedCategoryId,
+                keepassDatabaseId = resolvedKeepassDatabaseId,
+                keepassGroupPath = resolvedKeepassGroupPath,
+                bitwardenVaultId = resolvedBitwardenVaultId,
+                bitwardenFolderId = resolvedBitwardenFolderId,
                 hasAppliedInitialStorage = true
             )
         }
