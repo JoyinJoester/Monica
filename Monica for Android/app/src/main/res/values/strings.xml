@@ -181,6 +181,8 @@
     <string name="archive_page_title">Archived</string>
     <string name="archive_action">Archive</string>
     <string name="unarchive_action">Unarchive</string>
+    <string name="archive_password_confirmation_title">Archive this item?</string>
+    <string name="archive_password_confirmation_message">After archiving, this item will move to Archived. You can restore it later.</string>
     <string name="archive_empty_hint">No archived passwords yet</string>
     <string name="archive_item_subtitle_empty">No username or website</string>
     <string name="group_mode_menu_title">Stacking style</string>
@@ -2057,6 +2059,10 @@
     <string name="common_name_fill_empty_hint">Create a name template first, or save one from your existing cards and documents.</string>
     <string name="common_name_fill_from_analysis">Suggested from existing items</string>
     <string name="common_name_fill_save_template">Save as common name</string>
+    <string name="username_suggestions_multi_title">Matched existing accounts (%1$d)</string>
+    <string name="username_suggestions_unique_title">Unique existing account match</string>
+    <string name="username_suggestions_no_match">No existing account matches &quot;%1$s&quot;</string>
+    <string name="username_suggestions_more_count">+%1$d more matches</string>
     
     <!-- SSO / Third-party Login -->
     <string name="login_type_label">Login Type</string>

@@ -991,8 +991,9 @@ class SecurityManager(private val context: Context) {
             return encryptedData
         }
 
-        // Legacy payload format is: 12-byte IV + ciphertext(>=1) + 16-byte GCM tag.
-        if (combined.size <= 28) {
+        // Legacy payload format is: 12-byte IV + ciphertext(>=0) + 16-byte GCM tag.
+        // Empty plaintext is valid and yields exactly 28 bytes.
+        if (combined.size < 28) {
             return encryptedData
         }
 

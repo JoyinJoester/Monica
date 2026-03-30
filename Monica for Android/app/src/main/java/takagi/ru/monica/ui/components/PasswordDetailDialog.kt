@@ -149,13 +149,11 @@ fun PasswordDetailDialog(
                                 context = context
                             )
                         }
-                        if (passwordEntry.password.isNotEmpty()) {
-                            PasswordItem(
-                                label = context.getString(R.string.password),
-                                value = passwordEntry.password,
-                                context = context
-                            )
-                        }
+                        PasswordItem(
+                            label = context.getString(R.string.password),
+                            value = passwordEntry.password,
+                            context = context
+                        )
                         if (passwordEntry.notes.isNotEmpty()) {
                             InfoItem(label = context.getString(R.string.notes), value = passwordEntry.notes)
                         }
@@ -496,6 +494,7 @@ private fun PasswordItem(
     context: Context
 ) {
     var passwordVisible by remember { mutableStateOf(false) }
+    val hasPasswordValue = value.isNotBlank()
     
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -512,24 +511,34 @@ private fun PasswordItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = if (passwordVisible) value else "•".repeat(value.length.coerceAtMost(12)),
+                text = when {
+                    !hasPasswordValue -> context.getString(R.string.permission_status_unavailable)
+                    passwordVisible -> value
+                    else -> "•".repeat(value.length.coerceAtMost(12))
+                },
                 style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.weight(1f)
             )
             Row {
                 // 显示/隐藏按钮
-                IconButton(
-                    onClick = { passwordVisible = !passwordVisible }
-                ) {
-                    Icon(
-                        if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                        contentDescription = if (passwordVisible) context.getString(R.string.hide) else context.getString(R.string.show),
-                        modifier = Modifier.size(20.dp)
-                    )
+                if (hasPasswordValue) {
+                    IconButton(
+                        onClick = { passwordVisible = !passwordVisible }
+                    ) {
+                        Icon(
+                            if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                            contentDescription = if (passwordVisible) context.getString(R.string.hide) else context.getString(R.string.show),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
                 // 复制按钮
                 IconButton(
                     onClick = {
+                        if (!hasPasswordValue) {
+                            Toast.makeText(context, context.getString(R.string.permission_status_unavailable), Toast.LENGTH_SHORT).show()
+                            return@IconButton
+                        }
                         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                         val clip = ClipData.newPlainText(label, value)
                         clipboard.setPrimaryClip(clip)

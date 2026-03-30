@@ -1697,8 +1697,7 @@ fun PasswordCardAdjustmentScreen(
     val supportedDisplayFields = remember {
         setOf(
             PasswordCardDisplayField.USERNAME,
-            PasswordCardDisplayField.WEBSITE,
-            PasswordCardDisplayField.APP_NAME
+            PasswordCardDisplayField.WEBSITE
         )
     }
     val selectedFields = remember(settings.passwordCardDisplayFields) {
@@ -1722,8 +1721,7 @@ fun PasswordCardAdjustmentScreen(
     val availableFields = remember {
         listOf(
             DisplayFieldOption(PasswordCardDisplayField.USERNAME, "用户名", Icons.Default.Person),
-            DisplayFieldOption(PasswordCardDisplayField.WEBSITE, "网站", Icons.Default.Language),
-            DisplayFieldOption(PasswordCardDisplayField.APP_NAME, "应用名", Icons.Default.Apps)
+            DisplayFieldOption(PasswordCardDisplayField.WEBSITE, "网站", Icons.Default.Language)
         )
     }
     var fieldOrder by remember(settings.passwordCardDisplayFields) {

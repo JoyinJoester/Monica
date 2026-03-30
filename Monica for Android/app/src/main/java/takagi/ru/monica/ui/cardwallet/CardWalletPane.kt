@@ -33,7 +33,12 @@ internal fun CardWalletPane(
     onEditBankCard: (Long) -> Unit,
     selectedDocumentId: Long?,
     onClearSelectedDocument: () -> Unit,
-    onEditDocument: (Long) -> Unit
+    onEditDocument: (Long) -> Unit,
+    initialCategoryId: Long? = null,
+    initialKeePassDatabaseId: Long? = null,
+    initialKeePassGroupPath: String? = null,
+    initialBitwardenVaultId: Long? = null,
+    initialBitwardenFolderId: String? = null
 ) {
     val listPaneContent: @Composable ColumnScope.() -> Unit = {
         CardWalletContent(
@@ -76,7 +81,12 @@ internal fun CardWalletPane(
                     onEditBankCard = onEditBankCard,
                     selectedDocumentId = selectedDocumentId,
                     onClearSelectedDocument = onClearSelectedDocument,
-                    onEditDocument = onEditDocument
+                    onEditDocument = onEditDocument,
+                    initialCategoryId = initialCategoryId,
+                    initialKeePassDatabaseId = initialKeePassDatabaseId,
+                    initialKeePassGroupPath = initialKeePassGroupPath,
+                    initialBitwardenVaultId = initialBitwardenVaultId,
+                    initialBitwardenFolderId = initialBitwardenFolderId
                 )
             }
         }

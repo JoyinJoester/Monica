@@ -19,7 +19,7 @@ data class OperationLog(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     
-    /** 操作的条目类型: PASSWORD, TOTP, BANK_CARD, DOCUMENT, NOTE, CATEGORY */
+    /** 操作的条目类型: PASSWORD, TOTP, PASSKEY, BANK_CARD, DOCUMENT, NOTE, CATEGORY, KEEPASS_DATABASE, KEEPASS_GROUP, BITWARDEN_SEND, BITWARDEN_SYNC, BITWARDEN_CONFLICT */
     val itemType: String,
     
     /** 关联条目的 ID */
@@ -57,10 +57,16 @@ data class OperationLog(
 enum class OperationLogItemType {
     PASSWORD,
     TOTP,
+    PASSKEY,
     BANK_CARD,
     DOCUMENT,
     NOTE,
     CATEGORY,
+    KEEPASS_DATABASE,
+    KEEPASS_GROUP,
+    BITWARDEN_SEND,
+    BITWARDEN_SYNC,
+    BITWARDEN_CONFLICT,
     WEBDAV_UPLOAD,    // WebDAV 上传
     WEBDAV_DOWNLOAD   // WebDAV 下载/同步
 }

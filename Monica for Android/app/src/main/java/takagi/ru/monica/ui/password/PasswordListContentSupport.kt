@@ -49,6 +49,7 @@ import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.TotpViewModel
 
 private const val FAST_SCROLL_LOG_TAG = "PasswordFastScroll"
+private const val PASSWORD_SCROLL_LOG_TAG = "PasswordScrollDebug"
 private const val MANUAL_STACK_GROUP_KEY_PREFIX = "manual_stack:"
 private const val NO_STACK_GROUP_KEY_PREFIX = "no_stack:"
 
@@ -316,6 +317,10 @@ internal fun rememberPasswordListLazyListState(
 
         val totalItems = listState.layoutInfo.totalItemsCount
         if (totalItems <= 0) {
+            Log.d(
+                PASSWORD_SCROLL_LOG_TAG,
+                "source=v1_fast_scroll_skip_empty requestKey=$fastScrollRequestKey progress=$fastScrollProgress"
+            )
             lastHandledFastScrollRequestKey = fastScrollRequestKey
             return@LaunchedEffect
         }
@@ -324,9 +329,18 @@ internal fun rememberPasswordListLazyListState(
             .roundToInt()
             .coerceIn(0, totalItems - 1)
         if (listState.firstVisibleItemIndex == targetIndex) {
+            Log.d(
+                PASSWORD_SCROLL_LOG_TAG,
+                "source=v1_fast_scroll_skip_same_target requestKey=$fastScrollRequestKey target=$targetIndex current=${listState.firstVisibleItemIndex}"
+            )
             lastHandledFastScrollRequestKey = fastScrollRequestKey
             return@LaunchedEffect
         }
+
+        Log.d(
+            PASSWORD_SCROLL_LOG_TAG,
+            "source=v1_fast_scroll_apply requestKey=$fastScrollRequestKey progress=$fastScrollProgress target=$targetIndex current=${listState.firstVisibleItemIndex} total=$totalItems"
+        )
 
         runCatching {
             listState.scrollToItem(index = targetIndex)
@@ -353,15 +367,28 @@ internal fun rememberPasswordListLazyListState(
         if (!allowScrollPositionPersistence) return@LaunchedEffect
         val totalItems = listState.layoutInfo.totalItemsCount
         if (totalItems <= 0) return@LaunchedEffect
+        Log.d(
+            PASSWORD_SCROLL_LOG_TAG,
+            "source=v1_restore_check saved=$savedScrollIndex/$savedScrollOffset current=${listState.firstVisibleItemIndex}/${listState.firstVisibleItemScrollOffset} total=$totalItems"
+        )
         val hasSavedPosition = savedScrollIndex != 0 || savedScrollOffset != 0
         if (!hasSavedPosition) {
             if (listState.firstVisibleItemIndex != 0 ||
                 listState.firstVisibleItemScrollOffset != 0
             ) {
+                Log.d(
+                    PASSWORD_SCROLL_LOG_TAG,
+                    "source=v1_restore_no_saved_force_top current=${listState.firstVisibleItemIndex}/${listState.firstVisibleItemScrollOffset} total=$totalItems"
+                )
                 runCatching {
                     listState.scrollToItem(0, 0)
                 }.onSuccess {
-                    viewModel.updatePasswordListScrollPosition(0, 0, null)
+                    viewModel.updatePasswordListScrollPosition(
+                        0,
+                        0,
+                        null,
+                        source = "v1_restore_no_saved_force_top"
+                    )
                 }
             }
             hasAppliedDeferredScrollRestore = true
@@ -374,10 +401,19 @@ internal fun rememberPasswordListLazyListState(
         val targetOffset = if (isSavedIndexOutOfBounds) 0 else savedScrollOffset
 
         if (isSavedIndexOutOfBounds) {
+            Log.w(
+                PASSWORD_SCROLL_LOG_TAG,
+                "source=v1_restore_saved_out_of_bounds saved=$savedScrollIndex/$savedScrollOffset total=$totalItems -> 0/0"
+            )
             runCatching {
                 listState.scrollToItem(targetIndex, targetOffset)
             }.onSuccess {
-                viewModel.updatePasswordListScrollPosition(0, 0, null)
+                viewModel.updatePasswordListScrollPosition(
+                    0,
+                    0,
+                    null,
+                    source = "v1_restore_saved_out_of_bounds"
+                )
                 hasAppliedDeferredScrollRestore = true
             }
             return@LaunchedEffect
@@ -386,12 +422,24 @@ internal fun rememberPasswordListLazyListState(
         if (listState.firstVisibleItemIndex == targetIndex &&
             listState.firstVisibleItemScrollOffset == targetOffset
         ) {
+            Log.d(
+                PASSWORD_SCROLL_LOG_TAG,
+                "source=v1_restore_skip_already_at_target target=$targetIndex/$targetOffset"
+            )
             hasAppliedDeferredScrollRestore = true
             return@LaunchedEffect
         }
+        Log.d(
+            PASSWORD_SCROLL_LOG_TAG,
+            "source=v1_restore_apply target=$targetIndex/$targetOffset current=${listState.firstVisibleItemIndex}/${listState.firstVisibleItemScrollOffset} total=$totalItems"
+        )
         runCatching {
             listState.scrollToItem(targetIndex, targetOffset)
         }.onSuccess {
+            Log.d(
+                PASSWORD_SCROLL_LOG_TAG,
+                "source=v1_restore_applied target=$targetIndex/$targetOffset"
+            )
             hasAppliedDeferredScrollRestore = true
         }
     }
@@ -431,7 +479,8 @@ internal fun rememberPasswordListLazyListState(
                 viewModel.updatePasswordListScrollPosition(
                     snapshot.index,
                     snapshot.offset,
-                    snapshot.anchorKey
+                    snapshot.anchorKey,
+                    source = "v1_snapshot_persist"
                 )
             }
     }
@@ -450,36 +499,6 @@ internal fun rememberPasswordListLazyListState(
             .collect { progress ->
                 viewModel.updateFastScrollProgress(progress)
             }
-    }
-
-    DisposableEffect(
-        listState,
-        allowScrollPositionPersistence,
-        hasAppliedDeferredScrollRestore,
-        savedScrollIndex,
-        savedScrollOffset
-    ) {
-        onDispose {
-            val pendingRestore =
-                !hasAppliedDeferredScrollRestore &&
-                    (
-                        savedScrollIndex != 0 ||
-                            savedScrollOffset != 0
-                        )
-            val totalItems = listState.layoutInfo.totalItemsCount
-            if (!allowScrollPositionPersistence || pendingRestore || totalItems <= 0) {
-                return@onDispose
-            }
-            val topVisibleKey = listState.layoutInfo.visibleItemsInfo
-                .firstOrNull { item -> item.key.toString() in currentListItemKeySet }
-                ?.key
-                ?.toString()
-            viewModel.updatePasswordListScrollPosition(
-                listState.firstVisibleItemIndex,
-                listState.firstVisibleItemScrollOffset,
-                topVisibleKey
-            )
-        }
     }
 
     return listState

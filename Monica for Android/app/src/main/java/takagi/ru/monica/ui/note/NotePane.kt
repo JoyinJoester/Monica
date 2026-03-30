@@ -30,7 +30,12 @@ internal fun NotePane(
     onSelectionModeChange: (Boolean) -> Unit,
     isAddingNoteInline: Boolean,
     inlineNoteEditorId: Long?,
-    onInlineNoteEditorBack: () -> Unit
+    onInlineNoteEditorBack: () -> Unit,
+    initialCategoryId: Long? = null,
+    initialKeePassDatabaseId: Long? = null,
+    initialKeePassGroupPath: String? = null,
+    initialBitwardenVaultId: Long? = null,
+    initialBitwardenFolderId: String? = null
 ) {
     if (isCompactWidth) {
         NoteListScreen(
@@ -64,6 +69,11 @@ internal fun NotePane(
                 if (isAddingNoteInline || inlineNoteEditorId != null) {
                     AddEditNoteScreen(
                         noteId = inlineNoteEditorId ?: -1L,
+                        initialCategoryId = initialCategoryId,
+                        initialKeePassDatabaseId = initialKeePassDatabaseId,
+                        initialKeePassGroupPath = initialKeePassGroupPath,
+                        initialBitwardenVaultId = initialBitwardenVaultId,
+                        initialBitwardenFolderId = initialBitwardenFolderId,
                         onNavigateBack = onInlineNoteEditorBack,
                         viewModel = noteViewModel
                     )

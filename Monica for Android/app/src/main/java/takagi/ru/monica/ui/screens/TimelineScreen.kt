@@ -52,6 +52,7 @@ import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Smartphone
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -1004,9 +1005,16 @@ private fun getItemTypeIcon(itemType: String): ImageVector {
     return when (itemType) {
         "PASSWORD" -> Icons.Default.Key
         "TOTP" -> Icons.Default.History
+        "PASSKEY" -> Icons.Default.Lock
         "BANK_CARD" -> Icons.Default.CreditCard
         "NOTE" -> Icons.Default.Note
         "DOCUMENT" -> Icons.Default.Description
+        "CATEGORY" -> Icons.Default.Folder
+        "KEEPASS_DATABASE" -> Icons.Default.Storage
+        "KEEPASS_GROUP" -> Icons.Default.AccountTree
+        "BITWARDEN_SEND" -> Icons.Default.CloudUpload
+        "BITWARDEN_SYNC" -> Icons.Default.Sync
+        "BITWARDEN_CONFLICT" -> Icons.Default.History
         "WEBDAV_UPLOAD", "WEBDAV_DOWNLOAD" -> Icons.Default.CloudUpload
         else -> Icons.Default.Description
     }
@@ -1034,9 +1042,16 @@ private fun getItemTypeLabel(itemType: String): String {
     return when (itemType) {
         "PASSWORD" -> stringResource(R.string.timeline_item_password)
         "TOTP" -> stringResource(R.string.timeline_item_authenticator)
+        "PASSKEY" -> stringResource(R.string.passkey_title)
         "BANK_CARD" -> stringResource(R.string.timeline_item_card)
         "NOTE" -> stringResource(R.string.timeline_item_note)
         "DOCUMENT" -> stringResource(R.string.timeline_item_document)
+        "CATEGORY" -> stringResource(R.string.category)
+        "KEEPASS_DATABASE" -> stringResource(R.string.database_source_keepass)
+        "KEEPASS_GROUP" -> stringResource(R.string.v2_keepass_groups)
+        "BITWARDEN_SEND" -> stringResource(R.string.send_screen_title)
+        "BITWARDEN_SYNC" -> stringResource(R.string.sync_backup_bitwarden_sync_title)
+        "BITWARDEN_CONFLICT" -> stringResource(R.string.sync_conflict)
         "WEBDAV_UPLOAD" -> stringResource(R.string.timeline_item_cloud_backup)
         "WEBDAV_DOWNLOAD" -> stringResource(R.string.timeline_item_cloud_restore)
         else -> stringResource(R.string.timeline_item_default)

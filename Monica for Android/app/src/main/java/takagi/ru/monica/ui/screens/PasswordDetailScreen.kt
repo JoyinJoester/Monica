@@ -87,6 +87,7 @@ import takagi.ru.monica.ui.icons.rememberUploadedPasswordIcon
 import takagi.ru.monica.ui.icons.shouldShowFallbackSlot
 import takagi.ru.monica.autofill_ng.ui.rememberAppIcon
 import takagi.ru.monica.autofill_ng.ui.rememberFavicon
+import takagi.ru.monica.ui.password.getPasswordInfoKey
 import kotlinx.coroutines.flow.flowOf
 import java.text.DateFormat
 import java.util.Locale
@@ -159,6 +160,7 @@ fun PasswordDetailScreen(
     }
 
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showArchiveDialog by remember { mutableStateOf(false) }
     var itemToDelete by remember { mutableStateOf<PasswordEntry?>(null) } // For specific password deletion
     var historyItemToDelete by remember { mutableStateOf<PasswordHistoryEntry?>(null) }
     var showClearHistoryDialog by remember { mutableStateOf(false) }
@@ -315,10 +317,9 @@ fun PasswordDetailScreen(
                 }
                 
                 // Find siblings
-                val key = buildPasswordSiblingGroupKey(entry)
-                groupPasswords = allPasswords.filter { 
-                    val itKey = buildPasswordSiblingGroupKey(it)
-                    itKey == key
+                val key = getPasswordInfoKey(entry)
+                groupPasswords = allPasswords.filter {
+                    getPasswordInfoKey(it) == key
                 }.sortedWith(
                     compareBy<PasswordEntry> {
                         when {
@@ -330,9 +331,10 @@ fun PasswordDetailScreen(
                         .thenBy { it.bitwardenVaultId ?: Long.MAX_VALUE }
                         .thenBy { it.id }
                 )
+                val detailPasswords = groupPasswords.ifEmpty { listOf(entry) }
                 unavailablePasswordSources = withContext(Dispatchers.IO) {
                     buildMap {
-                        listOf(entry).forEach { current ->
+                        detailPasswords.forEach { current ->
                             val rawCurrent = viewModel.getRawPasswordEntryById(current.id) ?: current
                             val secretState = viewModel.inspectSecretState(rawCurrent)
                             if (secretState is SecretValueState.Unreadable) {
@@ -447,8 +449,7 @@ fun PasswordDetailScreen(
                                     viewModel.unarchivePassword(entry.id)
                                     passwordEntry = entry.copy(isArchived = false, archivedAt = null)
                                 } else {
-                                    viewModel.archivePassword(entry.id)
-                                    onNavigateBack()
+                                    showArchiveDialog = true
                                 }
                             }
                         }
@@ -588,33 +589,39 @@ fun PasswordDetailScreen(
                 // ==========================================
                 // 🔑 密码列表
                 // ==========================================
-                PasswordListCard(
-                    passwords = listOf(entry),
-                    unavailablePasswordSources = unavailablePasswordSources,
-                    onResyncUnreadable = {
-                        if (isResyncingUnreadablePassword) return@PasswordListCard
-                        coroutineScope.launch {
-                            isResyncingUnreadablePassword = true
-                            val result = viewModel.recoverUnreadableBitwardenEntry(entry.id)
-                            val message = when (result) {
-                                BitwardenRecoveryResult.Success ->
-                                    context.getString(R.string.bitwarden_password_resync_success)
-                                is BitwardenRecoveryResult.Error ->
-                                    context.getString(R.string.bitwarden_password_resync_failed, result.message)
-                                is BitwardenRecoveryResult.EmptyVaultBlocked ->
-                                    context.getString(R.string.bitwarden_password_resync_blocked, result.reason)
+                val detailPasswords = groupPasswords.ifEmpty { listOf(entry) }
+                val shouldShowPasswordCard = detailPasswords.any { passwordEntry ->
+                    passwordEntry.password.isNotBlank() || unavailablePasswordSources[passwordEntry.id] != null
+                }
+                if (shouldShowPasswordCard) {
+                    PasswordListCard(
+                        passwords = detailPasswords,
+                        unavailablePasswordSources = unavailablePasswordSources,
+                        onResyncUnreadable = { targetEntry ->
+                            if (isResyncingUnreadablePassword) return@PasswordListCard
+                            coroutineScope.launch {
+                                isResyncingUnreadablePassword = true
+                                val result = viewModel.recoverUnreadableBitwardenEntry(targetEntry.id)
+                                val message = when (result) {
+                                    BitwardenRecoveryResult.Success ->
+                                        context.getString(R.string.bitwarden_password_resync_success)
+                                    is BitwardenRecoveryResult.Error ->
+                                        context.getString(R.string.bitwarden_password_resync_failed, result.message)
+                                    is BitwardenRecoveryResult.EmptyVaultBlocked ->
+                                        context.getString(R.string.bitwarden_password_resync_blocked, result.reason)
+                                }
+                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                isResyncingUnreadablePassword = false
                             }
-                            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                            isResyncingUnreadablePassword = false
-                        }
-                    },
-                    isResyncingUnreadable = isResyncingUnreadablePassword,
-                    onDelete = {
-                        itemToDelete = entry
-                        showDeleteDialog = true
-                    },
-                    context = context
-                )
+                        },
+                        isResyncingUnreadable = isResyncingUnreadablePassword,
+                        onDelete = { targetEntry ->
+                            itemToDelete = targetEntry
+                            showDeleteDialog = true
+                        },
+                        context = context
+                    )
+                }
 
                 if (entry.website.isNotBlank()) {
                     WebsiteCard(
@@ -788,6 +795,39 @@ fun PasswordDetailScreen(
     }
     
     // 删除确认对话框
+    if (showArchiveDialog) {
+        AlertDialog(
+            onDismissRequest = { showArchiveDialog = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val target = passwordEntry
+                        showArchiveDialog = false
+                        if (target != null) {
+                            viewModel.archivePassword(target.id)
+                            onNavigateBack()
+                        }
+                    }
+                ) {
+                    Text(
+                        text = stringResource(R.string.archive_action),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showArchiveDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            },
+            title = { Text(stringResource(R.string.archive_password_confirmation_title)) },
+            text = { Text(stringResource(R.string.archive_password_confirmation_message)) },
+            containerColor = MaterialTheme.colorScheme.surface,
+            titleContentColor = MaterialTheme.colorScheme.onSurface,
+            textContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+
     if (showDeleteDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
@@ -2409,14 +2449,6 @@ private fun normalizeWebsiteUrl(input: String): String? {
     }
 }
 
-private fun buildPasswordSiblingGroupKey(entry: PasswordEntry): String {
-    val title = entry.title.trim().lowercase(Locale.ROOT)
-    val username = entry.username.trim().lowercase(Locale.ROOT)
-    val website = normalizeWebsiteForSiblingGroupKey(entry.website)
-
-    return "$title|$website|$username"
-}
-
 private fun buildPasswordStorageInfo(
     entry: PasswordEntry,
     categories: List<takagi.ru.monica.data.Category>,
@@ -2484,17 +2516,6 @@ private fun buildPasswordStorageInfo(
     )
 }
 
-private fun normalizeWebsiteForSiblingGroupKey(value: String): String {
-    val raw = value.trim()
-    if (raw.isEmpty()) return ""
-    return raw
-        .lowercase(Locale.ROOT)
-        .removePrefix("http://")
-        .removePrefix("https://")
-        .removePrefix("www.")
-        .trimEnd('/')
-}
-
 /**
  * 检查是否有个人信息
  */
@@ -2527,7 +2548,7 @@ private fun hasPaymentInfo(entry: PasswordEntry): Boolean {
 private fun PasswordListCard(
     passwords: List<PasswordEntry>,
     unavailablePasswordSources: Map<Long, PasswordSource>,
-    onResyncUnreadable: () -> Unit,
+    onResyncUnreadable: (PasswordEntry) -> Unit,
     isResyncingUnreadable: Boolean,
     onDelete: (PasswordEntry) -> Unit,
     context: Context
@@ -2554,7 +2575,7 @@ private fun PasswordListCard(
                 PasswordItemRow(
                     entry = entry,
                     unavailableSource = unavailablePasswordSources[entry.id],
-                    onResyncUnreadable = onResyncUnreadable,
+                    onResyncUnreadable = { onResyncUnreadable(entry) },
                     isResyncingUnreadable = isResyncingUnreadable,
                     index = index + 1,
                     showIndex = passwords.size > 1,
@@ -2595,6 +2616,7 @@ private fun PasswordItemRow(
         is PasswordSource.Conflict -> stringResource(R.string.password_owner_conflict_copy)
         else -> stringResource(R.string.password_owner_conflict_copy)
     }
+    val hasPasswordValue = entry.password.isNotBlank()
 
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
@@ -2609,19 +2631,21 @@ private fun PasswordItemRow(
             )
             
             Row {
-                IconButton(onClick = { visible = !visible }) {
-                    Icon(
-                        if (visible) MonicaIcons.Security.visibilityOff else MonicaIcons.Security.visibility,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
+                if (hasPasswordValue) {
+                    IconButton(onClick = { visible = !visible }) {
+                        Icon(
+                            if (visible) MonicaIcons.Security.visibilityOff else MonicaIcons.Security.visibility,
+                            contentDescription = null,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
                 
                 IconButton(onClick = {
-                    if (isUnavailable) {
+                    if (isUnavailable || !hasPasswordValue) {
                         Toast.makeText(
                             context,
-                            unavailableCopyMessage,
+                            if (isUnavailable) unavailableCopyMessage else context.getString(R.string.permission_status_unavailable),
                             Toast.LENGTH_SHORT
                         ).show()
                         return@IconButton
@@ -2650,11 +2674,12 @@ private fun PasswordItemRow(
         Text(
             text = when {
                 isUnavailable -> unavailableMessage
+                !hasPasswordValue -> stringResource(R.string.permission_status_unavailable)
                 visible -> entry.password
                 else -> "•".repeat(8)
             },
             style = MaterialTheme.typography.bodyLarge.copy(
-                fontFamily = if (visible) androidx.compose.ui.text.font.FontFamily.Monospace else androidx.compose.ui.text.font.FontFamily.Default
+                fontFamily = if (visible && hasPasswordValue) androidx.compose.ui.text.font.FontFamily.Monospace else androidx.compose.ui.text.font.FontFamily.Default
             ),
             color = MaterialTheme.colorScheme.onSurface
         )

@@ -259,6 +259,7 @@ private val stringSetSaver = Saver<Set<String>, ArrayList<String>>(
 )
 
 private const val FAST_SCROLL_LOG_TAG = "PasswordFastScroll"
+private const val PASSWORD_SCROLL_LOG_TAG = "PasswordScrollDebug"
 
 private fun PasswordEntry.hasBoundAuthenticator(): Boolean = authenticatorKey.isNotBlank()
 
@@ -1667,10 +1668,15 @@ fun PasswordListContent(
                                     .firstOrNull { item -> item.key.toString() in passwordPageListItemKeySet }
                                     ?.key
                                     ?.toString()
+                                Log.d(
+                                    PASSWORD_SCROLL_LOG_TAG,
+                                    "source=v1_click_open_detail persist=${listState.firstVisibleItemIndex}/${listState.firstVisibleItemScrollOffset} anchor=$topVisibleKey"
+                                )
                                 viewModel.updatePasswordListScrollPosition(
                                     listState.firstVisibleItemIndex,
                                     listState.firstVisibleItemScrollOffset,
-                                    topVisibleKey
+                                    topVisibleKey,
+                                    source = "v1_click_open_detail"
                                 )
                                 onPasswordClick(password)
                             },

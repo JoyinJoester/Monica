@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
+import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.keepass.KeePassPasskeyDeleteExecutor
 import takagi.ru.monica.keepass.KeePassPasskeyUpdateExecutor
@@ -17,6 +18,8 @@ import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.repository.PasskeyRepository
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.utils.FieldChange
+import takagi.ru.monica.utils.OperationLogger
 
 /**
  * Passkey ViewModel
@@ -184,7 +187,13 @@ class PasskeyViewModel(
         viewModelScope.launch {
             try {
                 _isLoading.value = true
+                val existing = repository.getPasskeyById(passkey.credentialId)
                 repository.savePasskey(passkey)
+                if (existing == null) {
+                    logPasskeyCreate(passkey)
+                } else {
+                    logPasskeyUpdate(existing, passkey)
+                }
             } catch (e: Exception) {
                 _errorMessage.value = "保存 Passkey 失败: ${e.message}"
             } finally {
@@ -200,11 +209,15 @@ class PasskeyViewModel(
         val existing = repository.getPasskeyById(passkey.credentialId)
             ?: return Result.failure(IllegalArgumentException("Passkey 不存在"))
         return try {
-            keepassPasskeyUpdateExecutor.update(
+            val result = keepassPasskeyUpdateExecutor.update(
                 existing = existing,
                 updated = passkey,
                 persistUpdate = repository::updatePasskey
             )
+            result.onSuccess { updatedPasskey ->
+                logPasskeyUpdate(existing, updatedPasskey)
+            }
+            result
         } catch (e: Exception) {
             _errorMessage.value = "更新 Passkey 失败: ${e.message}"
             Result.failure(e)
@@ -217,7 +230,12 @@ class PasskeyViewModel(
     fun updateBoundPassword(credentialId: String, passwordId: Long?) {
         viewModelScope.launch {
             try {
+                val existing = repository.getPasskeyById(credentialId) ?: return@launch
+                if (existing.boundPasswordId == passwordId) {
+                    return@launch
+                }
                 repository.updateBoundPasswordId(credentialId, passwordId)
+                logPasskeyUpdate(existing, existing.copy(boundPasswordId = passwordId))
             } catch (e: Exception) {
                 _errorMessage.value = "更新绑定失败: ${e.message}"
             }
@@ -243,10 +261,14 @@ class PasskeyViewModel(
      */
     suspend fun deletePasskey(passkey: PasskeyEntry): Result<Unit> {
         return try {
-            keepassPasskeyDeleteExecutor.delete(
+            val result = keepassPasskeyDeleteExecutor.delete(
                 passkey = passkey,
                 deleteLocal = repository::deletePasskeyLocalOnly
             )
+            if (result.isSuccess) {
+                logPasskeyDelete(passkey)
+            }
+            result
         } catch (e: Exception) {
             _errorMessage.value = "删除 Passkey 失败: ${e.message}"
             Result.failure(e)
@@ -310,6 +332,71 @@ class PasskeyViewModel(
 
     private suspend fun hasKeePassDatabase(databaseId: Long): Boolean {
         return localKeePassDatabaseDao?.getDatabaseById(databaseId) != null
+    }
+
+    private fun logPasskeyCreate(passkey: PasskeyEntry) {
+        val details = listOf(
+            FieldChange(fieldName = "RpId", oldValue = "", newValue = passkey.rpId),
+            FieldChange(fieldName = "Username", oldValue = "", newValue = passkey.userName)
+        ).filter { it.newValue.isNotBlank() }
+
+        OperationLogger.logCreate(
+            itemType = OperationLogItemType.PASSKEY,
+            itemId = passkeyTimelineItemId(passkey.credentialId),
+            itemTitle = passkeyTimelineTitle(passkey),
+            details = details
+        )
+    }
+
+    private fun logPasskeyUpdate(oldPasskey: PasskeyEntry, newPasskey: PasskeyEntry) {
+        val changes = mutableListOf<FieldChange>()
+
+        fun addChange(fieldName: String, oldValue: String, newValue: String) {
+            if (oldValue != newValue) {
+                changes += FieldChange(fieldName = fieldName, oldValue = oldValue, newValue = newValue)
+            }
+        }
+
+        addChange("RpName", oldPasskey.rpName, newPasskey.rpName)
+        addChange("RpId", oldPasskey.rpId, newPasskey.rpId)
+        addChange("Username", oldPasskey.userName, newPasskey.userName)
+        addChange("DisplayName", oldPasskey.userDisplayName, newPasskey.userDisplayName)
+        addChange(
+            "BoundPasswordId",
+            oldPasskey.boundPasswordId?.toString().orEmpty(),
+            newPasskey.boundPasswordId?.toString().orEmpty()
+        )
+        addChange(
+            "CategoryId",
+            oldPasskey.categoryId?.toString().orEmpty(),
+            newPasskey.categoryId?.toString().orEmpty()
+        )
+        addChange("SyncStatus", oldPasskey.syncStatus, newPasskey.syncStatus)
+
+        if (changes.isEmpty()) return
+
+        OperationLogger.logUpdate(
+            itemType = OperationLogItemType.PASSKEY,
+            itemId = passkeyTimelineItemId(newPasskey.credentialId),
+            itemTitle = passkeyTimelineTitle(newPasskey),
+            changes = changes
+        )
+    }
+
+    private fun logPasskeyDelete(passkey: PasskeyEntry) {
+        OperationLogger.logDelete(
+            itemType = OperationLogItemType.PASSKEY,
+            itemId = passkeyTimelineItemId(passkey.credentialId),
+            itemTitle = passkeyTimelineTitle(passkey)
+        )
+    }
+
+    private fun passkeyTimelineItemId(credentialId: String): Long = credentialId.hashCode().toLong()
+
+    private fun passkeyTimelineTitle(passkey: PasskeyEntry): String {
+        return passkey.rpName.ifBlank {
+            passkey.rpId.ifBlank { "Passkey" }
+        }
     }
 
     private companion object {

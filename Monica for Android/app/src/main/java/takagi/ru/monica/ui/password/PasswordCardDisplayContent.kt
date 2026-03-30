@@ -1,7 +1,6 @@
 package takagi.ru.monica.ui.password
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Person
@@ -44,23 +43,11 @@ fun resolvePasswordCardDisplayLines(
                 .takeIf { it.isNotBlank() }
                 ?.let { PasswordCardDisplayLine(field, Icons.Default.Person, it) }
 
-            PasswordCardDisplayField.WEBSITE -> {
-                val websiteText = entry.website.takeIf { it.isNotBlank() }
-                val appNameText = entry.appName.takeIf { it.isNotBlank() }
-                when {
-                    websiteText != null && appNameText != null ->
-                        PasswordCardDisplayLine(field, Icons.Default.Language, "$websiteText · $appNameText")
-                    websiteText != null ->
-                        PasswordCardDisplayLine(field, Icons.Default.Language, websiteText)
-                    appNameText != null ->
-                        PasswordCardDisplayLine(field, Icons.Default.Apps, appNameText)
-                    else -> null
-                }
-            }
-
-            PasswordCardDisplayField.APP_NAME -> entry.appName
+            PasswordCardDisplayField.WEBSITE -> entry.website
                 .takeIf { it.isNotBlank() }
-                ?.let { PasswordCardDisplayLine(field, Icons.Default.Apps, it) }
+                ?.let { PasswordCardDisplayLine(field, Icons.Default.Language, it) }
+
+            PasswordCardDisplayField.APP_NAME -> null
 
             PasswordCardDisplayField.NOTE_PREVIEW -> entry.notes
                 .lineSequence()

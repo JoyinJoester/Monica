@@ -39,7 +39,6 @@ import takagi.ru.monica.data.model.formatForDisplay
 import takagi.ru.monica.ui.components.ActionStrip
 import takagi.ru.monica.ui.components.ActionStripItem
 import takagi.ru.monica.ui.components.BankCardCard
-import takagi.ru.monica.ui.components.CustomFieldDisplayCard
 import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.util.ImageManager
 import takagi.ru.monica.viewmodel.BankCardViewModel
@@ -317,8 +316,9 @@ fun BankCardDetailScreen(
                     }
 
                     if (data.customFields.isNotEmpty()) {
-                        CustomFieldDisplayCard(
+                        BankCardCustomFieldsCard(
                             fields = CardWalletDataCodec.customFieldsToDisplay(data.customFields),
+                            context = context,
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -540,5 +540,73 @@ fun BankCardDetailScreen(
                 }
             }
         )
+    }
+}
+
+@Composable
+private fun BankCardCustomFieldsCard(
+    fields: List<takagi.ru.monica.data.CustomField>,
+    context: Context,
+    modifier: Modifier = Modifier
+) {
+    if (fields.isEmpty()) return
+
+    val visibilityState = remember(fields) { mutableStateMapOf<Int, Boolean>() }
+
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.EditNote,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = stringResource(R.string.custom_field_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            fields.forEachIndexed { index, field ->
+                if (index > 0) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
+
+                val label = field.title.ifBlank { stringResource(R.string.custom_field_new_field) }
+                val isVisible = visibilityState[index] ?: false
+
+                if (field.isProtected) {
+                    PasswordField(
+                        label = label,
+                        value = field.value,
+                        visible = isVisible,
+                        onToggleVisibility = {
+                            visibilityState[index] = !isVisible
+                        },
+                        context = context
+                    )
+                } else {
+                    InfoFieldWithCopy(
+                        label = label,
+                        value = field.value.ifBlank { "-" },
+                        context = context
+                    )
+                }
+            }
+        }
     }
 }

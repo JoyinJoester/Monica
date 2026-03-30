@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordDatabase
@@ -15,8 +16,11 @@ import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
+import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.utils.FieldChange
 import takagi.ru.monica.utils.KeePassRestoreTarget
+import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.utils.SettingsManager
 import java.util.Date
 import java.util.concurrent.TimeUnit
@@ -254,6 +258,7 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
                 onResult(true)
 
                 if (!needsKeepassRestore(item.originalData)) {
+                    logTrashRestore(item)
                     return@launch
                 }
             } catch (e: Exception) {
@@ -269,6 +274,7 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
                     return@keepassRestoreSync
                 }
                 applyLocalRestore(item.originalData, keepassRestoreTarget)
+                logTrashRestore(item)
                 android.util.Log.i("TrashViewModel", "KeePass restore synced: id=${item.id}, type=${item.itemType}")
             }
         }
@@ -284,6 +290,7 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
                     onResult(false)
                     return@launch
                 }
+                logTrashPermanentDelete(item)
                 onResult(true)
             } catch (e: Exception) {
                 android.util.Log.e("TrashViewModel", "Failed to permanently delete item", e)
@@ -375,11 +382,14 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 var hasFailure = false
+                var deletedCount = 0
 
                 val deletedPasswords = database.passwordEntryDao().getDeletedEntriesSync()
                 deletedPasswords.forEach { entry ->
                     if (!permanentlyDeleteWithSources(entry)) {
                         hasFailure = true
+                    } else {
+                        deletedCount += 1
                     }
                 }
 
@@ -387,7 +397,16 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
                 deletedSecureItems.forEach { item ->
                     if (!permanentlyDeleteWithSources(item)) {
                         hasFailure = true
+                    } else {
+                        deletedCount += 1
                     }
+                }
+
+                if (deletedCount > 0) {
+                    logTrashSummaryDelete(
+                        title = getApplication<Application>().getString(R.string.timeline_empty_trash_title),
+                        detail = getApplication<Application>().getString(R.string.timeline_deleted_items_count, deletedCount)
+                    )
                 }
 
                 onResult(!hasFailure)
@@ -409,12 +428,16 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
             val cutoffDate = Date(System.currentTimeMillis() - TimeUnit.DAYS.toMillis(settings.autoDeleteDays.toLong()))
             
             try {
+                var deletedCount = 0
+
                 val expiredPasswords = database.passwordEntryDao()
                     .getDeletedEntriesSync()
                     .filter { it.deletedAt != null && it.deletedAt < cutoffDate }
 
                 expiredPasswords.forEach { entry ->
-                    permanentlyDeleteWithSources(entry)
+                    if (permanentlyDeleteWithSources(entry)) {
+                        deletedCount += 1
+                    }
                 }
 
                 val expiredSecureItems = database.secureItemDao()
@@ -422,7 +445,16 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
                     .filter { it.deletedAt != null && it.deletedAt < cutoffDate }
 
                 expiredSecureItems.forEach { item ->
-                    permanentlyDeleteWithSources(item)
+                    if (permanentlyDeleteWithSources(item)) {
+                        deletedCount += 1
+                    }
+                }
+
+                if (deletedCount > 0) {
+                    logTrashSummaryDelete(
+                        title = getApplication<Application>().getString(R.string.timeline_trash_title),
+                        detail = getApplication<Application>().getString(R.string.timeline_auto_clear_in_days, settings.autoDeleteDays)
+                    )
                 }
             } catch (e: Exception) {
                 android.util.Log.e("TrashViewModel", "Failed to cleanup expired items", e)
@@ -757,6 +789,47 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
         ItemType.BANK_CARD -> BitwardenPendingOperation.ITEM_TYPE_CARD
         ItemType.DOCUMENT -> BitwardenPendingOperation.ITEM_TYPE_DOCUMENT
         ItemType.NOTE -> BitwardenPendingOperation.ITEM_TYPE_NOTE
+    }
+
+    private fun ItemType.toOperationLogItemType(): OperationLogItemType = when (this) {
+        ItemType.PASSWORD -> OperationLogItemType.PASSWORD
+        ItemType.TOTP -> OperationLogItemType.TOTP
+        ItemType.BANK_CARD -> OperationLogItemType.BANK_CARD
+        ItemType.DOCUMENT -> OperationLogItemType.DOCUMENT
+        ItemType.NOTE -> OperationLogItemType.NOTE
+    }
+
+    private fun logTrashRestore(item: TrashItem) {
+        OperationLogger.logUpdate(
+            itemType = item.itemType.toOperationLogItemType(),
+            itemId = item.id,
+            itemTitle = item.title,
+            changes = listOf(
+                FieldChange(
+                    fieldName = getApplication<Application>().getString(R.string.timeline_trash_title),
+                    oldValue = getApplication<Application>().getString(R.string.timeline_op_delete),
+                    newValue = getApplication<Application>().getString(R.string.timeline_reverted)
+                )
+            )
+        )
+    }
+
+    private fun logTrashPermanentDelete(item: TrashItem) {
+        OperationLogger.logDelete(
+            itemType = item.itemType.toOperationLogItemType(),
+            itemId = item.id,
+            itemTitle = item.title,
+            detail = getApplication<Application>().getString(R.string.timeline_permanent_delete_title)
+        )
+    }
+
+    private fun logTrashSummaryDelete(title: String, detail: String) {
+        OperationLogger.logDelete(
+            itemType = OperationLogItemType.CATEGORY,
+            itemId = System.currentTimeMillis(),
+            itemTitle = title,
+            detail = detail
+        )
     }
     
     /**

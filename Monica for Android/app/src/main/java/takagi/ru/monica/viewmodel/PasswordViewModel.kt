@@ -78,6 +78,8 @@ sealed class BitwardenRecoveryResult {
     data class EmptyVaultBlocked(val reason: String) : BitwardenRecoveryResult()
 }
 
+private const val PASSWORD_SCROLL_LOG_TAG = "PasswordScrollDebug"
+
 /**
  * ViewModel for password management
  */
@@ -224,25 +226,48 @@ class PasswordViewModel(
     }
 
     fun requestFastScroll(progress: Float) {
-        _fastScrollProgress.value = progress.coerceIn(0f, 1f)
-        _fastScrollRequestKey.value = _fastScrollRequestKey.value + 1
+        val safeProgress = progress.coerceIn(0f, 1f)
+        val nextRequestKey = _fastScrollRequestKey.value + 1
+        _fastScrollProgress.value = safeProgress
+        _fastScrollRequestKey.value = nextRequestKey
+        Log.d(
+            PASSWORD_SCROLL_LOG_TAG,
+            "source=v1_request_fast_scroll progress=$safeProgress requestKey=$nextRequestKey"
+        )
     }
 
     fun updateFastScrollProgress(progress: Float) {
         _fastScrollProgress.value = progress.coerceIn(0f, 1f)
     }
 
-    fun updatePasswordListScrollPosition(index: Int, offset: Int, anchorKey: String? = null) {
+    fun updatePasswordListScrollPosition(
+        index: Int,
+        offset: Int,
+        anchorKey: String? = null,
+        source: String = "unknown"
+    ) {
         val safeIndex = index.coerceAtLeast(0)
         val safeOffset = offset.coerceAtLeast(0)
-        if (_passwordListScrollIndex.value != safeIndex) {
+        val previousIndex = _passwordListScrollIndex.value
+        val previousOffset = _passwordListScrollOffset.value
+        val previousAnchorKey = _passwordListScrollAnchorKey.value
+        val indexChanged = previousIndex != safeIndex
+        val offsetChanged = previousOffset != safeOffset
+        val anchorChanged = previousAnchorKey != anchorKey
+        if (indexChanged) {
             _passwordListScrollIndex.value = safeIndex
         }
-        if (_passwordListScrollOffset.value != safeOffset) {
+        if (offsetChanged) {
             _passwordListScrollOffset.value = safeOffset
         }
-        if (_passwordListScrollAnchorKey.value != anchorKey) {
+        if (anchorChanged) {
             _passwordListScrollAnchorKey.value = anchorKey
+        }
+        if (indexChanged || offsetChanged || anchorChanged) {
+            Log.d(
+                PASSWORD_SCROLL_LOG_TAG,
+                "source=$source old=$previousIndex/$previousOffset anchor=$previousAnchorKey new=$safeIndex/$safeOffset anchor=$anchorKey"
+            )
         }
     }
 
@@ -546,7 +571,8 @@ class PasswordViewModel(
 
             group.forEach { entry ->
                 val isPasswordMode = entry.loginType.equals("PASSWORD", ignoreCase = true)
-                if (isPasswordMode && entry.password.isBlank()) {
+                val shouldFilterGhost = !entry.isLocalOnlyEntry() || entry.hasOwnershipConflict()
+                if (isPasswordMode && entry.password.isBlank() && shouldFilterGhost) {
                     ghostIds += entry.id
                 }
             }
@@ -2468,33 +2494,21 @@ class PasswordViewModel(
             var firstId: Long? = null
             val normalizedPasswords = passwords.map { it.trim() }
             val normalizedInput = normalizedPasswords.filter { it.isNotEmpty() }
-            val preservedExistingPasswords = if (normalizedInput.isEmpty() && originalIds.isNotEmpty()) {
+            val preservedUnreadablePasswords = if (normalizedInput.isEmpty() && originalIds.isNotEmpty()) {
                 originalIds.mapNotNull { id ->
                     val existing = repository.getPasswordEntryById(id) ?: return@mapNotNull null
-                    val secretState = inspectSecretState(existing)
-                    when {
-                        secretState.plainValueOrEmpty().isNotEmpty() -> secretState.plainValueOrEmpty()
-                        shouldPreserveUnreadableBitwardenPassword(existing, "") -> ""
-                        else -> null
-                    }
+                    if (shouldPreserveUnreadableBitwardenPassword(existing, "")) "" else null
                 }
             } else {
                 emptyList()
             }
-            val hasPreservedUnreadablePassword = preservedExistingPasswords.any { it.isEmpty() }
-            val hasRetainedExistingPassword = preservedExistingPasswords.any { it.isNotEmpty() }
+            val hasPreservedUnreadablePassword = preservedUnreadablePasswords.isNotEmpty()
 
             val effectivePasswords = when {
                 normalizedInput.isNotEmpty() -> normalizedInput
                 commonEntry.loginType.equals("SSO", ignoreCase = true) -> listOf("")
-                hasRetainedExistingPassword || hasPreservedUnreadablePassword -> preservedExistingPasswords
-                else -> emptyList()
-            }
-
-            if (effectivePasswords.isEmpty()) {
-                Log.w("PasswordViewModel", "Skip saveGroupedPasswords because PASSWORD mode has no non-empty password")
-                onComplete(originalIds.firstOrNull())
-                return@launch
+                hasPreservedUnreadablePassword -> preservedUnreadablePasswords
+                else -> listOf("")
             }
             
             // 应用分类绑定规则

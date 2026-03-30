@@ -29,13 +29,23 @@ internal fun CardWalletDetailPaneContent(
     onEditBankCard: (Long) -> Unit,
     selectedDocumentId: Long?,
     onClearSelectedDocument: () -> Unit,
-    onEditDocument: (Long) -> Unit
+    onEditDocument: (Long) -> Unit,
+    initialCategoryId: Long? = null,
+    initialKeePassDatabaseId: Long? = null,
+    initialKeePassGroupPath: String? = null,
+    initialBitwardenVaultId: Long? = null,
+    initialBitwardenFolderId: String? = null
 ) {
     when {
         isAddingBankCardInline || inlineBankCardEditorId != null -> {
             AddEditBankCardScreen(
                 viewModel = bankCardViewModel,
                 cardId = inlineBankCardEditorId,
+                initialCategoryId = initialCategoryId,
+                initialKeePassDatabaseId = initialKeePassDatabaseId,
+                initialKeePassGroupPath = initialKeePassGroupPath,
+                initialBitwardenVaultId = initialBitwardenVaultId,
+                initialBitwardenFolderId = initialBitwardenFolderId,
                 onNavigateBack = onInlineBankCardEditorBack,
                 modifier = Modifier.fillMaxSize()
             )
@@ -44,6 +54,11 @@ internal fun CardWalletDetailPaneContent(
             AddEditDocumentScreen(
                 viewModel = documentViewModel,
                 documentId = inlineDocumentEditorId,
+                initialCategoryId = initialCategoryId,
+                initialKeePassDatabaseId = initialKeePassDatabaseId,
+                initialKeePassGroupPath = initialKeePassGroupPath,
+                initialBitwardenVaultId = initialBitwardenVaultId,
+                initialBitwardenFolderId = initialBitwardenFolderId,
                 onNavigateBack = onInlineDocumentEditorBack,
                 modifier = Modifier.fillMaxSize()
             )

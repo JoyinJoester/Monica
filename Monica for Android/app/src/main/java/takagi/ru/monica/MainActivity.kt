@@ -723,6 +723,19 @@ fun MonicaContent(
                 onNavigateToWalletAdd = { initialType ->
                     navController.navigate(Screen.WalletAdd.createRoute(initialType.name))
                 },
+                onPreparePasswordAddStorageDefaults = { categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
+                    navController.currentBackStackEntry
+                        ?.savedStateHandle
+                        ?.setPendingAddStorageDefaults(
+                            PendingAddStorageDefaults(
+                                categoryId = categoryId,
+                                keepassDatabaseId = keepassDatabaseId,
+                                keepassGroupPath = keepassGroupPath,
+                                bitwardenVaultId = bitwardenVaultId,
+                                bitwardenFolderId = bitwardenFolderId
+                            )
+                        )
+                },
                 onPrepareTotpAddStorageDefaults = { categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
                     navController.currentBackStackEntry
                         ?.savedStateHandle
@@ -892,6 +905,14 @@ fun MonicaContent(
             popExitTransition = { rightSlidePopExitTransition() }
         ) { backStackEntry ->
             val passwordId = backStackEntry.arguments?.getString("passwordId")?.toLongOrNull() ?: -1L
+            val pendingStorageDefaults = remember(backStackEntry, passwordId) {
+                if (passwordId > 0) {
+                    navController.previousBackStackEntry?.savedStateHandle?.clearPendingAddStorageDefaults()
+                    null
+                } else {
+                    navController.previousBackStackEntry?.savedStateHandle?.consumePendingAddStorageDefaults()
+                }
+            }
             val navigateBackFromAddEditPassword = {
                 val popped = navController.popBackStack()
                 if (!popped) {
@@ -911,6 +932,11 @@ fun MonicaContent(
                     bankCardViewModel = bankCardViewModel,
                     localKeePassViewModel = localKeePassViewModel,
                     passwordId = if (passwordId == -1L) null else passwordId,
+                    initialCategoryId = pendingStorageDefaults?.categoryId,
+                    initialKeePassDatabaseId = pendingStorageDefaults?.keepassDatabaseId,
+                    initialKeePassGroupPath = pendingStorageDefaults?.keepassGroupPath,
+                    initialBitwardenVaultId = pendingStorageDefaults?.bitwardenVaultId,
+                    initialBitwardenFolderId = pendingStorageDefaults?.bitwardenFolderId,
                     onNavigateBack = navigateBackFromAddEditPassword
                 )
             }

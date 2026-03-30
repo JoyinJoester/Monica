@@ -138,6 +138,24 @@ object OperationLogger {
             changes = addedItems
         )
     }
+
+    /**
+     * 记录通用同步操作
+     */
+    fun logSync(
+        itemType: OperationLogItemType,
+        itemId: Long,
+        itemTitle: String,
+        details: List<FieldChange> = emptyList()
+    ) {
+        log(
+            itemType = itemType,
+            itemId = itemId,
+            itemTitle = itemTitle,
+            operationType = OperationType.SYNC,
+            changes = details
+        )
+    }
     
     private fun log(
         itemType: OperationLogItemType,

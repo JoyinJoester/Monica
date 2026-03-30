@@ -26,15 +26,18 @@ import takagi.ru.monica.data.KeePassKdfAlgorithm
 import takagi.ru.monica.data.KeePassStorageLocation
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
+import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.utils.FieldChange
 import takagi.ru.monica.utils.KeePassCodecSupport
 import takagi.ru.monica.utils.KeePassOperationException
 import takagi.ru.monica.utils.KeePassGroupInfo
 import takagi.ru.monica.utils.KeePassKdbxService
+import takagi.ru.monica.utils.OperationLogger
 import java.io.File
 import java.io.FileOutputStream
 
@@ -222,6 +225,15 @@ class LocalKeePassViewModel(
             )
             if (result.isSuccess) {
                 refreshGroups(databaseId)
+                val databaseName = dao.getDatabaseById(databaseId)?.name ?: "KeePass DB #$databaseId"
+                result.getOrNull()?.let { groupInfo ->
+                    logKeepassGroupCreate(
+                        databaseId = databaseId,
+                        databaseName = databaseName,
+                        group = groupInfo,
+                        parentPath = parentPath
+                    )
+                }
             }
             withContext(Dispatchers.Main) {
                 onResult(result)
@@ -243,6 +255,15 @@ class LocalKeePassViewModel(
             )
             if (result.isSuccess) {
                 refreshGroups(databaseId)
+                val databaseName = dao.getDatabaseById(databaseId)?.name ?: "KeePass DB #$databaseId"
+                result.getOrNull()?.let { groupInfo ->
+                    logKeepassGroupRename(
+                        databaseId = databaseId,
+                        databaseName = databaseName,
+                        oldPath = groupPath,
+                        newGroup = groupInfo
+                    )
+                }
             }
             withContext(Dispatchers.Main) {
                 onResult(result)
@@ -262,6 +283,12 @@ class LocalKeePassViewModel(
             )
             if (result.isSuccess) {
                 refreshGroups(databaseId)
+                val databaseName = dao.getDatabaseById(databaseId)?.name ?: "KeePass DB #$databaseId"
+                logKeepassGroupDelete(
+                    databaseId = databaseId,
+                    databaseName = databaseName,
+                    groupPath = groupPath
+                )
             }
             withContext(Dispatchers.Main) {
                 onResult(result)
@@ -285,6 +312,8 @@ class LocalKeePassViewModel(
             _operationState.value = OperationState.Loading("正在创建数据库...")
             
             try {
+                var createdDatabaseId: Long? = null
+                var createLogDetails: List<FieldChange> = emptyList()
                 withContext(Dispatchers.IO) {
                     val encryptedPassword = if (password.isNotBlank()) securityManager.encryptData(password) else null
                     
@@ -371,10 +400,23 @@ class LocalKeePassViewModel(
                         kdfParallelism = normalizedOptions.parallelism
                     )
                     
-                    dao.insertDatabase(database)
+                    createdDatabaseId = dao.insertDatabase(database)
+                    createLogDetails = listOf(
+                        FieldChange("存储位置", "", storageLocationLabel(storageLocation)),
+                        FieldChange("格式版本", "", normalizedOptions.formatVersion.name),
+                        FieldChange("加密算法", "", normalizedOptions.cipherAlgorithm.name),
+                        FieldChange("KDF", "", normalizedOptions.kdfAlgorithm.name)
+                    )
                 }
                 
                 _operationState.value = OperationState.Success("数据库创建成功")
+                createdDatabaseId?.let { databaseId ->
+                    logKeepassDatabaseCreate(
+                        databaseId = databaseId,
+                        databaseName = name,
+                        details = createLogDetails
+                    )
+                }
             } catch (e: Exception) {
                 _operationState.value = OperationState.Error("创建失败: ${formatOperationError(e)}")
             }
@@ -445,6 +487,10 @@ class LocalKeePassViewModel(
             
             try {
                 var verifyElapsedMs = 0L
+                var importLogAction: String? = null
+                var importLogDatabaseId = 0L
+                var importLogDatabaseName = name
+                var importLogChanges: List<FieldChange> = emptyList()
                 withContext(Dispatchers.IO) {
                     // 验证文件是否可访问
                     context.contentResolver.openInputStream(uri)?.close()
@@ -487,24 +533,47 @@ class LocalKeePassViewModel(
                     val uriPath = uri.toString()
                     val existing = dao.getAllDatabasesSync().firstOrNull { it.filePath == uriPath }
                     if (existing != null) {
-                        dao.updateDatabase(
-                            existing.copy(
-                                name = name,
-                                keyFileUri = keyFileUri?.toString() ?: existing.keyFileUri,
-                                storageLocation = KeePassStorageLocation.EXTERNAL,
-                                encryptedPassword = encryptedPassword,
-                                description = description ?: existing.description,
-                                entryCount = entryCount,
-                                kdbxMajorVersion = options.formatVersion.majorVersion,
-                                cipherAlgorithm = options.cipherAlgorithm.name,
-                                kdfAlgorithm = options.kdfAlgorithm.name,
-                                kdfTransformRounds = options.transformRounds,
-                                kdfMemoryBytes = options.memoryBytes,
-                                kdfParallelism = options.parallelism,
-                                lastAccessedAt = System.currentTimeMillis()
-                            )
+                        val updated = existing.copy(
+                            name = name,
+                            keyFileUri = keyFileUri?.toString() ?: existing.keyFileUri,
+                            storageLocation = KeePassStorageLocation.EXTERNAL,
+                            encryptedPassword = encryptedPassword,
+                            description = description ?: existing.description,
+                            entryCount = entryCount,
+                            kdbxMajorVersion = options.formatVersion.majorVersion,
+                            cipherAlgorithm = options.cipherAlgorithm.name,
+                            kdfAlgorithm = options.kdfAlgorithm.name,
+                            kdfTransformRounds = options.transformRounds,
+                            kdfMemoryBytes = options.memoryBytes,
+                            kdfParallelism = options.parallelism,
+                            lastAccessedAt = System.currentTimeMillis()
                         )
+                        dao.updateDatabase(updated)
                         KeePassKdbxService.invalidateProcessCache(existing.id)
+
+                        importLogAction = "update"
+                        importLogDatabaseId = updated.id
+                        importLogDatabaseName = updated.name
+                        importLogChanges = buildList {
+                            if (existing.name != updated.name) {
+                                add(FieldChange("名称", existing.name, updated.name))
+                            }
+                            if (existing.description.orEmpty() != updated.description.orEmpty()) {
+                                add(FieldChange("描述", existing.description.orEmpty(), updated.description.orEmpty()))
+                            }
+                            if (existing.entryCount != updated.entryCount) {
+                                add(FieldChange("条目数量", existing.entryCount.toString(), updated.entryCount.toString()))
+                            }
+                            if (existing.keyFileUri != updated.keyFileUri) {
+                                add(
+                                    FieldChange(
+                                        "密钥文件",
+                                        if (existing.keyFileUri.isNullOrBlank()) "未设置" else "已设置",
+                                        if (updated.keyFileUri.isNullOrBlank()) "未设置" else "已设置"
+                                    )
+                                )
+                            }
+                        }
                     } else {
                         val database = LocalKeePassDatabase(
                             name = name,
@@ -524,10 +593,37 @@ class LocalKeePassViewModel(
                         )
                         val newId = dao.insertDatabase(database)
                         KeePassKdbxService.invalidateProcessCache(newId)
+
+                        importLogAction = "create"
+                        importLogDatabaseId = newId
+                        importLogDatabaseName = database.name
+                        importLogChanges = listOf(
+                            FieldChange("来源", "", "外部导入"),
+                            FieldChange("存储位置", "", storageLocationLabel(KeePassStorageLocation.EXTERNAL)),
+                            FieldChange("条目数量", "", entryCount.toString())
+                        )
                     }
                 }
                 
                 _operationState.value = OperationState.Success("数据库添加成功（验证${verifyElapsedMs}ms）")
+                when (importLogAction) {
+                    "create" -> {
+                        logKeepassDatabaseCreate(
+                            databaseId = importLogDatabaseId,
+                            databaseName = importLogDatabaseName,
+                            details = importLogChanges
+                        )
+                    }
+                    "update" -> {
+                        logKeepassDatabaseUpdate(
+                            databaseId = importLogDatabaseId,
+                            databaseName = importLogDatabaseName,
+                            changes = importLogChanges.ifEmpty {
+                                listOf(FieldChange("外部引用", "已存在", "已刷新"))
+                            }
+                        )
+                    }
+                }
             } catch (e: Exception) {
                 _operationState.value = OperationState.Error("添加失败: ${formatOperationError(e)}")
             }
@@ -542,9 +638,13 @@ class LocalKeePassViewModel(
             _operationState.value = OperationState.Loading("正在复制到内部存储...")
             
             try {
+                var copiedDatabaseId: Long? = null
+                var copiedDatabaseName = ""
+                var sourceDatabaseName = ""
                 withContext(Dispatchers.IO) {
                     val database = dao.getDatabaseById(databaseId)
                         ?: throw Exception("数据库不存在")
+                    sourceDatabaseName = database.name
                     
                     if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
                         throw Exception("数据库已在内部存储")
@@ -577,10 +677,21 @@ class LocalKeePassViewModel(
                         createdAt = System.currentTimeMillis()
                     )
                     
-                    dao.insertDatabase(newDatabase)
+                    copiedDatabaseId = dao.insertDatabase(newDatabase)
+                    copiedDatabaseName = newDatabase.name
                 }
                 
                 _operationState.value = OperationState.Success("已复制到内部存储")
+                copiedDatabaseId?.let { newDatabaseId ->
+                    logKeepassDatabaseCreate(
+                        databaseId = newDatabaseId,
+                        databaseName = copiedDatabaseName,
+                        details = listOf(
+                            FieldChange("来源", "", sourceDatabaseName),
+                            FieldChange("存储位置", "", storageLocationLabel(KeePassStorageLocation.INTERNAL))
+                        )
+                    )
+                }
             } catch (e: Exception) {
                 _operationState.value = OperationState.Error("复制失败: ${formatOperationError(e)}")
             }
@@ -641,9 +752,12 @@ class LocalKeePassViewModel(
             )
             
             try {
+                var transferDatabaseName = ""
+                var transferChanges: List<FieldChange> = emptyList()
                 withContext(Dispatchers.IO) {
                     val database = dao.getDatabaseById(databaseId)
                         ?: throw Exception("数据库不存在")
+                    transferDatabaseName = database.name
                     
                     if (database.storageLocation == targetLocation) {
                         throw Exception("数据库已在目标位置")
@@ -705,9 +819,26 @@ class LocalKeePassViewModel(
                     
                     // 更新数据库记录
                     dao.updateStorageLocation(databaseId, targetLocation, newPath)
+                    transferChanges = listOf(
+                        FieldChange(
+                            "存储位置",
+                            storageLocationLabel(database.storageLocation),
+                            storageLocationLabel(targetLocation)
+                        ),
+                        FieldChange(
+                            "存储路径",
+                            storagePathLabel(database.filePath),
+                            storagePathLabel(newPath)
+                        )
+                    )
                 }
                 
                 _operationState.value = OperationState.Success("转移成功")
+                logKeepassDatabaseUpdate(
+                    databaseId = databaseId,
+                    databaseName = transferDatabaseName,
+                    changes = transferChanges
+                )
             } catch (e: Exception) {
                 _operationState.value = OperationState.Error("转移失败: ${formatOperationError(e)}")
             }
@@ -722,9 +853,11 @@ class LocalKeePassViewModel(
             _operationState.value = OperationState.Loading("正在删除...")
             
             try {
+                var deletedDatabaseName = ""
                 withContext(Dispatchers.IO) {
                     val database = dao.getDatabaseById(databaseId)
                         ?: throw Exception("数据库不存在")
+                    deletedDatabaseName = database.name
                     val appDatabase = PasswordDatabase.getDatabase(context)
                     
                     if (deleteFile) {
@@ -751,6 +884,11 @@ class LocalKeePassViewModel(
                 _selectedDatabase.update { current -> current?.takeUnless { it.id == databaseId } }
                 
                 _operationState.value = OperationState.Success("已删除")
+                logKeepassDatabaseDelete(
+                    databaseId = databaseId,
+                    databaseName = deletedDatabaseName,
+                    detail = if (deleteFile) "删除记录与本地文件" else "删除记录"
+                )
             } catch (e: Exception) {
                 _operationState.value = OperationState.Error("删除失败: ${formatOperationError(e)}")
             }
@@ -764,9 +902,11 @@ class LocalKeePassViewModel(
         viewModelScope.launch {
             try {
                 var verifyElapsedMs = 0L
+                var databaseName = "KeePass DB #$databaseId"
                 withContext(Dispatchers.IO) {
                     val database = dao.getDatabaseById(databaseId)
                         ?: throw Exception("数据库不存在")
+                    databaseName = database.name
                     val verifyStart = SystemClock.elapsedRealtime()
                     val verifyResult = workspaceRepository.inspectDatabase(
                         databaseId = databaseId,
@@ -801,6 +941,13 @@ class LocalKeePassViewModel(
                 }
                 
                 _operationState.value = OperationState.Success("密码已更新（验证${verifyElapsedMs}ms）")
+                logKeepassDatabaseUpdate(
+                    databaseId = databaseId,
+                    databaseName = databaseName,
+                    changes = listOf(
+                        FieldChange("主密码", "已设置", "已更新")
+                    )
+                )
             } catch (e: Exception) {
                 _operationState.value = OperationState.Error("更新失败: ${formatOperationError(e)}")
             }
@@ -813,9 +960,20 @@ class LocalKeePassViewModel(
     fun setAsDefault(databaseId: Long) {
         viewModelScope.launch {
             try {
+                var defaultDatabaseName: String? = null
                 withContext(Dispatchers.IO) {
+                    defaultDatabaseName = dao.getDatabaseById(databaseId)?.name
                     dao.clearDefaultDatabase()
                     dao.setDefaultDatabase(databaseId)
+                }
+                defaultDatabaseName?.let { databaseName ->
+                    logKeepassDatabaseUpdate(
+                        databaseId = databaseId,
+                        databaseName = databaseName,
+                        changes = listOf(
+                            FieldChange("默认数据库", "否", "是")
+                        )
+                    )
                 }
             } catch (e: Exception) {
                 _operationState.value = OperationState.Error("设置失败: ${formatOperationError(e)}")
@@ -953,6 +1111,114 @@ class LocalKeePassViewModel(
      */
     fun clearOperationState() {
         _operationState.value = OperationState.Idle
+    }
+
+    private fun logKeepassDatabaseCreate(
+        databaseId: Long,
+        databaseName: String,
+        details: List<FieldChange> = emptyList()
+    ) {
+        OperationLogger.logCreate(
+            itemType = OperationLogItemType.KEEPASS_DATABASE,
+            itemId = databaseId,
+            itemTitle = databaseName,
+            details = details
+        )
+    }
+
+    private fun logKeepassDatabaseUpdate(
+        databaseId: Long,
+        databaseName: String,
+        changes: List<FieldChange>
+    ) {
+        OperationLogger.logUpdate(
+            itemType = OperationLogItemType.KEEPASS_DATABASE,
+            itemId = databaseId,
+            itemTitle = databaseName,
+            changes = changes
+        )
+    }
+
+    private fun logKeepassDatabaseDelete(
+        databaseId: Long,
+        databaseName: String,
+        detail: String? = null
+    ) {
+        OperationLogger.logDelete(
+            itemType = OperationLogItemType.KEEPASS_DATABASE,
+            itemId = databaseId,
+            itemTitle = databaseName,
+            detail = detail
+        )
+    }
+
+    private fun logKeepassGroupCreate(
+        databaseId: Long,
+        databaseName: String,
+        group: KeePassGroupInfo,
+        parentPath: String?
+    ) {
+        OperationLogger.logCreate(
+            itemType = OperationLogItemType.KEEPASS_GROUP,
+            itemId = buildKeepassGroupItemId(databaseId, group.path),
+            itemTitle = "$databaseName · ${group.displayPath}",
+            details = listOf(
+                FieldChange("数据库", "", databaseName),
+                FieldChange("父级分组", "", parentPath?.takeIf { it.isNotBlank() } ?: "根目录")
+            )
+        )
+    }
+
+    private fun logKeepassGroupRename(
+        databaseId: Long,
+        databaseName: String,
+        oldPath: String,
+        newGroup: KeePassGroupInfo
+    ) {
+        val oldName = oldPath.substringAfterLast('/')
+        OperationLogger.logUpdate(
+            itemType = OperationLogItemType.KEEPASS_GROUP,
+            itemId = buildKeepassGroupItemId(databaseId, newGroup.path),
+            itemTitle = "$databaseName · ${newGroup.displayPath}",
+            changes = buildList {
+                add(FieldChange("名称", oldName, newGroup.name))
+                if (oldPath != newGroup.path) {
+                    add(FieldChange("路径", oldPath, newGroup.path))
+                }
+            }
+        )
+    }
+
+    private fun logKeepassGroupDelete(
+        databaseId: Long,
+        databaseName: String,
+        groupPath: String
+    ) {
+        OperationLogger.logDelete(
+            itemType = OperationLogItemType.KEEPASS_GROUP,
+            itemId = buildKeepassGroupItemId(databaseId, groupPath),
+            itemTitle = "$databaseName · $groupPath",
+            detail = "删除分组"
+        )
+    }
+
+    private fun buildKeepassGroupItemId(databaseId: Long, groupPath: String): Long {
+        return "${databaseId}:$groupPath".hashCode().toLong() and 0x7FFFFFFFL
+    }
+
+    private fun storageLocationLabel(location: KeePassStorageLocation): String {
+        return when (location) {
+            KeePassStorageLocation.INTERNAL -> "内部"
+            KeePassStorageLocation.EXTERNAL -> "外部"
+        }
+    }
+
+    private fun storagePathLabel(path: String): String {
+        return if (path.startsWith("content://")) {
+            "外部 URI"
+        } else {
+            path
+        }
     }
 
     private fun formatOperationError(error: Throwable): String {

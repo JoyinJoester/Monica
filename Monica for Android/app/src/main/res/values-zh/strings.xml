@@ -207,6 +207,8 @@
     <string name="archive_page_title">归档</string>
     <string name="archive_action">归档</string>
     <string name="unarchive_action">取消归档</string>
+    <string name="archive_password_confirmation_title">确认归档此条目？</string>
+    <string name="archive_password_confirmation_message">归档后该条目会移动到“归档”列表，之后可随时恢复。</string>
     <string name="archive_empty_hint">暂无归档密码</string>
     <string name="archive_item_subtitle_empty">无用户名或网站信息</string>
     <string name="smart_deduplication">智能去重</string>
@@ -1874,6 +1876,10 @@
     <string name="common_name_fill_empty_hint">可以先创建姓名模板，或从已有证件和银行卡里保存常用姓名。</string>
     <string name="common_name_fill_from_analysis">根据现有内容推荐</string>
     <string name="common_name_fill_save_template">保存为常用姓名</string>
+    <string name="username_suggestions_multi_title">匹配到已有账号（%1$d）</string>
+    <string name="username_suggestions_unique_title">唯一匹配的已有账号</string>
+    <string name="username_suggestions_no_match">没有与“%1$s”匹配的已有账号</string>
+    <string name="username_suggestions_more_count">还有 %1$d 条匹配</string>
     
     <!-- SSO / Third-party Login -->
     <string name="login_type_label">登录方式</string>

@@ -240,8 +240,7 @@ class SettingsManager(private val context: Context) {
         )
         takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL -> listOf(
             takagi.ru.monica.data.PasswordCardDisplayField.USERNAME,
-            takagi.ru.monica.data.PasswordCardDisplayField.WEBSITE,
-            takagi.ru.monica.data.PasswordCardDisplayField.APP_NAME
+            takagi.ru.monica.data.PasswordCardDisplayField.WEBSITE
         )
     }
 
@@ -265,6 +264,7 @@ class SettingsManager(private val context: Context) {
                     takagi.ru.monica.data.PasswordCardDisplayField.valueOf(value.trim())
                 }.getOrNull()
             }
+            .filter { it != takagi.ru.monica.data.PasswordCardDisplayField.APP_NAME }
             .distinct()
         return parsed.ifEmpty { null }
     }
@@ -810,7 +810,9 @@ class SettingsManager(private val context: Context) {
     }
 
     suspend fun updatePasswordCardDisplayFields(fields: List<takagi.ru.monica.data.PasswordCardDisplayField>) {
-        val normalizedFields = fields.distinct()
+        val normalizedFields = fields
+            .filter { it != takagi.ru.monica.data.PasswordCardDisplayField.APP_NAME }
+            .distinct()
         dataStore.edit { preferences ->
             preferences[PASSWORD_CARD_DISPLAY_FIELDS_KEY] = normalizedFields.joinToString(",") { it.name }
             preferences[PASSWORD_CARD_DISPLAY_MODE_KEY] = modeFromFields(normalizedFields).name

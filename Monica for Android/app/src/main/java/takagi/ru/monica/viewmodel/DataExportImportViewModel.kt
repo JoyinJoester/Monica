@@ -6,7 +6,9 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import takagi.ru.monica.R
 import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.model.TotpData
@@ -14,6 +16,8 @@ import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.BackupRestoreApplier
+import takagi.ru.monica.utils.FieldChange
+import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.util.DataExportImportManager
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -248,6 +252,12 @@ class DataExportImportViewModel(
                     }
                     
                     android.util.Log.d("DataImport", "导入完成: 成功=$count, 跳过=$skippedCount, 失败=$errorCount")
+                    logImportSummary(
+                        source = formatHint?.name ?: "CSV_AUTO",
+                        importedCount = count,
+                        skippedCount = skippedCount,
+                        failedCount = errorCount
+                    )
                     Result.success(count)
                 },
                 onFailure = { error ->
@@ -375,6 +385,12 @@ class DataExportImportViewModel(
                         }
                         
                         android.util.Log.d("AegisImport", "导入完成: 成功=$count, 跳过=$skippedCount, 失败=$errorCount")
+                        logImportSummary(
+                            source = "AEGIS_JSON",
+                            importedCount = count,
+                            skippedCount = skippedCount,
+                            failedCount = errorCount
+                        )
                         Result.success(count)
                     },
                     onFailure = { error ->
@@ -460,6 +476,12 @@ class DataExportImportViewModel(
                     }
                     
                     android.util.Log.d("EncryptedAegisImport", "导入完成: 成功=$count, 跳过=$skippedCount, 失败=$errorCount")
+                    logImportSummary(
+                        source = "AEGIS_JSON_ENCRYPTED",
+                        importedCount = count,
+                        skippedCount = skippedCount,
+                        failedCount = errorCount
+                    )
                     Result.success(count)
                 },
                 onFailure = { error ->
@@ -774,6 +796,10 @@ class DataExportImportViewModel(
 
         secureItemRepository.insertItem(secureItem)
         android.util.Log.d("SteamImport", "成功插入Steam Guard: $title")
+        logImportSummary(
+            source = "STEAM_GUARD",
+            importedCount = 1
+        )
         return Result.success(1)
     }
 
@@ -885,6 +911,10 @@ class DataExportImportViewModel(
                             localOnlyDedup = true,
                             logTag = "DataImport"
                         )
+                        logImportSummary(
+                            source = "ZIP_BACKUP",
+                            importedCount = stats.totalImported()
+                        )
                         Result.success(stats.totalImported())
                     },
                     onFailure = { error ->
@@ -951,18 +981,74 @@ class DataExportImportViewModel(
     
     private suspend fun insertTotpEntries(entries: List<DataExportImportManager.AegisEntry>): Result<Int> {
         var count = 0
+        var skippedCount = 0
+        var failedCount = 0
         val existingItems = secureItemRepository.getAllItems().first().filter { it.itemType == ItemType.TOTP }
         val existingSecrets = existingItems.mapNotNull { try { Json.decodeFromString<TotpData>(it.itemData).secret } catch (e: Exception) { null } }.toSet()
         for (entry in entries) {
             try {
-                if (entry.secret in existingSecrets) continue
+                if (entry.secret in existingSecrets) {
+                    skippedCount++
+                    continue
+                }
                 val totpData = TotpData(secret = entry.secret, issuer = entry.issuer, accountName = entry.name, digits = entry.digits, period = entry.period, algorithm = entry.algorithm)
                 val item = SecureItem(id = 0, itemType = ItemType.TOTP, title = entry.issuer.ifBlank { entry.name }, itemData = Json.encodeToString(totpData), notes = entry.note, isFavorite = false, imagePaths = "", createdAt = Date(), updatedAt = Date(), categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null)
                 secureItemRepository.insertItem(item)
                 count++
-            } catch (e: Exception) { }
+            } catch (e: Exception) {
+                failedCount++
+            }
         }
+        logImportSummary(
+            source = "STRATUM_TOTP",
+            importedCount = count,
+            skippedCount = skippedCount,
+            failedCount = failedCount
+        )
         return Result.success(count)
+    }
+
+    private fun logImportSummary(
+        source: String,
+        importedCount: Int,
+        skippedCount: Int = 0,
+        failedCount: Int = 0
+    ) {
+        if (importedCount <= 0 && skippedCount <= 0 && failedCount <= 0) return
+
+        val details = mutableListOf(
+            FieldChange(
+                fieldName = context.getString(R.string.import_data),
+                oldValue = source,
+                newValue = source
+            ),
+            FieldChange(
+                fieldName = "Imported",
+                oldValue = "0",
+                newValue = importedCount.toString()
+            )
+        )
+        if (skippedCount > 0) {
+            details += FieldChange(
+                fieldName = "Skipped",
+                oldValue = "0",
+                newValue = skippedCount.toString()
+            )
+        }
+        if (failedCount > 0) {
+            details += FieldChange(
+                fieldName = "Failed",
+                oldValue = "0",
+                newValue = failedCount.toString()
+            )
+        }
+
+        OperationLogger.logCreate(
+            itemType = OperationLogItemType.CATEGORY,
+            itemId = System.currentTimeMillis(),
+            itemTitle = "${context.getString(R.string.import_data)} · $source",
+            details = details
+        )
     }
 
 }
