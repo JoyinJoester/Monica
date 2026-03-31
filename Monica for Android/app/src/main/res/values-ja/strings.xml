@@ -1623,7 +1623,7 @@
     <string name="import_type_keepass_format_desc">KeePass 互換の .kdbx データベースをインポート</string>
     <string name="import_type_keepass_format_file_hint">.kdbx ファイルを選択</string>
     <string name="import_type_csv_data_title">CSV データ</string>
-    <string name="import_type_csv_data_desc">Monica / KeePass / Bitwarden から出力した CSV をインポート</string>
+    <string name="import_type_csv_data_desc">Monica / KeePass / Bitwarden / Password Keyboard から出力した CSV をインポート</string>
     <string name="import_type_csv_data_file_hint">.csv ファイルを選択</string>
     <string name="import_type_aegis_title">Aegis 認証器</string>
     <string name="import_type_aegis_desc">Aegis Authenticator の JSON バックアップをインポート</string>

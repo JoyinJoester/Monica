@@ -2682,7 +2682,7 @@
     <string name="import_data_keepass_tip_format_unsupported">The file format or cipher is not supported, or the file is corrupted. Verify with KeePassDX/KeePassXC first.</string>
     <string name="import_data_keepass_tip_io_failed">I/O failed while reading the file. Check file integrity and storage availability, then retry.</string>
     <string name="import_type_csv_data_title">CSV Data</string>
-    <string name="import_type_csv_data_desc">Import CSV exported from Monica / KeePass / Bitwarden</string>
+    <string name="import_type_csv_data_desc">Import CSV exported from Monica / KeePass / Bitwarden / Password Keyboard</string>
     <string name="import_type_csv_data_file_hint">Select .csv file</string>
     <string name="import_type_aegis_title">Aegis Authenticator</string>
     <string name="import_type_aegis_desc">Import JSON backup from Aegis Authenticator</string>
@@ -2721,6 +2721,13 @@
     <string name="import_type_csv_bitwarden_title">Bitwarden CSV</string>
     <string name="import_type_csv_bitwarden_desc">Import CSV exported by Bitwarden</string>
     <string name="import_type_csv_bitwarden_file_hint">Select Bitwarden .csv file</string>
+    <string name="import_type_csv_password_keyboard_title">Password Keyboard CSV</string>
+    <string name="import_type_csv_password_keyboard_desc">Import CSV exported by Password Keyboard app</string>
+    <string name="import_type_csv_password_keyboard_file_hint">Select Password Keyboard .csv file</string>
+    <string name="import_password_keyboard_tag_dialog_title">Tag Field Handling</string>
+    <string name="import_password_keyboard_tag_dialog_message">Password Keyboard CSV may include a "tag" field. For password/card entries, Monica has no built-in tag feature. Do you want to convert tags into custom fields or drop tags during import? (Validator fields will be imported into Monica authenticator when possible.)</string>
+    <string name="import_password_keyboard_tag_convert_action">Convert to custom fields</string>
+    <string name="import_password_keyboard_tag_drop_action">Drop tags</string>
     <string name="import_type_csv_source_title">Select CSV source</string>
     <string name="import_data_file_select_failed">File selection failed: %1$s</string>
     <string name="import_data_unknown_error">Unknown error</string>

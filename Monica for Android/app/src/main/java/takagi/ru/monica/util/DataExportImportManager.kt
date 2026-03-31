@@ -4,7 +4,12 @@ import android.content.Context
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.encodeToString
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.model.BankCardData
+import takagi.ru.monica.data.model.NoteData
+import takagi.ru.monica.data.model.SecureCustomField
+import takagi.ru.monica.data.model.SecureCustomFieldType
 import java.io.BufferedReader
 import java.io.BufferedWriter
 import java.io.InputStreamReader
@@ -16,6 +21,7 @@ import java.util.Locale
 import javax.xml.parsers.DocumentBuilderFactory
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -46,7 +52,15 @@ class DataExportImportManager(private val context: Context) {
         val keepassDatabaseId: Long? = null,
         val keepassGroupPath: String? = null,
         val bitwardenVaultId: Long? = null,
-        val bitwardenFolderId: String? = null
+        val bitwardenFolderId: String? = null,
+        val importedCustomFields: List<ImportedCustomField> = emptyList(),
+        val importedAuthenticatorKey: String? = null
+    )
+
+    data class ImportedCustomField(
+        val title: String,
+        val value: String,
+        val isProtected: Boolean = false
     )
 
     companion object {
@@ -129,7 +143,8 @@ class DataExportImportManager(private val context: Context) {
      */
     suspend fun importData(
         inputUri: Uri,
-        formatHint: CsvFormat? = null
+        formatHint: CsvFormat? = null,
+        passwordKeyboardTagHandling: PasswordKeyboardTagHandling = PasswordKeyboardTagHandling.CONVERT_TO_CUSTOM_FIELD
     ): Result<List<ExportItem>> = withContext(Dispatchers.IO) {
         try {
             val items = mutableListOf<ExportItem>()
@@ -173,9 +188,26 @@ class DataExportImportManager(private val context: Context) {
                     
                     android.util.Log.d("DataImport", "是否为标题行: $isHeader")
                     
-                    if (isHeader && (csvFormat == CsvFormat.KEEPASS_PASSWORD || csvFormat == CsvFormat.BITWARDEN_PASSWORD)) {
-                        val headers = parseCsvLine(firstLine)
-                        headerIndexMap = buildHeaderIndexMap(headers)
+                    if (isHeader) {
+                        when (csvFormat) {
+                            CsvFormat.KEEPASS_PASSWORD,
+                            CsvFormat.BITWARDEN_PASSWORD -> {
+                                val headers = parseCsvLine(firstLine)
+                                headerIndexMap = buildHeaderIndexMap(headers)
+                            }
+
+                            CsvFormat.PASSWORD_KEYBOARD -> {
+                                val firstLineFields = parseCsvLine(firstLine)
+                                val headerLine = if (isPasswordKeyboardSignature(firstLineFields)) {
+                                    readCsvRecord(reader)
+                                } else {
+                                    firstLine
+                                }
+                                headerLine?.let { headerIndexMap = buildHeaderIndexMap(parseCsvLine(it)) }
+                            }
+
+                            else -> Unit
+                        }
                     }
                     
                     if (!isHeader && firstLine.isNotBlank()) {
@@ -184,7 +216,12 @@ class DataExportImportManager(private val context: Context) {
                         try {
                             val fields = parseCsvLine(firstLine)
                             android.util.Log.d("DataImport", "第一行字段数: ${fields.size}, 内容: $fields")
-                            val item = createExportItemFromFormat(fields, csvFormat, headerIndexMap)
+                            val item = createExportItemFromFormat(
+                                fields = fields,
+                                format = csvFormat,
+                                headerIndexMap = headerIndexMap,
+                                passwordKeyboardTagHandling = passwordKeyboardTagHandling
+                            )
                             if (item != null) {
                                 items.add(item)
                                 android.util.Log.d("DataImport", "成功添加第一行数据")
@@ -210,7 +247,12 @@ class DataExportImportManager(private val context: Context) {
                             try {
                                 val fields = parseCsvLine(currentLine)
                                 android.util.Log.d("DataImport", "第${lineCount}行字段数: ${fields.size}")
-                                val item = createExportItemFromFormat(fields, csvFormat, headerIndexMap)
+                                val item = createExportItemFromFormat(
+                                    fields = fields,
+                                    format = csvFormat,
+                                    headerIndexMap = headerIndexMap,
+                                    passwordKeyboardTagHandling = passwordKeyboardTagHandling
+                                )
                                 if (item != null) {
                                     items.add(item)
                                     android.util.Log.d("DataImport", "成功添加第${lineCount}行数据")
@@ -269,8 +311,20 @@ class DataExportImportManager(private val context: Context) {
         CHROME_PASSWORD,   // Chrome密码格式 (name,url,username,password,note)
         KEEPASS_PASSWORD,  // KeePass CSV 格式
         BITWARDEN_PASSWORD, // Bitwarden CSV 格式
+        PASSWORD_KEYBOARD, // 密码键盘软件 CSV 格式
         ALIPAY_TRANSACTION, // 支付宝交易明细格式
         UNKNOWN
+    }
+
+    enum class PasswordKeyboardTagHandling {
+        CONVERT_TO_CUSTOM_FIELD,
+        DROP
+    }
+
+    private enum class PasswordKeyboardRecordType {
+        PASSWORD,
+        NOTE,
+        CARD
     }
     
     /**
@@ -278,7 +332,33 @@ class DataExportImportManager(private val context: Context) {
      */
     private fun detectCsvFormat(firstLine: String): CsvFormat {
         val lowerLine = firstLine.lowercase()
+        val firstLineFields = parseCsvLine(firstLine)
         return when {
+            // 密码键盘软件格式（签名行）: SecretInputExportFile,password|normal,ver4
+            isPasswordKeyboardSignature(firstLineFields) ->
+                CsvFormat.PASSWORD_KEYBOARD
+
+            // 密码键盘软件格式（表头行）
+            // password: username,password,title,remarks,url,tag,custom
+            // normal: title,remarks,tag,custom
+            // card: cardNo,title,password,date,remarks,tag
+            firstLineFields.map { it.trim().lowercase() }.toSet().let { headers ->
+                val hasTitle = headers.contains("title") || headers.contains("name")
+                val hasRemarks =
+                    headers.contains("remarks") || headers.contains("remark") || headers.contains("notes") || headers.contains("note")
+                val hasCardShape =
+                    (headers.contains("cardno") ||
+                        headers.contains("card_no") ||
+                        headers.contains("cardnumber") ||
+                        headers.contains("card number") ||
+                        headers.contains("卡号")) &&
+                        hasTitle
+                val hasPasswordShape =
+                    headers.contains("username") && headers.contains("password") && hasTitle && hasRemarks
+                val hasNormalShape = hasTitle && hasRemarks && !headers.contains("password")
+                hasPasswordShape || hasNormalShape || hasCardShape
+            } -> CsvFormat.PASSWORD_KEYBOARD
+
             // 支付宝格式检测
             lowerLine.contains("交易时间") && lowerLine.contains("收/支") && 
             lowerLine.contains("金额") -> 
@@ -303,7 +383,7 @@ class DataExportImportManager(private val context: Context) {
             
             else -> {
                 // 根据字段数量推测
-                val fields = parseCsvLine(firstLine)
+                val fields = firstLineFields
                 when {
                     fields.size >= 9 && fields.firstOrNull()?.trim()?.toLongOrNull() != null -> CsvFormat.APP_EXPORT
                     fields.size == 5 -> CsvFormat.CHROME_PASSWORD
@@ -320,7 +400,8 @@ class DataExportImportManager(private val context: Context) {
     private fun createExportItemFromFormat(
         fields: List<String>,
         format: CsvFormat,
-        headerIndexMap: Map<String, Int>? = null
+        headerIndexMap: Map<String, Int>? = null,
+        passwordKeyboardTagHandling: PasswordKeyboardTagHandling = PasswordKeyboardTagHandling.CONVERT_TO_CUSTOM_FIELD
     ): ExportItem? {
         return try {
             when (format) {
@@ -454,6 +535,135 @@ class DataExportImportManager(private val context: Context) {
                         )
                     } else null
                 }
+
+                CsvFormat.PASSWORD_KEYBOARD -> {
+                    if (fields.size >= 2) {
+                        val recordType = resolvePasswordKeyboardRecordType(fields, headerIndexMap)
+                        when (recordType) {
+                            PasswordKeyboardRecordType.NOTE -> {
+                                return createPasswordKeyboardNoteExportItem(fields, headerIndexMap)
+                            }
+
+                            PasswordKeyboardRecordType.CARD -> {
+                                return createPasswordKeyboardCardExportItem(
+                                    fields = fields,
+                                    headerIndexMap = headerIndexMap,
+                                    passwordKeyboardTagHandling = passwordKeyboardTagHandling
+                                )
+                            }
+
+                            PasswordKeyboardRecordType.PASSWORD -> Unit
+                        }
+
+                        // 密码键盘软件格式: username,password,title,remarks,url,tag,custom
+                        val username = getFieldValue(
+                            fields,
+                            headerIndexMap,
+                            listOf("username", "user name", "user_name", "login", "login_username", "用户名", "账号")
+                        ) ?: fields.getOrNull(0)?.trim().orEmpty()
+                        val password = getFieldValue(
+                            fields,
+                            headerIndexMap,
+                            listOf("password", "pass", "pwd", "login_password", "密码", "口令")
+                        ) ?: fields.getOrNull(1)?.trim().orEmpty()
+                        val title = getFieldValue(
+                            fields,
+                            headerIndexMap,
+                            listOf("title", "name", "标题", "名称")
+                        ) ?: fields.getOrNull(2)?.trim().orEmpty()
+                        val remarks = getFieldValue(
+                            fields,
+                            headerIndexMap,
+                            listOf("remarks", "remark", "notes", "note", "comment", "description", "备注", "说明")
+                        ) ?: fields.getOrNull(3)?.trim().orEmpty()
+                        val rawUrl = getFieldValue(
+                            fields,
+                            headerIndexMap,
+                            listOf("url", "website", "web site", "web_site", "link", "链接", "网址")
+                        ) ?: fields.getOrNull(4)?.trim().orEmpty()
+                        val url = normalizePasswordKeyboardWebsite(rawUrl)
+                        val tag = getFieldValue(
+                            fields,
+                            headerIndexMap,
+                            listOf("tag", "tags", "label", "labels", "标签", "分类")
+                        ) ?: fields.getOrNull(5)?.trim().orEmpty()
+                        val custom = getFieldValue(
+                            fields,
+                            headerIndexMap,
+                            listOf("custom", "custom_fields", "customfields", "extra", "extend", "扩展", "自定义字段")
+                        ) ?: fields.getOrNull(6)?.trim().orEmpty()
+                        val validator = getFieldValue(
+                            fields,
+                            headerIndexMap,
+                            listOf(
+                                "validator",
+                                "totp",
+                                "otp",
+                                "2fa",
+                                "authenticator",
+                                "verification",
+                                "verification_code",
+                                "验证器",
+                                "动态码",
+                                "二步验证"
+                            )
+                        ) ?: fields.getOrNull(7)?.trim().orEmpty()
+
+                        if (title.isBlank() && username.isBlank() && password.isBlank() && url.isBlank()) {
+                            return null
+                        }
+
+                        val passwordData = buildString {
+                            append("username:$username;")
+                            append("password:$password")
+                            if (url.isNotEmpty()) {
+                                append(";website:$url")
+                            }
+                        }
+
+                        val importedCustomFields = buildList {
+                            if (
+                                passwordKeyboardTagHandling == PasswordKeyboardTagHandling.CONVERT_TO_CUSTOM_FIELD &&
+                                tag.isNotBlank()
+                            ) {
+                                add(
+                                    ImportedCustomField(
+                                        title = "标签",
+                                        value = tag,
+                                        isProtected = false
+                                    )
+                                )
+                            }
+                            addAll(parsePasswordKeyboardCustomFields(custom))
+                        }
+
+                        val normalizedImportedCustomFields = importedCustomFields
+                            .map {
+                                it.copy(
+                                    title = it.title.trim(),
+                                    value = it.value.trim()
+                                )
+                            }
+                            .filter { it.title.isNotBlank() && it.value.isNotBlank() }
+                            .distinctBy { it.title.lowercase() to it.value }
+
+                        ExportItem(
+                            id = 0,
+                            itemType = "PASSWORD",
+                            title = title.ifBlank { url.ifBlank { username.ifBlank { "Imported Password" } } },
+                            itemData = passwordData,
+                            notes = remarks,
+                            isFavorite = false,
+                            imagePaths = "",
+                            createdAt = System.currentTimeMillis(),
+                            updatedAt = System.currentTimeMillis(),
+                            importedCustomFields = normalizedImportedCustomFields,
+                            importedAuthenticatorKey = validator
+                                .trim()
+                                .takeIf { it.isNotBlank() }
+                        )
+                    } else null
+                }
                 
                 CsvFormat.ALIPAY_TRANSACTION -> {
                     // 支付宝格式在专门的方法中处理,这里返回null
@@ -505,9 +715,501 @@ class DataExportImportManager(private val context: Context) {
                 val headers = parseCsvLine(firstLine).map { it.trim().lowercase() }.toSet()
                 headers.contains("login_username") && headers.contains("login_password")
             }
+            CsvFormat.PASSWORD_KEYBOARD -> {
+                val fields = parseCsvLine(firstLine)
+                val normalized = fields.map { it.trim().lowercase() }.toSet()
+                val hasCardHeader =
+                    (normalized.contains("cardno") ||
+                        normalized.contains("card_no") ||
+                        normalized.contains("cardnumber") ||
+                        normalized.contains("card number") ||
+                        normalized.contains("卡号")) &&
+                        normalized.contains("title")
+                val hasPasswordHeader =
+                    normalized.contains("username") && normalized.contains("password") && normalized.contains("title")
+                val hasNormalHeader =
+                    normalized.contains("title") &&
+                        (normalized.contains("remarks") || normalized.contains("remark") || normalized.contains("notes") || normalized.contains("note")) &&
+                        !normalized.contains("password")
+                isPasswordKeyboardSignature(fields) ||
+                    hasCardHeader ||
+                    hasPasswordHeader ||
+                    hasNormalHeader
+            }
             CsvFormat.ALIPAY_TRANSACTION,
             CsvFormat.UNKNOWN -> false
         }
+    }
+
+    private fun isPasswordKeyboardSignature(fields: List<String>): Boolean {
+        val normalized = fields.map { it.trim().lowercase() }
+        val first = normalized.getOrNull(0).orEmpty()
+        val second = normalized.getOrNull(1).orEmpty()
+        return first == "secretinputexportfile" &&
+            (second == "password" || second == "normal" || second == "card")
+    }
+
+    private fun resolvePasswordKeyboardRecordType(
+        fields: List<String>,
+        headerIndexMap: Map<String, Int>?
+    ): PasswordKeyboardRecordType {
+        if (headerIndexMap == null) return PasswordKeyboardRecordType.PASSWORD
+
+        val hasCardNo = listOf(
+            "cardno",
+            "card_no",
+            "cardnumber",
+            "card number",
+            "卡号"
+        ).any { headerIndexMap.containsKey(it) }
+
+        val hasPassword = listOf(
+            "password",
+            "pass",
+            "pwd",
+            "login_password",
+            "密码",
+            "口令"
+        ).any { headerIndexMap.containsKey(it) }
+
+        val hasTitle = listOf("title", "name", "标题", "名称").any { headerIndexMap.containsKey(it) }
+        val hasRemarks = listOf(
+            "remarks",
+            "remark",
+            "notes",
+            "note",
+            "comment",
+            "description",
+            "content",
+            "备注",
+            "说明",
+            "正文",
+            "内容"
+        ).any { headerIndexMap.containsKey(it) }
+
+        if (hasCardNo) {
+            return PasswordKeyboardRecordType.CARD
+        }
+
+        if (!hasPassword && hasTitle && hasRemarks) {
+            return PasswordKeyboardRecordType.NOTE
+        }
+
+        if (hasPassword) {
+            return PasswordKeyboardRecordType.PASSWORD
+        }
+
+        return if (hasTitle && hasRemarks) {
+            PasswordKeyboardRecordType.NOTE
+        } else {
+            PasswordKeyboardRecordType.PASSWORD
+        }
+    }
+
+    private fun createPasswordKeyboardNoteExportItem(
+        fields: List<String>,
+        headerIndexMap: Map<String, Int>?
+    ): ExportItem? {
+        val title = getFieldValue(
+            fields,
+            headerIndexMap,
+            listOf("title", "name", "标题", "名称")
+        ) ?: fields.getOrNull(0)?.trim().orEmpty()
+
+        val content = getFieldValue(
+            fields,
+            headerIndexMap,
+            listOf(
+                "remarks",
+                "remark",
+                "notes",
+                "note",
+                "comment",
+                "description",
+                "content",
+                "备注",
+                "说明",
+                "正文",
+                "内容"
+            )
+        ) ?: fields.getOrNull(1)?.trim().orEmpty()
+
+        val rawTag = getFieldValue(
+            fields,
+            headerIndexMap,
+            listOf("tag", "tags", "label", "labels", "标签", "分类")
+        ) ?: fields.getOrNull(2)?.trim().orEmpty()
+
+        if (title.isBlank() && content.isBlank() && rawTag.isBlank()) {
+            return null
+        }
+
+        val noteData = NoteData(
+            content = content,
+            tags = parsePasswordKeyboardNoteTags(rawTag),
+            isMarkdown = false
+        )
+
+        return ExportItem(
+            id = 0,
+            itemType = "NOTE",
+            title = title.ifBlank { "Imported Note" },
+            itemData = Json.encodeToString(noteData),
+            notes = content,
+            isFavorite = false,
+            imagePaths = "",
+            createdAt = System.currentTimeMillis(),
+            updatedAt = System.currentTimeMillis()
+        )
+    }
+
+    private fun createPasswordKeyboardCardExportItem(
+        fields: List<String>,
+        headerIndexMap: Map<String, Int>?,
+        passwordKeyboardTagHandling: PasswordKeyboardTagHandling
+    ): ExportItem? {
+        val cardNumber = getFieldValue(
+            fields,
+            headerIndexMap,
+            listOf("cardno", "card_no", "cardnumber", "card number", "number", "卡号")
+        ) ?: fields.getOrNull(0)?.trim().orEmpty()
+
+        val title = getFieldValue(
+            fields,
+            headerIndexMap,
+            listOf("title", "name", "标题", "名称")
+        ) ?: fields.getOrNull(1)?.trim().orEmpty()
+
+        val cardPassword = getFieldValue(
+            fields,
+            headerIndexMap,
+            listOf("password", "pass", "pwd", "pin", "card_password", "密码", "卡密", "支付密码")
+        ) ?: fields.getOrNull(2)?.trim().orEmpty()
+
+        val rawDate = getFieldValue(
+            fields,
+            headerIndexMap,
+            listOf("date", "expiry", "expire", "exp", "expire_date", "expiry_date", "有效期", "到期", "日期")
+        ) ?: fields.getOrNull(3)?.trim().orEmpty()
+
+        val remarks = getFieldValue(
+            fields,
+            headerIndexMap,
+            listOf("remarks", "remark", "notes", "note", "comment", "description", "备注", "说明")
+        ) ?: fields.getOrNull(4)?.trim().orEmpty()
+
+        val rawTag = getFieldValue(
+            fields,
+            headerIndexMap,
+            listOf("tag", "tags", "label", "labels", "标签", "分类")
+        ) ?: fields.getOrNull(5)?.trim().orEmpty()
+
+        val rawCustom = getFieldValue(
+            fields,
+            headerIndexMap,
+            listOf("custom", "custom_fields", "customfields", "extra", "extend", "扩展", "自定义字段")
+        ) ?: fields.getOrNull(6)?.trim().orEmpty()
+
+        if (cardNumber.isBlank() && title.isBlank() && cardPassword.isBlank() && rawDate.isBlank() && remarks.isBlank()) {
+            return null
+        }
+
+        val parsedExpiry = parsePasswordKeyboardCardExpiry(rawDate)
+        val importedCustomFields = buildList {
+            if (
+                passwordKeyboardTagHandling == PasswordKeyboardTagHandling.CONVERT_TO_CUSTOM_FIELD &&
+                rawTag.isNotBlank()
+            ) {
+                add(
+                    ImportedCustomField(
+                        title = "标签",
+                        value = rawTag,
+                        isProtected = false
+                    )
+                )
+            }
+            if (rawDate.isNotBlank() && parsedExpiry == null) {
+                add(
+                    ImportedCustomField(
+                        title = "日期",
+                        value = rawDate,
+                        isProtected = false
+                    )
+                )
+            }
+            addAll(parsePasswordKeyboardCustomFields(rawCustom))
+        }
+
+        val normalizedImportedCustomFields = importedCustomFields
+            .map {
+                it.copy(
+                    title = it.title.trim(),
+                    value = it.value.trim()
+                )
+            }
+            .filter { it.title.isNotBlank() && it.value.isNotBlank() }
+            .distinctBy { it.title.lowercase() to it.value }
+
+        val secureCustomFields = normalizedImportedCustomFields.map { field ->
+            SecureCustomField(
+                label = field.title,
+                value = field.value,
+                type = if (field.isProtected) SecureCustomFieldType.HIDDEN else SecureCustomFieldType.TEXT
+            )
+        }
+
+        val bankCardData = BankCardData(
+            cardNumber = cardNumber,
+            cardholderName = "",
+            expiryMonth = parsedExpiry?.first.orEmpty(),
+            expiryYear = parsedExpiry?.second.orEmpty(),
+            pin = cardPassword,
+            customFields = secureCustomFields
+        )
+
+        return ExportItem(
+            id = 0,
+            itemType = "BANK_CARD",
+            title = title.ifBlank { cardNumber.ifBlank { "Imported Card" } },
+            itemData = Json.encodeToString(bankCardData),
+            notes = remarks,
+            isFavorite = false,
+            imagePaths = "",
+            createdAt = System.currentTimeMillis(),
+            updatedAt = System.currentTimeMillis()
+        )
+    }
+
+    private fun parsePasswordKeyboardCardExpiry(rawDate: String): Pair<String, String>? {
+        val normalizedRaw = rawDate.trim()
+        if (normalizedRaw.isBlank()) return null
+
+        val tokens = normalizedRaw
+            .split(Regex("[^0-9]+"))
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+
+        if (tokens.size >= 2) {
+            val first = tokens[0]
+            val second = tokens[1]
+            val fromPair = when {
+                first.length == 4 && second.length in 1..2 -> second to first
+                second.length == 4 && first.length in 1..2 -> first to second
+                first.length in 1..2 && second.length in 2..4 -> first to second
+                else -> null
+            }
+            fromPair?.let { (monthRaw, yearRaw) ->
+                val month = monthRaw.toIntOrNull()
+                val year = normalizePasswordKeyboardCardExpiryYear(yearRaw)
+                if (month != null && month in 1..12 && year != null) {
+                    return month.toString().padStart(2, '0') to year
+                }
+            }
+        }
+
+        val compact = normalizedRaw.filter { it.isDigit() }
+        if (compact.length == 4) {
+            val month = compact.substring(0, 2).toIntOrNull()
+            val year = normalizePasswordKeyboardCardExpiryYear(compact.substring(2))
+            if (month != null && month in 1..12 && year != null) {
+                return month.toString().padStart(2, '0') to year
+            }
+        }
+        if (compact.length == 6) {
+            val month = compact.substring(0, 2).toIntOrNull()
+            val year = normalizePasswordKeyboardCardExpiryYear(compact.substring(2))
+            if (month != null && month in 1..12 && year != null) {
+                return month.toString().padStart(2, '0') to year
+            }
+        }
+
+        return null
+    }
+
+    private fun normalizePasswordKeyboardCardExpiryYear(rawYear: String): String? {
+        val digits = rawYear.filter { it.isDigit() }
+        return when (digits.length) {
+            2 -> "20$digits"
+            4 -> digits
+            else -> null
+        }
+    }
+
+    private fun normalizePasswordKeyboardWebsite(rawUrl: String): String {
+        val raw = rawUrl.trim()
+        if (raw.isBlank()) return raw
+
+        val fromJson = runCatching {
+            Json { ignoreUnknownKeys = true }.parseToJsonElement(raw)
+        }.getOrNull()?.let(::extractWebsiteTextFromJsonElement)
+
+        if (!fromJson.isNullOrBlank()) {
+            return fromJson
+        }
+
+        if (raw.startsWith("[") && raw.endsWith("]")) {
+            val inner = raw.removePrefix("[").removeSuffix("]").trim()
+            val unquoted = inner
+                .removePrefix("\"")
+                .removeSuffix("\"")
+                .removePrefix("'")
+                .removeSuffix("'")
+                .trim()
+            if (unquoted.isNotBlank()) {
+                return unquoted
+            }
+        }
+
+        return raw
+    }
+
+    private fun extractWebsiteTextFromJsonElement(element: JsonElement): String? {
+        return when (element) {
+            is JsonObject -> {
+                val priorityKeys = listOf("url", "link", "website", "value", "name", "title", "text")
+                priorityKeys.firstNotNullOfOrNull { key ->
+                    element[key]?.let(::extractWebsiteTextFromJsonElement)
+                } ?: element.values.asSequence()
+                    .mapNotNull(::extractWebsiteTextFromJsonElement)
+                    .firstOrNull()
+            }
+
+            is kotlinx.serialization.json.JsonArray -> element.asSequence()
+                .mapNotNull(::extractWebsiteTextFromJsonElement)
+                .firstOrNull()
+
+            else -> element.jsonPrimitive.contentOrNull
+                ?.trim()
+                ?.takeIf { it.isNotEmpty() }
+        }
+    }
+
+    private fun parsePasswordKeyboardNoteTags(rawTag: String): List<String> {
+        val normalizedRaw = rawTag.trim()
+        if (normalizedRaw.isBlank()) return emptyList()
+
+        val fromJson = runCatching {
+            Json { ignoreUnknownKeys = true }.parseToJsonElement(normalizedRaw)
+        }.getOrNull()?.let { element ->
+            when (element) {
+                is JsonObject -> element["tags"]
+                    ?.jsonArray
+                    ?.mapNotNull { it.jsonPrimitive.contentOrNull }
+                    ?.map { it.trim() }
+                    ?.filter { it.isNotEmpty() }
+                is kotlinx.serialization.json.JsonArray -> element
+                    .mapNotNull { it.jsonPrimitive.contentOrNull }
+                    .map { it.trim() }
+                    .filter { it.isNotEmpty() }
+                else -> null
+            }
+        } ?: emptyList()
+
+        if (fromJson.isNotEmpty()) {
+            return fromJson.distinctBy { it.lowercase(Locale.ROOT) }
+        }
+
+        return normalizedRaw
+            .split(Regex("[,，;；|\\n\\t]+")).asSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinctBy { it.lowercase(Locale.ROOT) }
+            .toList()
+    }
+
+    private fun parsePasswordKeyboardCustomFields(rawCustom: String): List<ImportedCustomField> {
+        val raw = rawCustom.trim()
+        if (raw.isBlank() || raw == "{}" || raw == "[]") return emptyList()
+
+        return try {
+            val element = Json { ignoreUnknownKeys = true }.parseToJsonElement(raw)
+            when (element) {
+                is JsonObject -> {
+                    element.entries.mapNotNull { (key, valueElement) ->
+                        val value = jsonElementAsDisplayText(valueElement)
+                        if (key.isBlank() || value.isBlank()) {
+                            null
+                        } else {
+                            ImportedCustomField(
+                                title = key,
+                                value = value,
+                                isProtected = looksSensitiveField(key)
+                            )
+                        }
+                    }
+                }
+
+                is kotlinx.serialization.json.JsonArray -> {
+                    element.mapIndexedNotNull { index, item ->
+                        val itemObj = item as? JsonObject
+                        if (itemObj != null) {
+                            val title = itemObj["title"]?.jsonPrimitive?.contentOrNull
+                                ?: itemObj["name"]?.jsonPrimitive?.contentOrNull
+                                ?: itemObj["key"]?.jsonPrimitive?.contentOrNull
+                                ?: "custom_${index + 1}"
+                            val valueElement = itemObj["value"] ?: itemObj["val"] ?: itemObj["data"]
+                            val value = valueElement?.let(::jsonElementAsDisplayText).orEmpty()
+                            if (title.isBlank() || value.isBlank()) {
+                                null
+                            } else {
+                                ImportedCustomField(
+                                    title = title,
+                                    value = value,
+                                    isProtected = looksSensitiveField(title)
+                                )
+                            }
+                        } else {
+                            val value = jsonElementAsDisplayText(item)
+                            if (value.isBlank()) {
+                                null
+                            } else {
+                                ImportedCustomField(
+                                    title = "custom_${index + 1}",
+                                    value = value,
+                                    isProtected = false
+                                )
+                            }
+                        }
+                    }
+                }
+
+                else -> {
+                    listOf(
+                        ImportedCustomField(
+                            title = "custom",
+                            value = jsonElementAsDisplayText(element),
+                            isProtected = false
+                        )
+                    )
+                }
+            }
+        } catch (_: Exception) {
+            listOf(
+                ImportedCustomField(
+                    title = "custom",
+                    value = raw,
+                    isProtected = false
+                )
+            )
+        }
+    }
+
+    private fun jsonElementAsDisplayText(element: JsonElement): String {
+        return when (element) {
+            is JsonObject -> element.toString()
+            is kotlinx.serialization.json.JsonArray -> element.toString()
+            else -> element.jsonPrimitive.contentOrNull ?: element.toString()
+        }
+    }
+
+    private fun looksSensitiveField(title: String): Boolean {
+        val lower = title.trim().lowercase(Locale.ROOT)
+        return lower.contains("password") ||
+            lower.contains("secret") ||
+            lower.contains("token") ||
+            lower.contains("otp") ||
+            lower.contains("验证码") ||
+            lower.contains("密钥")
     }
 
     private fun parseBooleanLike(value: String): Boolean {

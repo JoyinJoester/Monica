@@ -11,18 +11,24 @@ import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.CustomField
+import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.repository.PasswordRepository
+import takagi.ru.monica.repository.CustomFieldRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.BackupRestoreApplier
 import takagi.ru.monica.utils.FieldChange
 import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.util.DataExportImportManager
+import takagi.ru.monica.util.TotpUriParser
+import takagi.ru.monica.notes.domain.NoteContentCodec
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.steam.service.SteamLoginImportService
 import java.util.Date
+import java.util.Locale
 
 /**
  * 数据导入导出ViewModel
@@ -33,9 +39,17 @@ class DataExportImportViewModel(
     private val context: Context
 ) : ViewModel() {
 
+    private data class ImportedAuthenticatorDraft(
+        val authenticatorKey: String,
+        val totpData: TotpData?
+    )
+
     private val exportManager = DataExportImportManager(context)
     private val steamLoginImportService = SteamLoginImportService()
     private val securityManager by lazy { SecurityManager(context) }
+    private val customFieldRepository by lazy {
+        CustomFieldRepository(PasswordDatabase.getDatabase(context).customFieldDao())
+    }
 
     sealed class SteamLoginImportState {
         data class ChallengeRequired(
@@ -112,10 +126,19 @@ class DataExportImportViewModel(
     /**
      * 导入数据
      */
-    suspend fun importData(inputUri: Uri, formatHint: DataExportImportManager.CsvFormat? = null): Result<Int> {
+    suspend fun importData(
+        inputUri: Uri,
+        formatHint: DataExportImportManager.CsvFormat? = null,
+        passwordKeyboardTagHandling: DataExportImportManager.PasswordKeyboardTagHandling =
+            DataExportImportManager.PasswordKeyboardTagHandling.CONVERT_TO_CUSTOM_FIELD
+    ): Result<Int> {
         return try {
             // 导入数据
-            val result = exportManager.importData(inputUri, formatHint)
+            val result = exportManager.importData(
+                inputUri = inputUri,
+                formatHint = formatHint,
+                passwordKeyboardTagHandling = passwordKeyboardTagHandling
+            )
             
             result.fold(
                 onSuccess = { items ->
@@ -137,6 +160,12 @@ class DataExportImportViewModel(
                             val passwordData = parsePasswordData(exportItem.itemData)
                             val website = passwordData["website"] ?: ""
                             val username = passwordData["username"] ?: ""
+                            val importedAuthenticator = parseImportedAuthenticatorDraft(
+                                rawAuthenticator = exportItem.importedAuthenticatorKey,
+                                fallbackTitle = exportItem.title,
+                                fallbackWebsite = website,
+                                fallbackUsername = username
+                            )
                             val originalId = exportItem.id
                             
                             // 检查是否重复
@@ -162,12 +191,19 @@ class DataExportImportViewModel(
                                     updatedAt = Date(exportItem.updatedAt),
                                     keepassDatabaseId = exportItem.keepassDatabaseId,
                                     keepassGroupPath = exportItem.keepassGroupPath,
+                                    authenticatorKey = importedAuthenticator?.authenticatorKey.orEmpty(),
                                     bitwardenVaultId = exportItem.bitwardenVaultId,
                                     bitwardenFolderId = exportItem.bitwardenFolderId
                                 )
                                 val newId = passwordRepository.insertPasswordEntry(passwordEntry)
                                 if (originalId > 0 && newId > 0) {
                                     passwordIdMap[originalId] = newId
+                                }
+                                if (newId > 0 && exportItem.importedCustomFields.isNotEmpty()) {
+                                    saveImportedCustomFields(newId, exportItem.importedCustomFields)
+                                }
+                                if (newId > 0 && importedAuthenticator != null) {
+                                    saveImportedAuthenticator(newId, exportItem, importedAuthenticator)
                                 }
                                 android.util.Log.d("DataImport", "成功插入到PasswordEntry表: ${exportItem.title}")
                                 count++
@@ -242,8 +278,22 @@ class DataExportImportViewModel(
                                 android.util.Log.d("DataImport", "成功插入到SecureItem表: ${exportItem.title}")
                                 count++
                             } else {
-                                android.util.Log.d("DataImport", "跳过重复项: ${exportItem.title}")
-                                skippedCount++
+                                if (itemType == ItemType.NOTE) {
+                                    val merged = mergeImportedNoteTagsIfNeeded(
+                                        existingItem = existingItem,
+                                        incoming = exportItem
+                                    )
+                                    if (merged) {
+                                        android.util.Log.d("DataImport", "重复笔记已合并标签: ${exportItem.title}")
+                                        count++
+                                    } else {
+                                        android.util.Log.d("DataImport", "跳过重复项: ${exportItem.title}")
+                                        skippedCount++
+                                    }
+                                } else {
+                                    android.util.Log.d("DataImport", "跳过重复项: ${exportItem.title}")
+                                    skippedCount++
+                                }
                             }
                         } catch (e: Exception) {
                             errorCount++
@@ -283,6 +333,214 @@ class DataExportImportViewModel(
      */
     suspend fun importBitwardenCsv(inputUri: Uri): Result<Int> {
         return importData(inputUri, DataExportImportManager.CsvFormat.BITWARDEN_PASSWORD)
+    }
+
+    /**
+     * 导入密码键盘软件 CSV 文件
+     */
+    suspend fun importPasswordKeyboardCsv(
+        inputUri: Uri,
+        tagHandling: DataExportImportManager.PasswordKeyboardTagHandling =
+            DataExportImportManager.PasswordKeyboardTagHandling.CONVERT_TO_CUSTOM_FIELD
+    ): Result<Int> {
+        return importData(
+            inputUri = inputUri,
+            formatHint = DataExportImportManager.CsvFormat.PASSWORD_KEYBOARD,
+            passwordKeyboardTagHandling = tagHandling
+        )
+    }
+
+    private suspend fun saveImportedCustomFields(
+        entryId: Long,
+        importedFields: List<DataExportImportManager.ImportedCustomField>
+    ) {
+        val normalized = importedFields
+            .map {
+                it.copy(
+                    title = it.title.trim(),
+                    value = it.value.trim()
+                )
+            }
+            .filter { it.title.isNotBlank() && it.value.isNotBlank() }
+            .distinctBy { it.title.lowercase() to it.value }
+
+        if (normalized.isEmpty()) return
+
+        val customFields = normalized.mapIndexed { index, field ->
+            CustomField(
+                id = 0,
+                entryId = entryId,
+                title = field.title,
+                value = field.value,
+                isProtected = field.isProtected,
+                sortOrder = index
+            )
+        }
+
+        try {
+            customFieldRepository.insertFields(customFields)
+        } catch (e: Exception) {
+            android.util.Log.e("DataImport", "保存导入自定义字段失败: entryId=$entryId", e)
+        }
+    }
+
+    private fun parseImportedAuthenticatorDraft(
+        rawAuthenticator: String?,
+        fallbackTitle: String,
+        fallbackWebsite: String,
+        fallbackUsername: String
+    ): ImportedAuthenticatorDraft? {
+        val raw = rawAuthenticator?.trim().orEmpty()
+        if (raw.isBlank()) return null
+
+        val fallbackIssuer = fallbackWebsite.ifBlank { fallbackTitle }
+        val fallbackAccount = fallbackUsername.ifBlank { fallbackTitle }
+
+        if (raw.contains("://")) {
+            val parsed = TotpUriParser.parseUri(raw)?.totpData
+            if (parsed == null) {
+                android.util.Log.w("DataImport", "密码键盘验证器 URI 无法解析，已仅保留到密码验证器字段")
+                return ImportedAuthenticatorDraft(
+                    authenticatorKey = raw,
+                    totpData = null
+                )
+            }
+
+            val normalizedSecret = normalizeTotpSecret(parsed.secret)
+            if (normalizedSecret.isBlank()) return null
+
+            return ImportedAuthenticatorDraft(
+                authenticatorKey = normalizedSecret,
+                totpData = parsed.copy(
+                    secret = normalizedSecret,
+                    issuer = parsed.issuer.ifBlank { fallbackIssuer },
+                    accountName = parsed.accountName.ifBlank { fallbackAccount }
+                )
+            )
+        }
+
+        val normalizedSecret = normalizeTotpSecret(raw)
+        if (normalizedSecret.isBlank()) return null
+
+        return ImportedAuthenticatorDraft(
+            authenticatorKey = normalizedSecret,
+            totpData = TotpData(
+                secret = normalizedSecret,
+                issuer = fallbackIssuer,
+                accountName = fallbackAccount
+            )
+        )
+    }
+
+    private suspend fun saveImportedAuthenticator(
+        entryId: Long,
+        exportItem: DataExportImportManager.ExportItem,
+        importedAuthenticator: ImportedAuthenticatorDraft
+    ) {
+        val baseTotpData = importedAuthenticator.totpData ?: return
+        val totpData = baseTotpData.copy(
+            boundPasswordId = entryId,
+            categoryId = exportItem.categoryId,
+            keepassDatabaseId = exportItem.keepassDatabaseId
+        )
+        val itemData = Json.encodeToString(totpData)
+        val title = buildImportedAuthenticatorTitle(exportItem.title, totpData)
+
+        try {
+            val existingItem = secureItemRepository.findDuplicateSecureItem(
+                itemType = ItemType.TOTP,
+                itemData = itemData,
+                title = title
+            )
+            if (existingItem != null) {
+                return
+            }
+
+            val secureItem = SecureItem(
+                id = 0,
+                itemType = ItemType.TOTP,
+                title = title,
+                itemData = itemData,
+                notes = "",
+                isFavorite = exportItem.isFavorite,
+                imagePaths = "",
+                createdAt = Date(exportItem.createdAt),
+                updatedAt = Date(exportItem.updatedAt),
+                categoryId = exportItem.categoryId,
+                keepassDatabaseId = exportItem.keepassDatabaseId,
+                keepassGroupPath = exportItem.keepassGroupPath,
+                bitwardenVaultId = exportItem.bitwardenVaultId,
+                bitwardenFolderId = exportItem.bitwardenFolderId
+            )
+            secureItemRepository.insertItem(secureItem)
+        } catch (e: Exception) {
+            android.util.Log.e("DataImport", "保存导入验证器失败: entryId=$entryId", e)
+        }
+    }
+
+    private fun buildImportedAuthenticatorTitle(passwordTitle: String, totpData: TotpData): String {
+        val issuer = totpData.issuer.trim()
+        val account = totpData.accountName.trim()
+        return when {
+            issuer.isNotBlank() && account.isNotBlank() -> "$issuer: $account"
+            issuer.isNotBlank() -> issuer
+            account.isNotBlank() -> account
+            else -> passwordTitle
+        }
+    }
+
+    private fun normalizeTotpSecret(secret: String): String {
+        return secret
+            .trim()
+            .replace(" ", "")
+            .replace("-", "")
+            .uppercase(Locale.ROOT)
+    }
+
+    private suspend fun mergeImportedNoteTagsIfNeeded(
+        existingItem: SecureItem,
+        incoming: DataExportImportManager.ExportItem
+    ): Boolean {
+        val incomingDecoded = NoteContentCodec.decode(
+            itemData = incoming.itemData,
+            fallbackNotes = incoming.notes
+        )
+        val incomingTags = normalizeNoteTags(incomingDecoded.tags)
+        if (incomingTags.isEmpty()) return false
+
+        val existingDecoded = NoteContentCodec.decode(
+            itemData = existingItem.itemData,
+            fallbackNotes = existingItem.notes
+        )
+        val existingTags = normalizeNoteTags(existingDecoded.tags)
+        val mergedTags = normalizeNoteTags(existingTags + incomingTags)
+
+        if (mergedTags == existingTags) {
+            return false
+        }
+
+        val encoded = NoteContentCodec.encode(
+            content = existingDecoded.content,
+            tags = mergedTags,
+            isMarkdown = existingDecoded.isMarkdown
+        )
+
+        secureItemRepository.updateItem(
+            existingItem.copy(
+                itemData = encoded.first,
+                notes = encoded.second,
+                updatedAt = Date()
+            )
+        )
+        return true
+    }
+
+    private fun normalizeNoteTags(tags: List<String>): List<String> {
+        return tags.asSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .distinctBy { it.lowercase(Locale.ROOT) }
+            .toList()
     }
     
     /**

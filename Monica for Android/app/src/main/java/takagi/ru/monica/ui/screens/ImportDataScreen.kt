@@ -26,6 +26,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import java.io.BufferedReader
+import java.io.InputStreamReader
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordDatabase
@@ -80,6 +82,111 @@ private fun isLikelyLegacyKdbFile(fileName: String?, uri: Uri?): Boolean {
             ?: ""
         ).lowercase()
     return candidate.endsWith(".kdb") && !candidate.endsWith(".kdbx")
+}
+
+private enum class PasswordKeyboardFileMode {
+    PASSWORD,
+    NOTE,
+    CARD,
+    UNKNOWN
+}
+
+private fun shouldPromptPasswordKeyboardTagDialog(context: android.content.Context, uri: Uri): Boolean {
+    return when (detectPasswordKeyboardFileMode(context, uri)) {
+        PasswordKeyboardFileMode.NOTE -> false
+        PasswordKeyboardFileMode.PASSWORD,
+        PasswordKeyboardFileMode.CARD,
+        PasswordKeyboardFileMode.UNKNOWN -> true
+    }
+}
+
+private fun detectPasswordKeyboardFileMode(
+    context: android.content.Context,
+    uri: Uri
+): PasswordKeyboardFileMode {
+    return runCatching {
+        context.contentResolver.openInputStream(uri)?.use { input ->
+            BufferedReader(InputStreamReader(input, Charsets.UTF_8)).use { reader ->
+                val firstLine = reader.readLine()?.removePrefix("\uFEFF")?.trim().orEmpty()
+                val firstFields = parsePasswordKeyboardCsvPreviewFields(firstLine)
+                    .map { it.trim().lowercase() }
+
+                if (firstFields.firstOrNull() == "secretinputexportfile") {
+                    return@use when (firstFields.getOrNull(1)) {
+                        "normal" -> PasswordKeyboardFileMode.NOTE
+                        "card" -> PasswordKeyboardFileMode.CARD
+                        "password" -> PasswordKeyboardFileMode.PASSWORD
+                        else -> PasswordKeyboardFileMode.UNKNOWN
+                    }
+                }
+
+                val headers = firstFields.toSet()
+                val hasCardHeader =
+                    (headers.contains("cardno") ||
+                        headers.contains("card_no") ||
+                        headers.contains("cardnumber") ||
+                        headers.contains("card number") ||
+                        headers.contains("卡号")) &&
+                        headers.contains("title")
+                val hasPasswordHeader =
+                    headers.contains("username") &&
+                        headers.contains("password") &&
+                        headers.contains("title")
+                val hasNoteHeader =
+                    headers.contains("title") &&
+                        (headers.contains("remarks") ||
+                            headers.contains("remark") ||
+                            headers.contains("notes") ||
+                            headers.contains("note")) &&
+                        !headers.contains("password")
+
+                when {
+                    hasPasswordHeader -> PasswordKeyboardFileMode.PASSWORD
+                    hasCardHeader -> PasswordKeyboardFileMode.CARD
+                    hasNoteHeader -> PasswordKeyboardFileMode.NOTE
+                    else -> PasswordKeyboardFileMode.UNKNOWN
+                }
+            }
+        } ?: PasswordKeyboardFileMode.UNKNOWN
+    }.getOrElse { PasswordKeyboardFileMode.UNKNOWN }
+}
+
+private fun parsePasswordKeyboardCsvPreviewFields(line: String): List<String> {
+    if (line.isBlank()) return emptyList()
+
+    val fields = mutableListOf<String>()
+    val current = StringBuilder()
+    var inQuotes = false
+    var index = 0
+
+    while (index < line.length) {
+        val ch = line[index]
+        when (ch) {
+            '"' -> {
+                if (inQuotes && index + 1 < line.length && line[index + 1] == '"') {
+                    current.append('"')
+                    index++
+                } else {
+                    inQuotes = !inQuotes
+                }
+            }
+
+            ',' -> {
+                if (inQuotes) {
+                    current.append(ch)
+                } else {
+                    fields += current.toString().trim()
+                    current.clear()
+                }
+            }
+
+            else -> current.append(ch)
+        }
+        index++
+    }
+
+    fields += current.toString().trim()
+    return fields
 }
 
 private fun keepassImportSuggestion(context: android.content.Context, code: KeePassErrorCode): String {
@@ -196,7 +303,11 @@ fun ImportDataScreen(
     onImportZip: suspend (Uri, String?) -> Result<Int>,  // Monica ZIP导入
     onImportKdbx: suspend (Uri, String, Uri?) -> Result<Int> = { _, _, _ -> Result.failure(Exception("Not implemented")) },  // KDBX导入
     onImportKeePassCsv: suspend (Uri) -> Result<Int> = { _ -> Result.failure(Exception("Not implemented")) },  // KeePass CSV导入
-    onImportBitwardenCsv: suspend (Uri) -> Result<Int> = { _ -> Result.failure(Exception("Not implemented")) }  // Bitwarden CSV导入
+    onImportBitwardenCsv: suspend (Uri) -> Result<Int> = { _ -> Result.failure(Exception("Not implemented")) },  // Bitwarden CSV导入
+    onImportPasswordKeyboardCsv: suspend (
+        Uri,
+        DataExportImportManager.PasswordKeyboardTagHandling
+    ) -> Result<Int> = { _, _ -> Result.failure(Exception("Not implemented")) } // 密码键盘软件 CSV导入
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -211,6 +322,7 @@ fun ImportDataScreen(
     var csvImportType by remember { mutableStateOf("normal") } // CSV子类型
     var showPasswordDialog by remember { mutableStateOf(false) }
     var showZipRestoreConfirmDialog by remember { mutableStateOf(false) }
+    var showPasswordKeyboardTagDialog by remember { mutableStateOf(false) }
     var aegisPassword by remember { mutableStateOf("") }
     var passwordError by remember { mutableStateOf<String?>(null) }
     
@@ -317,6 +429,13 @@ fun ImportDataScreen(
             title = stringResource(R.string.import_type_csv_bitwarden_title),
             description = stringResource(R.string.import_type_csv_bitwarden_desc),
             fileHint = stringResource(R.string.import_type_csv_bitwarden_file_hint)
+        ),
+        ImportTypeInfo(
+            key = "password_keyboard_csv",
+            icon = Icons.Default.Keyboard,
+            title = stringResource(R.string.import_type_csv_password_keyboard_title),
+            description = stringResource(R.string.import_type_csv_password_keyboard_desc),
+            fileHint = stringResource(R.string.import_type_csv_password_keyboard_file_hint)
         )
     )
 
@@ -535,6 +654,26 @@ fun ImportDataScreen(
                                                 "bitwarden_csv" -> {
                                                     val result = onImportBitwardenCsv(uri)
                                                     handleImportResult(result, context, snackbarHostState, effectiveImportType, onNavigateBack)
+                                                }
+                                                "password_keyboard_csv" -> {
+                                                    val shouldPrompt = shouldPromptPasswordKeyboardTagDialog(context, uri)
+                                                    if (shouldPrompt) {
+                                                        isImporting = false
+                                                        showPasswordKeyboardTagDialog = true
+                                                        return@launch
+                                                    }
+
+                                                    val result = onImportPasswordKeyboardCsv(
+                                                        uri,
+                                                        DataExportImportManager.PasswordKeyboardTagHandling.CONVERT_TO_CUSTOM_FIELD
+                                                    )
+                                                    handleImportResult(
+                                                        result,
+                                                        context,
+                                                        snackbarHostState,
+                                                        effectiveImportType,
+                                                        onNavigateBack
+                                                    )
                                                 }
                                                 else -> {
                                                     // 普通CSV导入
@@ -844,6 +983,7 @@ fun ImportDataScreen(
                                 "kdbx" -> FileOperationHelper.importFromKdbx(act)
                                 "keepass_csv" -> FileOperationHelper.importFromCsv(act)
                                 "bitwarden_csv" -> FileOperationHelper.importFromCsv(act)
+                                "password_keyboard_csv" -> FileOperationHelper.importFromCsv(act)
                                 "aegis" -> FileOperationHelper.importFromJson(act)
                                 "stratum" -> FileOperationHelper.importFromStratum(act)
                                 "steam" -> FileOperationHelper.importFromMaFile(act)
@@ -966,6 +1106,94 @@ fun ImportDataScreen(
                     context.getString(R.string.steam_login_fill_from_password_applied),
                     Toast.LENGTH_SHORT
                 ).show()
+            }
+        )
+    }
+
+    if (showPasswordKeyboardTagDialog) {
+        AlertDialog(
+            onDismissRequest = { showPasswordKeyboardTagDialog = false },
+            title = { Text(stringResource(R.string.import_password_keyboard_tag_dialog_title)) },
+            text = {
+                Text(stringResource(R.string.import_password_keyboard_tag_dialog_message))
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val uri = selectedFileUri ?: run {
+                            showPasswordKeyboardTagDialog = false
+                            return@TextButton
+                        }
+                        showPasswordKeyboardTagDialog = false
+                        scope.launch {
+                            isImporting = true
+                            try {
+                                val result = onImportPasswordKeyboardCsv(
+                                    uri,
+                                    DataExportImportManager.PasswordKeyboardTagHandling.CONVERT_TO_CUSTOM_FIELD
+                                )
+                                handleImportResult(
+                                    result,
+                                    context,
+                                    snackbarHostState,
+                                    effectiveImportType,
+                                    onNavigateBack
+                                )
+                            } catch (e: Exception) {
+                                android.util.Log.e("ImportDataScreen", "密码键盘 CSV 导入异常", e)
+                                snackbarHostState.showSnackbar(
+                                    context.getString(
+                                        R.string.import_data_error_exception,
+                                        e.message ?: context.getString(R.string.import_data_unknown_error)
+                                    )
+                                )
+                            } finally {
+                                isImporting = false
+                            }
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.import_password_keyboard_tag_convert_action))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        val uri = selectedFileUri ?: run {
+                            showPasswordKeyboardTagDialog = false
+                            return@TextButton
+                        }
+                        showPasswordKeyboardTagDialog = false
+                        scope.launch {
+                            isImporting = true
+                            try {
+                                val result = onImportPasswordKeyboardCsv(
+                                    uri,
+                                    DataExportImportManager.PasswordKeyboardTagHandling.DROP
+                                )
+                                handleImportResult(
+                                    result,
+                                    context,
+                                    snackbarHostState,
+                                    effectiveImportType,
+                                    onNavigateBack
+                                )
+                            } catch (e: Exception) {
+                                android.util.Log.e("ImportDataScreen", "密码键盘 CSV 导入异常", e)
+                                snackbarHostState.showSnackbar(
+                                    context.getString(
+                                        R.string.import_data_error_exception,
+                                        e.message ?: context.getString(R.string.import_data_unknown_error)
+                                    )
+                                )
+                            } finally {
+                                isImporting = false
+                            }
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.import_password_keyboard_tag_drop_action))
+                }
             }
         )
     }
@@ -1362,6 +1590,7 @@ private suspend fun handleImportResult(
     onNavigateBack: () -> Unit
 ) {
     result.onSuccess { count ->
+        val shouldStayOnImportScreen = importType == "normal" || importType.endsWith("_csv")
         val message = when (importType) {
             "aegis" -> context.getString(R.string.import_data_aegis_import_success_count, count)
             "stratum" -> context.getString(R.string.import_data_stratum_import_success_count, count)
@@ -1369,7 +1598,9 @@ private suspend fun handleImportResult(
             else -> context.getString(R.string.import_data_success_normal, count)
         }
         snackbarHostState.showSnackbar(message)
-        onNavigateBack()
+        if (!shouldStayOnImportScreen) {
+            onNavigateBack()
+        }
     }.onFailure { error ->
         snackbarHostState.showSnackbar(
             formatImportErrorMessage(error, context.getString(R.string.import_data_error))

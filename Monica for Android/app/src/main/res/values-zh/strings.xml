@@ -2501,7 +2501,7 @@
     <string name="import_type_keepass_format_desc">导入 KeePass 兼容的 .kdbx 数据库文件</string>
     <string name="import_type_keepass_format_file_hint">选择 .kdbx 文件</string>
     <string name="import_type_csv_data_title">CSV 数据</string>
-    <string name="import_type_csv_data_desc">导入 Monica / KeePass / Bitwarden 的 CSV 文件</string>
+    <string name="import_type_csv_data_desc">导入 Monica / KeePass / Bitwarden / 密码键盘软件 的 CSV 文件</string>
     <string name="import_type_csv_data_file_hint">选择 .csv 文件</string>
     <string name="import_type_aegis_title">Aegis 验证器</string>
     <string name="import_type_aegis_desc">导入 Aegis Authenticator 的 JSON 备份</string>
@@ -2540,6 +2540,13 @@
     <string name="import_type_csv_bitwarden_title">Bitwarden CSV</string>
     <string name="import_type_csv_bitwarden_desc">导入 Bitwarden 导出的 CSV 文件</string>
     <string name="import_type_csv_bitwarden_file_hint">选择 Bitwarden .csv 文件</string>
+    <string name="import_type_csv_password_keyboard_title">密码键盘软件 CSV</string>
+    <string name="import_type_csv_password_keyboard_desc">导入密码键盘软件导出的 CSV 文件</string>
+    <string name="import_type_csv_password_keyboard_file_hint">选择密码键盘软件 .csv 文件</string>
+    <string name="import_password_keyboard_tag_dialog_title">标签字段处理</string>
+    <string name="import_password_keyboard_tag_dialog_message">检测到密码键盘 CSV 可能包含“标签”字段。对于密码和卡包条目，Monica 暂无内置标签功能。你希望将标签转换为自定义字段，还是在导入时删除标签？（验证器字段会在可解析时导入为 Monica 原生验证器）</string>
+    <string name="import_password_keyboard_tag_convert_action">转为自定义字段</string>
+    <string name="import_password_keyboard_tag_drop_action">删除标签</string>
     <string name="import_type_csv_source_title">选择 CSV 来源</string>
     <string name="import_data_file_select_failed">文件选择失败：%1$s</string>
     <string name="import_data_unknown_error">未知错误</string>
