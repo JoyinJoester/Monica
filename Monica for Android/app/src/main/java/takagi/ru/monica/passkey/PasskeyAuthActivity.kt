@@ -45,6 +45,7 @@ import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.components.MasterPasswordDialog
 import takagi.ru.monica.ui.theme.MonicaTheme
 import takagi.ru.monica.utils.BiometricAuthHelper
+import takagi.ru.monica.utils.DeviceUtils
 import takagi.ru.monica.utils.SettingsManager
 import java.security.KeyStore
 import java.security.MessageDigest
@@ -73,6 +74,10 @@ class PasskeyAuthActivity : FragmentActivity() {
     
     private val repository: PasskeyRepository by lazy {
         PasskeyRepository(database.passkeyDao())
+    }
+
+    private val securityManager: SecurityManager by lazy {
+        SecurityManager(this)
     }
 
     private val showMasterPasswordDialog = mutableStateOf(false)
@@ -282,8 +287,7 @@ class PasskeyAuthActivity : FragmentActivity() {
                 PasskeyAuthScreen(
                     passkey = currentPasskey,
                     onConfirm = {
-                        // 触发生物识别验证
-                        requestBiometricAuth(currentPasskey)
+                        requestPasskeyUserVerification(currentPasskey)
                     },
                     onCancel = {
                         repository.logAudit("PASSKEY_AUTH_CANCELLED", currentPasskey.credentialId)
@@ -302,7 +306,6 @@ class PasskeyAuthActivity : FragmentActivity() {
                             masterPasswordError.value = false
                         },
                         onConfirm = { password ->
-                            val securityManager = SecurityManager(this)
                             if (securityManager.verifyMasterPassword(password)) {
                                 masterPasswordError.value = false
                                 showMasterPasswordDialog.value = false
@@ -330,6 +333,32 @@ class PasskeyAuthActivity : FragmentActivity() {
                 }
             }
         }
+    }
+
+    private fun requestPasskeyUserVerification(passkey: PasskeyEntry) {
+        val shouldBypassBiometric = PasskeyBiometricCompatibilityPolicy.shouldBypassBiometricForPasskey(
+            romType = DeviceUtils.getROMType(),
+            isBypassEnabled = PasskeyValidationFlags.isHyperOsBiometricBypassEnabled(this),
+        )
+
+        if (!shouldBypassBiometric) {
+            requestBiometricAuth(passkey)
+            return
+        }
+
+        repository.logAudit("PASSKEY_AUTH_BIOMETRIC_BYPASSED_HYPER_OS", passkey.credentialId)
+        recordPasskeyEvent(
+            stage = "biometric_bypassed_hyperos",
+            rpId = passkey.rpId,
+            credentialId = passkey.credentialId,
+        )
+
+        if (securityManager.isMasterPasswordSet()) {
+            showMasterPasswordDialog.value = true
+            return
+        }
+
+        authenticateWithPasskey(pendingRequestJson, passkey)
     }
     
     /**

@@ -1239,6 +1239,8 @@
     <string name="passkey_strict_validation_title">Strict Validation</string>
     <string name="passkey_strict_validation_desc">Block requests that clearly conflict with relying-party origin rules.</string>
     <string name="passkey_strict_validation_warning">Strict mode may block login on poorly implemented apps. Keep this off unless you are debugging.</string>
+    <string name="passkey_hyperos_bypass_title">HyperOS Biometric Compatibility</string>
+    <string name="passkey_hyperos_bypass_desc">On Xiaomi HyperOS, skip passkey biometric prompts and use master-password fallback when needed.</string>
     <string name="passkey_diagnostics_title">Validation Diagnostics</string>
     <string name="passkey_diagnostics_summary">Requests: %1$d, Suspicious: %2$d, Strict Candidates: %3$d</string>
     <string name="passkey_diagnostics_top_bucket">Top bucket: %1$s @ %2$s (suspicious %3$d)</string>

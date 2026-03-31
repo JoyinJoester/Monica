@@ -14,6 +14,8 @@ object PasskeyValidationFlags {
     private const val PREF_NAME = "passkey_validation_flags"
     private const val KEY_SHADOW_VALIDATION_ENABLED = "shadow_validation_enabled"
     private const val KEY_STRICT_VALIDATION_ENABLED = "strict_validation_enabled"
+    private const val KEY_HYPEROS_BIOMETRIC_BYPASS_ENABLED =
+        "hyperos_biometric_bypass_enabled"
 
     fun isShadowValidationEnabled(context: Context): Boolean {
         return prefs(context).getBoolean(KEY_SHADOW_VALIDATION_ENABLED, true)
@@ -23,12 +25,20 @@ object PasskeyValidationFlags {
         return prefs(context).getBoolean(KEY_STRICT_VALIDATION_ENABLED, false)
     }
 
+    fun isHyperOsBiometricBypassEnabled(context: Context): Boolean {
+        return prefs(context).getBoolean(KEY_HYPEROS_BIOMETRIC_BYPASS_ENABLED, true)
+    }
+
     fun setShadowValidationEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_SHADOW_VALIDATION_ENABLED, enabled).apply()
     }
 
     fun setStrictValidationEnabled(context: Context, enabled: Boolean) {
         prefs(context).edit().putBoolean(KEY_STRICT_VALIDATION_ENABLED, enabled).apply()
+    }
+
+    fun setHyperOsBiometricBypassEnabled(context: Context, enabled: Boolean) {
+        prefs(context).edit().putBoolean(KEY_HYPEROS_BIOMETRIC_BYPASS_ENABLED, enabled).apply()
     }
 
     private fun prefs(context: Context) =

@@ -57,11 +57,14 @@ import takagi.ru.monica.keepass.KeePassPasskeyDeleteExecutor
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.repository.PasskeyRepository
+import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.ui.components.MasterPasswordDialog
 import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
 import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
 import takagi.ru.monica.ui.theme.MonicaTheme
 import takagi.ru.monica.utils.BiometricAuthHelper
+import takagi.ru.monica.utils.DeviceUtils
 import takagi.ru.monica.utils.KeePassKdbxService
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
@@ -111,8 +114,8 @@ class PasskeyCreateActivity : FragmentActivity() {
         PasskeyRepository(database.passkeyDao())
     }
 
-    private val securityManager by lazy {
-        takagi.ru.monica.security.SecurityManager(applicationContext)
+    private val securityManager: SecurityManager by lazy {
+        SecurityManager(applicationContext)
     }
 
     private val keepassBridge: KeePassCompatibilityBridge by lazy {
@@ -132,6 +135,9 @@ class PasskeyCreateActivity : FragmentActivity() {
     private val keepassPasskeyDeleteExecutor by lazy {
         KeePassPasskeyDeleteExecutor(keepassBridge)
     }
+
+    private val showMasterPasswordDialog = mutableStateOf(false)
+    private val masterPasswordError = mutableStateOf(false)
     
     // 存储待处理的请求数据
     private var pendingRequestJson: String = ""
@@ -335,12 +341,12 @@ class PasskeyCreateActivity : FragmentActivity() {
                 val context = LocalContext.current
                 val scope = rememberCoroutineScope()
                 val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
-                val securityManager = remember { takagi.ru.monica.security.SecurityManager(context) }
+                val securityManagerForKeePass = remember { SecurityManager(context) }
                 val keePassService = remember {
                     KeePassKdbxService(
                         context,
                         database.localKeePassDatabaseDao(),
-                        securityManager
+                        securityManagerForKeePass
                     )
                 }
                 val keepassGroupFlows = remember {
@@ -402,8 +408,7 @@ class PasskeyCreateActivity : FragmentActivity() {
                         pendingKeepassGroupPath = selectedKeePassGroupPath
                         pendingBitwardenVaultId = selectedBitwardenVaultId
                         pendingBitwardenFolderId = selectedBitwardenFolderId
-                        // 触发生物识别验证
-                        requestBiometricAuth()
+                        requestPasskeyUserVerificationBeforeCreate()
                     },
                     onBindToPassword = {
                         showPasswordPicker = true
@@ -444,11 +449,70 @@ class PasskeyCreateActivity : FragmentActivity() {
                         pendingBitwardenVaultId = selectedBitwardenVaultId
                         pendingBitwardenFolderId = selectedBitwardenFolderId
                         showPasswordPicker = false
-                        requestBiometricAuth()
+                        requestPasskeyUserVerificationBeforeCreate()
                     }
                 )
+
+                if (showMasterPasswordDialog.value) {
+                    MasterPasswordDialog(
+                        onDismiss = {
+                            showMasterPasswordDialog.value = false
+                            masterPasswordError.value = false
+                        },
+                        onConfirm = { password ->
+                            if (securityManager.verifyMasterPassword(password)) {
+                                masterPasswordError.value = false
+                                showMasterPasswordDialog.value = false
+                                repository.logAudit("PASSKEY_CREATE_MASTER_PASSWORD_SUCCESS", pendingRpId)
+                                recordPasskeyEvent(stage = "master_password_success")
+                                createPasskey(
+                                    pendingRequestJson,
+                                    pendingRpId,
+                                    pendingUserName,
+                                    pendingUserDisplayName,
+                                )
+                            } else {
+                                masterPasswordError.value = true
+                                repository.logAudit("PASSKEY_CREATE_MASTER_PASSWORD_FAILED", pendingRpId)
+                                recordPasskeyEvent(
+                                    stage = "master_password_failed",
+                                    errorType = "MasterPasswordVerificationFailed",
+                                    errorMessage = "Invalid master password",
+                                )
+                            }
+                        },
+                        isError = masterPasswordError.value,
+                    )
+                }
             }
         }
+    }
+
+    private fun requestPasskeyUserVerificationBeforeCreate() {
+        val shouldBypassBiometric = PasskeyBiometricCompatibilityPolicy.shouldBypassBiometricForPasskey(
+            romType = DeviceUtils.getROMType(),
+            isBypassEnabled = PasskeyValidationFlags.isHyperOsBiometricBypassEnabled(this),
+        )
+
+        if (!shouldBypassBiometric) {
+            requestBiometricAuth()
+            return
+        }
+
+        repository.logAudit("PASSKEY_CREATE_BIOMETRIC_BYPASSED_HYPER_OS", pendingRpId)
+        recordPasskeyEvent(stage = "biometric_bypassed_hyperos")
+
+        if (securityManager.isMasterPasswordSet()) {
+            showMasterPasswordDialog.value = true
+            return
+        }
+
+        createPasskey(
+            pendingRequestJson,
+            pendingRpId,
+            pendingUserName,
+            pendingUserDisplayName,
+        )
     }
     
     /**

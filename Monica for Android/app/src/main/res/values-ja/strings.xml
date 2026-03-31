@@ -72,6 +72,8 @@
     <string name="biometric_weak_warning_message">この端末は弱い生体認証のみ対応しており、なりすまし耐性が低くなります。指紋ロック解除を有効にしますか？</string>
     <string name="biometric_weak_warning_confirm">有効にする</string>
     <string name="biometric_weak_warning_cancel">キャンセル</string>
+    <string name="passkey_hyperos_bypass_title">HyperOS 生体認証互換モード</string>
+    <string name="passkey_hyperos_bypass_desc">Xiaomi HyperOS では通行キーの生体認証プロンプトをスキップし、必要に応じてマスターパスワード検証にフォールバックします。</string>
     
     <!-- Password List Screen -->
     <string name="search_passwords">パスワードを検索...</string>

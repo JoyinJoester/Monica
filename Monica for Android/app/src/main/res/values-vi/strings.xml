@@ -71,6 +71,8 @@
     <string name="biometric_weak_warning_message">Thiết bị này chỉ hỗ trợ sinh trắc học yếu, khả năng chống giả mạo thấp hơn. Bạn có muốn tiếp tục bật mở khóa bằng vân tay không?</string>
     <string name="biometric_weak_warning_confirm">Tiếp tục</string>
     <string name="biometric_weak_warning_cancel">Hủy</string>
+    <string name="passkey_hyperos_bypass_title">Tương thích sinh trắc học HyperOS</string>
+    <string name="passkey_hyperos_bypass_desc">Trên Xiaomi HyperOS, bỏ qua hộp thoại sinh trắc học cho passkey và dùng xác minh mật khẩu chính khi cần.</string>
     
     <!-- Password List Screen -->
     <string name="search_passwords">Tìm kiếm mật khẩu...</string>

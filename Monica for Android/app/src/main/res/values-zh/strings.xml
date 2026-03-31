@@ -1190,6 +1190,8 @@
     <string name="passkey_strict_validation_title">严格校验</string>
     <string name="passkey_strict_validation_desc">阻断明显不符合依赖方来源规则的请求。</string>
     <string name="passkey_strict_validation_warning">严格模式可能会拦截接入不规范的应用登录，仅在排障时开启。</string>
+    <string name="passkey_hyperos_bypass_title">HyperOS 生物识别兼容</string>
+    <string name="passkey_hyperos_bypass_desc">在小米 HyperOS 上跳过通行密钥生物识别提示，并在需要时回退到主密码验证。</string>
     <string name="passkey_diagnostics_title">校验诊断</string>
     <string name="passkey_diagnostics_summary">请求数：%1$d，可疑：%2$d，严格候选：%3$d</string>
     <string name="passkey_diagnostics_top_bucket">最高风险：%1$s @ %2$s（可疑 %3$d）</string>
