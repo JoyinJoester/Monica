@@ -3,6 +3,7 @@ package takagi.ru.monica.ui
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.util.Base64
 import android.util.Log
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
@@ -114,6 +115,7 @@ import androidx.activity.compose.BackHandler
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.collectLatest
@@ -126,12 +128,17 @@ import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.CategorySelectionUiMode
+import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.PasswordListTopModule
 import takagi.ru.monica.data.PasswordPageContentType
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.OperationLogItemType
+import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.isKeePassOwned
+import takagi.ru.monica.data.isLocalOnlyItem
 import takagi.ru.monica.data.model.PasskeyBindingCodec
+import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.model.TimelinePasswordLocationState
 import takagi.ru.monica.data.model.TimelineEvent
 import takagi.ru.monica.notes.domain.NoteContentCodec
@@ -195,14 +202,18 @@ import takagi.ru.monica.ui.password.PasswordPageListItemUi
 import takagi.ru.monica.ui.password.PasswordListSingleCardItem
 import takagi.ru.monica.ui.password.PasswordSupplementaryListItemUi
 import takagi.ru.monica.ui.password.appendAggregateContentQuickFilterItems
+import takagi.ru.monica.ui.password.buildPasswordAggregateManualStackGroups
 import takagi.ru.monica.ui.password.buildPasswordAggregateItems
 import takagi.ru.monica.ui.password.buildPasswordPageListItems
 import takagi.ru.monica.ui.password.filterPasswordAggregateItemsByQuickFilters
+import takagi.ru.monica.ui.password.flattenPasswordPageCardItems
 import takagi.ru.monica.ui.password.icon
 import takagi.ru.monica.ui.password.labelRes
 import takagi.ru.monica.ui.password.resolvePasswordPageDisplayedTypes
 import takagi.ru.monica.ui.password.resolvePasswordPageQuickFilterTypes
+import takagi.ru.monica.ui.password.resolveSelectedPasswordPageCardItems
 import takagi.ru.monica.ui.password.toPasswordPageContentTypeOrNull
+import takagi.ru.monica.ui.password.toSelectedSupplementaryItemOrNull
 import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
 import takagi.ru.monica.ui.components.UNIFIED_MOVE_ARCHIVE_SENTINEL_CATEGORY_ID
 import takagi.ru.monica.ui.components.rememberUnifiedCategoryFilterChipMenuWidth
@@ -233,10 +244,9 @@ import takagi.ru.monica.ui.password.getPasswordGroupTitle
 import takagi.ru.monica.ui.password.getPasswordInfoKey
 import takagi.ru.monica.ui.password.passwordIdFromSelectionKey
 import takagi.ru.monica.ui.password.passwordSelectionKey
-import takagi.ru.monica.ui.password.selectedPasswordIds
-import takagi.ru.monica.ui.password.selectionKeysForPasswords
 import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
 import takagi.ru.monica.data.bitwarden.BitwardenSend
+import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.bitwarden.sync.SyncStatus
 import takagi.ru.monica.security.SecurityManager
 import sh.calvin.reorderable.rememberReorderableLazyListState
@@ -248,10 +258,14 @@ import takagi.ru.monica.ui.screens.AddEditNoteScreen
 import takagi.ru.monica.ui.screens.AddEditSendScreen
 import takagi.ru.monica.ui.theme.MonicaTheme
 import java.util.concurrent.CancellationException
+import java.security.KeyFactory
+import java.security.KeyStore
+import java.security.spec.PKCS8EncodedKeySpec
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
+import kotlinx.serialization.json.Json
 
 private val stringSetSaver = Saver<Set<String>, ArrayList<String>>(
     save = { value -> ArrayList(value) },
@@ -260,6 +274,15 @@ private val stringSetSaver = Saver<Set<String>, ArrayList<String>>(
 
 private const val FAST_SCROLL_LOG_TAG = "PasswordFastScroll"
 private const val PASSWORD_SCROLL_LOG_TAG = "PasswordScrollDebug"
+
+@OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+internal fun PasswordListInitialLoadingIndicator() {
+    androidx.compose.material3.LoadingIndicator(
+        modifier = Modifier.size(64.dp),
+        color = MaterialTheme.colorScheme.primary
+    )
+}
 
 private fun PasswordEntry.hasBoundAuthenticator(): Boolean = authenticatorKey.isNotBlank()
 
@@ -274,303 +297,6 @@ private fun PasswordEntry.matchesLinkedAggregateContentTypes(
     val includePasskey =
         PasswordPageContentType.PASSKEY in selectedTypes && hasBoundPasskey()
     return includeAuthenticator || includePasskey
-}
-
-private fun toLocationState(entry: PasswordEntry): TimelinePasswordLocationState {
-    return TimelinePasswordLocationState(
-        id = entry.id,
-        categoryId = entry.categoryId,
-        keepassDatabaseId = entry.keepassDatabaseId,
-        keepassGroupPath = entry.keepassGroupPath,
-        bitwardenVaultId = entry.bitwardenVaultId,
-        bitwardenFolderId = entry.bitwardenFolderId,
-        bitwardenLocalModified = entry.bitwardenLocalModified,
-        isArchived = entry.isArchived,
-        archivedAtMillis = entry.archivedAt?.time
-    )
-}
-
-private fun toMovedLocationState(
-    entry: PasswordEntry,
-    target: UnifiedMoveCategoryTarget
-): TimelinePasswordLocationState {
-    val archivedAt = if (target is UnifiedMoveCategoryTarget.MonicaCategory &&
-        target.categoryId == UNIFIED_MOVE_ARCHIVE_SENTINEL_CATEGORY_ID
-    ) {
-        entry.archivedAt?.time ?: System.currentTimeMillis()
-    } else {
-        null
-    }
-
-    return when (target) {
-        UnifiedMoveCategoryTarget.Uncategorized -> TimelinePasswordLocationState(
-            id = entry.id,
-            categoryId = null,
-            keepassDatabaseId = null,
-            keepassGroupPath = null,
-            bitwardenVaultId = null,
-            bitwardenFolderId = null,
-            bitwardenLocalModified = false,
-            isArchived = false,
-            archivedAtMillis = null
-        )
-
-        is UnifiedMoveCategoryTarget.MonicaCategory -> {
-            if (target.categoryId == UNIFIED_MOVE_ARCHIVE_SENTINEL_CATEGORY_ID) {
-                TimelinePasswordLocationState(
-                    id = entry.id,
-                    categoryId = null,
-                    keepassDatabaseId = null,
-                    keepassGroupPath = null,
-                    bitwardenVaultId = null,
-                    bitwardenFolderId = null,
-                    bitwardenLocalModified = false,
-                    isArchived = true,
-                    archivedAtMillis = archivedAt
-                )
-            } else {
-                TimelinePasswordLocationState(
-                    id = entry.id,
-                    categoryId = target.categoryId,
-                    keepassDatabaseId = null,
-                    keepassGroupPath = null,
-                    bitwardenVaultId = null,
-                    bitwardenFolderId = null,
-                    bitwardenLocalModified = false,
-                    isArchived = false,
-                    archivedAtMillis = null
-                )
-            }
-        }
-
-        is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> TimelinePasswordLocationState(
-            id = entry.id,
-            categoryId = null,
-            keepassDatabaseId = null,
-            keepassGroupPath = null,
-            bitwardenVaultId = target.vaultId,
-            bitwardenFolderId = "",
-            bitwardenLocalModified = false,
-            isArchived = false,
-            archivedAtMillis = null
-        )
-
-        is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> TimelinePasswordLocationState(
-            id = entry.id,
-            categoryId = null,
-            keepassDatabaseId = null,
-            keepassGroupPath = null,
-            bitwardenVaultId = target.vaultId,
-            bitwardenFolderId = target.folderId,
-            bitwardenLocalModified = false,
-            isArchived = false,
-            archivedAtMillis = null
-        )
-
-        is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> TimelinePasswordLocationState(
-            id = entry.id,
-            categoryId = null,
-            keepassDatabaseId = target.databaseId,
-            keepassGroupPath = null,
-            bitwardenVaultId = null,
-            bitwardenFolderId = null,
-            bitwardenLocalModified = false,
-            isArchived = false,
-            archivedAtMillis = null
-        )
-
-        is UnifiedMoveCategoryTarget.KeePassGroupTarget -> TimelinePasswordLocationState(
-            id = entry.id,
-            categoryId = null,
-            keepassDatabaseId = target.databaseId,
-            keepassGroupPath = target.groupPath,
-            bitwardenVaultId = null,
-            bitwardenFolderId = null,
-            bitwardenLocalModified = false,
-            isArchived = false,
-            archivedAtMillis = null
-        )
-    }
-}
-
-private fun buildCopiedEntryForTarget(
-    entry: PasswordEntry,
-    target: UnifiedMoveCategoryTarget
-): PasswordEntry {
-    val now = Date()
-    return when (target) {
-        UnifiedMoveCategoryTarget.Uncategorized -> entry.copy(
-            id = 0,
-            createdAt = now,
-            updatedAt = now,
-            categoryId = null,
-            keepassDatabaseId = null,
-            keepassGroupPath = null,
-            keepassEntryUuid = null,
-            keepassGroupUuid = null,
-            bitwardenVaultId = null,
-            bitwardenCipherId = null,
-            bitwardenFolderId = null,
-            bitwardenRevisionDate = null,
-            bitwardenLocalModified = false,
-            isArchived = false,
-            archivedAt = null,
-            isDeleted = false,
-            deletedAt = null
-        )
-
-        is UnifiedMoveCategoryTarget.MonicaCategory -> {
-            if (target.categoryId == UNIFIED_MOVE_ARCHIVE_SENTINEL_CATEGORY_ID) {
-                entry.copy(
-                    id = 0,
-                    createdAt = now,
-                    updatedAt = now,
-                    categoryId = null,
-                    keepassDatabaseId = null,
-                    keepassGroupPath = null,
-                    keepassEntryUuid = null,
-                    keepassGroupUuid = null,
-                    bitwardenVaultId = null,
-                    bitwardenCipherId = null,
-                    bitwardenFolderId = null,
-                    bitwardenRevisionDate = null,
-                    bitwardenLocalModified = false,
-                    isArchived = true,
-                    archivedAt = now,
-                    isDeleted = false,
-                    deletedAt = null
-                )
-            } else {
-                entry.copy(
-                    id = 0,
-                    createdAt = now,
-                    updatedAt = now,
-                    categoryId = target.categoryId,
-                    keepassDatabaseId = null,
-                    keepassGroupPath = null,
-                    keepassEntryUuid = null,
-                    keepassGroupUuid = null,
-                    bitwardenVaultId = null,
-                    bitwardenCipherId = null,
-                    bitwardenFolderId = null,
-                    bitwardenRevisionDate = null,
-                    bitwardenLocalModified = false,
-                    isArchived = false,
-                    archivedAt = null,
-                    isDeleted = false,
-                    deletedAt = null
-                )
-            }
-        }
-
-        is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> entry.copy(
-            id = 0,
-            createdAt = now,
-            updatedAt = now,
-            categoryId = null,
-            keepassDatabaseId = null,
-            keepassGroupPath = null,
-            keepassEntryUuid = null,
-            keepassGroupUuid = null,
-            bitwardenVaultId = target.vaultId,
-            bitwardenCipherId = null,
-            bitwardenFolderId = "",
-            bitwardenRevisionDate = null,
-            bitwardenLocalModified = false,
-            isArchived = false,
-            archivedAt = null,
-            isDeleted = false,
-            deletedAt = null
-        )
-
-        is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> entry.copy(
-            id = 0,
-            createdAt = now,
-            updatedAt = now,
-            categoryId = null,
-            keepassDatabaseId = null,
-            keepassGroupPath = null,
-            keepassEntryUuid = null,
-            keepassGroupUuid = null,
-            bitwardenVaultId = target.vaultId,
-            bitwardenCipherId = null,
-            bitwardenFolderId = target.folderId,
-            bitwardenRevisionDate = null,
-            bitwardenLocalModified = false,
-            isArchived = false,
-            archivedAt = null,
-            isDeleted = false,
-            deletedAt = null
-        )
-
-        is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> entry.copy(
-            id = 0,
-            createdAt = now,
-            updatedAt = now,
-            categoryId = null,
-            keepassDatabaseId = target.databaseId,
-            keepassGroupPath = null,
-            keepassEntryUuid = null,
-            keepassGroupUuid = null,
-            bitwardenVaultId = null,
-            bitwardenCipherId = null,
-            bitwardenFolderId = null,
-            bitwardenRevisionDate = null,
-            bitwardenLocalModified = false,
-            isArchived = false,
-            archivedAt = null,
-            isDeleted = false,
-            deletedAt = null
-        )
-
-        is UnifiedMoveCategoryTarget.KeePassGroupTarget -> entry.copy(
-            id = 0,
-            createdAt = now,
-            updatedAt = now,
-            categoryId = null,
-            keepassDatabaseId = target.databaseId,
-            keepassGroupPath = target.groupPath,
-            keepassEntryUuid = null,
-            keepassGroupUuid = null,
-            bitwardenVaultId = null,
-            bitwardenCipherId = null,
-            bitwardenFolderId = null,
-            bitwardenRevisionDate = null,
-            bitwardenLocalModified = false,
-            isArchived = false,
-            archivedAt = null,
-            isDeleted = false,
-            deletedAt = null
-        )
-    }
-}
-
-private fun buildMoveTargetLabel(
-    context: Context,
-    target: UnifiedMoveCategoryTarget,
-    categories: List<Category>,
-    keepassDatabases: List<takagi.ru.monica.data.LocalKeePassDatabase>
-): String {
-    return when (target) {
-        UnifiedMoveCategoryTarget.Uncategorized -> context.getString(R.string.category_none)
-        is UnifiedMoveCategoryTarget.MonicaCategory -> {
-            if (target.categoryId == UNIFIED_MOVE_ARCHIVE_SENTINEL_CATEGORY_ID) {
-                context.getString(R.string.archive_page_title)
-            } else {
-                categories.find { it.id == target.categoryId }?.name
-                    ?: context.getString(R.string.filter_monica)
-            }
-        }
-
-        is UnifiedMoveCategoryTarget.BitwardenVaultTarget,
-        is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> context.getString(R.string.filter_bitwarden)
-
-        is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> {
-            keepassDatabases.find { it.id == target.databaseId }?.name ?: "KeePass"
-        }
-
-        is UnifiedMoveCategoryTarget.KeePassGroupTarget -> decodeKeePassPathForDisplay(target.groupPath)
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -606,9 +332,12 @@ fun PasswordListContent(
 ) {
     val coroutineScope = rememberCoroutineScope()
     val passwordEntries by viewModel.passwordEntries.collectAsState()
+    val passwordEntriesReady by viewModel.passwordEntriesReady.collectAsState()
     val allPasswords by viewModel.allPasswordsForUi.collectAsState()
+    val allPasswordsReady by viewModel.allPasswordsForUiReady.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val categories by viewModel.categories.collectAsState()
+    val categoriesReady by viewModel.categoriesReady.collectAsState()
     val currentFilter by viewModel.categoryFilter.collectAsState()
     // settings
     val appSettings by settingsViewModel.settings.collectAsState()
@@ -693,6 +422,12 @@ fun PasswordListContent(
     val canUseBiometric = activity != null && appSettings.biometricEnabled && biometricHelper.isBiometricAvailable()
     val database = remember { takagi.ru.monica.data.PasswordDatabase.getDatabase(context) }
     val bitwardenRepository = remember { takagi.ru.monica.bitwarden.repository.BitwardenRepository.getInstance(context) }
+    val aggregateStackRepository = remember(database) {
+        takagi.ru.monica.repository.PasswordPageAggregateStackRepository(
+            database.passwordPageAggregateStackDao()
+        )
+    }
+    val aggregateStackEntries by aggregateStackRepository.observeAll().collectAsState(initial = emptyList())
 
     // Top actions menu and display options sheet state
     var topActionsMenuExpanded by remember { mutableStateOf(false) }
@@ -726,6 +461,10 @@ fun PasswordListContent(
         if (isArchiveView && isCategorySheetVisible) {
             isCategorySheetVisible = false
         }
+    }
+
+    LaunchedEffect(aggregateStackRepository) {
+        aggregateStackRepository.pruneDegenerateGroups()
     }
     
     // 添加触觉反馈
@@ -1023,7 +762,7 @@ fun PasswordListContent(
         )
     }
     
-    val visiblePasswordEntries = remember(
+    val preStackFilteredPasswordEntries = remember(
         passwordEntries,
         deletedItemIds,
         quickFoldersEnabledForCurrentFilter,
@@ -1034,11 +773,7 @@ fun PasswordListContent(
         quickFilterNotes,
         quickFilterUncategorized,
         quickFilterLocalOnly,
-        quickFilterManualStackOnly,
         quickFilterNeverStack,
-        quickFilterUnstacked,
-        effectiveStackCardMode,
-        effectiveManualStackGroupByEntryId,
         effectiveNoStackEntryIds,
         aggregateUiState.hasActiveContentTypeFilter,
         aggregateUiState.displayedContentTypes
@@ -1069,27 +804,8 @@ fun PasswordListContent(
                 it.isLocalOnlyEntry()
             }
         }
-        if (quickFilterManualStackOnly && takagi.ru.monica.data.PasswordListQuickFilterItem.MANUAL_STACK_ONLY in configuredQuickFilterItems) {
-            filtered = filtered.filter { effectiveManualStackGroupByEntryId.containsKey(it.id) }
-        }
         if (quickFilterNeverStack && takagi.ru.monica.data.PasswordListQuickFilterItem.NEVER_STACK in configuredQuickFilterItems) {
             filtered = filtered.filter { it.id in effectiveNoStackEntryIds }
-        }
-        if (quickFilterUnstacked &&
-            takagi.ru.monica.data.PasswordListQuickFilterItem.UNSTACKED in configuredQuickFilterItems &&
-            effectiveStackCardMode != StackCardMode.ALWAYS_EXPANDED
-        ) {
-            val singleCardEntryIds = buildGroupedPasswordsForEntries(
-                sourceEntries = filtered,
-                config = groupingConfig
-            )
-                .values
-                .asSequence()
-                .filter { group -> group.size == 1 }
-                .flatten()
-                .map { it.id }
-                .toSet()
-            filtered = filtered.filter { it.id in singleCardEntryIds }
         }
         if (aggregateUiState.hasActiveContentTypeFilter) {
             filtered = filtered.filter { entry ->
@@ -1099,7 +815,7 @@ fun PasswordListContent(
         filtered
     }
 
-    val visibleAggregateItems = remember(
+    val preStackFilteredAggregateItems = remember(
         aggregateUiState.visibleItems,
         configuredQuickFilterItems,
         quickFilterFavorite,
@@ -1107,9 +823,7 @@ fun PasswordListContent(
         quickFilterNotes,
         quickFilterUncategorized,
         quickFilterLocalOnly,
-        quickFilterManualStackOnly,
         quickFilterNeverStack,
-        quickFilterUnstacked,
         effectiveStackCardMode
     ) {
         filterPasswordAggregateItemsByQuickFilters(
@@ -1120,32 +834,73 @@ fun PasswordListContent(
             quickFilterNotes = quickFilterNotes,
             quickFilterUncategorized = quickFilterUncategorized,
             quickFilterLocalOnly = quickFilterLocalOnly,
-            quickFilterManualStackOnly = quickFilterManualStackOnly,
+            quickFilterManualStackOnly = false,
             quickFilterNeverStack = quickFilterNeverStack,
-            quickFilterUnstacked = quickFilterUnstacked,
-            effectiveStackCardMode = effectiveStackCardMode
+            quickFilterUnstacked = false,
+            effectiveStackCardMode = effectiveStackCardMode,
+            manualStackedKeys = emptySet()
         )
     }
-    val visibleSelectableKeys = remember(visiblePasswordEntries, visibleAggregateItems) {
-        val visibleSupplementaryKeys = visibleAggregateItems
-            .mapTo(linkedSetOf<String>()) { item -> item.key }
-        selectionKeysForPasswords(visiblePasswordEntries.map { it.id }) + visibleSupplementaryKeys
+    val manualAggregateStackBuildResult = remember(
+        aggregateStackEntries,
+        preStackFilteredPasswordEntries,
+        preStackFilteredAggregateItems
+    ) {
+        buildPasswordAggregateManualStackGroups(
+            stackEntries = aggregateStackEntries,
+            passwords = preStackFilteredPasswordEntries,
+            aggregateItems = preStackFilteredAggregateItems
+        )
     }
-    val selectedPasswords = remember(selectedItemKeys) {
-        selectedPasswordIds(selectedItemKeys)
+    val validAggregateStackedItemKeys = remember(manualAggregateStackBuildResult.stackedItemKeys) {
+        manualAggregateStackBuildResult.stackedItemKeys
     }
-    val selectedSupplementaryItems = remember(selectedItemKeys, visibleAggregateItems) {
-        visibleAggregateItems.filter { it.key in selectedItemKeys }
+    val visiblePasswordEntries = remember(
+        preStackFilteredPasswordEntries,
+        configuredQuickFilterItems,
+        quickFilterManualStackOnly,
+        quickFilterUnstacked,
+        effectiveStackCardMode,
+        effectiveManualStackGroupByEntryId,
+        validAggregateStackedItemKeys,
+        manualAggregateStackBuildResult.stackedPasswordIds,
+        groupingConfig
+    ) {
+        filterPasswordEntriesByStackQuickFilters(
+            items = preStackFilteredPasswordEntries,
+            configuredQuickFilterItems = configuredQuickFilterItems,
+            quickFilterManualStackOnly = quickFilterManualStackOnly,
+            quickFilterUnstacked = quickFilterUnstacked,
+            effectiveStackCardMode = effectiveStackCardMode,
+            effectiveManualStackGroupByEntryId = effectiveManualStackGroupByEntryId,
+            aggregateManualStackedItemKeys = validAggregateStackedItemKeys,
+            aggregateManualStackedPasswordIds = manualAggregateStackBuildResult.stackedPasswordIds,
+            groupingConfig = groupingConfig
+        )
     }
-    val hasSelectedSupplementaryItems = remember(selectedItemKeys, selectedPasswords) {
-        selectedItemKeys.size != selectedPasswords.size
+    val visibleAggregateItems = remember(
+        preStackFilteredAggregateItems,
+        configuredQuickFilterItems,
+        quickFilterManualStackOnly,
+        quickFilterUnstacked,
+        effectiveStackCardMode,
+        validAggregateStackedItemKeys
+    ) {
+        filterPasswordAggregateItemsByQuickFilters(
+            items = preStackFilteredAggregateItems,
+            configuredQuickFilterItems = configuredQuickFilterItems,
+            quickFilterFavorite = false,
+            quickFilter2fa = false,
+            quickFilterNotes = false,
+            quickFilterUncategorized = false,
+            quickFilterLocalOnly = false,
+            quickFilterManualStackOnly = quickFilterManualStackOnly,
+            quickFilterNeverStack = false,
+            quickFilterUnstacked = quickFilterUnstacked,
+            effectiveStackCardMode = effectiveStackCardMode,
+            manualStackedKeys = validAggregateStackedItemKeys
+        )
     }
-
-    LaunchedEffect(visibleSelectableKeys) {
-        if (selectedItemKeys.isEmpty()) return@LaunchedEffect
-        selectedItemKeys = selectedItemKeys.intersect(visibleSelectableKeys)
-    }
-
     LaunchedEffect(isSelectionMode, selectedItemKeys) {
         if (isSelectionMode && selectedItemKeys.isEmpty()) {
             isSelectionMode = false
@@ -1204,15 +959,21 @@ fun PasswordListContent(
     var groupedPasswords by remember {
         mutableStateOf<Map<String, List<takagi.ru.monica.data.PasswordEntry>>>(emptyMap())
     }
-    LaunchedEffect(
+    val visiblePasswordsForAutoGrouping = remember(
         visiblePasswordEntries,
+        manualAggregateStackBuildResult.stackedPasswordIds
+    ) {
+        visiblePasswordEntries.filter { it.id !in manualAggregateStackBuildResult.stackedPasswordIds }
+    }
+    LaunchedEffect(
+        visiblePasswordsForAutoGrouping,
         effectiveGroupMode,
         appSettings.passwordWebsiteStackMatchMode,
         effectiveStackCardMode,
         effectiveManualStackGroupByEntryId,
         effectiveNoStackEntryIds
     ) {
-        val sourceEntries = visiblePasswordEntries
+        val sourceEntries = visiblePasswordsForAutoGrouping
         if (sourceEntries.isEmpty()) {
             groupedPasswords = emptyMap()
             return@LaunchedEffect
@@ -1230,48 +991,61 @@ fun PasswordListContent(
             PasswordPageContentType.AUTHENTICATOR in aggregateUiState.displayedContentTypes ||
             PasswordPageContentType.PASSKEY in aggregateUiState.displayedContentTypes
     }
-    val visiblePasswordIds = remember(visiblePasswordEntries) {
-        visiblePasswordEntries.map(PasswordEntry::id)
+    val visiblePasswordIds = remember(visiblePasswordsForAutoGrouping) {
+        visiblePasswordsForAutoGrouping.map(PasswordEntry::id)
     }
     val groupedPasswordIds = remember(groupedPasswords) {
         groupedPasswords.values.flatten().map(PasswordEntry::id)
     }
-    val isPasswordPageListModelReady = remember(
-        shouldRenderPasswordGroups,
-        visiblePasswordIds,
-        groupedPasswordIds
+    var hasCompletedInitialPasswordListStabilization by remember(
+        currentFilter,
+        searchQuery,
+        aggregateUiState.displayedContentTypes
     ) {
-        !shouldRenderPasswordGroups ||
-            visiblePasswordIds.isEmpty() ||
-            (
-                groupedPasswordIds.size == visiblePasswordIds.size &&
-                    groupedPasswordIds.toSet() == visiblePasswordIds.toSet()
-                )
-    }
-    var hasCompletedInitialPasswordListStabilization by rememberSaveable {
         mutableStateOf(false)
     }
-    LaunchedEffect(isPasswordPageListModelReady) {
-        if (isPasswordPageListModelReady) {
-            hasCompletedInitialPasswordListStabilization = true
-        }
-    }
-    val shouldGateInitialPasswordFirstFrame = remember(
+    val initialRenderState = remember(
         hasCompletedInitialPasswordListStabilization,
-        isPasswordPageListModelReady,
+        passwordEntriesReady,
+        allPasswordsReady,
+        categoriesReady,
+        shouldRenderPasswordGroups,
+        visiblePasswordIds,
+        groupedPasswordIds,
         aggregateUiState.displayedContentTypes,
         searchQuery
     ) {
-        !hasCompletedInitialPasswordListStabilization &&
-            !isPasswordPageListModelReady &&
-            PasswordPageContentType.PASSWORD in aggregateUiState.displayedContentTypes &&
-            searchQuery.isEmpty()
+        resolvePasswordListInitialRenderState(
+            hasCompletedInitialPasswordListStabilization = hasCompletedInitialPasswordListStabilization,
+            passwordEntriesReady = passwordEntriesReady,
+            allPasswordsForUiReady = allPasswordsReady,
+            categoriesReady = categoriesReady,
+            shouldRenderPasswordGroups = shouldRenderPasswordGroups,
+            visiblePasswordIds = visiblePasswordIds,
+            groupedPasswordIds = groupedPasswordIds,
+            displayedContentTypes = aggregateUiState.displayedContentTypes,
+            searchQuery = searchQuery
+        )
     }
+    val isPasswordPageListModelReady = initialRenderState.isPasswordPageListModelReady
+    LaunchedEffect(initialRenderState.isPasswordListDataLoaded, isPasswordPageListModelReady) {
+        if (initialRenderState.isPasswordListDataLoaded && isPasswordPageListModelReady) {
+            hasCompletedInitialPasswordListStabilization = true
+        }
+    }
+    val shouldGateInitialPasswordFirstFrame = initialRenderState.shouldGateInitialContent
     val effectiveVisibleAggregateItems = remember(
         shouldGateInitialPasswordFirstFrame,
-        visibleAggregateItems
+        visibleAggregateItems,
+        manualAggregateStackBuildResult.stackedAggregateKeys
     ) {
-        if (shouldGateInitialPasswordFirstFrame) emptyList() else visibleAggregateItems
+        if (shouldGateInitialPasswordFirstFrame) {
+            emptyList()
+        } else {
+            visibleAggregateItems.filter { item ->
+                item.key !in manualAggregateStackBuildResult.stackedAggregateKeys
+            }
+        }
     }
     val effectiveQuickFolderShortcuts = remember(
         shouldGateInitialPasswordFirstFrame,
@@ -1293,7 +1067,8 @@ fun PasswordListContent(
         buildPasswordPageListItems(
             selectedContentTypes = aggregateUiState.displayedContentTypes,
             groupedPasswords = groupedPasswords,
-            supplementaryItems = effectiveVisibleAggregateItems
+            supplementaryItems = effectiveVisibleAggregateItems,
+            manualStackGroups = manualAggregateStackBuildResult.groups
         )
     }
     val passwordPageListItemKeys = remember(passwordPageListItems) {
@@ -1301,6 +1076,32 @@ fun PasswordListContent(
     }
     val passwordPageListItemKeySet = remember(passwordPageListItemKeys) {
         passwordPageListItemKeys.toSet()
+    }
+    val visiblePageCards = remember(passwordPageListItems) {
+        flattenPasswordPageCardItems(passwordPageListItems)
+    }
+    val visibleSelectableKeys = remember(visiblePageCards) {
+        visiblePageCards.mapTo(linkedSetOf<String>()) { card -> card.key }
+    }
+    val selectedPageCards = remember(passwordPageListItems, selectedItemKeys) {
+        resolveSelectedPasswordPageCardItems(
+            items = passwordPageListItems,
+            selectedKeys = selectedItemKeys
+        )
+    }
+    val selectedPasswords = remember(selectedPageCards) {
+        selectedPageCards.mapNotNullTo(linkedSetOf<Long>()) { card -> card.passwordId }
+    }
+    val selectedSupplementaryItems = remember(selectedPageCards) {
+        selectedPageCards.mapNotNull { card -> card.toSelectedSupplementaryItemOrNull() }
+    }
+    val hasSelectedSupplementaryItems = remember(selectedSupplementaryItems) {
+        selectedSupplementaryItems.isNotEmpty()
+    }
+
+    LaunchedEffect(visibleSelectableKeys) {
+        if (selectedItemKeys.isEmpty()) return@LaunchedEffect
+        selectedItemKeys = selectedItemKeys.intersect(visibleSelectableKeys)
     }
     val hasVisibleQuickFilters = remember(
         appSettings.passwordListQuickFiltersEnabled,
@@ -1401,8 +1202,11 @@ fun PasswordListContent(
         localKeePassViewModel = localKeePassViewModel,
         securityManager = securityManager,
         selectedPasswords = selectedPasswords,
+        selectedSupplementaryItems = selectedSupplementaryItems,
         passwordEntries = passwordEntries,
+        aggregateUiState = aggregateUiState,
         viewModel = viewModel,
+        bitwardenRepository = bitwardenRepository,
         context = context,
         coroutineScope = coroutineScope,
         onRenameCategory = onRenameCategory,
@@ -1476,235 +1280,127 @@ fun PasswordListContent(
         onOpenTrash = onOpenTrash
     )
 
-        // 密码列表 - 使用堆叠分组视图
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .clickable(
-                    enabled = canCollapseExpandedGroups,
-                    interactionSource = outsideTapInteractionSource,
-                    indication = null
-                ) {
-                    viewModel.clearExpandedGroups()
-                }
-        ) {
-            val searchProgress = (pullAction.currentOffset / triggerDistance).coerceIn(0f, 1f)
-            val syncProgress = ((pullAction.currentOffset - triggerDistance) / (syncTriggerDistance - triggerDistance))
-                .coerceIn(0f, 1f)
-            val pullVisualState = when {
-                isBitwardenDatabaseView && pullAction.isBitwardenSyncing -> PullActionVisualState.SYNCING
-                isBitwardenDatabaseView && pullAction.showSyncFeedback -> PullActionVisualState.SYNC_DONE
-                isBitwardenDatabaseView && pullAction.syncHintArmed -> PullActionVisualState.SYNC_READY
-                pullAction.currentOffset >= triggerDistance -> PullActionVisualState.SEARCH_READY
-                else -> PullActionVisualState.IDLE
-            }
-            val pullHintText = when (pullVisualState) {
-                PullActionVisualState.SYNCING -> stringResource(R.string.pull_syncing_bitwarden)
-                PullActionVisualState.SYNC_DONE -> pullAction.syncFeedbackMessage.ifBlank {
-                    if (pullAction.syncFeedbackIsSuccess) {
-                        stringResource(R.string.pull_sync_success)
-                    } else {
-                        stringResource(R.string.sync_status_failed_full)
-                    }
-                }
-                PullActionVisualState.SYNC_READY -> stringResource(R.string.pull_release_to_sync_bitwarden)
-                PullActionVisualState.SEARCH_READY -> if (isBitwardenDatabaseView) {
-                    stringResource(R.string.pull_release_to_search)
-                } else {
-                    null
-                }
-                PullActionVisualState.IDLE -> null
-            }
-            val shouldPinIndicator = isBitwardenDatabaseView && (
-                pullAction.syncHintArmed || pullAction.isBitwardenSyncing || pullAction.showSyncFeedback
-            )
-            val revealHeightTarget = with(density) {
-                if (isBitwardenDatabaseView) {
-                    val pullHeight = pullAction.currentOffset.toDp().coerceIn(0.dp, 112.dp)
-                    if (shouldPinIndicator) {
-                        maxOf(pullHeight, 92.dp)
-                    } else {
-                        pullHeight
-                    }
-                } else {
-                    0.dp
-                }
-            }
-            val revealHeight by animateDpAsState(
-                targetValue = revealHeightTarget,
-                animationSpec = tween(durationMillis = 220),
-                label = "pull_reveal_height"
-            )
-            val showPullIndicator = pullHintText != null && revealHeight > 0.5.dp
-            val contentPullOffset = if (isBitwardenDatabaseView) {
-                // Keep sync indicator layout, but move list slightly to avoid sticky drag feel.
-                (pullAction.currentOffset * 0.28f).toInt()
-            } else {
-                pullAction.currentOffset.toInt()
-            }
-
-            Column(modifier = Modifier.fillMaxSize()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(revealHeight),
-                    contentAlignment = Alignment.BottomCenter
-                ) {
-                    if (showPullIndicator) {
-                        PullGestureIndicator(
-                            state = pullVisualState,
-                            searchProgress = searchProgress,
-                            syncProgress = syncProgress,
-                            text = pullHintText ?: "",
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp)
-                                .padding(bottom = 8.dp)
-                        )
-                    }
-                }
-                if (showPullIndicator) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                }
-
-                if (showPinnedQuickFolderPathBanner) {
-                    PasswordQuickFolderBreadcrumbBanner(
-                        breadcrumbs = effectiveQuickFolderBreadcrumbs,
-                        currentFilter = currentFilter,
-                        onNavigate = { target -> viewModel.setCategoryFilter(target) }
+    PasswordListMainPane(
+        canCollapseExpandedGroups = canCollapseExpandedGroups,
+        outsideTapInteractionSource = outsideTapInteractionSource,
+        onCollapseExpandedGroups = viewModel::clearExpandedGroups,
+        isBitwardenDatabaseView = isBitwardenDatabaseView,
+        pullAction = pullAction,
+        triggerDistance = triggerDistance,
+        syncTriggerDistance = syncTriggerDistance,
+        density = density,
+        showPinnedQuickFolderPathBanner = showPinnedQuickFolderPathBanner,
+        quickFolderBreadcrumbs = effectiveQuickFolderBreadcrumbs,
+        currentFilter = currentFilter,
+        onNavigateFilter = viewModel::setCategoryFilter,
+        shouldGateInitialPasswordFirstFrame = shouldGateInitialPasswordFirstFrame,
+        searchQuery = searchQuery,
+        isPasswordPageListModelReady = isPasswordPageListModelReady,
+        hasVisibleListItems = hasVisibleListItems,
+        hasScrollableHeaderContent = hasScrollableHeaderContent,
+        hasVisibleQuickFilters = hasVisibleQuickFilters,
+        aggregateUiState = aggregateUiState,
+        emptyStateMessage = emptyStateMessage,
+        listState = listState,
+        appSettings = appSettings,
+        configuredQuickFilterItems = configuredQuickFilterItems,
+        quickFilterFavorite = quickFilterFavorite,
+        onQuickFilterFavoriteChange = { quickFilterFavorite = it },
+        quickFilter2fa = quickFilter2fa,
+        onQuickFilter2faChange = { quickFilter2fa = it },
+        quickFilterNotes = quickFilterNotes,
+        onQuickFilterNotesChange = { quickFilterNotes = it },
+        quickFilterUncategorized = quickFilterUncategorized,
+        onQuickFilterUncategorizedChange = { quickFilterUncategorized = it },
+        quickFilterLocalOnly = quickFilterLocalOnly,
+        onQuickFilterLocalOnlyChange = { quickFilterLocalOnly = it },
+        quickFilterManualStackOnly = quickFilterManualStackOnly,
+        onQuickFilterManualStackOnlyChange = { quickFilterManualStackOnly = it },
+        quickFilterNeverStack = quickFilterNeverStack,
+        onQuickFilterNeverStackChange = { quickFilterNeverStack = it },
+        quickFilterUnstacked = quickFilterUnstacked,
+        onQuickFilterUnstackedChange = { quickFilterUnstacked = it },
+        onToggleAggregateType = aggregateConfig?.onToggleContentType,
+        quickFolderShortcuts = effectiveQuickFolderShortcuts,
+        quickFolderStyle = quickFolderStyle,
+        renderPasswordRows = {
+            passwordPageListRows(
+                passwordPageListItems = passwordPageListItems,
+                effectiveStackCardMode = effectiveStackCardMode,
+                expandedGroups = expandedGroups,
+                itemToDelete = itemToDelete,
+                onItemToDeleteChange = { itemToDelete = it },
+                isSelectionMode = isSelectionMode,
+                onSelectionModeChange = { isSelectionMode = it },
+                selectedItemKeys = selectedItemKeys,
+                onSelectedItemKeysChange = { selectedItemKeys = it },
+                selectedPasswords = selectedPasswords,
+                showBatchDeleteDialog = showBatchDeleteDialog,
+                onShowBatchDeleteDialogChange = { showBatchDeleteDialog = it },
+                viewModel = viewModel,
+                haptic = haptic,
+                onPasswordClick = { password ->
+                    val topVisibleKey = listState.layoutInfo.visibleItemsInfo
+                        .firstOrNull { item -> item.key.toString() in passwordPageListItemKeySet }
+                        ?.key
+                        ?.toString()
+                    Log.d(
+                        PASSWORD_SCROLL_LOG_TAG,
+                        "source=v1_click_open_detail persist=${listState.firstVisibleItemIndex}/${listState.firstVisibleItemScrollOffset} anchor=$topVisibleKey"
                     )
-                }
-
-                if (isPasswordPageListModelReady && !hasVisibleListItems && searchQuery.isEmpty() && !hasScrollableHeaderContent) {
-                    // Empty state with pull-to-search
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .offset { androidx.compose.ui.unit.IntOffset(0, contentPullOffset) }
-                            .pointerInput(isBitwardenDatabaseView) {
-                                detectDragGesturesAfterLongPress(
-                                    onDrag = { _, _ -> } // Consume long press to prevent issues
-                                )
-                            }
-                            .pointerInput(isBitwardenDatabaseView) {
-                                 detectVerticalDragGestures(
-                                    onVerticalDrag = { _, dragAmount ->
-                                        pullAction.onVerticalDrag(dragAmount)
-                                    },
-                                    onDragEnd = {
-                                        pullAction.onDragEnd()
-                                    },
-                                    onDragCancel = {
-                                        pullAction.onDragCancel()
-                                    }
-                                )
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        PasswordListEmptyState(
-                            message = if (aggregateUiState.hasActiveContentTypeFilter) {
-                                PasswordListEmptyStateMessage(titleRes = R.string.no_results)
-                            } else {
-                                emptyStateMessage
-                            }
-                        )
-                    }
-                } else {
-                    PasswordListScrollableContent(
-                        listState = listState,
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth()
-                            .offset { androidx.compose.ui.unit.IntOffset(0, contentPullOffset) }
-                            .nestedScroll(pullAction.nestedScrollConnection),
-                        isPasswordPageListModelReady = isPasswordPageListModelReady,
-                        hasVisibleQuickFilters = hasVisibleQuickFilters,
-                        appSettings = appSettings,
-                        configuredQuickFilterItems = configuredQuickFilterItems,
-                        aggregateUiState = aggregateUiState,
-                        quickFilterFavorite = quickFilterFavorite,
-                        onQuickFilterFavoriteChange = { quickFilterFavorite = it },
-                        quickFilter2fa = quickFilter2fa,
-                        onQuickFilter2faChange = { quickFilter2fa = it },
-                        quickFilterNotes = quickFilterNotes,
-                        onQuickFilterNotesChange = { quickFilterNotes = it },
-                        quickFilterUncategorized = quickFilterUncategorized,
-                        onQuickFilterUncategorizedChange = { quickFilterUncategorized = it },
-                        quickFilterLocalOnly = quickFilterLocalOnly,
-                        onQuickFilterLocalOnlyChange = { quickFilterLocalOnly = it },
-                        quickFilterManualStackOnly = quickFilterManualStackOnly,
-                        onQuickFilterManualStackOnlyChange = { quickFilterManualStackOnly = it },
-                        quickFilterNeverStack = quickFilterNeverStack,
-                        onQuickFilterNeverStackChange = { quickFilterNeverStack = it },
-                        quickFilterUnstacked = quickFilterUnstacked,
-                        onQuickFilterUnstackedChange = { quickFilterUnstacked = it },
-                        onToggleAggregateType = aggregateConfig?.onToggleContentType,
-                        quickFolderShortcuts = effectiveQuickFolderShortcuts,
-                        quickFolderStyle = quickFolderStyle,
-                        currentFilter = currentFilter,
-                        onNavigateFilter = { target -> viewModel.setCategoryFilter(target) },
-                        hasVisibleListItems = hasVisibleListItems,
-                        searchQuery = searchQuery,
-                        emptyStateMessage = emptyStateMessage,
-                        renderPasswordRows = {
-                        passwordPageListRows(
-                            passwordPageListItems = passwordPageListItems,
-                            effectiveStackCardMode = effectiveStackCardMode,
-                            expandedGroups = expandedGroups,
-                            itemToDelete = itemToDelete,
-                            onItemToDeleteChange = { itemToDelete = it },
-                            isSelectionMode = isSelectionMode,
-                            onSelectionModeChange = { isSelectionMode = it },
-                            selectedItemKeys = selectedItemKeys,
-                            onSelectedItemKeysChange = { selectedItemKeys = it },
-                            selectedPasswords = selectedPasswords,
-                            showBatchDeleteDialog = showBatchDeleteDialog,
-                            onShowBatchDeleteDialogChange = { showBatchDeleteDialog = it },
-                            viewModel = viewModel,
-                            haptic = haptic,
-                            onPasswordClick = { password ->
-                                val topVisibleKey = listState.layoutInfo.visibleItemsInfo
-                                    .firstOrNull { item -> item.key.toString() in passwordPageListItemKeySet }
-                                    ?.key
-                                    ?.toString()
-                                Log.d(
-                                    PASSWORD_SCROLL_LOG_TAG,
-                                    "source=v1_click_open_detail persist=${listState.firstVisibleItemIndex}/${listState.firstVisibleItemScrollOffset} anchor=$topVisibleKey"
-                                )
-                                viewModel.updatePasswordListScrollPosition(
-                                    listState.firstVisibleItemIndex,
-                                    listState.firstVisibleItemScrollOffset,
-                                    topVisibleKey,
-                                    source = "v1_click_open_detail"
-                                )
-                                onPasswordClick(password)
-                            },
-                            appSettings = appSettings,
-                            coroutineScope = coroutineScope,
-                            context = context,
-                            passwordEntries = passwordEntries,
-                            aggregateConfig = aggregateConfig,
-                            aggregateUiState = aggregateUiState
-                        )
-                        }
+                    viewModel.updatePasswordListScrollPosition(
+                        listState.firstVisibleItemIndex,
+                        listState.firstVisibleItemScrollOffset,
+                        topVisibleKey,
+                        source = "v1_click_open_detail"
                     )
-                }
-            }
+                    onPasswordClick(password)
+                },
+                appSettings = appSettings,
+                coroutineScope = coroutineScope,
+                context = context,
+                passwordEntries = passwordEntries,
+                aggregateConfig = aggregateConfig,
+                aggregateUiState = aggregateUiState
+            )
         }
+    )
     
     PasswordListDialogs(
         showManualStackConfirmDialog = showManualStackConfirmDialog,
         onShowManualStackConfirmDialogChange = { showManualStackConfirmDialog = it },
+        selectedItemKeys = selectedItemKeys,
         selectedPasswords = selectedPasswords,
         selectedCount = selectedItemKeys.size,
         selectedManualStackMode = selectedManualStackMode,
         onSelectedManualStackModeChange = { selectedManualStackMode = it },
+        onApplyManualStackMode = { dialogMode, itemKeys, passwordIds ->
+            val validItemKeys = itemKeys.filterTo(linkedSetOf()) { it.isNotBlank() }
+            if (
+                validItemKeys.size < 2 ||
+                validItemKeys.size != passwordIds.size
+            ) {
+                0
+            } else {
+                val mode = when (dialogMode) {
+                    ManualStackDialogMode.STACK -> PasswordViewModel.ManualStackMode.STACK
+                    ManualStackDialogMode.AUTO_STACK -> PasswordViewModel.ManualStackMode.AUTO_STACK
+                    ManualStackDialogMode.NEVER_STACK -> PasswordViewModel.ManualStackMode.NEVER_STACK
+                }
+                viewModel.applyManualStackMode(passwordIds.toList(), mode)
+                passwordIds.size
+            }
+        },
         viewModel = viewModel,
         context = context,
         coroutineScope = coroutineScope,
         onDeleteSelection = {
             val selectedPasswordEntries = passwordEntries.filter { it.id in selectedPasswords }
+            if (selectedItemKeys.isNotEmpty()) {
+                coroutineScope.launch {
+                    aggregateStackRepository.clearManualStack(selectedItemKeys.toList())
+                }
+            }
             selectedPasswordEntries.forEach(viewModel::deletePasswordEntry)
 
             selectedSupplementaryItems.forEach { item ->
@@ -1766,297 +1462,6 @@ fun PasswordListContent(
         onSingleItemPasswordInputChange = { singleItemPasswordInput = it },
         showSingleItemPasswordVerify = showSingleItemPasswordVerify,
         onShowSingleItemPasswordVerifyChange = { showSingleItemPasswordVerify = it }
-    )
-}
-
-@Composable
-private fun PasswordBatchMoveSheet(
-    visible: Boolean,
-    categories: List<Category>,
-    keepassDatabases: List<takagi.ru.monica.data.LocalKeePassDatabase>,
-    bitwardenVaults: List<takagi.ru.monica.data.bitwarden.BitwardenVault>,
-    database: takagi.ru.monica.data.PasswordDatabase,
-    localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
-    securityManager: SecurityManager,
-    selectedPasswords: Set<Long>,
-    passwordEntries: List<takagi.ru.monica.data.PasswordEntry>,
-    viewModel: PasswordViewModel,
-    context: Context,
-    coroutineScope: kotlinx.coroutines.CoroutineScope,
-    onRenameCategory: (Category) -> Unit,
-    onDeleteCategory: (Category) -> Unit,
-    onDismiss: () -> Unit,
-    onSelectionCleared: () -> Unit
-) {
-    UnifiedMoveToCategoryBottomSheet(
-        visible = visible,
-        onDismiss = onDismiss,
-        categories = categories,
-        keepassDatabases = keepassDatabases,
-        bitwardenVaults = bitwardenVaults,
-        getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
-        getKeePassGroups = localKeePassViewModel::getGroups,
-        allowCopy = true,
-        allowMove = passwordEntries.filter { it.id in selectedPasswords }.none { it.isKeePassEntry() },
-        allowArchiveTarget = true,
-        onTargetSelected = { target, action ->
-            val selectedIds = selectedPasswords.toList()
-            val selectedEntries = passwordEntries.filter { it.id in selectedPasswords }
-            val actionResolution = resolvePasswordBatchMoveAction(
-                requestedAction = action,
-                selectedEntries = selectedEntries
-            )
-            if (actionResolution.showKeepassCopyOnlyHint) {
-                Toast.makeText(
-                    context,
-                    context.getString(R.string.keepass_copy_only_hint),
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
-            val effectiveAction = actionResolution.effectiveAction
-            val targetRouting = resolvePasswordBatchMoveTargetRouting(target)
-            if (effectiveAction == UnifiedMoveAction.COPY) {
-                executePasswordBatchCopy(
-                    context = context,
-                    coroutineScope = coroutineScope,
-                    selectedEntries = selectedEntries,
-                    target = target,
-                    targetRouting = targetRouting,
-                    copyPasswordToMonicaLocal = { entry, categoryId ->
-                        viewModel.copyPasswordToMonicaLocal(
-                            entry = entry,
-                            categoryId = categoryId
-                        )
-                    },
-                    addCopiedEntry = { entry, onResult ->
-                        viewModel.addPasswordEntryWithResult(
-                            entry = entry,
-                            includeDetailedLog = false,
-                            onResult = onResult
-                        )
-                    },
-                    buildCopiedEntryForTarget = ::buildCopiedEntryForTarget
-                )
-            } else {
-                val oldStates = selectedEntries.map(::toLocationState)
-                val newStates = selectedEntries.map { toMovedLocationState(it, target) }
-                when {
-                    targetRouting.isArchiveTarget -> {
-                        viewModel.archivePasswords(selectedIds)
-                        Toast.makeText(
-                            context,
-                            context.getString(R.string.archive_page_title),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                    target == UnifiedMoveCategoryTarget.Uncategorized -> {
-                        coroutineScope.launch {
-                            try {
-                                val keepassEntries = selectedEntries.filter { it.isKeePassEntry() }
-                                val bitwardenEntries = selectedEntries.filter { it.isBitwardenEntry() }
-                                val localIds = selectedEntries
-                                    .filter { it.isLocalOnlyEntry() }
-                                    .map { it.id }
-
-                                if (keepassEntries.isNotEmpty()) {
-                                    val result = localKeePassViewModel.movePasswordEntriesToMonicaLocal(keepassEntries)
-                                    if (result.isFailure) {
-                                        Toast.makeText(
-                                            context,
-                                            context.getString(R.string.webdav_operation_failed, result.exceptionOrNull()?.message ?: ""),
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                        return@launch
-                                    }
-                                    val keepassIds = keepassEntries.map { it.id }
-                                    viewModel.unarchivePasswords(keepassIds)
-                                    viewModel.movePasswordsToCategory(keepassIds, null)
-                                }
-
-                                bitwardenEntries.forEach { entry ->
-                                    val result = viewModel.moveBitwardenPasswordToMonicaLocal(entry, null)
-                                    if (result.isFailure) {
-                                        Toast.makeText(
-                                            context,
-                                            context.getString(R.string.webdav_operation_failed, result.exceptionOrNull()?.message ?: ""),
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                        return@launch
-                                    }
-                                }
-
-                                if (localIds.isNotEmpty()) {
-                                    viewModel.unarchivePasswords(localIds)
-                                    viewModel.movePasswordsToCategory(localIds, null)
-                                }
-
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.category_none),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            } catch (e: Exception) {
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.webdav_operation_failed, e.message ?: ""),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        }
-                    }
-                    target is UnifiedMoveCategoryTarget.MonicaCategory -> {
-                        coroutineScope.launch {
-                            try {
-                                val keepassEntries = selectedEntries.filter { it.isKeePassEntry() }
-                                val bitwardenEntries = selectedEntries.filter { it.isBitwardenEntry() }
-                                val localIds = selectedEntries
-                                    .filter { it.isLocalOnlyEntry() }
-                                    .map { it.id }
-
-                                if (keepassEntries.isNotEmpty()) {
-                                    val result = localKeePassViewModel.movePasswordEntriesToMonicaLocal(keepassEntries)
-                                    if (result.isFailure) {
-                                        Toast.makeText(
-                                            context,
-                                            context.getString(R.string.webdav_operation_failed, result.exceptionOrNull()?.message ?: ""),
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                        return@launch
-                                    }
-                                    val keepassIds = keepassEntries.map { it.id }
-                                    viewModel.unarchivePasswords(keepassIds)
-                                    viewModel.movePasswordsToCategory(keepassIds, target.categoryId)
-                                }
-
-                                bitwardenEntries.forEach { entry ->
-                                    val result = viewModel.moveBitwardenPasswordToMonicaLocal(
-                                        entry = entry,
-                                        categoryId = target.categoryId
-                                    )
-                                    if (result.isFailure) {
-                                        Toast.makeText(
-                                            context,
-                                            context.getString(R.string.webdav_operation_failed, result.exceptionOrNull()?.message ?: ""),
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                        return@launch
-                                    }
-                                }
-
-                                if (localIds.isNotEmpty()) {
-                                    viewModel.unarchivePasswords(localIds)
-                                    viewModel.movePasswordsToCategory(localIds, target.categoryId)
-                                }
-
-                                val name = categories.find { it.id == target.categoryId }?.name ?: ""
-                                Toast.makeText(
-                                    context,
-                                    "${context.getString(R.string.move_to_category)} $name",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            } catch (e: Exception) {
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.webdav_operation_failed, e.message ?: ""),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        }
-                    }
-                    target is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> {
-                        viewModel.unarchivePasswords(selectedIds)
-                        viewModel.movePasswordsToBitwardenFolder(selectedIds, target.vaultId, "")
-                        Toast.makeText(context, context.getString(R.string.filter_bitwarden), Toast.LENGTH_SHORT).show()
-                    }
-                    target is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> {
-                        viewModel.unarchivePasswords(selectedIds)
-                        viewModel.movePasswordsToBitwardenFolder(selectedIds, target.vaultId, target.folderId)
-                        Toast.makeText(context, context.getString(R.string.filter_bitwarden), Toast.LENGTH_SHORT).show()
-                    }
-                    target is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> {
-                        coroutineScope.launch {
-                            try {
-                                val result = localKeePassViewModel.movePasswordEntriesToKdbx(
-                                    databaseId = target.databaseId,
-                                    groupPath = null,
-                                    entries = selectedEntries,
-                                    decryptPassword = { encrypted -> securityManager.decryptData(encrypted) ?: "" }
-                                )
-                                if (result.isSuccess) {
-                                    viewModel.unarchivePasswords(selectedIds)
-                                    viewModel.movePasswordsToKeePassDatabase(selectedIds, target.databaseId)
-                                    Toast.makeText(
-                                        context,
-                                        "${context.getString(R.string.move_to_category)} ${keepassDatabases.find { it.id == target.databaseId }?.name ?: "KeePass"}",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                } else {
-                                    Toast.makeText(
-                                        context,
-                                        context.getString(R.string.webdav_operation_failed, result.exceptionOrNull()?.message ?: ""),
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                }
-                            } catch (e: Exception) {
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.webdav_operation_failed, e.message ?: ""),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        }
-                    }
-                    target is UnifiedMoveCategoryTarget.KeePassGroupTarget -> {
-                        coroutineScope.launch {
-                            try {
-                                val result = localKeePassViewModel.movePasswordEntriesToKdbx(
-                                    databaseId = target.databaseId,
-                                    groupPath = target.groupPath,
-                                    entries = selectedEntries,
-                                    decryptPassword = { encrypted -> securityManager.decryptData(encrypted) ?: "" }
-                                )
-                                if (result.isSuccess) {
-                                    viewModel.unarchivePasswords(selectedIds)
-                                    viewModel.movePasswordsToKeePassGroup(selectedIds, target.databaseId, target.groupPath)
-                                    Toast.makeText(
-                                        context,
-                                        "${context.getString(R.string.move_to_category)} ${decodeKeePassPathForDisplay(target.groupPath)}",
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                } else {
-                                    Toast.makeText(
-                                        context,
-                                        context.getString(R.string.webdav_operation_failed, result.exceptionOrNull()?.message ?: ""),
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                }
-                            } catch (e: Exception) {
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.webdav_operation_failed, e.message ?: ""),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        }
-                    }
-                }
-                val targetLabel = buildMoveTargetLabel(
-                    context = context,
-                    target = target,
-                    categories = categories,
-                    keepassDatabases = keepassDatabases
-                )
-                logPasswordBatchMoveTimeline(
-                    context = context,
-                    selectedEntries = selectedEntries,
-                    oldStates = oldStates,
-                    newStates = newStates,
-                    targetLabel = targetLabel
-                )
-            }
-            onDismiss()
-            onSelectionCleared()
-        }
     )
 }
 

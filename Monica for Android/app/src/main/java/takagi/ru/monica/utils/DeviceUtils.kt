@@ -196,6 +196,13 @@ object DeviceUtils {
             else -> "Unknown"
         }
     }
+
+    /**
+     * Uses Xiaomi's HyperOS system property as a strict signal to avoid broad ROM misclassification.
+     */
+    fun isHyperOsSystemPropertyPresent(): Boolean {
+        return hasSystemProperty("ro.mi.os.version.name")
+    }
     
     /**
      * 是否是中国厂商的 ROM

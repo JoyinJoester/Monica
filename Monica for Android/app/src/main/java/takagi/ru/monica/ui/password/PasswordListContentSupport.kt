@@ -27,6 +27,7 @@ import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordPageContentType
+import takagi.ru.monica.data.PasswordListQuickFilterItem
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.ui.password.PasswordAggregateCardStyle
@@ -37,6 +38,7 @@ import takagi.ru.monica.ui.password.appendAggregateContentQuickFilterItems
 import takagi.ru.monica.ui.password.buildPasswordAggregateItems
 import takagi.ru.monica.ui.password.getGroupKeyForMode
 import takagi.ru.monica.ui.password.getPasswordInfoKey
+import takagi.ru.monica.ui.password.passwordSelectionKey
 import takagi.ru.monica.ui.password.resolvePasswordPageDisplayedTypes
 import takagi.ru.monica.ui.password.resolvePasswordPageQuickFilterTypes
 import takagi.ru.monica.ui.password.toPasswordPageContentTypeOrNull
@@ -70,8 +72,11 @@ internal data class PasswordListAggregateUiState(
     val hasActiveContentTypeFilter: Boolean,
     val cardStyle: PasswordAggregateCardStyle,
     val visibleItems: List<PasswordAggregateListItemUi>,
+    val bankCards: List<SecureItem>,
+    val documents: List<SecureItem>,
     val totpItems: List<SecureItem>,
     val notes: List<SecureItem>,
+    val passkeys: List<PasskeyEntry>,
     val totpViewModel: TotpViewModel?,
     val bankCardViewModel: BankCardViewModel?,
     val documentViewModel: DocumentViewModel?,
@@ -96,6 +101,13 @@ internal data class FavoriteSelectionToggleRequest(
     val passwordEntries: List<PasswordEntry>,
     val selectedSupplementaryItems: List<PasswordAggregateListItemUi>,
     val aggregateUiState: PasswordListAggregateUiState
+)
+
+internal data class PasswordListInitialRenderState(
+    val isPasswordListDataLoaded: Boolean,
+    val isHeaderDataLoaded: Boolean,
+    val isPasswordPageListModelReady: Boolean,
+    val shouldGateInitialContent: Boolean
 )
 
 // Keeps aggregate-card state assembly outside the main password list composable.
@@ -219,8 +231,11 @@ internal fun rememberPasswordAggregateUiState(
         },
         cardStyle = aggregateCardStyle,
         visibleItems = aggregateVisibleItems,
+        bankCards = aggregateBankCards,
+        documents = aggregateDocuments,
         totpItems = aggregateTotpItems,
         notes = aggregateNotes,
+        passkeys = aggregatePasskeys,
         totpViewModel = aggregateConfig?.totpViewModel,
         bankCardViewModel = aggregateConfig?.bankCardViewModel,
         documentViewModel = aggregateConfig?.documentViewModel,
@@ -599,6 +614,96 @@ internal fun buildGroupedPasswordsForEntries(
     } else {
         groupedAndSorted
     }
+}
+
+internal fun filterPasswordEntriesByStackQuickFilters(
+    items: List<PasswordEntry>,
+    configuredQuickFilterItems: List<PasswordListQuickFilterItem>,
+    quickFilterManualStackOnly: Boolean,
+    quickFilterUnstacked: Boolean,
+    effectiveStackCardMode: StackCardMode,
+    effectiveManualStackGroupByEntryId: Map<Long, String>,
+    aggregateManualStackedItemKeys: Set<String>,
+    aggregateManualStackedPasswordIds: Set<Long>,
+    groupingConfig: PasswordGroupingConfig
+): List<PasswordEntry> {
+    var filtered = items
+
+    if (
+        quickFilterManualStackOnly &&
+        PasswordListQuickFilterItem.MANUAL_STACK_ONLY in configuredQuickFilterItems
+    ) {
+        filtered = filtered.filter { entry ->
+            effectiveManualStackGroupByEntryId.containsKey(entry.id) ||
+                passwordSelectionKey(entry.id) in aggregateManualStackedItemKeys
+        }
+    }
+
+    if (
+        quickFilterUnstacked &&
+        PasswordListQuickFilterItem.UNSTACKED in configuredQuickFilterItems &&
+        effectiveStackCardMode != StackCardMode.ALWAYS_EXPANDED
+    ) {
+        val autoGroupingCandidates = filtered.filter { entry ->
+            entry.id !in aggregateManualStackedPasswordIds
+        }
+        val singleCardEntryIds = buildGroupedPasswordsForEntries(
+            sourceEntries = autoGroupingCandidates,
+            config = groupingConfig
+        )
+            .values
+            .asSequence()
+            .filter { group -> group.size == 1 }
+            .flatten()
+            .map(PasswordEntry::id)
+            .toSet()
+        filtered = filtered.filter { entry ->
+            entry.id !in aggregateManualStackedPasswordIds &&
+                entry.id in singleCardEntryIds
+        }
+    }
+
+    return filtered
+}
+
+internal fun resolvePasswordListInitialRenderState(
+    hasCompletedInitialPasswordListStabilization: Boolean,
+    passwordEntriesReady: Boolean,
+    allPasswordsForUiReady: Boolean,
+    categoriesReady: Boolean,
+    shouldRenderPasswordGroups: Boolean,
+    visiblePasswordIds: List<Long>,
+    groupedPasswordIds: List<Long>,
+    displayedContentTypes: Set<PasswordPageContentType>,
+    searchQuery: String
+): PasswordListInitialRenderState {
+    val isPasswordListDataLoaded = passwordEntriesReady && allPasswordsForUiReady
+    val isHeaderDataLoaded = isPasswordListDataLoaded && categoriesReady
+    val isPasswordPageListModelReady = if (!isPasswordListDataLoaded) {
+        false
+    } else {
+        !shouldRenderPasswordGroups ||
+            visiblePasswordIds.isEmpty() ||
+            (
+                groupedPasswordIds.size == visiblePasswordIds.size &&
+                    groupedPasswordIds.toSet() == visiblePasswordIds.toSet()
+                )
+    }
+    val shouldGateInitialContent =
+        !hasCompletedInitialPasswordListStabilization &&
+            (
+                !isHeaderDataLoaded ||
+                    !isPasswordPageListModelReady
+                ) &&
+            PasswordPageContentType.PASSWORD in displayedContentTypes &&
+            searchQuery.isEmpty()
+
+    return PasswordListInitialRenderState(
+        isPasswordListDataLoaded = isPasswordListDataLoaded,
+        isHeaderDataLoaded = isHeaderDataLoaded,
+        isPasswordPageListModelReady = isPasswordPageListModelReady,
+        shouldGateInitialContent = shouldGateInitialContent
+    )
 }
 
 internal suspend fun applyFavoriteSelectionToggle(

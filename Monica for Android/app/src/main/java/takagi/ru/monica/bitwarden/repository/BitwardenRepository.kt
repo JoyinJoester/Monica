@@ -20,6 +20,8 @@ import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto.SymmetricCryptoKey
 import takagi.ru.monica.bitwarden.mapper.BitwardenSendMapper
 import takagi.ru.monica.bitwarden.service.BitwardenAuthService
+import takagi.ru.monica.bitwarden.service.BitwardenHistoricalTotpRepairResult
+import takagi.ru.monica.bitwarden.service.BitwardenHistoricalTotpRepairService
 import takagi.ru.monica.bitwarden.service.BitwardenSyncService
 import takagi.ru.monica.bitwarden.service.LoginResult
 import takagi.ru.monica.bitwarden.service.SyncResult as ServiceSyncResult
@@ -144,6 +146,7 @@ class BitwardenRepository(private val context: Context) {
     private val apiManager = BitwardenApiManager()
     private val authService = BitwardenAuthService(context)
     private val syncService = BitwardenSyncService(context)
+    private val historicalTotpRepairService = BitwardenHistoricalTotpRepairService(context)
     
     // 加密的 SharedPreferences
     private val securePrefs by lazy {
@@ -695,6 +698,45 @@ class BitwardenRepository(private val context: Context) {
             }
         }
     }
+
+    suspend fun repairHistoricalBitwardenTotp(vaultId: Long): Result<BitwardenHistoricalTotpRepairResult> =
+        withContext(Dispatchers.IO) {
+            try {
+                val vault = vaultDao.getVaultById(vaultId)
+                    ?: return@withContext Result.failure(IllegalStateException("Vault 不存在"))
+
+                if (!isVaultUnlocked(vaultId)) {
+                    return@withContext Result.failure(IllegalStateException("Vault 未解锁"))
+                }
+
+                val symmetricKey = symmetricKeyCache[vaultId]
+                    ?: return@withContext Result.failure(IllegalStateException("密钥不可用"))
+                var accessToken = accessTokenCache[vaultId]
+                    ?: return@withContext Result.failure(IllegalStateException("令牌不可用"))
+
+                val expiresAt = vault.accessTokenExpiresAt ?: 0
+                if (expiresAt <= System.currentTimeMillis() + 60000) {
+                    val refreshed = refreshToken(vault)
+                    if (refreshed != null) {
+                        accessToken = refreshed
+                        accessTokenCache[vaultId] = refreshed
+                    } else {
+                        return@withContext Result.failure(IllegalStateException("Token 刷新失败，请重新登录"))
+                    }
+                }
+
+                Result.success(
+                    historicalTotpRepairService.repairHistoricalTotp(
+                        vault = vault,
+                        accessToken = accessToken,
+                        symmetricKey = symmetricKey
+                    )
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "修复历史 Bitwarden TOTP 失败", e)
+                Result.failure(e)
+            }
+        }
     
     /**
      * 刷新访问令牌

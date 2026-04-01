@@ -69,7 +69,7 @@ internal fun rememberPasswordListSelectionHandlers(
         },
         onMoveToCategory = onShowMoveToCategoryDialog,
         onStackSelected = {
-            if (selectedPasswords.isEmpty()) {
+            if (selectedItemKeys.size < 2) {
                 Toast.makeText(
                     context,
                     context.getString(R.string.multi_del_select_items),
@@ -111,16 +111,18 @@ internal fun BindPasswordListSelectionModeChange(
             selectedItemKeys.any { passwordIdFromSelectionKey(it) != null } ||
                 selectedSupplementaryItems.any { it.type != PasswordPageContentType.PASSKEY }
         }
-        val hasSelectedSupplementaryItems = selectedSupplementaryItems.isNotEmpty()
-        val passwordOnlySelection = !hasSelectedSupplementaryItems && selectedPasswords.isNotEmpty()
         onSelectionModeChange(
             isSelectionMode,
             selectedItemKeys.size,
             handlers.onExitSelection,
             handlers.onSelectAll,
             favoriteAction,
-            handlers.onMoveToCategory.takeIf { passwordOnlySelection },
-            handlers.onStackSelected.takeIf { passwordOnlySelection },
+            handlers.onMoveToCategory.takeIf { selectedItemKeys.isNotEmpty() },
+            handlers.onStackSelected.takeIf {
+                selectedItemKeys.size >= 2 &&
+                    selectedSupplementaryItems.isEmpty() &&
+                    selectedPasswords.size == selectedItemKeys.size
+            },
             handlers.onDeleteSelected
         )
     }

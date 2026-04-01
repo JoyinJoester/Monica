@@ -1777,4 +1777,10 @@
     <string name="autofill_blocked_fields_share_subject">Monica 自動入力ブロック項目</string>
     <string name="autofill_blocked_fields_share_file_hint">自動入力ブロック項目のエクスポートファイルを添付しました。</string>
     <string name="autofill_blocked_fields_share_failed">共有に失敗しました: %1$s</string>
+    <string name="repair_bitwarden_totp_menu">古い Bitwarden 認証コードを修復</string>
+    <string name="repair_bitwarden_totp_result_sync">過去の認証コード記録を %1$d 件修復し、%2$d 件を Bitwarden 同期キューに追加しました。%3$d 件はスキップしました。</string>
+    <string name="repair_bitwarden_totp_result_local">過去の認証コード記録をローカルで %1$d 件修復し、%2$d 件をスキップしました。</string>
+    <string name="repair_bitwarden_totp_nothing_to_fix">修復が必要な過去の Bitwarden 認証コード問題は見つかりませんでした。</string>
+    <string name="repair_bitwarden_totp_failed">過去の Bitwarden 認証コードの修復に失敗しました: %1$s</string>
+    <string name="repair_bitwarden_totp_failed_unknown">不明なエラー</string>
 </resources>

@@ -138,6 +138,59 @@ internal fun applyQuickFolderRootVisibility(
     else -> entries
 }
 
+internal fun PasswordEntry.matchesPasswordCategoryFilter(filter: CategoryFilter): Boolean = when (filter) {
+    is CategoryFilter.All -> !isDeleted && !isArchived
+    is CategoryFilter.Archived -> !isDeleted && isArchived
+    is CategoryFilter.Local -> !isDeleted && !isArchived && isLocalOnlyEntry()
+    is CategoryFilter.LocalOnly -> !isDeleted && !isArchived && isLocalOnlyEntry()
+    is CategoryFilter.Starred -> !isDeleted && !isArchived && isFavorite
+    is CategoryFilter.Uncategorized -> !isDeleted && !isArchived && categoryId == null
+    is CategoryFilter.LocalStarred -> !isDeleted && !isArchived && isLocalOnlyEntry() && isFavorite
+    is CategoryFilter.LocalUncategorized -> !isDeleted && !isArchived && isLocalOnlyEntry() && categoryId == null
+    is CategoryFilter.Custom -> !isDeleted && !isArchived && categoryId == filter.categoryId
+    is CategoryFilter.KeePassDatabase -> !isDeleted && !isArchived && keepassDatabaseId == filter.databaseId
+    is CategoryFilter.KeePassGroupFilter -> {
+        !isDeleted && !isArchived &&
+            keepassDatabaseId == filter.databaseId &&
+            keepassGroupPath == filter.groupPath
+    }
+    is CategoryFilter.KeePassDatabaseStarred -> {
+        !isDeleted && !isArchived &&
+            keepassDatabaseId == filter.databaseId &&
+            isFavorite
+    }
+    is CategoryFilter.KeePassDatabaseUncategorized -> {
+        !isDeleted && !isArchived &&
+            keepassDatabaseId == filter.databaseId &&
+            keepassGroupPath.isNullOrBlank()
+    }
+    is CategoryFilter.BitwardenVault -> !isDeleted && !isArchived && bitwardenVaultId == filter.vaultId
+    is CategoryFilter.BitwardenFolderFilter -> {
+        !isDeleted && !isArchived &&
+            bitwardenVaultId == filter.vaultId &&
+            bitwardenFolderId == filter.folderId
+    }
+    is CategoryFilter.BitwardenVaultStarred -> {
+        !isDeleted && !isArchived &&
+            bitwardenVaultId == filter.vaultId &&
+            isFavorite
+    }
+    is CategoryFilter.BitwardenVaultUncategorized -> {
+        !isDeleted && !isArchived &&
+            bitwardenVaultId == filter.vaultId &&
+            bitwardenFolderId == null
+    }
+}
+
+internal fun PasswordEntry.matchesCurrentPasswordListView(
+    currentFilter: CategoryFilter,
+    quickFoldersEnabledForCurrentFilter: Boolean
+): Boolean {
+    if (!matchesPasswordCategoryFilter(currentFilter)) return false
+    if (!quickFoldersEnabledForCurrentFilter) return true
+    return applyQuickFolderRootVisibility(listOf(this), currentFilter).isNotEmpty()
+}
+
 internal fun CategoryFilter.toQuickFolderRootKeyOrNull(): String? = when (this) {
     is CategoryFilter.All -> QUICK_FOLDER_ROOT_ALL
     is CategoryFilter.Archived -> null

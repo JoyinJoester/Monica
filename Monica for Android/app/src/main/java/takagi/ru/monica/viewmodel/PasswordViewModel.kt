@@ -206,7 +206,12 @@ class PasswordViewModel(
     private val _vaultV2ScrollOffset = MutableStateFlow(0)
     val vaultV2ScrollOffset: StateFlow<Int> = _vaultV2ScrollOffset.asStateFlow()
 
-    val categories = repository.getAllCategories()
+    private val categoriesSource = repository.getAllCategories()
+        .distinctUntilChanged()
+    val categoriesReady: StateFlow<Boolean> = categoriesSource
+        .map { true }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), false)
+    val categories = categoriesSource
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     
     private val _isAuthenticated = MutableStateFlow(false)
@@ -286,7 +291,7 @@ class PasswordViewModel(
         .debounce(300)
         .distinctUntilChanged()
 
-    val passwordEntries: StateFlow<List<PasswordEntry>> = combine(
+    private val passwordEntriesSource: Flow<List<PasswordEntry>> = combine(
         debouncedSearchQuery,
         _categoryFilter
     ) { query, filter ->
@@ -433,19 +438,35 @@ class PasswordViewModel(
             }
         }
         .flowOn(kotlinx.coroutines.Dispatchers.Default)
+    val passwordEntriesReady: StateFlow<Boolean> = passwordEntriesSource
+        .map { true }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false
+        )
+    val passwordEntries: StateFlow<List<PasswordEntry>> = passwordEntriesSource
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
 
-    val allPasswords: StateFlow<List<PasswordEntry>> = repository.getAllPasswordEntries()
+    private val allPasswordsSource: Flow<List<PasswordEntry>> = repository.getAllPasswordEntries()
         .map { entries ->
             entries.map { entry ->
                 entry.copy(password = inspectSecretState(entry).plainValueOrEmpty())
             }
         }
         .flowOn(kotlinx.coroutines.Dispatchers.Default)
+    val allPasswordsReady: StateFlow<Boolean> = allPasswordsSource
+        .map { true }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false
+        )
+    val allPasswords: StateFlow<List<PasswordEntry>> = allPasswordsSource
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
@@ -454,13 +475,21 @@ class PasswordViewModel(
 
     // Lightweight stream for list metadata/lookup use-cases.
     // Keep password blank to avoid redundant decrypt work and avoid exposing ciphertext to UI consumers.
-    val allPasswordsForUi: StateFlow<List<PasswordEntry>> = repository.getAllPasswordEntries()
+    private val allPasswordsForUiSource: Flow<List<PasswordEntry>> = repository.getAllPasswordEntries()
         .map { entries ->
             entries.map { entry ->
                 if (entry.password.isEmpty()) entry else entry.copy(password = "")
             }
         }
         .flowOn(kotlinx.coroutines.Dispatchers.Default)
+    val allPasswordsForUiReady: StateFlow<Boolean> = allPasswordsForUiSource
+        .map { true }
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false
+        )
+    val allPasswordsForUi: StateFlow<List<PasswordEntry>> = allPasswordsForUiSource
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
@@ -1396,46 +1425,54 @@ class PasswordViewModel(
 
     fun movePasswordsToCategory(ids: List<Long>, categoryId: Long?) {
         viewModelScope.launch {
-            repository.updateCategoryForPasswords(ids, categoryId)
-            val targetCategory = categoryId?.let { repository.getCategoryById(it) }
-            val targetVaultId = targetCategory?.bitwardenVaultId
-            val targetFolderId = targetCategory?.bitwardenFolderId
-
-            if (targetVaultId != null && !targetFolderId.isNullOrBlank()) {
-                repository.bindPasswordsToBitwardenFolder(
-                    ids = ids,
-                    vaultId = targetVaultId,
-                    folderId = targetFolderId
-                )
-            } else {
-                // Monica categories represent Monica local storage rather than external vault ownership.
-                repository.updateKeePassDatabaseForPasswords(ids, null)
-                // 仅清理尚未上传（无 cipherId）的待绑定条目，避免误改已同步条目
-                repository.clearPendingBitwardenBinding(ids)
-            }
+            movePasswordsToCategoryAwait(ids, categoryId)
         }
+    }
+
+    suspend fun movePasswordsToCategoryAwait(ids: List<Long>, categoryId: Long?) {
+        if (ids.isEmpty()) return
+        repository.updateCategoryForPasswords(ids, categoryId)
+        // Moving a password to a Monica category must stay local-only.
+        // Category linkage may be used by other sync workflows, but it must not
+        // silently convert password ownership during a local move action.
+        repository.updateKeePassDatabaseForPasswords(ids, null)
     }
     
     fun movePasswordsToKeePassDatabase(ids: List<Long>, databaseId: Long?) {
         viewModelScope.launch {
-            repository.clearBitwardenBindingForPasswords(ids)
-            repository.updateKeePassDatabaseForPasswords(ids, databaseId)
+            movePasswordsToKeePassDatabaseAwait(ids, databaseId)
         }
+    }
+
+    suspend fun movePasswordsToKeePassDatabaseAwait(ids: List<Long>, databaseId: Long?) {
+        if (ids.isEmpty()) return
+        repository.clearBitwardenBindingForPasswords(ids)
+        repository.updateKeePassDatabaseForPasswords(ids, databaseId)
     }
 
     fun movePasswordsToKeePassGroup(ids: List<Long>, databaseId: Long, groupPath: String) {
         viewModelScope.launch {
-            repository.clearBitwardenBindingForPasswords(ids)
-            repository.updateKeePassGroupForPasswords(ids, databaseId, groupPath)
+            movePasswordsToKeePassGroupAwait(ids, databaseId, groupPath)
         }
+    }
+
+    suspend fun movePasswordsToKeePassGroupAwait(ids: List<Long>, databaseId: Long, groupPath: String) {
+        if (ids.isEmpty()) return
+        repository.clearBitwardenBindingForPasswords(ids)
+        repository.updateKeePassGroupForPasswords(ids, databaseId, groupPath)
     }
 
     fun movePasswordsToBitwardenFolder(ids: List<Long>, vaultId: Long, folderId: String) {
         viewModelScope.launch {
-            // Clear KeePass binding first so the same entry can switch storage target.
-            repository.updateKeePassDatabaseForPasswords(ids, null)
-            repository.bindPasswordsToBitwardenFolder(ids, vaultId, folderId)
+            movePasswordsToBitwardenFolderAwait(ids, vaultId, folderId)
         }
+    }
+
+    suspend fun movePasswordsToBitwardenFolderAwait(ids: List<Long>, vaultId: Long, folderId: String) {
+        if (ids.isEmpty()) return
+        // Clear KeePass binding first so the same entry can switch storage target.
+        repository.updateKeePassDatabaseForPasswords(ids, null)
+        repository.bindPasswordsToBitwardenFolder(ids, vaultId, folderId)
     }
     
     fun authenticate(password: String): Boolean {
@@ -1907,8 +1944,12 @@ class PasswordViewModel(
 
     fun unarchivePasswords(ids: List<Long>) {
         viewModelScope.launch {
-            unarchivePasswordsInternal(ids)
+            unarchivePasswordsAwait(ids)
         }
+    }
+
+    suspend fun unarchivePasswordsAwait(ids: List<Long>) {
+        unarchivePasswordsInternal(ids)
     }
 
     private suspend fun archivePasswordsInternal(ids: List<Long>) {
@@ -2446,14 +2487,25 @@ class PasswordViewModel(
             else -> entry
         }
 
-        // 如果条目已指派到 Bitwarden Vault，且没有指定文件夹，尝试从分类继承
-        // 或者，如果条目是在本地创建（无 Vault），但分类绑定了 Bitwarden，则自动指派
+        // Password category assignment should not silently change storage
+        // ownership for local Monica items. Only entries that already belong to
+        // Bitwarden may inherit/update folder linkage from a linked category.
 
         val categoryId = filterBoundEntry.categoryId ?: return filterBoundEntry
         val category = categories.value.find { it.id == categoryId } ?: return filterBoundEntry
 
         // KeePass 条目保持独立，不参与 Bitwarden 自动绑定
         if (filterBoundEntry.keepassDatabaseId != null) return filterBoundEntry
+
+        val alreadyBitwardenOwned = filterBoundEntry.bitwardenVaultId != null ||
+            !filterBoundEntry.bitwardenCipherId.isNullOrBlank()
+        if (!alreadyBitwardenOwned) {
+            return filterBoundEntry.copy(
+                bitwardenVaultId = null,
+                bitwardenFolderId = null,
+                bitwardenLocalModified = false
+            )
+        }
 
         // 分类未绑定 Bitwarden：清理“待上传”绑定（已同步条目保持映射不动）
         if (category.bitwardenVaultId == null || category.bitwardenFolderId == null) {

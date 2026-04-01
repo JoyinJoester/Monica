@@ -1,6 +1,5 @@
 package takagi.ru.monica.util
 
-import android.util.Base64
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
 import java.nio.ByteBuffer
@@ -28,34 +27,35 @@ object TotpGenerator {
         timeOffset: Int = 0,
         currentSeconds: Long? = null
     ): String {
+        val resolvedTotpData = TotpDataResolver.normalizeTotpData(totpData)
         val nowSeconds = currentSeconds ?: System.currentTimeMillis() / 1000
-        return when (totpData.otpType) {
+        return when (resolvedTotpData.otpType) {
             OtpType.TOTP -> generateTotp(
-                secret = totpData.secret,
+                secret = resolvedTotpData.secret,
                 timeSeconds = nowSeconds,
-                period = totpData.period,
-                digits = totpData.digits,
-                algorithm = totpData.algorithm,
+                period = resolvedTotpData.period,
+                digits = resolvedTotpData.digits,
+                algorithm = resolvedTotpData.algorithm,
                 timeOffset = timeOffset
             )
             OtpType.HOTP -> generateHotp(
-                secret = totpData.secret,
-                counter = currentCounter ?: totpData.counter,
-                digits = totpData.digits,
-                algorithm = totpData.algorithm
+                secret = resolvedTotpData.secret,
+                counter = currentCounter ?: resolvedTotpData.counter,
+                digits = resolvedTotpData.digits,
+                algorithm = resolvedTotpData.algorithm
             )
             OtpType.STEAM -> generateSteamCode(
-                secret = totpData.secret,
+                secret = resolvedTotpData.secret,
                 timeSeconds = nowSeconds
             )
             OtpType.YANDEX -> generateYandexCode(
-                secret = totpData.secret,
-                pin = totpData.pin,
+                secret = resolvedTotpData.secret,
+                pin = resolvedTotpData.pin,
                 timeSeconds = nowSeconds
             )
             OtpType.MOTP -> generateMobileOtp(
-                secret = totpData.secret,
-                pin = totpData.pin,
+                secret = resolvedTotpData.secret,
+                pin = resolvedTotpData.pin,
                 timeSeconds = nowSeconds
             )
         }

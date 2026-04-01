@@ -253,19 +253,6 @@ fun ExtensionsScreen(
                     )
                 }
                 
-                // 通知栏验证器设置（需要 Plus）
-                Spacer(modifier = Modifier.height(8.dp))
-                ExtensionSection(title = stringResource(R.string.notification_settings_title)) {
-                    NotificationValidatorExtensionCard(
-                        enabled = notificationValidatorEnabled,
-                        autoMatchEnabled = notificationValidatorAutoMatch,
-                        selectedId = notificationValidatorId,
-                        totpItems = totpItems,
-                        onEnabledChange = onNotificationValidatorEnabledChange,
-                        onAutoMatchChange = onNotificationValidatorAutoMatchChange,
-                        onValidatorSelected = onNotificationValidatorSelected
-                    )
-                }
             }
             
             // 更多功能即将推出提示

@@ -1,23 +1,48 @@
-# Monica 本地密码库
+<h1 align="center">Monica 本地密码库</h1>
 
-**中文** | [English](README_EN.md) | [日本語](README_JA.md) | [Tiếng Việt](README_VI.md) 
+<div align="center">
 
-[![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
-![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Browser-3DDC84)
-![Security](https://img.shields.io/badge/Security-AES--256--GCM-success)
-[![Website](https://img.shields.io/badge/Website-Monica-0A66C2)](https://joyinjoester.github.io/Monica/)
+**中文** | [English](README_EN.md) | [日本語](README_JA.md) | [Tiếng Việt](README_VI.md)
+
+<img src="documentation/website/public/images/app_icon.webp" alt="Monica App Icon" width="112" />
+
+<p><strong>聚合 Bitwarden 与 KeePass 的本地优先密码库</strong></p>
+<p>Android / Browser · Local Vault · TOTP · WebDAV Backup</p>
+
+[官网](https://joyinjoester.github.io/Monica/) · [Releases](https://github.com/JoyinJoester/Monica/releases) · [Android 文档](Monica%20for%20Android/README.md) · [Browser 文档](Monica%20for%20Browser/README.md)
+
 [![Release](https://img.shields.io/github/v/release/JoyinJoester/Monica?style=flat-square)](https://github.com/JoyinJoester/Monica/releases)
+[![Downloads](https://img.shields.io/github/downloads/JoyinJoester/Monica/total?style=flat-square)](https://github.com/JoyinJoester/Monica/releases)
+[![License](https://img.shields.io/github/license/JoyinJoester/Monica?style=flat-square)](LICENSE)
+[![Website](https://img.shields.io/badge/Website-Monica-0A66C2?style=flat-square)](https://joyinjoester.github.io/Monica/)
+[![Last Commit](https://img.shields.io/github/last-commit/JoyinJoester/Monica?style=flat-square)](https://github.com/JoyinJoester/Monica/commits)
+[![Commit Activity](https://img.shields.io/github/commit-activity/m/JoyinJoester/Monica?style=flat-square)](https://github.com/JoyinJoester/Monica/graphs/commit-activity)
+
 [![Stars](https://img.shields.io/github/stars/JoyinJoester/Monica?style=flat-square)](https://github.com/JoyinJoester/Monica/stargazers)
 [![Forks](https://img.shields.io/github/forks/JoyinJoester/Monica?style=flat-square)](https://github.com/JoyinJoester/Monica/network/members)
-![Repo Size](https://img.shields.io/github/repo-size/JoyinJoester/Monica?style=flat-square)
-[![Top Language](https://img.shields.io/github/languages/top/JoyinJoester/Monica?style=flat-square)](https://github.com/JoyinJoester/Monica)
-![Language Count](https://img.shields.io/github/languages/count/JoyinJoester/Monica?style=flat-square)
-[![Kotlin](https://img.shields.io/badge/Kotlin-1.9.0-7F52FF?style=flat-square&logo=kotlin&logoColor=white)](https://kotlinlang.org/)
+[![Issues](https://img.shields.io/github/issues/JoyinJoester/Monica?style=flat-square)](https://github.com/JoyinJoester/Monica/issues)
+[![Pull Requests](https://img.shields.io/github/issues-pr/JoyinJoester/Monica?style=flat-square)](https://github.com/JoyinJoester/Monica/pulls)
+[![QQ群](https://img.shields.io/badge/QQ群-1087865010-12B7F5?style=flat-square&logo=tencentqq&logoColor=white)](https://qm.qq.com/q/2vTdTkHV3u)
+
+![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Browser-3DDC84?style=flat-square)
+![Security](https://img.shields.io/badge/Security-AES--256--GCM-success?style=flat-square)
+![Local First](https://img.shields.io/badge/Architecture-Local%20First-2F855A?style=flat-square)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?style=flat-square&logo=kotlin&logoColor=white)](https://kotlinlang.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9.3-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![State-of-the-art Shitcode](https://img.shields.io/static/v1?label=State-of-the-art&message=Shitcode&color=7B5804)](https://github.com/trekhleb/state-of-the-art-shitcode)
+![Repo Size](https://img.shields.io/github/repo-size/JoyinJoester/Monica?style=flat-square)
+![Language Count](https://img.shields.io/github/languages/count/JoyinJoester/Monica?style=flat-square)
+
+[![Android CI](https://github.com/JoyinJoester/Monica/actions/workflows/Android.yml/badge.svg)](https://github.com/JoyinJoester/Monica/actions/workflows/Android.yml)
+[![Browser CI](https://github.com/JoyinJoester/Monica/actions/workflows/Browser-CI.yml/badge.svg)](https://github.com/JoyinJoester/Monica/actions/workflows/Browser-CI.yml)
+[![Website Deploy](https://github.com/JoyinJoester/Monica/actions/workflows/deploy-website.yml/badge.svg)](https://github.com/JoyinJoester/Monica/actions/workflows/deploy-website.yml)
+[![CodeQL](https://github.com/JoyinJoester/Monica/actions/workflows/CodeQL.yml/badge.svg)](https://github.com/JoyinJoester/Monica/actions/workflows/CodeQL.yml)
+[![Top Language](https://img.shields.io/github/languages/top/JoyinJoester/Monica?style=flat-square)](https://github.com/JoyinJoester/Monica)
+[![State-of-the-art Shitcode](https://img.shields.io/static/v1?label=State-of-the-art&message=Shitcode&color=7B5804&style=flat-square)](https://github.com/trekhleb/state-of-the-art-shitcode)
+
 [![爱发电](https://img.shields.io/badge/爱发电-JoyinJoester-ea4aaa?style=flat-square)](https://afdian.com/a/JoyinJoester)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-joyinjoester-29ABE0?style=flat-square&logo=kofi&logoColor=white)](https://ko-fi.com/joyinjoester)
-[![QQ群](https://img.shields.io/badge/QQ群-1087865010-12B7F5?style=flat-square&logo=tencentqq&logoColor=white)](https://qm.qq.com/q/2vTdTkHV3u)
+
+</div>
 
 Monica 是一个聚合 **Bitwarden** 与 **KeePass** 的本地密码库（Local Vault）。
 它以本地存储优先为核心，帮助你在 Android 与浏览器端统一管理账号密码、2FA、私密笔记与敏感附件。
@@ -25,6 +50,8 @@ Monica 是一个聚合 **Bitwarden** 与 **KeePass** 的本地密码库（Local 
 官网入口: https://joyinjoester.github.io/Monica/
 
 > Monica for Windows 已归档。历史代码见: [Monica-for-Windows](https://github.com/JoyinJoester/Monica-for-Windows)
+>
+> 由于目前项目主要由我一人维护，时间与精力都比较有限，因此 Monica for Wear 和 Monica for Browser 暂时无法保持持续更新。现阶段我会将主要重心放在 Monica for Android 的功能完善、体验优化与稳定性维护上，也感谢大家的理解与支持。
 
 ---
 
@@ -51,6 +78,9 @@ Android:
 1. 在 `Monica for Browser` 目录构建插件。
 2. 打开 `chrome://extensions/` 并启用开发者模式。
 3. 选择“加载已解压的扩展程序”，导入 `dist` 目录。
+
+### 已知限制
+- 由于系统兼容性原因，Monica for Android 目前在部分小米 HyperOS 设备上无法创建通行密钥（Passkey）。
 
 ---
 
@@ -126,6 +156,23 @@ Android:
 - 版本信息以 `Monica for Android/gradle/libs.versions.toml` 与 `Monica for Android/app/build.gradle` 为准。
 - 浏览器端技术栈: React + TypeScript + Vite（见 `Monica for Browser/package.json`）。
 - 欢迎通过 Issue / PR 参与功能和安全改进。
+
+---
+
+## 致谢
+
+Monica 的设计、兼容性适配与部分功能方向，受到了以下优秀开源项目和软件的启发与帮助：
+
+- [Keyguard](https://github.com/AChep/keyguard-app) - Android 端密码管理器的交互设计与体验参考。
+- [Bitwarden](https://bitwarden.com/) - 开源密码管理生态、Vault 模型与同步能力的重要参考。
+- [KeePass](https://keepass.info/) - 本地密码库理念与 `.kdbx` 生态兼容的重要基础。
+- [Stratum Auth](https://github.com/stratumauth/app) - 身份验证器体验、图标资源与相关兼容支持参考。
+
+---
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=JoyinJoester/Monica&type=Date)](https://star-history.com/#JoyinJoester/Monica&Date)
 
 ---
 

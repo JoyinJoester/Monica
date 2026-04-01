@@ -52,10 +52,12 @@ internal enum class ManualStackDialogMode(
 internal fun PasswordListDialogs(
     showManualStackConfirmDialog: Boolean,
     onShowManualStackConfirmDialogChange: (Boolean) -> Unit,
+    selectedItemKeys: Set<String>,
     selectedPasswords: Set<Long>,
     selectedCount: Int,
     selectedManualStackMode: ManualStackDialogMode,
     onSelectedManualStackModeChange: (ManualStackDialogMode) -> Unit,
+    onApplyManualStackMode: suspend (ManualStackDialogMode, Set<String>, Set<Long>) -> Int,
     viewModel: PasswordViewModel,
     context: Context,
     coroutineScope: kotlinx.coroutines.CoroutineScope,
@@ -87,7 +89,7 @@ internal fun PasswordListDialogs(
                     Text(
                         text = stringResource(
                             R.string.batch_stack_confirm_message,
-                            selectedPasswords.size
+                            selectedCount
                         )
                     )
                     ManualStackDialogMode.values().forEach { mode ->
@@ -120,13 +122,11 @@ internal fun PasswordListDialogs(
                 TextButton(
                     onClick = {
                         coroutineScope.launch {
-                            val selectedIds = selectedPasswords.toList()
-                            val mode = when (selectedManualStackMode) {
-                                ManualStackDialogMode.STACK -> PasswordViewModel.ManualStackMode.STACK
-                                ManualStackDialogMode.AUTO_STACK -> PasswordViewModel.ManualStackMode.AUTO_STACK
-                                ManualStackDialogMode.NEVER_STACK -> PasswordViewModel.ManualStackMode.NEVER_STACK
-                            }
-                            val handledCount = viewModel.applyManualStackMode(selectedIds, mode)
+                            val handledCount = onApplyManualStackMode(
+                                selectedManualStackMode,
+                                selectedItemKeys,
+                                selectedPasswords
+                            )
                             if (handledCount > 0) {
                                 val toastRes = when (selectedManualStackMode) {
                                     ManualStackDialogMode.STACK -> R.string.batch_stack_success

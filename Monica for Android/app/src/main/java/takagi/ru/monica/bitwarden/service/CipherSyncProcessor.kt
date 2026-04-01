@@ -23,6 +23,7 @@ import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.passkey.PasskeyCredentialIdCodec
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.util.TotpDataResolver
 import java.time.Instant
 import java.util.Date
 
@@ -389,23 +390,28 @@ class CipherSyncProcessor(
         val isServerDeleted = serverDeletedAt != null
         
         // 解密 TOTP 密钥
-        val totpSecret = decryptString(login.totp, symmetricKey) ?: ""
-        if (totpSecret.isBlank()) {
+        val decryptedTotp = decryptString(login.totp, symmetricKey) ?: ""
+        if (decryptedTotp.isBlank()) {
             return CipherSyncResult.Skipped("No TOTP secret")
         }
         
         val name = decryptString(cipher.name, symmetricKey) ?: "Authenticator"
         val notes = decryptString(cipher.notes, symmetricKey) ?: ""
         val account = decryptString(login.username, symmetricKey) ?: ""
+
+        val resolvedTotpData = TotpDataResolver.fromAuthenticatorKey(
+            rawKey = decryptedTotp,
+            fallbackIssuer = name,
+            fallbackAccountName = account
+        ) ?: return CipherSyncResult.Skipped("Invalid TOTP payload")
         
         // 查找本地是否存在
         val existing = secureItemDao.getByBitwardenCipherIdInVault(vault.id, cipher.id)
         
         // 构建 TOTP 数据
-        val totpData = TotpData(
-            secret = totpSecret,
-            issuer = name,
-            accountName = account
+        val totpData = resolvedTotpData.copy(
+            issuer = resolvedTotpData.issuer.ifBlank { name },
+            accountName = resolvedTotpData.accountName.ifBlank { account }
         )
         val itemData = json.encodeToString(totpData)
         

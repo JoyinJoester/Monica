@@ -439,9 +439,10 @@ class SettingsManager(private val context: Context) {
             securityAnalysisAutoEnabled = preferences[SECURITY_ANALYSIS_AUTO_ENABLED_KEY] ?: false,
             bitwardenBottomStatusBarEnabled = preferences[BITWARDEN_BOTTOM_STATUS_BAR_ENABLED_KEY] ?: false,
             copyNextCodeWhenExpiring = preferences[COPY_NEXT_CODE_WHEN_EXPIRING_KEY] ?: false,
-            notificationValidatorEnabled = preferences[NOTIFICATION_VALIDATOR_ENABLED_KEY] ?: false,
-            notificationValidatorAutoMatch = preferences[NOTIFICATION_VALIDATOR_AUTO_MATCH_KEY] ?: false,
-            notificationValidatorId = preferences[NOTIFICATION_VALIDATOR_ID_KEY] ?: -1L,
+            // Temporarily hard-disabled for stability.
+            notificationValidatorEnabled = false,
+            notificationValidatorAutoMatch = false,
+            notificationValidatorId = -1L,
             isPlusActivated = preferences[IS_PLUS_ACTIVATED_KEY] ?: false,
             stackCardMode = preferences[STACK_CARD_MODE_KEY] ?: "AUTO",
             passwordGroupMode = preferences[PASSWORD_GROUP_MODE_KEY] ?: "smart",
@@ -700,19 +701,19 @@ class SettingsManager(private val context: Context) {
 
     suspend fun updateNotificationValidatorEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
-            preferences[NOTIFICATION_VALIDATOR_ENABLED_KEY] = enabled
+            preferences[NOTIFICATION_VALIDATOR_ENABLED_KEY] = false
         }
     }
 
     suspend fun updateNotificationValidatorAutoMatch(enabled: Boolean) {
         dataStore.edit { preferences ->
-            preferences[NOTIFICATION_VALIDATOR_AUTO_MATCH_KEY] = enabled
+            preferences[NOTIFICATION_VALIDATOR_AUTO_MATCH_KEY] = false
         }
     }
 
     suspend fun updateNotificationValidatorId(id: Long) {
         dataStore.edit { preferences ->
-            preferences[NOTIFICATION_VALIDATOR_ID_KEY] = id
+            preferences[NOTIFICATION_VALIDATOR_ID_KEY] = -1L
         }
     }
 

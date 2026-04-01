@@ -492,6 +492,7 @@ class PasskeyCreateActivity : FragmentActivity() {
         val shouldBypassBiometric = PasskeyBiometricCompatibilityPolicy.shouldBypassBiometricForPasskey(
             romType = DeviceUtils.getROMType(),
             isBypassEnabled = PasskeyValidationFlags.isHyperOsBiometricBypassEnabled(this),
+            hasHyperOsSystemProperty = DeviceUtils.isHyperOsSystemPropertyPresent(),
         )
 
         if (!shouldBypassBiometric) {

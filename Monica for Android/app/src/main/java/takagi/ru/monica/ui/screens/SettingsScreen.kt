@@ -20,6 +20,7 @@ import androidx.compose.material3.*
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -116,6 +117,7 @@ fun SettingsScreen(
     var developerPasswordInput by remember { mutableStateOf("") }
     var developerPasswordError by remember { mutableStateOf(false) }
     var showWeakBiometricWarning by remember { mutableStateOf(false) }
+    var settingsSearchQuery by rememberSaveable { mutableStateOf("") }
     
     // 生物识别帮助类
     val biometricHelper = remember(context) { BiometricAuthHelper(context) }
@@ -187,6 +189,186 @@ fun SettingsScreen(
             ).show()
         }
     }
+
+    val securityTitle = context.getString(R.string.security)
+    val dataManagementTitle = context.getString(R.string.data_management)
+    val appearanceTitle = context.getString(R.string.theme)
+    val aboutTitle = context.getString(R.string.about)
+    val developerTitle = context.getString(R.string.developer_settings)
+
+    val biometricSubtitle = if (isBiometricAvailable) {
+        if (biometricSwitchState) context.getString(R.string.biometric_unlock_enabled)
+        else context.getString(R.string.biometric_unlock_disabled)
+    } else {
+        biometricHelper.getBiometricStatusMessage()
+    }
+    val screenshotProtectionSubtitle = if (settings.screenshotProtectionEnabled) {
+        context.getString(R.string.screenshot_protection_enabled)
+    } else {
+        context.getString(R.string.screenshot_protection_disabled)
+    }
+    val autoLockSubtitle = getAutoLockDisplayName(settings.autoLockMinutes, context)
+    val trashSubtitle = if (settings.trashEnabled) {
+        if (settings.trashAutoDeleteDays > 0) {
+            context.getString(R.string.trash_status_enabled_auto_clear, settings.trashAutoDeleteDays)
+        } else {
+            context.getString(R.string.trash_status_enabled_no_auto_clear)
+        }
+    } else {
+        context.getString(R.string.trash_status_disabled_permanent_delete)
+    }
+    val themeSubtitle = getThemeDisplayName(settings.themeMode, context)
+    val colorSchemeSubtitle = getColorSchemeDisplayName(settings.colorScheme, context)
+    val languageSubtitle = getLanguageDisplayName(settings.language, context)
+
+    fun matchesSettingsItem(
+        sectionTitle: String,
+        title: String,
+        subtitle: String? = null
+    ): Boolean = matchesSettingsSearch(settingsSearchQuery, sectionTitle, title, subtitle)
+
+    val showMonicaPlusCard = !settings.isPlusActivated && matchesSettingsSearch(
+        settingsSearchQuery,
+        context.getString(R.string.monica_plus_title),
+        context.getString(R.string.monica_plus_card_desc)
+    )
+    val showSecurityAnalysisCard = matchesSettingsSearch(
+        settingsSearchQuery,
+        securityTitle,
+        context.getString(R.string.security_analysis),
+        context.getString(R.string.security_analysis_description)
+    )
+
+    val showBiometricItem = matchesSettingsItem(
+        securityTitle,
+        context.getString(R.string.biometric_unlock),
+        biometricSubtitle
+    )
+    val showScreenshotProtectionItem = matchesSettingsItem(
+        securityTitle,
+        context.getString(R.string.screenshot_protection),
+        screenshotProtectionSubtitle
+    )
+    val showAutoLockItem = matchesSettingsItem(
+        securityTitle,
+        context.getString(R.string.auto_lock),
+        autoLockSubtitle
+    )
+    val showSecurityQuestionsItem = matchesSettingsItem(
+        securityTitle,
+        context.getString(R.string.security_questions),
+        context.getString(R.string.security_questions_description)
+    )
+    val showPermissionManagementItem = matchesSettingsItem(
+        securityTitle,
+        context.getString(R.string.permission_management_title),
+        context.getString(R.string.permission_management_subtitle)
+    )
+    val showResetPasswordItem = matchesSettingsItem(
+        securityTitle,
+        context.getString(R.string.reset_master_password),
+        context.getString(R.string.reset_password_description)
+    )
+    val showSecuritySection = listOf(
+        showBiometricItem,
+        showScreenshotProtectionItem,
+        showAutoLockItem,
+        showSecurityQuestionsItem,
+        showPermissionManagementItem,
+        showResetPasswordItem
+    ).any { it }
+
+    val showSyncBackupItem = matchesSettingsItem(
+        dataManagementTitle,
+        context.getString(R.string.sync_backup_title),
+        context.getString(R.string.sync_backup_description)
+    )
+    val showAutofillItem = matchesSettingsItem(
+        dataManagementTitle,
+        context.getString(R.string.autofill),
+        context.getString(R.string.autofill_subtitle)
+    )
+    val showTrashItem = matchesSettingsItem(
+        dataManagementTitle,
+        context.getString(R.string.trash_bin),
+        trashSubtitle
+    )
+    val showClearDataItem = matchesSettingsItem(
+        dataManagementTitle,
+        context.getString(R.string.clear_all_data),
+        context.getString(R.string.clear_all_data_subtitle)
+    )
+    val showDataManagementSection = listOf(
+        showSyncBackupItem,
+        showAutofillItem,
+        showTrashItem,
+        showClearDataItem
+    ).any { it }
+
+    val showThemeItem = matchesSettingsItem(
+        appearanceTitle,
+        context.getString(R.string.theme),
+        themeSubtitle
+    )
+    val showColorSchemeItem = matchesSettingsItem(
+        appearanceTitle,
+        context.getString(R.string.color_scheme),
+        colorSchemeSubtitle
+    )
+    val showLanguageItem = matchesSettingsItem(
+        appearanceTitle,
+        context.getString(R.string.language),
+        languageSubtitle
+    )
+    val showBottomNavItem = matchesSettingsItem(
+        appearanceTitle,
+        context.getString(R.string.bottom_nav_settings),
+        context.getString(R.string.bottom_nav_settings_entry_subtitle)
+    )
+    val showExtensionsItem = matchesSettingsItem(
+        appearanceTitle,
+        context.getString(R.string.extensions_title),
+        context.getString(R.string.extensions_description)
+    )
+    val showPageCustomizationItem = matchesSettingsItem(
+        appearanceTitle,
+        context.getString(R.string.page_adjust_custom_title),
+        context.getString(R.string.page_adjust_custom_subtitle)
+    )
+    val showAppearanceSection = listOf(
+        showThemeItem,
+        showColorSchemeItem,
+        showLanguageItem,
+        showBottomNavItem,
+        showExtensionsItem,
+        showPageCustomizationItem
+    ).any { it }
+
+    val showVersionItem = matchesSettingsItem(
+        aboutTitle,
+        context.getString(R.string.version),
+        context.getString(R.string.settings_version_number)
+    )
+    val showPreviewFeaturesItem = matchesSettingsItem(
+        developerTitle,
+        context.getString(R.string.preview_features_title),
+        context.getString(R.string.preview_features_description)
+    )
+    val showDeveloperSettingsItem = matchesSettingsItem(
+        developerTitle,
+        context.getString(R.string.developer_settings),
+        context.getString(R.string.developer_settings_subtitle)
+    )
+    val hasVisibleResults = listOf(
+        showMonicaPlusCard,
+        showSecurityAnalysisCard,
+        showSecuritySection,
+        showDataManagementSection,
+        showAppearanceSection,
+        showVersionItem,
+        showPreviewFeaturesItem,
+        showDeveloperSettingsItem
+    ).any { it }
     
     Scaffold(
         topBar = if (showTopBar) {
@@ -238,9 +420,14 @@ fun SettingsScreen(
         ) {
             // Top padding spacer for edge-to-edge scrolling
             Spacer(modifier = Modifier.height(paddingValues.calculateTopPadding()))
-            
+
+            SettingsSearchField(
+                query = settingsSearchQuery,
+                onQueryChange = { settingsSearchQuery = it }
+            )
+
             // Monica Plus card is moved to Extensions page after activation.
-            if (!settings.isPlusActivated) {
+            if (showMonicaPlusCard) {
                 takagi.ru.monica.ui.components.MonicaPlusCard(
                     isPlusActivated = settings.isPlusActivated,
                     onClick = {
@@ -252,330 +439,293 @@ fun SettingsScreen(
             }
 
             // 安全分析入口卡片 - 置顶显示
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-                    .then(getSharedModifier("security_analysis_card"))
-                    .clickable { onSecurityAnalysis() },
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                )
-            ) {
-                Row(
+            if (showSecurityAnalysisCard) {
+                Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        Icons.Default.Shield,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(32.dp)
+                        .padding(16.dp)
+                        .then(getSharedModifier("security_analysis_card"))
+                        .clickable { onSecurityAnalysis() },
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
                     )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = context.getString(R.string.security_analysis),
-                            style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Shield,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(32.dp)
                         )
-                        Text(
-                            text = context.getString(R.string.security_analysis_description),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = context.getString(R.string.security_analysis),
+                                style = MaterialTheme.typography.titleMedium,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                            Text(
+                                text = context.getString(R.string.security_analysis_description),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
+                            )
+                        }
+                        Icon(
+                            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
-                    Icon(
-                        Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
+                }
+            }
+            
+            if (showSecuritySection) {
+                SettingsSection(title = securityTitle) {
+                    if (showBiometricItem) {
+                        SettingsItemWithSwitch(
+                            icon = Icons.Default.Fingerprint,
+                            title = context.getString(R.string.biometric_unlock),
+                            subtitle = biometricSubtitle,
+                            checked = biometricSwitchState,
+                            enabled = isBiometricAvailable,
+                            onCheckedChange = { newState ->
+                                android.util.Log.d("SettingsScreen", "Switch clicked: newState=$newState, activity=$activity")
+                                if (newState) {
+                                    val weakOnly = biometricHelper.isWeakBiometricOnly()
+                                    if (weakOnly) {
+                                        showWeakBiometricWarning = true
+                                    } else {
+                                        startBiometricEnable()
+                                    }
+                                } else {
+                                    android.util.Log.d("SettingsScreen", "Disabling biometric unlock")
+                                    biometricSwitchState = false
+                                    viewModel.updateBiometricEnabled(false)
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.biometric_unlock_disabled),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            }
+                        )
+                    }
+
+                    if (showScreenshotProtectionItem) {
+                        SettingsItem(
+                            icon = Icons.Default.Security,
+                            title = context.getString(R.string.screenshot_protection),
+                            subtitle = screenshotProtectionSubtitle,
+                            onClick = {
+                                viewModel.updateScreenshotProtectionEnabled(!settings.screenshotProtectionEnabled)
+                            }
+                        )
+                    }
+
+                    if (showAutoLockItem) {
+                        SettingsItem(
+                            icon = Icons.Default.Timer,
+                            title = context.getString(R.string.auto_lock),
+                            subtitle = autoLockSubtitle,
+                            onClick = { showAutoLockDialog = true }
+                        )
+                    }
+
+                    if (showSecurityQuestionsItem) {
+                        SettingsItem(
+                            icon = Icons.Default.Security,
+                            title = context.getString(R.string.security_questions),
+                            subtitle = context.getString(R.string.security_questions_description),
+                            onClick = onSecurityQuestions,
+                            modifier = getSharedModifier("security_questions_card")
+                        )
+                    }
+
+                    if (showPermissionManagementItem) {
+                        SettingsItem(
+                            icon = Icons.Default.AdminPanelSettings,
+                            title = context.getString(R.string.permission_management_title),
+                            subtitle = context.getString(R.string.permission_management_subtitle),
+                            onClick = onNavigateToPermissionManagement,
+                            modifier = getSharedModifier("permission_settings_card")
+                        )
+                    }
+
+                    if (showResetPasswordItem) {
+                        SettingsItem(
+                            icon = Icons.Default.VpnKey,
+                            title = context.getString(R.string.reset_master_password),
+                            subtitle = context.getString(R.string.reset_password_description),
+                            onClick = onResetPassword,
+                            modifier = getSharedModifier("reset_password_card")
+                        )
+                    }
+                }
+            }
+            
+            if (showDataManagementSection) {
+                SettingsSection(title = dataManagementTitle) {
+                    if (showSyncBackupItem) {
+                        SettingsItem(
+                            icon = Icons.Default.Sync,
+                            title = context.getString(R.string.sync_backup_title),
+                            subtitle = context.getString(R.string.sync_backup_description),
+                            onClick = onNavigateToSyncBackup,
+                            modifier = getSharedModifier("sync_settings_card")
+                        )
+                    }
+
+                    if (showAutofillItem) {
+                        SettingsItem(
+                            icon = Icons.Default.VpnKey,
+                            title = context.getString(R.string.autofill),
+                            subtitle = context.getString(R.string.autofill_subtitle),
+                            onClick = onNavigateToAutofill,
+                            modifier = getSharedModifier("autofill_settings_card")
+                        )
+                    }
+
+                    if (showTrashItem) {
+                        SettingsItemWithTrashConfig(
+                            trashEnabled = settings.trashEnabled,
+                            trashAutoDeleteDays = settings.trashAutoDeleteDays,
+                            onTrashEnabledChange = { enabled ->
+                                viewModel.updateTrashEnabled(enabled)
+                            },
+                            onAutoDeleteDaysChange = { days ->
+                                viewModel.updateTrashAutoDeleteDays(days)
+                            }
+                        )
+                    }
+
+                    if (showClearDataItem) {
+                        SettingsItem(
+                            icon = Icons.Default.DeleteForever,
+                            title = context.getString(R.string.clear_all_data),
+                            subtitle = context.getString(R.string.clear_all_data_subtitle),
+                            onClick = { showClearDataDialog = true },
+                            iconTint = MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+            }
+            
+            if (showAppearanceSection) {
+                SettingsSection(title = appearanceTitle) {
+                    if (showThemeItem) {
+                        SettingsItem(
+                            icon = Icons.Default.Palette,
+                            title = context.getString(R.string.theme),
+                            subtitle = themeSubtitle,
+                            onClick = { showThemeDialog = true }
+                        )
+                    }
+
+                    if (showColorSchemeItem) {
+                        SettingsItem(
+                            icon = Icons.Default.Colorize,
+                            title = context.getString(R.string.color_scheme),
+                            subtitle = colorSchemeSubtitle,
+                            onClick = { onNavigateToColorScheme() },
+                            modifier = getSharedModifier("color_scheme_card")
+                        )
+                    }
+
+                    if (showLanguageItem) {
+                        SettingsItem(
+                            icon = Icons.Default.Language,
+                            title = context.getString(R.string.language),
+                            subtitle = languageSubtitle,
+                            onClick = { showLanguageDialog = true }
+                        )
+                    }
+
+                    if (showBottomNavItem) {
+                        SettingsItem(
+                            icon = Icons.Default.ViewWeek,
+                            title = context.getString(R.string.bottom_nav_settings),
+                            subtitle = context.getString(R.string.bottom_nav_settings_entry_subtitle),
+                            onClick = onNavigateToBottomNavSettings,
+                            modifier = getSharedModifier("bottom_nav_settings_card")
+                        )
+                    }
+
+                    if (showExtensionsItem) {
+                        SettingsItem(
+                            icon = Icons.Default.Extension,
+                            title = context.getString(R.string.extensions_title),
+                            subtitle = context.getString(R.string.extensions_description),
+                            onClick = onNavigateToExtensions,
+                            modifier = getSharedModifier("extensions_settings_card")
+                        )
+                    }
+
+                    if (showPageCustomizationItem) {
+                        SettingsItem(
+                            icon = Icons.Default.Tune,
+                            title = context.getString(R.string.page_adjust_custom_title),
+                            subtitle = context.getString(R.string.page_adjust_custom_subtitle),
+                            onClick = onNavigateToPageCustomization
+                        )
+                    }
+                }
+            }
+
+            if (showVersionItem) {
+                SettingsSection(title = aboutTitle) {
+                    SettingsItem(
+                        icon = Icons.Default.Info,
+                        title = context.getString(R.string.version),
+                        subtitle = context.getString(R.string.settings_version_number),
+                        onClick = { showVersionInfoDialog = true }
                     )
                 }
             }
             
-            // Security Settings
-            SettingsSection(
-                title = context.getString(R.string.security)
-            ) {
-                // 生物识别开关
-                SettingsItemWithSwitch(
-                    icon = Icons.Default.Fingerprint,
-                    title = context.getString(R.string.biometric_unlock),
-                    subtitle = if (isBiometricAvailable) {
-                        if (biometricSwitchState)
-                            context.getString(R.string.biometric_unlock_enabled)
-                        else
-                            context.getString(R.string.biometric_unlock_disabled)
-                    } else {
-                        biometricHelper.getBiometricStatusMessage()
-                    },
-                    checked = biometricSwitchState,
-                    enabled = isBiometricAvailable,
-                    onCheckedChange = { newState ->
-                        android.util.Log.d("SettingsScreen", "Switch clicked: newState=$newState, activity=$activity")
-                        if (newState) {
-                            val weakOnly = biometricHelper.isWeakBiometricOnly()
-                            if (weakOnly) {
-                                showWeakBiometricWarning = true
-                            } else {
-                                startBiometricEnable()
-                            }
-                        } else {
-                            // 用户想禁用指纹解锁,直接禁用不需要验证
-                            android.util.Log.d("SettingsScreen", "Disabling biometric unlock")
-                            biometricSwitchState = false
-                            viewModel.updateBiometricEnabled(false)
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.biometric_unlock_disabled),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    }
-                )
-                
-                SettingsItem(
-                    icon = Icons.Default.Security,
-                    title = context.getString(R.string.screenshot_protection),
-                    subtitle = if (settings.screenshotProtectionEnabled) 
-                        context.getString(R.string.screenshot_protection_enabled)
-                    else 
-                        context.getString(R.string.screenshot_protection_disabled),
-                    onClick = { 
-                        viewModel.updateScreenshotProtectionEnabled(!settings.screenshotProtectionEnabled)
-                    }
-                )
-                
-                SettingsItem(
-                    icon = Icons.Default.Timer,
-                    title = context.getString(R.string.auto_lock),
-                    subtitle = getAutoLockDisplayName(settings.autoLockMinutes, context),
-                    onClick = { showAutoLockDialog = true }
-                )
-                
-                SettingsItem(
-                    icon = Icons.Default.Security,
-                    title = context.getString(R.string.security_questions),
-                    subtitle = context.getString(R.string.security_questions_description),
-                    onClick = onSecurityQuestions,
-                    modifier = getSharedModifier("security_questions_card")
-                )
-                
-                SettingsItem(
-                    icon = Icons.Default.AdminPanelSettings,
-                    title = context.getString(R.string.permission_management_title),
-                    subtitle = context.getString(R.string.permission_management_subtitle),
-                    onClick = onNavigateToPermissionManagement,
-                    modifier = getSharedModifier("permission_settings_card")
-                )
-                
-                SettingsItem(
-                    icon = Icons.Default.VpnKey,
-                    title = context.getString(R.string.reset_master_password),
-                    subtitle = context.getString(R.string.reset_password_description),
-                    onClick = onResetPassword,
-                    modifier = getSharedModifier("reset_password_card")
-                )
-            }
-            
-            // Data Management Settings
-            SettingsSection(
-                title = context.getString(R.string.data_management)
-            ) {
-                // 同步与备份入口
-                SettingsItem(
-                    icon = Icons.Default.Sync,
-                    title = context.getString(R.string.sync_backup_title),
-                    subtitle = context.getString(R.string.sync_backup_description),
-                    onClick = onNavigateToSyncBackup,
-                    modifier = getSharedModifier("sync_settings_card")
-                )
-                
-
-
-
-
-                SettingsItem(
-                    icon = Icons.Default.VpnKey,
-                    title = context.getString(R.string.autofill),
-                    subtitle = context.getString(R.string.autofill_subtitle),
-                    onClick = onNavigateToAutofill,
-
-                    modifier = getSharedModifier("autofill_settings_card")
-                )
-                
-                // Passkey 设置
-
-                
-                // 回收站设置
-                SettingsItemWithTrashConfig(
-                    trashEnabled = settings.trashEnabled,
-                    trashAutoDeleteDays = settings.trashAutoDeleteDays,
-                    onTrashEnabledChange = { enabled ->
-                        viewModel.updateTrashEnabled(enabled)
-                    },
-                    onAutoDeleteDaysChange = { days ->
-                        viewModel.updateTrashAutoDeleteDays(days)
-                    }
-                )
-                
-                SettingsItem(
-                    icon = Icons.Default.DeleteForever,
-                    title = context.getString(R.string.clear_all_data),
-                    subtitle = context.getString(R.string.clear_all_data_subtitle),
-                    onClick = { showClearDataDialog = true },
-                    iconTint = MaterialTheme.colorScheme.error
-                )
-            }
-            
-            // Appearance Settings (原Theme Settings)
-            SettingsSection(
-                title = context.getString(R.string.theme)  // 现在显示为"外观"
-            ) {
-                SettingsItem(
-                    icon = Icons.Default.Palette,
-                    title = context.getString(R.string.theme),
-                    subtitle = getThemeDisplayName(settings.themeMode, context),
-                    onClick = { showThemeDialog = true }
-                )
-                
-                SettingsItem(
-                    icon = Icons.Default.Colorize,
-                    title = context.getString(R.string.color_scheme),
-                    subtitle = getColorSchemeDisplayName(settings.colorScheme, context),
-                    onClick = { onNavigateToColorScheme() },
-                    modifier = getSharedModifier("color_scheme_card")
-                )
-                
-                // 移入的设置项：
-                // 1. 语言设置
-                SettingsItem(
-                    icon = Icons.Default.Language,
-                    title = context.getString(R.string.language),
-                    subtitle = getLanguageDisplayName(settings.language, context),
-                    onClick = { showLanguageDialog = true }
-                )
-                
-                // 2. 底部导航栏设置
-                SettingsItem(
-                    icon = Icons.Default.ViewWeek,
-                    title = context.getString(R.string.bottom_nav_settings),
-                    subtitle = context.getString(R.string.bottom_nav_settings_entry_subtitle),
-                    onClick = onNavigateToBottomNavSettings,
-                    modifier = getSharedModifier("bottom_nav_settings_card")
-                )
-                
-                // 3. 功能扩展入口
-                SettingsItem(
-                    icon = Icons.Default.Extension,
-                    title = context.getString(R.string.extensions_title),
-                    subtitle = context.getString(R.string.extensions_description),
-                    onClick = onNavigateToExtensions,
-                    modifier = getSharedModifier("extensions_settings_card")
-                )
-
-                SettingsItem(
-                    icon = Icons.Default.Tune,
-                    title = context.getString(R.string.page_adjust_custom_title),
-                    subtitle = context.getString(R.string.page_adjust_custom_subtitle),
-                    onClick = onNavigateToPageCustomization
-                )
-            }
-
-            // About Settings
-            SettingsSection(
-                title = context.getString(R.string.about)
-            ) {
-                SettingsItem(
-                    icon = Icons.Default.Info,
-                    title = context.getString(R.string.version),
-                    subtitle = context.getString(R.string.settings_version_number),
-                    onClick = { showVersionInfoDialog = true }
-                )
-            }
-            
-            // 开发者设置入口
-            SettingsSection(
-                title = stringResource(R.string.developer_settings)
-            ) {
-                // 预览功能 - 点击弹出对话框
-                SettingsItem(
-                    icon = Icons.Default.Science,
-                    title = stringResource(R.string.preview_features_title),
-                    subtitle = stringResource(R.string.preview_features_description),
-                    onClick = { previewFeaturesExpanded = true }
-                )
-
-                SettingsItem(
-                    icon = Icons.Default.Code,
-                    title = stringResource(R.string.developer_settings),
-                    subtitle = stringResource(R.string.developer_settings_subtitle),
-                    modifier = getSharedModifier("developer_settings_card"),
-                    onClick = {
-                        val hasActivity = activity != null
-                        val disablePasswordVerification = settings.disablePasswordVerification
-                        val biometricEnabled = settings.biometricEnabled
-                        val biometricAvailableNow = hasActivity && biometricEnabled && biometricHelper.isBiometricAvailable()
-                        android.util.Log.d(
-                            "SettingsScreen",
-                            "Developer settings tapped. hasActivity=$hasActivity, biometricEnabled=$biometricEnabled, biometricAvailable=$biometricAvailableNow, disablePasswordVerification=$disablePasswordVerification"
+            if (showPreviewFeaturesItem || showDeveloperSettingsItem) {
+                SettingsSection(title = developerTitle) {
+                    if (showPreviewFeaturesItem) {
+                        SettingsItem(
+                            icon = Icons.Default.Science,
+                            title = stringResource(R.string.preview_features_title),
+                            subtitle = stringResource(R.string.preview_features_description),
+                            onClick = { previewFeaturesExpanded = true }
                         )
+                    }
 
-                        developerPasswordInput = ""
-                        developerPasswordError = false
-                        showDeveloperVerifyDialog = false
-
-                        when {
-                            disablePasswordVerification -> {
-                                onNavigateToDeveloperSettings()
-                            }
-                            !hasActivity -> {
-                                android.util.Log.w(
+                    if (showDeveloperSettingsItem) {
+                        SettingsItem(
+                            icon = Icons.Default.Code,
+                            title = stringResource(R.string.developer_settings),
+                            subtitle = stringResource(R.string.developer_settings_subtitle),
+                            modifier = getSharedModifier("developer_settings_card"),
+                            onClick = {
+                                val hasActivity = activity != null
+                                val disablePasswordVerification = settings.disablePasswordVerification
+                                val biometricEnabled = settings.biometricEnabled
+                                val biometricAvailableNow = hasActivity && biometricEnabled && biometricHelper.isBiometricAvailable()
+                                android.util.Log.d(
                                     "SettingsScreen",
-                                    "Cannot start biometric auth: FragmentActivity context missing"
+                                    "Developer settings tapped. hasActivity=$hasActivity, biometricEnabled=$biometricEnabled, biometricAvailable=$biometricAvailableNow, disablePasswordVerification=$disablePasswordVerification"
                                 )
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.use_master_password),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                                showDeveloperVerifyDialog = true
-                            }
-                            biometricAvailableNow -> {
-                                biometricHelper.authenticate(
-                                    activity = activity!!,
-                                    title = context.getString(R.string.biometric_login_title),
-                                    subtitle = context.getString(R.string.biometric_login_subtitle),
-                                    description = context.getString(R.string.biometric_login_description),
-                                    negativeButtonText = context.getString(R.string.use_master_password),
-                                    onSuccess = {
-                                        android.util.Log.d(
-                                            "SettingsScreen",
-                                            "Developer biometric authentication succeeded"
-                                        )
-                                        showDeveloperVerifyDialog = false
-                                        developerPasswordInput = ""
-                                        developerPasswordError = false
+
+                                developerPasswordInput = ""
+                                developerPasswordError = false
+                                showDeveloperVerifyDialog = false
+
+                                when {
+                                    disablePasswordVerification -> {
                                         onNavigateToDeveloperSettings()
-                                    },
-                                    onError = { errorCode, errorMessage ->
+                                    }
+                                    !hasActivity -> {
                                         android.util.Log.w(
                                             "SettingsScreen",
-                                            "Developer biometric error: code=$errorCode, message=$errorMessage"
-                                        )
-                                        Toast.makeText(
-                                            context,
-                                            context.getString(R.string.biometric_auth_error, errorMessage),
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                        showDeveloperVerifyDialog = true
-                                    },
-                                    onCancel = {
-                                        android.util.Log.d(
-                                            "SettingsScreen",
-                                            "Developer biometric canceled by user"
+                                            "Cannot start biometric auth: FragmentActivity context missing"
                                         )
                                         Toast.makeText(
                                             context,
@@ -584,25 +734,95 @@ fun SettingsScreen(
                                         ).show()
                                         showDeveloperVerifyDialog = true
                                     }
-                                )
-                            }
-                            else -> {
-                                android.util.Log.d(
-                                    "SettingsScreen",
-                                    "Biometric unavailable, showing password dialog for developer settings"
-                                )
-                                if (biometricEnabled) {
-                                    Toast.makeText(
-                                        context,
-                                        context.getString(R.string.biometric_not_available),
-                                        Toast.LENGTH_SHORT
-                                    ).show()
+                                    biometricAvailableNow -> {
+                                        biometricHelper.authenticate(
+                                            activity = activity!!,
+                                            title = context.getString(R.string.biometric_login_title),
+                                            subtitle = context.getString(R.string.biometric_login_subtitle),
+                                            description = context.getString(R.string.biometric_login_description),
+                                            negativeButtonText = context.getString(R.string.use_master_password),
+                                            onSuccess = {
+                                                android.util.Log.d(
+                                                    "SettingsScreen",
+                                                    "Developer biometric authentication succeeded"
+                                                )
+                                                showDeveloperVerifyDialog = false
+                                                developerPasswordInput = ""
+                                                developerPasswordError = false
+                                                onNavigateToDeveloperSettings()
+                                            },
+                                            onError = { errorCode, errorMessage ->
+                                                android.util.Log.w(
+                                                    "SettingsScreen",
+                                                    "Developer biometric error: code=$errorCode, message=$errorMessage"
+                                                )
+                                                Toast.makeText(
+                                                    context,
+                                                    context.getString(R.string.biometric_auth_error, errorMessage),
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                                showDeveloperVerifyDialog = true
+                                            },
+                                            onCancel = {
+                                                android.util.Log.d(
+                                                    "SettingsScreen",
+                                                    "Developer biometric canceled by user"
+                                                )
+                                                Toast.makeText(
+                                                    context,
+                                                    context.getString(R.string.use_master_password),
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                                showDeveloperVerifyDialog = true
+                                            }
+                                        )
+                                    }
+                                    else -> {
+                                        android.util.Log.d(
+                                            "SettingsScreen",
+                                            "Biometric unavailable, showing password dialog for developer settings"
+                                        )
+                                        if (biometricEnabled) {
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(R.string.biometric_not_available),
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                        showDeveloperVerifyDialog = true
+                                    }
                                 }
-                                showDeveloperVerifyDialog = true
                             }
-                        }
+                        )
                     }
-                )
+                }
+            }
+
+            if (!hasVisibleResults) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 48.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.SearchOff,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                        modifier = Modifier.size(40.dp)
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Text(
+                        text = stringResource(R.string.no_results),
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(R.string.settings_search_empty_hint),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
             
             Spacer(modifier = Modifier.height(32.dp))

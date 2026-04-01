@@ -52,6 +52,7 @@ import takagi.ru.monica.data.UnifiedProgressBarMode
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.util.TotpGenerator
+import takagi.ru.monica.util.TotpDataResolver
 import kotlin.math.PI
 import kotlin.math.sin
 import takagi.ru.monica.util.VibrationPatterns
@@ -876,13 +877,7 @@ private fun M3EProgressIndicator(
 }
 
 private fun normalizeTotpData(data: TotpData): TotpData {
-    val safePeriod = data.period.takeIf { it > 0 } ?: 30
-    val safeDigits = data.digits.coerceIn(4, 10)
-    return if (safePeriod == data.period && safeDigits == data.digits) {
-        data
-    } else {
-        data.copy(period = safePeriod, digits = safeDigits)
-    }
+    return TotpDataResolver.normalizeTotpData(data)
 }
 
 /**

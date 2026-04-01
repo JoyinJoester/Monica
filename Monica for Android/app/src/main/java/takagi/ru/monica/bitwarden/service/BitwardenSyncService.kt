@@ -15,6 +15,7 @@ import takagi.ru.monica.data.model.SshKeyData
 import takagi.ru.monica.data.model.SshKeyDataCodec
 import takagi.ru.monica.data.bitwarden.*
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.util.TotpDataResolver
 import java.time.Instant
 import java.util.Date
 
@@ -1017,7 +1018,7 @@ class BitwardenSyncService(
                 crypto.encryptString(plainPassword, symmetricKey)
             } else null,
             totp = if (entry.authenticatorKey.isNotBlank()) {
-                crypto.encryptString(entry.authenticatorKey, symmetricKey)
+                crypto.encryptString(resolveBitwardenTotpPayload(entry), symmetricKey)
             } else null,
             uris = buildEncryptedLoginUris(entry, symmetricKey)
         )
@@ -1058,7 +1059,7 @@ class BitwardenSyncService(
                 crypto.encryptString(plainPassword, symmetricKey)
             } else null,
             totp = if (entry.authenticatorKey.isNotBlank()) {
-                crypto.encryptString(entry.authenticatorKey, symmetricKey)
+                crypto.encryptString(resolveBitwardenTotpPayload(entry), symmetricKey)
             } else null,
             uris = buildEncryptedLoginUris(entry, symmetricKey)
         )
@@ -1073,6 +1074,16 @@ class BitwardenSyncService(
             favorite = entry.isFavorite,
             archivedDate = toBitwardenArchivedDate(entry)
         )
+    }
+
+    private fun resolveBitwardenTotpPayload(entry: PasswordEntry): String {
+        return TotpDataResolver.fromAuthenticatorKey(
+            rawKey = entry.authenticatorKey,
+            fallbackIssuer = entry.website,
+            fallbackAccountName = entry.username
+        )?.let { resolved ->
+            TotpDataResolver.toBitwardenPayload(entry.title, resolved)
+        } ?: entry.authenticatorKey
     }
 
     private fun toBitwardenArchivedDate(entry: PasswordEntry): String? {

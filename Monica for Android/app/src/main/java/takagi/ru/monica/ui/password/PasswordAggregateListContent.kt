@@ -90,7 +90,8 @@ internal fun filterPasswordAggregateItemsByQuickFilters(
     quickFilterManualStackOnly: Boolean,
     quickFilterNeverStack: Boolean,
     quickFilterUnstacked: Boolean,
-    effectiveStackCardMode: StackCardMode
+    effectiveStackCardMode: StackCardMode,
+    manualStackedKeys: Set<String> = emptySet()
 ): List<PasswordAggregateListItemUi> {
     var filtered = items
 
@@ -112,7 +113,7 @@ internal fun filterPasswordAggregateItemsByQuickFilters(
         filtered = filtered.filter { it.entry.isLocalOnlyEntry() }
     }
     if (quickFilterManualStackOnly && PasswordListQuickFilterItem.MANUAL_STACK_ONLY in configuredQuickFilterItems) {
-        filtered = emptyList()
+        filtered = filtered.filter { it.key in manualStackedKeys }
     }
     if (quickFilterNeverStack && PasswordListQuickFilterItem.NEVER_STACK in configuredQuickFilterItems) {
         filtered = emptyList()
@@ -122,7 +123,7 @@ internal fun filterPasswordAggregateItemsByQuickFilters(
         PasswordListQuickFilterItem.UNSTACKED in configuredQuickFilterItems &&
         effectiveStackCardMode != StackCardMode.ALWAYS_EXPANDED
     ) {
-        filtered = emptyList()
+        filtered = filtered.filter { it.key !in manualStackedKeys }
     }
 
     return filtered

@@ -14,6 +14,7 @@ import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
+import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.SecureItemOwnership
 import takagi.ru.monica.data.asMonicaLocalCopy
@@ -39,6 +40,7 @@ import java.util.Locale
 import java.util.UUID
 import takagi.ru.monica.utils.SavedCategoryFilterState
 import takagi.ru.monica.utils.SettingsManager
+import takagi.ru.monica.util.TotpDataResolver
 
 /**
  * 验证器分类过滤器
@@ -76,6 +78,20 @@ class TotpViewModel(
         val entryUuid: String?,
         val groupUuid: String?
     )
+
+    data class BitwardenTotpRepairResult(
+        val normalizedTotpItems: Int,
+        val queuedTotpItemsForSync: Int,
+        val normalizedPasswords: Int,
+        val queuedPasswordsForSync: Int,
+        val skippedItems: Int
+    ) {
+        val normalizedCount: Int
+            get() = normalizedTotpItems + normalizedPasswords
+
+        val queuedForSyncCount: Int
+            get() = queuedTotpItemsForSync + queuedPasswordsForSync
+    }
 
     companion object {
         private const val FILTER_ALL = "all"
@@ -159,45 +175,40 @@ class TotpViewModel(
         passwordRepository.getAllPasswordEntries(),
         selectedBitwardenVaultFolderIds
     ) { query, filter, storedTotps, allPasswords, selectedVaultFolderIds ->
-        // 收集所有已存储的TOTP密钥（用于去重）
-        val existingSecrets = storedTotps.mapNotNull { item ->
-            try {
-                Json.decodeFromString<TotpData>(item.itemData).secret
-            } catch (e: Exception) {
-                null
-            }
+        // 收集所有已存储的 TOTP 标识（归一化后去重，兼容 otpauth URI）
+        val existingKeys = storedTotps.mapNotNull { item ->
+            runCatching { Json.decodeFromString<TotpData>(item.itemData) }
+                .getOrNull()
+                ?.let(TotpDataResolver::normalizeTotpData)
+                ?.let(::buildTotpIdentityKey)
         }.toSet()
         
-        // 从密码的authenticatorKey生成虚拟TOTP项目（仅当密钥不存在于实际TOTP中时）
-        val virtualTotps = allPasswords
-            .filter { it.authenticatorKey.isNotBlank() && it.authenticatorKey !in existingSecrets }
-            .distinctBy { it.authenticatorKey }  // 去重相同的authenticatorKey
-            .map { password ->
-                // 创建虚拟TOTP项目（使用负ID以区分实际存储的项目）
-                val totpData = TotpData(
-                    secret = password.authenticatorKey,
-                    issuer = password.website.takeIf { it.isNotBlank() } ?: password.title,
-                    accountName = password.username.takeIf { it.isNotBlank() } ?: password.title,
-                    boundPasswordId = password.id,
-                    categoryId = password.categoryId  // 继承密码的分类
-                )
-                SecureItem(
-                    id = -password.id, // 使用负ID标识这是虚拟项目
-                    itemType = ItemType.TOTP,
-                    title = password.title,
-                    notes = "来自密码: ${password.title}",
-                    itemData = Json.encodeToString(totpData),
-                    isFavorite = false,
-                    createdAt = password.createdAt,
-                    updatedAt = password.updatedAt,
-                    imagePaths = "",
-                    categoryId = password.categoryId,  // 继承密码的分类
-                    keepassDatabaseId = password.keepassDatabaseId,
-                    keepassGroupPath = password.keepassGroupPath,
-                    bitwardenVaultId = password.bitwardenVaultId,
-                    bitwardenFolderId = password.bitwardenFolderId
-                )
+        // 从密码的 authenticatorKey 生成虚拟 TOTP 项目
+        val seenVirtualKeys = mutableSetOf<String>()
+        val virtualTotps = allPasswords.mapNotNull { password ->
+            val resolvedTotpData = resolvePasswordAuthenticatorTotp(password) ?: return@mapNotNull null
+            val identityKey = buildTotpIdentityKey(resolvedTotpData)
+            if (identityKey in existingKeys || !seenVirtualKeys.add(identityKey)) {
+                return@mapNotNull null
             }
+
+            SecureItem(
+                id = -password.id, // 使用负ID标识这是虚拟项目
+                itemType = ItemType.TOTP,
+                title = password.title,
+                notes = "来自密码: ${password.title}",
+                itemData = Json.encodeToString(resolvedTotpData),
+                isFavorite = false,
+                createdAt = password.createdAt,
+                updatedAt = password.updatedAt,
+                imagePaths = "",
+                categoryId = password.categoryId,  // 继承密码的分类
+                keepassDatabaseId = password.keepassDatabaseId,
+                keepassGroupPath = password.keepassGroupPath,
+                bitwardenVaultId = password.bitwardenVaultId,
+                bitwardenFolderId = password.bitwardenFolderId
+            )
+        }
         
         // 合并实际TOTP和虚拟TOTP
         val allTotps = storedTotps + virtualTotps
@@ -313,6 +324,151 @@ class TotpViewModel(
             is TotpCategoryFilter.KeePassDatabaseUncategorized -> syncKeePassTotp(filter.databaseId)
             else -> Unit
         }
+    }
+
+    private fun resolvePasswordAuthenticatorTotp(password: PasswordEntry): TotpData? {
+        return TotpDataResolver.fromAuthenticatorKey(
+            rawKey = password.authenticatorKey,
+            fallbackIssuer = password.website.takeIf { it.isNotBlank() } ?: password.title,
+            fallbackAccountName = password.username.takeIf { it.isNotBlank() } ?: password.title
+        )?.copy(
+            boundPasswordId = password.id,
+            categoryId = password.categoryId
+        )
+    }
+
+    private fun buildTotpIdentityKey(data: TotpData): String {
+        val normalized = TotpDataResolver.normalizeTotpData(data)
+        return listOf(
+            normalized.otpType.name,
+            normalized.secret,
+            normalized.algorithm.uppercase(Locale.ROOT),
+            normalized.digits.toString(),
+            normalized.period.toString(),
+            normalized.counter.toString()
+        ).joinToString("|")
+    }
+
+    private fun buildTotpIdentityKeyFromRawKey(rawKey: String): String? {
+        return TotpDataResolver.fromAuthenticatorKey(rawKey)?.let(::buildTotpIdentityKey)
+    }
+
+    suspend fun repairHistoricalBitwardenTotp(vaultId: Long): BitwardenTotpRepairResult {
+        bitwardenRepository?.let { repo ->
+            val result = repo.repairHistoricalBitwardenTotp(vaultId).getOrThrow()
+            return BitwardenTotpRepairResult(
+                normalizedTotpItems = result.normalizedTotpItems,
+                queuedTotpItemsForSync = result.queuedTotpItemsForSync,
+                normalizedPasswords = result.normalizedPasswords,
+                queuedPasswordsForSync = result.queuedPasswordsForSync,
+                skippedItems = result.skippedItems
+            )
+        }
+
+        return repairHistoricalBitwardenTotpLocally(vaultId)
+    }
+
+    private suspend fun repairHistoricalBitwardenTotpLocally(vaultId: Long): BitwardenTotpRepairResult {
+        val now = Date()
+        var normalizedTotpItems = 0
+        var queuedTotpItemsForSync = 0
+        var normalizedPasswords = 0
+        var queuedPasswordsForSync = 0
+        var skippedItems = 0
+
+        val secureItems = repository.getItemsByType(ItemType.TOTP).first()
+        secureItems
+            .asSequence()
+            .filter { it.bitwardenVaultId == vaultId && !it.isDeleted }
+            .forEach { item ->
+                val normalizedData = TotpDataResolver.parseStoredItemData(
+                    itemData = item.itemData,
+                    fallbackIssuer = item.title
+                )
+                if (normalizedData == null) {
+                    skippedItems += 1
+                    return@forEach
+                }
+
+                val normalizedItemData = Json.encodeToString(normalizedData)
+                val canSafelyQueueRemoteRepair =
+                    item.itemData.contains("://", ignoreCase = true) ||
+                        TotpDataResolver.hasNonDefaultOtpSettings(normalizedData)
+
+                val updatedItem = item.copy(
+                    itemData = normalizedItemData,
+                    updatedAt = if (normalizedItemData != item.itemData || canSafelyQueueRemoteRepair) now else item.updatedAt,
+                    bitwardenLocalModified = if (canSafelyQueueRemoteRepair && item.bitwardenCipherId != null) {
+                        true
+                    } else {
+                        item.bitwardenLocalModified
+                    },
+                    syncStatus = if (canSafelyQueueRemoteRepair && item.bitwardenCipherId != null) {
+                        "PENDING"
+                    } else {
+                        item.syncStatus
+                    }
+                )
+
+                if (updatedItem != item) {
+                    repository.updateItem(updatedItem)
+                    if (normalizedItemData != item.itemData) {
+                        normalizedTotpItems += 1
+                    }
+                    if (canSafelyQueueRemoteRepair && item.bitwardenCipherId != null) {
+                        queuedTotpItemsForSync += 1
+                    }
+                }
+            }
+
+        val passwordEntries = passwordRepository.getAllPasswordEntries().first()
+        passwordEntries
+            .asSequence()
+            .filter { it.bitwardenVaultId == vaultId && !it.isDeleted && it.authenticatorKey.isNotBlank() }
+            .forEach { entry ->
+                val normalizedTotp = TotpDataResolver.fromAuthenticatorKey(
+                    rawKey = entry.authenticatorKey,
+                    fallbackIssuer = entry.website.takeIf { it.isNotBlank() } ?: entry.title,
+                    fallbackAccountName = entry.username.takeIf { it.isNotBlank() } ?: entry.title
+                )
+                if (normalizedTotp == null) {
+                    skippedItems += 1
+                    return@forEach
+                }
+
+                val normalizedPayload = TotpDataResolver.toBitwardenPayload(entry.title, normalizedTotp)
+                val canSafelyQueueRemoteRepair =
+                    entry.authenticatorKey.contains("://", ignoreCase = true) ||
+                        TotpDataResolver.hasNonDefaultOtpSettings(normalizedTotp)
+
+                val updatedEntry = entry.copy(
+                    authenticatorKey = normalizedPayload,
+                    updatedAt = if (normalizedPayload != entry.authenticatorKey || canSafelyQueueRemoteRepair) now else entry.updatedAt,
+                    bitwardenLocalModified = if (canSafelyQueueRemoteRepair && entry.bitwardenCipherId != null) {
+                        true
+                    } else {
+                        entry.bitwardenLocalModified
+                    }
+                )
+
+                if (updatedEntry != entry) {
+                    passwordRepository.updatePasswordEntry(updatedEntry)
+                    if (normalizedPayload != entry.authenticatorKey) {
+                        normalizedPasswords += 1
+                    }
+                    if (canSafelyQueueRemoteRepair && entry.bitwardenCipherId != null) {
+                        queuedPasswordsForSync += 1
+                    }
+                }
+            }
+
+        return BitwardenTotpRepairResult(
+            normalizedTotpItems = normalizedTotpItems,
+            queuedTotpItemsForSync = queuedTotpItemsForSync,
+            normalizedPasswords = normalizedPasswords,
+            queuedPasswordsForSync = queuedPasswordsForSync,
+            skippedItems = skippedItems
+        )
     }
 
     fun syncKeePassByDatabaseId(databaseId: Long) {
@@ -472,10 +628,11 @@ class TotpViewModel(
      * 根据密钥查找现有的TOTP项目
      */
     fun findTotpBySecret(secret: String): SecureItem? {
+        val targetKey = buildTotpIdentityKeyFromRawKey(secret) ?: return null
         return totpItems.value.find { item ->
             try {
                 val data = Json.decodeFromString<TotpData>(item.itemData)
-                data.secret == secret
+                buildTotpIdentityKey(data) == targetKey
             } catch (e: Exception) {
                 false
             }
@@ -664,7 +821,11 @@ class TotpViewModel(
                 // 如果解绑或更换绑定，清理旧绑定的密钥（仅当密钥一致时）
                 if (previousBoundId != null && previousBoundId != boundId && previousSecret.isNotBlank()) {
                     val previousPassword = passwordRepository.getPasswordEntryById(previousBoundId)
-                    if (previousPassword?.authenticatorKey == previousSecret) {
+                    val previousPasswordKey = previousPassword
+                        ?.authenticatorKey
+                        ?.let(::buildTotpIdentityKeyFromRawKey)
+                    val previousTotpKey = buildTotpIdentityKeyFromRawKey(previousSecret)
+                    if (previousPasswordKey != null && previousPasswordKey == previousTotpKey) {
                         passwordRepository.updateAuthenticatorKey(previousBoundId, "")
                     }
                 }
@@ -718,14 +879,19 @@ class TotpViewModel(
         viewModelScope.launch {
             try {
                 val items = repository.getItemsByType(ItemType.TOTP).first()
+                val targetKey = secret
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let(::buildTotpIdentityKeyFromRawKey)
                 val target = items.firstOrNull { item ->
                     val data = try {
                         Json.decodeFromString<TotpData>(item.itemData)
                     } catch (e: Exception) {
                         null
                     }
-                    data?.boundPasswordId == passwordId &&
-                        (secret.isNullOrBlank() || data.secret == secret)
+                    data?.let { parsed ->
+                        parsed.boundPasswordId == passwordId &&
+                            (targetKey == null || buildTotpIdentityKey(parsed) == targetKey)
+                    } ?: false
                 }
 
                 if (target != null) {
@@ -759,8 +925,10 @@ class TotpViewModel(
 
             if (totpData?.boundPasswordId != null && totpData.secret.isNotBlank()) {
                 val boundId = totpData.boundPasswordId
-                val password = passwordRepository.getPasswordEntryById(boundId)
-                if (password?.authenticatorKey == totpData.secret) {
+                val password = passwordRepository.getPasswordEntryById(boundId) ?: return@launch
+                val passwordKey = buildTotpIdentityKeyFromRawKey(password.authenticatorKey)
+                val itemKey = buildTotpIdentityKey(totpData)
+                if (passwordKey != null && passwordKey == itemKey) {
                     if (password.bitwardenVaultId != null && password.bitwardenCipherId != null) {
                         // For Bitwarden-linked passwords, mark as locally modified so sync can clear remote login.totp.
                         passwordRepository.updatePasswordEntry(

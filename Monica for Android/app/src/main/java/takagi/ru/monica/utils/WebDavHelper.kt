@@ -122,6 +122,24 @@ private data class NoteBackupEntry(
 )
 
 @Serializable
+private data class CardWalletBackupEntry(
+    val id: Long = 0,
+    val itemType: String = "",
+    val title: String = "",
+    val itemData: String = "",
+    val notes: String = "",
+    val isFavorite: Boolean = false,
+    val imagePaths: String = "",
+    val keepassDatabaseId: Long? = null,
+    val keepassGroupPath: String? = null,
+    val bitwardenVaultId: Long? = null,
+    val bitwardenFolderId: String? = null,
+    val createdAt: Long = System.currentTimeMillis(),
+    val updatedAt: Long = System.currentTimeMillis(),
+    val categoryName: String? = null
+)
+
+@Serializable
 private data class PasskeyBackupEntry(
     val credentialId: String = "",
     val rpId: String = "",
@@ -493,9 +511,16 @@ class WebDavHelper(
     }
 
     private fun sanitizeSecureExportItemForMonicaRestore(
-        item: DataExportImportManager.ExportItem
+        item: DataExportImportManager.ExportItem,
+        sourceFileName: String? = null
     ): DataExportImportManager.ExportItem {
+        val normalizedItemType = SecureItemRestoreTypeResolver.resolve(
+            rawType = item.itemType,
+            itemData = item.itemData,
+            sourceFileName = sourceFileName
+        )?.name ?: item.itemType.trim()
         return item.copy(
+            itemType = normalizedItemType,
             keepassDatabaseId = null,
             keepassGroupPath = null,
             bitwardenVaultId = null,
@@ -978,7 +1003,6 @@ class WebDavHelper(
             if (!cacheBackupDir.exists()) cacheBackupDir.mkdirs()
 
             val passwordsCsvFile = File(cacheBackupDir, "Monica_${timestamp}_password.csv")
-            val cardsDocsCsvFile = File(cacheBackupDir, "Monica_${timestamp}_cards_docs.csv")
             val foldersRootDir = File(cacheBackupDir, "folders")
             val passwordHistoryJsonFile = File(cacheBackupDir, "password_history.json")
             
@@ -1231,14 +1255,57 @@ class WebDavHelper(
                     }
                 }
 
-                // 6. 导出 Cards & Docs
+                // 6. 导出 Cards & Docs（新格式：folders/<category>/{bank_cards|documents}/*.json）
                 if (cardsDocsItems.isNotEmpty()) {
-                    val exportManager = DataExportImportManager(context)
-                    val exportResult = exportManager.exportData(
-                        cardsDocsItems.map(::sanitizeSecureItemForMonicaBackup),
-                        Uri.fromFile(cardsDocsCsvFile)
-                    )
-                    if (exportResult.isFailure) throw exportResult.exceptionOrNull()!!
+                    val json = Json { prettyPrint = false }
+                    cardsDocsItems.forEach { item ->
+                        try {
+                            val categoryName = item.categoryId?.let { id -> categoryMap[id]?.name }
+                            val backup = CardWalletBackupEntry(
+                                id = item.id,
+                                itemType = item.itemType.name,
+                                title = item.title,
+                                itemData = item.itemData,
+                                notes = item.notes,
+                                isFavorite = item.isFavorite,
+                                imagePaths = item.imagePaths,
+                                keepassDatabaseId = null,
+                                keepassGroupPath = null,
+                                bitwardenVaultId = null,
+                                bitwardenFolderId = null,
+                                createdAt = item.createdAt.time,
+                                updatedAt = item.updatedAt.time,
+                                categoryName = categoryName
+                            )
+                            val folderKey = toFolderKey(categoryName)
+                            val targetDir = when (item.itemType) {
+                                ItemType.BANK_CARD -> File(foldersRootDir, "$folderKey/bank_cards")
+                                ItemType.DOCUMENT -> File(foldersRootDir, "$folderKey/documents")
+                                else -> null
+                            } ?: return@forEach
+                            if (!targetDir.exists()) targetDir.mkdirs()
+                            val filePrefix = when (item.itemType) {
+                                ItemType.BANK_CARD -> "bank_card"
+                                ItemType.DOCUMENT -> "document"
+                                else -> "secure_item"
+                            }
+                            val fileName = "${filePrefix}_${item.id}_${item.createdAt.time}.json"
+                            val target = File(targetDir, fileName)
+                            target.writeText(
+                                json.encodeToString(CardWalletBackupEntry.serializer(), backup),
+                                Charsets.UTF_8
+                            )
+                        } catch (e: Exception) {
+                            failedItems.add(
+                                FailedItem(
+                                    id = item.id,
+                                    type = if (item.itemType == ItemType.BANK_CARD) "卡片" else "证件",
+                                    title = item.title,
+                                    reason = "序列化失败: ${e.message}"
+                                )
+                            )
+                        }
+                    }
                 }
 
                 // 6.5 导出笔记
@@ -1340,7 +1407,6 @@ class WebDavHelper(
                     if (preferences.includePasswords && passwordHistoryJsonFile.exists()) {
                         addFileToZip(zipOut, passwordHistoryJsonFile, passwordHistoryJsonFile.name)
                     }
-                    if (cardsDocsCsvFile.exists()) addFileToZip(zipOut, cardsDocsCsvFile, cardsDocsCsvFile.name)
                     if (preferences.includeGeneratorHistory) {
                         try {
                             val historyManager = PasswordHistoryManager(context)
@@ -1871,7 +1937,6 @@ class WebDavHelper(
             } finally {
                 // 清理临时文件 (保留 finalFile 即 ZIP 文件)
                 passwordsCsvFile.delete()
-                cardsDocsCsvFile.delete()
                 foldersRootDir.deleteRecursively()
                 historyJsonFile.delete()
                 if (finalFile != zipFile) zipFile.delete()
@@ -2117,6 +2182,8 @@ class WebDavHelper(
             var backupPasskeyCount = 0
             var restoredPasswordCount = 0
             var restoredNoteCount = 0
+            var restoredCardCount = 0
+            var restoredDocCount = 0
             var restoredImageCount = 0
             var restoredPasskeyCount = 0
 
@@ -2148,6 +2215,8 @@ class WebDavHelper(
                 val passwordsWithMetadata = mutableListOf<Pair<PasswordEntry, String?>>()  // ✅ 存储密码和分类名称
                 val notesWithMetadata = mutableListOf<Pair<DataExportImportManager.ExportItem, String?>>()
                 val totpWithMetadata = mutableListOf<Pair<DataExportImportManager.ExportItem, String?>>()
+                val bankCardsWithMetadata = mutableListOf<Pair<DataExportImportManager.ExportItem, String?>>()
+                val documentsWithMetadata = mutableListOf<Pair<DataExportImportManager.ExportItem, String?>>()
                 val passkeysWithMetadata = mutableListOf<Pair<PasskeyEntry, String?>>()
                 val passwords = mutableListOf<PasswordEntry>()
                 val secureItems = mutableListOf<DataExportImportManager.ExportItem>()
@@ -2229,6 +2298,36 @@ class WebDavHelper(
                                         failedItems.add(FailedItem(
                                             id = 0,
                                             type = "笔记",
+                                            title = entryName,
+                                            reason = "JSON解析失败"
+                                        ))
+                                    }
+                                }
+                                normalizedEntryName.contains("/bank_cards/") || normalizedEntryName.startsWith("bank_cards/") -> {
+                                    backupCardCount++
+                                    val bankCardItem = restoreCardWalletItemFromJson(tempFile, ItemType.BANK_CARD)
+                                    if (bankCardItem != null) {
+                                        bankCardsWithMetadata.add(bankCardItem)
+                                        restoredCardCount++
+                                    } else {
+                                        failedItems.add(FailedItem(
+                                            id = 0,
+                                            type = "卡片",
+                                            title = entryName,
+                                            reason = "JSON解析失败"
+                                        ))
+                                    }
+                                }
+                                normalizedEntryName.contains("/documents/") || normalizedEntryName.startsWith("documents/") -> {
+                                    backupDocCount++
+                                    val documentItem = restoreCardWalletItemFromJson(tempFile, ItemType.DOCUMENT)
+                                    if (documentItem != null) {
+                                        documentsWithMetadata.add(documentItem)
+                                        restoredDocCount++
+                                    } else {
+                                        failedItems.add(FailedItem(
+                                            id = 0,
+                                            type = "证件",
                                             title = entryName,
                                             reason = "JSON解析失败"
                                         ))
@@ -2451,11 +2550,10 @@ class WebDavHelper(
                                                 val key = "${backup.title}_${backup.createdAt}"
                                                 if (key !in existingKeys) {
                                                     try {
-                                                        val itemType = try {
-                                                            ItemType.valueOf(backup.itemType)
-                                                        } catch (e: Exception) {
-                                                            ItemType.NOTE // 默认类型
-                                                        }
+                                                        val itemType = SecureItemRestoreTypeResolver.resolve(
+                                                            rawType = backup.itemType,
+                                                            itemData = backup.itemData
+                                                        ) ?: ItemType.NOTE
                                                         val item = SecureItem(
                                                             id = 0, // 使用新ID
                                                             title = backup.title,
@@ -2921,7 +3019,14 @@ class WebDavHelper(
                 }
                 
                 // ✅ 解析分类并创建缺失的分类，同时处理跨类型文件夹归属
-                if (passwordsWithMetadata.isNotEmpty() || notesWithMetadata.isNotEmpty() || totpWithMetadata.isNotEmpty() || passkeysWithMetadata.isNotEmpty()) {
+                if (
+                    passwordsWithMetadata.isNotEmpty() ||
+                    notesWithMetadata.isNotEmpty() ||
+                    totpWithMetadata.isNotEmpty() ||
+                    bankCardsWithMetadata.isNotEmpty() ||
+                    documentsWithMetadata.isNotEmpty() ||
+                    passkeysWithMetadata.isNotEmpty()
+                ) {
                     val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
                     val categoryDao = database.categoryDao()
                     
@@ -2933,6 +3038,8 @@ class WebDavHelper(
                     val categoryNamesToCreate = (passwordsWithMetadata.mapNotNull { it.second } +
                         notesWithMetadata.mapNotNull { it.second } +
                         totpWithMetadata.mapNotNull { it.second } +
+                        bankCardsWithMetadata.mapNotNull { it.second } +
+                        documentsWithMetadata.mapNotNull { it.second } +
                         passkeysWithMetadata.mapNotNull { it.second })
                         .distinct()
                         .filter { it.isNotBlank() && !categoryByName.containsKey(it) }
@@ -2973,6 +3080,16 @@ class WebDavHelper(
                         secureItems.add(entry.copy(categoryId = categoryId))
                     }
 
+                    bankCardsWithMetadata.forEach { (entry, categoryName) ->
+                        val categoryId = categoryName?.let { categoryByName[it]?.id }
+                        secureItems.add(entry.copy(categoryId = categoryId))
+                    }
+
+                    documentsWithMetadata.forEach { (entry, categoryName) ->
+                        val categoryId = categoryName?.let { categoryByName[it]?.id }
+                        secureItems.add(entry.copy(categoryId = categoryId))
+                    }
+
                     // 将通行密钥与分类关联
                     passkeysWithMetadata.forEach { (entry, categoryName) ->
                         val categoryId = categoryName?.let { categoryByName[it]?.id }
@@ -2991,29 +3108,56 @@ class WebDavHelper(
                 if (totpWithMetadata.isNotEmpty() && secureItems.none { it.itemType == ItemType.TOTP.name }) {
                     secureItems.addAll(totpWithMetadata.map { it.first })
                 }
+                if (bankCardsWithMetadata.isNotEmpty() && secureItems.none { it.itemType == ItemType.BANK_CARD.name }) {
+                    secureItems.addAll(bankCardsWithMetadata.map { it.first })
+                }
+                if (documentsWithMetadata.isNotEmpty() && secureItems.none { it.itemType == ItemType.DOCUMENT.name }) {
+                    secureItems.addAll(documentsWithMetadata.map { it.first })
+                }
                 if (passkeysWithMetadata.isNotEmpty() && passkeys.isEmpty()) {
                     passkeys.addAll(passkeysWithMetadata.map { it.first })
                 }
 
                 // 导入旧版 CSV（向后兼容）：放到扫描结束后统一处理，避免与 JSON 顺序耦合
                 if (secureCsvFiles.isNotEmpty()) {
-                    val exportManager = DataExportImportManager(context)
                     secureCsvFiles.forEach { csvFile ->
                         try {
-                            val importResult = exportManager.importData(Uri.fromFile(csvFile))
-                            if (importResult.isSuccess) {
-                                val imported = importResult.getOrNull() ?: emptyList()
-                                val normalizedImported = imported
-                                    .map(::normalizeRestoredTotpItem)
-                                    .map(::sanitizeSecureExportItemForMonicaRestore)
-                                if (totpWithMetadata.isNotEmpty()) {
-                                    secureItems.addAll(normalizedImported.filterNot { it.itemType == ItemType.TOTP.name })
-                                } else {
-                                    secureItems.addAll(normalizedImported)
-                                }
-                            } else {
-                                warnings.add("导入CSV失败 ${csvFile.name}: ${importResult.exceptionOrNull()?.message}")
+                            val role = when {
+                                csvFile.name.endsWith("_notes.csv", ignoreCase = true) ->
+                                    LegacyMonicaSecureCsvRole.NOTES_ONLY
+                                csvFile.name.endsWith("_totp.csv", ignoreCase = true) ->
+                                    LegacyMonicaSecureCsvRole.TOTP_ONLY
+                                csvFile.name.endsWith("_cards_docs.csv", ignoreCase = true) ->
+                                    LegacyMonicaSecureCsvRole.CARDS_DOCS_ONLY
+                                else ->
+                                    LegacyMonicaSecureCsvRole.GENERIC_SECURE
                             }
+                            val parseResult = LegacyMonicaZipCsvRestoreParser.parseSecureItems(csvFile, role)
+                            warnings.addAll(parseResult.warnings)
+
+                            val jsonBackedTypes = buildSet {
+                                if (notesWithMetadata.isNotEmpty()) add(ItemType.NOTE)
+                                if (totpWithMetadata.isNotEmpty()) add(ItemType.TOTP)
+                                if (bankCardsWithMetadata.isNotEmpty()) add(ItemType.BANK_CARD)
+                                if (documentsWithMetadata.isNotEmpty()) add(ItemType.DOCUMENT)
+                            }
+                            val normalizedImported = parseResult.items
+                                .map(::normalizeRestoredTotpItem)
+                                .map { item ->
+                                    sanitizeSecureExportItemForMonicaRestore(
+                                        item = item,
+                                        sourceFileName = csvFile.name
+                                    )
+                                }
+                            secureItems.addAll(
+                                normalizedImported.filterNot { importedItem ->
+                                    SecureItemRestoreTypeResolver.resolve(
+                                        rawType = importedItem.itemType,
+                                        itemData = importedItem.itemData,
+                                        sourceFileName = csvFile.name
+                                    ) in jsonBackedTypes
+                                }
+                            )
                         } catch (e: Exception) {
                             warnings.add("导入CSV失败 ${csvFile.name}: ${e.message}")
                         } finally {
@@ -3054,8 +3198,8 @@ class WebDavHelper(
                     passwords = backupPasswordCount,
                     notes = backupNoteCount,
                     totp = totpItems,
-                    bankCards = cardItems,
-                    documents = docItems,
+                    bankCards = if (backupCardCount > 0) backupCardCount else cardItems,
+                    documents = if (backupDocCount > 0) backupDocCount else docItems,
                     images = backupImageCount
                 )
                 
@@ -3063,8 +3207,8 @@ class WebDavHelper(
                     passwords = passwords.size,
                     notes = restoredNoteCount,
                     totp = totpItems,
-                    bankCards = cardItems,
-                    documents = docItems,
+                    bankCards = if (restoredCardCount > 0) restoredCardCount else cardItems,
+                    documents = if (restoredDocCount > 0) restoredDocCount else docItems,
                     images = restoredImageCount
                 )
 
@@ -3359,6 +3503,38 @@ class WebDavHelper(
             )
         } catch (e: Exception) {
             android.util.Log.w("WebDavHelper", "Failed to restore note from ${file.name}: ${e.message}")
+            null
+        }
+    }
+
+    private fun restoreCardWalletItemFromJson(
+        file: File,
+        fallbackType: ItemType
+    ): Pair<DataExportImportManager.ExportItem, String?>? {
+        return try {
+            val json = Json { ignoreUnknownKeys = true }
+            val text = file.readText(Charsets.UTF_8)
+            val entry = json.decodeFromString(CardWalletBackupEntry.serializer(), text)
+            val itemType = SecureItemRestoreTypeResolver.resolve(
+                rawType = entry.itemType,
+                itemData = entry.itemData,
+                sourceFileName = file.name
+            ) ?: fallbackType
+            Pair(
+                restoreSecureItemAsMonicaLocal(
+                    itemType = itemType,
+                    title = entry.title,
+                    itemData = entry.itemData,
+                    notes = entry.notes,
+                    isFavorite = entry.isFavorite,
+                    imagePaths = entry.imagePaths,
+                    createdAt = entry.createdAt,
+                    updatedAt = entry.updatedAt,
+                ),
+                entry.categoryName
+            )
+        } catch (e: Exception) {
+            android.util.Log.w("WebDavHelper", "Failed to restore card wallet item from ${file.name}: ${e.message}")
             null
         }
     }

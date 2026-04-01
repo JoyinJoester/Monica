@@ -102,6 +102,7 @@ import takagi.ru.monica.ui.icons.rememberUploadedPasswordIcon
 import takagi.ru.monica.ui.password.UsernameSuggestionPanel
 import takagi.ru.monica.ui.password.UsernameSuggestionState
 import takagi.ru.monica.ui.password.buildUsernameSuggestionState
+import takagi.ru.monica.util.TotpDataResolver
 import takagi.ru.monica.utils.PasswordGenerator
 import takagi.ru.monica.utils.PasswordStrengthAnalyzer
 import takagi.ru.monica.viewmodel.BankCardViewModel
@@ -1066,29 +1067,47 @@ fun AddEditPasswordScreen(
                     }
                     // Save TOTP if authenticatorKey is provided
                     if (currentAuthKey.isNotEmpty() && totpViewModel != null) {
+                        val resolvedAuthTotp = TotpDataResolver.fromAuthenticatorKey(
+                            rawKey = currentAuthKey,
+                            fallbackIssuer = currentTitle,
+                            fallbackAccountName = currentUsername
+                        ) ?: TotpData(
+                            secret = currentAuthKey,
+                            issuer = currentTitle,
+                            accountName = currentUsername
+                        )
+
                         // 检查是否已有相同密钥的验证器
                         val existingTotp = totpViewModel.findTotpBySecret(currentAuthKey)
                         val existingTotpData = existingTotp?.let {
                             runCatching { Json.decodeFromString<TotpData>(it.itemData) }.getOrNull()
                         }
                         val totpIdToSave = existingTotp?.id ?: existingTotpId // 优先选择相同密钥的，其次是原本绑定的
-
-                        val totpData = TotpData(
-                            secret = currentAuthKey,
-                            issuer = existingTotpData?.issuer ?: currentTitle,
-                            accountName = existingTotpData?.accountName ?: currentUsername,
+                        val baseTotpData = existingTotpData ?: resolvedAuthTotp
+                        val totpData = baseTotpData.copy(
+                            secret = resolvedAuthTotp.secret,
+                            issuer = baseTotpData.issuer.ifBlank {
+                                resolvedAuthTotp.issuer.ifBlank { currentTitle }
+                            },
+                            accountName = baseTotpData.accountName.ifBlank {
+                                resolvedAuthTotp.accountName.ifBlank { currentUsername }
+                            },
+                            otpType = resolvedAuthTotp.otpType,
+                            digits = resolvedAuthTotp.digits,
+                            period = resolvedAuthTotp.period,
+                            algorithm = resolvedAuthTotp.algorithm,
+                            counter = resolvedAuthTotp.counter,
+                            pin = if (baseTotpData.pin.isNotBlank()) baseTotpData.pin else resolvedAuthTotp.pin,
+                            link = if (baseTotpData.link.isNotBlank()) baseTotpData.link else resolvedAuthTotp.link,
+                            associatedApp = if (baseTotpData.associatedApp.isNotBlank()) {
+                                baseTotpData.associatedApp
+                            } else {
+                                resolvedAuthTotp.associatedApp
+                            },
                             boundPasswordId = firstPasswordId,
-                            otpType = existingTotpData?.otpType ?: takagi.ru.monica.data.model.OtpType.TOTP,
-                            digits = existingTotpData?.digits ?: 6,
-                            period = existingTotpData?.period ?: 30,
-                            algorithm = existingTotpData?.algorithm ?: "SHA1",
-                            counter = existingTotpData?.counter ?: 0,
-                            pin = existingTotpData?.pin ?: "",
-                            link = existingTotpData?.link ?: "",
-                            associatedApp = existingTotpData?.associatedApp ?: "",
-                            customIconType = existingTotpData?.customIconType ?: PASSWORD_ICON_TYPE_NONE,
-                            customIconValue = existingTotpData?.customIconValue,
-                            customIconUpdatedAt = existingTotpData?.customIconUpdatedAt ?: 0L
+                            customIconType = baseTotpData.customIconType,
+                            customIconValue = baseTotpData.customIconValue,
+                            customIconUpdatedAt = baseTotpData.customIconUpdatedAt
                         )
 
                         totpViewModel.saveTotpItem(
@@ -2607,19 +2626,10 @@ private fun buildPasswordScreenInlinePreviewTotpData(
     issuer: String,
     accountName: String
 ): TotpData? {
-    val normalizedSecret = secret
-        .uppercase()
-        .filter { it in 'A'..'Z' || it in '2'..'7' }
-    if (normalizedSecret.isBlank()) return null
-
-    return TotpData(
-        secret = normalizedSecret,
-        issuer = issuer.trim(),
-        accountName = accountName.trim(),
-        period = 30,
-        digits = 6,
-        otpType = OtpType.TOTP,
-        algorithm = "SHA1"
+    return TotpDataResolver.fromAuthenticatorKey(
+        rawKey = secret,
+        fallbackIssuer = issuer,
+        fallbackAccountName = accountName
     )
 }
 

@@ -12,6 +12,7 @@ class PasskeyBiometricCompatibilityPolicyTest {
         val actual = PasskeyBiometricCompatibilityPolicy.shouldBypassBiometricForPasskey(
             romType = DeviceUtils.ROMType.HYPER_OS,
             isBypassEnabled = true,
+            hasHyperOsSystemProperty = true,
         )
 
         assertTrue(actual)
@@ -22,6 +23,7 @@ class PasskeyBiometricCompatibilityPolicyTest {
         val actual = PasskeyBiometricCompatibilityPolicy.shouldBypassBiometricForPasskey(
             romType = DeviceUtils.ROMType.HYPER_OS,
             isBypassEnabled = false,
+            hasHyperOsSystemProperty = true,
         )
 
         assertFalse(actual)
@@ -32,6 +34,7 @@ class PasskeyBiometricCompatibilityPolicyTest {
         val actual = PasskeyBiometricCompatibilityPolicy.shouldBypassBiometricForPasskey(
             romType = DeviceUtils.ROMType.MIUI,
             isBypassEnabled = true,
+            hasHyperOsSystemProperty = true,
         )
 
         assertFalse(actual)
@@ -42,6 +45,18 @@ class PasskeyBiometricCompatibilityPolicyTest {
         val actual = PasskeyBiometricCompatibilityPolicy.shouldBypassBiometricForPasskey(
             romType = DeviceUtils.ROMType.OTHER,
             isBypassEnabled = false,
+            hasHyperOsSystemProperty = false,
+        )
+
+        assertFalse(actual)
+    }
+
+    @Test
+    fun `should not bypass biometric when hyperos property is missing`() {
+        val actual = PasskeyBiometricCompatibilityPolicy.shouldBypassBiometricForPasskey(
+            romType = DeviceUtils.ROMType.HYPER_OS,
+            isBypassEnabled = true,
+            hasHyperOsSystemProperty = false,
         )
 
         assertFalse(actual)

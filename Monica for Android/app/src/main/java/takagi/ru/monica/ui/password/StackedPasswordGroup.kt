@@ -55,6 +55,8 @@ fun StackedPasswordGroup(
     smoothAuthenticatorProgress: Boolean = true,
     enableSharedBounds: Boolean = true
 ) {
+    val leadPassword = passwords.firstOrNull() ?: return
+
     // 检查是否为多密码合并卡片(除密码外信息完全相同)
     val isMergedPasswordCard = passwords.size > 1 && 
         passwords.map { getPasswordInfoKey(it) }.distinct().size == 1
@@ -96,7 +98,7 @@ fun StackedPasswordGroup(
 
     // 单个密码直接显示，不堆叠 (且不是合并卡片)
     if (passwords.size == 1 && !isMergedPasswordCard) {
-        val password = passwords.first()
+        val password = leadPassword
         PasswordListSingleCardItem(
             entry = password,
             onClick = {
@@ -130,9 +132,9 @@ fun StackedPasswordGroup(
     if (isMergedPasswordCard) {
         if (isSelectionMode) {
             takagi.ru.monica.ui.gestures.SwipeActions(
-                onSwipeLeft = { onSwipeLeft(passwords.first()) },
+                onSwipeLeft = { onSwipeLeft(leadPassword) },
                 onSwipeRight = { onGroupSwipeRight(passwords) },
-                isSwiped = passwords.first().id == swipedItemId,
+                isSwiped = leadPassword.id == swipedItemId,
                 enabled = true
             ) {
                 MultiPasswordEntryCard(
@@ -147,7 +149,7 @@ fun StackedPasswordGroup(
                     onCardClick = if (!isSelectionMode) {
                         { onOpenMultiPasswordDialog(passwords) }
                     } else null,
-                    onLongClick = { onLongClick(passwords.first()) },
+                    onLongClick = { onLongClick(leadPassword) },
                     onToggleFavorite = { password -> onToggleFavorite(password) },
                     onToggleGroupCover = null,
                     isSelectionMode = isSelectionMode,
@@ -166,19 +168,19 @@ fun StackedPasswordGroup(
                 )
             }
         } else {
-            val displayEntry = passwords.first().copy(
+            val displayEntry = leadPassword.copy(
                 isFavorite = passwords.all { it.isFavorite }
             )
             takagi.ru.monica.ui.gestures.SwipeActions(
-                onSwipeLeft = { onSwipeLeft(passwords.first()) },
+                onSwipeLeft = { onSwipeLeft(leadPassword) },
                 onSwipeRight = { onGroupSwipeRight(passwords) },
-                isSwiped = passwords.first().id == swipedItemId,
+                isSwiped = leadPassword.id == swipedItemId,
                 enabled = true
             ) {
                 PasswordEntryCard(
                     entry = displayEntry,
                     onClick = { onOpenMultiPasswordDialog(passwords) },
-                    onLongClick = { onLongClick(passwords.first()) },
+                    onLongClick = { onLongClick(leadPassword) },
                     onToggleFavorite = { passwords.forEach(onToggleFavorite) },
                     onToggleGroupCover = null,
                     isSelectionMode = false,
@@ -282,7 +284,7 @@ fun StackedPasswordGroup(
                 label = "shape"
             )
             
-            val isSelected = selectedPasswords.contains(passwords.first().id)
+            val isSelected = selectedPasswords.contains(leadPassword.id)
             val cardColors = if (isSelected) {
                 CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
             } else {
@@ -291,13 +293,13 @@ fun StackedPasswordGroup(
             
             takagi.ru.monica.ui.gestures.SwipeActions(
                 onSwipeLeft = { 
-                    if (!effectiveExpanded) onSwipeLeft(passwords.first()) 
+                    if (!effectiveExpanded) onSwipeLeft(leadPassword) 
                     // Expanded state swipe logic handled inside? Or disable swipe on container when expanded?
                 },
                 onSwipeRight = { 
                     if (!effectiveExpanded) onGroupSwipeRight(passwords)
                 },
-                isSwiped = passwords.first().id == swipedItemId,
+                isSwiped = leadPassword.id == swipedItemId,
                 enabled = !effectiveExpanded // Disable swipe actions on the container when expanded
             ) {
                 Card(
@@ -401,15 +403,15 @@ fun StackedPasswordGroup(
                                             
                                             Column(modifier = Modifier.weight(1f)) {
                                                 Text(
-                                                    text = passwords.first().title,
+                                                    text = leadPassword.title,
                                                     style = MaterialTheme.typography.titleMedium,
                                                     fontWeight = FontWeight.SemiBold,
                                                     maxLines = 1,
                                                     overflow = TextOverflow.Ellipsis
                                                 )
-                                                if (passwords.first().website.isNotBlank()) {
+                                                if (leadPassword.website.isNotBlank()) {
                                                     Text(
-                                                        text = passwords.first().website,
+                                                        text = leadPassword.website,
                                                         style = MaterialTheme.typography.bodySmall,
                                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                         maxLines = 1,
@@ -528,16 +530,28 @@ fun StackedPasswordGroup(
                                             .padding(horizontal = edgeHitWidth, vertical = edgeHitHeight),
                                         verticalArrangement = Arrangement.spacedBy(12.dp)
                                     ) {
-                                        val groupedByInfo = passwords.groupBy { getPasswordInfoKey(it) }
+                                        val groupedByInfo = remember(passwords) {
+                                            passwords
+                                                .groupBy { getPasswordInfoKey(it) }
+                                                .values
+                                                .mapNotNull { group ->
+                                                    group
+                                                        .sortedBy { it.sortOrder }
+                                                        .takeIf { it.isNotEmpty() }
+                                                }
+                                        }
                                         
-                                        groupedByInfo.values.forEachIndexed { groupIndex, passwordGroup ->
-                                            takagi.ru.monica.ui.gestures.SwipeActions(
-                                                    onSwipeLeft = { onSwipeLeft(passwordGroup.first()) },
-                                                    onSwipeRight = { onSwipeRight(passwordGroup.first()) },
+                                        groupedByInfo.forEach { passwordGroup ->
+                                            val groupLeadPassword = passwordGroup.firstOrNull()
+                                                ?: return@forEach
+                                            key("stack_group_${groupLeadPassword.id}_${passwordGroup.size}") {
+                                                takagi.ru.monica.ui.gestures.SwipeActions(
+                                                    onSwipeLeft = { onSwipeLeft(groupLeadPassword) },
+                                                    onSwipeRight = { onSwipeRight(groupLeadPassword) },
                                                     enabled = true
                                                 ) {
                                                     if (passwordGroup.size == 1) {
-                                                        val password = passwordGroup.first()
+                                                        val password = groupLeadPassword
                                                         PasswordEntryCard(
                                                             entry = password,
                                                             onClick = {
@@ -580,7 +594,7 @@ fun StackedPasswordGroup(
                                                             onCardClick = if (!isSelectionMode) {
                                                                 { onOpenMultiPasswordDialog(passwordGroup) }
                                                             } else null,
-                                                            onLongClick = { onLongClick(passwordGroup.first()) },
+                                                            onLongClick = { onLongClick(groupLeadPassword) },
                                                             onToggleFavorite = { password -> onToggleFavorite(password) },
                                                             onToggleGroupCover = if (passwords.size > 1) {
                                                                 { password -> onToggleGroupCover(password) }
@@ -600,19 +614,19 @@ fun StackedPasswordGroup(
                                                             smoothAuthenticatorProgress = smoothAuthenticatorProgress
                                                         )
                                                     } else {
-                                                        val displayEntry = passwordGroup.first().copy(
+                                                        val displayEntry = groupLeadPassword.copy(
                                                             isFavorite = passwordGroup.all { it.isFavorite },
                                                             isGroupCover = passwordGroup.any { it.isGroupCover }
                                                         )
                                                         PasswordEntryCard(
                                                             entry = displayEntry,
                                                             onClick = { onOpenMultiPasswordDialog(passwordGroup) },
-                                                            onLongClick = { onLongClick(passwordGroup.first()) },
+                                                            onLongClick = { onLongClick(groupLeadPassword) },
                                                             onToggleFavorite = { passwordGroup.forEach(onToggleFavorite) },
                                                             onToggleGroupCover = if (passwords.size > 1) {
                                                                 {
                                                                     val coverTarget = passwordGroup.firstOrNull { it.isGroupCover }
-                                                                        ?: passwordGroup.first()
+                                                                        ?: groupLeadPassword
                                                                     onToggleGroupCover(coverTarget)
                                                                 }
                                                             } else null,
@@ -633,6 +647,7 @@ fun StackedPasswordGroup(
                                                         )
                                                     }
                                                 }
+                                            }
                                         }
                                     }
                                     

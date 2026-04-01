@@ -10,7 +10,10 @@ object PasskeyBiometricCompatibilityPolicy {
     fun shouldBypassBiometricForPasskey(
         romType: DeviceUtils.ROMType,
         isBypassEnabled: Boolean,
+        hasHyperOsSystemProperty: Boolean,
     ): Boolean {
-        return isBypassEnabled && romType == DeviceUtils.ROMType.HYPER_OS
+        return isBypassEnabled &&
+            romType == DeviceUtils.ROMType.HYPER_OS &&
+            hasHyperOsSystemProperty
     }
 }

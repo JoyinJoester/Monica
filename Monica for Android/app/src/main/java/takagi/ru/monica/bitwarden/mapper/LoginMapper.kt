@@ -4,6 +4,7 @@ import takagi.ru.monica.bitwarden.api.*
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.model.SshKeyData
 import takagi.ru.monica.data.model.SshKeyDataCodec
+import takagi.ru.monica.util.TotpDataResolver
 import java.util.Date
 
 /**
@@ -17,6 +18,16 @@ import java.util.Date
 class LoginMapper : BitwardenMapper<PasswordEntry> {
     
     override fun toCreateRequest(item: PasswordEntry, folderId: String?): CipherCreateRequest {
+        val totpPayload = item.authenticatorKey.takeIf { it.isNotBlank() }?.let {
+            TotpDataResolver.fromAuthenticatorKey(
+                rawKey = it,
+                fallbackIssuer = item.website,
+                fallbackAccountName = item.username
+            )?.let { resolved ->
+                TotpDataResolver.toBitwardenPayload(item.title, resolved)
+            } ?: it
+        }
+
         return CipherCreateRequest(
             type = 1,  // Login
             name = item.title,
@@ -27,7 +38,7 @@ class LoginMapper : BitwardenMapper<PasswordEntry> {
                 uris = buildUriList(item),
                 username = item.username.takeIf { it.isNotBlank() },
                 password = item.password.takeIf { it.isNotBlank() },
-                totp = item.authenticatorKey.takeIf { it.isNotBlank() }
+                totp = totpPayload
             ),
             // 可选：添加自定义字段
             fields = buildCustomFields(item)
@@ -83,13 +94,34 @@ class LoginMapper : BitwardenMapper<PasswordEntry> {
         if (cipher.type != 1) return true
         
         val login = cipher.login
+        val localTotp = item.authenticatorKey.takeIf { it.isNotBlank() }?.let {
+            TotpDataResolver.fromAuthenticatorKey(
+                rawKey = it,
+                fallbackIssuer = item.website,
+                fallbackAccountName = item.username
+            )
+        }
+        val remoteTotp = (login?.totp ?: "").takeIf { it.isNotBlank() }?.let {
+            TotpDataResolver.fromAuthenticatorKey(
+                rawKey = it,
+                fallbackIssuer = extractMainUri(login?.uris),
+                fallbackAccountName = login?.username ?: ""
+            )
+        }
+        val sameTotp = when {
+            localTotp == null && remoteTotp == null -> true
+            localTotp != null && remoteTotp != null -> {
+                TotpDataResolver.hasEquivalentOtpParameters(localTotp, remoteTotp)
+            }
+            else -> false
+        }
         
         return item.title != cipher.name ||
                 item.username != (login?.username ?: "") ||
                 item.password != (login?.password ?: "") ||
                 item.notes != (cipher.notes ?: "") ||
                 item.isFavorite != (cipher.favorite == true) ||
-                item.authenticatorKey != (login?.totp ?: "") ||
+                !sameTotp ||
                 !matchUris(item, login?.uris)
     }
     

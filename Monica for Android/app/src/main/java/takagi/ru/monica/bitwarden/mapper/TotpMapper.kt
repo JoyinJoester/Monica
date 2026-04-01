@@ -6,6 +6,8 @@ import kotlinx.serialization.json.jsonPrimitive
 import takagi.ru.monica.bitwarden.api.*
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.util.TotpDataResolver
 import java.util.Date
 
 /**
@@ -28,12 +30,13 @@ class TotpMapper : BitwardenMapper<SecureItem> {
             "TotpMapper only supports TOTP items" 
         }
         
-        val totpData = parseTotpData(item.itemData)
+        val totpData = TotpDataResolver.normalizeTotpData(parseTotpData(item.itemData))
+        val totpPayload = TotpDataResolver.toBitwardenPayload(item.title, totpData)
         
         return CipherCreateRequest(
             type = 1, // Login (with TOTP only)
             name = item.title,
-            notes = buildNotes(item, totpData),
+            notes = item.notes.takeIf { it.isNotBlank() },
             folderId = folderId,
             favorite = item.isFavorite,
             login = CipherLoginApiData(
@@ -41,8 +44,8 @@ class TotpMapper : BitwardenMapper<SecureItem> {
                 uris = totpData.issuer.takeIf { it.isNotBlank() }?.let {
                     listOf(CipherUriApiData(uri = "otpauth://totp/${it}"))
                 },
-                totp = totpData.secret,
-                username = totpData.account.takeIf { it.isNotBlank() }
+                totp = totpPayload,
+                username = totpData.accountName.takeIf { it.isNotBlank() }
             )
         )
     }
@@ -56,25 +59,35 @@ class TotpMapper : BitwardenMapper<SecureItem> {
         
         // 从 URI 解析 issuer
         val issuer = parseIssuerFromUri(login.uris?.firstOrNull()?.uri)
-        
-        val totpData = TotpItemData(
-            secret = login.totp ?: "",
-            issuer = issuer ?: cipher.name ?: "",
-            account = login.username ?: "",
-            algorithm = "SHA1",  // 默认值
-            digits = 6,
-            period = 30
+        val remoteNotes = cipher.notes.orEmpty()
+        val notesWithoutLegacyConfig = stripLegacyConfigNotes(remoteNotes)
+        val legacyConfig = parseLegacyConfig(remoteNotes)
+        val resolvedTotpData = TotpDataResolver.fromAuthenticatorKey(
+            rawKey = login.totp ?: "",
+            fallbackIssuer = issuer ?: cipher.name.orEmpty(),
+            fallbackAccountName = login.username.orEmpty()
+        ) ?: TotpData(
+            secret = "",
+            issuer = issuer ?: cipher.name.orEmpty(),
+            accountName = login.username.orEmpty()
+        )
+        val totpData = TotpDataResolver.normalizeTotpData(
+            resolvedTotpData.copy(
+                algorithm = legacyConfig?.algorithm ?: resolvedTotpData.algorithm,
+                digits = legacyConfig?.digits ?: resolvedTotpData.digits,
+                period = legacyConfig?.period ?: resolvedTotpData.period
+            )
         )
         
         return SecureItem(
             id = 0,
             itemType = ItemType.TOTP,
             title = cipher.name ?: "验证器",
-            notes = cipher.notes ?: "",
+            notes = notesWithoutLegacyConfig,
             isFavorite = cipher.favorite == true,
             createdAt = Date(),
             updatedAt = Date(),
-            itemData = json.encodeToString(TotpItemData.serializer(), totpData),
+            itemData = json.encodeToString(TotpData.serializer(), totpData),
             bitwardenVaultId = vaultId,
             bitwardenCipherId = cipher.id,
             bitwardenFolderId = cipher.folderId,
@@ -86,13 +99,14 @@ class TotpMapper : BitwardenMapper<SecureItem> {
     override fun hasDifference(item: SecureItem, cipher: CipherApiResponse): Boolean {
         if (cipher.type != 1) return true
         
-        val login = cipher.login ?: return true
         val localData = parseTotpData(item.itemData)
+        val remoteData = fromCipherResponse(cipher, item.bitwardenVaultId ?: 0)
+            .let { parseTotpData(it.itemData) }
         
         return item.title != cipher.name ||
                 item.isFavorite != (cipher.favorite == true) ||
-                localData.secret != (login.totp ?: "") ||
-                localData.account != (login.username ?: "")
+                item.notes != stripLegacyConfigNotes(cipher.notes.orEmpty()) ||
+                !TotpDataResolver.hasEquivalentOtpParameters(localData, remoteData)
     }
     
     override fun merge(
@@ -124,28 +138,6 @@ class TotpMapper : BitwardenMapper<SecureItem> {
     }
     
     /**
-     * 构建笔记内容（包含 Monica 特有数据）
-     */
-    private fun buildNotes(item: SecureItem, totpData: TotpItemData): String? {
-        val parts = mutableListOf<String>()
-        
-        if (item.notes.isNotBlank()) {
-            parts.add(item.notes)
-        }
-        
-        // 添加 Monica 元数据标记
-        if (totpData.algorithm != "SHA1" || totpData.digits != 6 || totpData.period != 30) {
-            parts.add("---")
-            parts.add("[Monica TOTP Config]")
-            parts.add("Algorithm: ${totpData.algorithm}")
-            parts.add("Digits: ${totpData.digits}")
-            parts.add("Period: ${totpData.period}")
-        }
-        
-        return parts.joinToString("\n").takeIf { it.isNotBlank() }
-    }
-    
-    /**
      * 从 otpauth URI 解析 issuer
      */
     private fun parseIssuerFromUri(uri: String?): String? {
@@ -159,28 +151,37 @@ class TotpMapper : BitwardenMapper<SecureItem> {
         }
     }
     
-    private fun parseTotpData(itemData: String): TotpItemData {
-        return try {
-            json.decodeFromString(TotpItemData.serializer(), itemData)
-        } catch (e: Exception) {
-            // 尝试旧格式兼容
-            try {
-                val obj = json.parseToJsonElement(itemData) as? JsonObject
-                TotpItemData(
-                    secret = obj?.get("secret")?.jsonPrimitive?.content 
-                        ?: obj?.get("key")?.jsonPrimitive?.content ?: "",
-                    issuer = obj?.get("issuer")?.jsonPrimitive?.content 
-                        ?: obj?.get("serviceName")?.jsonPrimitive?.content ?: "",
-                    account = obj?.get("account")?.jsonPrimitive?.content 
-                        ?: obj?.get("accountName")?.jsonPrimitive?.content ?: "",
-                    algorithm = obj?.get("algorithm")?.jsonPrimitive?.content ?: "SHA1",
-                    digits = obj?.get("digits")?.jsonPrimitive?.content?.toIntOrNull() ?: 6,
-                    period = obj?.get("period")?.jsonPrimitive?.content?.toIntOrNull() ?: 30
-                )
-            } catch (e2: Exception) {
-                TotpItemData()
+    private fun parseTotpData(itemData: String): TotpData {
+        return TotpDataResolver.parseStoredItemData(itemData) ?: TotpData(secret = "")
+    }
+
+    private fun stripLegacyConfigNotes(notes: String): String {
+        val marker = "\n---\n[Monica TOTP Config]"
+        return notes.substringBefore(marker).trim()
+    }
+
+    private fun parseLegacyConfig(notes: String): LegacyTotpConfig? {
+        val marker = "[Monica TOTP Config]"
+        if (!notes.contains(marker)) return null
+
+        val configBlock = notes.substringAfter(marker, "").trim()
+        if (configBlock.isBlank()) return null
+
+        val values = configBlock
+            .lineSequence()
+            .map { it.trim() }
+            .filter { it.contains(":") }
+            .associate {
+                val key = it.substringBefore(":").trim()
+                val value = it.substringAfter(":").trim()
+                key to value
             }
-        }
+
+        return LegacyTotpConfig(
+            algorithm = values["Algorithm"]?.takeIf { it.isNotBlank() },
+            digits = values["Digits"]?.toIntOrNull(),
+            period = values["Period"]?.toIntOrNull()
+        )
     }
     
     private fun parseRevisionDate(dateStr: String?): Long {
@@ -206,6 +207,12 @@ class TotpMapper : BitwardenMapper<SecureItem> {
         }
     }
 }
+
+private data class LegacyTotpConfig(
+    val algorithm: String?,
+    val digits: Int?,
+    val period: Int?
+)
 
 /**
  * Monica TOTP 数据结构

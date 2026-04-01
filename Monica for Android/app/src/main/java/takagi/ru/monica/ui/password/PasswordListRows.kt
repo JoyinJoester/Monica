@@ -18,6 +18,9 @@ import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.ui.password.PasswordGroupListItemUi
 import takagi.ru.monica.ui.password.PasswordListAggregateConfig
 import takagi.ru.monica.ui.password.PasswordListCardBadge
+import takagi.ru.monica.ui.password.PasswordManualStackGroup
+import takagi.ru.monica.ui.password.PasswordManualStackGroupListItemUi
+import takagi.ru.monica.ui.password.PasswordPageCardItemUi
 import takagi.ru.monica.ui.password.PasswordPageListItemUi
 import takagi.ru.monica.ui.password.PasswordListSingleCardItem
 import takagi.ru.monica.ui.password.PasswordSupplementaryListItemUi
@@ -25,6 +28,7 @@ import takagi.ru.monica.ui.password.StackCardMode
 import takagi.ru.monica.ui.password.StackedPasswordGroup
 import takagi.ru.monica.ui.password.passwordSelectionKey
 import takagi.ru.monica.ui.password.selectionKeysForPasswords
+import takagi.ru.monica.ui.password.toPasswordPageCardItemUi
 import takagi.ru.monica.viewmodel.PasswordViewModel
 
 internal fun LazyListScope.passwordPageListRows(
@@ -50,6 +54,115 @@ internal fun LazyListScope.passwordPageListRows(
     aggregateConfig: PasswordListAggregateConfig?,
     aggregateUiState: PasswordListAggregateUiState
 ) {
+    fun toggleSelectionForKey(key: String) {
+        onSelectedItemKeysChange(
+            if (key in selectedItemKeys) {
+                selectedItemKeys - key
+            } else {
+                selectedItemKeys + key
+            }
+        )
+    }
+
+    fun toggleSelectionForCards(cards: List<PasswordPageCardItemUi>) {
+        val cardKeys = cards.mapTo(linkedSetOf(), PasswordPageCardItemUi::key)
+        val allSelected = cardKeys.all { it in selectedItemKeys }
+        onSelectedItemKeysChange(
+            if (allSelected) {
+                selectedItemKeys - cardKeys
+            } else {
+                selectedItemKeys + cardKeys
+            }
+        )
+    }
+
+    fun openCard(card: PasswordPageCardItemUi) {
+        when (card.type) {
+            PasswordPageContentType.PASSWORD ->
+                card.passwordId?.let { passwordId ->
+                    passwordEntries.firstOrNull { it.id == passwordId }?.let(onPasswordClick)
+                }
+
+            PasswordPageContentType.AUTHENTICATOR ->
+                card.secureItemId?.let { aggregateConfig?.onOpenTotp?.invoke(it) }
+
+            PasswordPageContentType.CARD_WALLET ->
+                card.secureItemId?.let { itemId ->
+                    if (card.isDocument) {
+                        aggregateConfig?.onOpenDocument?.invoke(itemId)
+                    } else {
+                        aggregateConfig?.onOpenBankCard?.invoke(itemId)
+                    }
+                }
+
+            PasswordPageContentType.NOTE ->
+                aggregateConfig?.onOpenNote?.invoke(card.secureItemId)
+
+            PasswordPageContentType.PASSKEY ->
+                card.passkeyCredentialId?.let { aggregateConfig?.onOpenPasskey?.invoke(it) }
+        }
+    }
+
+    fun requestDeleteForCards(cards: List<PasswordPageCardItemUi>) {
+        haptic.performWarning()
+        if (!isSelectionMode) {
+            onSelectionModeChange(true)
+        }
+        onSelectedItemKeysChange(cards.mapTo(linkedSetOf(), PasswordPageCardItemUi::key))
+        if (!showBatchDeleteDialog) {
+            onShowBatchDeleteDialogChange(true)
+        }
+    }
+
+    fun toggleFavoriteForCard(card: PasswordPageCardItemUi) {
+        when (card.type) {
+            PasswordPageContentType.PASSWORD ->
+                card.passwordId?.let { passwordId ->
+                    passwordEntries.firstOrNull { it.id == passwordId }?.let { password ->
+                        viewModel.toggleFavorite(password.id, !password.isFavorite)
+                    }
+                }
+
+            PasswordPageContentType.AUTHENTICATOR ->
+                card.secureItemId?.let {
+                    aggregateUiState.totpViewModel?.toggleFavorite(it, !card.entry.isFavorite)
+                }
+
+            PasswordPageContentType.CARD_WALLET ->
+                card.secureItemId?.let { id ->
+                    if (card.isDocument) {
+                        aggregateUiState.documentViewModel?.toggleFavorite(id)
+                    } else {
+                        aggregateUiState.bankCardViewModel?.toggleFavorite(id)
+                    }
+                }
+
+            PasswordPageContentType.NOTE ->
+                card.secureItemId?.let { noteId ->
+                    aggregateUiState.notes.firstOrNull { it.id == noteId }?.let { note ->
+                        val decoded = NoteContentCodec.decodeFromItem(note)
+                        aggregateUiState.noteViewModel?.updateNote(
+                            id = note.id,
+                            content = decoded.content,
+                            title = note.title,
+                            tags = decoded.tags,
+                            isMarkdown = decoded.isMarkdown,
+                            isFavorite = !note.isFavorite,
+                            createdAt = note.createdAt,
+                            categoryId = note.categoryId,
+                            imagePaths = note.imagePaths,
+                            keepassDatabaseId = note.keepassDatabaseId,
+                            keepassGroupPath = note.keepassGroupPath,
+                            bitwardenVaultId = note.bitwardenVaultId,
+                            bitwardenFolderId = note.bitwardenFolderId
+                        )
+                    }
+                }
+
+            PasswordPageContentType.PASSKEY -> Unit
+        }
+    }
+
     items(passwordPageListItems, key = { item -> item.key }) { listItem ->
         when (listItem) {
             is PasswordGroupListItemUi -> {
@@ -206,43 +319,50 @@ internal fun LazyListScope.passwordPageListRows(
                 )
             }
 
+            is PasswordManualStackGroupListItemUi -> {
+                PasswordManualStackGroup(
+                    groupKey = listItem.groupKey,
+                    cards = listItem.cards,
+                    isSelectionMode = isSelectionMode,
+                    selectedItemKeys = selectedItemKeys,
+                    onCardClick = ::openCard,
+                    onToggleCardSelection = { card ->
+                        haptic.performSuccess()
+                        if (!isSelectionMode) {
+                            onSelectionModeChange(true)
+                        }
+                        toggleSelectionForKey(card.key)
+                    },
+                    onToggleGroupSelection = { cards ->
+                        haptic.performSuccess()
+                        if (!isSelectionMode) {
+                            onSelectionModeChange(true)
+                        }
+                        toggleSelectionForCards(cards)
+                    },
+                    onRequestDelete = ::requestDeleteForCards,
+                    onToggleFavorite = ::toggleFavoriteForCard,
+                    iconCardsEnabled = appSettings.iconCardsEnabled && appSettings.passwordPageIconEnabled,
+                    unmatchedIconHandlingStrategy = appSettings.unmatchedIconHandlingStrategy,
+                    passwordCardDisplayMode = appSettings.passwordCardDisplayMode,
+                    passwordCardDisplayFields = appSettings.passwordCardDisplayFields,
+                    showAuthenticator = appSettings.passwordCardShowAuthenticator,
+                    hideOtherContentWhenAuthenticator = appSettings.passwordCardHideOtherContentWhenAuthenticator,
+                    totpTimeOffsetSeconds = appSettings.totpTimeOffset,
+                    smoothAuthenticatorProgress = appSettings.validatorSmoothProgress
+                )
+            }
+
             is PasswordSupplementaryListItemUi -> {
                 val item = listItem.item
+                val card = item.toPasswordPageCardItemUi()
                 PasswordListSingleCardItem(
                     entry = item.entry,
                     onClick = {
                         if (isSelectionMode) {
-                            onSelectedItemKeysChange(
-                                if (item.key in selectedItemKeys) {
-                                    selectedItemKeys - item.key
-                                } else {
-                                    selectedItemKeys + item.key
-                                }
-                            )
+                            toggleSelectionForKey(item.key)
                         } else {
-                            when (item.type) {
-                                PasswordPageContentType.AUTHENTICATOR ->
-                                    item.secureItemId?.let { aggregateConfig?.onOpenTotp?.invoke(it) }
-
-                                PasswordPageContentType.CARD_WALLET ->
-                                    item.secureItemId?.let { itemId ->
-                                        if (item.isDocument) {
-                                            aggregateConfig?.onOpenDocument?.invoke(itemId)
-                                        } else {
-                                            aggregateConfig?.onOpenBankCard?.invoke(itemId)
-                                        }
-                                    }
-
-                                PasswordPageContentType.NOTE ->
-                                    aggregateConfig?.onOpenNote?.invoke(item.secureItemId)
-
-                                PasswordPageContentType.PASSKEY ->
-                                    item.passkeyCredentialId?.let {
-                                        aggregateConfig?.onOpenPasskey?.invoke(it)
-                                    }
-
-                                PasswordPageContentType.PASSWORD -> Unit
-                            }
+                            openCard(card)
                         }
                     },
                     onLongClick = {
@@ -252,80 +372,21 @@ internal fun LazyListScope.passwordPageListRows(
                             onSelectedItemKeysChange(setOf(item.key))
                         }
                     },
-                    onSwipeLeft = {
-                        haptic.performWarning()
-                        if (!isSelectionMode) {
-                            onSelectionModeChange(true)
-                        }
-                        onSelectedItemKeysChange(setOf(item.key))
-                        if (!showBatchDeleteDialog) {
-                            onShowBatchDeleteDialogChange(true)
-                        }
-                    },
+                    onSwipeLeft = { requestDeleteForCards(listOf(card)) },
                     onSwipeRight = {
                         haptic.performSuccess()
                         if (!isSelectionMode) {
                             onSelectionModeChange(true)
                         }
-                        onSelectedItemKeysChange(
-                            if (item.key in selectedItemKeys) {
-                                selectedItemKeys - item.key
-                            } else {
-                                selectedItemKeys + item.key
-                            }
-                        )
+                        toggleSelectionForKey(item.key)
                     },
                     isSwiped = false,
                     isSelectionMode = isSelectionMode,
                     isSelected = item.key in selectedItemKeys,
-                    onToggleFavorite = when (item.type) {
-                        PasswordPageContentType.AUTHENTICATOR -> {
-                            {
-                                item.secureItemId?.let {
-                                    aggregateUiState.totpViewModel?.toggleFavorite(it, !item.entry.isFavorite)
-                                }
-                            }
-                        }
-
-                        PasswordPageContentType.CARD_WALLET -> {
-                            {
-                                item.secureItemId?.let { id ->
-                                    if (item.isDocument) {
-                                        aggregateUiState.documentViewModel?.toggleFavorite(id)
-                                    } else {
-                                        aggregateUiState.bankCardViewModel?.toggleFavorite(id)
-                                    }
-                                }
-                            }
-                        }
-
-                        PasswordPageContentType.NOTE -> {
-                            {
-                                item.secureItemId?.let { noteId ->
-                                    aggregateUiState.notes.firstOrNull { it.id == noteId }?.let { note ->
-                                        val decoded = NoteContentCodec.decodeFromItem(note)
-                                        aggregateUiState.noteViewModel?.updateNote(
-                                            id = note.id,
-                                            content = decoded.content,
-                                            title = note.title,
-                                            tags = decoded.tags,
-                                            isMarkdown = decoded.isMarkdown,
-                                            isFavorite = !note.isFavorite,
-                                            createdAt = note.createdAt,
-                                            categoryId = note.categoryId,
-                                            imagePaths = note.imagePaths,
-                                            keepassDatabaseId = note.keepassDatabaseId,
-                                            keepassGroupPath = note.keepassGroupPath,
-                                            bitwardenVaultId = note.bitwardenVaultId,
-                                            bitwardenFolderId = note.bitwardenFolderId
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        PasswordPageContentType.PASSKEY,
-                        PasswordPageContentType.PASSWORD -> null
+                    onToggleFavorite = if (card.supportsFavorite) {
+                        { toggleFavoriteForCard(card) }
+                    } else {
+                        null
                     },
                     unmatchedIconHandlingStrategy = aggregateUiState.cardStyle.unmatchedIconHandlingStrategy,
                     passwordCardDisplayMode = aggregateUiState.cardStyle.passwordCardDisplayMode,

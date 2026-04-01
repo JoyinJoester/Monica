@@ -61,6 +61,7 @@ import androidx.navigation.NavOptionsBuilder
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import kotlinx.coroutines.flow.first
@@ -252,30 +253,13 @@ class MainActivity : BaseMonicaActivity() {
         // Initialize auto backup if enabled (deferred to reduce cold-start contention)
         initializeAutoBackupDeferred()
 
-        // Initialize Notification Validator Service
+        // Notification Validator is temporarily disabled for stability.
         lifecycleScope.launch {
-            settingsManager.settingsFlow
-                .map {
-                    Triple(
-                        it.notificationValidatorEnabled,
-                        it.notificationValidatorId,
-                        it.notificationValidatorAutoMatch
-                    )
-                }
-                .distinctUntilChanged()
-                .collect { (enabled, id, autoMatch) ->
-                    val intent = Intent(this@MainActivity, takagi.ru.monica.service.NotificationValidatorService::class.java)
-                    // Start service if enabled and either a specific validator is chosen or auto-match is on.
-                    if (enabled && (id != -1L || autoMatch)) {
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                            startForegroundService(intent)
-                        } else {
-                            startService(intent)
-                        }
-                    } else {
-                        stopService(intent)
-                    }
-                }
+            settingsManager.updateNotificationValidatorEnabled(false)
+            settingsManager.updateNotificationValidatorAutoMatch(false)
+            settingsManager.updateNotificationValidatorId(-1L)
+            val intent = Intent(this@MainActivity, takagi.ru.monica.service.NotificationValidatorService::class.java)
+            stopService(intent)
         }
 
         setContent {
@@ -449,13 +433,15 @@ fun MonicaApp(
     var startupAuthState by remember { mutableStateOf<StartupAuthState?>(null) }
     LaunchedEffect(viewModel, settingsManager) {
         val loadedState = withContext(Dispatchers.IO) {
-            val disablePasswordVerification = runCatching {
-                settingsManager.settingsFlow.first().disablePasswordVerification
-            }.getOrDefault(false)
+            val settingsSnapshot = runCatching {
+                settingsManager.settingsFlow.first()
+            }.getOrElse { AppSettings() }
+            val disablePasswordVerification = settingsSnapshot.disablePasswordVerification
             val isFirstTime = runCatching {
                 !viewModel.isMasterPasswordSet()
             }.getOrDefault(false)
             val canRestoreSession = runCatching {
+                SessionManager.updateAutoLockTimeout(settingsSnapshot.autoLockMinutes)
                 SessionManager.canSkipVerification(context)
             }.getOrDefault(false)
             StartupAuthState(
@@ -526,6 +512,7 @@ fun MonicaApp(
                     passwordHistoryManager = passwordHistoryManager,
                     initialDisablePasswordVerification = authState.disablePasswordVerification,
                     initialIsFirstTime = authState.isFirstTime,
+                    initialCanRestoreSession = authState.canRestoreSession,
                     onPermissionRequested = { permission, callback ->
                         pendingSupportPermissionCallback = callback
                         sharedSupportPermissionLauncher.launch(permission)
@@ -562,14 +549,42 @@ fun MonicaContent(
     passwordHistoryManager: PasswordHistoryManager,
     initialDisablePasswordVerification: Boolean = false,
     initialIsFirstTime: Boolean = false,
+    initialCanRestoreSession: Boolean = false,
     onPermissionRequested: (String, (Boolean) -> Unit) -> Unit
 ) {
     val context = LocalContext.current
     val isAuthenticated by viewModel.isAuthenticated.collectAsState()
     val settings by settingsViewModel.settings.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
 
     val isFirstTime = initialIsFirstTime
+    val bypassEnabled = settings.disablePasswordVerification && !isFirstTime
+    val currentRoute = navBackStackEntry?.destination?.route
+    val authRouteSet = remember {
+        setOf(
+            Screen.Login.route,
+            Screen.ForgotPassword.route,
+            Screen.ResetPassword.route,
+            Screen.SecurityQuestionsSetup.route,
+            Screen.SecurityQuestionsVerification.route
+        )
+    }
+    var hasRenderedLoginFirstFrame by remember { mutableStateOf(false) }
+    val shouldRequireAuthentication = !isAuthenticated &&
+        !bypassEnabled &&
+        !SessionManager.canSkipVerification(context)
+    val isOnAuthRoute = currentRoute != null && currentRoute in authRouteSet
+    val showAuthTransitionGate = shouldRequireAuthentication && (
+        !isOnAuthRoute ||
+            (currentRoute == Screen.Login.route && !hasRenderedLoginFirstFrame)
+        )
+
+    LaunchedEffect(shouldRequireAuthentication, currentRoute) {
+        if (!shouldRequireAuthentication || currentRoute != Screen.Login.route) {
+            hasRenderedLoginFirstFrame = false
+        }
+    }
     
     // 使用 rememberUpdatedState 确保生命周期观察者闭包始终访问最新值
     val currentIsAuthenticated by rememberUpdatedState(isAuthenticated)
@@ -618,8 +633,19 @@ fun MonicaContent(
     
     // 使用固定的 startDestination 避免竞态条件
     // 认证状态变化时通过 LaunchedEffect 处理导航
-    val fixedStartDestination = remember {
-        if (initialDisablePasswordVerification && !initialIsFirstTime) Screen.Main.createRoute() else Screen.Login.route
+    val fixedStartDestination = remember(
+        initialDisablePasswordVerification,
+        initialIsFirstTime,
+        initialCanRestoreSession
+    ) {
+        if (
+            (initialDisablePasswordVerification && !initialIsFirstTime) ||
+            initialCanRestoreSession
+        ) {
+            Screen.Main.createRoute()
+        } else {
+            Screen.Login.route
+        }
     }
     
     // 当认证状态变化时处理导航
@@ -657,24 +683,29 @@ fun MonicaContent(
         takagi.ru.monica.ui.LocalSharedTransitionScope provides null,
         takagi.ru.monica.ui.LocalReduceAnimations provides true
     ) {
-        NavHost(
-            navController = navController,
-            startDestination = fixedStartDestination
-        ) {
-        composable(Screen.Login.route) {
-            LoginScreen(
-                viewModel = viewModel,
-                settingsViewModel = settingsViewModel,
-                onLoginSuccess = {
-                    navController.navigate(Screen.Main.createRoute()) {
-                        popUpTo(Screen.Login.route) { inclusive = true }
+        Box(modifier = Modifier.fillMaxSize()) {
+            NavHost(
+                navController = navController,
+                startDestination = fixedStartDestination
+            ) {
+            composable(
+                route = Screen.Login.route,
+                enterTransition = { EnterTransition.None },
+                exitTransition = { ExitTransition.None },
+                popEnterTransition = { EnterTransition.None },
+                popExitTransition = { ExitTransition.None }
+            ) {
+                LoginScreen(
+                    viewModel = viewModel,
+                    settingsViewModel = settingsViewModel,
+                    onFirstFrameRendered = {
+                        hasRenderedLoginFirstFrame = true
+                    },
+                    onForgotPassword = {
+                        navController.navigate(Screen.ForgotPassword.route)
                     }
-                },
-                onForgotPassword = {
-                    navController.navigate(Screen.ForgotPassword.route)
-                }
-            )
-        }
+                )
+            }
 
         composable(
             route = Screen.Main.routePattern,
@@ -2654,10 +2685,24 @@ fun MonicaContent(
                     }
                 }
             )
+            }
+        }
+
+            if (showAuthTransitionGate) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                }
+            }
         }
     }
-}
-
 }
 
 @Composable

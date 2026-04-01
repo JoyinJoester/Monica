@@ -69,6 +69,7 @@ import takagi.ru.monica.ui.icons.SimpleIconCatalog
 import takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon
 import takagi.ru.monica.ui.icons.rememberSimpleIconBitmap
 import takagi.ru.monica.ui.icons.rememberUploadedPasswordIcon
+import takagi.ru.monica.util.TotpDataResolver
 import takagi.ru.monica.util.TotpParseResult
 import takagi.ru.monica.util.TotpScanParseResult
 import takagi.ru.monica.util.TotpUriParser
@@ -103,31 +104,35 @@ fun AddEditTotpScreen(
     onScanQrCode: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val resolvedInitialData = remember(initialData) {
+        initialData?.let(TotpDataResolver::normalizeTotpData)
+    }
     var title by rememberSaveable { mutableStateOf(initialTitle) }
     var notes by rememberSaveable { mutableStateOf(initialNotes) }
-    var secret by rememberSaveable { mutableStateOf(initialData?.secret ?: "") }
-    var issuer by rememberSaveable { mutableStateOf(initialData?.issuer ?: "") }
-    var accountName by rememberSaveable { mutableStateOf(initialData?.accountName ?: "") }
-    var period by rememberSaveable { mutableStateOf(initialData?.period?.toString() ?: "30") }
-    var digits by rememberSaveable { mutableStateOf(initialData?.digits?.toString() ?: "6") }
-    var selectedOtpType by rememberSaveable { mutableStateOf(initialData?.otpType ?: OtpType.TOTP) }
-    var counter by rememberSaveable { mutableStateOf(initialData?.counter?.toString() ?: "0") }
-    var pin by rememberSaveable { mutableStateOf(initialData?.pin ?: "") }
+    var secret by rememberSaveable { mutableStateOf(resolvedInitialData?.secret ?: "") }
+    var issuer by rememberSaveable { mutableStateOf(resolvedInitialData?.issuer ?: "") }
+    var accountName by rememberSaveable { mutableStateOf(resolvedInitialData?.accountName ?: "") }
+    var period by rememberSaveable { mutableStateOf(resolvedInitialData?.period?.toString() ?: "30") }
+    var digits by rememberSaveable { mutableStateOf(resolvedInitialData?.digits?.toString() ?: "6") }
+    var algorithm by rememberSaveable { mutableStateOf(resolvedInitialData?.algorithm ?: "SHA1") }
+    var selectedOtpType by rememberSaveable { mutableStateOf(resolvedInitialData?.otpType ?: OtpType.TOTP) }
+    var counter by rememberSaveable { mutableStateOf(resolvedInitialData?.counter?.toString() ?: "0") }
+    var pin by rememberSaveable { mutableStateOf(resolvedInitialData?.pin ?: "") }
     var selectedCategoryId by rememberSaveable { mutableStateOf(initialCategoryId) }
     var keepassGroupPath by rememberSaveable { mutableStateOf(initialKeePassGroupPath) }
     
-    var link by rememberSaveable { mutableStateOf(initialData?.link ?: "") }
-    var associatedApp by rememberSaveable { mutableStateOf(initialData?.associatedApp ?: "") }
+    var link by rememberSaveable { mutableStateOf(resolvedInitialData?.link ?: "") }
+    var associatedApp by rememberSaveable { mutableStateOf(resolvedInitialData?.associatedApp ?: "") }
     var associatedAppName by rememberSaveable { mutableStateOf("") }
-    var boundPasswordId by remember { mutableStateOf(initialData?.boundPasswordId) }
-    var customIconType by rememberSaveable { mutableStateOf(initialData?.customIconType ?: PASSWORD_ICON_TYPE_NONE) }
+    var boundPasswordId by remember { mutableStateOf(resolvedInitialData?.boundPasswordId) }
+    var customIconType by rememberSaveable { mutableStateOf(resolvedInitialData?.customIconType ?: PASSWORD_ICON_TYPE_NONE) }
     var customIconValue by rememberSaveable {
-        mutableStateOf(initialData?.customIconValue?.takeIf { it.isNotBlank() }?.let { File(it).name })
+        mutableStateOf(resolvedInitialData?.customIconValue?.takeIf { it.isNotBlank() }?.let { File(it).name })
     }
-    var customIconUpdatedAt by rememberSaveable { mutableStateOf(initialData?.customIconUpdatedAt ?: 0L) }
-    var originalCustomIconType by remember { mutableStateOf(initialData?.customIconType ?: PASSWORD_ICON_TYPE_NONE) }
+    var customIconUpdatedAt by rememberSaveable { mutableStateOf(resolvedInitialData?.customIconUpdatedAt ?: 0L) }
+    var originalCustomIconType by remember { mutableStateOf(resolvedInitialData?.customIconType ?: PASSWORD_ICON_TYPE_NONE) }
     var originalCustomIconValue by remember {
-        mutableStateOf(initialData?.customIconValue?.takeIf { it.isNotBlank() }?.let { File(it).name })
+        mutableStateOf(resolvedInitialData?.customIconValue?.takeIf { it.isNotBlank() }?.let { File(it).name })
     }
     var hasSavedSuccessfully by remember { mutableStateOf(false) }
     var showCustomIconDialog by remember { mutableStateOf(false) }
@@ -136,7 +141,7 @@ fun AddEditTotpScreen(
     
     // KeePass Database Selection
     var keepassDatabaseId by rememberSaveable {
-        mutableStateOf(initialData?.keepassDatabaseId ?: initialKeePassDatabaseId)
+        mutableStateOf(resolvedInitialData?.keepassDatabaseId ?: initialKeePassDatabaseId)
     }
     val keepassDatabases by (localKeePassViewModel?.allDatabases ?: kotlinx.coroutines.flow.flowOf(emptyList())).collectAsState(initial = emptyList())
     val context = LocalContext.current
@@ -296,6 +301,7 @@ fun AddEditTotpScreen(
         accountName = imported.accountName
         period = imported.period.toString()
         digits = imported.digits.toString()
+        algorithm = imported.algorithm
         selectedOtpType = imported.otpType
         counter = imported.counter.toString()
         pin = imported.pin
@@ -347,13 +353,14 @@ fun AddEditTotpScreen(
     }
 
     val canSave = title.isNotBlank() && secret.isNotBlank()
-    val previewTotpData = remember(secret, issuer, accountName, period, digits, selectedOtpType, counter, pin) {
+    val previewTotpData = remember(secret, issuer, accountName, period, digits, algorithm, selectedOtpType, counter, pin) {
         buildInlinePreviewTotpData(
             secret = secret,
             issuer = issuer,
             accountName = accountName,
             period = period,
             digits = digits,
+            algorithm = algorithm,
             otpType = selectedOtpType,
             counter = counter,
             pin = pin
@@ -391,7 +398,7 @@ fun AddEditTotpScreen(
             accountName = accountName.trim(),
             period = period.toIntOrNull() ?: 30,
             digits = digits.toIntOrNull() ?: 6,
-            algorithm = "SHA1",
+            algorithm = algorithm.trim().uppercase().ifBlank { "SHA1" },
             otpType = selectedOtpType,
             counter = counter.toLongOrNull() ?: 0L,
             pin = pin.trim(),
@@ -1207,6 +1214,7 @@ private fun buildInlinePreviewTotpData(
     accountName: String,
     period: String,
     digits: String,
+    algorithm: String,
     otpType: OtpType,
     counter: String,
     pin: String
@@ -1234,6 +1242,7 @@ private fun buildInlinePreviewTotpData(
             accountName = accountName.trim(),
             period = resolvedPeriod,
             digits = resolvedDigits,
+            algorithm = algorithm.trim().uppercase().ifBlank { "SHA1" },
             otpType = otpType,
             counter = resolvedCounter,
             pin = resolvedPin

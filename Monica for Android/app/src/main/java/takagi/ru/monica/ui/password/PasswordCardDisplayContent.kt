@@ -17,8 +17,8 @@ import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.PasswordCardDisplayField
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.util.TotpDataResolver
 import takagi.ru.monica.util.TotpGenerator
-import takagi.ru.monica.util.TotpUriParser
 
 data class PasswordCardDisplayLine(
     val field: PasswordCardDisplayField,
@@ -152,14 +152,7 @@ fun rememberPasswordAuthenticatorDisplayState(
 private fun parsePasswordAuthenticatorTotpData(
     authenticatorKey: String
 ): TotpData? {
-    val normalized = authenticatorKey.trim()
-    if (normalized.isBlank()) return null
-
-    return if (normalized.contains("://")) {
-        TotpUriParser.parseUri(normalized)?.totpData
-    } else {
-        TotpData(secret = normalized)
-    }
+    return TotpDataResolver.fromAuthenticatorKey(authenticatorKey)
 }
 
 private fun formatAuthenticatorCode(code: String): String {

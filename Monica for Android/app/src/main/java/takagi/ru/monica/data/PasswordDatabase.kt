@@ -19,6 +19,7 @@ import takagi.ru.monica.data.bitwarden.*
         LocalKeePassDatabase::class,
         KeepassGroupSyncConfig::class,
         CustomField::class,  // 自定义字段表
+        PasswordPageAggregateStackEntry::class, // 密码页聚合堆叠元数据
         PasswordArchiveSyncMeta::class, // 归档同步元信息
         PasswordHistoryEntry::class, // 历史密码表
         PasskeyEntry::class,  // Passkey 通行密钥表
@@ -29,7 +30,7 @@ import takagi.ru.monica.data.bitwarden.*
         BitwardenConflictBackup::class,
         BitwardenPendingOperation::class
     ],
-    version = 50,
+    version = 51,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -42,6 +43,7 @@ abstract class PasswordDatabase : RoomDatabase() {
     abstract fun localKeePassDatabaseDao(): LocalKeePassDatabaseDao
     abstract fun keepassGroupSyncConfigDao(): KeepassGroupSyncConfigDao
     abstract fun customFieldDao(): CustomFieldDao  // 自定义字段 DAO
+    abstract fun passwordPageAggregateStackDao(): PasswordPageAggregateStackDao
     abstract fun passwordArchiveSyncMetaDao(): PasswordArchiveSyncMetaDao
     abstract fun passwordHistoryDao(): PasswordHistoryDao
     abstract fun passkeyDao(): PasskeyDao  // Passkey DAO
@@ -1332,6 +1334,34 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Migration 50 -> 51:
+         * 为密码页聚合视图增加跨类型手动堆叠元数据表。
+         */
+        private val MIGRATION_50_51 = object : androidx.room.migration.Migration(50, 51) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 50→51: aggregate stack metadata table")
+                    database.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS password_page_aggregate_stack_entries (
+                            item_key TEXT NOT NULL PRIMARY KEY,
+                            stack_group_id TEXT NOT NULL,
+                            stack_order INTEGER NOT NULL DEFAULT 0,
+                            updated_at INTEGER NOT NULL DEFAULT 0
+                        )
+                        """.trimIndent()
+                    )
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_password_page_aggregate_stack_entries_group ON password_page_aggregate_stack_entries(stack_group_id)"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 50→51 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 50→51 failed: ${e.message}")
+                }
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -1388,7 +1418,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_46_47,  // KeePass 原生 UUID 字段
                         MIGRATION_47_48,  // Bitwarden TLS/证书字段
                         MIGRATION_48_49,  // 历史密码表
-                        MIGRATION_49_50   // SSH 密钥结构化字段
+                        MIGRATION_49_50,  // SSH 密钥结构化字段
+                        MIGRATION_50_51   // 密码页聚合堆叠元数据
                     )
                     .build()
                 INSTANCE = instance

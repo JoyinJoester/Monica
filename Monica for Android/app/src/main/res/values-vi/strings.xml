@@ -1783,4 +1783,10 @@
     <string name="autofill_blocked_fields_share_subject">Các trường autofill bị chặn của Monica</string>
     <string name="autofill_blocked_fields_share_file_hint">Đã đính kèm tệp xuất các trường autofill bị chặn.</string>
     <string name="autofill_blocked_fields_share_failed">Chia sẻ thất bại: %1$s</string>
+    <string name="repair_bitwarden_totp_menu">Sửa dữ liệu xác thực Bitwarden cũ</string>
+    <string name="repair_bitwarden_totp_result_sync">Đã sửa %1$d bản ghi xác thực cũ, đưa %2$d bản ghi vào hàng đợi đồng bộ Bitwarden và bỏ qua %3$d bản ghi.</string>
+    <string name="repair_bitwarden_totp_result_local">Đã sửa cục bộ %1$d bản ghi xác thực cũ, bỏ qua %2$d bản ghi.</string>
+    <string name="repair_bitwarden_totp_nothing_to_fix">Không tìm thấy vấn đề xác thực Bitwarden cũ nào cần sửa.</string>
+    <string name="repair_bitwarden_totp_failed">Sửa dữ liệu xác thực Bitwarden cũ thất bại: %1$s</string>
+    <string name="repair_bitwarden_totp_failed_unknown">Lỗi không xác định</string>
 </resources>

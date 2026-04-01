@@ -169,6 +169,7 @@
             android:name=".service.NotificationValidatorService"
             android:enabled="true"
             android:exported="false"
+            android:foregroundServiceType="specialUse"
             tools:targetApi="34">
             <!-- Android 14+ specific attributes -->
             <property

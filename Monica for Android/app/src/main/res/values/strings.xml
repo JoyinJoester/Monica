@@ -3073,6 +3073,14 @@
     <string name="autofill_v2_default_keepass_desc">Limit default suggestions and list items to one KeePass database.</string>
     <string name="autofill_v2_default_bitwarden_title">Default Bitwarden vault</string>
     <string name="autofill_v2_default_bitwarden_desc">Limit default suggestions and list items to one Bitwarden vault.</string>
+    <string name="repair_bitwarden_totp_menu">Repair legacy Bitwarden authenticator data</string>
+    <string name="repair_bitwarden_totp_result_sync">Repaired %1$d legacy authenticator records, queued %2$d records for Bitwarden sync, and skipped %3$d records.</string>
+    <string name="repair_bitwarden_totp_result_local">Repaired %1$d legacy authenticator records locally and skipped %2$d records.</string>
+    <string name="repair_bitwarden_totp_nothing_to_fix">No legacy Bitwarden authenticator issues were found to repair.</string>
+    <string name="repair_bitwarden_totp_failed">Failed to repair legacy Bitwarden authenticator data: %1$s</string>
+    <string name="repair_bitwarden_totp_failed_unknown">Unknown error</string>
     <string name="autofill_service_label">Monica Autofill</string>
     <string name="version_code_max" translatable="false">9223372036854775807</string>
+    <string name="settings_search_hint">Search settings…</string>
+    <string name="settings_search_empty_hint">Try another keyword</string>
 </resources>

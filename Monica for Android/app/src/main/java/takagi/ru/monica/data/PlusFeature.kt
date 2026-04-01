@@ -24,13 +24,6 @@ object PlusFeatures {
             isAvailable = true
         ),
         PlusFeature(
-            id = "notification_validator",
-            icon = Icons.Default.Notifications,
-            titleRes = R.string.plus_feature_notification_validator_title,
-            descriptionRes = R.string.plus_feature_notification_validator_desc,
-            isAvailable = true
-        ),
-        PlusFeature(
             id = "validator_vibration",
             icon = Icons.Default.Vibration,
             titleRes = R.string.plus_feature_validator_vibration_title,

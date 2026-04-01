@@ -16,10 +16,12 @@ import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.DocumentType
 import takagi.ru.monica.data.model.NoteData
+import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.SecureCustomField
 import takagi.ru.monica.data.model.SecureCustomFieldType
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.notes.domain.NoteContentCodec
+import takagi.ru.monica.util.TotpDataResolver
 import java.util.Date
 import java.security.KeyFactory
 import java.security.KeyStore
@@ -463,6 +465,18 @@ class CipherUploadProcessor(
         symmetricKey: SymmetricCryptoKey
     ): CipherCreateRequest {
         val totpData = parseTotpData(item)
+        val normalizedTotp = TotpDataResolver.normalizeTotpData(
+            TotpData(
+                secret = totpData.secret,
+                issuer = totpData.issuer,
+                accountName = totpData.account,
+                algorithm = totpData.algorithm,
+                digits = totpData.digits,
+                period = totpData.period,
+                otpType = OtpType.TOTP
+            )
+        )
+        val totpPayload = TotpDataResolver.toBitwardenPayload(item.title, normalizedTotp)
         
         val crypto = BitwardenCrypto
         
@@ -475,17 +489,17 @@ class CipherUploadProcessor(
             folderId = item.bitwardenFolderId,
             favorite = item.isFavorite,
             login = CipherLoginApiData(
-                username = totpData.account.takeIf { it.isNotBlank() }?.let {
+                username = normalizedTotp.accountName.takeIf { it.isNotBlank() }?.let {
                     crypto.encryptString(it, symmetricKey)
                 },
-                totp = crypto.encryptString(totpData.secret, symmetricKey),
-                uris = totpData.issuer.takeIf { it.isNotBlank() }?.let {
+                totp = crypto.encryptString(totpPayload, symmetricKey),
+                uris = normalizedTotp.issuer.takeIf { it.isNotBlank() }?.let {
                     listOf(CipherUriApiData(uri = crypto.encryptString("otpauth://totp/$it", symmetricKey)))
                 }
             )
         )
     }
-    
+
     private fun createCardCipherRequest(
         item: SecureItem,
         symmetricKey: SymmetricCryptoKey

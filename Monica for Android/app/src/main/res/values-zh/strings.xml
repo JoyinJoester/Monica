@@ -2906,4 +2906,12 @@
     <string name="autofill_v2_default_scope_desc">设置自动填充列表默认展示的数据来源范围。</string>
     <string name="autofill_v2_default_keepass_title">默认 KeePass 数据库</string>
     <string name="autofill_v2_default_keepass_desc">将默认建议和列表限制在单个 KeePass 数据库内。</string>
+    <string name="repair_bitwarden_totp_menu">修复旧版 Bitwarden 验证器数据</string>
+    <string name="repair_bitwarden_totp_result_sync">已修复 %1$d 条旧版验证器记录，将 %2$d 条加入 Bitwarden 同步队列，并跳过 %3$d 条。</string>
+    <string name="repair_bitwarden_totp_result_local">已在本地修复 %1$d 条旧版验证器记录，并跳过 %2$d 条。</string>
+    <string name="repair_bitwarden_totp_nothing_to_fix">没有发现需要修复的旧版 Bitwarden 验证器问题。</string>
+    <string name="repair_bitwarden_totp_failed">修复旧版 Bitwarden 验证器数据失败：%1$s</string>
+    <string name="repair_bitwarden_totp_failed_unknown">未知错误</string>
+    <string name="settings_search_hint">搜索设置项…</string>
+    <string name="settings_search_empty_hint">试试其他关键词</string>
 </resources>

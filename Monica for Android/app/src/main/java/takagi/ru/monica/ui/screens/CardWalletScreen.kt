@@ -1161,7 +1161,7 @@ fun CardWalletScreen(
                                 .fillMaxSize()
                                 .offset { IntOffset(0, contentPullOffset) }
                                 .nestedScroll(nestedScrollConnection),
-                            userScrollEnabled = !isSelectionMode,
+                            userScrollEnabled = true,
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                         ) {
                             items(localFilteredItems, key = { it.id }) { item ->

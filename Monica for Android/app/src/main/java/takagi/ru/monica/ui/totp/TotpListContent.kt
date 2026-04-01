@@ -338,6 +338,7 @@ fun TotpListContent(
     val isTopBarSyncing = selectedBitwardenVaultId?.let { vaultId ->
         bitwardenSyncStatusByVault[vaultId]?.isRunning == true
     } == true
+    var isBitwardenTotpRepairing by remember { mutableStateOf(false) }
     // Verifier page uses plain pull-to-search only; disable pull-to-sync UX here.
     val enableBitwardenPullSync = false
     val searchTriggerDistance = remember(density) {
@@ -677,12 +678,68 @@ fun TotpListContent(
                                 DropdownMenuItem(
                                     text = { Text(stringResource(R.string.sync_bitwarden_database_menu)) },
                                     leadingIcon = { Icon(Icons.Default.Sync, contentDescription = null) },
-                                    enabled = !isTopBarSyncing,
+                                    enabled = !isTopBarSyncing && !isBitwardenTotpRepairing,
                                     onClick = {
-                                        if (isTopBarSyncing) return@DropdownMenuItem
+                                        if (isTopBarSyncing || isBitwardenTotpRepairing) return@DropdownMenuItem
                                         val vaultId = selectedBitwardenVaultId ?: return@DropdownMenuItem
                                         showTopActionsMenu = false
                                         bitwardenViewModel.requestManualSync(vaultId)
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.repair_bitwarden_totp_menu)) },
+                                    leadingIcon = { Icon(Icons.Default.Build, contentDescription = null) },
+                                    enabled = !isTopBarSyncing && !isBitwardenTotpRepairing,
+                                    onClick = {
+                                        if (isTopBarSyncing || isBitwardenTotpRepairing) return@DropdownMenuItem
+                                        val vaultId = selectedBitwardenVaultId ?: return@DropdownMenuItem
+                                        showTopActionsMenu = false
+                                        scope.launch {
+                                            isBitwardenTotpRepairing = true
+                                            try {
+                                                val result = viewModel.repairHistoricalBitwardenTotp(vaultId)
+                                                if (result.queuedForSyncCount > 0) {
+                                                    bitwardenViewModel.requestManualSync(vaultId)
+                                                    Toast.makeText(
+                                                        context,
+                                                        context.getString(
+                                                            R.string.repair_bitwarden_totp_result_sync,
+                                                            result.normalizedCount,
+                                                            result.queuedForSyncCount,
+                                                            result.skippedItems
+                                                        ),
+                                                        Toast.LENGTH_LONG
+                                                    ).show()
+                                                } else if (result.normalizedCount > 0) {
+                                                    Toast.makeText(
+                                                        context,
+                                                        context.getString(
+                                                            R.string.repair_bitwarden_totp_result_local,
+                                                            result.normalizedCount,
+                                                            result.skippedItems
+                                                        ),
+                                                        Toast.LENGTH_LONG
+                                                    ).show()
+                                                } else {
+                                                    Toast.makeText(
+                                                        context,
+                                                        context.getString(R.string.repair_bitwarden_totp_nothing_to_fix),
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
+                                            } catch (e: Exception) {
+                                                Toast.makeText(
+                                                    context,
+                                                    context.getString(
+                                                        R.string.repair_bitwarden_totp_failed,
+                                                        e.message ?: context.getString(R.string.repair_bitwarden_totp_failed_unknown)
+                                                    ),
+                                                    Toast.LENGTH_LONG
+                                                ).show()
+                                            } finally {
+                                                isBitwardenTotpRepairing = false
+                                            }
+                                        }
                                     }
                                 )
                             }

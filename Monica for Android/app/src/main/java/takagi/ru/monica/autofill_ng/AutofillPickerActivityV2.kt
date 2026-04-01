@@ -104,8 +104,8 @@ import takagi.ru.monica.ui.screens.AddEditDocumentScreen
 import takagi.ru.monica.ui.screens.AddEditPasswordInitialDraft
 import takagi.ru.monica.ui.screens.AddEditPasswordScreen
 import takagi.ru.monica.security.SessionManager
+import takagi.ru.monica.util.TotpDataResolver
 import takagi.ru.monica.util.TotpGenerator
-import takagi.ru.monica.util.TotpUriParser
 import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
@@ -936,13 +936,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
     }
 
     private fun parsePasswordAuthenticatorTotpData(authenticatorKey: String): TotpData? {
-        val normalized = authenticatorKey.trim()
-        if (normalized.isBlank()) return null
-        return if (normalized.contains("://")) {
-            TotpUriParser.parseUri(normalized)?.totpData
-        } else {
-            TotpData(secret = normalized)
-        }
+        return TotpDataResolver.fromAuthenticatorKey(authenticatorKey)
     }
 
     private fun resolveOtpFromExistingValidators(
@@ -963,21 +957,25 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
 
         validatorTotpList.firstOrNull { it.boundPasswordId == password.id }?.let { return it }
 
-        val normalizedSecret = normalizeOtpSecret(passwordTotpData?.secret)
-        if (normalizedSecret.isNotEmpty()) {
-            validatorTotpList.firstOrNull { normalizeOtpSecret(it.secret) == normalizedSecret }?.let { return it }
+        val identityKey = buildTotpIdentityKey(passwordTotpData)
+        if (identityKey.isNotEmpty()) {
+            validatorTotpList.firstOrNull { buildTotpIdentityKey(it) == identityKey }?.let { return it }
         }
 
         return null
     }
 
-    private fun normalizeOtpSecret(secret: String?): String {
-        return secret
-            ?.trim()
-            ?.replace(" ", "")
-            ?.replace("-", "")
-            ?.uppercase()
-            .orEmpty()
+    private fun buildTotpIdentityKey(data: TotpData?): String {
+        val normalized = data?.let { TotpDataResolver.normalizeTotpData(it) } ?: return ""
+        val normalizedSecret = TotpDataResolver.normalizeBase32Secret(normalized.secret)
+        return listOf(
+            normalized.otpType.name,
+            normalizedSecret,
+            normalized.digits.toString(),
+            normalized.period.toString(),
+            normalized.algorithm.uppercase(),
+            normalized.counter.toString()
+        ).joinToString("|")
     }
 
     private fun resolveTotpDataForGeneration(totpData: TotpData): TotpData {
