@@ -4,20 +4,20 @@ on:
   push:
     branches: [ main, develop ]
     paths:
-      - 'Monica for Android/**.kt'
-      - 'Monica for Android/**.java'
-      - 'Monica for Android/**.xml'
-      - 'Monica for Android/**.gradle'
-      - 'Monica for Android/**.kts'
+      - 'Monica for Android/**/*.kt'
+      - 'Monica for Android/**/*.java'
+      - 'Monica for Android/**/*.xml'
+      - 'Monica for Android/**/*.gradle'
+      - 'Monica for Android/**/*.kts'
       - 'Monica for Android/gradle/**'
   pull_request:
     branches: [ main, develop ]
     paths:
-      - 'Monica for Android/**.kt'
-      - 'Monica for Android/**.java'
-      - 'Monica for Android/**.xml'
-      - 'Monica for Android/**.gradle'
-      - 'Monica for Android/**.kts'
+      - 'Monica for Android/**/*.kt'
+      - 'Monica for Android/**/*.java'
+      - 'Monica for Android/**/*.xml'
+      - 'Monica for Android/**/*.gradle'
+      - 'Monica for Android/**/*.kts'
       - 'Monica for Android/gradle/**'
   workflow_dispatch:
 
@@ -52,30 +52,99 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
         
+      - name: Validate signing secrets
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          missing=0
+          for name in DEBUG_KEYSTORE_BASE64 DEBUG_STORE_PASSWORD DEBUG_KEY_ALIAS DEBUG_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error title=Missing signing secret::$name is empty or unavailable."
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+        env:
+          DEBUG_KEYSTORE_BASE64: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+          DEBUG_STORE_PASSWORD: ${{ secrets.DEBUG_STORE_PASSWORD }}
+          DEBUG_KEY_ALIAS: ${{ secrets.DEBUG_KEY_ALIAS }}
+          DEBUG_KEY_PASSWORD: ${{ secrets.DEBUG_KEY_PASSWORD }}
+
       - name: Decode keystore
-        run: echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > $GITHUB_WORKSPACE/release.jks
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          printf '%s' "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > "$GITHUB_WORKSPACE/release.jks"
+          if [ ! -s "$GITHUB_WORKSPACE/release.jks" ]; then
+            echo "::error title=Keystore decode failed::release.jks was not created or is empty."
+            exit 1
+          fi
+        env:
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+
+      - name: Verify keystore credentials
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          keytool -list \
+            -keystore "$GITHUB_WORKSPACE/release.jks" \
+            -storepass "${{ secrets.DEBUG_STORE_PASSWORD }}" \
+            -alias "${{ secrets.DEBUG_KEY_ALIAS }}" >/dev/null
+          echo "Keystore, password, and alias validated successfully."
         env:
           GITHUB_WORKSPACE: ${{ github.workspace }}
 
       - name: Generate preview version suffix
         run: echo "PREVIEW_VERSION_SUFFIX=build.$(date -u +%Y%m%d%H%M)" >> $GITHUB_ENV
 
+      - name: Build Debug APK for PR validation
+        if: github.event_name == 'pull_request'
+        run: ./gradlew :app:assembleDebug --stacktrace -PpreviewVersionSuffix=$PREVIEW_VERSION_SUFFIX
+
       - name: Build Release APK
+        if: github.event_name != 'pull_request'
+        shell: bash
         run: |
-          ./gradlew :app:assembleRelease --stacktrace \
+          set -o pipefail
+          ./gradlew --stop
+          ./gradlew :app:assembleRelease \
+            --no-daemon \
+            --stacktrace \
+            --info \
+            -Pkotlin.incremental=false \
+            -Dkotlin.compiler.execution.strategy=in-process \
             -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/release.jks \
             -Pandroid.injected.signing.store.password=${{ secrets.DEBUG_STORE_PASSWORD }} \
             -Pandroid.injected.signing.key.alias=${{ secrets.DEBUG_KEY_ALIAS }} \
             -Pandroid.injected.signing.key.password=${{ secrets.DEBUG_KEY_PASSWORD }} \
-            -PpreviewVersionSuffix=$PREVIEW_VERSION_SUFFIX
+            -PpreviewVersionSuffix=$PREVIEW_VERSION_SUFFIX \
+            2>&1 | tee "$RUNNER_TEMP/preview-build.log"
         env:
           GITHUB_WORKSPACE: ${{ github.workspace }}
 
+      - name: Upload preview build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview-build-log
+          path: ${{ runner.temp }}/preview-build.log
+          if-no-files-found: ignore
+
       - name: Rename APK
+        if: github.event_name != 'pull_request'
         run: |
           cd app/build/outputs/apk/release
-          mv app-release.apk Monica-Android-Preview-${PREVIEW_VERSION_SUFFIX}.apk
-        continue-on-error: true
+          if [ -f app-release.apk ]; then
+            mv app-release.apk Monica-Android-Preview-${PREVIEW_VERSION_SUFFIX}.apk
+          elif [ -f app-release-unsigned.apk ]; then
+            mv app-release-unsigned.apk Monica-Android-Preview-${PREVIEW_VERSION_SUFFIX}.apk
+          else
+            echo "No release APK found"
+            ls -la
+            exit 1
+          fi
 
       - name: Delete existing preview release
         if: github.event_name != 'pull_request'

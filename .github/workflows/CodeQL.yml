@@ -16,7 +16,6 @@ jobs:
   analyze:
     name: Analyze
     runs-on: ubuntu-latest
-    continue-on-error: true
     defaults:
       run:
         working-directory: "Monica for Android"
@@ -49,7 +48,7 @@ jobs:
       - name: Clean & Build for CodeQL
         run: |
           ./gradlew clean
-          ./gradlew :app:assembleRelease --console=plain --info
+          ./gradlew :app:assembleDebug --console=plain --stacktrace
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4
