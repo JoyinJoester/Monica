@@ -4,7 +4,7 @@
 
 [中文](README.md) | [English](README_EN.md) | [日本語](README_JA.md) | **Tiếng Việt**
 
-<img src="documentation/website/public/images/app_icon.webp" alt="Monica App Icon" width="112" />
+<img src="documentation/website/public/images/app_icon_android.svg" alt="Monica App Icon" width="112" />
 
 <p><strong>Kho mat khau uu tien local, ket noi Bitwarden va KeePass</strong></p>
 <p>Android / Browser · Local Vault · TOTP · WebDAV Backup</p>

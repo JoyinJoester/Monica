@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="108" height="108" viewBox="0 0 108 108" role="img" aria-label="Monica Android Icon">
+  <rect x="0" y="0" width="108" height="108" rx="24" fill="#2C3148"/>
+  <path d="M38 56H70V76A2 2 0 0 1 68 78H40A2 2 0 0 1 38 76Z" fill="#FFFFFF"/>
+  <path d="M44 56V46A10 10 0 0 1 64 46V56" fill="none" stroke="#FFFFFF" stroke-width="4.5" stroke-linecap="butt" stroke-linejoin="miter"/>
+  <circle cx="54" cy="64" r="3" fill="#2C3148"/>
+  <rect x="52.5" y="66" width="3" height="6" fill="#2C3148"/>
+</svg>

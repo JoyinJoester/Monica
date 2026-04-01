@@ -4,7 +4,7 @@
 
 **中文** | [English](README_EN.md) | [日本語](README_JA.md) | [Tiếng Việt](README_VI.md)
 
-<img src="documentation/website/public/images/app_icon.webp" alt="Monica App Icon" width="112" />
+<img src="documentation/website/public/images/app_icon_android.svg" alt="Monica App Icon" width="112" />
 
 <p><strong>聚合 Bitwarden 与 KeePass 的本地优先密码库</strong></p>
 <p>Android / Browser · Local Vault · TOTP · WebDAV Backup</p>
