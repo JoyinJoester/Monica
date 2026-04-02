@@ -80,16 +80,21 @@ import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.NoteCodeBlockCollapseMode
 import takagi.ru.monica.data.PasswordDatabase
+import takagi.ru.monica.data.model.StorageTarget
+import takagi.ru.monica.data.model.toStorageTarget
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.components.ImageImportConfirmDialog
 import takagi.ru.monica.ui.components.ImageDialog
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
-import takagi.ru.monica.ui.components.StorageTargetSelectorCard
+import takagi.ru.monica.ui.components.MultiStorageTargetPickerBottomSheet
+import takagi.ru.monica.ui.components.MultiStorageTargetSelectorCard
+import takagi.ru.monica.ui.components.buildMultiStorageTarget
 import takagi.ru.monica.util.ImageManager
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.RememberedStorageTarget
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.viewmodel.NoteEditorViewModel
+import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import takagi.ru.monica.viewmodel.NoteViewModel
 
 private const val ADD_EDIT_NOTE_SCREEN_TAG = "AddEditNoteScreen"
@@ -117,6 +122,14 @@ fun AddEditNoteScreen(
     val context = LocalContext.current
     val biometricHelper = remember { BiometricHelper(context) }
     val securityManager = remember { SecurityManager(context) }
+    val database = remember { PasswordDatabase.getDatabase(context) }
+    val localKeePassViewModel: LocalKeePassViewModel = viewModel {
+        LocalKeePassViewModel(
+            context.applicationContext as android.app.Application,
+            database.localKeePassDatabaseDao(),
+            securityManager
+        )
+    }
     val settingsManager = remember { SettingsManager(context) }
     val appSettings by settingsManager.settingsFlow.collectAsState(
         initial = AppSettings(biometricEnabled = false)
@@ -146,19 +159,22 @@ fun AddEditNoteScreen(
     val normalEditorScrollState = rememberScrollState()
     val imageManager = remember { ImageManager(context) }
     val isEditing = noteId != -1L
-    val isBitwardenNoteTarget = editorState.bitwardenVaultId != null
+    val isBitwardenNoteTarget = editorState.selectedStorageTargets.any { it is StorageTarget.Bitwarden } ||
+        (editorState.selectedStorageTargets.isEmpty() && editorState.bitwardenVaultId != null)
     val isMarkdown = true
     val canSave = editorViewModel.canSave()
     val shouldLiftSaveFab = !isFullScreenEditor && !editorState.isMarkdownPreview
     
-    val database = remember { PasswordDatabase.getDatabase(context) }
     val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList())
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
     val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
+    val allNotes by viewModel.allNotes.collectAsState(initial = emptyList())
     val draftStorageTarget by viewModel.draftStorageTarget.collectAsState()
     val rememberedStorageTarget by settingsManager
         .rememberedStorageTargetFlow(SettingsManager.StorageTargetScope.NOTE)
         .collectAsState(initial = null as RememberedStorageTarget?)
+    var showStorageTargetSheet by remember { mutableStateOf(false) }
+    var hasInitializedReplicaTargets by rememberSaveable(noteId) { mutableStateOf(false) }
 
     fun clearPendingNoteImageImport(resetInsertionCursor: Boolean) {
         pendingNoteImageImport?.bitmap?.let { bitmap ->
@@ -171,6 +187,18 @@ fun AddEditNoteScreen(
         if (resetInsertionCursor) {
             pendingImageInsertionCursor = -1
         }
+    }
+
+    fun applySelectedStorageTargets(targets: List<StorageTarget>) {
+        if (targets.any { it is StorageTarget.Bitwarden } && editorState.noteImagePaths.isNotEmpty()) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.note_bitwarden_inline_image_disabled_toast),
+                Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+        editorViewModel.setSelectedStorageTargets(targets)
     }
 
     suspend fun prepareSelectedNoteImage(uri: Uri) {
@@ -356,13 +384,39 @@ fun AddEditNoteScreen(
 
     LaunchedEffect(noteId, isEditing) {
         if (!isEditing) {
+            hasInitializedReplicaTargets = false
             editorViewModel.resetForNewNote()
             return@LaunchedEffect
         }
         val note = viewModel.getNoteById(noteId)
         note?.let {
             editorViewModel.loadForEdit(it)
+            hasInitializedReplicaTargets = false
         }
+    }
+
+    LaunchedEffect(isEditing, allNotes, editorState.currentNote?.id, hasInitializedReplicaTargets) {
+        if (!isEditing || hasInitializedReplicaTargets) return@LaunchedEffect
+        val currentNote = editorState.currentNote ?: return@LaunchedEffect
+        if (allNotes.none { it.id == currentNote.id }) return@LaunchedEffect
+
+        val selectedTargets = if (!currentNote.replicaGroupId.isNullOrBlank()) {
+            allNotes
+                .filter { note ->
+                    note.replicaGroupId == currentNote.replicaGroupId && !note.isDeleted
+                }
+                .map { it.toStorageTarget() }
+                .distinctBy(StorageTarget::stableKey)
+                .ifEmpty { listOf(currentNote.toStorageTarget()) }
+        } else {
+            listOf(currentNote.toStorageTarget())
+        }
+        editorViewModel.setSelectedStorageTargets(
+            targets = selectedTargets,
+            existingTargetKeys = selectedTargets.map(StorageTarget::stableKey).toSet(),
+            replicaGroupId = currentNote.replicaGroupId
+        )
+        hasInitializedReplicaTargets = true
     }
 
     LaunchedEffect(
@@ -433,45 +487,9 @@ fun AddEditNoteScreen(
         if (!editorViewModel.tryStartSaving()) return
         val currentState = editorViewModel.uiState.value
         val payload = editorViewModel.buildSavePayload(isMarkdown = isMarkdown)
-
-        if (isEditing) {
-            viewModel.updateNote(
-                id = noteId,
-                content = payload.content,
-                title = payload.title,
-                tags = payload.tags,
-                isMarkdown = payload.isMarkdown,
-                isFavorite = currentState.isFavorite,
-                createdAt = currentState.createdAt,
-                categoryId = currentState.selectedCategoryId,
-                imagePaths = payload.imagePathsJson,
-                keepassDatabaseId = currentState.keepassDatabaseId,
-                keepassGroupPath = currentState.keepassGroupPath,
-                bitwardenVaultId = currentState.bitwardenVaultId,
-                bitwardenFolderId = currentState.bitwardenFolderId
-            )
-        } else {
-            viewModel.addNote(
-                content = payload.content,
-                title = payload.title,
-                tags = payload.tags,
-                isMarkdown = payload.isMarkdown,
-                isFavorite = currentState.isFavorite,
-                categoryId = currentState.selectedCategoryId,
-                imagePaths = payload.imagePathsJson,
-                keepassDatabaseId = currentState.keepassDatabaseId,
-                keepassGroupPath = currentState.keepassGroupPath,
-                bitwardenVaultId = currentState.bitwardenVaultId,
-                bitwardenFolderId = currentState.bitwardenFolderId
-            )
-        }
-        if (currentState.deletedImagePaths.isNotEmpty()) {
-            viewModel.cleanupUnreferencedNoteImages(currentState.deletedImagePaths)
-        }
-        scope.launch {
-            settingsManager.updateRememberedStorageTarget(
-                scope = SettingsManager.StorageTargetScope.NOTE,
-                target = RememberedStorageTarget(
+        val effectiveTargets = currentState.selectedStorageTargets.ifEmpty {
+            listOf(
+                buildMultiStorageTarget(
                     categoryId = currentState.selectedCategoryId,
                     keepassDatabaseId = currentState.keepassDatabaseId,
                     keepassGroupPath = currentState.keepassGroupPath,
@@ -480,10 +498,64 @@ fun AddEditNoteScreen(
                 )
             )
         }
+        val hasBitwardenTarget = effectiveTargets.any { it is StorageTarget.Bitwarden }
+
+        if (hasBitwardenTarget && currentState.noteImagePaths.isNotEmpty()) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.note_bitwarden_inline_image_disabled_toast),
+                Toast.LENGTH_SHORT
+            ).show()
+            editorViewModel.stopSaving()
+            return
+        }
+
+        val primaryTarget = effectiveTargets.first()
+
+        viewModel.saveNotesAcrossTargets(
+            id = noteId.takeIf { isEditing },
+            content = payload.content,
+            title = payload.title,
+            tags = payload.tags,
+            isMarkdown = payload.isMarkdown,
+            isFavorite = currentState.isFavorite,
+            createdAt = currentState.createdAt,
+            imagePaths = payload.imagePathsJson,
+            targets = effectiveTargets
+        )
+        if (currentState.deletedImagePaths.isNotEmpty()) {
+            viewModel.cleanupUnreferencedNoteImages(currentState.deletedImagePaths)
+        }
+        scope.launch {
+            settingsManager.updateRememberedStorageTarget(
+                scope = SettingsManager.StorageTargetScope.NOTE,
+                target = RememberedStorageTarget(
+                    categoryId = (primaryTarget as? StorageTarget.MonicaLocal)?.categoryId,
+                    keepassDatabaseId = (primaryTarget as? StorageTarget.KeePass)?.databaseId,
+                    keepassGroupPath = (primaryTarget as? StorageTarget.KeePass)?.groupPath,
+                    bitwardenVaultId = (primaryTarget as? StorageTarget.Bitwarden)?.vaultId,
+                    bitwardenFolderId = (primaryTarget as? StorageTarget.Bitwarden)?.folderId
+                )
+            )
+        }
         editorViewModel.stopSaving()
         if (shouldNavigateBack) {
             onNavigateBack()
         }
+    }
+
+    val storageSelectorContent: @Composable () -> Unit = {
+        MultiStorageTargetSelectorCard(
+            selectedTargets = editorState.selectedStorageTargets,
+            existingTargetKeys = editorState.existingReplicaTargetKeys,
+            categories = categories,
+            keepassDatabases = keepassDatabases,
+            bitwardenVaults = bitwardenVaults,
+            bitwardenFolderDao = database.bitwardenFolderDao(),
+            isEditing = isEditing,
+            onAddTargetClick = { showStorageTargetSheet = true },
+            onRemoveTarget = { target -> editorViewModel.removeSelectedStorageTarget(target) }
+        )
     }
 
     Scaffold(
@@ -654,25 +726,19 @@ fun AddEditNoteScreen(
                     fullScreen = transitionFromFullScreen,
                     alpha = 1f - editorModeProgress.value,
                     scale = 1f - (0.06f * editorModeProgress.value),
-                    keepassDatabases = keepassDatabases,
-                    bitwardenVaults = bitwardenVaults,
-                    categories = categories,
                     editorState = editorState,
                     noteImageBitmaps = noteImageBitmaps,
                     normalEditorScrollState = normalEditorScrollState,
                     isEditing = isEditing,
                     isBitwardenNoteTarget = isBitwardenNoteTarget,
                     toolbarContent = toolbarContent,
+                    storageSelectorContent = storageSelectorContent,
                     onTitleChange = { editorViewModel.updateTitle(it) },
                     onContentChange = { editorViewModel.updateContent(it) },
                     onPreviewModeChange = { editorViewModel.updatePreviewMode(it) },
                     onTaskItemToggle = ::togglePreviewTask,
                     onPreviewInlineImage = { fileName -> showNoteImageDialog = fileName },
                     onTagsTextChange = { editorViewModel.updateTagsText(it) },
-                    onKeePassDatabaseSelected = { editorViewModel.selectKeePassDatabase(it) },
-                    onBitwardenVaultSelected = { editorViewModel.selectBitwardenVault(it) },
-                    onCategorySelected = { editorViewModel.selectCategory(it) },
-                    onBitwardenFolderSelected = { folderId -> editorViewModel.selectBitwardenFolder(folderId) },
                     onAddImageClick = {
                         if (isBitwardenNoteTarget) {
                             Toast.makeText(
@@ -695,25 +761,19 @@ fun AddEditNoteScreen(
                     fullScreen = transitionToFullScreen,
                     alpha = editorModeProgress.value,
                     scale = 0.96f + (0.04f * editorModeProgress.value),
-                    keepassDatabases = keepassDatabases,
-                    bitwardenVaults = bitwardenVaults,
-                    categories = categories,
                     editorState = editorState,
                     noteImageBitmaps = noteImageBitmaps,
                     normalEditorScrollState = normalEditorScrollState,
                     isEditing = isEditing,
                     isBitwardenNoteTarget = isBitwardenNoteTarget,
                     toolbarContent = toolbarContent,
+                    storageSelectorContent = storageSelectorContent,
                     onTitleChange = { editorViewModel.updateTitle(it) },
                     onContentChange = { editorViewModel.updateContent(it) },
                     onPreviewModeChange = { editorViewModel.updatePreviewMode(it) },
                     onTaskItemToggle = ::togglePreviewTask,
                     onPreviewInlineImage = { fileName -> showNoteImageDialog = fileName },
                     onTagsTextChange = { editorViewModel.updateTagsText(it) },
-                    onKeePassDatabaseSelected = { editorViewModel.selectKeePassDatabase(it) },
-                    onBitwardenVaultSelected = { editorViewModel.selectBitwardenVault(it) },
-                    onCategorySelected = { editorViewModel.selectCategory(it) },
-                    onBitwardenFolderSelected = { folderId -> editorViewModel.selectBitwardenFolder(folderId) },
                     onAddImageClick = {
                         if (isBitwardenNoteTarget) {
                             Toast.makeText(
@@ -737,25 +797,19 @@ fun AddEditNoteScreen(
                     fullScreen = isFullScreenEditor,
                     alpha = 1f,
                     scale = 1f,
-                    keepassDatabases = keepassDatabases,
-                    bitwardenVaults = bitwardenVaults,
-                    categories = categories,
                     editorState = editorState,
                     noteImageBitmaps = noteImageBitmaps,
                     normalEditorScrollState = normalEditorScrollState,
                     isEditing = isEditing,
                     isBitwardenNoteTarget = isBitwardenNoteTarget,
                     toolbarContent = toolbarContent,
+                    storageSelectorContent = storageSelectorContent,
                     onTitleChange = { editorViewModel.updateTitle(it) },
                     onContentChange = { editorViewModel.updateContent(it) },
                     onPreviewModeChange = { editorViewModel.updatePreviewMode(it) },
                     onTaskItemToggle = ::togglePreviewTask,
                     onPreviewInlineImage = { fileName -> showNoteImageDialog = fileName },
                     onTagsTextChange = { editorViewModel.updateTagsText(it) },
-                    onKeePassDatabaseSelected = { editorViewModel.selectKeePassDatabase(it) },
-                    onBitwardenVaultSelected = { editorViewModel.selectBitwardenVault(it) },
-                    onCategorySelected = { editorViewModel.selectCategory(it) },
-                    onBitwardenFolderSelected = { folderId -> editorViewModel.selectBitwardenFolder(folderId) },
                     onAddImageClick = {
                         if (isBitwardenNoteTarget) {
                             Toast.makeText(
@@ -777,6 +831,19 @@ fun AddEditNoteScreen(
             }
         }
     }
+
+    MultiStorageTargetPickerBottomSheet(
+        visible = showStorageTargetSheet,
+        selectedTargets = editorState.selectedStorageTargets,
+        lockedTargetKeys = editorState.existingReplicaTargetKeys,
+        categories = categories,
+        keepassDatabases = keepassDatabases,
+        bitwardenVaults = bitwardenVaults,
+        getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+        getKeePassGroups = localKeePassViewModel::getGroups,
+        onDismiss = { showStorageTargetSheet = false },
+        onSelectedTargetsChange = ::applySelectedStorageTargets
+    )
 
     // Image Detail Dialog
     if (showNoteImageDialog != null) {
@@ -1101,25 +1168,19 @@ private fun NoteEditorModeBody(
     fullScreen: Boolean,
     alpha: Float,
     scale: Float,
-    keepassDatabases: List<takagi.ru.monica.data.LocalKeePassDatabase>,
-    bitwardenVaults: List<takagi.ru.monica.data.bitwarden.BitwardenVault>,
-    categories: List<takagi.ru.monica.data.Category>,
     editorState: takagi.ru.monica.viewmodel.NoteEditorUiState,
     noteImageBitmaps: Map<String, Bitmap>,
     normalEditorScrollState: androidx.compose.foundation.ScrollState,
     isEditing: Boolean,
     isBitwardenNoteTarget: Boolean,
     toolbarContent: @Composable () -> Unit,
+    storageSelectorContent: @Composable () -> Unit,
     onTitleChange: (String) -> Unit,
     onContentChange: (androidx.compose.ui.text.input.TextFieldValue) -> Unit,
     onPreviewModeChange: (Boolean) -> Unit,
     onTaskItemToggle: (lineIndex: Int, checked: Boolean) -> Unit,
     onPreviewInlineImage: (String) -> Unit,
     onTagsTextChange: (String) -> Unit,
-    onKeePassDatabaseSelected: (Long?) -> Unit,
-    onBitwardenVaultSelected: (Long?) -> Unit,
-    onCategorySelected: (Long?) -> Unit,
-    onBitwardenFolderSelected: (String?) -> Unit,
     onAddImageClick: () -> Unit,
     onRemoveImage: (String) -> Unit
 ) {
@@ -1199,19 +1260,7 @@ private fun NoteEditorModeBody(
                         .verticalScroll(normalEditorScrollState),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    StorageTargetSelectorCard(
-                        keepassDatabases = keepassDatabases,
-                        selectedKeePassDatabaseId = editorState.keepassDatabaseId,
-                        onKeePassDatabaseSelected = onKeePassDatabaseSelected,
-                        bitwardenVaults = bitwardenVaults,
-                        selectedBitwardenVaultId = editorState.bitwardenVaultId,
-                        onBitwardenVaultSelected = onBitwardenVaultSelected,
-                        categories = categories,
-                        selectedCategoryId = editorState.selectedCategoryId,
-                        onCategorySelected = onCategorySelected,
-                        selectedBitwardenFolderId = editorState.bitwardenFolderId,
-                        onBitwardenFolderSelected = onBitwardenFolderSelected
-                    )
+                    storageSelectorContent()
 
                     NoteEditorSection(
                         modifier = Modifier.fillMaxWidth(),

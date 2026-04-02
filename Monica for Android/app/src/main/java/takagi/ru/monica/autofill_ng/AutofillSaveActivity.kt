@@ -79,9 +79,10 @@ class AutofillSaveActivity : ComponentActivity() {
                         finish()
                     },
                     onNeverForThisSite = {
-                        // TODO: 实现"从不为此网站保存"功能
-                        setResult(RESULT_CANCELED)
-                        finish()
+                        blockCurrentTarget(
+                            packageName = packageName,
+                            website = website,
+                        )
                     }
                 )
             }
@@ -176,6 +177,20 @@ class AutofillSaveActivity : ComponentActivity() {
                 setResult(RESULT_CANCELED)
                 finish()
             }
+        }
+    }
+
+    private fun blockCurrentTarget(packageName: String, website: String) {
+        lifecycleScope.launch {
+            runCatching {
+                val autofillPreferences = AutofillPreferences(applicationContext)
+                autofillPreferences.addSaveBlockedTarget(
+                    packageName = packageName.takeIf { it.isNotBlank() },
+                    webDomain = website.takeIf { it.isNotBlank() },
+                )
+            }
+            setResult(RESULT_CANCELED)
+            finish()
         }
     }
 }

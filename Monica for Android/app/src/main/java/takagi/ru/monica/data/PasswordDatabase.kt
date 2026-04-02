@@ -30,7 +30,7 @@ import takagi.ru.monica.data.bitwarden.*
         BitwardenConflictBackup::class,
         BitwardenPendingOperation::class
     ],
-    version = 51,
+    version = 53,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -1362,6 +1362,40 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_51_52 = object : androidx.room.migration.Migration(51, 52) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 51→52: password replica group id")
+                    database.execSQL(
+                        "ALTER TABLE password_entries ADD COLUMN replica_group_id TEXT DEFAULT NULL"
+                    )
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_password_entries_replica_group_id ON password_entries(replica_group_id)"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 51→52 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 51→52 failed: ${e.message}")
+                }
+            }
+        }
+
+        private val MIGRATION_52_53 = object : androidx.room.migration.Migration(52, 53) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 52→53: secure item replica group id")
+                    database.execSQL(
+                        "ALTER TABLE secure_items ADD COLUMN replica_group_id TEXT DEFAULT NULL"
+                    )
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_secure_items_replica_group_id ON secure_items(replica_group_id)"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 52→53 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 52→53 failed: ${e.message}")
+                }
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -1419,7 +1453,9 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_47_48,  // Bitwarden TLS/证书字段
                         MIGRATION_48_49,  // 历史密码表
                         MIGRATION_49_50,  // SSH 密钥结构化字段
-                        MIGRATION_50_51   // 密码页聚合堆叠元数据
+                        MIGRATION_50_51,  // 密码页聚合堆叠元数据
+                        MIGRATION_51_52,  // 密码多目标副本组标识
+                        MIGRATION_52_53   // 安全项多目标副本组标识
                     )
                     .build()
                 INSTANCE = instance

@@ -36,10 +36,14 @@ import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.utils.KeePassEntryData
 import takagi.ru.monica.utils.KeePassKdbxService
 import takagi.ru.monica.utils.buildKeePassPathKey
+import takagi.ru.monica.data.model.StorageTarget
+import takagi.ru.monica.data.model.applyToPasswordEntry
+import takagi.ru.monica.data.model.toStorageTarget
 import takagi.ru.monica.ui.model.SecretValueState
 import takagi.ru.monica.ui.model.plainValueOrEmpty
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -1539,11 +1543,13 @@ class PasswordViewModel(
         onResult: (Long?) -> Unit = {}
     ) {
         viewModelScope.launch {
-            val id = createPasswordEntryInternal(
-                entry = entry,
-                includeDetailedLog = includeDetailedLog,
-                skipCategoryBinding = skipCategoryBinding
-            )
+            val id = withContext(Dispatchers.IO) {
+                createPasswordEntryInternal(
+                    entry = entry,
+                    includeDetailedLog = includeDetailedLog,
+                    skipCategoryBinding = skipCategoryBinding
+                )
+            }
             onResult(id)
         }
     }
@@ -2543,105 +2549,214 @@ class PasswordViewModel(
         onComplete: (firstPasswordId: Long?) -> Unit = {}
     ) {
         viewModelScope.launch {
-            var firstId: Long? = null
-            val normalizedPasswords = passwords.map { it.trim() }
-            val normalizedInput = normalizedPasswords.filter { it.isNotEmpty() }
-            val preservedUnreadablePasswords = if (normalizedInput.isEmpty() && originalIds.isNotEmpty()) {
-                originalIds.mapNotNull { id ->
-                    val existing = repository.getPasswordEntryById(id) ?: return@mapNotNull null
-                    if (shouldPreserveUnreadableBitwardenPassword(existing, "")) "" else null
-                }
-            } else {
-                emptyList()
+            val firstPasswordId = withContext(Dispatchers.IO) {
+                saveGroupedPasswordsInternal(
+                    originalIds = originalIds,
+                    commonEntry = commonEntry,
+                    passwords = passwords,
+                    customFields = customFields,
+                    skipCategoryBinding = false
+                )
             }
-            val hasPreservedUnreadablePassword = preservedUnreadablePasswords.isNotEmpty()
+            onComplete(firstPasswordId)
+        }
+    }
 
-            val effectivePasswords = when {
-                normalizedInput.isNotEmpty() -> normalizedInput
-                commonEntry.loginType.equals("SSO", ignoreCase = true) -> listOf("")
-                hasPreservedUnreadablePassword -> preservedUnreadablePasswords
-                else -> listOf("")
-            }
-            
-            // 应用分类绑定规则
-            val boundCommonEntry = applyCategoryBinding(commonEntry)
-            
-            // 1. Process each password
-            effectivePasswords.forEachIndexed { index, password ->
-                if (index < originalIds.size) {
-                    // Update existing
-                    val id = originalIds[index]
-                    if (index == 0) firstId = id
-                    val draftEntry = boundCommonEntry.copy(
-                        id = id,
-                        password = password
-                    )
-                    val existingEntry = repository.getPasswordEntryById(id)
-                    val updatedEntry = existingEntry?.copy(
-                        title = draftEntry.title,
-                        website = draftEntry.website,
-                        username = draftEntry.username,
-                        password = draftEntry.password,
-                        notes = draftEntry.notes,
-                        isFavorite = draftEntry.isFavorite,
-                        appPackageName = draftEntry.appPackageName,
-                        appName = draftEntry.appName,
-                        email = draftEntry.email,
-                        phone = draftEntry.phone,
-                        addressLine = draftEntry.addressLine,
-                        city = draftEntry.city,
-                        state = draftEntry.state,
-                        zipCode = draftEntry.zipCode,
-                        country = draftEntry.country,
-                        creditCardNumber = draftEntry.creditCardNumber,
-                        creditCardHolder = draftEntry.creditCardHolder,
-                        creditCardExpiry = draftEntry.creditCardExpiry,
-                        creditCardCVV = draftEntry.creditCardCVV,
-                        categoryId = draftEntry.categoryId,
-                        keepassDatabaseId = draftEntry.keepassDatabaseId,
-                        authenticatorKey = draftEntry.authenticatorKey,
-                        passkeyBindings = draftEntry.passkeyBindings,
-                        sshKeyData = draftEntry.sshKeyData,
-                        loginType = draftEntry.loginType,
-                        ssoProvider = draftEntry.ssoProvider,
-                        ssoRefEntryId = draftEntry.ssoRefEntryId,
-                        bitwardenVaultId = draftEntry.bitwardenVaultId,
-                        customIconType = draftEntry.customIconType,
-                        customIconValue = draftEntry.customIconValue,
-                        customIconUpdatedAt = draftEntry.customIconUpdatedAt
-                    ) ?: draftEntry
-                    updatePasswordEntryInternal(updatedEntry)
-                } else {
-                    // Create new
-                    val newEntry = boundCommonEntry.copy(
-                        id = 0, // Reset ID for new entry
-                        password = password
-                    )
-                    val newId = createPasswordEntryInternal(newEntry, includeDetailedLog = false)
-                    if (newId == null) {
-                        Log.e("PasswordViewModel", "saveGroupedPasswords aborted due to KeePass write failure")
-                        onComplete(firstId ?: originalIds.firstOrNull())
-                        return@launch
+    fun savePasswordsAcrossTargets(
+        originalIds: List<Long>,
+        commonEntry: PasswordEntry,
+        passwords: List<String>,
+        targets: List<StorageTarget>,
+        customFields: List<CustomFieldDraft> = emptyList(),
+        onComplete: (firstPasswordId: Long?) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val firstId = withContext(Dispatchers.IO) {
+                val distinctTargets = targets.distinctBy(StorageTarget::stableKey)
+                if (distinctTargets.isEmpty()) {
+                    return@withContext null
+                }
+
+                val currentEntry = originalIds.firstOrNull()?.let { repository.getPasswordEntryById(it) }
+                val currentTarget = currentEntry?.toStorageTarget() ?: distinctTargets.first()
+                val replicaGroupId = currentEntry?.replicaGroupId
+                    ?.takeIf { it.isNotBlank() }
+                    ?: commonEntry.replicaGroupId?.takeIf { it.isNotBlank() }
+                    ?: UUID.randomUUID().toString()
+
+                val selectedTargetKeys = distinctTargets
+                    .map(StorageTarget::stableKey)
+                    .toSet()
+                val existingReplicaKeys = repository.getAllPasswordEntries()
+                    .first()
+                    .asSequence()
+                    .filter {
+                        it.replicaGroupId == replicaGroupId &&
+                            it.id !in originalIds &&
+                            !it.isDeleted &&
+                            !it.isArchived
                     }
-                    if (index == 0) firstId = newId
+                    .map { it.toStorageTarget().stableKey }
+                    .toSet()
+
+                val updatedCurrentEntry = currentTarget.applyToPasswordEntry(
+                    commonEntry,
+                    replicaGroupId = replicaGroupId
+                )
+                val initialId = saveGroupedPasswordsInternal(
+                    originalIds = originalIds,
+                    commonEntry = updatedCurrentEntry,
+                    passwords = passwords,
+                    customFields = customFields,
+                    skipCategoryBinding = true
+                )
+
+                if (initialId == null) {
+                    return@withContext null
                 }
+
+                distinctTargets
+                    .filter { target ->
+                        target.stableKey != currentTarget.stableKey &&
+                            target.stableKey in selectedTargetKeys &&
+                            target.stableKey !in existingReplicaKeys
+                    }
+                    .forEach { target ->
+                        val replicaEntry = target.applyToPasswordEntry(
+                            commonEntry,
+                            replicaGroupId = replicaGroupId
+                        )
+                        val createdId = saveGroupedPasswordsInternal(
+                            originalIds = emptyList(),
+                            commonEntry = replicaEntry,
+                            passwords = passwords,
+                            customFields = customFields,
+                            skipCategoryBinding = true
+                        )
+                        if (createdId == null) {
+                            Log.e(
+                                "PasswordViewModel",
+                                "savePasswordsAcrossTargets skipped failed target=${target.stableKey}"
+                            )
+                        }
+                    }
+
+                initialId
             }
 
-            // 2. Delete leftovers
-            if (originalIds.size > effectivePasswords.size) {
-                val toDelete = originalIds.subList(effectivePasswords.size, originalIds.size)
-                toDelete.forEach { id ->
-                    repository.getPasswordEntryById(id)?.let { deletePasswordEntry(it) }
-                }
-            }
-            
-            // 3. 保存自定义字段（只针对第一个密码条目）
-            firstId?.let { entryId ->
-                saveCustomFieldsForEntry(entryId, customFields)
-            }
-            
             onComplete(firstId)
         }
+    }
+
+    private suspend fun saveGroupedPasswordsInternal(
+        originalIds: List<Long>,
+        commonEntry: PasswordEntry,
+        passwords: List<String>,
+        customFields: List<CustomFieldDraft> = emptyList(),
+        skipCategoryBinding: Boolean
+    ): Long? {
+        var firstId: Long? = null
+        val normalizedPasswords = passwords.map { it.trim() }
+        val normalizedInput = normalizedPasswords.filter { it.isNotEmpty() }
+        val preservedUnreadablePasswords = if (normalizedInput.isEmpty() && originalIds.isNotEmpty()) {
+            originalIds.mapNotNull { id ->
+                val existing = repository.getPasswordEntryById(id) ?: return@mapNotNull null
+                if (shouldPreserveUnreadableBitwardenPassword(existing, "")) "" else null
+            }
+        } else {
+            emptyList()
+        }
+        val hasPreservedUnreadablePassword = preservedUnreadablePasswords.isNotEmpty()
+
+        val effectivePasswords = when {
+            normalizedInput.isNotEmpty() -> normalizedInput
+            commonEntry.loginType.equals("SSO", ignoreCase = true) -> listOf("")
+            hasPreservedUnreadablePassword -> preservedUnreadablePasswords
+            else -> listOf("")
+        }
+
+        val boundCommonEntry = if (skipCategoryBinding) {
+            commonEntry
+        } else {
+            applyCategoryBinding(commonEntry)
+        }
+
+        effectivePasswords.forEachIndexed { index, password ->
+            if (index < originalIds.size) {
+                val id = originalIds[index]
+                if (index == 0) firstId = id
+                val draftEntry = boundCommonEntry.copy(
+                    id = id,
+                    password = password
+                )
+                val existingEntry = repository.getPasswordEntryById(id)
+                val updatedEntry = existingEntry?.copy(
+                    title = draftEntry.title,
+                    website = draftEntry.website,
+                    username = draftEntry.username,
+                    password = draftEntry.password,
+                    notes = draftEntry.notes,
+                    isFavorite = draftEntry.isFavorite,
+                    appPackageName = draftEntry.appPackageName,
+                    appName = draftEntry.appName,
+                    email = draftEntry.email,
+                    phone = draftEntry.phone,
+                    addressLine = draftEntry.addressLine,
+                    city = draftEntry.city,
+                    state = draftEntry.state,
+                    zipCode = draftEntry.zipCode,
+                    country = draftEntry.country,
+                    creditCardNumber = draftEntry.creditCardNumber,
+                    creditCardHolder = draftEntry.creditCardHolder,
+                    creditCardExpiry = draftEntry.creditCardExpiry,
+                    creditCardCVV = draftEntry.creditCardCVV,
+                    categoryId = draftEntry.categoryId,
+                    keepassDatabaseId = draftEntry.keepassDatabaseId,
+                    keepassGroupPath = draftEntry.keepassGroupPath,
+                    authenticatorKey = draftEntry.authenticatorKey,
+                    passkeyBindings = draftEntry.passkeyBindings,
+                    sshKeyData = draftEntry.sshKeyData,
+                    loginType = draftEntry.loginType,
+                    ssoProvider = draftEntry.ssoProvider,
+                    ssoRefEntryId = draftEntry.ssoRefEntryId,
+                    replicaGroupId = draftEntry.replicaGroupId,
+                    bitwardenVaultId = draftEntry.bitwardenVaultId,
+                    bitwardenFolderId = draftEntry.bitwardenFolderId,
+                    customIconType = draftEntry.customIconType,
+                    customIconValue = draftEntry.customIconValue,
+                    customIconUpdatedAt = draftEntry.customIconUpdatedAt
+                ) ?: draftEntry
+                updatePasswordEntryInternal(updatedEntry)
+            } else {
+                val newEntry = boundCommonEntry.copy(
+                    id = 0,
+                    password = password
+                )
+                val newId = createPasswordEntryInternal(
+                    entry = newEntry,
+                    includeDetailedLog = false,
+                    skipCategoryBinding = skipCategoryBinding
+                )
+                if (newId == null) {
+                    Log.e("PasswordViewModel", "saveGroupedPasswords aborted due to KeePass write failure")
+                    return firstId ?: originalIds.firstOrNull()
+                }
+                if (index == 0) firstId = newId
+            }
+        }
+
+        if (originalIds.size > effectivePasswords.size) {
+            val toDelete = originalIds.subList(effectivePasswords.size, originalIds.size)
+            toDelete.forEach { id ->
+                repository.getPasswordEntryById(id)?.let { deletePasswordEntry(it) }
+            }
+        }
+
+        firstId?.let { entryId ->
+            saveCustomFieldsForEntry(entryId, customFields)
+        }
+
+        return firstId
     }
     
     // =============== 自定义字段相关方法 ===============

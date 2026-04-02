@@ -504,6 +504,20 @@ class AutofillPreferences(private val context: Context) {
         return normalized.takeIf { it.isNotBlank() }?.let { "dom:$it" }
     }
 
+    private fun normalizeSaveBlockedTargetKey(raw: String): String? {
+        val trimmed = raw.trim()
+        if (trimmed.isBlank()) return null
+        return when {
+            trimmed.startsWith("pkg:", ignoreCase = true) -> {
+                normalizeSavePackage(trimmed.substringAfter(':').trim())
+            }
+            trimmed.startsWith("dom:", ignoreCase = true) -> {
+                normalizeSaveDomain(trimmed.substringAfter(':').trim())
+            }
+            else -> null
+        }
+    }
+
     suspend fun addSaveBlockedTarget(packageName: String?, webDomain: String?) {
         val packageTarget = packageName?.let(::normalizeSavePackage)
         val domainTarget = webDomain?.let(::normalizeSaveDomain)
@@ -519,6 +533,16 @@ class AutofillPreferences(private val context: Context) {
         }
     }
 
+    data class SaveBlockedTargetRecord(
+        val key: String,
+        val packageName: String? = null,
+        val webDomain: String? = null,
+    )
+
+    val saveBlockedTargetRecords: Flow<List<SaveBlockedTargetRecord>> = saveBlockedTargets.map { targets ->
+        targets.mapNotNull(::parseSaveBlockedTargetRecord)
+    }
+
     suspend fun isSaveBlocked(packageName: String?, webDomain: String?): Boolean {
         val blockedTargets = saveBlockedTargets.first()
         if (blockedTargets.isEmpty()) return false
@@ -526,6 +550,38 @@ class AutofillPreferences(private val context: Context) {
         if (packageTarget != null && blockedTargets.contains(packageTarget)) return true
         val domainTarget = webDomain?.let(::normalizeSaveDomain)
         return domainTarget != null && blockedTargets.contains(domainTarget)
+    }
+
+    suspend fun removeSaveBlockedTarget(key: String) {
+        context.dataStore.edit { preferences ->
+            val current = preferences[KEY_SAVE_BLOCKED_TARGETS] ?: emptySet()
+            preferences[KEY_SAVE_BLOCKED_TARGETS] = current - key
+        }
+    }
+
+    suspend fun clearSaveBlockedTargets() {
+        context.dataStore.edit { preferences ->
+            preferences.remove(KEY_SAVE_BLOCKED_TARGETS)
+        }
+    }
+
+    suspend fun importSaveBlockedTargets(
+        rawKeys: Collection<String>,
+        replaceExisting: Boolean = false,
+    ) {
+        val normalizedIncoming = rawKeys
+            .mapNotNull(::normalizeSaveBlockedTargetKey)
+            .toSet()
+        if (normalizedIncoming.isEmpty()) return
+
+        context.dataStore.edit { preferences ->
+            val current = if (replaceExisting) {
+                emptySet()
+            } else {
+                preferences[KEY_SAVE_BLOCKED_TARGETS] ?: emptySet()
+            }
+            preferences[KEY_SAVE_BLOCKED_TARGETS] = current + normalizedIncoming
+        }
     }
     
     /**
@@ -537,6 +593,26 @@ class AutofillPreferences(private val context: Context) {
         
         val packages = blacklistPackages.first()
         return packages.contains(packageName)
+    }
+
+    private fun parseSaveBlockedTargetRecord(raw: String): SaveBlockedTargetRecord? {
+        return when {
+            raw.startsWith("pkg:") -> {
+                val packageName = raw.removePrefix("pkg:").trim().takeIf { it.isNotBlank() } ?: return null
+                SaveBlockedTargetRecord(
+                    key = raw,
+                    packageName = packageName,
+                )
+            }
+            raw.startsWith("dom:") -> {
+                val webDomain = raw.removePrefix("dom:").trim().takeIf { it.isNotBlank() } ?: return null
+                SaveBlockedTargetRecord(
+                    key = raw,
+                    webDomain = webDomain,
+                )
+            }
+            else -> null
+        }
     }
 
     data class LastFilledCredential(

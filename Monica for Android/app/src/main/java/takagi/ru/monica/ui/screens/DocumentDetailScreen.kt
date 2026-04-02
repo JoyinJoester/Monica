@@ -27,7 +27,9 @@ import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.DocumentType
+import takagi.ru.monica.data.model.StorageTarget
 import takagi.ru.monica.data.model.displayFullName
+import takagi.ru.monica.data.model.toStorageTarget
 import takagi.ru.monica.ui.components.ActionStrip
 import takagi.ru.monica.ui.components.ActionStripItem
 import takagi.ru.monica.ui.components.ImageDialog
@@ -51,6 +53,7 @@ fun DocumentDetailScreen(
     val context = LocalContext.current
     val imageManager = remember { ImageManager(context) }
     val scope = rememberCoroutineScope()
+    val allDocuments by viewModel.allDocuments.collectAsState(initial = emptyList())
     
     var documentItem by remember { mutableStateOf<SecureItem?>(null) }
     var documentData by remember { mutableStateOf<DocumentData?>(null) }
@@ -78,7 +81,20 @@ fun DocumentDetailScreen(
             }
         }
     }
-    
+    val replicaTargets = remember(documentItem, allDocuments) {
+        val currentItem = documentItem
+        if (currentItem == null) {
+            emptyList()
+        } else if (!currentItem.replicaGroupId.isNullOrBlank()) {
+            allDocuments
+                .filter { document -> document.replicaGroupId == currentItem.replicaGroupId && !document.isDeleted }
+                .map { it.toStorageTarget() }
+                .distinctBy(StorageTarget::stableKey)
+                .ifEmpty { listOf(currentItem.toStorageTarget()) }
+        } else {
+            listOf(currentItem.toStorageTarget())
+        }
+    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -439,10 +455,15 @@ fun DocumentDetailScreen(
     }
     
     if (showDeleteDialog) {
+        val deleteMessage = if (replicaTargets.size > 1) {
+            "这只会删除当前这一个副本，其他 ${replicaTargets.size - 1} 个目标中的副本会保留。"
+        } else {
+            context.getString(R.string.delete_document_message)
+        }
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
             title = { Text(stringResource(R.string.delete_document_title)) },
-            text = { Text(stringResource(R.string.delete_document_message)) },
+            text = { Text(deleteMessage) },
             confirmButton = {
                 TextButton(
                      onClick = {

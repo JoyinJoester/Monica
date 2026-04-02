@@ -14,6 +14,7 @@ import java.util.Date
     tableName = "secure_items",
     indices = [
         Index(value = ["isDeleted"]),
+        Index(value = ["replica_group_id"], name = "index_secure_items_replica_group_id"),
         Index(value = ["keepass_entry_uuid"], name = "index_secure_items_keepass_entry_uuid"),
         Index(
             value = ["bitwarden_vault_id", "bitwarden_cipher_id"],
@@ -60,6 +61,9 @@ data class SecureItem(
     val isDeleted: Boolean = false,     // 是否已删除（在回收站中）
     @ColumnInfo(defaultValue = "NULL")
     val deletedAt: Date? = null,         // 删除时间（用于自动清空）
+
+    @ColumnInfo(name = "replica_group_id", defaultValue = "NULL")
+    val replicaGroupId: String? = null,
     
     // Bitwarden 同步字段
     @ColumnInfo(name = "bitwarden_vault_id", defaultValue = "NULL")

@@ -105,6 +105,7 @@ sealed class Screen(val route: String) {
     object SecurityQuestion : Screen("security_question")
     object AutofillSettings : Screen("autofill_settings")
     object AutofillBlockedFields : Screen("autofill_blocked_fields")
+    object AutofillSaveBlockedTargets : Screen("autofill_save_blocked_targets")
     object PasskeySettings : Screen("passkey_settings")
     object SecurityAnalysis : Screen("security_analysis")
     object DedupEngine : Screen("dedup_engine")

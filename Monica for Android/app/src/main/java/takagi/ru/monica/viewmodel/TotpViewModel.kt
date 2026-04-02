@@ -21,7 +21,9 @@ import takagi.ru.monica.data.asMonicaLocalCopy
 import takagi.ru.monica.data.hasBitwardenBinding
 import takagi.ru.monica.data.hasOwnershipConflict
 import takagi.ru.monica.data.isLocalOnlyItem
+import takagi.ru.monica.data.model.StorageTarget
 import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.data.model.toStorageTarget
 import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
 import takagi.ru.monica.data.resolveOwnership
@@ -664,181 +666,300 @@ class TotpViewModel(
     ) {
         viewModelScope.launch {
             try {
-                val existingItem = if (id != null && id > 0) repository.getItemById(id) else null
-                val previousTotpData = existingItem?.let { item ->
-                    try {
-                        Json.decodeFromString<TotpData>(item.itemData)
-                    } catch (e: Exception) {
-                        null
-                    }
-                }
-                val previousBoundId = previousTotpData?.boundPasswordId
-                val previousSecret = previousTotpData?.secret ?: ""
-
-                val shouldFollowBoundPassword = totpData.boundPasswordId != null
-                val boundPassword = if (shouldFollowBoundPassword) {
-                    totpData.boundPasswordId?.let { passwordRepository.getPasswordEntryById(it) }
-                } else {
-                    null
-                }
-                val resolvedKeepassDatabaseId = if (shouldFollowBoundPassword) {
-                    boundPassword?.keepassDatabaseId ?: keepassDatabaseId
-                } else {
-                    keepassDatabaseId
-                }
-                val resolvedKeepassGroupPath = when {
-                    resolvedKeepassDatabaseId == null -> null
-                    shouldFollowBoundPassword -> boundPassword?.keepassGroupPath
-                    else -> keepassGroupPath ?: existingItem?.keepassGroupPath
-                }
-                val keepassIdentity = resolveKeePassMutationIdentity(
-                    existingItem = existingItem,
-                    targetDatabaseId = resolvedKeepassDatabaseId,
-                    requestedGroupPath = resolvedKeepassGroupPath
-                )
-                // TotpData 与 SecureItem 列字段保持同源，避免后续编辑把 KeePass 归属回写成“本地”。
-                val updatedTotpData = totpData.copy(
+                saveTotpItemInternal(
+                    id = id,
+                    title = title,
+                    notes = notes,
+                    totpData = totpData,
+                    isFavorite = isFavorite,
                     categoryId = categoryId,
-                    keepassDatabaseId = resolvedKeepassDatabaseId
+                    keepassDatabaseId = keepassDatabaseId,
+                    keepassGroupPath = keepassGroupPath,
+                    bitwardenVaultId = bitwardenVaultId,
+                    bitwardenFolderId = bitwardenFolderId,
+                    followBoundPasswordStorage = totpData.boundPasswordId != null
                 )
-                val itemDataJson = Json.encodeToString(updatedTotpData)
-
-                if (shouldFollowBoundPassword &&
-                    existingItem != null &&
-                    existingItem.bitwardenVaultId != null &&
-                    !existingItem.bitwardenCipherId.isNullOrBlank()
-                ) {
-                    val queueResult = bitwardenRepository?.queueCipherDelete(
-                        vaultId = existingItem.bitwardenVaultId,
-                        cipherId = existingItem.bitwardenCipherId,
-                        entryId = existingItem.id,
-                        itemType = BitwardenPendingOperation.ITEM_TYPE_TOTP
-                    )
-                    if (queueResult?.isSuccess != true) {
-                        Log.e(
-                            "TotpViewModel",
-                            "Queue Bitwarden delete failed: ${queueResult?.exceptionOrNull()?.message ?: "Bitwarden repository unavailable"}"
-                        )
-                        return@launch
-                    }
-                }
-
-                val resolvedBitwardenVaultId = if (shouldFollowBoundPassword) null else bitwardenVaultId
-                val resolvedBitwardenFolderId = if (shouldFollowBoundPassword) null else bitwardenFolderId
-                 
-                val item = if (id != null && id > 0) {
-                    // 更新现有项目
-                    existingItem?.copy(
-                        title = title,
-                        notes = notes,
-                        itemData = itemDataJson,
-                        categoryId = categoryId,
-                        keepassDatabaseId = resolvedKeepassDatabaseId,
-                        keepassGroupPath = keepassIdentity.groupPath,
-                        keepassEntryUuid = keepassIdentity.entryUuid,
-                        keepassGroupUuid = keepassIdentity.groupUuid,
-                        bitwardenVaultId = resolvedBitwardenVaultId,
-                        bitwardenFolderId = resolvedBitwardenFolderId,
-                        bitwardenCipherId = if (shouldFollowBoundPassword) null else existingItem.bitwardenCipherId,
-                        bitwardenRevisionDate = if (shouldFollowBoundPassword) null else existingItem.bitwardenRevisionDate,
-                        bitwardenLocalModified = if (shouldFollowBoundPassword) {
-                            false
-                        } else {
-                            existingItem.bitwardenCipherId != null && resolvedBitwardenVaultId != null
-                        },
-                        syncStatus = if (shouldFollowBoundPassword) {
-                            "NONE"
-                        } else if (resolvedBitwardenVaultId != null) {
-                            if (existingItem.bitwardenCipherId != null) "PENDING" else existingItem.syncStatus
-                        } else {
-                            "NONE"
-                        },
-                        updatedAt = Date()
-                    ) ?: return@launch
-                } else {
-                    // 创建新项目
-                    SecureItem(
-                        itemType = ItemType.TOTP,
-                        title = title,
-                        notes = notes,
-                        itemData = itemDataJson,
-                        isFavorite = isFavorite,
-                        categoryId = categoryId,
-                        keepassDatabaseId = resolvedKeepassDatabaseId,
-                        keepassGroupPath = keepassIdentity.groupPath,
-                        keepassEntryUuid = keepassIdentity.entryUuid,
-                        keepassGroupUuid = keepassIdentity.groupUuid,
-                        bitwardenVaultId = resolvedBitwardenVaultId,
-                        bitwardenFolderId = resolvedBitwardenFolderId,
-                        syncStatus = if (resolvedBitwardenVaultId != null) "PENDING" else "NONE",
-                        createdAt = Date(),
-                        updatedAt = Date(),
-                        imagePaths = ""
-                    )
-                }
-                
-                if (id != null && id > 0) {
-                    // 更新操作 - 记录变更日志
-                    val existing = repository.getItemById(id)
-                    repository.updateItem(item)
-                    if (existing != null) {
-                        val changes = mutableListOf<FieldChange>()
-                        if (existing.title != title) {
-                            changes.add(FieldChange("标题", existing.title, title))
-                        }
-                        if (existing.notes != notes) {
-                            changes.add(FieldChange("备注", existing.notes, notes))
-                        }
-                        // 始终记录更新操作，即使没有检测到字段变更
-                        OperationLogger.logUpdate(
-                            itemType = OperationLogItemType.TOTP,
-                            itemId = id,
-                            itemTitle = title,
-                            changes = if (changes.isEmpty()) listOf(FieldChange("更新", "编辑于", java.text.SimpleDateFormat("HH:mm").format(Date()))) else changes
-                        )
-                    }
-                } else {
-                    val newId = keepassSecureItemCreateExecutor.create(
-                        item = item,
-                        insertItem = repository::insertItem,
-                        rollbackItem = repository::deleteItemById
-                    ) ?: return@launch
-                    // 创建操作 - 记录日志
-                    OperationLogger.logCreate(
-                        itemType = OperationLogItemType.TOTP,
-                        itemId = newId,
-                        itemTitle = title
-                    )
-                }
-
-                // 同步绑定到密码的验证器密钥
-                val boundId = updatedTotpData.boundPasswordId
-                val secret = updatedTotpData.secret
-                if (boundId != null && secret.isNotBlank()) {
-                    passwordRepository.updateAuthenticatorKey(boundId, secret)
-                }
-
-                // 如果解绑或更换绑定，清理旧绑定的密钥（仅当密钥一致时）
-                if (previousBoundId != null && previousBoundId != boundId && previousSecret.isNotBlank()) {
-                    val previousPassword = passwordRepository.getPasswordEntryById(previousBoundId)
-                    val previousPasswordKey = previousPassword
-                        ?.authenticatorKey
-                        ?.let(::buildTotpIdentityKeyFromRawKey)
-                    val previousTotpKey = buildTotpIdentityKeyFromRawKey(previousSecret)
-                    if (previousPasswordKey != null && previousPasswordKey == previousTotpKey) {
-                        passwordRepository.updateAuthenticatorKey(previousBoundId, "")
-                    }
-                }
-
-                if (id != null && id > 0) {
-                    val current = repository.getItemById(id)
-                    if (current != null) {
-                        keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = existingItem, updatedItem = current)
-                    }
-                }
             } catch (e: Exception) {
                 e.printStackTrace()
                 // TODO: 处理错误
+            }
+        }
+    }
+
+    fun saveTotpAcrossTargets(
+        id: Long?,
+        title: String,
+        notes: String,
+        totpData: TotpData,
+        isFavorite: Boolean = false,
+        targets: List<StorageTarget>
+    ) {
+        viewModelScope.launch {
+            try {
+                val distinctTargets = targets.distinctBy(StorageTarget::stableKey)
+                if (distinctTargets.isEmpty()) return@launch
+
+                val existingItem = id?.let { repository.getItemById(it) }?.takeIf { it.itemType == ItemType.TOTP }
+                val currentTarget = existingItem?.toStorageTarget() ?: distinctTargets.first()
+                val replicaGroupId = existingItem?.replicaGroupId?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
+                val existingReplicaKeys = if (existingItem != null) {
+                    repository.getAllItems().first()
+                        .asSequence()
+                        .filter {
+                            it.itemType == ItemType.TOTP &&
+                                it.replicaGroupId == replicaGroupId &&
+                                it.id != existingItem.id &&
+                                !it.isDeleted
+                        }
+                        .map { it.toStorageTarget().stableKey }
+                        .toSet()
+                } else {
+                    emptySet()
+                }
+
+                suspend fun saveIntoTarget(target: StorageTarget, targetId: Long?) {
+                    when (target) {
+                        is StorageTarget.MonicaLocal -> saveTotpItemInternal(
+                            id = targetId,
+                            title = title,
+                            notes = notes,
+                            totpData = totpData,
+                            isFavorite = isFavorite,
+                            categoryId = target.categoryId,
+                            keepassDatabaseId = null,
+                            keepassGroupPath = null,
+                            bitwardenVaultId = null,
+                            bitwardenFolderId = null,
+                            followBoundPasswordStorage = false,
+                            replicaGroupId = replicaGroupId
+                        )
+                        is StorageTarget.KeePass -> saveTotpItemInternal(
+                            id = targetId,
+                            title = title,
+                            notes = notes,
+                            totpData = totpData,
+                            isFavorite = isFavorite,
+                            categoryId = null,
+                            keepassDatabaseId = target.databaseId,
+                            keepassGroupPath = target.groupPath,
+                            bitwardenVaultId = null,
+                            bitwardenFolderId = null,
+                            followBoundPasswordStorage = false,
+                            replicaGroupId = replicaGroupId
+                        )
+                        is StorageTarget.Bitwarden -> saveTotpItemInternal(
+                            id = targetId,
+                            title = title,
+                            notes = notes,
+                            totpData = totpData,
+                            isFavorite = isFavorite,
+                            categoryId = null,
+                            keepassDatabaseId = null,
+                            keepassGroupPath = null,
+                            bitwardenVaultId = target.vaultId,
+                            bitwardenFolderId = target.folderId,
+                            followBoundPasswordStorage = false,
+                            replicaGroupId = replicaGroupId
+                        )
+                    }
+                }
+
+                saveIntoTarget(currentTarget, existingItem?.id)
+
+                distinctTargets
+                    .filter { it.stableKey != currentTarget.stableKey && it.stableKey !in existingReplicaKeys }
+                    .forEach { target ->
+                        saveIntoTarget(target, targetId = null)
+                    }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    private suspend fun saveTotpItemInternal(
+        id: Long?,
+        title: String,
+        notes: String,
+        totpData: TotpData,
+        isFavorite: Boolean,
+        categoryId: Long?,
+        keepassDatabaseId: Long?,
+        keepassGroupPath: String?,
+        bitwardenVaultId: Long?,
+        bitwardenFolderId: String?,
+        followBoundPasswordStorage: Boolean,
+        replicaGroupId: String? = null
+    ) {
+        val existingItem = if (id != null && id > 0) repository.getItemById(id) else null
+        val previousTotpData = existingItem?.let { item ->
+            try {
+                Json.decodeFromString<TotpData>(item.itemData)
+            } catch (e: Exception) {
+                null
+            }
+        }
+        val previousBoundId = previousTotpData?.boundPasswordId
+        val previousSecret = previousTotpData?.secret ?: ""
+
+        val shouldFollowBoundPassword = followBoundPasswordStorage && totpData.boundPasswordId != null
+        val boundPassword = if (shouldFollowBoundPassword) {
+            totpData.boundPasswordId?.let { passwordRepository.getPasswordEntryById(it) }
+        } else {
+            null
+        }
+        val resolvedKeepassDatabaseId = if (shouldFollowBoundPassword) {
+            boundPassword?.keepassDatabaseId ?: keepassDatabaseId
+        } else {
+            keepassDatabaseId
+        }
+        val resolvedKeepassGroupPath = when {
+            resolvedKeepassDatabaseId == null -> null
+            shouldFollowBoundPassword -> boundPassword?.keepassGroupPath
+            else -> keepassGroupPath ?: existingItem?.keepassGroupPath
+        }
+        val keepassIdentity = resolveKeePassMutationIdentity(
+            existingItem = existingItem,
+            targetDatabaseId = resolvedKeepassDatabaseId,
+            requestedGroupPath = resolvedKeepassGroupPath
+        )
+        val updatedTotpData = totpData.copy(
+            categoryId = categoryId,
+            keepassDatabaseId = resolvedKeepassDatabaseId
+        )
+        val itemDataJson = Json.encodeToString(updatedTotpData)
+
+        if (shouldFollowBoundPassword &&
+            existingItem != null &&
+            existingItem.bitwardenVaultId != null &&
+            !existingItem.bitwardenCipherId.isNullOrBlank()
+        ) {
+            val queueResult = bitwardenRepository?.queueCipherDelete(
+                vaultId = existingItem.bitwardenVaultId,
+                cipherId = existingItem.bitwardenCipherId,
+                entryId = existingItem.id,
+                itemType = BitwardenPendingOperation.ITEM_TYPE_TOTP
+            )
+            if (queueResult?.isSuccess != true) {
+                Log.e(
+                    "TotpViewModel",
+                    "Queue Bitwarden delete failed: ${queueResult?.exceptionOrNull()?.message ?: "Bitwarden repository unavailable"}"
+                )
+                return
+            }
+        }
+
+        val resolvedBitwardenVaultId = if (shouldFollowBoundPassword) null else bitwardenVaultId
+        val resolvedBitwardenFolderId = if (shouldFollowBoundPassword) null else bitwardenFolderId
+        val resolvedReplicaGroupId = replicaGroupId ?: existingItem?.replicaGroupId
+
+        val item = if (id != null && id > 0) {
+            existingItem?.copy(
+                title = title,
+                notes = notes,
+                itemData = itemDataJson,
+                categoryId = categoryId,
+                keepassDatabaseId = resolvedKeepassDatabaseId,
+                keepassGroupPath = keepassIdentity.groupPath,
+                keepassEntryUuid = keepassIdentity.entryUuid,
+                keepassGroupUuid = keepassIdentity.groupUuid,
+                bitwardenVaultId = resolvedBitwardenVaultId,
+                bitwardenFolderId = resolvedBitwardenFolderId,
+                bitwardenCipherId = if (shouldFollowBoundPassword) null else existingItem.bitwardenCipherId,
+                bitwardenRevisionDate = if (shouldFollowBoundPassword) null else existingItem.bitwardenRevisionDate,
+                bitwardenLocalModified = if (shouldFollowBoundPassword) {
+                    false
+                } else {
+                    existingItem.bitwardenCipherId != null && resolvedBitwardenVaultId != null
+                },
+                syncStatus = if (shouldFollowBoundPassword) {
+                    "NONE"
+                } else if (resolvedBitwardenVaultId != null) {
+                    if (existingItem.bitwardenCipherId != null) "PENDING" else existingItem.syncStatus
+                } else {
+                    "NONE"
+                },
+                replicaGroupId = resolvedReplicaGroupId,
+                updatedAt = Date()
+            ) ?: return
+        } else {
+            SecureItem(
+                itemType = ItemType.TOTP,
+                title = title,
+                notes = notes,
+                itemData = itemDataJson,
+                isFavorite = isFavorite,
+                categoryId = categoryId,
+                keepassDatabaseId = resolvedKeepassDatabaseId,
+                keepassGroupPath = keepassIdentity.groupPath,
+                keepassEntryUuid = keepassIdentity.entryUuid,
+                keepassGroupUuid = keepassIdentity.groupUuid,
+                bitwardenVaultId = resolvedBitwardenVaultId,
+                bitwardenFolderId = resolvedBitwardenFolderId,
+                syncStatus = if (resolvedBitwardenVaultId != null) "PENDING" else "NONE",
+                createdAt = Date(),
+                updatedAt = Date(),
+                imagePaths = "",
+                replicaGroupId = resolvedReplicaGroupId
+            )
+        }
+
+        if (id != null && id > 0) {
+            val existing = repository.getItemById(id)
+            repository.updateItem(item)
+            if (existing != null) {
+                val changes = mutableListOf<FieldChange>()
+                if (existing.title != title) {
+                    changes.add(FieldChange("标题", existing.title, title))
+                }
+                if (existing.notes != notes) {
+                    changes.add(FieldChange("备注", existing.notes, notes))
+                }
+                OperationLogger.logUpdate(
+                    itemType = OperationLogItemType.TOTP,
+                    itemId = id,
+                    itemTitle = title,
+                    changes = if (changes.isEmpty()) {
+                        listOf(FieldChange("更新", "编辑于", java.text.SimpleDateFormat("HH:mm").format(Date())))
+                    } else {
+                        changes
+                    }
+                )
+            }
+        } else {
+            val newId = keepassSecureItemCreateExecutor.create(
+                item = item,
+                insertItem = repository::insertItem,
+                rollbackItem = repository::deleteItemById
+            ) ?: return
+            OperationLogger.logCreate(
+                itemType = OperationLogItemType.TOTP,
+                itemId = newId,
+                itemTitle = title
+            )
+        }
+
+        val boundId = updatedTotpData.boundPasswordId
+        val secret = updatedTotpData.secret
+        if (boundId != null && secret.isNotBlank()) {
+            passwordRepository.updateAuthenticatorKey(boundId, secret)
+        }
+
+        if (previousBoundId != null && previousBoundId != boundId && previousSecret.isNotBlank()) {
+            val previousPassword = passwordRepository.getPasswordEntryById(previousBoundId)
+            val previousPasswordKey = previousPassword
+                ?.authenticatorKey
+                ?.let(::buildTotpIdentityKeyFromRawKey)
+            val previousTotpKey = buildTotpIdentityKeyFromRawKey(previousSecret)
+            if (previousPasswordKey != null && previousPasswordKey == previousTotpKey) {
+                passwordRepository.updateAuthenticatorKey(previousBoundId, "")
+            }
+        }
+
+        if (id != null && id > 0) {
+            val current = repository.getItemById(id)
+            if (current != null) {
+                keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = existingItem, updatedItem = current)
             }
         }
     }

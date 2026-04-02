@@ -2732,18 +2732,15 @@ private fun AuthenticatorTabPane(
                         initialBitwardenFolderId = totpNewItemDefaults.bitwardenFolderId,
                         categories = totpCategories,
                         passwordViewModel = passwordViewModel,
+                        totpViewModel = totpViewModel,
                         localKeePassViewModel = localKeePassViewModel,
-                        onSave = { title, notes, totpData, categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
-                            totpViewModel.saveTotpItem(
+                        onSave = { title, notes, totpData, targets ->
+                            totpViewModel.saveTotpAcrossTargets(
                                 id = null,
                                 title = title,
                                 notes = notes,
                                 totpData = totpData,
-                                categoryId = categoryId,
-                                keepassDatabaseId = keepassDatabaseId,
-                                keepassGroupPath = keepassGroupPath,
-                                bitwardenVaultId = bitwardenVaultId,
-                                bitwardenFolderId = bitwardenFolderId
+                                targets = targets
                             )
                             onInlineTotpEditorBack()
                         },
@@ -2780,23 +2777,22 @@ private fun AuthenticatorTabPane(
                         initialTitle = selectedTotpItem.title,
                         initialNotes = selectedTotpItem.notes,
                         initialCategoryId = selectedTotpData.categoryId,
+                        initialKeePassDatabaseId = selectedTotpItem.keepassDatabaseId,
                         initialKeePassGroupPath = selectedTotpItem.keepassGroupPath,
                         initialBitwardenVaultId = selectedTotpItem.bitwardenVaultId,
                         initialBitwardenFolderId = selectedTotpItem.bitwardenFolderId,
+                        initialReplicaGroupId = selectedTotpItem.replicaGroupId,
                         categories = totpCategories,
                         passwordViewModel = passwordViewModel,
+                        totpViewModel = totpViewModel,
                         localKeePassViewModel = localKeePassViewModel,
-                        onSave = { title, notes, totpData, categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
-                            totpViewModel.saveTotpItem(
+                        onSave = { title, notes, totpData, targets ->
+                            totpViewModel.saveTotpAcrossTargets(
                                 id = selectedTotpItem.id,
                                 title = title,
                                 notes = notes,
                                 totpData = totpData,
-                                categoryId = categoryId,
-                                keepassDatabaseId = keepassDatabaseId,
-                                keepassGroupPath = keepassGroupPath,
-                                bitwardenVaultId = bitwardenVaultId,
-                                bitwardenFolderId = bitwardenFolderId
+                                targets = targets
                             )
                         },
                         onNavigateBack = onInlineTotpEditorBack,
@@ -4139,18 +4135,15 @@ private fun MainScreenAddFab(
                                     initialBitwardenFolderId = totpNewItemDefaults.bitwardenFolderId,
                                     categories = totpCategories,
                                     passwordViewModel = passwordViewModel,
+                                    totpViewModel = totpViewModel,
                                     localKeePassViewModel = localKeePassViewModel,
-                                    onSave = { title, notes, totpData, categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
-                                        totpViewModel.saveTotpItem(
+                                    onSave = { title, notes, totpData, targets ->
+                                        totpViewModel.saveTotpAcrossTargets(
                                             id = null,
                                             title = title,
                                             notes = notes,
                                             totpData = totpData,
-                                            categoryId = categoryId,
-                                            keepassDatabaseId = keepassDatabaseId,
-                                            keepassGroupPath = keepassGroupPath,
-                                            bitwardenVaultId = bitwardenVaultId,
-                                            bitwardenFolderId = bitwardenFolderId
+                                            targets = targets
                                         )
                                         collapse()
                                     },

@@ -22,6 +22,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
@@ -32,15 +33,21 @@ import takagi.ru.monica.data.CustomFieldDraft
 import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.DocumentType
+import takagi.ru.monica.data.model.StorageTarget
 import takagi.ru.monica.data.model.displayFullName
+import takagi.ru.monica.data.model.toStorageTarget
 import takagi.ru.monica.ui.components.CommonNameSuggestionSheet
 import takagi.ru.monica.ui.components.CustomFieldEditorSection
 import takagi.ru.monica.ui.components.DualPhotoPicker
-import takagi.ru.monica.ui.components.StorageTargetSelectorCard
+import takagi.ru.monica.ui.components.MultiStorageTargetPickerBottomSheet
+import takagi.ru.monica.ui.components.MultiStorageTargetSelectorCard
+import takagi.ru.monica.ui.components.buildMultiStorageTarget
 import takagi.ru.monica.ui.components.rememberCommonNameSuggestionState
+import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.RememberedStorageTarget
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.viewmodel.DocumentViewModel
+import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -68,7 +75,16 @@ fun AddEditDocumentScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val database = remember { PasswordDatabase.getDatabase(context) }
+    val securityManager = remember { SecurityManager(context) }
     val bitwardenSyncViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel()
+    val localKeePassViewModel: LocalKeePassViewModel = viewModel {
+        LocalKeePassViewModel(
+            context.applicationContext as android.app.Application,
+            database.localKeePassDatabaseDao(),
+            securityManager
+        )
+    }
     val settingsManager = remember { SettingsManager(context) }
     val commonAccountPreferences = remember { CommonAccountPreferences(context) }
     
@@ -120,18 +136,75 @@ fun AddEditDocumentScreen(
     var bitwardenVaultId by rememberSaveable { mutableStateOf<Long?>(null) }
     var bitwardenFolderId by rememberSaveable { mutableStateOf<String?>(null) }
     var hasAppliedInitialStorage by rememberSaveable { mutableStateOf(false) }
-    val database = remember { PasswordDatabase.getDatabase(context) }
+    val selectedStorageTargets = remember { mutableStateListOf<StorageTarget>() }
+    var existingReplicaTargetKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var currentReplicaGroupId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showStorageTargetSheet by remember { mutableStateOf(false) }
+    var hasLoadedExistingDocumentFields by rememberSaveable(documentId) { mutableStateOf(false) }
     val commonNameSuggestions = rememberCommonNameSuggestionState(database)
     val commonNameType = stringResource(R.string.common_account_type_name)
     val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList())
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
     val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
+    val allDocuments by viewModel.allDocuments.collectAsState(initial = emptyList())
     val rememberedStorageTarget by settingsManager
         .rememberedStorageTargetFlow(SettingsManager.StorageTargetScope.DOCUMENT)
         .collectAsState(initial = null as RememberedStorageTarget?)
     val cardWalletCategoryFilterState by settingsManager
         .categoryFilterStateFlow(SettingsManager.CategoryFilterScope.CARD_WALLET)
         .collectAsState(initial = null)
+
+    fun syncLegacyStorageState(targets: List<StorageTarget>) {
+        when (val primaryTarget = targets.firstOrNull()) {
+            is StorageTarget.MonicaLocal -> {
+                selectedCategoryId = primaryTarget.categoryId
+                keepassDatabaseId = null
+                keepassGroupPath = null
+                bitwardenVaultId = null
+                bitwardenFolderId = null
+            }
+            is StorageTarget.KeePass -> {
+                selectedCategoryId = null
+                keepassDatabaseId = primaryTarget.databaseId
+                keepassGroupPath = primaryTarget.groupPath
+                bitwardenVaultId = null
+                bitwardenFolderId = null
+            }
+            is StorageTarget.Bitwarden -> {
+                selectedCategoryId = null
+                keepassDatabaseId = null
+                keepassGroupPath = null
+                bitwardenVaultId = primaryTarget.vaultId
+                bitwardenFolderId = primaryTarget.folderId
+            }
+            null -> {
+                selectedCategoryId = null
+                keepassDatabaseId = null
+                keepassGroupPath = null
+                bitwardenVaultId = null
+                bitwardenFolderId = null
+            }
+        }
+    }
+
+    fun setSelectedStorageTargets(targets: List<StorageTarget>) {
+        val normalizedTargets = targets.distinctBy(StorageTarget::stableKey)
+        selectedStorageTargets.clear()
+        selectedStorageTargets.addAll(normalizedTargets)
+        syncLegacyStorageState(normalizedTargets)
+    }
+
+    fun addSelectedStorageTarget(target: StorageTarget) {
+        if (selectedStorageTargets.any { it.stableKey == target.stableKey }) return
+        selectedStorageTargets.add(target)
+        syncLegacyStorageState(selectedStorageTargets)
+    }
+
+    fun removeSelectedStorageTarget(target: StorageTarget) {
+        if (selectedStorageTargets.size <= 1) return
+        selectedStorageTargets.removeAll { it.stableKey == target.stableKey }
+        syncLegacyStorageState(selectedStorageTargets)
+    }
 
     LaunchedEffect(
         documentId,
@@ -164,6 +237,7 @@ fun AddEditDocumentScreen(
             null
         }
         if (!hasExplicitInitialStorage && remembered == null && filterKeepassDatabaseId == null && filterKeepassGroupPath == null) {
+            setSelectedStorageTargets(listOf(StorageTarget.MonicaLocal(null)))
             return@LaunchedEffect
         }
         selectedCategoryId = if (hasExplicitInitialStorage) {
@@ -191,6 +265,17 @@ fun AddEditDocumentScreen(
         } else {
             remembered?.bitwardenFolderId
         }
+        setSelectedStorageTargets(
+            listOf(
+                buildMultiStorageTarget(
+                    categoryId = selectedCategoryId,
+                    keepassDatabaseId = keepassDatabaseId,
+                    keepassGroupPath = keepassGroupPath,
+                    bitwardenVaultId = bitwardenVaultId,
+                    bitwardenFolderId = bitwardenFolderId
+                )
+            )
+        )
         hasAppliedInitialStorage = true
     }
     
@@ -198,6 +283,7 @@ fun AddEditDocumentScreen(
     // 如果是添加模式，重置表单字段（防止保留上次添加的数据）
     LaunchedEffect(documentId) {
         if (documentId != null) {
+            if (hasLoadedExistingDocumentFields) return@LaunchedEffect
             viewModel.getDocumentById(documentId)?.let { item ->
                 title = item.title
                 notes = item.notes
@@ -207,6 +293,7 @@ fun AddEditDocumentScreen(
                 keepassGroupPath = item.keepassGroupPath
                 bitwardenVaultId = item.bitwardenVaultId
                 bitwardenFolderId = item.bitwardenFolderId
+                currentReplicaGroupId = item.replicaGroupId
                 
                 // 解析图片路径
                 try {
@@ -252,8 +339,14 @@ fun AddEditDocumentScreen(
                     customFields = CardWalletDataCodec.customFieldsToDrafts(data.customFields)
                     documentType = data.documentType
                 }
+
+                setSelectedStorageTargets(listOf(item.toStorageTarget()))
+                hasLoadedExistingDocumentFields = true
             }
         } else {
+            hasLoadedExistingDocumentFields = false
+            currentReplicaGroupId = null
+            existingReplicaTargetKeys = emptySet()
             // 添加模式：重置表单字段
             title = ""
             documentNumber = ""
@@ -290,11 +383,44 @@ fun AddEditDocumentScreen(
         }
     }
 
+    LaunchedEffect(documentId, allDocuments, currentReplicaGroupId, hasLoadedExistingDocumentFields) {
+        if (documentId == null || !hasLoadedExistingDocumentFields) return@LaunchedEffect
+        val currentItem = viewModel.getDocumentById(documentId) ?: return@LaunchedEffect
+        val selectedTargets = if (!currentReplicaGroupId.isNullOrBlank()) {
+            allDocuments
+                .filter { replica ->
+                    replica.replicaGroupId == currentReplicaGroupId && !replica.isDeleted
+                }
+                .map { it.toStorageTarget() }
+                .distinctBy(StorageTarget::stableKey)
+                .ifEmpty { listOf(currentItem.toStorageTarget()) }
+        } else {
+            listOf(currentItem.toStorageTarget())
+        }
+        setSelectedStorageTargets(selectedTargets)
+        existingReplicaTargetKeys = selectedTargets.map(StorageTarget::stableKey).toSet()
+    }
+
     val canSave = documentNumber.isNotBlank() && !isSaving
     val save: () -> Unit = saveAction@{
         if (isSaving || documentNumber.isBlank()) return@saveAction
         isSaving = true // 防止重复点击
-        val syncVaultId = bitwardenVaultId
+        val effectiveTargets = selectedStorageTargets.toList().ifEmpty {
+            listOf(
+                buildMultiStorageTarget(
+                    categoryId = selectedCategoryId,
+                    keepassDatabaseId = keepassDatabaseId,
+                    keepassGroupPath = keepassGroupPath,
+                    bitwardenVaultId = bitwardenVaultId,
+                    bitwardenFolderId = bitwardenFolderId
+                )
+            )
+        }
+        val primaryTarget = effectiveTargets.first()
+        val syncVaultIds = effectiveTargets
+            .filterIsInstance<StorageTarget.Bitwarden>()
+            .map { it.vaultId }
+            .distinct()
 
         val resolvedFullName = listOf(firstName, middleName, lastName)
             .filter { it.isNotBlank() }
@@ -336,62 +462,36 @@ fun AddEditDocumentScreen(
         )
         val imagePathsJson = Json.encodeToString(imagePathsList)
 
-        if (documentId == null) {
-            viewModel.addDocument(
-                title = title.ifBlank {
-                    when (documentType) {
-                        DocumentType.ID_CARD -> context.getString(R.string.id_card)
-                        DocumentType.PASSPORT -> context.getString(R.string.passport)
-                        DocumentType.DRIVER_LICENSE -> context.getString(R.string.drivers_license)
-                        DocumentType.SOCIAL_SECURITY -> context.getString(R.string.social_security_card)
-                        DocumentType.OTHER -> context.getString(R.string.other_document)
-                    }
-                },
-                documentData = documentData,
-                notes = notes,
-                isFavorite = isFavorite,
-                imagePaths = imagePathsJson,
-                categoryId = selectedCategoryId,
-                keepassDatabaseId = keepassDatabaseId,
-                keepassGroupPath = keepassGroupPath,
-                bitwardenVaultId = bitwardenVaultId,
-                bitwardenFolderId = bitwardenFolderId
-            )
-        } else {
-            viewModel.updateDocument(
-                id = documentId,
-                title = title.ifBlank {
-                    when (documentType) {
-                        DocumentType.ID_CARD -> context.getString(R.string.id_card)
-                        DocumentType.PASSPORT -> context.getString(R.string.passport)
-                        DocumentType.DRIVER_LICENSE -> context.getString(R.string.drivers_license)
-                        DocumentType.SOCIAL_SECURITY -> context.getString(R.string.social_security_card)
-                        DocumentType.OTHER -> context.getString(R.string.other_document)
-                    }
-                },
-                documentData = documentData,
-                notes = notes,
-                isFavorite = isFavorite,
-                imagePaths = imagePathsJson,
-                categoryId = selectedCategoryId,
-                keepassDatabaseId = keepassDatabaseId,
-                bitwardenVaultId = bitwardenVaultId,
-                bitwardenFolderId = bitwardenFolderId
-            )
-        }
+        viewModel.saveDocumentAcrossTargets(
+            id = documentId,
+            title = title.ifBlank {
+                when (documentType) {
+                    DocumentType.ID_CARD -> context.getString(R.string.id_card)
+                    DocumentType.PASSPORT -> context.getString(R.string.passport)
+                    DocumentType.DRIVER_LICENSE -> context.getString(R.string.drivers_license)
+                    DocumentType.SOCIAL_SECURITY -> context.getString(R.string.social_security_card)
+                    DocumentType.OTHER -> context.getString(R.string.other_document)
+                }
+            },
+            documentData = documentData,
+            notes = notes,
+            isFavorite = isFavorite,
+            imagePaths = imagePathsJson,
+            targets = effectiveTargets
+        )
         coroutineScope.launch {
             settingsManager.updateRememberedStorageTarget(
                 scope = SettingsManager.StorageTargetScope.DOCUMENT,
                 target = RememberedStorageTarget(
-                    categoryId = selectedCategoryId,
-                    keepassDatabaseId = keepassDatabaseId,
-                    keepassGroupPath = keepassGroupPath,
-                    bitwardenVaultId = bitwardenVaultId,
-                    bitwardenFolderId = bitwardenFolderId
+                    categoryId = (primaryTarget as? StorageTarget.MonicaLocal)?.categoryId,
+                    keepassDatabaseId = (primaryTarget as? StorageTarget.KeePass)?.databaseId,
+                    keepassGroupPath = (primaryTarget as? StorageTarget.KeePass)?.groupPath,
+                    bitwardenVaultId = (primaryTarget as? StorageTarget.Bitwarden)?.vaultId,
+                    bitwardenFolderId = (primaryTarget as? StorageTarget.Bitwarden)?.folderId
                 )
             )
         }
-        syncVaultId?.let(bitwardenSyncViewModel::requestLocalMutationSync)
+        syncVaultIds.forEach(bitwardenSyncViewModel::requestLocalMutationSync)
         onNavigateBack()
     }
     val toggleFavoriteAction: () -> Unit = {
@@ -416,40 +516,16 @@ fun AddEditDocumentScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            StorageTargetSelectorCard(
-                keepassDatabases = keepassDatabases,
-                selectedKeePassDatabaseId = keepassDatabaseId,
-                onKeePassDatabaseSelected = {
-                    val previousKeepassDatabaseId = keepassDatabaseId
-                    keepassDatabaseId = it
-                    if (it != null) {
-                        if (it != previousKeepassDatabaseId) keepassGroupPath = null
-                        bitwardenVaultId = null
-                        bitwardenFolderId = null
-                    } else {
-                        keepassGroupPath = null
-                    }
-                },
-                bitwardenVaults = bitwardenVaults,
-                selectedBitwardenVaultId = bitwardenVaultId,
-                onBitwardenVaultSelected = {
-                    bitwardenVaultId = it
-                    if (it != null) {
-                        keepassDatabaseId = null
-                        keepassGroupPath = null
-                    }
-                },
+            MultiStorageTargetSelectorCard(
+                selectedTargets = selectedStorageTargets,
+                existingTargetKeys = existingReplicaTargetKeys,
                 categories = categories,
-                selectedCategoryId = selectedCategoryId,
-                onCategorySelected = { selectedCategoryId = it },
-                selectedBitwardenFolderId = bitwardenFolderId,
-                onBitwardenFolderSelected = { folderId ->
-                    bitwardenFolderId = folderId
-                    if (bitwardenVaultId != null) {
-                        keepassDatabaseId = null
-                        keepassGroupPath = null
-                    }
-                }
+                keepassDatabases = keepassDatabases,
+                bitwardenVaults = bitwardenVaults,
+                bitwardenFolderDao = database.bitwardenFolderDao(),
+                isEditing = documentId != null,
+                onAddTargetClick = { showStorageTargetSheet = true },
+                onRemoveTarget = ::removeSelectedStorageTarget
             )
 
             // Basic Info
@@ -869,6 +945,19 @@ fun AddEditDocumentScreen(
             }
         )
     }
+
+    MultiStorageTargetPickerBottomSheet(
+        visible = showStorageTargetSheet,
+        selectedTargets = selectedStorageTargets.toList(),
+        lockedTargetKeys = existingReplicaTargetKeys,
+        categories = categories,
+        keepassDatabases = keepassDatabases,
+        bitwardenVaults = bitwardenVaults,
+        getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+        getKeePassGroups = localKeePassViewModel::getGroups,
+        onDismiss = { showStorageTargetSheet = false },
+        onSelectedTargetsChange = ::setSelectedStorageTargets
+    )
 }
 
 private data class SuggestedDocumentNameParts(

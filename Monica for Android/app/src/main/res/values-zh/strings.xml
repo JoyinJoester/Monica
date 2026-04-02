@@ -1353,6 +1353,16 @@
     <string name="autofill_blacklist_enable_desc">禁止特定应用使用自动填充功能</string>
     <string name="autofill_blacklist_manage">管理黑名单应用</string>
     <string name="autofill_blacklist_manage_desc">已添加 %d 个应用</string>
+    <string name="autofill_save_blocked_targets_title">不保存目标</string>
+    <string name="autofill_save_blocked_targets_manage">管理不保存名单</string>
+    <string name="autofill_save_blocked_targets_manage_desc">共有 %1$d 个应用或网站不会再弹出保存提示。</string>
+    <string name="autofill_save_blocked_targets_dialog_desc">这些应用或网站已被设置为不再显示 Monica 的保存密码提示。删除某一项后，将恢复对应目标的保存提示。</string>
+    <string name="autofill_save_blocked_targets_empty">暂时还没有被加入不保存名单的应用或网站。</string>
+    <string name="autofill_save_blocked_targets_badge_domain">网站已禁用保存提示</string>
+    <string name="autofill_save_blocked_targets_badge_app">应用已禁用保存提示</string>
+    <string name="autofill_save_blocked_targets_domain_only">网站目标</string>
+    <string name="autofill_save_blocked_targets_app_only">Android 应用目标</string>
+    <string name="autofill_save_blocked_targets_clear_all">清空不保存名单</string>
     <string name="autofill_blacklist_dialog_title">黑名单管理</string>
     <string name="autofill_blacklist_dialog_desc">黑名单中的应用将无法使用自动填充功能</string>
     <string name="autofill_blacklist_dialog_done">完成</string>
@@ -1991,6 +2001,7 @@
     <string name="folder_select_folder">选择文件夹</string>
     <string name="folder_create_new">创建新文件夹</string>
     <string name="folder_no_folder_root">不关联文件夹（根目录）</string>
+    <string name="storage_picker_keepass_root">数据库根目录</string>
     
     <!-- Bitwarden Unlock -->
     <string name="bitwarden_unlock_title">解锁 Bitwarden</string>
@@ -2020,7 +2031,9 @@
     <string name="category_rename_mode_full_path">编辑完整路径</string>
     <string name="category_parent_path_hint">父级路径：%1$s</string>
     <string name="menu">菜单</string>
+    <string name="single_select">单选</string>
     <string name="multi_select">多选</string>
+    <string name="storage_picker_edit_multi_append_hint">编辑已有条目时仅支持多选追加，已有目标会保留。</string>
     
     <!-- 自动填充硬编码修复 -->
     <string name="autofill_view_all_passwords">查看所有密码</string>
@@ -2542,6 +2555,9 @@
     <string name="import_type_csv_bitwarden_title">Bitwarden CSV</string>
     <string name="import_type_csv_bitwarden_desc">导入 Bitwarden 导出的 CSV 文件</string>
     <string name="import_type_csv_bitwarden_file_hint">选择 Bitwarden .csv 文件</string>
+    <string name="import_type_csv_chrome_title">Chrome CSV</string>
+    <string name="import_type_csv_chrome_desc">导入 Google Chrome 导出的 CSV 文件</string>
+    <string name="import_type_csv_chrome_file_hint">选择 Chrome .csv 文件</string>
     <string name="import_type_csv_password_keyboard_title">密码键盘软件 CSV</string>
     <string name="import_type_csv_password_keyboard_desc">导入密码键盘软件导出的 CSV 文件</string>
     <string name="import_type_csv_password_keyboard_file_hint">选择密码键盘软件 .csv 文件</string>

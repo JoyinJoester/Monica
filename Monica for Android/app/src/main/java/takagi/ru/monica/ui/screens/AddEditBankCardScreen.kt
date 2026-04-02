@@ -31,10 +31,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.CommonAccountPreferences
@@ -44,8 +45,10 @@ import takagi.ru.monica.data.model.BankCardData
 import takagi.ru.monica.data.model.BillingAddress
 import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.CardType
+import takagi.ru.monica.data.model.StorageTarget
 import takagi.ru.monica.data.model.formatForDisplay
 import takagi.ru.monica.data.model.isEmpty
+import takagi.ru.monica.data.model.toStorageTarget
 import takagi.ru.monica.data.CustomFieldDraft
 import takagi.ru.monica.ui.components.CommonNameSuggestion
 import takagi.ru.monica.ui.components.CommonNameSuggestionState
@@ -53,12 +56,16 @@ import takagi.ru.monica.ui.components.CommonNameSuggestionSource
 import takagi.ru.monica.ui.components.CommonNameSuggestionSheet
 import takagi.ru.monica.ui.components.CustomFieldEditorSection
 import takagi.ru.monica.ui.components.DualPhotoPicker
+import takagi.ru.monica.ui.components.MultiStorageTargetPickerBottomSheet
+import takagi.ru.monica.ui.components.MultiStorageTargetSelectorCard
 import takagi.ru.monica.ui.components.MonicaExpressiveFilterChip
-import takagi.ru.monica.ui.components.StorageTargetSelectorCard
+import takagi.ru.monica.ui.components.buildMultiStorageTarget
 import takagi.ru.monica.ui.components.rememberCommonNameSuggestionState
+import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.RememberedStorageTarget
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.viewmodel.BankCardViewModel
+import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -83,7 +90,16 @@ fun AddEditBankCardScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val database = remember { PasswordDatabase.getDatabase(context) }
+    val securityManager = remember { SecurityManager(context) }
     val bitwardenSyncViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel()
+    val localKeePassViewModel: LocalKeePassViewModel = viewModel {
+        LocalKeePassViewModel(
+            context.applicationContext as android.app.Application,
+            database.localKeePassDatabaseDao(),
+            securityManager
+        )
+    }
     val settingsManager = remember { SettingsManager(context) }
     val commonAccountPreferences = remember { CommonAccountPreferences(context) }
     
@@ -131,7 +147,11 @@ fun AddEditBankCardScreen(
     var bitwardenVaultId by rememberSaveable { mutableStateOf<Long?>(null) }
     var bitwardenFolderId by rememberSaveable { mutableStateOf<String?>(null) }
     var hasAppliedInitialStorage by rememberSaveable { mutableStateOf(false) }
-    val database = remember { PasswordDatabase.getDatabase(context) }
+    val selectedStorageTargets = remember { mutableStateListOf<StorageTarget>() }
+    var existingReplicaTargetKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var currentReplicaGroupId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showStorageTargetSheet by remember { mutableStateOf(false) }
+    var hasLoadedExistingCardFields by rememberSaveable(cardId) { mutableStateOf(false) }
     val commonNameSuggestions = rememberCommonNameSuggestionState(database)
     val commonNameType = stringResource(R.string.common_account_type_name)
     val inlineCardholderSuggestion = remember(commonNameSuggestions) {
@@ -143,12 +163,65 @@ fun AddEditBankCardScreen(
     val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList())
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
     val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
+    val allCards by viewModel.allCards.collectAsState(initial = emptyList())
     val rememberedStorageTarget by settingsManager
         .rememberedStorageTargetFlow(SettingsManager.StorageTargetScope.BANK_CARD)
         .collectAsState(initial = null as RememberedStorageTarget?)
     val cardWalletCategoryFilterState by settingsManager
         .categoryFilterStateFlow(SettingsManager.CategoryFilterScope.CARD_WALLET)
         .collectAsState(initial = null)
+
+    fun syncLegacyStorageState(targets: List<StorageTarget>) {
+        when (val primaryTarget = targets.firstOrNull()) {
+            is StorageTarget.MonicaLocal -> {
+                selectedCategoryId = primaryTarget.categoryId
+                keepassDatabaseId = null
+                keepassGroupPath = null
+                bitwardenVaultId = null
+                bitwardenFolderId = null
+            }
+            is StorageTarget.KeePass -> {
+                selectedCategoryId = null
+                keepassDatabaseId = primaryTarget.databaseId
+                keepassGroupPath = primaryTarget.groupPath
+                bitwardenVaultId = null
+                bitwardenFolderId = null
+            }
+            is StorageTarget.Bitwarden -> {
+                selectedCategoryId = null
+                keepassDatabaseId = null
+                keepassGroupPath = null
+                bitwardenVaultId = primaryTarget.vaultId
+                bitwardenFolderId = primaryTarget.folderId
+            }
+            null -> {
+                selectedCategoryId = null
+                keepassDatabaseId = null
+                keepassGroupPath = null
+                bitwardenVaultId = null
+                bitwardenFolderId = null
+            }
+        }
+    }
+
+    fun setSelectedStorageTargets(targets: List<StorageTarget>) {
+        val normalizedTargets = targets.distinctBy(StorageTarget::stableKey)
+        selectedStorageTargets.clear()
+        selectedStorageTargets.addAll(normalizedTargets)
+        syncLegacyStorageState(normalizedTargets)
+    }
+
+    fun addSelectedStorageTarget(target: StorageTarget) {
+        if (selectedStorageTargets.any { it.stableKey == target.stableKey }) return
+        selectedStorageTargets.add(target)
+        syncLegacyStorageState(selectedStorageTargets)
+    }
+
+    fun removeSelectedStorageTarget(target: StorageTarget) {
+        if (selectedStorageTargets.size <= 1) return
+        selectedStorageTargets.removeAll { it.stableKey == target.stableKey }
+        syncLegacyStorageState(selectedStorageTargets)
+    }
 
     LaunchedEffect(
         cardId,
@@ -181,6 +254,7 @@ fun AddEditBankCardScreen(
             null
         }
         if (!hasExplicitInitialStorage && remembered == null && filterKeepassDatabaseId == null && filterKeepassGroupPath == null) {
+            setSelectedStorageTargets(listOf(StorageTarget.MonicaLocal(null)))
             return@LaunchedEffect
         }
         selectedCategoryId = if (hasExplicitInitialStorage) {
@@ -208,6 +282,17 @@ fun AddEditBankCardScreen(
         } else {
             remembered?.bitwardenFolderId
         }
+        setSelectedStorageTargets(
+            listOf(
+                buildMultiStorageTarget(
+                    categoryId = selectedCategoryId,
+                    keepassDatabaseId = keepassDatabaseId,
+                    keepassGroupPath = keepassGroupPath,
+                    bitwardenVaultId = bitwardenVaultId,
+                    bitwardenFolderId = bitwardenFolderId
+                )
+            )
+        )
         hasAppliedInitialStorage = true
     }
     
@@ -215,6 +300,7 @@ fun AddEditBankCardScreen(
     // 如果是添加模式，重置表单字段（防止保留上次添加的数据）
     LaunchedEffect(cardId) {
         if (cardId != null) {
+            if (hasLoadedExistingCardFields) return@LaunchedEffect
             viewModel.getCardById(cardId)?.let { item ->
                 title = item.title
                 notes = item.notes
@@ -224,6 +310,7 @@ fun AddEditBankCardScreen(
                 keepassGroupPath = item.keepassGroupPath
                 bitwardenVaultId = item.bitwardenVaultId
                 bitwardenFolderId = item.bitwardenFolderId
+                currentReplicaGroupId = item.replicaGroupId
                 
                 // 解析图片路径
                 try {
@@ -269,8 +356,14 @@ fun AddEditBankCardScreen(
                         hasBillingAddress = false
                     }
                 }
+
+                setSelectedStorageTargets(listOf(item.toStorageTarget()))
+                hasLoadedExistingCardFields = true
             }
         } else {
+            hasLoadedExistingCardFields = false
+            currentReplicaGroupId = null
+            existingReplicaTargetKeys = emptySet()
             // 添加模式：重置表单字段
             title = ""
             cardNumber = ""
@@ -302,11 +395,44 @@ fun AddEditBankCardScreen(
         }
     }
 
+    LaunchedEffect(cardId, allCards, currentReplicaGroupId, hasLoadedExistingCardFields) {
+        if (cardId == null || !hasLoadedExistingCardFields) return@LaunchedEffect
+        val currentItem = viewModel.getCardById(cardId) ?: return@LaunchedEffect
+        val selectedTargets = if (!currentReplicaGroupId.isNullOrBlank()) {
+            allCards
+                .filter { replica ->
+                    replica.replicaGroupId == currentReplicaGroupId && !replica.isDeleted
+                }
+                .map { it.toStorageTarget() }
+                .distinctBy(StorageTarget::stableKey)
+                .ifEmpty { listOf(currentItem.toStorageTarget()) }
+        } else {
+            listOf(currentItem.toStorageTarget())
+        }
+        setSelectedStorageTargets(selectedTargets)
+        existingReplicaTargetKeys = selectedTargets.map(StorageTarget::stableKey).toSet()
+    }
+
     val canSave = cardNumber.isNotBlank() && !isSaving
     val save: () -> Unit = saveAction@{
         if (isSaving || cardNumber.isBlank()) return@saveAction
         isSaving = true // 防止重复点击
-        val syncVaultId = bitwardenVaultId
+        val effectiveTargets = selectedStorageTargets.toList().ifEmpty {
+            listOf(
+                buildMultiStorageTarget(
+                    categoryId = selectedCategoryId,
+                    keepassDatabaseId = keepassDatabaseId,
+                    keepassGroupPath = keepassGroupPath,
+                    bitwardenVaultId = bitwardenVaultId,
+                    bitwardenFolderId = bitwardenFolderId
+                )
+            )
+        }
+        val primaryTarget = effectiveTargets.first()
+        val syncVaultIds = effectiveTargets
+            .filterIsInstance<StorageTarget.Bitwarden>()
+            .map { it.vaultId }
+            .distinct()
 
         val billingAddressJson = if (hasBillingAddress) CardWalletDataCodec.encodeBillingAddress(billingAddress) else ""
         val cardData = BankCardData(
@@ -339,46 +465,28 @@ fun AddEditBankCardScreen(
         )
         val imagePathsJson = Json.encodeToString(imagePathsList)
 
-        if (cardId == null) {
-            viewModel.addCard(
-                title = title.ifBlank { context.getString(R.string.bank_card_default_title) },
-                cardData = cardData,
-                notes = notes,
-                isFavorite = isFavorite,
-                imagePaths = imagePathsJson,
-                categoryId = selectedCategoryId,
-                keepassDatabaseId = keepassDatabaseId,
-                keepassGroupPath = keepassGroupPath,
-                bitwardenVaultId = bitwardenVaultId,
-                bitwardenFolderId = bitwardenFolderId
-            )
-        } else {
-            viewModel.updateCard(
-                id = cardId,
-                title = title.ifBlank { context.getString(R.string.bank_card_default_title) },
-                cardData = cardData,
-                notes = notes,
-                isFavorite = isFavorite,
-                imagePaths = imagePathsJson,
-                categoryId = selectedCategoryId,
-                keepassDatabaseId = keepassDatabaseId,
-                bitwardenVaultId = bitwardenVaultId,
-                bitwardenFolderId = bitwardenFolderId
-            )
-        }
+        viewModel.saveCardAcrossTargets(
+            id = cardId,
+            title = title.ifBlank { context.getString(R.string.bank_card_default_title) },
+            cardData = cardData,
+            notes = notes,
+            isFavorite = isFavorite,
+            imagePaths = imagePathsJson,
+            targets = effectiveTargets
+        )
         coroutineScope.launch {
             settingsManager.updateRememberedStorageTarget(
                 scope = SettingsManager.StorageTargetScope.BANK_CARD,
                 target = RememberedStorageTarget(
-                    categoryId = selectedCategoryId,
-                    keepassDatabaseId = keepassDatabaseId,
-                    keepassGroupPath = keepassGroupPath,
-                    bitwardenVaultId = bitwardenVaultId,
-                    bitwardenFolderId = bitwardenFolderId
+                    categoryId = (primaryTarget as? StorageTarget.MonicaLocal)?.categoryId,
+                    keepassDatabaseId = (primaryTarget as? StorageTarget.KeePass)?.databaseId,
+                    keepassGroupPath = (primaryTarget as? StorageTarget.KeePass)?.groupPath,
+                    bitwardenVaultId = (primaryTarget as? StorageTarget.Bitwarden)?.vaultId,
+                    bitwardenFolderId = (primaryTarget as? StorageTarget.Bitwarden)?.folderId
                 )
             )
         }
-        syncVaultId?.let(bitwardenSyncViewModel::requestLocalMutationSync)
+        syncVaultIds.forEach(bitwardenSyncViewModel::requestLocalMutationSync)
         onNavigateBack()
     }
     val toggleFavoriteAction: () -> Unit = {
@@ -403,40 +511,16 @@ fun AddEditBankCardScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            StorageTargetSelectorCard(
-                keepassDatabases = keepassDatabases,
-                selectedKeePassDatabaseId = keepassDatabaseId,
-                onKeePassDatabaseSelected = {
-                    val previousKeepassDatabaseId = keepassDatabaseId
-                    keepassDatabaseId = it
-                    if (it != null) {
-                        if (it != previousKeepassDatabaseId) keepassGroupPath = null
-                        bitwardenVaultId = null
-                        bitwardenFolderId = null
-                    } else {
-                        keepassGroupPath = null
-                    }
-                },
-                bitwardenVaults = bitwardenVaults,
-                selectedBitwardenVaultId = bitwardenVaultId,
-                onBitwardenVaultSelected = {
-                    bitwardenVaultId = it
-                    if (it != null) {
-                        keepassDatabaseId = null
-                        keepassGroupPath = null
-                    }
-                },
+            MultiStorageTargetSelectorCard(
+                selectedTargets = selectedStorageTargets,
+                existingTargetKeys = existingReplicaTargetKeys,
                 categories = categories,
-                selectedCategoryId = selectedCategoryId,
-                onCategorySelected = { selectedCategoryId = it },
-                selectedBitwardenFolderId = bitwardenFolderId,
-                onBitwardenFolderSelected = { folderId ->
-                    bitwardenFolderId = folderId
-                    if (bitwardenVaultId != null) {
-                        keepassDatabaseId = null
-                        keepassGroupPath = null
-                    }
-                }
+                keepassDatabases = keepassDatabases,
+                bitwardenVaults = bitwardenVaults,
+                bitwardenFolderDao = database.bitwardenFolderDao(),
+                isEditing = cardId != null,
+                onAddTargetClick = { showStorageTargetSheet = true },
+                onRemoveTarget = ::removeSelectedStorageTarget
             )
 
             // Basic Information
@@ -1035,6 +1119,19 @@ fun AddEditBankCardScreen(
             }
         )
     }
+
+    MultiStorageTargetPickerBottomSheet(
+        visible = showStorageTargetSheet,
+        selectedTargets = selectedStorageTargets.toList(),
+        lockedTargetKeys = existingReplicaTargetKeys,
+        categories = categories,
+        keepassDatabases = keepassDatabases,
+        bitwardenVaults = bitwardenVaults,
+        getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+        getKeePassGroups = localKeePassViewModel::getGroups,
+        onDismiss = { showStorageTargetSheet = false },
+        onSelectedTargetsChange = ::setSelectedStorageTargets
+    )
 
     if (showBillingAddressDialog) {
         var streetAddress by remember { mutableStateOf(billingAddress.streetAddress) }

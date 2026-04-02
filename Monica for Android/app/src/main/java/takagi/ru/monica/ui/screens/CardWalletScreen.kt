@@ -640,14 +640,13 @@ fun CardWalletScreen(
                                 bitwardenVaultId = null,
                                 bitwardenFolderId = null
                             )
-                            true
                         } else {
                             bankCardViewModel.moveCardToMonicaLocal(item, targetCategoryId).isSuccess
                         }
                         if (moved) successCount++ else failedCount++
                     }
                     item.itemType == ItemType.BANK_CARD -> {
-                        bankCardViewModel.moveCardToStorage(
+                        val moved = bankCardViewModel.moveCardToStorage(
                             id = item.id,
                             categoryId = targetCategoryId,
                             keepassDatabaseId = targetKeepassDatabaseId,
@@ -655,7 +654,7 @@ fun CardWalletScreen(
                             bitwardenVaultId = targetBitwardenVaultId,
                             bitwardenFolderId = targetBitwardenFolderId
                         )
-                        successCount++
+                        if (moved) successCount++ else failedCount++
                     }
                     item.itemType == ItemType.DOCUMENT && isMonicaLocalTarget -> {
                         val moved = if (item.isLocalOnlyItem()) {
@@ -667,14 +666,13 @@ fun CardWalletScreen(
                                 bitwardenVaultId = null,
                                 bitwardenFolderId = null
                             )
-                            true
                         } else {
                             documentViewModel.moveDocumentToMonicaLocal(item, targetCategoryId).isSuccess
                         }
                         if (moved) successCount++ else failedCount++
                     }
                     item.itemType == ItemType.DOCUMENT -> {
-                        documentViewModel.moveDocumentToStorage(
+                        val moved = documentViewModel.moveDocumentToStorage(
                             id = item.id,
                             categoryId = targetCategoryId,
                             keepassDatabaseId = targetKeepassDatabaseId,
@@ -682,7 +680,7 @@ fun CardWalletScreen(
                             bitwardenVaultId = targetBitwardenVaultId,
                             bitwardenFolderId = targetBitwardenFolderId
                         )
-                        successCount++
+                        if (moved) successCount++ else failedCount++
                     }
                 }
             }

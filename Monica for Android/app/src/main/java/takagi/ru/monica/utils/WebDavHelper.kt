@@ -281,6 +281,7 @@ private data class MonicaConfigBackupEntry(
     val encryptedEncryptionPassword: String = "",  // 使用备份密码加密的加密密码
     val autoBackupEnabled: Boolean = false,
     val blockedFieldSignatures: List<AutofillBlockedFieldBackupEntry> = emptyList(),
+    val saveBlockedTargets: List<String> = emptyList(),
     val bitwardenVaults: List<BitwardenVaultBackupEntry> = emptyList(),
 )
 
@@ -306,6 +307,11 @@ private data class AutofillBlockedFieldBackupEntry(
     val webDomain: String? = null,
     val hints: List<String> = emptyList(),
     val blockedAt: Long = 0L,
+)
+
+@Serializable
+private data class AutofillSaveBlockedTargetsBackupEntry(
+    val blockedTargets: List<String> = emptyList(),
 )
 
 @Serializable
@@ -1645,6 +1651,9 @@ class WebDavHelper(
                                         blockedAt = record.blockedAt,
                                     )
                                 }
+                            val saveBlockedTargets = autofillPreferences.saveBlockedTargetRecords.first()
+                                .map { it.key }
+                                .distinct()
                             val bitwardenVaults = PasswordDatabase.getDatabase(context)
                                 .bitwardenVaultDao()
                                 .getAllVaults()
@@ -1706,6 +1715,9 @@ class WebDavHelper(
                             )
                             val autofillBlockedFieldsBackup = AutofillBlockedFieldsBackupEntry(
                                 blockedFieldSignatures = blockedFieldSignatures,
+                            )
+                            val autofillSaveBlockedTargetsBackup = AutofillSaveBlockedTargetsBackupEntry(
+                                blockedTargets = saveBlockedTargets,
                             )
                             val bitwardenVaultsBackup = BitwardenVaultsBackupEntry(
                                 vaults = bitwardenVaultBackups,
@@ -1781,6 +1793,23 @@ class WebDavHelper(
                                 "monica_config/${autofillBlockedFieldsFile.name}"
                             )
                             autofillBlockedFieldsFile.delete()
+
+                            val autofillSaveBlockedTargetsFile =
+                                File(monicaConfigDir, "autofill_save_blocked_targets.json")
+                            autofillSaveBlockedTargetsFile.writeText(
+                                json.encodeToString(
+                                    AutofillSaveBlockedTargetsBackupEntry.serializer(),
+                                    autofillSaveBlockedTargetsBackup,
+                                ),
+                                Charsets.UTF_8
+                            )
+                            addFileToZip(
+                                zipOut,
+                                autofillSaveBlockedTargetsFile,
+                                "monica_config/${autofillSaveBlockedTargetsFile.name}"
+                            )
+                            autofillSaveBlockedTargetsFile.delete()
+
                             if (bitwardenVaultBackups.isNotEmpty()) {
                                 val bitwardenVaultsFile = File(monicaConfigDir, "bitwarden_vaults.json")
                                 bitwardenVaultsFile.writeText(
@@ -1814,7 +1843,7 @@ class WebDavHelper(
                             pageAdjustmentSettingsFile.delete()
                             android.util.Log.d(
                                 "WebDavHelper",
-                                "Backup Monica config files (server: $serverUrl, blockedFields=${blockedFieldSignatures.size}, bitwardenVaults=${bitwardenVaultBackups.size}, pageAdjustmentSettings=true)"
+                                "Backup Monica config files (server: $serverUrl, blockedFields=${blockedFieldSignatures.size}, saveBlockedTargets=${saveBlockedTargets.size}, bitwardenVaults=${bitwardenVaultBackups.size}, pageAdjustmentSettings=true)"
                             )
                         } catch (e: Exception) {
                             android.util.Log.w("WebDavHelper", "Failed to backup Monica config: ${e.message}")
@@ -2704,6 +2733,25 @@ class WebDavHelper(
                                         warnings.add("非自动填充字段恢复失败: ${e.message}")
                                     }
                                 }
+                                normalizedEntryName == "monica_config/autofill_save_blocked_targets.json" -> {
+                                    try {
+                                        val saveBlockedTargetsJson = tempFile.readText(Charsets.UTF_8)
+                                        val json = Json { ignoreUnknownKeys = true }
+                                        val saveBlockedTargetsBackup =
+                                            json.decodeFromString<AutofillSaveBlockedTargetsBackupEntry>(
+                                                saveBlockedTargetsJson
+                                            )
+                                        if (saveBlockedTargetsBackup.blockedTargets.isNotEmpty()) {
+                                            AutofillPreferences(context).importSaveBlockedTargets(
+                                                saveBlockedTargetsBackup.blockedTargets,
+                                            )
+                                            warnings.add("✓ 不保存名单已恢复: ${saveBlockedTargetsBackup.blockedTargets.size}项")
+                                        }
+                                    } catch (e: Exception) {
+                                        android.util.Log.w("WebDavHelper", "Failed to restore save-blocked targets: ${e.message}")
+                                        warnings.add("不保存名单恢复失败: ${e.message}")
+                                    }
+                                }
                                 normalizedEntryName == "monica_config/bitwarden_vaults.json" ||
                                     entryName.equals("bitwarden_vaults.json", ignoreCase = true) -> {
                                     try {
@@ -2823,6 +2871,13 @@ class WebDavHelper(
                                         if (autofillBlockedFieldRecords.isNotEmpty()) {
                                             AutofillPreferences(context).importBlockedFieldSignatureRecords(autofillBlockedFieldRecords)
                                             warnings.add("✓ 非自动填充字段已恢复: ${autofillBlockedFieldRecords.size}项")
+                                        }
+
+                                        if (monicaConfigBackup.saveBlockedTargets.isNotEmpty()) {
+                                            AutofillPreferences(context).importSaveBlockedTargets(
+                                                monicaConfigBackup.saveBlockedTargets,
+                                            )
+                                            warnings.add("✓ 不保存名单已恢复: ${monicaConfigBackup.saveBlockedTargets.size}项")
                                         }
 
                                         val restoredBitwardenVaultCount = restoreBitwardenVaultBackups(

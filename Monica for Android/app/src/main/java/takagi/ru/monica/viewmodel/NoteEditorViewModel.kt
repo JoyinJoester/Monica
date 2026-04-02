@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.model.StorageTarget
+import takagi.ru.monica.data.model.toStorageTarget
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.utils.RememberedStorageTarget
 import java.util.Date
@@ -23,6 +25,9 @@ data class NoteEditorUiState(
     val keepassGroupPath: String? = null,
     val bitwardenVaultId: Long? = null,
     val bitwardenFolderId: String? = null,
+    val selectedStorageTargets: List<StorageTarget> = emptyList(),
+    val existingReplicaTargetKeys: Set<String> = emptySet(),
+    val currentReplicaGroupId: String? = null,
     val hasAppliedInitialStorage: Boolean = false,
     val isSaving: Boolean = false,
     val createdAt: Date = Date(),
@@ -82,6 +87,9 @@ class NoteEditorViewModel : ViewModel() {
                 keepassGroupPath = draft.keepassGroupPath,
                 bitwardenVaultId = draft.bitwardenVaultId,
                 bitwardenFolderId = draft.bitwardenFolderId,
+                selectedStorageTargets = listOf(note.toStorageTarget()),
+                existingReplicaTargetKeys = emptySet(),
+                currentReplicaGroupId = note.replicaGroupId,
                 createdAt = draft.createdAt,
                 currentNote = note,
                 noteImagePaths = inlineImagePaths,
@@ -146,7 +154,35 @@ class NoteEditorViewModel : ViewModel() {
             resolvedKeepassGroupPath != null ||
             resolvedBitwardenVaultId != null ||
             resolvedBitwardenFolderId != null
-        if (!hasResolvedStorage) return
+        if (!hasResolvedStorage) {
+            val defaultTarget = StorageTarget.MonicaLocal(null)
+            _uiState.update {
+                it.copy(
+                    selectedCategoryId = null,
+                    keepassDatabaseId = null,
+                    keepassGroupPath = null,
+                    bitwardenVaultId = null,
+                    bitwardenFolderId = null,
+                    selectedStorageTargets = listOf(defaultTarget),
+                    existingReplicaTargetKeys = emptySet(),
+                    currentReplicaGroupId = null,
+                    hasAppliedInitialStorage = true
+                )
+            }
+            return
+        }
+
+        val initialTarget = when {
+            resolvedBitwardenVaultId != null -> StorageTarget.Bitwarden(
+                vaultId = resolvedBitwardenVaultId,
+                folderId = resolvedBitwardenFolderId
+            )
+            resolvedKeepassDatabaseId != null -> StorageTarget.KeePass(
+                databaseId = resolvedKeepassDatabaseId,
+                groupPath = resolvedKeepassGroupPath
+            )
+            else -> StorageTarget.MonicaLocal(resolvedCategoryId)
+        }
 
         _uiState.update {
             it.copy(
@@ -155,6 +191,9 @@ class NoteEditorViewModel : ViewModel() {
                 keepassGroupPath = resolvedKeepassGroupPath,
                 bitwardenVaultId = resolvedBitwardenVaultId,
                 bitwardenFolderId = resolvedBitwardenFolderId,
+                selectedStorageTargets = listOf(initialTarget),
+                existingReplicaTargetKeys = emptySet(),
+                currentReplicaGroupId = null,
                 hasAppliedInitialStorage = true
             )
         }
@@ -213,6 +252,42 @@ class NoteEditorViewModel : ViewModel() {
                 keepassDatabaseId = if (it.bitwardenVaultId != null) null else it.keepassDatabaseId
             )
         }
+    }
+
+    fun setSelectedStorageTargets(
+        targets: List<StorageTarget>,
+        existingTargetKeys: Set<String> = _uiState.value.existingReplicaTargetKeys,
+        replicaGroupId: String? = _uiState.value.currentReplicaGroupId
+    ) {
+        val normalizedTargets = targets.distinctBy(StorageTarget::stableKey)
+            .ifEmpty { listOf(StorageTarget.MonicaLocal(null)) }
+        val primaryTarget = normalizedTargets.first()
+        _uiState.update {
+            it.copy(
+                selectedCategoryId = (primaryTarget as? StorageTarget.MonicaLocal)?.categoryId,
+                keepassDatabaseId = (primaryTarget as? StorageTarget.KeePass)?.databaseId,
+                keepassGroupPath = (primaryTarget as? StorageTarget.KeePass)?.groupPath,
+                bitwardenVaultId = (primaryTarget as? StorageTarget.Bitwarden)?.vaultId,
+                bitwardenFolderId = (primaryTarget as? StorageTarget.Bitwarden)?.folderId,
+                selectedStorageTargets = normalizedTargets,
+                existingReplicaTargetKeys = existingTargetKeys,
+                currentReplicaGroupId = replicaGroupId
+            )
+        }
+    }
+
+    fun addSelectedStorageTarget(target: StorageTarget) {
+        val current = _uiState.value
+        if (current.selectedStorageTargets.any { it.stableKey == target.stableKey }) return
+        setSelectedStorageTargets(current.selectedStorageTargets + target)
+    }
+
+    fun removeSelectedStorageTarget(target: StorageTarget) {
+        val current = _uiState.value
+        if (current.selectedStorageTargets.size <= 1) return
+        setSelectedStorageTargets(
+            targets = current.selectedStorageTargets.filterNot { it.stableKey == target.stableKey }
+        )
     }
 
     fun insertInlineImage(imageId: String, insertionIndex: Int?) {

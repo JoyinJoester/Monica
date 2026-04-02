@@ -1286,7 +1286,13 @@
     <string name="edit_category">Sửa danh mục</string>
     <string name="category_name">Tên danh mục</string>
     <string name="menu">Trình đơn</string>
+    <string name="vault_select_storage">Chọn vị trí lưu</string>
+    <string name="category_selection_menu_databases">Cơ sở dữ liệu</string>
+    <string name="category_selection_menu_folders">Thư mục phân loại</string>
+    <string name="storage_picker_keepass_root">Thư mục gốc cơ sở dữ liệu</string>
+    <string name="single_select">Chọn một</string>
     <string name="multi_select">Chọn nhiều</string>
+    <string name="storage_picker_edit_multi_append_hint">Khi chỉnh sửa mục đã có, chỉ hỗ trợ thêm bằng chế độ chọn nhiều. Các đích hiện có sẽ được giữ nguyên.</string>
     
     <!-- Autofill hardcoded text cleanup -->
     <string name="autofill_view_all_passwords">Xem tất cả mật khẩu</string>

@@ -26,6 +26,8 @@ import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.CardWalletDataCodec
+import takagi.ru.monica.data.model.StorageTarget
+import takagi.ru.monica.data.model.toStorageTarget
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.utils.FieldChange
@@ -156,7 +158,8 @@ class DocumentViewModel(
         keepassDatabaseId: Long? = null,
         keepassGroupPath: String? = null,
         bitwardenVaultId: Long? = null,
-        bitwardenFolderId: String? = null
+        bitwardenFolderId: String? = null,
+        replicaGroupId: String? = null
     ) {
         viewModelScope.launch {
             val keepassIdentity = resolveKeePassMutationIdentity(
@@ -179,6 +182,7 @@ class DocumentViewModel(
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenFolderId = bitwardenFolderId,
                 syncStatus = if (bitwardenVaultId != null) "PENDING" else "NONE",
+                replicaGroupId = replicaGroupId,
                 createdAt = Date(),
                 updatedAt = Date(),
                 imagePaths = imagePaths
@@ -208,15 +212,17 @@ class DocumentViewModel(
         imagePaths: String = "",
         categoryId: Long? = null,
         keepassDatabaseId: Long? = null,
+        keepassGroupPath: String? = null,
         bitwardenVaultId: Long? = null,
-        bitwardenFolderId: String? = null
+        bitwardenFolderId: String? = null,
+        replicaGroupId: String? = null
     ) {
         viewModelScope.launch {
             repository.getItemById(id)?.let { existingItem ->
                 val keepassIdentity = resolveKeePassMutationIdentity(
                     existingItem = existingItem,
                     targetDatabaseId = keepassDatabaseId,
-                    requestedGroupPath = null
+                    requestedGroupPath = keepassGroupPath
                 )
                 val oldDocData = parseDocumentData(existingItem.itemData)
                 val changes = mutableListOf<FieldChange>()
@@ -256,6 +262,7 @@ class DocumentViewModel(
                     } else {
                         "NONE"
                     },
+                    replicaGroupId = replicaGroupId ?: existingItem.replicaGroupId,
                     updatedAt = Date(),
                     imagePaths = imagePaths
                 )
@@ -273,40 +280,200 @@ class DocumentViewModel(
         }
     }
 
-    fun moveDocumentToStorage(
+    suspend fun moveDocumentToStorage(
         id: Long,
         categoryId: Long?,
         keepassDatabaseId: Long?,
         keepassGroupPath: String?,
         bitwardenVaultId: Long?,
         bitwardenFolderId: String?
+    ): Boolean {
+        val existingItem = repository.getItemById(id) ?: return false
+        val target = when {
+            bitwardenVaultId != null -> StorageTarget.Bitwarden(bitwardenVaultId, bitwardenFolderId)
+            keepassDatabaseId != null -> StorageTarget.KeePass(keepassDatabaseId, keepassGroupPath)
+            else -> StorageTarget.MonicaLocal(categoryId)
+        }
+        if (hasReplicaTargetConflict(
+                itemType = ItemType.DOCUMENT,
+                itemId = existingItem.id,
+                replicaGroupId = existingItem.replicaGroupId,
+                target = target
+            )
+        ) {
+            return false
+        }
+        val keepassIdentity = resolveKeePassMutationIdentity(
+            existingItem = existingItem,
+            targetDatabaseId = keepassDatabaseId,
+            requestedGroupPath = keepassGroupPath
+        )
+        val updatedItem = existingItem.copy(
+            categoryId = categoryId,
+            keepassDatabaseId = keepassDatabaseId,
+            keepassGroupPath = keepassIdentity.groupPath,
+            keepassEntryUuid = keepassIdentity.entryUuid,
+            keepassGroupUuid = keepassIdentity.groupUuid,
+            bitwardenVaultId = bitwardenVaultId,
+            bitwardenFolderId = bitwardenFolderId,
+            bitwardenLocalModified = existingItem.bitwardenCipherId != null && bitwardenVaultId != null,
+            syncStatus = if (bitwardenVaultId != null) {
+                if (existingItem.bitwardenCipherId != null) "PENDING" else existingItem.syncStatus
+            } else {
+                "NONE"
+            },
+            updatedAt = Date()
+        )
+        repository.updateItem(updatedItem)
+        keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = existingItem, updatedItem = updatedItem)
+        return true
+    }
+
+    fun saveDocumentAcrossTargets(
+        id: Long?,
+        title: String,
+        documentData: DocumentData,
+        notes: String = "",
+        isFavorite: Boolean = false,
+        imagePaths: String = "",
+        targets: List<StorageTarget>
     ) {
         viewModelScope.launch {
-            repository.getItemById(id)?.let { existingItem ->
-                val keepassIdentity = resolveKeePassMutationIdentity(
-                    existingItem = existingItem,
-                    targetDatabaseId = keepassDatabaseId,
-                    requestedGroupPath = keepassGroupPath
-                )
-                val updatedItem = existingItem.copy(
-                    categoryId = categoryId,
-                    keepassDatabaseId = keepassDatabaseId,
-                    keepassGroupPath = keepassIdentity.groupPath,
-                    keepassEntryUuid = keepassIdentity.entryUuid,
-                    keepassGroupUuid = keepassIdentity.groupUuid,
-                    bitwardenVaultId = bitwardenVaultId,
-                    bitwardenFolderId = bitwardenFolderId,
-                    bitwardenLocalModified = existingItem.bitwardenCipherId != null && bitwardenVaultId != null,
-                    syncStatus = if (bitwardenVaultId != null) {
-                        if (existingItem.bitwardenCipherId != null) "PENDING" else existingItem.syncStatus
-                    } else {
-                        "NONE"
-                    },
-                    updatedAt = Date()
-                )
-                repository.updateItem(updatedItem)
-                keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = existingItem, updatedItem = updatedItem)
+            val distinctTargets = targets.distinctBy(StorageTarget::stableKey)
+            if (distinctTargets.isEmpty()) return@launch
+
+            val existingItem = id?.let { repository.getItemById(it) }?.takeIf { it.itemType == ItemType.DOCUMENT }
+            val currentTarget = existingItem?.toStorageTarget() ?: distinctTargets.first()
+            val replicaGroupId = existingItem?.replicaGroupId?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
+            val existingReplicaKeys = if (existingItem != null) {
+                repository.getAllItems().first()
+                    .asSequence()
+                    .filter {
+                        it.itemType == ItemType.DOCUMENT &&
+                            it.replicaGroupId == replicaGroupId &&
+                            it.id != existingItem.id &&
+                            !it.isDeleted
+                    }
+                    .map { it.toStorageTarget().stableKey }
+                    .toSet()
+            } else {
+                emptySet()
             }
+
+            when (currentTarget) {
+                is StorageTarget.MonicaLocal -> {
+                    if (existingItem == null) {
+                        addDocument(
+                            title = title,
+                            documentData = documentData,
+                            notes = notes,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            categoryId = currentTarget.categoryId,
+                            replicaGroupId = replicaGroupId
+                        )
+                    } else {
+                        updateDocument(
+                            id = existingItem.id,
+                            title = title,
+                            documentData = documentData,
+                            notes = notes,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            categoryId = currentTarget.categoryId,
+                            replicaGroupId = replicaGroupId
+                        )
+                    }
+                }
+                is StorageTarget.KeePass -> {
+                    if (existingItem == null) {
+                        addDocument(
+                            title = title,
+                            documentData = documentData,
+                            notes = notes,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            keepassDatabaseId = currentTarget.databaseId,
+                            keepassGroupPath = currentTarget.groupPath,
+                            replicaGroupId = replicaGroupId
+                        )
+                    } else {
+                        updateDocument(
+                            id = existingItem.id,
+                            title = title,
+                            documentData = documentData,
+                            notes = notes,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            keepassDatabaseId = currentTarget.databaseId,
+                            keepassGroupPath = currentTarget.groupPath,
+                            replicaGroupId = replicaGroupId
+                        )
+                    }
+                }
+                is StorageTarget.Bitwarden -> {
+                    if (existingItem == null) {
+                        addDocument(
+                            title = title,
+                            documentData = documentData,
+                            notes = notes,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            bitwardenVaultId = currentTarget.vaultId,
+                            bitwardenFolderId = currentTarget.folderId,
+                            replicaGroupId = replicaGroupId
+                        )
+                    } else {
+                        updateDocument(
+                            id = existingItem.id,
+                            title = title,
+                            documentData = documentData,
+                            notes = notes,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            bitwardenVaultId = currentTarget.vaultId,
+                            bitwardenFolderId = currentTarget.folderId,
+                            replicaGroupId = replicaGroupId
+                        )
+                    }
+                }
+            }
+
+            distinctTargets
+                .filter { it.stableKey != currentTarget.stableKey && it.stableKey !in existingReplicaKeys }
+                .forEach { target ->
+                    when (target) {
+                        is StorageTarget.MonicaLocal -> addDocument(
+                            title = title,
+                            documentData = documentData,
+                            notes = notes,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            categoryId = target.categoryId,
+                            replicaGroupId = replicaGroupId
+                        )
+                        is StorageTarget.KeePass -> addDocument(
+                            title = title,
+                            documentData = documentData,
+                            notes = notes,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            keepassDatabaseId = target.databaseId,
+                            keepassGroupPath = target.groupPath,
+                            replicaGroupId = replicaGroupId
+                        )
+                        is StorageTarget.Bitwarden -> addDocument(
+                            title = title,
+                            documentData = documentData,
+                            notes = notes,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            bitwardenVaultId = target.vaultId,
+                            bitwardenFolderId = target.folderId,
+                            replicaGroupId = replicaGroupId
+                        )
+                    }
+                }
         }
     }
 
@@ -371,6 +538,24 @@ class DocumentViewModel(
 
         repository.deleteItem(item)
         return Result.success(newId)
+    }
+
+    private suspend fun hasReplicaTargetConflict(
+        itemType: ItemType,
+        itemId: Long,
+        replicaGroupId: String?,
+        target: StorageTarget
+    ): Boolean {
+        if (replicaGroupId.isNullOrBlank()) return false
+        return repository.getAllItems().first()
+            .asSequence()
+            .filter { candidate ->
+                candidate.itemType == itemType &&
+                    candidate.id != itemId &&
+                    candidate.replicaGroupId == replicaGroupId &&
+                    !candidate.isDeleted
+            }
+            .any { candidate -> candidate.toStorageTarget().stableKey == target.stableKey }
     }
 
     private fun resolveKeePassMutationIdentity(

@@ -49,17 +49,23 @@ import takagi.ru.monica.autofill_ng.ui.rememberFavicon
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.Category
+import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.OtpType
+import takagi.ru.monica.data.model.StorageTarget
 import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.data.model.toStorageTarget
 import takagi.ru.monica.ui.components.AppSelectorField
 import takagi.ru.monica.ui.components.CustomIconActionDialog
 import takagi.ru.monica.ui.components.InlineTotpPreviewCard
+import takagi.ru.monica.ui.components.MultiStorageTargetPickerBottomSheet
+import takagi.ru.monica.ui.components.MultiStorageTargetSelectorCard
 import takagi.ru.monica.ui.components.MonicaExpressiveFilterChip
 import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import takagi.ru.monica.ui.components.SimpleIconPickerBottomSheet
-import takagi.ru.monica.ui.components.StorageTargetSelectorCard
+import takagi.ru.monica.ui.components.buildMultiStorageTarget
 import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_SIMPLE
@@ -75,6 +81,7 @@ import takagi.ru.monica.util.TotpScanParseResult
 import takagi.ru.monica.util.TotpUriParser
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
+import takagi.ru.monica.viewmodel.TotpViewModel
 import takagi.ru.monica.utils.RememberedStorageTarget
 import takagi.ru.monica.utils.SettingsManager
 import java.io.File
@@ -96,10 +103,12 @@ fun AddEditTotpScreen(
     initialKeePassGroupPath: String? = null,
     initialBitwardenVaultId: Long? = null,
     initialBitwardenFolderId: String? = null,
+    initialReplicaGroupId: String? = null,
     categories: List<Category> = emptyList(),
     passwordViewModel: PasswordViewModel? = null,
+    totpViewModel: TotpViewModel? = null,
     localKeePassViewModel: LocalKeePassViewModel? = null,
-    onSave: (title: String, notes: String, totpData: TotpData, categoryId: Long?, keepassDatabaseId: Long?, keepassGroupPath: String?, bitwardenVaultId: Long?, bitwardenFolderId: String?) -> Unit,
+    onSave: (title: String, notes: String, totpData: TotpData, targets: List<StorageTarget>) -> Unit,
     onNavigateBack: () -> Unit,
     onScanQrCode: () -> Unit,
     modifier: Modifier = Modifier
@@ -153,8 +162,68 @@ fun AddEditTotpScreen(
         .collectAsState(initial = null as RememberedStorageTarget?)
     var bitwardenVaultId by rememberSaveable { mutableStateOf(initialBitwardenVaultId) }
     var bitwardenFolderId by rememberSaveable { mutableStateOf(initialBitwardenFolderId) }
+    var hasAppliedInitialStorage by rememberSaveable { mutableStateOf(false) }
+    val selectedStorageTargets = remember { mutableStateListOf<StorageTarget>() }
+    var existingReplicaTargetKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var currentReplicaGroupId by rememberSaveable(totpId) { mutableStateOf(initialReplicaGroupId) }
+    var showStorageTargetSheet by remember { mutableStateOf(false) }
+    var hasLoadedExistingReplicaTargets by rememberSaveable(totpId) { mutableStateOf(false) }
     val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
     val bitwardenVaults by bitwardenRepository.getAllVaultsFlow().collectAsState(initial = emptyList())
+    val database = remember { PasswordDatabase.getDatabase(context) }
+    val allTotpItems by (totpViewModel?.totpItems ?: kotlinx.coroutines.flow.flowOf(emptyList())).collectAsState(initial = emptyList())
+
+    fun syncLegacyStorageState(targets: List<StorageTarget>) {
+        when (val primaryTarget = targets.firstOrNull()) {
+            is StorageTarget.MonicaLocal -> {
+                selectedCategoryId = primaryTarget.categoryId
+                keepassDatabaseId = null
+                keepassGroupPath = null
+                bitwardenVaultId = null
+                bitwardenFolderId = null
+            }
+            is StorageTarget.KeePass -> {
+                selectedCategoryId = null
+                keepassDatabaseId = primaryTarget.databaseId
+                keepassGroupPath = primaryTarget.groupPath
+                bitwardenVaultId = null
+                bitwardenFolderId = null
+            }
+            is StorageTarget.Bitwarden -> {
+                selectedCategoryId = null
+                keepassDatabaseId = null
+                keepassGroupPath = null
+                bitwardenVaultId = primaryTarget.vaultId
+                bitwardenFolderId = primaryTarget.folderId
+            }
+            null -> {
+                selectedCategoryId = null
+                keepassDatabaseId = null
+                keepassGroupPath = null
+                bitwardenVaultId = null
+                bitwardenFolderId = null
+            }
+        }
+    }
+
+    fun setSelectedStorageTargets(targets: List<StorageTarget>) {
+        val normalizedTargets = targets.distinctBy(StorageTarget::stableKey)
+        selectedStorageTargets.clear()
+        selectedStorageTargets.addAll(normalizedTargets)
+        syncLegacyStorageState(normalizedTargets)
+    }
+
+    fun addSelectedStorageTarget(target: StorageTarget) {
+        if (selectedStorageTargets.any { it.stableKey == target.stableKey }) return
+        selectedStorageTargets.add(target)
+        syncLegacyStorageState(selectedStorageTargets)
+    }
+
+    fun removeSelectedStorageTarget(target: StorageTarget) {
+        if (selectedStorageTargets.size <= 1) return
+        selectedStorageTargets.removeAll { it.stableKey == target.stableKey }
+        syncLegacyStorageState(selectedStorageTargets)
+    }
 
     fun normalizedIconFileName(value: String?): String? = value?.takeIf { it.isNotBlank() }?.let { File(it).name }
     fun isOriginalUploadedIconFile(value: String?): Boolean {
@@ -252,7 +321,6 @@ fun AddEditTotpScreen(
     var showPasswordSelectionDialog by remember { mutableStateOf(false) }
     var showImportUriDialog by remember { mutableStateOf(false) }
     var otpUriInput by rememberSaveable { mutableStateOf("") }
-    var hasAppliedInitialStorage by rememberSaveable { mutableStateOf(false) }
     
     // 防止重复点击保存按钮
     var isSaving by remember { mutableStateOf(false) }
@@ -273,18 +341,83 @@ fun AddEditTotpScreen(
         hasAppliedInitialStorage,
         initialCategoryId,
         initialKeePassDatabaseId,
+        initialKeePassGroupPath,
         initialBitwardenVaultId,
         initialBitwardenFolderId,
         rememberedStorageTarget
     ) {
         if (isEditing || hasAppliedInitialStorage) return@LaunchedEffect
-        val remembered = rememberedStorageTarget ?: return@LaunchedEffect
-        selectedCategoryId = initialCategoryId ?: remembered.categoryId
-        keepassDatabaseId = initialKeePassDatabaseId ?: remembered.keepassDatabaseId
-        keepassGroupPath = initialKeePassGroupPath ?: remembered.keepassGroupPath
-        bitwardenVaultId = initialBitwardenVaultId ?: remembered.bitwardenVaultId
-        bitwardenFolderId = initialBitwardenFolderId ?: remembered.bitwardenFolderId
+        val remembered = rememberedStorageTarget
+        val explicitGroupPath = initialKeePassGroupPath?.takeIf { it.isNotBlank() }
+        val explicitFolderId = initialBitwardenFolderId?.takeIf { it.isNotBlank() }
+        val hasExplicitInitialStorage = initialCategoryId != null ||
+            initialKeePassDatabaseId != null ||
+            explicitGroupPath != null ||
+            initialBitwardenVaultId != null ||
+            explicitFolderId != null
+        if (!hasExplicitInitialStorage && remembered == null) {
+            setSelectedStorageTargets(listOf(StorageTarget.MonicaLocal(null)))
+            hasAppliedInitialStorage = true
+            return@LaunchedEffect
+        }
+        selectedCategoryId = if (hasExplicitInitialStorage) initialCategoryId else remembered?.categoryId
+        keepassDatabaseId = if (hasExplicitInitialStorage) initialKeePassDatabaseId else remembered?.keepassDatabaseId
+        keepassGroupPath = if (hasExplicitInitialStorage) explicitGroupPath else remembered?.keepassGroupPath
+        bitwardenVaultId = if (hasExplicitInitialStorage) initialBitwardenVaultId else remembered?.bitwardenVaultId
+        bitwardenFolderId = if (hasExplicitInitialStorage) explicitFolderId else remembered?.bitwardenFolderId
+        setSelectedStorageTargets(
+            listOf(
+                buildMultiStorageTarget(
+                    categoryId = selectedCategoryId,
+                    keepassDatabaseId = keepassDatabaseId,
+                    keepassGroupPath = keepassGroupPath,
+                    bitwardenVaultId = bitwardenVaultId,
+                    bitwardenFolderId = bitwardenFolderId
+                )
+            )
+        )
         hasAppliedInitialStorage = true
+    }
+
+    LaunchedEffect(
+        isEditing,
+        totpId,
+        currentReplicaGroupId,
+        allTotpItems,
+        hasLoadedExistingReplicaTargets,
+        selectedCategoryId,
+        keepassDatabaseId,
+        keepassGroupPath,
+        bitwardenVaultId,
+        bitwardenFolderId
+    ) {
+        if (!isEditing || hasLoadedExistingReplicaTargets) return@LaunchedEffect
+        if (totpId == null || totpId <= 0) return@LaunchedEffect
+        if (totpViewModel != null && allTotpItems.none { it.id == totpId }) return@LaunchedEffect
+
+        val storedTotpItems = allTotpItems.filter { it.id > 0 && it.itemType == ItemType.TOTP && !it.isDeleted }
+        val currentItem = storedTotpItems.firstOrNull { it.id == totpId }
+        val fallbackTarget = currentItem?.toStorageTarget() ?: buildMultiStorageTarget(
+            categoryId = selectedCategoryId,
+            keepassDatabaseId = keepassDatabaseId,
+            keepassGroupPath = keepassGroupPath,
+            bitwardenVaultId = bitwardenVaultId,
+            bitwardenFolderId = bitwardenFolderId
+        )
+        val resolvedReplicaGroupId = currentItem?.replicaGroupId ?: currentReplicaGroupId
+        currentReplicaGroupId = resolvedReplicaGroupId
+        val selectedTargets = if (!resolvedReplicaGroupId.isNullOrBlank()) {
+            storedTotpItems
+                .filter { it.replicaGroupId == resolvedReplicaGroupId }
+                .map { it.toStorageTarget() }
+                .distinctBy(StorageTarget::stableKey)
+                .ifEmpty { listOf(fallbackTarget) }
+        } else {
+            listOf(fallbackTarget)
+        }
+        setSelectedStorageTargets(selectedTargets)
+        existingReplicaTargetKeys = selectedTargets.map(StorageTarget::stableKey).toSet()
+        hasLoadedExistingReplicaTargets = true
     }
 
     fun resolveImportedTitle(item: TotpParseResult): String {
@@ -392,6 +525,18 @@ fun AddEditTotpScreen(
     val save: () -> Unit = saveAction@{
         if (!canSave || isSaving) return@saveAction
         isSaving = true // 防止重复点击
+        val effectiveTargets = selectedStorageTargets.toList().ifEmpty {
+            listOf(
+                buildMultiStorageTarget(
+                    categoryId = selectedCategoryId,
+                    keepassDatabaseId = keepassDatabaseId,
+                    keepassGroupPath = keepassGroupPath,
+                    bitwardenVaultId = bitwardenVaultId,
+                    bitwardenFolderId = bitwardenFolderId
+                )
+            )
+        }
+        val primaryTarget = effectiveTargets.first()
         val totpData = TotpData(
             secret = secret.trim(),
             issuer = issuer.trim(),
@@ -425,16 +570,16 @@ fun AddEditTotpScreen(
             PasswordCustomIconStore.deleteIconFile(context, originalUploaded)
         }
         hasSavedSuccessfully = true
-        onSave(title, notes, totpData, selectedCategoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId)
+        onSave(title, notes, totpData, effectiveTargets)
         coroutineScope.launch {
             settingsManager.updateRememberedStorageTarget(
                 scope = SettingsManager.StorageTargetScope.TOTP,
                 target = RememberedStorageTarget(
-                    categoryId = selectedCategoryId,
-                    keepassDatabaseId = keepassDatabaseId,
-                    keepassGroupPath = keepassGroupPath,
-                    bitwardenVaultId = bitwardenVaultId,
-                    bitwardenFolderId = bitwardenFolderId
+                    categoryId = (primaryTarget as? StorageTarget.MonicaLocal)?.categoryId,
+                    keepassDatabaseId = (primaryTarget as? StorageTarget.KeePass)?.databaseId,
+                    keepassGroupPath = (primaryTarget as? StorageTarget.KeePass)?.groupPath,
+                    bitwardenVaultId = (primaryTarget as? StorageTarget.Bitwarden)?.vaultId,
+                    bitwardenFolderId = (primaryTarget as? StorageTarget.Bitwarden)?.folderId
                 )
             )
         }
@@ -495,40 +640,16 @@ fun AddEditTotpScreen(
         ) {
             // Vault Selector
             item {
-                StorageTargetSelectorCard(
-                    keepassDatabases = keepassDatabases,
-                    selectedKeePassDatabaseId = keepassDatabaseId,
-                    onKeePassDatabaseSelected = {
-                        val previousKeepassDatabaseId = keepassDatabaseId
-                        keepassDatabaseId = it
-                        if (it != null) {
-                            if (it != previousKeepassDatabaseId) keepassGroupPath = null
-                            bitwardenVaultId = null
-                            bitwardenFolderId = null
-                        } else {
-                            keepassGroupPath = null
-                        }
-                    },
-                    bitwardenVaults = bitwardenVaults,
-                    selectedBitwardenVaultId = bitwardenVaultId,
-                    onBitwardenVaultSelected = {
-                        bitwardenVaultId = it
-                        if (it != null) {
-                            keepassDatabaseId = null
-                            keepassGroupPath = null
-                        }
-                    },
+                MultiStorageTargetSelectorCard(
+                    selectedTargets = selectedStorageTargets,
+                    existingTargetKeys = existingReplicaTargetKeys,
                     categories = categories,
-                    selectedCategoryId = selectedCategoryId,
-                    onCategorySelected = { selectedCategoryId = it },
-                    selectedBitwardenFolderId = bitwardenFolderId,
-                    onBitwardenFolderSelected = { folderId ->
-                        bitwardenFolderId = folderId
-                        if (bitwardenVaultId != null) {
-                            keepassDatabaseId = null
-                            keepassGroupPath = null
-                        }
-                    }
+                    keepassDatabases = keepassDatabases,
+                    bitwardenVaults = bitwardenVaults,
+                    bitwardenFolderDao = database.bitwardenFolderDao(),
+                    isEditing = isEditing,
+                    onAddTargetClick = { showStorageTargetSheet = true },
+                    onRemoveTarget = ::removeSelectedStorageTarget
                 )
             }
 
@@ -1094,6 +1215,21 @@ fun AddEditTotpScreen(
             onDismissRequest = { showSimpleIconPicker = false }
         )
     }
+
+    MultiStorageTargetPickerBottomSheet(
+        visible = showStorageTargetSheet,
+        selectedTargets = selectedStorageTargets.toList(),
+        lockedTargetKeys = existingReplicaTargetKeys,
+        categories = categories,
+        keepassDatabases = keepassDatabases,
+        bitwardenVaults = bitwardenVaults,
+        getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+        getKeePassGroups = { databaseId ->
+            localKeePassViewModel?.getGroups(databaseId) ?: kotlinx.coroutines.flow.flowOf(emptyList())
+        },
+        onDismiss = { showStorageTargetSheet = false },
+        onSelectedTargetsChange = ::setSelectedStorageTargets
+    )
 
     if (showPasswordSelectionDialog && passwordViewModel != null) {
         val passwords by passwordViewModel.allPasswords.collectAsState(initial = emptyList())

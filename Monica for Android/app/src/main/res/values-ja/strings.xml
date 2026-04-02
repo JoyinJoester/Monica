@@ -1280,7 +1280,13 @@
     <string name="edit_category">カテゴリを編集</string>
     <string name="category_name">カテゴリ名</string>
     <string name="menu">メニュー</string>
+    <string name="vault_select_storage">保存先を選択</string>
+    <string name="category_selection_menu_databases">データベース</string>
+    <string name="category_selection_menu_folders">カテゴリフォルダ</string>
+    <string name="storage_picker_keepass_root">データベースのルートディレクトリ</string>
+    <string name="single_select">単一選択</string>
     <string name="multi_select">複数選択</string>
+    <string name="storage_picker_edit_multi_append_hint">既存項目の編集時は複数選択での追加のみ対応します。既存の保存先は保持されます。</string>
     
     <!-- Autofill hardcoded text cleanup -->
     <string name="autofill_view_all_passwords">すべてのパスワードを表示</string>

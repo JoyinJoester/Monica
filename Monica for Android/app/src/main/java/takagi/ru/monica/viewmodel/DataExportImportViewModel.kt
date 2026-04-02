@@ -336,6 +336,13 @@ class DataExportImportViewModel(
     }
 
     /**
+     * 导入Chrome CSV文件
+     */
+    suspend fun importChromeCsv(inputUri: Uri): Result<Int> {
+        return importData(inputUri, DataExportImportManager.CsvFormat.CHROME_PASSWORD)
+    }
+
+    /**
      * 导入密码键盘软件 CSV 文件
      */
     suspend fun importPasswordKeyboardCsv(

@@ -76,6 +76,8 @@ import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PresetCustomField
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
+import takagi.ru.monica.data.model.StorageTarget
+import takagi.ru.monica.data.model.toStorageTarget
 import takagi.ru.monica.data.model.BankCardData
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
@@ -85,11 +87,13 @@ import takagi.ru.monica.ui.components.CustomFieldEditorSection
 import takagi.ru.monica.ui.components.CustomFieldEditCard
 import takagi.ru.monica.ui.components.CustomFieldSectionHeader
 import takagi.ru.monica.ui.components.InlineTotpPreviewCard
+import takagi.ru.monica.ui.components.MultiStorageTargetPickerBottomSheet
+import takagi.ru.monica.ui.components.MultiStorageTargetSelectorCard
 import takagi.ru.monica.ui.components.MonicaExpressiveFilterChip
 import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import takagi.ru.monica.ui.components.PasswordStrengthIndicator
+import takagi.ru.monica.ui.components.buildMultiStorageTarget
 import takagi.ru.monica.ui.components.SimpleIconPickerBottomSheet
-import takagi.ru.monica.ui.components.StorageTargetSelectorCard
 import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_SIMPLE
@@ -105,6 +109,7 @@ import takagi.ru.monica.ui.password.buildUsernameSuggestionState
 import takagi.ru.monica.util.TotpDataResolver
 import takagi.ru.monica.utils.PasswordGenerator
 import takagi.ru.monica.utils.PasswordStrengthAnalyzer
+import takagi.ru.monica.utils.decodeKeePassPathForDisplay
 import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.CategoryFilter
 import takagi.ru.monica.viewmodel.PasswordViewModel
@@ -166,6 +171,7 @@ fun AddEditPasswordScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+    val database = remember { PasswordDatabase.getDatabase(context) }
 
     // 获取设置以读取进度条样式
     val settingsManager = remember { takagi.ru.monica.utils.SettingsManager(context) }
@@ -255,6 +261,10 @@ fun AddEditPasswordScreen(
         initialKeePassGroupPath != null ||
         initialBitwardenVaultId != null ||
         initialBitwardenFolderId != null
+    val selectedStorageTargets = remember { mutableStateListOf<StorageTarget>() }
+    var existingReplicaTargetKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var currentReplicaGroupId by rememberSaveable { mutableStateOf<String?>(null) }
+    var showStorageTargetSheet by remember { mutableStateOf(false) }
     
     // SSO 登录方式字段
     var loginType by rememberSaveable { mutableStateOf("PASSWORD") }
@@ -356,6 +366,58 @@ fun AddEditPasswordScreen(
     val fieldAccountLabel = stringResource(R.string.field_account)
     val fieldEmailLabel = stringResource(R.string.field_email)
     val fieldPhoneLabel = stringResource(R.string.field_phone)
+
+    fun syncLegacyStorageState(targets: List<StorageTarget>) {
+        when (val primaryTarget = targets.firstOrNull()) {
+            is StorageTarget.MonicaLocal -> {
+                categoryId = primaryTarget.categoryId
+                keepassDatabaseId = null
+                keepassGroupPath = null
+                bitwardenVaultId = null
+                bitwardenFolderId = null
+            }
+            is StorageTarget.KeePass -> {
+                categoryId = null
+                keepassDatabaseId = primaryTarget.databaseId
+                keepassGroupPath = primaryTarget.groupPath
+                bitwardenVaultId = null
+                bitwardenFolderId = null
+            }
+            is StorageTarget.Bitwarden -> {
+                categoryId = null
+                keepassDatabaseId = null
+                keepassGroupPath = null
+                bitwardenVaultId = primaryTarget.vaultId
+                bitwardenFolderId = primaryTarget.folderId
+            }
+            null -> {
+                categoryId = null
+                keepassDatabaseId = null
+                keepassGroupPath = null
+                bitwardenVaultId = null
+                bitwardenFolderId = null
+            }
+        }
+    }
+
+    fun setSelectedStorageTargets(targets: List<StorageTarget>) {
+        val normalizedTargets = targets.distinctBy(StorageTarget::stableKey)
+        selectedStorageTargets.clear()
+        selectedStorageTargets.addAll(normalizedTargets)
+        syncLegacyStorageState(normalizedTargets)
+    }
+
+    fun addSelectedStorageTarget(target: StorageTarget) {
+        if (selectedStorageTargets.any { it.stableKey == target.stableKey }) return
+        selectedStorageTargets.add(target)
+        syncLegacyStorageState(selectedStorageTargets)
+    }
+
+    fun removeSelectedStorageTarget(target: StorageTarget) {
+        if (selectedStorageTargets.size <= 1) return
+        selectedStorageTargets.removeAll { it.stableKey == target.stableKey }
+        syncLegacyStorageState(selectedStorageTargets)
+    }
 
     fun normalizeCommonTemplateType(raw: String): String {
         val value = raw.trim()
@@ -816,6 +878,7 @@ fun AddEditPasswordScreen(
                     keepassGroupPath = entry.keepassGroupPath
                     bitwardenVaultId = entry.bitwardenVaultId
                     bitwardenFolderId = entry.bitwardenFolderId
+                    currentReplicaGroupId = entry.replicaGroupId
                     authenticatorKey = entry.authenticatorKey  // ✅ 从密码条目中读取验证器密钥
                     originalAuthenticatorKey = entry.authenticatorKey
                     passkeyBindings = entry.passkeyBindings
@@ -875,6 +938,32 @@ fun AddEditPasswordScreen(
                                 emptySet()
                             }
                         }
+
+                        val currentTarget = rawEntry.toStorageTarget()
+                        val replicaTargets = if (!entry.replicaGroupId.isNullOrBlank()) {
+                            allEntries
+                                .filter {
+                                    it.replicaGroupId == entry.replicaGroupId &&
+                                        !it.isDeleted &&
+                                        !it.isArchived
+                                }
+                                .map(PasswordEntry::toStorageTarget)
+                                .distinctBy(StorageTarget::stableKey)
+                        } else {
+                            listOf(currentTarget)
+                        }
+                        val selectedTargets = buildList {
+                            add(currentTarget)
+                            addAll(
+                                replicaTargets.filter {
+                                    it.stableKey != currentTarget.stableKey
+                                }.sortedBy(StorageTarget::stableKey)
+                            )
+                        }
+                        setSelectedStorageTargets(selectedTargets)
+                        existingReplicaTargetKeys = selectedTargets
+                            .map(StorageTarget::stableKey)
+                            .toSet()
                         
                         // 加载自定义字段
                         val existingFields = viewModel.getCustomFieldsByEntryIdSync(actualId)
@@ -1054,10 +1143,11 @@ fun AddEditPasswordScreen(
                 }
             }
 
-            viewModel.saveGroupedPasswords(
+            viewModel.savePasswordsAcrossTargets(
                 originalIds = originalIds,
-                commonEntry = commonEntry,
+                commonEntry = commonEntry.copy(replicaGroupId = currentReplicaGroupId),
                 passwords = normalizedPasswords, // Snapshot (trimmed)
+                targets = selectedStorageTargets.toList(),
                 customFields = currentCustomFields, // 保存自定义字段
                 onComplete = onComplete@{ firstPasswordId ->
                     if (firstPasswordId == null) {
@@ -1163,86 +1253,35 @@ fun AddEditPasswordScreen(
         initialBitwardenFolderId
     ) {
         if (isEditing) return@LaunchedEffect
+        existingReplicaTargetKeys = emptySet()
+        currentReplicaGroupId = null
         if (hasExplicitInitialStorage) {
-            categoryId = initialCategoryId
-            keepassDatabaseId = initialKeePassDatabaseId
-            keepassGroupPath = initialKeePassGroupPath
-            bitwardenVaultId = initialBitwardenVaultId
-            bitwardenFolderId = initialBitwardenFolderId
+            setSelectedStorageTargets(
+                listOf(
+                    buildMultiStorageTarget(
+                        categoryId = initialCategoryId,
+                        keepassDatabaseId = initialKeePassDatabaseId,
+                        keepassGroupPath = initialKeePassGroupPath,
+                        bitwardenVaultId = initialBitwardenVaultId,
+                        bitwardenFolderId = initialBitwardenFolderId
+                    )
+                )
+            )
             return@LaunchedEffect
         }
-        when (val filter = currentFilter) {
-            is CategoryFilter.Custom -> {
-                categoryId = filter.categoryId
-                keepassDatabaseId = null
-                keepassGroupPath = null
-                bitwardenVaultId = null
-                bitwardenFolderId = null
-            }
-            is CategoryFilter.KeePassDatabase -> {
-                categoryId = null
-                keepassDatabaseId = filter.databaseId
-                keepassGroupPath = null
-                bitwardenVaultId = null
-                bitwardenFolderId = null
-            }
-            is CategoryFilter.KeePassGroupFilter -> {
-                categoryId = null
-                keepassDatabaseId = filter.databaseId
-                keepassGroupPath = filter.groupPath
-                bitwardenVaultId = null
-                bitwardenFolderId = null
-            }
-            is CategoryFilter.KeePassDatabaseStarred -> {
-                categoryId = null
-                keepassDatabaseId = filter.databaseId
-                keepassGroupPath = null
-                bitwardenVaultId = null
-                bitwardenFolderId = null
-            }
-            is CategoryFilter.KeePassDatabaseUncategorized -> {
-                categoryId = null
-                keepassDatabaseId = filter.databaseId
-                keepassGroupPath = null
-                bitwardenVaultId = null
-                bitwardenFolderId = null
-            }
-            is CategoryFilter.BitwardenVault -> {
-                categoryId = null
-                keepassDatabaseId = null
-                keepassGroupPath = null
-                bitwardenVaultId = filter.vaultId
-                bitwardenFolderId = null
-            }
-            is CategoryFilter.BitwardenFolderFilter -> {
-                categoryId = null
-                keepassDatabaseId = null
-                keepassGroupPath = null
-                bitwardenVaultId = filter.vaultId
-                bitwardenFolderId = filter.folderId
-            }
-            is CategoryFilter.BitwardenVaultStarred -> {
-                categoryId = null
-                keepassDatabaseId = null
-                keepassGroupPath = null
-                bitwardenVaultId = filter.vaultId
-                bitwardenFolderId = null
-            }
-            is CategoryFilter.BitwardenVaultUncategorized -> {
-                categoryId = null
-                keepassDatabaseId = null
-                keepassGroupPath = null
-                bitwardenVaultId = filter.vaultId
-                bitwardenFolderId = null
-            }
-            else -> {
-                categoryId = null
-                keepassDatabaseId = null
-                keepassGroupPath = null
-                bitwardenVaultId = null
-                bitwardenFolderId = null
-            }
+        val defaultTarget = when (val filter = currentFilter) {
+            is CategoryFilter.Custom -> StorageTarget.MonicaLocal(filter.categoryId)
+            is CategoryFilter.KeePassDatabase -> StorageTarget.KeePass(filter.databaseId, null)
+            is CategoryFilter.KeePassGroupFilter -> StorageTarget.KeePass(filter.databaseId, filter.groupPath)
+            is CategoryFilter.KeePassDatabaseStarred -> StorageTarget.KeePass(filter.databaseId, null)
+            is CategoryFilter.KeePassDatabaseUncategorized -> StorageTarget.KeePass(filter.databaseId, null)
+            is CategoryFilter.BitwardenVault -> StorageTarget.Bitwarden(filter.vaultId, null)
+            is CategoryFilter.BitwardenFolderFilter -> StorageTarget.Bitwarden(filter.vaultId, filter.folderId)
+            is CategoryFilter.BitwardenVaultStarred -> StorageTarget.Bitwarden(filter.vaultId, null)
+            is CategoryFilter.BitwardenVaultUncategorized -> StorageTarget.Bitwarden(filter.vaultId, null)
+            else -> StorageTarget.MonicaLocal(null)
         }
+        setSelectedStorageTargets(listOf(defaultTarget))
     }
 
     Scaffold(
@@ -1315,54 +1354,16 @@ fun AddEditPasswordScreen(
         ) {
             // Vault/Storage Selector - 保管库选择器（类似Bitwarden）
             item {
-                VaultSelector(
-                    keepassDatabases = keepassDatabases,
-                    selectedKeePassDatabaseId = keepassDatabaseId,
-                    selectedKeePassGroupPath = keepassGroupPath,
-                    onKeePassDatabaseSelected = { 
-                        val previousKeepassDatabaseId = keepassDatabaseId
-                        keepassDatabaseId = it
-                        // 选择 KeePass 时清除 Bitwarden 选择
-                        if (it != null) {
-                            if (it != previousKeepassDatabaseId) {
-                                keepassGroupPath = null
-                            }
-                            bitwardenVaultId = null
-                            bitwardenFolderId = null
-                            categoryId = null
-                        } else {
-                            keepassGroupPath = null
-                        }
-                    },
-                    bitwardenVaults = bitwardenVaults,
-                    selectedBitwardenVaultId = bitwardenVaultId,
-                    onBitwardenVaultSelected = {
-                        bitwardenVaultId = it
-                        // 选择 Bitwarden 时清除 KeePass 选择
-                        if (it != null) {
-                            keepassDatabaseId = null
-                            keepassGroupPath = null
-                            categoryId = null
-                        }
-                    },
-                    selectedBitwardenFolderId = bitwardenFolderId,
-                    onBitwardenFolderSelected = { folderId ->
-                        bitwardenFolderId = folderId
-                        if (bitwardenVaultId != null) {
-                            keepassDatabaseId = null
-                            keepassGroupPath = null
-                            categoryId = null
-                        }
-                    },
+                MultiStorageTargetSelectorCard(
+                    selectedTargets = selectedStorageTargets,
+                    existingTargetKeys = existingReplicaTargetKeys,
                     categories = categories,
-                    selectedCategoryId = categoryId,
-                    onCategorySelected = {
-                        categoryId = it
-                        keepassDatabaseId = null
-                        keepassGroupPath = null
-                        bitwardenVaultId = null
-                        bitwardenFolderId = null
-                    }
+                    keepassDatabases = keepassDatabases,
+                    bitwardenVaults = bitwardenVaults,
+                    bitwardenFolderDao = database.bitwardenFolderDao(),
+                    isEditing = isEditing,
+                    onAddTargetClick = { showStorageTargetSheet = true },
+                    onRemoveTarget = ::removeSelectedStorageTarget
                 )
             }
 
@@ -2562,6 +2563,20 @@ fun AddEditPasswordScreen(
         }
     }
 
+    MultiStorageTargetPickerBottomSheet(
+        visible = showStorageTargetSheet,
+        selectedTargets = selectedStorageTargets.toList(),
+        lockedTargetKeys = existingReplicaTargetKeys,
+        categories = categories,
+        keepassDatabases = keepassDatabases,
+        bitwardenVaults = bitwardenVaults,
+        getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+        getKeePassGroups = localKeePassViewModel?.let { keepassVm -> keepassVm::getGroups }
+            ?: { flowOf(emptyList<takagi.ru.monica.utils.KeePassGroupInfo>()) },
+        onDismiss = { showStorageTargetSheet = false },
+        onSelectedTargetsChange = ::setSelectedStorageTargets
+    )
+
 }
 @Composable
 private fun InlineGeneratedPasswordSuggestionCard(
@@ -3292,42 +3307,6 @@ private fun getSsoProviderIcon(providerName: String): ImageVector {
         "WEIBO" -> Icons.Default.Public
         else -> Icons.Default.Login
     }
-}
-
-/**
- * 保管库选择器 - M3E 风格设计
- * 选择存储位置：仅 Monica 本地、KeePass 数据库 或 Bitwarden Vault
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun VaultSelector(
-    keepassDatabases: List<LocalKeePassDatabase>,
-    selectedKeePassDatabaseId: Long?,
-    selectedKeePassGroupPath: String?,
-    onKeePassDatabaseSelected: (Long?) -> Unit,
-    bitwardenVaults: List<BitwardenVault>,
-    selectedBitwardenVaultId: Long?,
-    onBitwardenVaultSelected: (Long?) -> Unit,
-    selectedBitwardenFolderId: String?,
-    onBitwardenFolderSelected: (String?) -> Unit,
-    categories: List<takagi.ru.monica.data.Category>,
-    selectedCategoryId: Long?,
-    onCategorySelected: (Long?) -> Unit
-) {
-    StorageTargetSelectorCard(
-        keepassDatabases = keepassDatabases,
-        selectedKeePassDatabaseId = selectedKeePassDatabaseId,
-        selectedKeePassGroupPath = selectedKeePassGroupPath,
-        onKeePassDatabaseSelected = onKeePassDatabaseSelected,
-        bitwardenVaults = bitwardenVaults,
-        selectedBitwardenVaultId = selectedBitwardenVaultId,
-        onBitwardenVaultSelected = onBitwardenVaultSelected,
-        selectedBitwardenFolderId = selectedBitwardenFolderId,
-        onBitwardenFolderSelected = onBitwardenFolderSelected,
-        categories = categories,
-        selectedCategoryId = selectedCategoryId,
-        onCategorySelected = onCategorySelected
-    )
 }
 
 private fun buildPasswordSiblingGroupKey(entry: PasswordEntry): String {

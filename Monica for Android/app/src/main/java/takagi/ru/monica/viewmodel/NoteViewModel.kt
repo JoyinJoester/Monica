@@ -19,6 +19,8 @@ import takagi.ru.monica.data.asMonicaLocalCopy
 import takagi.ru.monica.data.hasOwnershipConflict
 import takagi.ru.monica.data.resolveOwnership
 import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
+import takagi.ru.monica.data.model.StorageTarget
+import takagi.ru.monica.data.model.toStorageTarget
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
@@ -216,7 +218,8 @@ class NoteViewModel(
         keepassDatabaseId: Long? = null,
         keepassGroupPath: String? = null,
         bitwardenVaultId: Long? = null,
-        bitwardenFolderId: String? = null
+        bitwardenFolderId: String? = null,
+        replicaGroupId: String? = null
     ) {
         viewModelScope.launch {
             val (itemData, notesCache) = NoteContentCodec.encode(
@@ -247,6 +250,7 @@ class NoteViewModel(
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenFolderId = bitwardenFolderId,
                 syncStatus = if (bitwardenVaultId != null) "PENDING" else "NONE",
+                replicaGroupId = replicaGroupId,
                 createdAt = Date(),
                 updatedAt = Date()
             )
@@ -279,7 +283,8 @@ class NoteViewModel(
         keepassDatabaseId: Long? = null,
         keepassGroupPath: String? = null,
         bitwardenVaultId: Long? = null,
-        bitwardenFolderId: String? = null
+        bitwardenFolderId: String? = null,
+        replicaGroupId: String? = null
     ) {
         viewModelScope.launch {
             // 获取旧笔记以检测变化
@@ -327,6 +332,7 @@ class NoteViewModel(
                 bitwardenRevisionDate = transition.revisionDate,
                 bitwardenLocalModified = transition.localModified,
                 syncStatus = transition.syncStatus,
+                replicaGroupId = replicaGroupId ?: existingItem?.replicaGroupId,
                 createdAt = createdAt,
                 updatedAt = Date()
             )
@@ -358,6 +364,168 @@ class NoteViewModel(
         }
     }
 
+    fun saveNotesAcrossTargets(
+        id: Long?,
+        content: String,
+        title: String? = null,
+        tags: List<String> = emptyList(),
+        isMarkdown: Boolean = false,
+        isFavorite: Boolean = false,
+        createdAt: Date = Date(),
+        imagePaths: String = "",
+        targets: List<StorageTarget>
+    ) {
+        viewModelScope.launch {
+            val distinctTargets = targets.distinctBy(StorageTarget::stableKey)
+            if (distinctTargets.isEmpty()) return@launch
+
+            val existingItem = id?.let { repository.getItemById(it) }?.takeIf { it.itemType == ItemType.NOTE }
+            val currentTarget = existingItem?.toStorageTarget() ?: distinctTargets.first()
+            val replicaGroupId = existingItem?.replicaGroupId?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
+            val existingReplicaKeys = if (existingItem != null) {
+                repository.getAllItems().first()
+                    .asSequence()
+                    .filter {
+                        it.itemType == ItemType.NOTE &&
+                            it.replicaGroupId == replicaGroupId &&
+                            it.id != existingItem.id &&
+                            !it.isDeleted
+                    }
+                    .map { it.toStorageTarget().stableKey }
+                    .toSet()
+            } else {
+                emptySet()
+            }
+
+            when (currentTarget) {
+                is StorageTarget.MonicaLocal -> {
+                    if (existingItem == null) {
+                        addNote(
+                            content = content,
+                            title = title,
+                            tags = tags,
+                            isMarkdown = isMarkdown,
+                            isFavorite = isFavorite,
+                            categoryId = currentTarget.categoryId,
+                            imagePaths = imagePaths,
+                            replicaGroupId = replicaGroupId
+                        )
+                    } else {
+                        updateNote(
+                            id = existingItem.id,
+                            content = content,
+                            title = title,
+                            tags = tags,
+                            isMarkdown = isMarkdown,
+                            isFavorite = isFavorite,
+                            createdAt = createdAt,
+                            categoryId = currentTarget.categoryId,
+                            imagePaths = imagePaths,
+                            replicaGroupId = replicaGroupId
+                        )
+                    }
+                }
+                is StorageTarget.KeePass -> {
+                    if (existingItem == null) {
+                        addNote(
+                            content = content,
+                            title = title,
+                            tags = tags,
+                            isMarkdown = isMarkdown,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            keepassDatabaseId = currentTarget.databaseId,
+                            keepassGroupPath = currentTarget.groupPath,
+                            replicaGroupId = replicaGroupId
+                        )
+                    } else {
+                        updateNote(
+                            id = existingItem.id,
+                            content = content,
+                            title = title,
+                            tags = tags,
+                            isMarkdown = isMarkdown,
+                            isFavorite = isFavorite,
+                            createdAt = createdAt,
+                            imagePaths = imagePaths,
+                            keepassDatabaseId = currentTarget.databaseId,
+                            keepassGroupPath = currentTarget.groupPath,
+                            replicaGroupId = replicaGroupId
+                        )
+                    }
+                }
+                is StorageTarget.Bitwarden -> {
+                    if (existingItem == null) {
+                        addNote(
+                            content = content,
+                            title = title,
+                            tags = tags,
+                            isMarkdown = isMarkdown,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            bitwardenVaultId = currentTarget.vaultId,
+                            bitwardenFolderId = currentTarget.folderId,
+                            replicaGroupId = replicaGroupId
+                        )
+                    } else {
+                        updateNote(
+                            id = existingItem.id,
+                            content = content,
+                            title = title,
+                            tags = tags,
+                            isMarkdown = isMarkdown,
+                            isFavorite = isFavorite,
+                            createdAt = createdAt,
+                            imagePaths = imagePaths,
+                            bitwardenVaultId = currentTarget.vaultId,
+                            bitwardenFolderId = currentTarget.folderId,
+                            replicaGroupId = replicaGroupId
+                        )
+                    }
+                }
+            }
+
+            distinctTargets
+                .filter { it.stableKey != currentTarget.stableKey && it.stableKey !in existingReplicaKeys }
+                .forEach { target ->
+                    when (target) {
+                        is StorageTarget.MonicaLocal -> addNote(
+                            content = content,
+                            title = title,
+                            tags = tags,
+                            isMarkdown = isMarkdown,
+                            isFavorite = isFavorite,
+                            categoryId = target.categoryId,
+                            imagePaths = imagePaths,
+                            replicaGroupId = replicaGroupId
+                        )
+                        is StorageTarget.KeePass -> addNote(
+                            content = content,
+                            title = title,
+                            tags = tags,
+                            isMarkdown = isMarkdown,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            keepassDatabaseId = target.databaseId,
+                            keepassGroupPath = target.groupPath,
+                            replicaGroupId = replicaGroupId
+                        )
+                        is StorageTarget.Bitwarden -> addNote(
+                            content = content,
+                            title = title,
+                            tags = tags,
+                            isMarkdown = isMarkdown,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            bitwardenVaultId = target.vaultId,
+                            bitwardenFolderId = target.folderId,
+                            replicaGroupId = replicaGroupId
+                        )
+                    }
+                }
+        }
+    }
+
     suspend fun moveNoteToStorage(
         item: SecureItem,
         categoryId: Long? = item.categoryId,
@@ -367,6 +535,20 @@ class NoteViewModel(
         bitwardenFolderId: String? = item.bitwardenFolderId
     ): Boolean {
         if (item.itemType != ItemType.NOTE) return false
+        val target = when {
+            bitwardenVaultId != null -> StorageTarget.Bitwarden(bitwardenVaultId, bitwardenFolderId)
+            keepassDatabaseId != null -> StorageTarget.KeePass(keepassDatabaseId, keepassGroupPath)
+            else -> StorageTarget.MonicaLocal(categoryId)
+        }
+        if (hasReplicaTargetConflict(
+                itemType = ItemType.NOTE,
+                itemId = item.id,
+                replicaGroupId = item.replicaGroupId,
+                target = target
+            )
+        ) {
+            return false
+        }
 
         val transition = resolveBitwardenTransition(
             existingItem = item,
@@ -465,6 +647,24 @@ class NoteViewModel(
 
         repository.deleteItem(item)
         return Result.success(newId)
+    }
+
+    private suspend fun hasReplicaTargetConflict(
+        itemType: ItemType,
+        itemId: Long,
+        replicaGroupId: String?,
+        target: StorageTarget
+    ): Boolean {
+        if (replicaGroupId.isNullOrBlank()) return false
+        return repository.getAllItems().first()
+            .asSequence()
+            .filter { candidate ->
+                candidate.itemType == itemType &&
+                    candidate.id != itemId &&
+                    candidate.replicaGroupId == replicaGroupId &&
+                    !candidate.isDeleted
+            }
+            .any { candidate -> candidate.toStorageTarget().stableKey == target.stableKey }
     }
 
     private fun resolveKeePassMutationIdentity(

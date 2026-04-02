@@ -91,6 +91,7 @@ import takagi.ru.monica.ui.screens.AddEditDocumentScreen
 import takagi.ru.monica.ui.screens.AddEditPasswordScreen
 import takagi.ru.monica.ui.screens.AddEditTotpScreen
 import takagi.ru.monica.ui.screens.AutofillBlockedFieldsScreen
+import takagi.ru.monica.ui.screens.AutofillSaveBlockedTargetsScreen
 import takagi.ru.monica.ui.screens.AutofillSettingsV2Screen
 import takagi.ru.monica.ui.screens.BankCardDetailScreen
 import takagi.ru.monica.ui.screens.BottomNavSettingsScreen
@@ -998,6 +999,7 @@ fun MonicaContent(
             var initialKeePassGroupPath by remember { mutableStateOf<String?>(null) }
             var initialBitwardenVaultId by remember { mutableStateOf<Long?>(null) }
             var initialBitwardenFolderId by remember { mutableStateOf<String?>(null) }
+            var initialReplicaGroupId by remember { mutableStateOf<String?>(null) }
             var isLoading by remember { mutableStateOf(true) }
 
             // 从QR扫描获取的数据
@@ -1059,6 +1061,7 @@ fun MonicaContent(
                         initialKeePassGroupPath = item.keepassGroupPath
                         initialBitwardenVaultId = item.bitwardenVaultId
                         initialBitwardenFolderId = item.bitwardenFolderId
+                        initialReplicaGroupId = item.replicaGroupId
                         initialData = try {
                             kotlinx.serialization.json.Json.decodeFromString(item.itemData)
                         } catch (e: Exception) {
@@ -1152,20 +1155,18 @@ fun MonicaContent(
                     initialKeePassGroupPath = resolvedInitialKeePassGroupPath,
                     initialBitwardenVaultId = initialVaultId,
                     initialBitwardenFolderId = initialFolderId,
+                    initialReplicaGroupId = initialReplicaGroupId,
                     categories = totpCategories,
                     passwordViewModel = viewModel,
+                    totpViewModel = totpViewModel,
                     localKeePassViewModel = localKeePassViewModel,
-                    onSave = { title, notes, totpData, categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
-                        totpViewModel.saveTotpItem(
+                    onSave = { title, notes, totpData, targets ->
+                        totpViewModel.saveTotpAcrossTargets(
                             id = if (totpId > 0) totpId else null,
                             title = title,
                             notes = notes,
                             totpData = totpData,
-                            categoryId = categoryId,
-                            keepassDatabaseId = keepassDatabaseId,
-                            keepassGroupPath = keepassGroupPath,
-                            bitwardenVaultId = bitwardenVaultId,
-                            bitwardenFolderId = bitwardenFolderId
+                            targets = targets
                         )
                         navController.popBackStack()
                     },
@@ -2021,6 +2022,9 @@ fun MonicaContent(
                     },
                     onNavigateToBlockedFields = {
                         navController.navigate(Screen.AutofillBlockedFields.route)
+                    },
+                    onNavigateToSaveBlockedTargets = {
+                        navController.navigate(Screen.AutofillSaveBlockedTargets.route)
                     }
                 )
             }
@@ -2037,6 +2041,24 @@ fun MonicaContent(
                 takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
             ) {
                 AutofillBlockedFieldsScreen(
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    }
+                )
+            }
+        }
+
+        composable(
+            route = Screen.AutofillSaveBlockedTargets.route,
+            enterTransition = { rightSlideEnterTransition() },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { rightSlidePopExitTransition() }
+        ) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
+                AutofillSaveBlockedTargetsScreen(
                     onNavigateBack = {
                         navController.popBackStack()
                     }

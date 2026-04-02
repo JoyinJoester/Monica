@@ -82,6 +82,7 @@ import takagi.ru.monica.data.bitwarden.BitwardenVault
 fun AutofillSettingsV2Screen(
     onNavigateBack: () -> Unit,
     onNavigateToBlockedFields: () -> Unit,
+    onNavigateToSaveBlockedTargets: () -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -111,6 +112,7 @@ fun AutofillSettingsV2Screen(
     val respectOffEnabled by preferences.isV2RespectAutofillOffEnabled.collectAsState(initial = true)
     val blacklistEnabled by preferences.isBlacklistEnabled.collectAsState(initial = true)
     val blacklistPackages by preferences.blacklistPackages.collectAsState(initial = emptySet())
+    val saveBlockedTargetRecords by preferences.saveBlockedTargetRecords.collectAsState(initial = emptyList())
     val blockedFieldSignatureRecords by preferences.blockedFieldSignatureRecords.collectAsState(initial = emptyList())
     val defaultSourceFilter by preferences.v2DefaultSourceFilter.collectAsState(
         initial = AutofillPreferences.AutofillDefaultSourceFilter.ALL,
@@ -636,6 +638,22 @@ fun AutofillSettingsV2Screen(
                     onCheckedChange = { enabled ->
                         scope.launch { preferences.setAutoCopyOtpEnabled(enabled) }
                     },
+                )
+            }
+
+            SectionCard(
+                title = stringResource(R.string.autofill_save_blocked_targets_title),
+                icon = Icons.Outlined.Language,
+                iconTint = MaterialTheme.colorScheme.secondary,
+            ) {
+                AutofillSettingItem(
+                    icon = Icons.Outlined.Block,
+                    title = stringResource(R.string.autofill_save_blocked_targets_manage),
+                    subtitle = stringResource(
+                        R.string.autofill_save_blocked_targets_manage_desc,
+                        saveBlockedTargetRecords.size,
+                    ),
+                    onClick = onNavigateToSaveBlockedTargets,
                 )
             }
 

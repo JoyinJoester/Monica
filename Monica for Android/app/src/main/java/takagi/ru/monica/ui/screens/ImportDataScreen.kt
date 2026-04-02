@@ -304,6 +304,7 @@ fun ImportDataScreen(
     onImportKdbx: suspend (Uri, String, Uri?) -> Result<Int> = { _, _, _ -> Result.failure(Exception("Not implemented")) },  // KDBX导入
     onImportKeePassCsv: suspend (Uri) -> Result<Int> = { _ -> Result.failure(Exception("Not implemented")) },  // KeePass CSV导入
     onImportBitwardenCsv: suspend (Uri) -> Result<Int> = { _ -> Result.failure(Exception("Not implemented")) },  // Bitwarden CSV导入
+    onImportChromeCsv: suspend (Uri) -> Result<Int> = { _ -> Result.failure(Exception("Not implemented")) },  // Chrome CSV导入
     onImportPasswordKeyboardCsv: suspend (
         Uri,
         DataExportImportManager.PasswordKeyboardTagHandling
@@ -429,6 +430,13 @@ fun ImportDataScreen(
             title = stringResource(R.string.import_type_csv_bitwarden_title),
             description = stringResource(R.string.import_type_csv_bitwarden_desc),
             fileHint = stringResource(R.string.import_type_csv_bitwarden_file_hint)
+        ),
+        ImportTypeInfo(
+            key = "chrome_csv",
+            icon = Icons.Default.Language,
+            title = stringResource(R.string.import_type_csv_chrome_title),
+            description = stringResource(R.string.import_type_csv_chrome_desc),
+            fileHint = stringResource(R.string.import_type_csv_chrome_file_hint)
         ),
         ImportTypeInfo(
             key = "password_keyboard_csv",
@@ -653,6 +661,10 @@ fun ImportDataScreen(
                                                 }
                                                 "bitwarden_csv" -> {
                                                     val result = onImportBitwardenCsv(uri)
+                                                    handleImportResult(result, context, snackbarHostState, effectiveImportType, onNavigateBack)
+                                                }
+                                                "chrome_csv" -> {
+                                                    val result = onImportChromeCsv(uri)
                                                     handleImportResult(result, context, snackbarHostState, effectiveImportType, onNavigateBack)
                                                 }
                                                 "password_keyboard_csv" -> {
@@ -983,6 +995,7 @@ fun ImportDataScreen(
                                 "kdbx" -> FileOperationHelper.importFromKdbx(act)
                                 "keepass_csv" -> FileOperationHelper.importFromCsv(act)
                                 "bitwarden_csv" -> FileOperationHelper.importFromCsv(act)
+                                "chrome_csv" -> FileOperationHelper.importFromCsv(act)
                                 "password_keyboard_csv" -> FileOperationHelper.importFromCsv(act)
                                 "aegis" -> FileOperationHelper.importFromJson(act)
                                 "stratum" -> FileOperationHelper.importFromStratum(act)

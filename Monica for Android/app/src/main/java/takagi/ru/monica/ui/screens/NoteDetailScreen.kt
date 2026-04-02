@@ -169,7 +169,6 @@ fun NoteDetailScreen(
             .firstOrNull { it.isNotEmpty() }
             .orEmpty()
             .ifBlank { fallbackTitle }
-
         Column(
             modifier = modifier
                 .fillMaxSize()

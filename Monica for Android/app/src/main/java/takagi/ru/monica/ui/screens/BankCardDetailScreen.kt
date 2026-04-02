@@ -35,7 +35,9 @@ import takagi.ru.monica.R
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.BankCardData
 import takagi.ru.monica.data.model.CardWalletDataCodec
+import takagi.ru.monica.data.model.StorageTarget
 import takagi.ru.monica.data.model.formatForDisplay
+import takagi.ru.monica.data.model.toStorageTarget
 import takagi.ru.monica.ui.components.ActionStrip
 import takagi.ru.monica.ui.components.ActionStripItem
 import takagi.ru.monica.ui.components.BankCardCard
@@ -56,6 +58,7 @@ fun BankCardDetailScreen(
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+    val allCards by viewModel.allCards.collectAsState(initial = emptyList())
     
     var cardItem by remember { mutableStateOf<SecureItem?>(null) }
     var cardData by remember { mutableStateOf<BankCardData?>(null) }
@@ -93,7 +96,20 @@ fun BankCardDetailScreen(
             }
         }
     }
-    
+    val replicaTargets = remember(cardItem, allCards) {
+        val currentItem = cardItem
+        if (currentItem == null) {
+            emptyList()
+        } else if (!currentItem.replicaGroupId.isNullOrBlank()) {
+            allCards
+                .filter { card -> card.replicaGroupId == currentItem.replicaGroupId && !card.isDeleted }
+                .map { it.toStorageTarget() }
+                .distinctBy(StorageTarget::stableKey)
+                .ifEmpty { listOf(currentItem.toStorageTarget()) }
+        } else {
+            listOf(currentItem.toStorageTarget())
+        }
+    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -516,10 +532,15 @@ fun BankCardDetailScreen(
     }
     
     if (showDeleteDialog) {
+        val deleteMessage = if (replicaTargets.size > 1) {
+            "这只会删除当前这一个副本，其他 ${replicaTargets.size - 1} 个目标中的副本会保留。"
+        } else {
+            context.getString(R.string.delete_card_message)
+        }
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
             title = { Text(stringResource(R.string.delete_card_title)) },
-            text = { Text(stringResource(R.string.delete_card_message)) },
+            text = { Text(deleteMessage) },
             confirmButton = {
                 TextButton(
                     onClick = {

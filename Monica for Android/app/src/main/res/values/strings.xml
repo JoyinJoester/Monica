@@ -1524,6 +1524,16 @@
     <string name="autofill_blacklist_enable_desc">Prevent specific apps from using autofill</string>
     <string name="autofill_blacklist_manage">Manage Blacklist Apps</string>
     <string name="autofill_blacklist_manage_desc">%d apps added</string>
+    <string name="autofill_save_blocked_targets_title">Never-save targets</string>
+    <string name="autofill_save_blocked_targets_manage">Manage never-save list</string>
+    <string name="autofill_save_blocked_targets_manage_desc">%1$d targets will no longer show save prompts.</string>
+    <string name="autofill_save_blocked_targets_dialog_desc">These apps or websites have been set to never show Monica\'s save-password prompt. Remove an item to restore save prompts.</string>
+    <string name="autofill_save_blocked_targets_empty">No apps or websites have been blocked from save prompts yet.</string>
+    <string name="autofill_save_blocked_targets_badge_domain">Website save blocked</string>
+    <string name="autofill_save_blocked_targets_badge_app">App save blocked</string>
+    <string name="autofill_save_blocked_targets_domain_only">Website target</string>
+    <string name="autofill_save_blocked_targets_app_only">Android app target</string>
+    <string name="autofill_save_blocked_targets_clear_all">Clear never-save list</string>
     <string name="autofill_blacklist_dialog_title">Blacklist Management</string>
     <string name="autofill_blacklist_dialog_desc">Apps in blacklist will not be able to use autofill</string>
     <string name="autofill_blacklist_dialog_done">Done</string>
@@ -2160,6 +2170,7 @@
     <string name="folder_select_folder">Select Folder</string>
     <string name="folder_create_new">Create New Folder</string>
     <string name="folder_no_folder_root">No folder (root)</string>
+    <string name="storage_picker_keepass_root">Database root directory</string>
     
     <!-- Bitwarden Unlock -->
     <string name="bitwarden_unlock_title">Unlock Bitwarden</string>
@@ -2189,7 +2200,9 @@
     <string name="category_rename_mode_full_path">Edit full path</string>
     <string name="category_parent_path_hint">Parent path: %1$s</string>
     <string name="menu">Menu</string>
+    <string name="single_select">Single-select</string>
     <string name="multi_select">Multi-select</string>
+    <string name="storage_picker_edit_multi_append_hint">When editing an existing item, only multi-select append is supported. Existing targets will be preserved.</string>
     
     <!-- Autofill hardcoded text cleanup -->
     <string name="autofill_view_all_passwords">View all passwords</string>
@@ -2723,6 +2736,9 @@
     <string name="import_type_csv_bitwarden_title">Bitwarden CSV</string>
     <string name="import_type_csv_bitwarden_desc">Import CSV exported by Bitwarden</string>
     <string name="import_type_csv_bitwarden_file_hint">Select Bitwarden .csv file</string>
+    <string name="import_type_csv_chrome_title">Chrome CSV</string>
+    <string name="import_type_csv_chrome_desc">Import CSV exported by Google Chrome</string>
+    <string name="import_type_csv_chrome_file_hint">Select Chrome .csv file</string>
     <string name="import_type_csv_password_keyboard_title">Password Keyboard CSV</string>
     <string name="import_type_csv_password_keyboard_desc">Import CSV exported by Password Keyboard app</string>
     <string name="import_type_csv_password_keyboard_file_hint">Select Password Keyboard .csv file</string>

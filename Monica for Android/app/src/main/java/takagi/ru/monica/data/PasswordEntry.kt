@@ -17,6 +17,7 @@ import java.util.Date
     indices = [
         Index(value = ["isDeleted"]),
         Index(value = ["isArchived"]),
+        Index(value = ["replica_group_id"], name = "index_password_entries_replica_group_id"),
         Index(value = ["keepass_entry_uuid"], name = "index_password_entries_keepass_entry_uuid"),
         Index(
             value = ["bitwarden_vault_id", "bitwarden_cipher_id"],
@@ -108,6 +109,9 @@ data class PasswordEntry(
     val isArchived: Boolean = false,
     @ColumnInfo(defaultValue = "NULL")
     val archivedAt: java.util.Date? = null,
+
+    @ColumnInfo(name = "replica_group_id", defaultValue = "NULL")
+    val replicaGroupId: String? = null,
     
     // === Bitwarden 集成字段 ===
     // 当此条目来自 Bitwarden 时，以下字段有值
