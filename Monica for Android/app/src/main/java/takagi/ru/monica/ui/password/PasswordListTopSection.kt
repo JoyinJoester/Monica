@@ -50,14 +50,15 @@ import takagi.ru.monica.data.CategorySelectionUiMode
 import takagi.ru.monica.data.PasswordCardDisplayMode
 import takagi.ru.monica.data.PasswordPageContentType
 import takagi.ru.monica.data.PasswordListQuickFilterItem
+import takagi.ru.monica.data.model.StorageTarget
 import takagi.ru.monica.ui.components.CreateCategoryDialog
 import takagi.ru.monica.ui.components.ExpressiveTopBar
-import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuDropdown
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuOffset
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
+import takagi.ru.monica.utils.planLocalCategoryMove
 import takagi.ru.monica.viewmodel.CategoryFilter
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.SettingsViewModel
@@ -235,6 +236,66 @@ internal fun PasswordListTopSection(
                                     onCategorySheetVisibleChange(false)
                                     showCreateCategoryDialog = true
                                 },
+                                onMoveCategory = { category, targetParentCategoryId ->
+                                    runCatching {
+                                        planLocalCategoryMove(
+                                            categories = categories,
+                                            sourceCategory = category,
+                                            targetParentCategory = categories.find { it.id == targetParentCategoryId }
+                                        )
+                                    }.onSuccess { plan ->
+                                        plan.updatedCategories.forEach(viewModel::updateCategory)
+                                    }.onFailure { error ->
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.save_failed_with_error, error.message ?: ""),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                },
+                                onMoveCategoryToStorageTarget = { category, target ->
+                                    when (target) {
+                                        is StorageTarget.MonicaLocal -> {
+                                            runCatching {
+                                                planLocalCategoryMove(
+                                                    categories = categories,
+                                                    sourceCategory = category,
+                                                    targetParentCategory = categories.find { it.id == target.categoryId }
+                                                )
+                                            }.onSuccess { plan ->
+                                                plan.updatedCategories.forEach(viewModel::updateCategory)
+                                            }.onFailure { error ->
+                                                Toast.makeText(
+                                                    context,
+                                                    context.getString(R.string.save_failed_with_error, error.message ?: ""),
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        }
+
+                                        is StorageTarget.Bitwarden -> {
+                                            viewModel.updateCategory(
+                                                category.copy(
+                                                    bitwardenVaultId = target.vaultId,
+                                                    bitwardenFolderId = target.folderId.orEmpty()
+                                                )
+                                            )
+                                        }
+
+                                        is StorageTarget.KeePass -> {
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(
+                                                    R.string.save_failed_with_error,
+                                                    "当前暂不支持将分类移动到 KeePass 数据库"
+                                                ),
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                    }
+                                },
+                                getBitwardenFolders = viewModel::getBitwardenFolders,
+                                getKeePassGroups = localKeePassViewModel::getGroups,
                                 onRenameCategory = onRenameCategory,
                                 onDeleteCategory = onDeleteCategory
                             )
@@ -354,150 +415,6 @@ internal fun PasswordListTopSection(
             is CategoryFilter.KeePassDatabaseStarred -> UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter(filter.databaseId)
             is CategoryFilter.KeePassDatabaseUncategorized -> UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter(filter.databaseId)
         }
-        if (isCategorySheetVisible && !isArchiveView) {
-            when (appSettings.categorySelectionUiMode) {
-                CategorySelectionUiMode.BOTTOM_SHEET -> UnifiedCategoryFilterBottomSheet(
-                    visible = true,
-                    onDismiss = { onCategorySheetVisibleChange(false) },
-                    selected = unifiedSelectedFilter,
-                    showLocalOnlyQuickFilter = true,
-                    isLocalOnlyQuickFilterSelected = currentFilter is CategoryFilter.LocalOnly,
-                    onSelectLocalOnlyQuickFilter = { viewModel.setCategoryFilter(CategoryFilter.LocalOnly) },
-                    onSelect = { selection ->
-                        when (selection) {
-                            is UnifiedCategoryFilterSelection.All -> viewModel.setCategoryFilter(CategoryFilter.All)
-                            is UnifiedCategoryFilterSelection.Local -> viewModel.setCategoryFilter(CategoryFilter.Local)
-                            is UnifiedCategoryFilterSelection.Starred -> viewModel.setCategoryFilter(CategoryFilter.Starred)
-                            is UnifiedCategoryFilterSelection.Uncategorized -> viewModel.setCategoryFilter(CategoryFilter.Uncategorized)
-                            is UnifiedCategoryFilterSelection.LocalStarred -> viewModel.setCategoryFilter(CategoryFilter.LocalStarred)
-                            is UnifiedCategoryFilterSelection.LocalUncategorized -> viewModel.setCategoryFilter(CategoryFilter.LocalUncategorized)
-                            is UnifiedCategoryFilterSelection.Custom -> viewModel.setCategoryFilter(CategoryFilter.Custom(selection.categoryId))
-                            is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> viewModel.setCategoryFilter(CategoryFilter.BitwardenVault(selection.vaultId))
-                            is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> viewModel.setCategoryFilter(CategoryFilter.BitwardenFolderFilter(selection.folderId, selection.vaultId))
-                            is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> viewModel.setCategoryFilter(CategoryFilter.BitwardenVaultStarred(selection.vaultId))
-                            is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> viewModel.setCategoryFilter(CategoryFilter.BitwardenVaultUncategorized(selection.vaultId))
-                            is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> viewModel.setCategoryFilter(CategoryFilter.KeePassDatabase(selection.databaseId))
-                            is UnifiedCategoryFilterSelection.KeePassGroupFilter -> viewModel.setCategoryFilter(CategoryFilter.KeePassGroupFilter(selection.databaseId, selection.groupPath))
-                            is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> viewModel.setCategoryFilter(CategoryFilter.KeePassDatabaseStarred(selection.databaseId))
-                            is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> viewModel.setCategoryFilter(CategoryFilter.KeePassDatabaseUncategorized(selection.databaseId))
-                        }
-                    },
-                    launchAnchorBounds = categoryPillBoundsInWindow,
-                    categories = categories,
-                    keepassDatabases = keepassDatabases,
-                    bitwardenVaults = bitwardenVaults,
-                    getBitwardenFolders = viewModel::getBitwardenFolders,
-                    getKeePassGroups = localKeePassViewModel::getGroups,
-                    onVerifyMasterPassword = { input ->
-                        takagi.ru.monica.security.SecurityManager(context).verifyMasterPassword(input)
-                    },
-                    onRequestBiometricVerify = if (canUseBiometric) {
-                        { onSuccess, onError ->
-                            val hostActivity = activity
-                            if (hostActivity == null) {
-                                onError(context.getString(R.string.biometric_not_available))
-                            } else {
-                                biometricHelper.authenticate(
-                                    activity = hostActivity,
-                                    title = context.getString(R.string.verify_identity),
-                                    subtitle = context.getString(R.string.verify_to_delete),
-                                    onSuccess = { onSuccess() },
-                                    onError = { error -> onError(error) },
-                                    onFailed = {}
-                                )
-                            }
-                        }
-                    } else {
-                        null
-                    },
-                    onCreateCategoryWithName = { name -> viewModel.addCategory(name) },
-                    onCreateBitwardenFolder = { vaultId, name ->
-                        coroutineScope.launch {
-                            val result = bitwardenRepository.createFolder(vaultId, name)
-                            result.exceptionOrNull()?.let { error ->
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.webdav_operation_failed, error.message ?: ""),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        }
-                    },
-                    onRenameBitwardenFolder = { vaultId, folderId, newName ->
-                        coroutineScope.launch {
-                            val result = bitwardenRepository.renameFolder(vaultId, folderId, newName)
-                            result.exceptionOrNull()?.let { error ->
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.webdav_operation_failed, error.message ?: ""),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        }
-                    },
-                    onDeleteBitwardenFolder = { vaultId, folderId ->
-                        coroutineScope.launch {
-                            val result = bitwardenRepository.deleteFolder(vaultId, folderId)
-                            result.exceptionOrNull()?.let { error ->
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.webdav_operation_failed, error.message ?: ""),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        }
-                    },
-                    onRenameCategory = onRenameCategory,
-                    onDeleteCategory = onDeleteCategory,
-                    onCreateKeePassGroup = { databaseId, parentPath, name ->
-                        localKeePassViewModel.createGroup(
-                            databaseId = databaseId,
-                            groupName = name,
-                            parentPath = parentPath
-                        ) { result ->
-                            result.exceptionOrNull()?.let { error ->
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.webdav_operation_failed, error.message ?: ""),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        }
-                    },
-                    onRenameKeePassGroup = { databaseId, groupPath, newName ->
-                        localKeePassViewModel.renameGroup(
-                            databaseId = databaseId,
-                            groupPath = groupPath,
-                            newName = newName
-                        ) { result ->
-                            result.exceptionOrNull()?.let { error ->
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.webdav_operation_failed, error.message ?: ""),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        }
-                    },
-                    onDeleteKeePassGroup = { databaseId, groupPath ->
-                        localKeePassViewModel.deleteGroup(
-                            databaseId = databaseId,
-                            groupPath = groupPath
-                        ) { result ->
-                            result.exceptionOrNull()?.let { error ->
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.webdav_operation_failed, error.message ?: ""),
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        }
-                    }
-                )
-                CategorySelectionUiMode.CHIP_MENU -> Unit
-            }
-        }
-
         if (showDisplayOptionsSheet) {
             PasswordDisplayOptionsSheet(
                 stackCardMode = stackCardMode,

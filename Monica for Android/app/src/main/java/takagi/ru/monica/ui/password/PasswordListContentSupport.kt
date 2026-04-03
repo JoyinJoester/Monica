@@ -67,6 +67,7 @@ private data class PasswordListScrollSnapshot(
 internal data class PasswordListAggregateUiState(
     val visibleContentTypes: List<PasswordPageContentType>,
     val selectedContentTypes: Set<PasswordPageContentType>,
+    val contentTypeFilterTypes: Set<PasswordPageContentType>,
     val quickFilterTypes: List<PasswordPageContentType>,
     val displayedContentTypes: Set<PasswordPageContentType>,
     val hasActiveContentTypeFilter: Boolean,
@@ -163,18 +164,24 @@ internal fun rememberPasswordAggregateUiState(
         resolvePasswordPageQuickFilterTypes(aggregateVisibleContentTypes)
             .filter { type -> type in enabledQuickFilterTypes }
     }
-    val aggregateDisplayedContentTypes = remember(
+    val aggregateContentTypeFilterTypes = remember(
         aggregateQuickFilterTypes,
         aggregateSelectedContentTypes
+    ) {
+        aggregateSelectedContentTypes.filterTo(linkedSetOf()) { type ->
+            type in aggregateQuickFilterTypes
+        }
+    }
+    val aggregateDisplayedContentTypes = remember(
+        aggregateVisibleContentTypes,
+        aggregateQuickFilterTypes
     ) {
         resolvePasswordPageDisplayedTypes(
             visibleTypes = buildList {
                 add(PasswordPageContentType.PASSWORD)
                 addAll(aggregateQuickFilterTypes)
             },
-            selectedTypes = aggregateSelectedContentTypes.filterTo(linkedSetOf()) { type ->
-                type in aggregateQuickFilterTypes
-            }
+            selectedTypes = emptySet()
         )
     }
     val aggregateCardStyle = remember(
@@ -201,6 +208,7 @@ internal fun rememberPasswordAggregateUiState(
     }
     val aggregateVisibleItems = remember(
         aggregateDisplayedContentTypes,
+        aggregateContentTypeFilterTypes,
         aggregateBankCards,
         aggregateDocuments,
         aggregateNotes,
@@ -209,7 +217,7 @@ internal fun rememberPasswordAggregateUiState(
         searchQuery,
         currentFilter
     ) {
-        buildPasswordAggregateItems(
+        val allVisibleItems = buildPasswordAggregateItems(
             selectedContentTypes = aggregateDisplayedContentTypes,
             bankCards = aggregateBankCards,
             documents = aggregateDocuments,
@@ -219,16 +227,20 @@ internal fun rememberPasswordAggregateUiState(
             searchQuery = searchQuery,
             categoryFilter = currentFilter
         )
+        if (aggregateContentTypeFilterTypes.isEmpty()) {
+            allVisibleItems
+        } else {
+            allVisibleItems.filter { item -> item.type in aggregateContentTypeFilterTypes }
+        }
     }
 
     return PasswordListAggregateUiState(
         visibleContentTypes = aggregateVisibleContentTypes,
         selectedContentTypes = aggregateSelectedContentTypes,
+        contentTypeFilterTypes = aggregateContentTypeFilterTypes,
         quickFilterTypes = aggregateQuickFilterTypes,
         displayedContentTypes = aggregateDisplayedContentTypes,
-        hasActiveContentTypeFilter = aggregateSelectedContentTypes.any { type ->
-            type in aggregateQuickFilterTypes
-        },
+        hasActiveContentTypeFilter = aggregateContentTypeFilterTypes.isNotEmpty(),
         cardStyle = aggregateCardStyle,
         visibleItems = aggregateVisibleItems,
         bankCards = aggregateBankCards,
@@ -411,7 +423,6 @@ internal fun rememberPasswordListLazyListState(
         }
 
         val isSavedIndexOutOfBounds = savedScrollIndex !in 0 until totalItems
-
         val targetIndex = if (isSavedIndexOutOfBounds) 0 else savedScrollIndex
         val targetOffset = if (isSavedIndexOutOfBounds) 0 else savedScrollOffset
 

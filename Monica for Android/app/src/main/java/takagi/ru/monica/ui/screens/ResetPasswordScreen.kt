@@ -4,7 +4,6 @@ import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -13,12 +12,12 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
+import takagi.ru.monica.security.MasterPasswordPolicy
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.ui.components.MasterPasswordTextField
+import takagi.ru.monica.ui.components.rememberBringIntoViewOnFocusModifier
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable
@@ -30,6 +29,9 @@ fun ResetPasswordScreen(
 ) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+    val currentPasswordImeModifier = rememberBringIntoViewOnFocusModifier()
+    val newPasswordImeModifier = rememberBringIntoViewOnFocusModifier()
+    val confirmPasswordImeModifier = rememberBringIntoViewOnFocusModifier()
     
     var currentPassword by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }
@@ -78,6 +80,7 @@ fun ResetPasswordScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
                 .verticalScroll(scrollState)
+                .imePadding()
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -111,7 +114,7 @@ fun ResetPasswordScreen(
             
             // Current Password (only show if not skipping)
             if (!skipCurrentPassword) {
-                OutlinedTextField(
+                MasterPasswordTextField(
                     value = currentPassword,
                     onValueChange = { 
                         currentPassword = it
@@ -128,39 +131,26 @@ fun ResetPasswordScreen(
                     leadingIcon = {
                         Icon(Icons.Default.Lock, contentDescription = null)
                     },
-                    trailingIcon = {
-                        IconButton(onClick = { currentPasswordVisible = !currentPasswordVisible }) {
-                            Icon(
-                                imageVector = if (currentPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                contentDescription = if (currentPasswordVisible) 
-                                    context.getString(R.string.hide_password) 
-                                else 
-                                    context.getString(R.string.show_password)
-                            )
-                        }
-                    },
-                    visualTransformation = if (currentPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    modifier = Modifier.fillMaxWidth(),
+                    visible = currentPasswordVisible,
+                    onVisibilityChange = { currentPasswordVisible = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .then(currentPasswordImeModifier),
                     enabled = !isLoading,
-                    singleLine = true
                 )
                 
                 HorizontalDivider()
             }
             
             // New Password
-            OutlinedTextField(
+            MasterPasswordTextField(
                 value = newPassword,
                 onValueChange = { input ->
-                    // 只允许数字输入
-                    if (input.all { it.isDigit() }) {
-                        newPassword = input
-                        errorMessage = ""
-                    } else if (input.isNotEmpty()) {
-                        // 检测到非数字,显示错误
-                        errorMessage = context.getString(R.string.error_password_must_be_numeric)
-                    }
+                    newPassword = input
+                    errorMessage = ""
+                },
+                onUnsupportedCharacterAttempt = {
+                    errorMessage = context.getString(R.string.error_password_contains_unsupported_characters)
                 },
                 label = { 
                     Text(
@@ -173,26 +163,16 @@ fun ResetPasswordScreen(
                 leadingIcon = {
                     Icon(Icons.Default.VpnKey, contentDescription = null)
                 },
-                trailingIcon = {
-                    IconButton(onClick = { newPasswordVisible = !newPasswordVisible }) {
-                        Icon(
-                            imageVector = if (newPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = if (newPasswordVisible) 
-                                context.getString(R.string.hide_password) 
-                            else 
-                                context.getString(R.string.show_password)
-                        )
-                    }
-                },
-                visualTransformation = if (newPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                modifier = Modifier.fillMaxWidth(),
+                visible = newPasswordVisible,
+                onVisibilityChange = { newPasswordVisible = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(newPasswordImeModifier),
                 enabled = !isLoading,
-                singleLine = true,
-                isError = newPassword.isNotEmpty() && newPassword.length < 4
+                isError = newPassword.isNotEmpty() && !MasterPasswordPolicy.meetsMinLength(newPassword)
             )
             
-            if (newPassword.isNotEmpty() && newPassword.length < 4) {
+            if (newPassword.isNotEmpty() && !MasterPasswordPolicy.meetsMinLength(newPassword)) {
                 Text(
                     text = context.getString(R.string.password_too_short),
                     color = MaterialTheme.colorScheme.error,
@@ -202,17 +182,14 @@ fun ResetPasswordScreen(
             }
             
             // Confirm New Password
-            OutlinedTextField(
+            MasterPasswordTextField(
                 value = confirmPassword,
                 onValueChange = { input ->
-                    // 只允许数字输入
-                    if (input.all { it.isDigit() }) {
-                        confirmPassword = input
-                        errorMessage = ""
-                    } else if (input.isNotEmpty()) {
-                        // 检测到非数字,显示错误
-                        errorMessage = context.getString(R.string.error_password_must_be_numeric)
-                    }
+                    confirmPassword = input
+                    errorMessage = ""
+                },
+                onUnsupportedCharacterAttempt = {
+                    errorMessage = context.getString(R.string.error_password_contains_unsupported_characters)
                 },
                 label = { 
                     Text(
@@ -225,22 +202,12 @@ fun ResetPasswordScreen(
                 leadingIcon = {
                     Icon(Icons.Default.VpnKey, contentDescription = null)
                 },
-                trailingIcon = {
-                    IconButton(onClick = { confirmPasswordVisible = !confirmPasswordVisible }) {
-                        Icon(
-                            imageVector = if (confirmPasswordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = if (confirmPasswordVisible) 
-                                context.getString(R.string.hide_password) 
-                            else 
-                                context.getString(R.string.show_password)
-                        )
-                    }
-                },
-                visualTransformation = if (confirmPasswordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                modifier = Modifier.fillMaxWidth(),
+                visible = confirmPasswordVisible,
+                onVisibilityChange = { confirmPasswordVisible = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(confirmPasswordImeModifier),
                 enabled = !isLoading,
-                singleLine = true,
                 isError = confirmPassword.isNotEmpty() && newPassword != confirmPassword
             )
             
@@ -291,7 +258,7 @@ fun ResetPasswordScreen(
                         newPassword.isEmpty() -> {
                             errorMessage = context.getString(R.string.new_password_required)
                         }
-                        newPassword.length < 4 -> {
+                        !MasterPasswordPolicy.meetsMinLength(newPassword) -> {
                             errorMessage = context.getString(R.string.password_too_short)
                         }
                         newPassword != confirmPassword -> {

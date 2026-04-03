@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -106,7 +107,13 @@ fun MultiStorageTargetPickerBottomSheet(
     getBitwardenFolders: (Long) -> Flow<List<BitwardenFolder>>,
     getKeePassGroups: (Long) -> Flow<List<KeePassGroupInfo>>,
     onDismiss: () -> Unit,
-    onSelectedTargetsChange: (List<StorageTarget>) -> Unit
+    onSelectedTargetsChange: (List<StorageTarget>) -> Unit,
+    onTargetClicked: ((StorageTarget) -> Unit)? = null,
+    forceMultiSelectionMode: Boolean = false,
+    showSelectionModeToggle: Boolean = true,
+    showBitwardenFolderTargets: Boolean = true,
+    confirmButtonText: String? = null,
+    onConfirmSelection: ((List<StorageTarget>) -> Unit)? = null
 ) {
     if (!visible) return
 
@@ -150,7 +157,9 @@ fun MultiStorageTargetPickerBottomSheet(
     val singleModeAllowed = lockedTargetKeys.isEmpty()
     var selectionMode by remember(visible, singleModeAllowed, selectedTargets) {
         mutableStateOf(
-            if (!singleModeAllowed || selectedTargets.size > 1) {
+            if (forceMultiSelectionMode) {
+                StoragePickerSelectionMode.MULTI
+            } else if (!singleModeAllowed || selectedTargets.size > 1) {
                 StoragePickerSelectionMode.MULTI
             } else {
                 StoragePickerSelectionMode.SINGLE
@@ -237,15 +246,17 @@ fun MultiStorageTargetPickerBottomSheet(
                         sourceKey = source.key
                     )
                 )
-                bitwardenFoldersByVault[source.vault.id].orEmpty().forEach { folder ->
-                    add(
-                        StorageTargetChip(
-                            target = StorageTarget.Bitwarden(source.vault.id, folder.bitwardenFolderId),
-                            label = folder.name,
-                            icon = Icons.Default.Folder,
-                            sourceKey = source.key
+                if (showBitwardenFolderTargets) {
+                    bitwardenFoldersByVault[source.vault.id].orEmpty().forEach { folder ->
+                        add(
+                            StorageTargetChip(
+                                target = StorageTarget.Bitwarden(source.vault.id, folder.bitwardenFolderId),
+                                label = folder.name,
+                                icon = Icons.Default.Folder,
+                                sourceKey = source.key
+                            )
                         )
-                    )
+                    }
                 }
             }
         }
@@ -281,6 +292,7 @@ fun MultiStorageTargetPickerBottomSheet(
     }
 
     fun updateSelectionMode(newMode: StoragePickerSelectionMode) {
+        if (forceMultiSelectionMode) return
         if (selectionMode == newMode) return
         if (newMode == StoragePickerSelectionMode.SINGLE && !singleModeAllowed) return
         selectionMode = newMode
@@ -355,11 +367,13 @@ fun MultiStorageTargetPickerBottomSheet(
                 modifier = Modifier.padding(top = 6.dp)
             )
 
-            StoragePickerModeToggleGroup(
-                selectionMode = selectionMode,
-                singleEnabled = singleModeAllowed,
-                onModeSelected = ::updateSelectionMode
-            )
+            if (showSelectionModeToggle && !forceMultiSelectionMode) {
+                StoragePickerModeToggleGroup(
+                    selectionMode = selectionMode,
+                    singleEnabled = singleModeAllowed,
+                    onModeSelected = ::updateSelectionMode
+                )
+            }
 
             if (!singleModeAllowed) {
                 Text(
@@ -414,7 +428,8 @@ fun MultiStorageTargetPickerBottomSheet(
                             },
                                     singleMode = true,
                                     singleModeAllowed = singleModeAllowed,
-                                    onSelectedTargetsChange = onSelectedTargetsChange
+                                    onSelectedTargetsChange = onSelectedTargetsChange,
+                                    onTargetClicked = onTargetClicked
                                 )
                     }
                 }
@@ -440,11 +455,24 @@ fun MultiStorageTargetPickerBottomSheet(
                                     },
                                     singleMode = false,
                                     singleModeAllowed = singleModeAllowed,
-                                    onSelectedTargetsChange = onSelectedTargetsChange
+                                    onSelectedTargetsChange = onSelectedTargetsChange,
+                                    onTargetClicked = onTargetClicked
                                 )
                             }
                         }
                     }
+                }
+            }
+
+            if (onConfirmSelection != null) {
+                FilledTonalButton(
+                    onClick = { onConfirmSelection.invoke(selectedTargets) },
+                    enabled = selectedTargets.isNotEmpty(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 8.dp)
+                ) {
+                    Text(confirmButtonText ?: stringResource(R.string.confirm))
                 }
             }
         }
@@ -565,7 +593,8 @@ private fun FolderTargetChip(
     sourceHasLockedTarget: Boolean,
     singleMode: Boolean,
     singleModeAllowed: Boolean,
-    onSelectedTargetsChange: (List<StorageTarget>) -> Unit
+    onSelectedTargetsChange: (List<StorageTarget>) -> Unit,
+    onTargetClicked: ((StorageTarget) -> Unit)?
 ) {
     val targetKey = chip.target.stableKey
     val selected = if (singleMode) {
@@ -585,6 +614,7 @@ private fun FolderTargetChip(
             if (!enabled) return@MonicaExpressiveFilterChip
             if (singleMode) {
                 onSelectedTargetsChange(listOf(chip.target))
+                onTargetClicked?.invoke(chip.target)
             } else {
                 val updatedTargets = if (selected) {
                     selectedTargets
@@ -594,6 +624,9 @@ private fun FolderTargetChip(
                         .plus(chip.target)
                 }
                 onSelectedTargetsChange(updatedTargets.distinctBy(StorageTarget::stableKey))
+                if (!selected) {
+                    onTargetClicked?.invoke(chip.target)
+                }
             }
         },
         label = chip.label,

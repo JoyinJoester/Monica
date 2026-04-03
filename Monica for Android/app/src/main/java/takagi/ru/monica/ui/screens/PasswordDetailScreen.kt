@@ -35,6 +35,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import takagi.ru.monica.R
@@ -54,12 +55,15 @@ import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordHistoryEntry
 import takagi.ru.monica.data.UnmatchedIconHandlingStrategy
+import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
+import takagi.ru.monica.ui.components.NotePickerBottomSheet
 import takagi.ru.monica.utils.FieldValidation
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.domain.provider.PasswordSource
 import takagi.ru.monica.viewmodel.CategoryFilter
 import takagi.ru.monica.viewmodel.BitwardenRecoveryResult
+import takagi.ru.monica.viewmodel.NoteViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.PasskeyViewModel
 import takagi.ru.monica.util.TotpGenerator
@@ -130,6 +134,7 @@ private data class PasswordStorageInfo(
 fun PasswordDetailScreen(
     viewModel: PasswordViewModel,
     passkeyViewModel: PasskeyViewModel? = null,
+    noteViewModel: NoteViewModel? = null,
     passwordId: Long,
     disablePasswordVerification: Boolean,
     biometricEnabled: Boolean,
@@ -137,6 +142,7 @@ fun PasswordDetailScreen(
     unmatchedIconHandlingStrategy: UnmatchedIconHandlingStrategy = UnmatchedIconHandlingStrategy.DEFAULT_ICON,
     enableSharedBounds: Boolean = true,
     onNavigateBack: () -> Unit,
+    onOpenBoundNote: (Long) -> Unit = {},
     onEditPassword: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -274,6 +280,18 @@ fun PasswordDetailScreen(
     val boundPasskeys by (passkeyViewModel?.getPasskeysByBoundPasswordId(passwordId)
         ?: kotlinx.coroutines.flow.flowOf(emptyList()))
         .collectAsState(initial = emptyList())
+    val availableNotes by (noteViewModel?.allNotes ?: flowOf(emptyList()))
+        .collectAsState(initial = emptyList())
+    val boundNoteId = passwordEntry?.boundNoteId
+    val boundNoteFlow = remember(noteViewModel, boundNoteId) {
+        if (noteViewModel != null && boundNoteId != null && boundNoteId > 0L) {
+            noteViewModel.observeNoteById(boundNoteId)
+        } else {
+            flowOf(null)
+        }
+    }
+    val boundNote by boundNoteFlow.collectAsState(initial = null)
+    var showBoundNotePicker by remember { mutableStateOf(false) }
     var totpCode by remember { mutableStateOf("") }
     var totpProgress by remember { mutableStateOf(1f) }
     
@@ -638,6 +656,21 @@ fun PasswordDetailScreen(
                     )
                 }
 
+                if (noteViewModel != null) {
+                    BoundNoteCard(
+                        boundNote = boundNote,
+                        hasBoundNoteReference = entry.boundNoteId != null,
+                        onOpenBoundNote = {
+                            boundNote?.id?.let(onOpenBoundNote)
+                        },
+                        onChangeBoundNote = { showBoundNotePicker = true },
+                        onClearBoundNote = {
+                            viewModel.updateBoundNoteId(entry.id, null)
+                            passwordEntry = entry.copy(boundNoteId = null)
+                        }
+                    )
+                }
+
                 StorageInfoCard(
                     storageInfos = storageInfoEntries,
                     onEditPassword = onEditPassword
@@ -945,6 +978,21 @@ fun PasswordDetailScreen(
             } else {
                 null
             }
+        )
+    }
+
+    if (noteViewModel != null) {
+        NotePickerBottomSheet(
+            visible = showBoundNotePicker,
+            title = stringResource(R.string.note_picker_title),
+            notes = availableNotes.filter { !it.isDeleted },
+            selectedNoteId = boundNoteId,
+            onSelect = { note ->
+                viewModel.updateBoundNoteId(passwordId, note.id)
+                passwordEntry = passwordEntry?.copy(boundNoteId = note.id)
+                showBoundNotePicker = false
+            },
+            onDismiss = { showBoundNotePicker = false }
         )
     }
 }
@@ -2272,6 +2320,121 @@ private fun NotesCard(notes: String) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
+        }
+    }
+}
+
+@Composable
+private fun BoundNoteCard(
+    boundNote: takagi.ru.monica.data.SecureItem?,
+    hasBoundNoteReference: Boolean,
+    onOpenBoundNote: () -> Unit,
+    onChangeBoundNote: () -> Unit,
+    onClearBoundNote: () -> Unit
+) {
+    val notePreview = remember(boundNote) {
+        boundNote?.let { note ->
+            val decoded = NoteContentCodec.decodeFromItem(note)
+            NoteContentCodec.toPlainPreview(
+                content = decoded.content,
+                isMarkdown = decoded.isMarkdown
+            ).replace("\n", " ").trim()
+        }.orEmpty()
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Description,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = stringResource(R.string.password_bound_note_title),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            if (boundNote != null) {
+                Surface(
+                    onClick = onOpenBoundNote,
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(
+                            text = boundNote.title.ifBlank { stringResource(R.string.untitled) },
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                        if (notePreview.isNotBlank()) {
+                            Text(
+                                text = notePreview,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.82f),
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilledTonalButton(onClick = onOpenBoundNote) {
+                        Text(stringResource(R.string.open_bound_note))
+                    }
+                    OutlinedButton(onClick = onChangeBoundNote) {
+                        Text(stringResource(R.string.change_bound_note))
+                    }
+                    TextButton(onClick = onClearBoundNote) {
+                        Text(stringResource(R.string.unbind_note))
+                    }
+                }
+            } else if (hasBoundNoteReference) {
+                Text(
+                    text = stringResource(R.string.bound_note_missing_message),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilledTonalButton(onClick = onChangeBoundNote) {
+                        Text(stringResource(R.string.change_bound_note))
+                    }
+                    TextButton(onClick = onClearBoundNote) {
+                        Text(stringResource(R.string.unbind_note))
+                    }
+                }
+            } else {
+                Text(
+                    text = stringResource(R.string.password_bound_note_empty),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                FilledTonalButton(onClick = onChangeBoundNote) {
+                    Text(stringResource(R.string.bind_note))
+                }
+            }
         }
     }
 }

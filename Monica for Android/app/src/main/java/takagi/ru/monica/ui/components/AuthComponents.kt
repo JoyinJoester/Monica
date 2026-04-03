@@ -1,12 +1,8 @@
 package takagi.ru.monica.ui.components
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fingerprint
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -14,13 +10,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import takagi.ru.monica.R
+import takagi.ru.monica.security.MasterPasswordPolicy
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.utils.BiometricAuthHelper
@@ -201,21 +195,18 @@ fun PasswordVerificationContent(
         Spacer(modifier = Modifier.height(32.dp))
         
         // Master Password Field
-        OutlinedTextField(
+        MasterPasswordTextField(
             value = if (internalIsConfirming) confirmPassword else masterPassword,
             onValueChange = { input ->
-                // 只允许数字输入
-                if (input.all { it.isDigit() }) {
-                    if (internalIsConfirming) {
-                        confirmPassword = input
-                    } else {
-                        masterPassword = input
-                    }
-                    errorMessage = ""
-                } else if (input.isNotEmpty()) {
-                    // 检测到非数字,显示错误
-                    errorMessage = context.getString(R.string.error_password_must_be_numeric)
+                if (internalIsConfirming) {
+                    confirmPassword = input
+                } else {
+                    masterPassword = input
                 }
+                errorMessage = ""
+            },
+            onUnsupportedCharacterAttempt = {
+                errorMessage = context.getString(R.string.error_password_contains_unsupported_characters)
             },
             label = { 
                 Text(
@@ -225,39 +216,15 @@ fun PasswordVerificationContent(
                         stringResource(R.string.master_password)
                 ) 
             },
-            visualTransformation = if ((internalIsConfirming && confirmPasswordVisible) || 
-                                      (!internalIsConfirming && passwordVisible)) 
-                VisualTransformation.None 
-            else 
-                PasswordVisualTransformation(),
-            trailingIcon = {
-                IconButton(
-                    onClick = { 
-                        if (internalIsConfirming) {
-                            confirmPasswordVisible = !confirmPasswordVisible
-                        } else {
-                            passwordVisible = !passwordVisible
-                        }
-                    }
-                ) {
-                    Icon(
-                        imageVector = if ((internalIsConfirming && confirmPasswordVisible) || 
-                                        (!internalIsConfirming && passwordVisible)) 
-                            Icons.Filled.Visibility 
-                        else 
-                            Icons.Filled.VisibilityOff,
-                        contentDescription = if ((internalIsConfirming && confirmPasswordVisible) || 
-                                                (!internalIsConfirming && passwordVisible)) 
-                            stringResource(R.string.hide_password) 
-                        else 
-                            stringResource(R.string.show_password)
-                    )
+            visible = if (internalIsConfirming) confirmPasswordVisible else passwordVisible,
+            onVisibilityChange = { visible ->
+                if (internalIsConfirming) {
+                    confirmPasswordVisible = visible
+                } else {
+                    passwordVisible = visible
                 }
             },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
             modifier = Modifier.fillMaxWidth(),
-            singleLine = true,
-            shape = RoundedCornerShape(28.dp)
         )
         
         // Error Message
@@ -288,7 +255,7 @@ fun PasswordVerificationContent(
                         internalIsConfirming = true
                     } else {
                         // 确认密码
-                        if (masterPassword.length < 4) {
+                        if (!MasterPasswordPolicy.meetsMinLength(masterPassword)) {
                             errorMessage = context.getString(R.string.password_too_short)
                             confirmPassword = ""
                             internalIsConfirming = false

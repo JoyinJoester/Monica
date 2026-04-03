@@ -11,11 +11,15 @@ import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto.SymmetricCryptoKey
 import takagi.ru.monica.bitwarden.sync.EmptyVaultProtection
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.data.model.SshKeyData
 import takagi.ru.monica.data.model.SshKeyDataCodec
 import takagi.ru.monica.data.bitwarden.*
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.utils.FieldChange
+import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.util.TotpDataResolver
+import java.security.MessageDigest
 import java.time.Instant
 import java.util.Date
 
@@ -40,6 +44,8 @@ class BitwardenSyncService(
     
     companion object {
         private const val TAG = "BitwardenSyncService"
+        private val CIPHER_STRING_PATTERN =
+            Regex("^[0-9]+\\.[A-Za-z0-9+/_=-]+\\|[A-Za-z0-9+/_=-]+(?:\\|[A-Za-z0-9+/_=-]+)?$")
     }
     
     private val database = PasswordDatabase.getDatabase(context)
@@ -60,6 +66,10 @@ class BitwardenSyncService(
     private val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
+    }
+
+    init {
+        runCatching { OperationLogger.init(context.applicationContext) }
     }
 
     private data class ParsedLoginUris(
@@ -88,13 +98,48 @@ class BitwardenSyncService(
             )
             
             if (!response.isSuccessful) {
+                val errorPayload = runCatching { response.errorBody()?.string() }.getOrNull()
+                captureRawExchange(
+                    vaultId = vault.id,
+                    operation = "sync_full",
+                    method = "GET",
+                    endpoint = "/sync?excludeDomains=true",
+                    requestBody = null,
+                    responseCode = response.code(),
+                    responseBody = errorPayload,
+                    success = false,
+                    error = "sync failed: ${response.code()} ${response.message()}"
+                )
                 return@withContext SyncResult.Error(
                     "Sync failed: ${response.code()} ${response.message()}"
                 )
             }
             
-            val syncResponse = response.body() ?: return@withContext SyncResult.Error(
-                "Empty sync response"
+            val syncResponse = response.body()
+            if (syncResponse == null) {
+                captureRawExchange(
+                    vaultId = vault.id,
+                    operation = "sync_full",
+                    method = "GET",
+                    endpoint = "/sync?excludeDomains=true",
+                    requestBody = null,
+                    responseCode = response.code(),
+                    responseBody = null,
+                    success = false,
+                    error = "empty sync response"
+                )
+                return@withContext SyncResult.Error("Empty sync response")
+            }
+
+            captureRawExchange(
+                vaultId = vault.id,
+                operation = "sync_full",
+                method = "GET",
+                endpoint = "/sync?excludeDomains=true",
+                requestBody = null,
+                responseCode = response.code(),
+                responseBody = runCatching { json.encodeToString(syncResponse) }.getOrNull(),
+                success = true
             )
             
             // ===== 空 Vault 保护检查 =====
@@ -167,6 +212,11 @@ class BitwardenSyncService(
         response: SyncResponse,
         symmetricKey: SymmetricCryptoKey
     ): SyncResult {
+        val forensicsSession = BitwardenSyncForensicsLogger.startSession(
+            context = context,
+            vaultId = vault.id,
+            response = response
+        )
         var foldersAdded = 0
         var ciphersAdded = 0
         var ciphersUpdated = 0
@@ -177,105 +227,135 @@ class BitwardenSyncService(
             .filter { it.deletedDate == null }
             .map { it.id }
             .toList()
-        
-        // 1. 同步文件夹
-        response.folders.forEach { folderApi ->
-            try {
-                val decryptedName = decryptFolderName(folderApi.name, symmetricKey)
-                
-                val existingFolder = folderDao.getFolderByBitwardenId(folderApi.id)
-                if (existingFolder == null) {
-                    // 新文件夹
-                    folderDao.upsert(
-                        BitwardenFolder(
-                            vaultId = vault.id,
-                            bitwardenFolderId = folderApi.id,
-                            name = decryptedName,
-                            encryptedName = folderApi.name,
-                            revisionDate = folderApi.revisionDate
+
+        try {
+            // 1. 同步文件夹
+            response.folders.forEach { folderApi ->
+                try {
+                    val decryptedName = decryptFolderName(folderApi.name, symmetricKey)
+
+                    val existingFolder = folderDao.getFolderByBitwardenId(folderApi.id)
+                    if (existingFolder == null) {
+                        // 新文件夹
+                        folderDao.upsert(
+                            BitwardenFolder(
+                                vaultId = vault.id,
+                                bitwardenFolderId = folderApi.id,
+                                name = decryptedName,
+                                encryptedName = folderApi.name,
+                                revisionDate = folderApi.revisionDate
+                            )
                         )
-                    )
-                    foldersAdded++
-                } else {
-                    // 更新文件夹
-                    folderDao.update(
-                        existingFolder.copy(
-                            name = decryptedName,
-                            encryptedName = folderApi.name,
-                            revisionDate = folderApi.revisionDate,
-                            lastSyncedAt = System.currentTimeMillis()
+                        foldersAdded++
+                    } else {
+                        // 更新文件夹
+                        folderDao.update(
+                            existingFolder.copy(
+                                name = decryptedName,
+                                encryptedName = folderApi.name,
+                                revisionDate = folderApi.revisionDate,
+                                lastSyncedAt = System.currentTimeMillis()
+                            )
                         )
-                    )
-                }
-            } catch (e: Exception) {
-                android.util.Log.w(TAG, "Failed to sync folder ${folderApi.id}: ${e.message}")
-            }
-        }
-        
-        // 2. 同步 Ciphers (使用新的多类型处理器)
-        response.ciphers.forEach { cipherApi ->
-            try {
-                // 使用 CipherSyncProcessor 处理所有类型
-                val result = cipherSyncProcessor.syncCipherFromServer(vault, cipherApi, symmetricKey)
-                when (result) {
-                    is CipherSyncResult.Added -> ciphersAdded++
-                    is CipherSyncResult.Updated -> ciphersUpdated++
-                    is CipherSyncResult.Conflict -> conflictsDetected++
-                    is CipherSyncResult.Skipped -> { /* 跳过 */ }
-                    is CipherSyncResult.Error -> {
-                        android.util.Log.w(TAG, "Cipher sync error: ${result.message}")
                     }
+                } catch (e: Exception) {
+                    android.util.Log.w(TAG, "Failed to sync folder ${folderApi.id}: ${e.message}")
                 }
-            } catch (e: Exception) {
-                android.util.Log.w(TAG, "Failed to sync cipher ${cipherApi.id}: ${e.message}")
             }
-        }
 
-        // 2.1 清理服务器已不存在的本地 Cipher（delete-wins）
-        if (activeServerCipherIds.isEmpty()) {
-            passwordEntryDao.deleteAllSyncedBitwardenEntries(vault.id)
-            secureItemDao.deleteAllSyncedBitwardenEntries(vault.id)
-            passkeyDao.deleteAllByBitwardenVaultId(vault.id)
-        } else {
-            passwordEntryDao.deleteBitwardenEntriesNotIn(vault.id, activeServerCipherIds)
-            secureItemDao.deleteBitwardenEntriesNotIn(vault.id, activeServerCipherIds)
-            passkeyDao.deleteBitwardenEntriesNotIn(vault.id, activeServerCipherIds)
-        }
-
-        // 3. 清理已删除的文件夹 (服务器上不存在的)
-        val serverFolderIds = response.folders.map { it.id }
-        folderDao.deleteNotIn(vault.id, serverFolderIds)
-
-        // 4. 同步 Sends
-        response.sends?.forEach { sendApi ->
-            try {
-                val synced = syncSend(vault, sendApi, symmetricKey)
-                if (synced) {
-                    sendsSynced++
+            // 2. 同步 Ciphers (使用新的多类型处理器)
+            response.ciphers.forEach { cipherApi ->
+                try {
+                    // 使用 CipherSyncProcessor 处理所有类型
+                    val result = cipherSyncProcessor.syncCipherFromServer(
+                        vault = vault,
+                        cipher = cipherApi,
+                        symmetricKey = symmetricKey,
+                        forensicsCollector = { summary ->
+                            BitwardenSyncForensicsLogger.recordCipher(forensicsSession, summary)
+                        }
+                    )
+                    when (result) {
+                        is CipherSyncResult.Added -> ciphersAdded++
+                        is CipherSyncResult.Updated -> ciphersUpdated++
+                        is CipherSyncResult.Conflict -> conflictsDetected++
+                        is CipherSyncResult.Skipped -> { /* 跳过 */ }
+                        is CipherSyncResult.Error -> {
+                            android.util.Log.w(TAG, "Cipher sync error: ${result.message}")
+                        }
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w(TAG, "Failed to sync cipher ${cipherApi.id}: ${e.message}")
+                    BitwardenSyncForensicsLogger.recordCipher(
+                        forensicsSession,
+                        BitwardenSyncForensicsSummary(
+                            cipherId = cipherApi.id,
+                            cipherType = cipherApi.type,
+                            syncOutcome = "ERROR",
+                            deleted = cipherApi.deletedDate != null,
+                            revisionMillis = parseRevisionMillis(cipherApi.revisionDate),
+                            customFieldCount = cipherApi.fields?.size ?: 0,
+                            message = e.message?.take(200)
+                        )
+                    )
                 }
-            } catch (e: Exception) {
-                android.util.Log.w(TAG, "Failed to sync send ${sendApi.id}: ${e.message}")
             }
-        }
-        response.sends?.let { sends ->
-            val serverSendIds = sends.map { it.id }
-            if (serverSendIds.isEmpty()) {
-                sendDao.deleteByVault(vault.id)
+
+            // 2.1 清理服务器已不存在的本地 Cipher（delete-wins）
+            if (activeServerCipherIds.isEmpty()) {
+                passwordEntryDao.deleteAllSyncedBitwardenEntries(vault.id)
+                secureItemDao.deleteAllSyncedBitwardenEntries(vault.id)
+                passkeyDao.deleteAllByBitwardenVaultId(vault.id)
             } else {
-                sendDao.deleteNotIn(vault.id, serverSendIds)
+                passwordEntryDao.deleteBitwardenEntriesNotIn(vault.id, activeServerCipherIds)
+                secureItemDao.deleteBitwardenEntriesNotIn(vault.id, activeServerCipherIds)
+                passkeyDao.deleteBitwardenEntriesNotIn(vault.id, activeServerCipherIds)
             }
-        }
 
-        if (sendsSynced > 0) {
-            android.util.Log.i(TAG, "Sends synced: $sendsSynced")
+            // 3. 清理已删除的文件夹 (服务器上不存在的)
+            val serverFolderIds = response.folders.map { it.id }
+            folderDao.deleteNotIn(vault.id, serverFolderIds)
+
+            // 4. 同步 Sends
+            response.sends?.forEach { sendApi ->
+                try {
+                    val synced = syncSend(vault, sendApi, symmetricKey)
+                    if (synced) {
+                        sendsSynced++
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w(TAG, "Failed to sync send ${sendApi.id}: ${e.message}")
+                }
+            }
+            response.sends?.let { sends ->
+                val serverSendIds = sends.map { it.id }
+                if (serverSendIds.isEmpty()) {
+                    sendDao.deleteByVault(vault.id)
+                } else {
+                    sendDao.deleteNotIn(vault.id, serverSendIds)
+                }
+            }
+
+            if (sendsSynced > 0) {
+                android.util.Log.i(TAG, "Sends synced: $sendsSynced")
+            }
+
+            val successResult = SyncResult.Success(
+                foldersAdded = foldersAdded,
+                ciphersAdded = ciphersAdded,
+                ciphersUpdated = ciphersUpdated,
+                conflictsDetected = conflictsDetected
+            )
+            BitwardenSyncForensicsLogger.finishSession(context, forensicsSession, successResult)
+            return successResult
+        } catch (e: Exception) {
+            BitwardenSyncForensicsLogger.finishSession(
+                context,
+                forensicsSession,
+                SyncResult.Error("processSyncResponse failed: ${e.message ?: "unknown"}")
+            )
+            throw e
         }
-        
-        return SyncResult.Success(
-            foldersAdded = foldersAdded,
-            ciphersAdded = ciphersAdded,
-            ciphersUpdated = ciphersUpdated,
-            conflictsDetected = conflictsDetected
-        )
     }
 
     private suspend fun syncSend(
@@ -833,23 +913,61 @@ class BitwardenSyncService(
         accessToken: String,
         symmetricKey: SymmetricCryptoKey
     ): UploadAttemptResult {
+        // 构建加密的 Cipher 请求
+        val createRequest = passwordEntryToCipherRequest(entry, symmetricKey)
+        val requestPayload = runCatching { json.encodeToString(createRequest) }.getOrNull()
+
         try {
-            // 构建加密的 Cipher 请求
-            val createRequest = passwordEntryToCipherRequest(entry, symmetricKey)
-            
             val vaultApi = apiManager.getVaultApi(vault)
             val response = vaultApi.createCipher(
                 authorization = "Bearer $accessToken",
                 cipher = createRequest
             )
-            
+
             if (!response.isSuccessful) {
+                val errorPayload = runCatching { response.errorBody()?.string() }.getOrNull()
+                captureRawExchange(
+                    vaultId = vault.id,
+                    operation = "upload_password_create",
+                    method = "POST",
+                    endpoint = "/ciphers",
+                    requestBody = requestPayload,
+                    responseCode = response.code(),
+                    responseBody = errorPayload,
+                    success = false,
+                    error = "create cipher failed: ${response.code()} ${response.message()}"
+                )
                 android.util.Log.e(TAG, "Create cipher failed: ${response.code()} ${response.message()}")
                 return UploadAttemptResult(success = false)
             }
-            
-            val createdCipher = response.body() ?: return UploadAttemptResult(success = false)
-            
+
+            val createdCipher = response.body()
+            if (createdCipher == null) {
+                captureRawExchange(
+                    vaultId = vault.id,
+                    operation = "upload_password_create",
+                    method = "POST",
+                    endpoint = "/ciphers",
+                    requestBody = requestPayload,
+                    responseCode = response.code(),
+                    responseBody = null,
+                    success = false,
+                    error = "create cipher returned empty body"
+                )
+                return UploadAttemptResult(success = false)
+            }
+
+            captureRawExchange(
+                vaultId = vault.id,
+                operation = "upload_password_create",
+                method = "POST",
+                endpoint = "/ciphers",
+                requestBody = requestPayload,
+                responseCode = response.code(),
+                responseBody = runCatching { json.encodeToString(createdCipher) }.getOrNull(),
+                success = true
+            )
+
             // 更新本地条目，添加服务器返回的 cipherId 和 revisionDate
             val updatedEntry = entry.copy(
                 bitwardenCipherId = createdCipher.id,
@@ -858,10 +976,21 @@ class BitwardenSyncService(
                 updatedAt = Date()
             )
             passwordEntryDao.update(updatedEntry)
-            
+
             android.util.Log.d(TAG, "Successfully uploaded entry ${entry.id} as cipher ${createdCipher.id}")
             return UploadAttemptResult(success = true)
         } catch (e: Exception) {
+            captureRawExchange(
+                vaultId = vault.id,
+                operation = "upload_password_create",
+                method = "POST",
+                endpoint = "/ciphers",
+                requestBody = requestPayload,
+                responseCode = null,
+                responseBody = null,
+                success = false,
+                error = e.message ?: "unknown"
+            )
             android.util.Log.e(TAG, "Upload entry failed: ${e.message}", e)
             return UploadAttemptResult(
                 success = false,
@@ -880,43 +1009,83 @@ class BitwardenSyncService(
         accessToken: String,
         symmetricKey: SymmetricCryptoKey
     ): UploadAttemptResult {
-        try {
-            val vaultApi = apiManager.getVaultApi(vault)
-            val mergedFields = runCatching {
-                val remote = vaultApi.getCipher(
-                    authorization = "Bearer $accessToken",
-                    cipherId = cipherId
-                )
-                if (remote.isSuccessful) {
-                    mergeCipherFieldsPreservingUnknown(
-                        localFields = buildEncryptedPasswordCustomFields(entry, symmetricKey),
-                        remoteFields = remote.body()?.fields,
-                        symmetricKey = symmetricKey
-                    )
-                } else {
-                    null
-                }
-            }.getOrNull()
-
-            val updateRequest = passwordEntryToCipherUpdateRequest(
-                entry = entry,
-                symmetricKey = symmetricKey,
-                mergedFields = mergedFields
+        val vaultApi = apiManager.getVaultApi(vault)
+        var baselineCipher: CipherApiResponse? = null
+        val mergedFields = runCatching {
+            val remote = vaultApi.getCipher(
+                authorization = "Bearer $accessToken",
+                cipherId = cipherId
             )
+            if (remote.isSuccessful) {
+                baselineCipher = remote.body()
+                mergeCipherFieldsPreservingUnknown(
+                    localFields = buildEncryptedPasswordCustomFields(entry, symmetricKey),
+                    remoteFields = baselineCipher?.fields,
+                    symmetricKey = symmetricKey
+                )
+            } else {
+                null
+            }
+        }.getOrNull()
 
+        val updateRequest = passwordEntryToCipherUpdateRequest(
+            entry = entry,
+            symmetricKey = symmetricKey,
+            mergedFields = mergedFields
+        )
+        val requestPayload = runCatching { json.encodeToString(updateRequest) }.getOrNull()
+
+        try {
             val response = vaultApi.updateCipher(
                 authorization = "Bearer $accessToken",
                 cipherId = cipherId,
                 cipher = updateRequest
             )
-            
+
             if (!response.isSuccessful) {
+                val errorPayload = runCatching { response.errorBody()?.string() }.getOrNull()
+                captureRawExchange(
+                    vaultId = vault.id,
+                    operation = "upload_password_update",
+                    method = "PUT",
+                    endpoint = "/ciphers/$cipherId",
+                    requestBody = requestPayload,
+                    responseCode = response.code(),
+                    responseBody = errorPayload,
+                    success = false,
+                    error = "update cipher failed: ${response.code()}"
+                )
                 android.util.Log.e(TAG, "Update cipher failed: ${response.code()}")
                 return UploadAttemptResult(success = false)
             }
-            
-            val updatedCipher = response.body() ?: return UploadAttemptResult(success = false)
-            
+
+            val updatedCipher = response.body()
+            if (updatedCipher == null) {
+                captureRawExchange(
+                    vaultId = vault.id,
+                    operation = "upload_password_update",
+                    method = "PUT",
+                    endpoint = "/ciphers/$cipherId",
+                    requestBody = requestPayload,
+                    responseCode = response.code(),
+                    responseBody = null,
+                    success = false,
+                    error = "update cipher returned empty body"
+                )
+                return UploadAttemptResult(success = false)
+            }
+
+            captureRawExchange(
+                vaultId = vault.id,
+                operation = "upload_password_update",
+                method = "PUT",
+                endpoint = "/ciphers/$cipherId",
+                requestBody = requestPayload,
+                responseCode = response.code(),
+                responseBody = runCatching { json.encodeToString(updatedCipher) }.getOrNull(),
+                success = true
+            )
+
             // 更新本地条目
             val updatedEntry = entry.copy(
                 bitwardenRevisionDate = updatedCipher.revisionDate,
@@ -924,9 +1093,29 @@ class BitwardenSyncService(
                 updatedAt = Date()
             )
             passwordEntryDao.update(updatedEntry)
-            
+
+            logBitwardenPasswordEditHistory(
+                vaultId = vault.id,
+                cipherId = cipherId,
+                title = entry.title,
+                baselineCipher = baselineCipher,
+                updateRequest = updateRequest,
+                symmetricKey = symmetricKey
+            )
+
             return UploadAttemptResult(success = true)
         } catch (e: Exception) {
+            captureRawExchange(
+                vaultId = vault.id,
+                operation = "upload_password_update",
+                method = "PUT",
+                endpoint = "/ciphers/$cipherId",
+                requestBody = requestPayload,
+                responseCode = null,
+                responseBody = null,
+                success = false,
+                error = e.message ?: "unknown"
+            )
             android.util.Log.e(TAG, "Update remote cipher failed: ${e.message}", e)
             return UploadAttemptResult(
                 success = false,
@@ -950,6 +1139,243 @@ class BitwardenSyncService(
             current = current.cause
         }
         return false
+    }
+
+    private suspend fun captureRawExchange(
+        vaultId: Long,
+        operation: String,
+        method: String,
+        endpoint: String,
+        requestBody: String?,
+        responseCode: Int?,
+        responseBody: String?,
+        success: Boolean,
+        error: String? = null
+    ) {
+        runCatching {
+            BitwardenSyncForensicsLogger.captureRawExchange(
+                context = context,
+                vaultId = vaultId,
+                operation = operation,
+                method = method,
+                endpoint = endpoint,
+                requestBody = requestBody,
+                responseCode = responseCode,
+                responseBody = responseBody,
+                success = success,
+                errorMessage = error
+            )
+        }.onFailure { captureError ->
+            android.util.Log.w(TAG, "Capture raw exchange failed: ${captureError.message}")
+        }
+    }
+
+    private fun logBitwardenPasswordEditHistory(
+        vaultId: Long,
+        cipherId: String,
+        title: String,
+        baselineCipher: CipherApiResponse?,
+        updateRequest: CipherUpdateRequest,
+        symmetricKey: SymmetricCryptoKey
+    ) {
+        val changes = buildPasswordEditHistoryChanges(
+            baselineCipher = baselineCipher,
+            updateRequest = updateRequest,
+            symmetricKey = symmetricKey
+        )
+        if (changes.isEmpty()) return
+
+        OperationLogger.logUpdate(
+            itemType = OperationLogItemType.BITWARDEN_SYNC,
+            itemId = buildBitwardenItemId(vaultId, cipherId),
+            itemTitle = title.ifBlank { "Bitwarden Password Entry" },
+            changes = changes
+        )
+    }
+
+    private fun buildPasswordEditHistoryChanges(
+        baselineCipher: CipherApiResponse?,
+        updateRequest: CipherUpdateRequest,
+        symmetricKey: SymmetricCryptoKey
+    ): List<FieldChange> {
+        val changes = mutableListOf<FieldChange>()
+
+        appendIfChanged(
+            changes = changes,
+            fieldName = "title",
+            oldValue = decryptOrPlain(baselineCipher?.name, symmetricKey),
+            newValue = decryptOrPlain(updateRequest.name, symmetricKey),
+            sensitive = false
+        )
+        appendIfChanged(
+            changes = changes,
+            fieldName = "username",
+            oldValue = decryptOrPlain(baselineCipher?.login?.username, symmetricKey),
+            newValue = decryptOrPlain(updateRequest.login?.username, symmetricKey),
+            sensitive = true
+        )
+        appendIfChanged(
+            changes = changes,
+            fieldName = "password",
+            oldValue = decryptOrPlain(baselineCipher?.login?.password, symmetricKey),
+            newValue = decryptOrPlain(updateRequest.login?.password, symmetricKey),
+            sensitive = true
+        )
+        appendIfChanged(
+            changes = changes,
+            fieldName = "totp",
+            oldValue = decryptOrPlain(baselineCipher?.login?.totp, symmetricKey),
+            newValue = decryptOrPlain(updateRequest.login?.totp, symmetricKey),
+            sensitive = true
+        )
+        appendIfChanged(
+            changes = changes,
+            fieldName = "notes",
+            oldValue = decryptOrPlain(baselineCipher?.notes, symmetricKey),
+            newValue = decryptOrPlain(updateRequest.notes, symmetricKey),
+            sensitive = true
+        )
+
+        val oldUriCount = baselineCipher?.login?.uris?.size ?: 0
+        val newUriCount = updateRequest.login?.uris?.size ?: 0
+        if (oldUriCount != newUriCount) {
+            changes += FieldChange("login_uri_count", oldUriCount.toString(), newUriCount.toString())
+        }
+
+        val oldFavorite = baselineCipher?.favorite ?: false
+        val newFavorite = updateRequest.favorite ?: false
+        if (oldFavorite != newFavorite) {
+            changes += FieldChange("favorite", oldFavorite.toString(), newFavorite.toString())
+        }
+
+        val oldArchived = baselineCipher?.archivedDate.orEmpty().ifBlank { "active" }
+        val newArchived = updateRequest.archivedDate.orEmpty().ifBlank { "active" }
+        if (oldArchived != newArchived) {
+            changes += FieldChange("archived", oldArchived, newArchived)
+        }
+
+        val oldFieldSummary = summarizeFieldCollection(baselineCipher?.fields, symmetricKey)
+        val newFieldSummary = summarizeFieldCollection(updateRequest.fields, symmetricKey)
+        if (oldFieldSummary != newFieldSummary) {
+            changes += FieldChange("custom_fields", oldFieldSummary, newFieldSummary)
+        }
+
+        return changes
+    }
+
+    private fun summarizeFieldCollection(
+        fields: List<CipherFieldApiData>?,
+        symmetricKey: SymmetricCryptoKey
+    ): String {
+        if (fields.isNullOrEmpty()) return "count=0"
+
+        val nameSamples = fields.mapNotNull { field ->
+            decryptOrPlain(field.name, symmetricKey)
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?.replace("\n", " ")
+                ?.replace("\r", "")
+                ?.take(24)
+        }.distinct().sorted().take(4)
+
+        val signatures = fields.map { field ->
+            val plainName = decryptOrPlain(field.name, symmetricKey).orEmpty().trim()
+            val plainValue = decryptOrPlain(field.value, symmetricKey)
+            val summarizedValue = summarizeHistoryValue(plainValue, sensitive = true)
+            "${field.type}|${field.linkedId}|$plainName|$summarizedValue"
+        }.sorted()
+
+        val sampleText = nameSamples.joinToString("|").ifBlank { "-" }
+        return "count=${fields.size},names=$sampleText,sha=${shortSha(signatures.joinToString("||"))}"
+    }
+
+    private fun appendIfChanged(
+        changes: MutableList<FieldChange>,
+        fieldName: String,
+        oldValue: String?,
+        newValue: String?,
+        sensitive: Boolean
+    ) {
+        val oldNormalized = oldValue.orEmpty()
+        val newNormalized = newValue.orEmpty()
+        if (oldNormalized == newNormalized) return
+
+        changes += FieldChange(
+            fieldName = fieldName,
+            oldValue = summarizeHistoryValue(oldNormalized, sensitive),
+            newValue = summarizeHistoryValue(newNormalized, sensitive)
+        )
+    }
+
+    private fun summarizeHistoryValue(value: String?, sensitive: Boolean): String {
+        val normalized = value.orEmpty()
+        if (normalized.isBlank()) return "(empty)"
+
+        if (sensitive) {
+            return summarizeSensitiveHistoryValue(normalized)
+        }
+
+        val sanitized = normalized
+            .replace("\n", "\\n")
+            .replace("\r", "")
+        if (sanitized.length <= 180) {
+            return sanitized
+        }
+        val head = sanitized.take(120)
+        val tail = sanitized.takeLast(40)
+        val omitted = (sanitized.length - 160).coerceAtLeast(0)
+        return "$head...(omitted=$omitted)...$tail"
+    }
+
+    private fun summarizeSensitiveHistoryValue(normalized: String): String {
+        val lower = normalized.count { it.isLowerCase() }
+        val upper = normalized.count { it.isUpperCase() }
+        val digits = normalized.count { it.isDigit() }
+        val spaces = normalized.count { it.isWhitespace() }
+        val symbols = (normalized.length - lower - upper - digits - spaces).coerceAtLeast(0)
+        val lines = normalized.count { it == '\n' } + 1
+        val format = detectSensitiveFormat(normalized)
+        val pattern = buildClassPattern(normalized)
+
+        return "len=${normalized.length},sha=${shortSha(normalized)},fmt=$format,lines=$lines,mix=u$upper/l$lower/d$digits/s$symbols,pat=$pattern"
+    }
+
+    private fun detectSensitiveFormat(value: String): String {
+        val trimmed = value.trim()
+        if (trimmed.isEmpty()) return "empty"
+        return when {
+            trimmed.startsWith("otpauth://", ignoreCase = true) -> "otpauth"
+            trimmed.startsWith("http://", ignoreCase = true) ||
+                trimmed.startsWith("https://", ignoreCase = true) -> "url"
+            trimmed.startsWith("{") && trimmed.endsWith("}") -> "json_like"
+            trimmed.contains('@') && !trimmed.contains(' ') -> "email_like"
+            trimmed.all { it.isDigit() } -> "digits"
+            trimmed.contains("\n") -> "multiline"
+            else -> "text"
+        }
+    }
+
+    private fun buildClassPattern(value: String, maxLen: Int = 24): String {
+        val pattern = value.take(maxLen).map { ch ->
+            when {
+                ch.isUpperCase() -> 'A'
+                ch.isLowerCase() -> 'a'
+                ch.isDigit() -> '0'
+                ch.isWhitespace() -> '_'
+                else -> '#'
+            }
+        }.joinToString("")
+        return if (value.length > maxLen) "$pattern..." else pattern
+    }
+
+    private fun shortSha(value: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val bytes = digest.digest(value.toByteArray(Charsets.UTF_8))
+        return bytes.take(6).joinToString(separator = "") { b -> "%02x".format(b) }
+    }
+
+    private fun buildBitwardenItemId(vaultId: Long, cipherId: String): Long {
+        return "${vaultId}:$cipherId".hashCode().toLong() and 0x7FFFFFFFL
     }
     
     /**
@@ -1092,6 +1518,11 @@ class BitwardenSyncService(
         return runCatching {
             Instant.ofEpochMilli(archiveDate.time).toString()
         }.getOrNull()
+    }
+
+    private fun parseRevisionMillis(revisionDate: String?): Long? {
+        if (revisionDate.isNullOrBlank()) return null
+        return runCatching { Instant.parse(revisionDate).toEpochMilli() }.getOrNull()
     }
 
     private fun mergeCipherFieldsPreservingUnknown(
@@ -1241,9 +1672,7 @@ class BitwardenSyncService(
     }
 
     private fun looksLikeCipherString(value: String): Boolean {
-        val dotIndex = value.indexOf('.')
-        if (dotIndex <= 0) return false
-        return value.substring(0, dotIndex).all(Char::isDigit)
+        return CIPHER_STRING_PATTERN.matches(value)
     }
 
     private fun buildSshKeyDataFromCustomFields(fields: Map<String, String>): String {

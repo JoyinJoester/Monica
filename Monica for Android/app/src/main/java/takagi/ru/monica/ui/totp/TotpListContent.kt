@@ -113,6 +113,7 @@ import takagi.ru.monica.data.model.TimelineEvent
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
+import takagi.ru.monica.utils.planLocalCategoryMove
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.SettingsViewModel
 import takagi.ru.monica.viewmodel.TotpViewModel
@@ -152,7 +153,6 @@ import takagi.ru.monica.ui.components.QuickActionItem
 import takagi.ru.monica.ui.components.QuickAddCallback
 import takagi.ru.monica.ui.components.SyncStatusIcon
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
-import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenu
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuDropdown
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuOffset
@@ -760,160 +760,6 @@ fun TotpListContent(
                 }
             }
         )
-        
-        if (isCategorySheetVisible) {
-            when (appSettings.categorySelectionUiMode) {
-                takagi.ru.monica.data.CategorySelectionUiMode.BOTTOM_SHEET -> UnifiedCategoryFilterBottomSheet(
-            visible = true,
-            onDismiss = { isCategorySheetVisible = false },
-            selected = totpSelectedFilter,
-            onSelect = handleCategorySelection,
-            launchAnchorBounds = categoryPillBoundsInWindow,
-            categories = categories,
-            keepassDatabases = keepassDatabases,
-            bitwardenVaults = bitwardenVaults,
-            getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
-            getKeePassGroups = getKeePassGroups,
-            onVerifyMasterPassword = { input ->
-                SecurityManager(context).verifyMasterPassword(input)
-            },
-            onRequestBiometricVerify = if (canUseBiometric) {
-                { onSuccess, onError ->
-                    biometricHelper.authenticate(
-                        activity = activity!!,
-                        title = context.getString(R.string.verify_identity),
-                        subtitle = context.getString(R.string.verify_to_delete),
-                        onSuccess = { onSuccess() },
-                        onError = { error -> onError(error) },
-                        onFailed = {}
-                    )
-                }
-            } else {
-                null
-            },
-            onCreateCategoryWithName = { name -> viewModel.addCategory(name) },
-            onRenameCategory = { category -> viewModel.updateCategory(category) },
-            onDeleteCategory = { category -> viewModel.deleteCategory(category) },
-            onCreateBitwardenFolder = { vaultId, name ->
-                scope.launch {
-                    val result = bitwardenRepository.createFolder(vaultId, name)
-                    result.exceptionOrNull()?.let { error ->
-                        Toast.makeText(
-                            context,
-                            context.getString(
-                                R.string.webdav_operation_failed,
-                                error.message ?: ""
-                            ),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
-            },
-            onRenameBitwardenFolder = { vaultId, folderId, newName ->
-                scope.launch {
-                    val result = bitwardenRepository.renameFolder(vaultId, folderId, newName)
-                    result.exceptionOrNull()?.let { error ->
-                        Toast.makeText(
-                            context,
-                            context.getString(
-                                R.string.webdav_operation_failed,
-                                error.message ?: ""
-                            ),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
-            },
-            onDeleteBitwardenFolder = { vaultId, folderId ->
-                scope.launch {
-                    val result = bitwardenRepository.deleteFolder(vaultId, folderId)
-                    result.exceptionOrNull()?.let { error ->
-                        Toast.makeText(
-                            context,
-                            context.getString(
-                                R.string.webdav_operation_failed,
-                                error.message ?: ""
-                            ),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
-            },
-            onCreateKeePassGroup = { databaseId, parentPath, name ->
-                scope.launch {
-                    val result = keepassBridge.createLegacyGroup(
-                        databaseId = databaseId,
-                        groupName = name,
-                        parentPath = parentPath
-                    )
-                    if (result.isSuccess) {
-                        val flow = keepassGroupFlows.getOrPut(databaseId) {
-                            kotlinx.coroutines.flow.MutableStateFlow(emptyList())
-                        }
-                        flow.value = keepassBridge.listLegacyGroups(databaseId).getOrDefault(emptyList())
-                    } else {
-                        Toast.makeText(
-                            context,
-                            context.getString(
-                                R.string.webdav_operation_failed,
-                                result.exceptionOrNull()?.message ?: ""
-                            ),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
-            },
-            onRenameKeePassGroup = { databaseId, groupPath, newName ->
-                scope.launch {
-                    val result = keepassBridge.renameLegacyGroup(
-                        databaseId = databaseId,
-                        groupPath = groupPath,
-                        newName = newName
-                    )
-                    if (result.isSuccess) {
-                        val flow = keepassGroupFlows.getOrPut(databaseId) {
-                            kotlinx.coroutines.flow.MutableStateFlow(emptyList())
-                        }
-                        flow.value = keepassBridge.listLegacyGroups(databaseId).getOrDefault(emptyList())
-                    } else {
-                        Toast.makeText(
-                            context,
-                            context.getString(
-                                R.string.webdav_operation_failed,
-                                result.exceptionOrNull()?.message ?: ""
-                            ),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
-            },
-            onDeleteKeePassGroup = { databaseId, groupPath ->
-                scope.launch {
-                    val result = keepassBridge.deleteLegacyGroup(
-                        databaseId = databaseId,
-                        groupPath = groupPath
-                    )
-                    if (result.isSuccess) {
-                        val flow = keepassGroupFlows.getOrPut(databaseId) {
-                            kotlinx.coroutines.flow.MutableStateFlow(emptyList())
-                        }
-                        flow.value = keepassBridge.listLegacyGroups(databaseId).getOrDefault(emptyList())
-                    } else {
-                        Toast.makeText(
-                            context,
-                            context.getString(
-                                R.string.webdav_operation_failed,
-                                result.exceptionOrNull()?.message ?: ""
-                            ),
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
-            }
-            )
-                takagi.ru.monica.data.CategorySelectionUiMode.CHIP_MENU -> Unit
-            }
-        }
         
         // 统一进度条 - 在顶栏下方显示
         if (appSettings.validatorUnifiedProgressBar == takagi.ru.monica.data.UnifiedProgressBarMode.ENABLED && 

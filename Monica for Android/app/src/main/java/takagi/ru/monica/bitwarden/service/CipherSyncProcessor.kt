@@ -66,18 +66,39 @@ class CipherSyncProcessor(
     suspend fun syncCipherFromServer(
         vault: BitwardenVault,
         cipher: CipherApiResponse,
-        symmetricKey: SymmetricCryptoKey
+        symmetricKey: SymmetricCryptoKey,
+        forensicsCollector: ((BitwardenSyncForensicsSummary) -> Unit)? = null
     ): CipherSyncResult {
         val serverDeletedAt = parseBitwardenDeletedAt(cipher.deletedDate)
         val serverArchivedAt = parseBitwardenArchivedAt(cipher.archivedDate)
+        val metrics = if (forensicsCollector != null) {
+            collectForensicsMetrics(cipher, symmetricKey)
+        } else {
+            emptyMap()
+        }
 
-        return when (cipher.type) {
+        val syncResult = when (cipher.type) {
             1 -> syncLoginCipher(vault, cipher, symmetricKey, serverDeletedAt, serverArchivedAt)
             2 -> syncSecureNoteCipher(vault, cipher, symmetricKey, serverDeletedAt)
             3 -> syncCardCipher(vault, cipher, symmetricKey, serverDeletedAt)
             4 -> syncIdentityCipher(vault, cipher, symmetricKey, serverDeletedAt)
             else -> CipherSyncResult.Skipped("Unknown cipher type: ${cipher.type}")
         }
+        val outcome = mapCipherSyncOutcome(syncResult)
+        forensicsCollector?.invoke(
+            BitwardenSyncForensicsSummary(
+                cipherId = cipher.id,
+                cipherType = cipher.type,
+                syncOutcome = outcome.first,
+                deleted = cipher.deletedDate != null,
+                revisionMillis = parseRevisionMillis(cipher.revisionDate),
+                customFieldCount = cipher.fields?.size ?: 0,
+                fieldMetrics = metrics,
+                message = outcome.second?.take(200)
+            )
+        )
+
+        return syncResult
     }
     
     /**
@@ -1119,6 +1140,76 @@ class CipherSyncProcessor(
             "false", "0", "no" -> false
             else -> true
         }
+    }
+
+    private fun collectForensicsMetrics(
+        cipher: CipherApiResponse,
+        symmetricKey: SymmetricCryptoKey
+    ): Map<String, Int> {
+        val metrics = linkedMapOf<String, Int>()
+        metrics["titleLength"] = decryptedLength(cipher.name, symmetricKey)
+        metrics["notesLength"] = decryptedLength(cipher.notes, symmetricKey)
+
+        when (cipher.type) {
+            1 -> {
+                val login = cipher.login
+                metrics["usernameLength"] = decryptedLength(login?.username, symmetricKey)
+                metrics["passwordLength"] = decryptedLength(login?.password, symmetricKey)
+                metrics["totpLength"] = decryptedLength(login?.totp, symmetricKey)
+                metrics["uriCount"] = login?.uris?.size ?: 0
+                metrics["fido2Count"] = login?.fido2Credentials?.size ?: 0
+            }
+
+            2 -> {
+                metrics["noteContentLength"] = decryptedLength(cipher.notes, symmetricKey)
+            }
+
+            3 -> {
+                val card = cipher.card
+                metrics["cardNumberLength"] = decryptedLength(card?.number, symmetricKey)
+                metrics["cardholderNameLength"] = decryptedLength(card?.cardholderName, symmetricKey)
+                metrics["expiryMonthLength"] = decryptedLength(card?.expMonth, symmetricKey)
+                metrics["expiryYearLength"] = decryptedLength(card?.expYear, symmetricKey)
+                metrics["cvvLength"] = decryptedLength(card?.code, symmetricKey)
+                metrics["cardBrandLength"] = decryptedLength(card?.brand, symmetricKey)
+            }
+
+            4 -> {
+                val identity = cipher.identity
+                metrics["firstNameLength"] = decryptedLength(identity?.firstName, symmetricKey)
+                metrics["lastNameLength"] = decryptedLength(identity?.lastName, symmetricKey)
+                metrics["emailLength"] = decryptedLength(identity?.email, symmetricKey)
+                metrics["phoneLength"] = decryptedLength(identity?.phone, symmetricKey)
+                metrics["passportNumberLength"] =
+                    decryptedLength(identity?.passportNumber, symmetricKey)
+                metrics["licenseNumberLength"] =
+                    decryptedLength(identity?.licenseNumber, symmetricKey)
+                metrics["ssnLength"] = decryptedLength(identity?.ssn, symmetricKey)
+            }
+        }
+
+        return metrics
+    }
+
+    private fun decryptedLength(value: String?, key: SymmetricCryptoKey): Int {
+        if (value.isNullOrEmpty()) return 0
+        val decrypted = decryptString(value, key) ?: return -1
+        return decrypted.length
+    }
+
+    private fun mapCipherSyncOutcome(syncResult: CipherSyncResult): Pair<String, String?> {
+        return when (syncResult) {
+            is CipherSyncResult.Added -> "ADDED" to null
+            is CipherSyncResult.Updated -> "UPDATED" to null
+            is CipherSyncResult.Conflict -> "CONFLICT" to null
+            is CipherSyncResult.Skipped -> "SKIPPED" to syncResult.reason
+            is CipherSyncResult.Error -> "ERROR" to syncResult.message
+        }
+    }
+
+    private fun parseRevisionMillis(revisionDate: String?): Long? {
+        if (revisionDate.isNullOrBlank()) return null
+        return runCatching { Instant.parse(revisionDate).toEpochMilli() }.getOrNull()
     }
 
     private fun parseCreationDateMillis(value: String?): Long? {

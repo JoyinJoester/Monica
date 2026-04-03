@@ -38,7 +38,7 @@ object SmartCopyNotificationHelper {
         firstLabel: String,
         secondValue: String,
         secondLabel: String
-    ) {
+    ): Boolean {
         // 1. Copy first value to clipboard
         val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val clip = ClipData.newPlainText(firstLabel, firstValue)
@@ -51,11 +51,16 @@ object SmartCopyNotificationHelper {
         clipboard.setPrimaryClip(clip)
 
         // 2. Show notification to copy second value
-        showCopyNotification(context, secondValue, secondLabel)
+        return showCopyNotification(context, secondValue, secondLabel)
     }
 
-    private fun showCopyNotification(context: Context, valueToCopy: String, label: String) {
+    private fun showCopyNotification(context: Context, valueToCopy: String, label: String): Boolean {
         createNotificationChannel(context)
+
+        if (!canPostSmartCopyNotification(context)) {
+            android.util.Log.w("SmartCopy", "Notifications unavailable, skip queued smart copy")
+            return false
+        }
 
         // Create intent for the broadcast receiver that will handle the copy action
         val copyIntent = Intent(context, SmartCopyReceiver::class.java).apply {
@@ -88,12 +93,31 @@ object SmartCopyNotificationHelper {
             .setTimeoutAfter(60_000) // Auto-dismiss after 60 seconds
             .build()
 
-        try {
+        return try {
             NotificationManagerCompat.from(context).notify(NOTIFICATION_ID, notification)
+            true
         } catch (e: SecurityException) {
             // Notification permission not granted
             android.util.Log.w("SmartCopy", "Notification permission not granted", e)
+            false
         }
+    }
+
+    private fun canPostSmartCopyNotification(context: Context): Boolean {
+        val managerCompat = NotificationManagerCompat.from(context)
+        if (!managerCompat.areNotificationsEnabled()) {
+            return false
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val notificationManager = context.getSystemService(NotificationManager::class.java)
+            val channel = notificationManager.getNotificationChannel(CHANNEL_ID)
+            if (channel != null && channel.importance == NotificationManager.IMPORTANCE_NONE) {
+                return false
+            }
+        }
+
+        return true
     }
 
     private fun createNotificationChannel(context: Context) {

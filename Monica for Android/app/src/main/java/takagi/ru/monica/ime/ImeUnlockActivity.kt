@@ -102,8 +102,8 @@ class ImeUnlockActivity : AppCompatActivity() {
                 confirmText = getString(R.string.unlock),
                 cancelText = getString(R.string.cancel),
                 emptyError = getString(R.string.current_password_required),
-                numericError = getString(R.string.error_password_must_be_numeric),
-                minLengthError = getString(R.string.error_password_min_6_digits),
+                unsupportedCharacterError = getString(R.string.error_password_contains_unsupported_characters),
+                minLengthError = getString(R.string.error_password_too_short),
                 incorrectError = getString(R.string.ime_unlock_error),
                 verifyPassword = { input -> securityManager.unlockVaultWithPassword(input) },
                 onSuccess = {

@@ -98,7 +98,6 @@ import takagi.ru.monica.ui.components.LoadingIndicator
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.components.PullActionVisualState
 import takagi.ru.monica.ui.components.PullGestureIndicator
-import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenu
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuDropdown
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuOffset
@@ -1381,24 +1380,6 @@ fun CardWalletScreen(
                 null
             }
         )
-    }
-
-    if (showCategoryFilterDialog) {
-        when (appSettings.categorySelectionUiMode) {
-            takagi.ru.monica.data.CategorySelectionUiMode.BOTTOM_SHEET -> UnifiedCategoryFilterBottomSheet(
-                visible = true,
-                onDismiss = { showCategoryFilterDialog = false },
-                selected = selectedCategoryFilter,
-                onSelect = { selection -> selectedCategoryFilter = selection },
-                categories = categories,
-                keepassDatabases = keepassDatabases,
-                bitwardenVaults = bitwardenVaults,
-                getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
-                getKeePassGroups = getKeePassGroups
-            )
-
-            takagi.ru.monica.data.CategorySelectionUiMode.CHIP_MENU -> Unit
-        }
     }
 
     if (showBatchMoveCategoryDialog) {

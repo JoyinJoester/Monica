@@ -1,5 +1,6 @@
 package takagi.ru.monica.ui.components
 
+import android.net.Uri
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -94,6 +95,7 @@ fun UnifiedMoveToCategoryBottomSheet(
     bitwardenVaults: List<BitwardenVault>,
     getBitwardenFolders: (Long) -> Flow<List<BitwardenFolder>>,
     getKeePassGroups: (Long) -> Flow<List<KeePassGroupInfo>>,
+    showBitwardenFolderTargets: Boolean = true,
     allowCopy: Boolean = false,
     allowMove: Boolean = true,
     allowArchiveTarget: Boolean = false,
@@ -251,34 +253,47 @@ fun UnifiedMoveToCategoryBottomSheet(
                     item {
                         MoveSectionCard(title = stringResource(R.string.filter_bitwarden)) {
                             bitwardenVaults.forEachIndexed { index, vault ->
-                                val expanded = bitwardenExpanded.value[vault.id] ?: false
+                                val expanded = showBitwardenFolderTargets && (bitwardenExpanded.value[vault.id] ?: false)
                                 val folders by (
-                                    if (expanded) getBitwardenFolders(vault.id) else flowOf(emptyList())
+                                    if (showBitwardenFolderTargets && expanded) {
+                                        getBitwardenFolders(vault.id)
+                                    } else {
+                                        flowOf(emptyList())
+                                    }
                                 ).collectAsState(initial = emptyList())
                                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                     MoveTargetItem(
                                         title = vault.email,
                                         icon = Icons.Default.CloudSync,
                                         onClick = {
-                                            bitwardenExpanded.value = bitwardenExpanded.value.toMutableMap().apply {
-                                                this[vault.id] = !expanded
+                                            if (!showBitwardenFolderTargets) {
+                                                onTargetSelected(
+                                                    UnifiedMoveCategoryTarget.BitwardenVaultTarget(vault.id),
+                                                    selectedAction.value
+                                                )
+                                            } else {
+                                                bitwardenExpanded.value = bitwardenExpanded.value.toMutableMap().apply {
+                                                    this[vault.id] = !expanded
+                                                }
                                             }
                                         },
                                         supportingText = if (vault.isDefault) {
                                             stringResource(R.string.default_label)
                                         } else null,
                                         menu = {
-                                            IconButton(
-                                                onClick = {
-                                                    bitwardenExpanded.value = bitwardenExpanded.value.toMutableMap().apply {
-                                                        this[vault.id] = !expanded
+                                            if (showBitwardenFolderTargets) {
+                                                IconButton(
+                                                    onClick = {
+                                                        bitwardenExpanded.value = bitwardenExpanded.value.toMutableMap().apply {
+                                                            this[vault.id] = !expanded
+                                                        }
                                                     }
+                                                ) {
+                                                    Icon(
+                                                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                                        contentDescription = null
+                                                    )
                                                 }
-                                            ) {
-                                                Icon(
-                                                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                                    contentDescription = null
-                                                )
                                             }
                                         }
                                     )
@@ -548,4 +563,12 @@ private fun splitPathSegments(path: String): List<String> {
         .split('/')
         .map { it.trim() }
         .filter { it.isNotEmpty() }
+        .map(::decodePathSegmentForDisplay)
+}
+
+private fun decodePathSegmentForDisplay(segment: String): String {
+    val decoded = runCatching { Uri.decode(segment).trim() }
+        .getOrNull()
+        .orEmpty()
+    return decoded.ifBlank { segment }
 }

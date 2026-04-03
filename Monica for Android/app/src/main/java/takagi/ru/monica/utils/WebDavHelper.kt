@@ -331,9 +331,31 @@ private data class PageAdjustmentSettingsBackupEntry(
     val passwordListQuickFoldersEnabled: Boolean = false,
     val passwordListQuickFolderStyle: String = "CLASSIC",
     val passwordListQuickFolderPathBannerEnabled: Boolean = false,
+    val passwordListSystemBackToParentFolderEnabled: Boolean = false,
     val addButtonBehaviorMode: String = "DIRECT_PASSWORD",
     val addButtonMenuOrder: List<String> = emptyList(),
     val addButtonMenuEnabledActions: List<String> = emptyList(),
+    val passwordPageAggregateEnabled: Boolean = false,
+    val passwordPageVisibleContentTypes: List<String> = emptyList(),
+    val categorySelectionUiMode: String = "DEFAULT",
+    val colorSettingsVersion: Int = 0,
+    val colorScheme: String = "DEFAULT",
+    val customPrimaryColor: Long = 0xFF6650A4L,
+    val customSecondaryColor: Long = 0xFF625B71L,
+    val customTertiaryColor: Long = 0xFF7D5260L,
+    val customNeutralColor: Long = 0xFF605D66L,
+    val customNeutralVariantColor: Long = 0xFF625B71L,
+    val bottomNavSettingsVersion: Int = 0,
+    val bottomNavOrder: List<String> = emptyList(),
+    val bottomNavVisibilityVaultV2: Boolean = false,
+    val bottomNavVisibilityPasswords: Boolean = true,
+    val bottomNavVisibilityAuthenticator: Boolean = true,
+    val bottomNavVisibilityCardWallet: Boolean = true,
+    val bottomNavVisibilityGenerator: Boolean = false,
+    val bottomNavVisibilityNotes: Boolean = false,
+    val bottomNavVisibilitySend: Boolean = false,
+    val bottomNavVisibilityPasskey: Boolean = true,
+    val useDraggableBottomNav: Boolean = false,
     val passwordListQuickAccessEnabled: Boolean = true,
     val passwordListTopModulesOrder: List<String> = emptyList(),
     val passwordCardDisplayMode: String = "SHOW_ALL",
@@ -344,11 +366,19 @@ private data class PageAdjustmentSettingsBackupEntry(
     val passwordGroupMode: String = "smart",
     val passwordWebsiteStackMatchMode: String = "strict",
     val authenticatorCardDisplayFields: List<String> = emptyList(),
+    val validatorProgressBarStyle: String = "LINEAR",
+    val validatorUnifiedProgressBar: String = "ENABLED",
+    val validatorSmoothProgress: Boolean = true,
+    val validatorVibrationEnabled: Boolean = true,
+    val copyNextCodeWhenExpiring: Boolean = false,
     val iconCardsEnabled: Boolean = false,
     val passwordPageIconEnabled: Boolean = false,
     val authenticatorPageIconEnabled: Boolean = false,
     val passkeyPageIconEnabled: Boolean = false,
     val unmatchedIconHandlingStrategy: String = "DEFAULT_ICON",
+    val passwordFieldSettingsVersion: Int = 0,
+    val separateUsernameAccountEnabled: Boolean = false,
+    val presetCustomFieldsJson: String = "[]",
     val passwordFieldVisibility: PageAdjustmentPasswordFieldVisibilityBackupEntry =
         PageAdjustmentPasswordFieldVisibilityBackupEntry(),
 )
@@ -1729,10 +1759,52 @@ class WebDavHelper(
                                 passwordListQuickFolderStyle = pageAdjustmentSettingsSnapshot.passwordListQuickFolderStyle,
                                 passwordListQuickFolderPathBannerEnabled =
                                     pageAdjustmentSettingsSnapshot.passwordListQuickFolderPathBannerEnabled,
+                                passwordListSystemBackToParentFolderEnabled =
+                                    pageAdjustmentSettingsSnapshot.passwordListSystemBackToParentFolderEnabled,
                                 addButtonBehaviorMode = pageAdjustmentSettingsSnapshot.addButtonBehaviorMode,
                                 addButtonMenuOrder = pageAdjustmentSettingsSnapshot.addButtonMenuOrder,
                                 addButtonMenuEnabledActions =
                                     pageAdjustmentSettingsSnapshot.addButtonMenuEnabledActions,
+                                passwordPageAggregateEnabled =
+                                    pageAdjustmentSettingsSnapshot.passwordPageAggregateEnabled,
+                                passwordPageVisibleContentTypes =
+                                    pageAdjustmentSettingsSnapshot.passwordPageVisibleContentTypes,
+                                categorySelectionUiMode =
+                                    pageAdjustmentSettingsSnapshot.categorySelectionUiMode,
+                                colorSettingsVersion =
+                                    pageAdjustmentSettingsSnapshot.colorSettingsVersion,
+                                colorScheme = pageAdjustmentSettingsSnapshot.colorScheme,
+                                customPrimaryColor =
+                                    pageAdjustmentSettingsSnapshot.customPrimaryColor,
+                                customSecondaryColor =
+                                    pageAdjustmentSettingsSnapshot.customSecondaryColor,
+                                customTertiaryColor =
+                                    pageAdjustmentSettingsSnapshot.customTertiaryColor,
+                                customNeutralColor =
+                                    pageAdjustmentSettingsSnapshot.customNeutralColor,
+                                customNeutralVariantColor =
+                                    pageAdjustmentSettingsSnapshot.customNeutralVariantColor,
+                                bottomNavSettingsVersion =
+                                    pageAdjustmentSettingsSnapshot.bottomNavSettingsVersion,
+                                bottomNavOrder = pageAdjustmentSettingsSnapshot.bottomNavOrder,
+                                bottomNavVisibilityVaultV2 =
+                                    pageAdjustmentSettingsSnapshot.bottomNavVisibilityVaultV2,
+                                bottomNavVisibilityPasswords =
+                                    pageAdjustmentSettingsSnapshot.bottomNavVisibilityPasswords,
+                                bottomNavVisibilityAuthenticator =
+                                    pageAdjustmentSettingsSnapshot.bottomNavVisibilityAuthenticator,
+                                bottomNavVisibilityCardWallet =
+                                    pageAdjustmentSettingsSnapshot.bottomNavVisibilityCardWallet,
+                                bottomNavVisibilityGenerator =
+                                    pageAdjustmentSettingsSnapshot.bottomNavVisibilityGenerator,
+                                bottomNavVisibilityNotes =
+                                    pageAdjustmentSettingsSnapshot.bottomNavVisibilityNotes,
+                                bottomNavVisibilitySend =
+                                    pageAdjustmentSettingsSnapshot.bottomNavVisibilitySend,
+                                bottomNavVisibilityPasskey =
+                                    pageAdjustmentSettingsSnapshot.bottomNavVisibilityPasskey,
+                                useDraggableBottomNav =
+                                    pageAdjustmentSettingsSnapshot.useDraggableBottomNav,
                                 passwordListQuickAccessEnabled = pageAdjustmentSettingsSnapshot.passwordListQuickAccessEnabled,
                                 passwordListTopModulesOrder = pageAdjustmentSettingsSnapshot.passwordListTopModulesOrder,
                                 passwordCardDisplayMode = pageAdjustmentSettingsSnapshot.passwordCardDisplayMode,
@@ -1746,6 +1818,16 @@ class WebDavHelper(
                                     pageAdjustmentSettingsSnapshot.passwordWebsiteStackMatchMode,
                                 authenticatorCardDisplayFields =
                                     pageAdjustmentSettingsSnapshot.authenticatorCardDisplayFields,
+                                validatorProgressBarStyle =
+                                    pageAdjustmentSettingsSnapshot.validatorProgressBarStyle,
+                                validatorUnifiedProgressBar =
+                                    pageAdjustmentSettingsSnapshot.validatorUnifiedProgressBar,
+                                validatorSmoothProgress =
+                                    pageAdjustmentSettingsSnapshot.validatorSmoothProgress,
+                                validatorVibrationEnabled =
+                                    pageAdjustmentSettingsSnapshot.validatorVibrationEnabled,
+                                copyNextCodeWhenExpiring =
+                                    pageAdjustmentSettingsSnapshot.copyNextCodeWhenExpiring,
                                 iconCardsEnabled = pageAdjustmentSettingsSnapshot.iconCardsEnabled,
                                 passwordPageIconEnabled = pageAdjustmentSettingsSnapshot.passwordPageIconEnabled,
                                 authenticatorPageIconEnabled =
@@ -1753,6 +1835,12 @@ class WebDavHelper(
                                 passkeyPageIconEnabled = pageAdjustmentSettingsSnapshot.passkeyPageIconEnabled,
                                 unmatchedIconHandlingStrategy =
                                     pageAdjustmentSettingsSnapshot.unmatchedIconHandlingStrategy,
+                                passwordFieldSettingsVersion =
+                                    pageAdjustmentSettingsSnapshot.passwordFieldSettingsVersion,
+                                separateUsernameAccountEnabled =
+                                    pageAdjustmentSettingsSnapshot.separateUsernameAccountEnabled,
+                                presetCustomFieldsJson =
+                                    pageAdjustmentSettingsSnapshot.presetCustomFieldsJson,
                                 passwordFieldVisibility = PageAdjustmentPasswordFieldVisibilityBackupEntry(
                                     securityVerification =
                                         pageAdjustmentSettingsSnapshot.passwordFieldVisibility.securityVerification,
@@ -2170,6 +2258,43 @@ class WebDavHelper(
     class PasswordRequiredException : Exception("备份文件已加密，请提供解密密码")
 
     /**
+     * 异常：备份中包含 Monica 配置，需由上层明确是否覆盖本地配置
+     */
+    class MonicaConfigDecisionRequiredException(
+        val configEntries: List<String>
+    ) : Exception("检测到 Monica 配置，请确认是否覆盖本地配置")
+
+    private fun normalizeBackupEntryName(entryName: String): String {
+        return entryName.replace('\\', '/').trimStart('/').lowercase(Locale.ROOT)
+    }
+
+    private fun isMonicaConfigEntry(normalizedEntryName: String, rawEntryName: String): Boolean {
+        if (normalizedEntryName.startsWith("monica_config/")) {
+            return true
+        }
+        val rawName = rawEntryName.substringAfterLast('/').lowercase(Locale.ROOT)
+        return rawName == "webdav_config.json" ||
+            rawName == "bitwarden_vaults.json" ||
+            rawName == "keepass_webdav_config.json"
+    }
+
+    private fun detectMonicaConfigEntries(zipFile: File): List<String> {
+        val entries = linkedSetOf<String>()
+        ZipInputStream(FileInputStream(zipFile)).use { zipIn ->
+            var entry = zipIn.nextEntry
+            while (entry != null) {
+                val normalizedEntryName = normalizeBackupEntryName(entry.name)
+                if (isMonicaConfigEntry(normalizedEntryName, entry.name)) {
+                    entries += normalizedEntryName
+                }
+                zipIn.closeEntry()
+                entry = zipIn.nextEntry
+            }
+        }
+        return entries.toList()
+    }
+
+    /**
      * 从备份文件恢复数据 (通用方法，用于 WebDAV 下载后恢复和本地导入)
      * @param backupFile 本地备份文件（ZIP）
      * @param decryptPassword 解密密码 (如果文件已加密)
@@ -2178,27 +2303,10 @@ class WebDavHelper(
     suspend fun restoreFromBackupFile(
         backupFile: File,
         decryptPassword: String? = null,
-        overwrite: Boolean = false
+        overwrite: Boolean = false,
+        restoreMonicaConfig: Boolean? = true,
     ): Result<RestoreResult> = withContext(Dispatchers.IO) {
         try {
-            // P0修复: 如果需要覆盖，先执行清除操作
-            if (overwrite) {
-                try {
-                    android.util.Log.d("WebDavHelper", "Overwrite mode enabled: clearing Monica local data only...")
-                    val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
-                    database.passwordEntryDao().deleteAllLocalPasswordEntries()
-                    database.secureItemDao().deleteAllLocalItemsByType(takagi.ru.monica.data.ItemType.TOTP)
-                    database.secureItemDao().deleteAllLocalItemsByType(takagi.ru.monica.data.ItemType.BANK_CARD)
-                    database.secureItemDao().deleteAllLocalItemsByType(takagi.ru.monica.data.ItemType.DOCUMENT)
-                    database.secureItemDao().deleteAllLocalItemsByType(takagi.ru.monica.data.ItemType.NOTE)
-                    database.passkeyDao().deleteAllLocalPasskeys()
-                    android.util.Log.d("WebDavHelper", "Monica local data cleared successfully")
-                } catch (e: Exception) {
-                    android.util.Log.e("WebDavHelper", "Failed to clear Monica local data: ${e.message}")
-                    return@withContext Result.failure(Exception("无法清除 Monica 本地数据: ${e.message}"))
-                }
-            }
-
             // P0修复：错误跟踪
             val failedItems = mutableListOf<FailedItem>()
             val warnings = mutableListOf<String>()
@@ -2215,6 +2323,7 @@ class WebDavHelper(
             var restoredDocCount = 0
             var restoredImageCount = 0
             var restoredPasskeyCount = 0
+            var detectedMonicaConfigEntries = emptyList<String>()
 
             // 1. 检测是否加密
             val isEncrypted = EncryptionHelper.isEncryptedFile(backupFile)
@@ -2238,6 +2347,43 @@ class WebDavHelper(
                 decryptedFile
             } else {
                 backupFile
+            }
+
+            detectedMonicaConfigEntries = runCatching {
+                detectMonicaConfigEntries(zipFile)
+            }.onFailure { error ->
+                android.util.Log.w("WebDavHelper", "Failed to detect Monica config entries: ${error.message}")
+                warnings.add("Monica配置检测失败，按默认恢复策略继续")
+            }.getOrDefault(emptyList())
+
+            if (detectedMonicaConfigEntries.isNotEmpty() && restoreMonicaConfig == null) {
+                return@withContext Result.failure(
+                    MonicaConfigDecisionRequiredException(detectedMonicaConfigEntries)
+                )
+            }
+
+            val shouldRestoreMonicaConfig = restoreMonicaConfig != false
+
+            if (!shouldRestoreMonicaConfig && detectedMonicaConfigEntries.isNotEmpty()) {
+                warnings.add("已跳过 Monica 配置恢复: ${detectedMonicaConfigEntries.size}项")
+            }
+
+            // P0修复: 如果需要覆盖，先执行清除操作
+            if (overwrite) {
+                try {
+                    android.util.Log.d("WebDavHelper", "Overwrite mode enabled: clearing Monica local data only...")
+                    val database = takagi.ru.monica.data.PasswordDatabase.getDatabase(context)
+                    database.passwordEntryDao().deleteAllLocalPasswordEntries()
+                    database.secureItemDao().deleteAllLocalItemsByType(takagi.ru.monica.data.ItemType.TOTP)
+                    database.secureItemDao().deleteAllLocalItemsByType(takagi.ru.monica.data.ItemType.BANK_CARD)
+                    database.secureItemDao().deleteAllLocalItemsByType(takagi.ru.monica.data.ItemType.DOCUMENT)
+                    database.secureItemDao().deleteAllLocalItemsByType(takagi.ru.monica.data.ItemType.NOTE)
+                    database.passkeyDao().deleteAllLocalPasskeys()
+                    android.util.Log.d("WebDavHelper", "Monica local data cleared successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("WebDavHelper", "Failed to clear Monica local data: ${e.message}")
+                    return@withContext Result.failure(Exception("无法清除 Monica 本地数据: ${e.message}"))
+                }
             }
             
             try {
@@ -2279,6 +2425,12 @@ class WebDavHelper(
                             val normalizedEntryName = entry.name.replace('\\', '/')
                             
                             when {
+                                !shouldRestoreMonicaConfig && isMonicaConfigEntry(
+                                    normalizeBackupEntryName(normalizedEntryName),
+                                    entryName,
+                                ) -> {
+                                    // 用户选择不覆盖 Monica 配置，跳过该类条目。
+                                }
                                 // 优先收集JSON格式的密码文件
                                 normalizedEntryName.contains("/passwords/") || normalizedEntryName.startsWith("passwords/") -> {
                                     backupPasswordCount++
@@ -2790,12 +2942,56 @@ class WebDavHelper(
                                                     pageAdjustmentBackup.passwordListQuickFolderStyle,
                                                 passwordListQuickFolderPathBannerEnabled =
                                                     pageAdjustmentBackup.passwordListQuickFolderPathBannerEnabled,
+                                                passwordListSystemBackToParentFolderEnabled =
+                                                    pageAdjustmentBackup.passwordListSystemBackToParentFolderEnabled,
                                                 addButtonBehaviorMode =
                                                     pageAdjustmentBackup.addButtonBehaviorMode,
                                                 addButtonMenuOrder =
                                                     pageAdjustmentBackup.addButtonMenuOrder,
                                                 addButtonMenuEnabledActions =
                                                     pageAdjustmentBackup.addButtonMenuEnabledActions,
+                                                passwordPageAggregateEnabled =
+                                                    pageAdjustmentBackup.passwordPageAggregateEnabled,
+                                                passwordPageVisibleContentTypes =
+                                                    pageAdjustmentBackup.passwordPageVisibleContentTypes,
+                                                categorySelectionUiMode =
+                                                    pageAdjustmentBackup.categorySelectionUiMode,
+                                                colorSettingsVersion =
+                                                    pageAdjustmentBackup.colorSettingsVersion,
+                                                colorScheme =
+                                                    pageAdjustmentBackup.colorScheme,
+                                                customPrimaryColor =
+                                                    pageAdjustmentBackup.customPrimaryColor,
+                                                customSecondaryColor =
+                                                    pageAdjustmentBackup.customSecondaryColor,
+                                                customTertiaryColor =
+                                                    pageAdjustmentBackup.customTertiaryColor,
+                                                customNeutralColor =
+                                                    pageAdjustmentBackup.customNeutralColor,
+                                                customNeutralVariantColor =
+                                                    pageAdjustmentBackup.customNeutralVariantColor,
+                                                bottomNavSettingsVersion =
+                                                    pageAdjustmentBackup.bottomNavSettingsVersion,
+                                                bottomNavOrder =
+                                                    pageAdjustmentBackup.bottomNavOrder,
+                                                bottomNavVisibilityVaultV2 =
+                                                    pageAdjustmentBackup.bottomNavVisibilityVaultV2,
+                                                bottomNavVisibilityPasswords =
+                                                    pageAdjustmentBackup.bottomNavVisibilityPasswords,
+                                                bottomNavVisibilityAuthenticator =
+                                                    pageAdjustmentBackup.bottomNavVisibilityAuthenticator,
+                                                bottomNavVisibilityCardWallet =
+                                                    pageAdjustmentBackup.bottomNavVisibilityCardWallet,
+                                                bottomNavVisibilityGenerator =
+                                                    pageAdjustmentBackup.bottomNavVisibilityGenerator,
+                                                bottomNavVisibilityNotes =
+                                                    pageAdjustmentBackup.bottomNavVisibilityNotes,
+                                                bottomNavVisibilitySend =
+                                                    pageAdjustmentBackup.bottomNavVisibilitySend,
+                                                bottomNavVisibilityPasskey =
+                                                    pageAdjustmentBackup.bottomNavVisibilityPasskey,
+                                                useDraggableBottomNav =
+                                                    pageAdjustmentBackup.useDraggableBottomNav,
                                                 passwordListQuickAccessEnabled =
                                                     pageAdjustmentBackup.passwordListQuickAccessEnabled,
                                                 passwordListTopModulesOrder =
@@ -2814,6 +3010,16 @@ class WebDavHelper(
                                                     pageAdjustmentBackup.passwordWebsiteStackMatchMode,
                                                 authenticatorCardDisplayFields =
                                                     pageAdjustmentBackup.authenticatorCardDisplayFields,
+                                                validatorProgressBarStyle =
+                                                    pageAdjustmentBackup.validatorProgressBarStyle,
+                                                validatorUnifiedProgressBar =
+                                                    pageAdjustmentBackup.validatorUnifiedProgressBar,
+                                                validatorSmoothProgress =
+                                                    pageAdjustmentBackup.validatorSmoothProgress,
+                                                validatorVibrationEnabled =
+                                                    pageAdjustmentBackup.validatorVibrationEnabled,
+                                                copyNextCodeWhenExpiring =
+                                                    pageAdjustmentBackup.copyNextCodeWhenExpiring,
                                                 iconCardsEnabled = pageAdjustmentBackup.iconCardsEnabled,
                                                 passwordPageIconEnabled =
                                                     pageAdjustmentBackup.passwordPageIconEnabled,
@@ -2823,6 +3029,12 @@ class WebDavHelper(
                                                     pageAdjustmentBackup.passkeyPageIconEnabled,
                                                 unmatchedIconHandlingStrategy =
                                                     pageAdjustmentBackup.unmatchedIconHandlingStrategy,
+                                                passwordFieldSettingsVersion =
+                                                    pageAdjustmentBackup.passwordFieldSettingsVersion,
+                                                separateUsernameAccountEnabled =
+                                                    pageAdjustmentBackup.separateUsernameAccountEnabled,
+                                                presetCustomFieldsJson =
+                                                    pageAdjustmentBackup.presetCustomFieldsJson,
                                                 passwordFieldVisibility =
                                                     PageAdjustmentPasswordFieldVisibilitySnapshot(
                                                         securityVerification =
@@ -3287,7 +3499,14 @@ class WebDavHelper(
                         customFieldsMap = pendingCustomFields.toMap(),
                         passwordHistory = passwordHistory
                     ),
-                    report = report
+                    report = report,
+                    monicaConfigDetected = detectedMonicaConfigEntries.isNotEmpty(),
+                    monicaConfigRestoreSkipped =
+                        !shouldRestoreMonicaConfig && detectedMonicaConfigEntries.isNotEmpty(),
+                    restoredMonicaConfigEntries =
+                        if (shouldRestoreMonicaConfig) detectedMonicaConfigEntries.size else 0,
+                    restartRecommended =
+                        shouldRestoreMonicaConfig && detectedMonicaConfigEntries.isNotEmpty(),
                 ))
             } finally {
                 // 清除临时存储的自定义字段，避免内存泄漏
@@ -3309,7 +3528,8 @@ class WebDavHelper(
     suspend fun downloadAndRestoreBackup(
         backupFile: BackupFile,
         decryptPassword: String? = null,
-        overwrite: Boolean = false
+        overwrite: Boolean = false,
+        restoreMonicaConfig: Boolean? = true,
     ): Result<RestoreResult> = 
         withContext(Dispatchers.IO) {
         try {
@@ -3324,11 +3544,16 @@ class WebDavHelper(
             
             try {
                 // 2. 调用的恢复方法
-                val restoreResult = restoreFromBackupFile(downloadedFile, decryptPassword, overwrite)
+                val restoreResult = restoreFromBackupFile(
+                    backupFile = downloadedFile,
+                    decryptPassword = decryptPassword,
+                    overwrite = overwrite,
+                    restoreMonicaConfig = restoreMonicaConfig,
+                )
                 if (restoreResult.isFailure) {
                     // 如果是密码错误，传递具体的异常
                     val ex = restoreResult.exceptionOrNull()
-                    if (ex is PasswordRequiredException) {
+                    if (ex is PasswordRequiredException || ex is MonicaConfigDecisionRequiredException) {
                         return@withContext Result.failure(ex)
                     }
                     return@withContext Result.failure(ex ?: Exception("恢复失败"))
@@ -4433,7 +4658,11 @@ data class BackupContent(
  */
 data class RestoreResult(
     val content: BackupContent,
-    val report: RestoreReport
+    val report: RestoreReport,
+    val monicaConfigDetected: Boolean = false,
+    val monicaConfigRestoreSkipped: Boolean = false,
+    val restoredMonicaConfigEntries: Int = 0,
+    val restartRecommended: Boolean = false,
 )
 
 

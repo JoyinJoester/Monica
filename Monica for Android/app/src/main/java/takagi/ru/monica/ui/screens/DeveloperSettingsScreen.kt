@@ -2,8 +2,11 @@ package takagi.ru.monica.ui.screens
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.foundation.horizontalScroll
@@ -77,6 +80,7 @@ import takagi.ru.monica.R
 import takagi.ru.monica.autofill_ng.AutofillPickerActivityV2
 import takagi.ru.monica.autofill_ng.core.AutofillLogger
 import takagi.ru.monica.bitwarden.service.BitwardenDiagLogger
+import takagi.ru.monica.bitwarden.service.BitwardenSyncForensicsLogger
 import takagi.ru.monica.passkey.PasskeyValidationDiagnostics
 import takagi.ru.monica.security.SecurityDiagLogger
 import takagi.ru.monica.security.SessionManager
@@ -99,6 +103,54 @@ fun DeveloperSettingsScreen(
 
     var showDebugLogsDialog by remember { mutableStateOf(false) }
     var disablePasswordVerification by remember { mutableStateOf(settings.disablePasswordVerification) }
+    var bitwardenSyncForensicsEnabled by remember {
+        mutableStateOf(settings.bitwardenSyncForensicsEnabled)
+    }
+    var bitwardenSyncForensicsDirectoryUri by remember {
+        mutableStateOf(settings.bitwardenSyncForensicsDirectoryUri)
+    }
+    var bitwardenSyncForensicsRawCaptureEnabled by remember {
+        mutableStateOf(settings.bitwardenSyncForensicsRawCaptureEnabled)
+    }
+
+    LaunchedEffect(
+        settings.disablePasswordVerification,
+        settings.bitwardenSyncForensicsEnabled,
+        settings.bitwardenSyncForensicsDirectoryUri,
+        settings.bitwardenSyncForensicsRawCaptureEnabled
+    ) {
+        disablePasswordVerification = settings.disablePasswordVerification
+        bitwardenSyncForensicsEnabled = settings.bitwardenSyncForensicsEnabled
+        bitwardenSyncForensicsDirectoryUri = settings.bitwardenSyncForensicsDirectoryUri
+        bitwardenSyncForensicsRawCaptureEnabled = settings.bitwardenSyncForensicsRawCaptureEnabled
+    }
+
+    val forensicsDirectoryPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        if (uri == null) {
+            return@rememberLauncherForActivityResult
+        }
+
+        scope.launch {
+            val permissionsResult = runCatching {
+                val flags =
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                context.contentResolver.takePersistableUriPermission(uri, flags)
+            }
+
+            val uriString = uri.toString()
+            bitwardenSyncForensicsDirectoryUri = uriString
+            viewModel.updateBitwardenSyncForensicsDirectoryUri(uriString)
+
+            val toastMessage = if (permissionsResult.isSuccess) {
+                context.getString(R.string.developer_bitwarden_forensics_dir_saved)
+            } else {
+                context.getString(R.string.developer_bitwarden_forensics_dir_permission_warning)
+            }
+            Toast.makeText(context, toastMessage, Toast.LENGTH_SHORT).show()
+        }
+    }
 
     // 准备共享元素 Modifier
     val sharedTransitionScope = takagi.ru.monica.ui.LocalSharedTransitionScope.current
@@ -154,7 +206,7 @@ fun DeveloperSettingsScreen(
                     subtitle = stringResource(R.string.developer_clear_log_buffer_desc),
                     onClick = {
                         scope.launch {
-                            val clearResult = DeveloperLogDebugHelper.clearLogs()
+                            val clearResult = DeveloperLogDebugHelper.clearLogs(context)
                             val message = if (clearResult.logcatCleared) {
                                 context.getString(R.string.developer_log_buffer_cleared)
                             } else {
@@ -218,6 +270,71 @@ fun DeveloperSettingsScreen(
                                 "Password verification setting updated to: $enabled"
                             )
                         }
+                    }
+                )
+
+                SettingsItemWithSwitch(
+                    icon = Icons.Default.BugReport,
+                    title = stringResource(R.string.developer_bitwarden_forensics_toggle),
+                    subtitle = stringResource(R.string.developer_bitwarden_forensics_toggle_desc),
+                    checked = bitwardenSyncForensicsEnabled,
+                    onCheckedChange = { enabled ->
+                        bitwardenSyncForensicsEnabled = enabled
+                        scope.launch {
+                            viewModel.updateBitwardenSyncForensicsEnabled(enabled)
+                        }
+                    }
+                )
+
+                SettingsItemWithSwitch(
+                    icon = Icons.Default.WarningAmber,
+                    title = stringResource(R.string.developer_bitwarden_forensics_raw_toggle),
+                    subtitle = stringResource(R.string.developer_bitwarden_forensics_raw_toggle_desc),
+                    checked = bitwardenSyncForensicsRawCaptureEnabled,
+                    onCheckedChange = { enabled ->
+                        bitwardenSyncForensicsRawCaptureEnabled = enabled
+                        scope.launch {
+                            viewModel.updateBitwardenSyncForensicsRawCaptureEnabled(enabled)
+                        }
+                    }
+                )
+
+                val directorySubtitle = bitwardenSyncForensicsDirectoryUri
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { rawUri ->
+                        context.getString(
+                            R.string.developer_bitwarden_forensics_dir_selected,
+                            summarizeDocumentTreeUri(rawUri)
+                        )
+                    }
+                    ?: stringResource(R.string.developer_bitwarden_forensics_dir_not_set)
+
+                SettingsItem(
+                    icon = Icons.Default.Share,
+                    title = stringResource(R.string.developer_bitwarden_forensics_dir),
+                    subtitle = directorySubtitle,
+                    onClick = {
+                        val initialUri = bitwardenSyncForensicsDirectoryUri
+                            ?.takeIf { it.isNotBlank() }
+                            ?.let { Uri.parse(it) }
+                        forensicsDirectoryPickerLauncher.launch(initialUri)
+                    }
+                )
+
+                SettingsItem(
+                    icon = Icons.Default.DeleteSweep,
+                    title = stringResource(R.string.developer_bitwarden_forensics_clear_dir),
+                    subtitle = stringResource(R.string.developer_bitwarden_forensics_clear_dir_desc),
+                    onClick = {
+                        bitwardenSyncForensicsDirectoryUri = null
+                        scope.launch {
+                            viewModel.updateBitwardenSyncForensicsDirectoryUri(null)
+                        }
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.developer_bitwarden_forensics_dir_cleared),
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
                 )
             }
@@ -317,6 +434,15 @@ fun DeveloperSettingsScreen(
             onDismiss = { showDebugLogsDialog = false }
         )
     }
+}
+
+private fun summarizeDocumentTreeUri(uriRaw: String): String {
+    val parsed = runCatching { Uri.parse(uriRaw) }.getOrNull()
+    val name = parsed?.lastPathSegment
+        ?.substringAfterLast(':')
+        ?.substringAfterLast('/')
+        ?.takeIf { it.isNotBlank() }
+    return name ?: uriRaw.take(64)
 }
 
 /**
@@ -578,6 +704,7 @@ private object DeveloperLogDebugHelper {
     suspend fun collectLogs(context: Context): DeveloperLogSnapshot = withContext(Dispatchers.IO) {
         runCatching { AutofillLogger.initialize(context.applicationContext) }
         runCatching { BitwardenDiagLogger.initialize(context.applicationContext) }
+        runCatching { BitwardenSyncForensicsLogger.initialize(context.applicationContext) }
         runCatching { SecurityDiagLogger.initialize(context.applicationContext) }
         val autofillTagLogs = readAutofillTagLogs()
         val appProcessLogs = readLogcat(
@@ -639,6 +766,11 @@ private object DeveloperLogDebugHelper {
         }.getOrElse {
             "Bitwarden persisted logs unavailable: ${it.message}"
         }
+        val persistedForensicsLogs = runCatching {
+            BitwardenSyncForensicsLogger.exportPersistedLogs(context, 40)
+        }.getOrElse {
+            "Bitwarden sync forensics logs unavailable: ${it.message}"
+        }
         val persistedSecurityLogs = runCatching {
             SecurityDiagLogger.exportPersistedLogs(2000)
         }.getOrElse {
@@ -680,6 +812,13 @@ private object DeveloperLogDebugHelper {
                 appendLine(persistedBitwardenLogs.trim())
             }
             appendLine()
+            appendLine("=== Bitwarden Sync Forensics ===")
+            if (persistedForensicsLogs.isBlank()) {
+                appendLine(context.getString(R.string.developer_no_logs))
+            } else {
+                appendLine(persistedForensicsLogs.trim())
+            }
+            appendLine()
             appendLine("=== Security Persisted Logs ===")
             if (persistedSecurityLogs.isBlank()) {
                 appendLine(context.getString(R.string.developer_no_logs))
@@ -698,10 +837,12 @@ private object DeveloperLogDebugHelper {
         val parsedSystem = parseLines(selectedLogs)
         val parsedPersisted = parseLines(persistedAutofillLogs)
         val parsedBitwarden = parseLines(persistedBitwardenLogs)
+        val parsedForensics = parseLines(persistedForensicsLogs)
         val parsedSecurity = parseLines(persistedSecurityLogs)
         val parsed = when {
             parsedSystem.isNotEmpty() -> parsedSystem
             parsedSecurity.isNotEmpty() -> parsedSecurity
+            parsedForensics.isNotEmpty() -> parsedForensics
             parsedBitwarden.isNotEmpty() -> parsedBitwarden
             parsedPersisted.isNotEmpty() -> parsedPersisted
             else -> parseLines(autofillLogs)
@@ -709,12 +850,15 @@ private object DeveloperLogDebugHelper {
         DeveloperLogSnapshot(report = report, lines = parsed)
     }
 
-    suspend fun clearLogs(): ClearLogsResult = withContext(Dispatchers.IO) {
+    suspend fun clearLogs(context: Context): ClearLogsResult = withContext(Dispatchers.IO) {
         runCatching {
             AutofillLogger.clear()
         }
         runCatching {
             BitwardenDiagLogger.clear()
+        }
+        runCatching {
+            BitwardenSyncForensicsLogger.clear(context.applicationContext)
         }
         runCatching {
             SecurityDiagLogger.clear()

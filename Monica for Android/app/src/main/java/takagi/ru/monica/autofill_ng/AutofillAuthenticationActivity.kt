@@ -206,8 +206,8 @@ class AutofillAuthenticationActivity : AppCompatActivity() {
                 confirmText = getString(R.string.confirm),
                 cancelText = getString(R.string.cancel),
                 emptyError = getString(R.string.current_password_required),
-                numericError = getString(R.string.error_password_must_be_numeric),
-                minLengthError = getString(R.string.error_password_min_6_digits),
+                unsupportedCharacterError = getString(R.string.error_password_contains_unsupported_characters),
+                minLengthError = getString(R.string.error_password_too_short),
                 incorrectError = getString(R.string.password_incorrect),
                 verifyPassword = { input -> securityManager.verifyMasterPassword(input) },
                 onSuccess = { onAuthenticationSuccess() },
@@ -337,8 +337,8 @@ private fun PasswordVerificationCard(
     val confirmText = stringResource(id = R.string.confirm)
     val cancelText = stringResource(id = R.string.cancel)
     val emptyError = stringResource(id = R.string.current_password_required)
-    val numericError = stringResource(id = R.string.error_password_must_be_numeric)
-    val minLengthError = stringResource(id = R.string.error_password_min_6_digits)
+    val unsupportedCharacterError = stringResource(id = R.string.error_password_contains_unsupported_characters)
+    val minLengthError = stringResource(id = R.string.error_password_too_short)
     val incorrectError = stringResource(id = R.string.password_incorrect)
 
     var password by rememberSaveable { mutableStateOf("") }
@@ -392,53 +392,33 @@ private fun PasswordVerificationCard(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            OutlinedTextField(
+            takagi.ru.monica.ui.components.MasterPasswordTextField(
                 value = password,
                 onValueChange = { input ->
-                    val sanitized = input.filter { it.isDigit() }
-                    password = sanitized
-                    errorMessage = when {
-                        input.isEmpty() -> null
-                        input != sanitized -> numericError
-                        else -> null
-                    }
+                    password = input
+                    errorMessage = null
+                },
+                onUnsupportedCharacterAttempt = {
+                    errorMessage = unsupportedCharacterError
                 },
                 label = { Text(passwordLabel) },
                 placeholder = { Text(description) },
-                visualTransformation = if (passwordVisible) {
-                    VisualTransformation.None
+                visible = passwordVisible,
+                onVisibilityChange = { passwordVisible = it },
+                imeAction = androidx.compose.ui.text.input.ImeAction.Done,
+                isError = errorMessage != null,
+                supportingText = if (errorMessage != null) {
+                    { Text(text = errorMessage ?: "") }
                 } else {
-                    PasswordVisualTransformation()
+                    null
                 },
-                trailingIcon = {
-                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                        Icon(
-                            imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                            contentDescription = if (passwordVisible) {
-                                stringResource(id = R.string.hide_password)
-                            } else {
-                                stringResource(id = R.string.show_password)
-                            }
-                        )
-                    }
-                },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(focusRequester),
-                shape = RoundedCornerShape(28.dp)
             )
 
             if (errorMessage != null) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = errorMessage ?: "",
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
-                    textAlign = TextAlign.Start,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Spacer(modifier = Modifier.height(4.dp))
             }
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -446,8 +426,8 @@ private fun PasswordVerificationCard(
             Button(
                 onClick = {
                     when {
-                        password.isBlank() -> errorMessage = emptyError
-                        password.length < 4 -> errorMessage = minLengthError
+                        takagi.ru.monica.security.MasterPasswordPolicy.isEmpty(password) -> errorMessage = emptyError
+                        !takagi.ru.monica.security.MasterPasswordPolicy.meetsMinLength(password) -> errorMessage = minLengthError
                         !verifyPassword(password) -> errorMessage = incorrectError
                         else -> {
                             keyboardController?.hide()

@@ -127,6 +127,20 @@ class KeePassWorkspaceRepository(
         return service.deleteGroup(databaseId, groupPath)
     }
 
+    suspend fun moveGroup(
+        sourceDatabaseId: Long,
+        groupPath: String,
+        targetDatabaseId: Long,
+        targetParentPath: String? = null
+    ): Result<KeePassGroupInfo> {
+        return service.moveGroup(
+            sourceDatabaseId = sourceDatabaseId,
+            groupPath = groupPath,
+            targetDatabaseId = targetDatabaseId,
+            targetParentPath = targetParentPath
+        )
+    }
+
     suspend fun addOrUpdatePasswordEntries(
         databaseId: Long,
         entries: List<PasswordEntry>,

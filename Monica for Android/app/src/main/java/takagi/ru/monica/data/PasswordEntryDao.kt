@@ -91,6 +91,12 @@ interface PasswordEntryDao {
     @Query("UPDATE password_entries SET categoryId = :categoryId WHERE id IN (:ids)")
     suspend fun updateCategoryForPasswords(ids: List<Long>, categoryId: Long?)
 
+    @Query("UPDATE password_entries SET boundNoteId = :noteId WHERE id = :id")
+    suspend fun updateBoundNoteId(id: Long, noteId: Long?)
+
+    @Query("UPDATE password_entries SET boundNoteId = NULL WHERE boundNoteId = :noteId")
+    suspend fun clearBoundNoteReferences(noteId: Long)
+
     /**
      * 将指定条目绑定到 Bitwarden 文件夹
      * 仅作用于非 KeePass 条目，避免跨数据源污染。

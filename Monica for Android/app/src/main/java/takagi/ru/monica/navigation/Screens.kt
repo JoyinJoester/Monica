@@ -108,6 +108,7 @@ sealed class Screen(val route: String) {
     object AutofillSaveBlockedTargets : Screen("autofill_save_blocked_targets")
     object PasskeySettings : Screen("passkey_settings")
     object SecurityAnalysis : Screen("security_analysis")
+    object MasterPasswordLockingSettings : Screen("master_password_locking_settings")
     object DedupEngine : Screen("dedup_engine")
     object BottomNavSettings : Screen("bottom_nav_settings")
     object ColorSchemeSelection : Screen("color_scheme_selection")
@@ -123,7 +124,7 @@ sealed class Screen(val route: String) {
     object IconSettings : Screen("icon_settings") // 图标设置
     object PasswordFieldCustomization : Screen("password_field_customization")  // 添加密码页面字段定制
     object PasswordListCustomization : Screen("password_list_customization") // 密码列表自定义
-    object AddButtonCustomization : Screen("add_button_customization") // 添加按钮设置
+    object AddButtonCustomization : Screen("add_button_customization") // 兼容旧路由：已并入密码列表自定义
     object SyncBackup : Screen("sync_backup")  // 同步与备份页面路由
     object LocalKeePass : Screen("local_keepass")  // 本地 KeePass 数据库页面
     object MonicaPlus : Screen("monica_plus") // Monica Plus 页面

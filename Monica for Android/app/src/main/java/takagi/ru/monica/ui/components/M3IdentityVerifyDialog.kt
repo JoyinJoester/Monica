@@ -19,7 +19,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -28,7 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
 
@@ -89,12 +88,14 @@ fun M3IdentityVerifyDialog(
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                OutlinedTextField(
+                MasterPasswordTextField(
                     value = passwordValue,
                     onValueChange = onPasswordChange,
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
+                    visible = false,
+                    onVisibilityChange = {},
+                    imeAction = ImeAction.Done,
+                    showVisibilityToggle = false,
                     isError = isPasswordError,
                     label = { Text(stringResource(R.string.master_password)) },
                     placeholder = { Text(stringResource(R.string.enter_master_password_confirm)) },

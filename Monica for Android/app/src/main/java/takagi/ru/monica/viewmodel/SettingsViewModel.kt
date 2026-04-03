@@ -142,6 +142,24 @@ class SettingsViewModel(
         }
     }
 
+    fun updateBitwardenSyncForensicsEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateBitwardenSyncForensicsEnabled(enabled)
+        }
+    }
+
+    fun updateBitwardenSyncForensicsDirectoryUri(uri: String?) {
+        viewModelScope.launch {
+            settingsManager.updateBitwardenSyncForensicsDirectoryUri(uri)
+        }
+    }
+
+    fun updateBitwardenSyncForensicsRawCaptureEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateBitwardenSyncForensicsRawCaptureEnabled(enabled)
+        }
+    }
+
     fun updateValidatorProgressBarStyle(style: takagi.ru.monica.data.ProgressBarStyle) {
         android.util.Log.d("SettingsViewModel", "Updating progress bar style to: $style")
         viewModelScope.launch {
@@ -322,6 +340,12 @@ class SettingsViewModel(
     fun updatePasswordListQuickFolderPathBannerEnabled(enabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updatePasswordListQuickFolderPathBannerEnabled(enabled)
+        }
+    }
+
+    fun updatePasswordListSystemBackToParentFolderEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updatePasswordListSystemBackToParentFolderEnabled(enabled)
         }
     }
 

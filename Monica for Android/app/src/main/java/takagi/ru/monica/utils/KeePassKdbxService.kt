@@ -467,6 +467,112 @@ class KeePassKdbxService(
         }
     }
 
+    suspend fun moveGroup(
+        sourceDatabaseId: Long,
+        groupPath: String,
+        targetDatabaseId: Long,
+        targetParentPath: String? = null
+    ): Result<KeePassGroupInfo> = withContext(Dispatchers.IO) {
+        try {
+            val sourcePathSegments = decodeKeePassPathSegments(groupPath)
+            if (sourcePathSegments.isEmpty()) {
+                throw IllegalArgumentException("分组路径无效")
+            }
+
+            val normalizedSourcePath = groupPath.trim()
+            val normalizedTargetParentPath = targetParentPath?.trim()?.takeIf { it.isNotBlank() }
+            val sourceParentPath = normalizedSourcePath.substringBeforeLast('/', "")
+                .ifBlank { null }
+            if (sourceDatabaseId == targetDatabaseId &&
+                normalizedTargetParentPath == sourceParentPath
+            ) {
+                val movedGroup = listGroups(sourceDatabaseId).getOrThrow()
+                    .firstOrNull { it.path == normalizedSourcePath }
+                    ?: throw IllegalArgumentException("分组不存在: $groupPath")
+                return@withContext Result.success(movedGroup)
+            }
+
+            if (sourceDatabaseId == targetDatabaseId &&
+                !normalizedTargetParentPath.isNullOrBlank() &&
+                (normalizedTargetParentPath == normalizedSourcePath ||
+                    normalizedTargetParentPath.startsWith("$normalizedSourcePath/"))
+            ) {
+                throw IllegalArgumentException("不能移动到自身或子分组下")
+            }
+
+            val movedGroupInfo = globalMutationMutex.withLock {
+                try {
+                    val sourceLoaded = getCachedLoadedDatabase(sourceDatabaseId) ?: loadDatabase(sourceDatabaseId)
+                    val targetLoaded = if (sourceDatabaseId == targetDatabaseId) {
+                        sourceLoaded
+                    } else {
+                        getCachedLoadedDatabase(targetDatabaseId) ?: loadDatabase(targetDatabaseId)
+                    }
+
+                    val extracted = extractGroupByPath(
+                        group = sourceLoaded.keePassDatabase.content.group,
+                        pathSegments = sourcePathSegments
+                    )
+                    if (extracted.removedGroup == null) {
+                        throw IllegalArgumentException("分组不存在: $groupPath")
+                    }
+
+                    val targetParentSegments = decodeKeePassPathSegments(normalizedTargetParentPath)
+                    val groupToMove = extracted.removedGroup
+                    val inserted = insertGroupToPath(
+                        group = if (sourceDatabaseId == targetDatabaseId) {
+                            extracted.updatedGroup
+                        } else {
+                            targetLoaded.keePassDatabase.content.group
+                        },
+                        parentSegments = targetParentSegments,
+                        groupToInsert = groupToMove,
+                        currentPathKey = ""
+                    )
+
+                    if (sourceDatabaseId == targetDatabaseId) {
+                        val updatedDatabase = sourceLoaded.keePassDatabase.modifyParentGroup { inserted.updatedGroup }
+                        writeDatabase(
+                            database = sourceLoaded.database,
+                            credentials = sourceLoaded.credentials,
+                            keePassDatabase = updatedDatabase,
+                            sourceEtag = sourceLoaded.sourceEtag,
+                            sourceLastModified = sourceLoaded.sourceLastModified
+                        )
+                    } else {
+                        val targetDatabase = targetLoaded.keePassDatabase.modifyParentGroup { inserted.updatedGroup }
+                        writeDatabase(
+                            database = targetLoaded.database,
+                            credentials = targetLoaded.credentials,
+                            keePassDatabase = targetDatabase,
+                            sourceEtag = targetLoaded.sourceEtag,
+                            sourceLastModified = targetLoaded.sourceLastModified
+                        )
+                        val sourceDatabase = sourceLoaded.keePassDatabase.modifyParentGroup { extracted.updatedGroup }
+                        writeDatabase(
+                            database = sourceLoaded.database,
+                            credentials = sourceLoaded.credentials,
+                            keePassDatabase = sourceDatabase,
+                            sourceEtag = sourceLoaded.sourceEtag,
+                            sourceLastModified = sourceLoaded.sourceLastModified
+                        )
+                    }
+
+                    inserted.groupInfo
+                } catch (e: Exception) {
+                    invalidateLoadedDatabaseCache(sourceDatabaseId)
+                    if (targetDatabaseId != sourceDatabaseId) {
+                        invalidateLoadedDatabaseCache(targetDatabaseId)
+                    }
+                    throw e
+                }
+            }
+            Result.success(movedGroupInfo)
+        } catch (e: Exception) {
+            Result.failure(normalizeError(e))
+        }
+    }
+
     suspend fun readPasswordEntries(databaseId: Long): Result<List<KeePassEntryData>> = withContext(Dispatchers.IO) {
         try {
             val (database, _, keePassDatabase) = loadDatabase(databaseId)
@@ -2449,6 +2555,93 @@ class KeePassKdbxService(
             updatedGroups[childIndex] = childResult.first
             group.copy(groups = updatedGroups) to true
         }
+    }
+
+    private data class ExtractedGroupResult(
+        val updatedGroup: Group,
+        val removedGroup: Group?
+    )
+
+    private fun extractGroupByPath(
+        group: Group,
+        pathSegments: List<String>
+    ): ExtractedGroupResult {
+        val targetName = pathSegments.firstOrNull() ?: return ExtractedGroupResult(group, null)
+        val childIndex = group.groups.indexOfFirst { it.name == targetName }
+        if (childIndex < 0) return ExtractedGroupResult(group, null)
+
+        val updatedGroups = group.groups.toMutableList()
+        return if (pathSegments.size == 1) {
+            val removedGroup = updatedGroups.removeAt(childIndex)
+            ExtractedGroupResult(
+                updatedGroup = group.copy(groups = updatedGroups),
+                removedGroup = removedGroup
+            )
+        } else {
+            val child = group.groups[childIndex]
+            val childResult = extractGroupByPath(child, pathSegments.drop(1))
+            if (childResult.removedGroup == null) {
+                return ExtractedGroupResult(group, null)
+            }
+            updatedGroups[childIndex] = childResult.updatedGroup
+            ExtractedGroupResult(
+                updatedGroup = group.copy(groups = updatedGroups),
+                removedGroup = childResult.removedGroup
+            )
+        }
+    }
+
+    private data class InsertedGroupResult(
+        val updatedGroup: Group,
+        val groupInfo: KeePassGroupInfo
+    )
+
+    private fun insertGroupToPath(
+        group: Group,
+        parentSegments: List<String>,
+        groupToInsert: Group,
+        currentPathKey: String
+    ): InsertedGroupResult {
+        if (parentSegments.isEmpty()) {
+            val conflict = group.groups.any { sibling ->
+                sibling.uuid != groupToInsert.uuid && sibling.name.equals(groupToInsert.name, ignoreCase = true)
+            }
+            if (conflict) {
+                throw IllegalArgumentException("同级已存在同名分组")
+            }
+            val newPath = buildKeePassPathKey(currentPathKey, groupToInsert.name)
+            return InsertedGroupResult(
+                updatedGroup = group.copy(groups = group.groups + groupToInsert),
+                groupInfo = KeePassGroupInfo(
+                    name = groupToInsert.name,
+                    path = newPath,
+                    uuid = groupToInsert.uuid.toString(),
+                    depth = decodeKeePassPathSegments(newPath).size - 1,
+                    displayPath = decodeKeePassPathForDisplay(newPath)
+                )
+            )
+        }
+
+        val nextSegment = parentSegments.first()
+        val childIndex = group.groups.indexOfFirst { it.name == nextSegment }
+        if (childIndex < 0) {
+            throw IllegalArgumentException("父分组不存在: $nextSegment")
+        }
+
+        val child = group.groups[childIndex]
+        val childPath = buildKeePassPathKey(currentPathKey, child.name)
+        val childResult = insertGroupToPath(
+            group = child,
+            parentSegments = parentSegments.drop(1),
+            groupToInsert = groupToInsert,
+            currentPathKey = childPath
+        )
+        val updatedGroups = group.groups.toMutableList()
+        updatedGroups[childIndex] = childResult.updatedGroup
+        return InsertedGroupResult(
+            updatedGroup = group.copy(groups = updatedGroups),
+            groupInfo = childResult.groupInfo
+        )
     }
 
     private inline fun <T> List<T>.anyIndexed(predicate: (Int, T) -> Boolean): Boolean {

@@ -70,6 +70,7 @@ fun SettingsScreen(
     onNavigateBack: () -> Unit,
     onResetPassword: () -> Unit,
     onSecurityQuestions: () -> Unit,
+    onNavigateToMasterPasswordLocking: () -> Unit,
     onNavigateToSyncBackup: () -> Unit = {},
     onNavigateToAutofill: () -> Unit = {},
     onNavigateToPasskeySettings: () -> Unit = {},
@@ -110,7 +111,6 @@ fun SettingsScreen(
     
     var showThemeDialog by remember { mutableStateOf(false) }
     var showLanguageDialog by remember { mutableStateOf(false) }
-    var showAutoLockDialog by remember { mutableStateOf(false) }
     var showVersionInfoDialog by remember { mutableStateOf(false) }
     var showDeveloperVerifyDialog by remember { mutableStateOf(false) }
     var previewFeaturesExpanded by remember { mutableStateOf(false) }
@@ -191,6 +191,8 @@ fun SettingsScreen(
     }
 
     val securityTitle = context.getString(R.string.security)
+    val masterPasswordLockingTitle = context.getString(R.string.master_password_and_locking)
+    val masterPasswordLockingDescription = context.getString(R.string.master_password_and_locking_description)
     val dataManagementTitle = context.getString(R.string.data_management)
     val appearanceTitle = context.getString(R.string.theme)
     val aboutTitle = context.getString(R.string.about)
@@ -224,8 +226,15 @@ fun SettingsScreen(
     fun matchesSettingsItem(
         sectionTitle: String,
         title: String,
-        subtitle: String? = null
-    ): Boolean = matchesSettingsSearch(settingsSearchQuery, sectionTitle, title, subtitle)
+        subtitle: String? = null,
+        vararg extraSearchTexts: String?
+    ): Boolean = matchesSettingsSearch(
+        settingsSearchQuery,
+        sectionTitle,
+        title,
+        subtitle,
+        *extraSearchTexts
+    )
 
     val showMonicaPlusCard = !settings.isPlusActivated && matchesSettingsSearch(
         settingsSearchQuery,
@@ -239,43 +248,33 @@ fun SettingsScreen(
         context.getString(R.string.security_analysis_description)
     )
 
-    val showBiometricItem = matchesSettingsItem(
+    val showMasterPasswordLockingItem = matchesSettingsItem(
         securityTitle,
+        masterPasswordLockingTitle,
+        masterPasswordLockingDescription,
         context.getString(R.string.biometric_unlock),
-        biometricSubtitle
+        biometricSubtitle,
+        context.getString(R.string.auto_lock),
+        autoLockSubtitle,
+        context.getString(R.string.security_questions),
+        context.getString(R.string.security_questions_description),
+        context.getString(R.string.reset_master_password),
+        context.getString(R.string.reset_password_description)
     )
     val showScreenshotProtectionItem = matchesSettingsItem(
         securityTitle,
         context.getString(R.string.screenshot_protection),
         screenshotProtectionSubtitle
     )
-    val showAutoLockItem = matchesSettingsItem(
-        securityTitle,
-        context.getString(R.string.auto_lock),
-        autoLockSubtitle
-    )
-    val showSecurityQuestionsItem = matchesSettingsItem(
-        securityTitle,
-        context.getString(R.string.security_questions),
-        context.getString(R.string.security_questions_description)
-    )
     val showPermissionManagementItem = matchesSettingsItem(
         securityTitle,
         context.getString(R.string.permission_management_title),
         context.getString(R.string.permission_management_subtitle)
     )
-    val showResetPasswordItem = matchesSettingsItem(
-        securityTitle,
-        context.getString(R.string.reset_master_password),
-        context.getString(R.string.reset_password_description)
-    )
     val showSecuritySection = listOf(
-        showBiometricItem,
+        showMasterPasswordLockingItem,
         showScreenshotProtectionItem,
-        showAutoLockItem,
-        showSecurityQuestionsItem,
-        showPermissionManagementItem,
-        showResetPasswordItem
+        showPermissionManagementItem
     ).any { it }
 
     val showSyncBackupItem = matchesSettingsItem(
@@ -486,33 +485,13 @@ fun SettingsScreen(
             
             if (showSecuritySection) {
                 SettingsSection(title = securityTitle) {
-                    if (showBiometricItem) {
-                        SettingsItemWithSwitch(
-                            icon = Icons.Default.Fingerprint,
-                            title = context.getString(R.string.biometric_unlock),
-                            subtitle = biometricSubtitle,
-                            checked = biometricSwitchState,
-                            enabled = isBiometricAvailable,
-                            onCheckedChange = { newState ->
-                                android.util.Log.d("SettingsScreen", "Switch clicked: newState=$newState, activity=$activity")
-                                if (newState) {
-                                    val weakOnly = biometricHelper.isWeakBiometricOnly()
-                                    if (weakOnly) {
-                                        showWeakBiometricWarning = true
-                                    } else {
-                                        startBiometricEnable()
-                                    }
-                                } else {
-                                    android.util.Log.d("SettingsScreen", "Disabling biometric unlock")
-                                    biometricSwitchState = false
-                                    viewModel.updateBiometricEnabled(false)
-                                    Toast.makeText(
-                                        context,
-                                        context.getString(R.string.biometric_unlock_disabled),
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                }
-                            }
+                    if (showMasterPasswordLockingItem) {
+                        SettingsItem(
+                            icon = Icons.Default.Lock,
+                            title = masterPasswordLockingTitle,
+                            subtitle = masterPasswordLockingDescription,
+                            onClick = onNavigateToMasterPasswordLocking,
+                            modifier = getSharedModifier("master_password_locking_card")
                         )
                     }
 
@@ -527,25 +506,6 @@ fun SettingsScreen(
                         )
                     }
 
-                    if (showAutoLockItem) {
-                        SettingsItem(
-                            icon = Icons.Default.Timer,
-                            title = context.getString(R.string.auto_lock),
-                            subtitle = autoLockSubtitle,
-                            onClick = { showAutoLockDialog = true }
-                        )
-                    }
-
-                    if (showSecurityQuestionsItem) {
-                        SettingsItem(
-                            icon = Icons.Default.Security,
-                            title = context.getString(R.string.security_questions),
-                            subtitle = context.getString(R.string.security_questions_description),
-                            onClick = onSecurityQuestions,
-                            modifier = getSharedModifier("security_questions_card")
-                        )
-                    }
-
                     if (showPermissionManagementItem) {
                         SettingsItem(
                             icon = Icons.Default.AdminPanelSettings,
@@ -553,16 +513,6 @@ fun SettingsScreen(
                             subtitle = context.getString(R.string.permission_management_subtitle),
                             onClick = onNavigateToPermissionManagement,
                             modifier = getSharedModifier("permission_settings_card")
-                        )
-                    }
-
-                    if (showResetPasswordItem) {
-                        SettingsItem(
-                            icon = Icons.Default.VpnKey,
-                            title = context.getString(R.string.reset_master_password),
-                            subtitle = context.getString(R.string.reset_password_description),
-                            onClick = onResetPassword,
-                            modifier = getSharedModifier("reset_password_card")
                         )
                     }
                 }
@@ -861,18 +811,6 @@ fun SettingsScreen(
                 }
             },
             onDismiss = { showLanguageDialog = false }
-        )
-    }
-    
-    // Auto Lock Selection Dialog
-    if (showAutoLockDialog) {
-        AutoLockSelectionSheet(
-            currentMinutes = settings.autoLockMinutes,
-            onMinutesSelected = { minutes ->
-                viewModel.updateAutoLockMinutes(minutes)
-                showAutoLockDialog = false
-            },
-            onDismiss = { showAutoLockDialog = false }
         )
     }
     
@@ -1996,7 +1934,7 @@ private fun getLanguageDisplayName(language: Language, context: android.content.
     }
 }
 
-private fun getAutoLockDisplayName(minutes: Int, context: android.content.Context): String {
+internal fun getAutoLockDisplayName(minutes: Int, context: android.content.Context): String {
     return when (minutes) {
         0 -> context.getString(R.string.auto_lock_immediately)
         1 -> context.getString(R.string.auto_lock_1_minute)

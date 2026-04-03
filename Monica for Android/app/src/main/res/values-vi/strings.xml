@@ -382,22 +382,25 @@
     <string name="password_detail_last_modified">Chỉnh sửa lần cuối</string>
     
     <!-- Error Messages -->
-    <string name="error_password_too_short">Mật khẩu chính phải có ít nhất 6 ký tự</string>
-    <string name="error_password_must_be_6_digits">Mật khẩu phải là 6 chữ số</string>
-    <string name="error_password_min_6_digits">Mật khẩu phải có ít nhất 6 chữ số</string>
-    <string name="error_password_must_be_numeric">Mật khẩu chỉ được chứa số</string>
+    <string name="error_password_too_short">Mật khẩu chính phải có ít nhất 3 ký tự</string>
+    <string name="error_password_must_be_6_digits">Mật khẩu chính phải có ít nhất 3 ký tự</string>
+    <string name="error_password_min_6_digits">Mật khẩu chính phải có ít nhất 3 ký tự</string>
+    <string name="error_password_must_be_numeric">Mật khẩu chính chứa ký tự không được hỗ trợ</string>
+    <string name="error_password_contains_unsupported_characters">Mật khẩu chính chứa ký tự không được hỗ trợ</string>
     <string name="error_passwords_not_match">Mật khẩu không khớp</string>
     <string name="error_invalid_password">Mật khẩu chính không hợp lệ</string>
     <string name="error_authentication_failed">Xác thực thất bại</string>
     <string name="error_title_required">Tiêu đề là bắt buộc</string>
     <string name="error_password_required">Mật khẩu là bắt buộc</string>
-    <string name="password_min_6_digits">Tối thiểu 6 chữ số</string>
+    <string name="password_min_6_digits">Ít nhất 3 ký tự</string>
     
     <!-- Settings Screen -->
     <string name="settings_title">Cài đặt</string>
     <string name="language">Ngôn ngữ</string>
     <string name="theme">Giao diện</string>
     <string name="security">Bảo mật</string>
+    <string name="master_password_and_locking">Mật khẩu chính và khóa</string>
+    <string name="master_password_and_locking_description">Quản lý mở khóa vân tay, tự động khóa, câu hỏi bảo mật và đặt lại mật khẩu chính.</string>
     <string name="auto_lock">Tự động khóa</string>
     <string name="auto_lock_summary">Khóa ứng dụng sau khi không hoạt động</string>
     <string name="about">Giới thiệu</string>
@@ -432,12 +435,12 @@
     <string name="reset_password_title">Đặt lại mật khẩu</string>
     <string name="reset_password">Đặt lại mật khẩu</string>
     <string name="reset_master_password">Đặt lại mật khẩu chính</string>
-    <string name="reset_password_description">Vui lòng nhập mật khẩu hiện tại và đặt mật khẩu số mới (tối thiểu 6 chữ số)</string>
-    <string name="reset_password_verified_description">Vui lòng đặt mật khẩu số mới của bạn (tối thiểu 6 chữ số)</string>
+    <string name="reset_password_description">Vui lòng nhập mật khẩu hiện tại và đặt mật khẩu chính mới (ít nhất 3 ký tự)</string>
+    <string name="reset_password_verified_description">Vui lòng đặt mật khẩu chính mới của bạn (ít nhất 3 ký tự)</string>
     <string name="current_password">Mật khẩu hiện tại</string>
     <string name="enter_current_password">Nhập mật khẩu hiện tại</string>
     <string name="new_password">Mật khẩu mới</string>
-    <string name="enter_new_password">Nhập mật khẩu số mới (tối thiểu 6 chữ số)</string>
+    <string name="enter_new_password">Nhập mật khẩu chính mới (ít nhất 3 ký tự)</string>
     <string name="confirm_new_password">Xác nhận mật khẩu mới</string>
     <string name="enter_confirm_password">Xác nhận mật khẩu mới của bạn</string>
     <string name="current_password_required">Mật khẩu hiện tại là bắt buộc</string>
@@ -446,7 +449,7 @@
     <string name="password_reset_success">Đặt lại mật khẩu thành công</string>
     <string name="password_reset_success_message">Mật khẩu chính của bạn đã được thay đổi thành công. Vui lòng nhớ mật khẩu mới của bạn.</string>
     <string name="passwords_do_not_match">Mật khẩu không khớp</string>
-    <string name="password_too_short">Mật khẩu phải có ít nhất 6 ký tự</string>
+    <string name="password_too_short">Mật khẩu phải có ít nhất 3 ký tự</string>
     
     <!-- Forgot Password -->
     <string name="forgot_password">Quên mật khẩu?</string>
@@ -466,11 +469,17 @@
     <string name="select_question">Chọn một câu hỏi</string>
     <string name="your_answer">Câu trả lời của bạn</string>
     <string name="enter_answer_hint">Nhập câu trả lời của bạn (không phân biệt chữ hoa chữ thường)</string>
+    <string name="security_questions_must_choose_two">Chọn hai câu hỏi khác nhau để khôi phục mật khẩu</string>
+    <string name="security_question_custom_label">Câu hỏi tùy chỉnh</string>
+    <string name="security_question_custom_placeholder">Nhập câu hỏi bảo mật của riêng bạn</string>
     <string name="save_questions">Lưu câu hỏi bảo mật</string>
     <string name="update_questions">Cập nhật câu hỏi bảo mật</string>
     <string name="select_first_question">Vui lòng chọn câu hỏi bảo mật đầu tiên</string>
     <string name="select_second_question">Vui lòng chọn câu hỏi bảo mật thứ hai</string>
     <string name="questions_must_be_different">Vui lòng chọn hai câu hỏi khác nhau</string>
+    <string name="custom_questions_must_be_different">Vui lòng nhập hai câu hỏi tùy chỉnh khác nhau</string>
+    <string name="first_custom_question_required">Vui lòng nhập câu hỏi tùy chỉnh đầu tiên</string>
+    <string name="second_custom_question_required">Vui lòng nhập câu hỏi tùy chỉnh thứ hai</string>
     <string name="first_answer_required">Vui lòng cung cấp câu trả lời cho câu hỏi đầu tiên</string>
     <string name="second_answer_required">Vui lòng cung cấp câu trả lời cho câu hỏi thứ hai</string>
     
@@ -580,16 +589,18 @@
     <string name="change_password_title">Đổi mật khẩu chính</string>
     <string name="change_password_warning_title">Thông báo quan trọng</string>
     <string name="change_password_warning_message">Sau khi đổi mật khẩu chính, tất cả dữ liệu đã lưu sẽ được mã hóa lại bằng mật khẩu mới. Hãy chắc chắn rằng bạn có thể nhớ mật khẩu mới, nếu không bạn sẽ không thể truy cập dữ liệu của mình.</string>
+    <string name="change_password_intro">Hãy đặt một mật khẩu chính dễ nhớ. Ứng dụng hiện hỗ trợ chữ cái, số, ký hiệu và tiếng Trung.</string>
+    <string name="change_password_supports_unicode">Hỗ trợ chữ cái, số, ký hiệu và tiếng Trung</string>
     <string name="change_password_current">Mật khẩu hiện tại *</string>
     <string name="change_password_new">Mật khẩu mới *</string>
     <string name="change_password_confirm">Xác nhận mật khẩu mới *</string>
-    <string name="change_password_hint">Mật khẩu phải có ít nhất 6 chữ số</string>
+    <string name="change_password_hint">Mật khẩu phải có ít nhất 3 ký tự</string>
     <string name="change_password_button">Đổi mật khẩu</string>
     <string name="change_password_success_title">Đổi mật khẩu thành công</string>
     <string name="change_password_success_message">Mật khẩu chính của bạn đã được đổi thành công và tất cả dữ liệu đã được mã hóa lại bằng mật khẩu mới. Vui lòng đăng nhập bằng mật khẩu mới.</string>
     <string name="change_password_error_current_empty">Vui lòng nhập mật khẩu hiện tại</string>
     <string name="change_password_error_new_empty">Vui lòng nhập mật khẩu mới</string>
-    <string name="change_password_error_new_too_short">Mật khẩu mới phải có ít nhất 6 chữ số</string>
+    <string name="change_password_error_new_too_short">Mật khẩu mới phải có ít nhất 3 ký tự</string>
     <string name="change_password_error_confirm_empty">Vui lòng xác nhận mật khẩu mới</string>
     <string name="change_password_error_not_match">Mật khẩu mới không khớp</string>
     <string name="change_password_error_same_as_current">Mật khẩu mới không thể giống mật khẩu hiện tại</string>
@@ -1085,6 +1096,18 @@
     <string name="developer_functions">Chức năng nhà phát triển</string>
     <string name="developer_disable_password_verification">Tắt xác minh mật khẩu</string>
     <string name="developer_disable_password_verification_desc">Bỏ qua xác minh mật khẩu khi khởi động ứng dụng (chỉ dành cho kiểm thử phát triển)</string>
+    <string name="developer_bitwarden_forensics_toggle">Bật forensics đồng bộ Bitwarden</string>
+    <string name="developer_bitwarden_forensics_toggle_desc">Ghi lại ảnh chụp đồng bộ đã ẩn danh (chỉ độ dài và số lượng, không lưu văn bản thuần)</string>
+    <string name="developer_bitwarden_forensics_raw_toggle">Ghi nhận request/response thô của Bitwarden</string>
+    <string name="developer_bitwarden_forensics_raw_toggle_desc">Lưu bản xem trước request/response đã được khử nhạy cảm cho chẩn đoán đồng bộ/tải lên. Trường nhạy cảm sẽ bị che và nội dung quá dài sẽ bị cắt.</string>
+    <string name="developer_bitwarden_forensics_dir">Thư mục xuất forensics</string>
+    <string name="developer_bitwarden_forensics_dir_not_set">Chưa chọn thư mục ngoài. Nhật ký chỉ được lưu trong bộ nhớ riêng của ứng dụng.</string>
+    <string name="developer_bitwarden_forensics_dir_selected">Thư mục hiện tại: %1$s</string>
+    <string name="developer_bitwarden_forensics_dir_saved">Đã lưu thư mục xuất forensics</string>
+    <string name="developer_bitwarden_forensics_dir_permission_warning">Đã lưu thư mục nhưng cấp quyền lâu dài thất bại; hãy chọn lại nếu ghi thất bại.</string>
+    <string name="developer_bitwarden_forensics_clear_dir">Xóa thư mục xuất forensics</string>
+    <string name="developer_bitwarden_forensics_clear_dir_desc">Dừng sao chép nhật ký ra bộ nhớ ngoài, chỉ giữ nhật ký nội bộ</string>
+    <string name="developer_bitwarden_forensics_dir_cleared">Đã xóa thư mục xuất forensics</string>
     <string name="developer_warning">⚠️ Chức năng nhà phát triển chỉ dành cho kiểm thử, không bật trong môi trường sản xuất</string>
     <string name="developer_log_buffer_cleared">Đã xóa bộ đệm nhật ký</string>
     <string name="developer_clear_failed">Xóa thất bại: %s</string>

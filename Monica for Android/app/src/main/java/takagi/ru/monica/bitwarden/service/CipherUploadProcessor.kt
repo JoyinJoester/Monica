@@ -2,6 +2,7 @@ package takagi.ru.monica.bitwarden.service
 
 import android.util.Base64
 import android.content.Context
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.bitwarden.api.*
@@ -20,12 +21,16 @@ import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.SecureCustomField
 import takagi.ru.monica.data.model.SecureCustomFieldType
 import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.notes.domain.NoteContentCodec
+import takagi.ru.monica.utils.FieldChange
+import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.util.TotpDataResolver
 import java.util.Date
 import java.security.KeyFactory
 import java.security.KeyStore
 import java.security.spec.PKCS8EncodedKeySpec
+import java.security.MessageDigest
 
 /**
  * 多类型 Cipher 上传处理器
@@ -53,6 +58,10 @@ class CipherUploadProcessor(
         ignoreUnknownKeys = true 
         encodeDefaults = true
     }
+
+    init {
+        runCatching { OperationLogger.init(context.applicationContext) }
+    }
     
     /**
      * 上传单个 SecureItem 到 Bitwarden
@@ -71,6 +80,7 @@ class CipherUploadProcessor(
                 ItemType.DOCUMENT -> createIdentityCipherRequest(item, symmetricKey)
                 else -> return UploadItemResult.Error("Unsupported item type: ${item.itemType}")
             }
+            val requestPayload = runCatching { json.encodeToString(request) }.getOrNull()
             
             val vaultApi = apiManager.getVaultApi(vault)
             val response = vaultApi.createCipher(
@@ -79,10 +89,46 @@ class CipherUploadProcessor(
             )
             
             if (!response.isSuccessful) {
+                captureRawExchange(
+                    vaultId = vault.id,
+                    operation = "upload_secure_item_create",
+                    method = "POST",
+                    endpoint = "/ciphers",
+                    requestBody = requestPayload,
+                    responseCode = response.code(),
+                    responseBody = runCatching { response.errorBody()?.string() }.getOrNull(),
+                    success = false,
+                    error = "create cipher failed: ${response.code()}"
+                )
                 return UploadItemResult.Error("Create cipher failed: ${response.code()}")
             }
             
-            val createdCipher = response.body() ?: return UploadItemResult.Error("Empty response")
+            val createdCipher = response.body()
+            if (createdCipher == null) {
+                captureRawExchange(
+                    vaultId = vault.id,
+                    operation = "upload_secure_item_create",
+                    method = "POST",
+                    endpoint = "/ciphers",
+                    requestBody = requestPayload,
+                    responseCode = response.code(),
+                    responseBody = null,
+                    success = false,
+                    error = "create cipher returned empty body"
+                )
+                return UploadItemResult.Error("Empty response")
+            }
+
+            captureRawExchange(
+                vaultId = vault.id,
+                operation = "upload_secure_item_create",
+                method = "POST",
+                endpoint = "/ciphers",
+                requestBody = requestPayload,
+                responseCode = response.code(),
+                responseBody = runCatching { json.encodeToString(createdCipher) }.getOrNull(),
+                success = true
+            )
             
             // 更新本地条目
             val updatedItem = item.copy(
@@ -97,6 +143,17 @@ class CipherUploadProcessor(
             android.util.Log.d(TAG, "Uploaded SecureItem ${item.id} as cipher ${createdCipher.id}")
             UploadItemResult.Success(createdCipher.id)
         } catch (e: Exception) {
+            captureRawExchange(
+                vaultId = vault.id,
+                operation = "upload_secure_item_create",
+                method = "POST",
+                endpoint = "/ciphers",
+                requestBody = null,
+                responseCode = null,
+                responseBody = null,
+                success = false,
+                error = e.message ?: "unknown"
+            )
             android.util.Log.e(TAG, "Upload SecureItem failed: ${e.message}", e)
             UploadItemResult.Error(e.message ?: "Unknown error")
         }
@@ -121,8 +178,11 @@ class CipherUploadProcessor(
                 else -> return UploadItemResult.Error("Unsupported item type: ${item.itemType}")
             }
 
-            val updateRequest = request.toUpdateRequest()
             val vaultApi = apiManager.getVaultApi(vault)
+            val baselineCipher = fetchCipherForFieldMerge(vaultApi, accessToken, cipherId)
+            val mergedRequest = mergeRequestWithCipherBaseline(request, baselineCipher, symmetricKey)
+            val updateRequest = mergedRequest.toUpdateRequest()
+            val requestPayload = runCatching { json.encodeToString(updateRequest) }.getOrNull()
             val response = vaultApi.updateCipher(
                 authorization = "Bearer $accessToken",
                 cipherId = cipherId,
@@ -130,10 +190,47 @@ class CipherUploadProcessor(
             )
 
             if (!response.isSuccessful) {
+                captureRawExchange(
+                    vaultId = vault.id,
+                    operation = "upload_secure_item_update",
+                    method = "PUT",
+                    endpoint = "/ciphers/$cipherId",
+                    requestBody = requestPayload,
+                    responseCode = response.code(),
+                    responseBody = runCatching { response.errorBody()?.string() }.getOrNull(),
+                    success = false,
+                    error = "update cipher failed: ${response.code()}"
+                )
                 return UploadItemResult.Error("Update cipher failed: ${response.code()}")
             }
 
-            val updatedCipher = response.body() ?: return UploadItemResult.Error("Empty response")
+            val updatedCipher = response.body()
+            if (updatedCipher == null) {
+                captureRawExchange(
+                    vaultId = vault.id,
+                    operation = "upload_secure_item_update",
+                    method = "PUT",
+                    endpoint = "/ciphers/$cipherId",
+                    requestBody = requestPayload,
+                    responseCode = response.code(),
+                    responseBody = null,
+                    success = false,
+                    error = "update cipher returned empty body"
+                )
+                return UploadItemResult.Error("Empty response")
+            }
+
+            captureRawExchange(
+                vaultId = vault.id,
+                operation = "upload_secure_item_update",
+                method = "PUT",
+                endpoint = "/ciphers/$cipherId",
+                requestBody = requestPayload,
+                responseCode = response.code(),
+                responseBody = runCatching { json.encodeToString(updatedCipher) }.getOrNull(),
+                success = true
+            )
+
             val updatedItem = item.copy(
                 bitwardenRevisionDate = updatedCipher.revisionDate,
                 bitwardenLocalModified = false,
@@ -141,8 +238,45 @@ class CipherUploadProcessor(
                 updatedAt = Date()
             )
             secureItemDao.update(updatedItem)
+
+            logBitwardenSecureItemEditHistory(
+                vaultId = vault.id,
+                item = item,
+                cipherId = cipherId,
+                baselineCipher = baselineCipher,
+                updateRequest = updateRequest,
+                symmetricKey = symmetricKey
+            )
             UploadItemResult.Success(updatedCipher.id)
+        } catch (e: IllegalArgumentException) {
+            captureRawExchange(
+                vaultId = vault.id,
+                operation = "upload_secure_item_update",
+                method = "PUT",
+                endpoint = "/ciphers/$cipherId",
+                requestBody = null,
+                responseCode = null,
+                responseBody = null,
+                success = false,
+                error = e.message ?: "invalid payload"
+            )
+            android.util.Log.w(
+                TAG,
+                "Skip SecureItem update to avoid payload pollution: ${e.message}"
+            )
+            UploadItemResult.Error(e.message ?: "Invalid secure item payload")
         } catch (e: Exception) {
+            captureRawExchange(
+                vaultId = vault.id,
+                operation = "upload_secure_item_update",
+                method = "PUT",
+                endpoint = "/ciphers/$cipherId",
+                requestBody = null,
+                responseCode = null,
+                responseBody = null,
+                success = false,
+                error = e.message ?: "unknown"
+            )
             android.util.Log.e(TAG, "Update SecureItem failed: ${e.message}", e)
             UploadItemResult.Error(e.message ?: "Unknown error")
         }
@@ -178,6 +312,7 @@ class CipherUploadProcessor(
             
             // 加密请求
             val encryptedRequest = encryptCipherRequest(request, symmetricKey)
+            val requestPayload = runCatching { json.encodeToString(encryptedRequest) }.getOrNull()
             
             val vaultApi = apiManager.getVaultApi(vault)
             val response = vaultApi.createCipher(
@@ -186,10 +321,46 @@ class CipherUploadProcessor(
             )
             
             if (!response.isSuccessful) {
+                captureRawExchange(
+                    vaultId = vault.id,
+                    operation = "upload_passkey_create",
+                    method = "POST",
+                    endpoint = "/ciphers",
+                    requestBody = requestPayload,
+                    responseCode = response.code(),
+                    responseBody = runCatching { response.errorBody()?.string() }.getOrNull(),
+                    success = false,
+                    error = "create cipher failed: ${response.code()}"
+                )
                 return fail("Create cipher failed: ${response.code()}")
             }
             
-            val createdCipher = response.body() ?: return fail("Empty response")
+            val createdCipher = response.body()
+            if (createdCipher == null) {
+                captureRawExchange(
+                    vaultId = vault.id,
+                    operation = "upload_passkey_create",
+                    method = "POST",
+                    endpoint = "/ciphers",
+                    requestBody = requestPayload,
+                    responseCode = response.code(),
+                    responseBody = null,
+                    success = false,
+                    error = "create cipher returned empty body"
+                )
+                return fail("Empty response")
+            }
+
+            captureRawExchange(
+                vaultId = vault.id,
+                operation = "upload_passkey_create",
+                method = "POST",
+                endpoint = "/ciphers",
+                requestBody = requestPayload,
+                responseCode = response.code(),
+                responseBody = runCatching { json.encodeToString(createdCipher) }.getOrNull(),
+                success = true
+            )
             if (createdCipher.login?.fido2Credentials.isNullOrEmpty()) {
                 return fail("Server created cipher without FIDO2 credential")
             }
@@ -201,6 +372,17 @@ class CipherUploadProcessor(
             UploadItemResult.Success(createdCipher.id)
         } catch (e: Exception) {
             runCatching { passkeyDao.markFailed(passkey.credentialId) }
+            captureRawExchange(
+                vaultId = vault.id,
+                operation = "upload_passkey_create",
+                method = "POST",
+                endpoint = "/ciphers",
+                requestBody = null,
+                responseCode = null,
+                responseBody = null,
+                success = false,
+                error = e.message ?: "unknown"
+            )
             android.util.Log.e(TAG, "Upload Passkey failed: ${e.message}", e)
             UploadItemResult.Error(e.message ?: "Unknown error")
         }
@@ -237,6 +419,7 @@ class CipherUploadProcessor(
 
             val encryptedCreate = encryptCipherRequest(createRequest, symmetricKey)
             val updateRequest = encryptedCreate.toUpdateRequest()
+            val requestPayload = runCatching { json.encodeToString(updateRequest) }.getOrNull()
 
             val vaultApi = apiManager.getVaultApi(vault)
             val response = vaultApi.updateCipher(
@@ -246,10 +429,46 @@ class CipherUploadProcessor(
             )
 
             if (!response.isSuccessful) {
+                captureRawExchange(
+                    vaultId = vault.id,
+                    operation = "upload_passkey_update",
+                    method = "PUT",
+                    endpoint = "/ciphers/$cipherId",
+                    requestBody = requestPayload,
+                    responseCode = response.code(),
+                    responseBody = runCatching { response.errorBody()?.string() }.getOrNull(),
+                    success = false,
+                    error = "update cipher failed: ${response.code()}"
+                )
                 return fail("Update cipher failed: ${response.code()}")
             }
 
-            val updatedCipher = response.body() ?: return fail("Empty response")
+            val updatedCipher = response.body()
+            if (updatedCipher == null) {
+                captureRawExchange(
+                    vaultId = vault.id,
+                    operation = "upload_passkey_update",
+                    method = "PUT",
+                    endpoint = "/ciphers/$cipherId",
+                    requestBody = requestPayload,
+                    responseCode = response.code(),
+                    responseBody = null,
+                    success = false,
+                    error = "update cipher returned empty body"
+                )
+                return fail("Empty response")
+            }
+
+            captureRawExchange(
+                vaultId = vault.id,
+                operation = "upload_passkey_update",
+                method = "PUT",
+                endpoint = "/ciphers/$cipherId",
+                requestBody = requestPayload,
+                responseCode = response.code(),
+                responseBody = runCatching { json.encodeToString(updatedCipher) }.getOrNull(),
+                success = true
+            )
             if (updatedCipher.login?.fido2Credentials.isNullOrEmpty()) {
                 return fail("Server updated cipher without FIDO2 credential")
             }
@@ -258,6 +477,17 @@ class CipherUploadProcessor(
             UploadItemResult.Success(updatedCipher.id)
         } catch (e: Exception) {
             runCatching { passkeyDao.markFailed(passkey.credentialId) }
+            captureRawExchange(
+                vaultId = vault.id,
+                operation = "upload_passkey_update",
+                method = "PUT",
+                endpoint = "/ciphers/$cipherId",
+                requestBody = null,
+                responseCode = null,
+                responseBody = null,
+                success = false,
+                error = e.message ?: "unknown"
+            )
             android.util.Log.e(TAG, "Update Passkey failed: ${e.message}", e)
             UploadItemResult.Error(e.message ?: "Unknown error")
         }
@@ -456,6 +686,302 @@ class CipherUploadProcessor(
 
     private fun canSyncPasskeyToBitwarden(passkey: PasskeyEntry): Boolean {
         return passkey.passkeyMode == PasskeyEntry.MODE_BW_COMPAT
+    }
+
+    private suspend fun captureRawExchange(
+        vaultId: Long,
+        operation: String,
+        method: String,
+        endpoint: String,
+        requestBody: String?,
+        responseCode: Int?,
+        responseBody: String?,
+        success: Boolean,
+        error: String? = null
+    ) {
+        runCatching {
+            BitwardenSyncForensicsLogger.captureRawExchange(
+                context = context,
+                vaultId = vaultId,
+                operation = operation,
+                method = method,
+                endpoint = endpoint,
+                requestBody = requestBody,
+                responseCode = responseCode,
+                responseBody = responseBody,
+                success = success,
+                errorMessage = error
+            )
+        }.onFailure { captureError ->
+            android.util.Log.w(TAG, "Capture raw exchange failed: ${captureError.message}")
+        }
+    }
+
+    private fun logBitwardenSecureItemEditHistory(
+        vaultId: Long,
+        item: SecureItem,
+        cipherId: String,
+        baselineCipher: CipherApiResponse?,
+        updateRequest: CipherUpdateRequest,
+        symmetricKey: SymmetricCryptoKey
+    ) {
+        val changes = buildSecureItemEditHistoryChanges(
+            baselineCipher = baselineCipher,
+            updateRequest = updateRequest,
+            symmetricKey = symmetricKey
+        )
+        if (changes.isEmpty()) return
+
+        OperationLogger.logUpdate(
+            itemType = OperationLogItemType.BITWARDEN_SYNC,
+            itemId = buildBitwardenItemId(vaultId, cipherId),
+            itemTitle = item.title.ifBlank { "Bitwarden Secure Item" },
+            changes = changes
+        )
+    }
+
+    private fun buildSecureItemEditHistoryChanges(
+        baselineCipher: CipherApiResponse?,
+        updateRequest: CipherUpdateRequest,
+        symmetricKey: SymmetricCryptoKey
+    ): List<FieldChange> {
+        val changes = mutableListOf<FieldChange>()
+
+        appendIfChanged(
+            changes = changes,
+            fieldName = "title",
+            oldValue = decryptOrPlain(baselineCipher?.name, symmetricKey),
+            newValue = decryptOrPlain(updateRequest.name, symmetricKey),
+            sensitive = false
+        )
+        appendIfChanged(
+            changes = changes,
+            fieldName = "notes",
+            oldValue = decryptOrPlain(baselineCipher?.notes, symmetricKey),
+            newValue = decryptOrPlain(updateRequest.notes, symmetricKey),
+            sensitive = true
+        )
+
+        val oldFavorite = baselineCipher?.favorite ?: false
+        val newFavorite = updateRequest.favorite ?: false
+        if (oldFavorite != newFavorite) {
+            changes += FieldChange("favorite", oldFavorite.toString(), newFavorite.toString())
+        }
+
+        val oldArchived = baselineCipher?.archivedDate.orEmpty().ifBlank { "active" }
+        val newArchived = updateRequest.archivedDate.orEmpty().ifBlank { "active" }
+        if (oldArchived != newArchived) {
+            changes += FieldChange("archived", oldArchived, newArchived)
+        }
+
+        appendIfChanged(
+            changes = changes,
+            fieldName = "username",
+            oldValue = decryptOrPlain(baselineCipher?.login?.username, symmetricKey),
+            newValue = decryptOrPlain(updateRequest.login?.username, symmetricKey),
+            sensitive = true
+        )
+        appendIfChanged(
+            changes = changes,
+            fieldName = "totp",
+            oldValue = decryptOrPlain(baselineCipher?.login?.totp, symmetricKey),
+            newValue = decryptOrPlain(updateRequest.login?.totp, symmetricKey),
+            sensitive = true
+        )
+
+        val oldUriCount = baselineCipher?.login?.uris?.size ?: 0
+        val newUriCount = updateRequest.login?.uris?.size ?: 0
+        if (oldUriCount != newUriCount) {
+            changes += FieldChange("login_uri_count", oldUriCount.toString(), newUriCount.toString())
+        }
+
+        appendIfChanged(
+            changes = changes,
+            fieldName = "cardholder",
+            oldValue = decryptOrPlain(baselineCipher?.card?.cardholderName, symmetricKey),
+            newValue = decryptOrPlain(updateRequest.card?.cardholderName, symmetricKey),
+            sensitive = true
+        )
+        appendIfChanged(
+            changes = changes,
+            fieldName = "card_number",
+            oldValue = decryptOrPlain(baselineCipher?.card?.number, symmetricKey),
+            newValue = decryptOrPlain(updateRequest.card?.number, symmetricKey),
+            sensitive = true
+        )
+        appendIfChanged(
+            changes = changes,
+            fieldName = "card_exp_month",
+            oldValue = decryptOrPlain(baselineCipher?.card?.expMonth, symmetricKey),
+            newValue = decryptOrPlain(updateRequest.card?.expMonth, symmetricKey),
+            sensitive = true
+        )
+        appendIfChanged(
+            changes = changes,
+            fieldName = "card_exp_year",
+            oldValue = decryptOrPlain(baselineCipher?.card?.expYear, symmetricKey),
+            newValue = decryptOrPlain(updateRequest.card?.expYear, symmetricKey),
+            sensitive = true
+        )
+        appendIfChanged(
+            changes = changes,
+            fieldName = "card_cvv",
+            oldValue = decryptOrPlain(baselineCipher?.card?.code, symmetricKey),
+            newValue = decryptOrPlain(updateRequest.card?.code, symmetricKey),
+            sensitive = true
+        )
+
+        appendIfChanged(
+            changes = changes,
+            fieldName = "identity_first_name",
+            oldValue = decryptOrPlain(baselineCipher?.identity?.firstName, symmetricKey),
+            newValue = decryptOrPlain(updateRequest.identity?.firstName, symmetricKey),
+            sensitive = true
+        )
+        appendIfChanged(
+            changes = changes,
+            fieldName = "identity_last_name",
+            oldValue = decryptOrPlain(baselineCipher?.identity?.lastName, symmetricKey),
+            newValue = decryptOrPlain(updateRequest.identity?.lastName, symmetricKey),
+            sensitive = true
+        )
+        appendIfChanged(
+            changes = changes,
+            fieldName = "identity_email",
+            oldValue = decryptOrPlain(baselineCipher?.identity?.email, symmetricKey),
+            newValue = decryptOrPlain(updateRequest.identity?.email, symmetricKey),
+            sensitive = true
+        )
+        appendIfChanged(
+            changes = changes,
+            fieldName = "identity_phone",
+            oldValue = decryptOrPlain(baselineCipher?.identity?.phone, symmetricKey),
+            newValue = decryptOrPlain(updateRequest.identity?.phone, symmetricKey),
+            sensitive = true
+        )
+
+        val oldFieldSummary = summarizeFieldCollection(baselineCipher?.fields, symmetricKey)
+        val newFieldSummary = summarizeFieldCollection(updateRequest.fields, symmetricKey)
+        if (oldFieldSummary != newFieldSummary) {
+            changes += FieldChange("custom_fields", oldFieldSummary, newFieldSummary)
+        }
+
+        return changes
+    }
+
+    private fun summarizeFieldCollection(
+        fields: List<CipherFieldApiData>?,
+        symmetricKey: SymmetricCryptoKey
+    ): String {
+        if (fields.isNullOrEmpty()) return "count=0"
+
+        val nameSamples = fields.mapNotNull { field ->
+            decryptOrPlain(field.name, symmetricKey)
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+                ?.replace("\n", " ")
+                ?.replace("\r", "")
+                ?.take(24)
+        }.distinct().sorted().take(4)
+
+        val signatures = fields.map { field ->
+            val plainName = decryptOrPlain(field.name, symmetricKey).orEmpty().trim()
+            val plainValue = decryptOrPlain(field.value, symmetricKey)
+            val summarizedValue = summarizeHistoryValue(plainValue, sensitive = true)
+            "${field.type}|${field.linkedId}|$plainName|$summarizedValue"
+        }.sorted()
+
+        val sampleText = nameSamples.joinToString("|").ifBlank { "-" }
+        return "count=${fields.size},names=$sampleText,sha=${shortSha(signatures.joinToString("||"))}"
+    }
+
+    private fun appendIfChanged(
+        changes: MutableList<FieldChange>,
+        fieldName: String,
+        oldValue: String?,
+        newValue: String?,
+        sensitive: Boolean
+    ) {
+        val oldNormalized = oldValue.orEmpty()
+        val newNormalized = newValue.orEmpty()
+        if (oldNormalized == newNormalized) return
+
+        changes += FieldChange(
+            fieldName = fieldName,
+            oldValue = summarizeHistoryValue(oldNormalized, sensitive),
+            newValue = summarizeHistoryValue(newNormalized, sensitive)
+        )
+    }
+
+    private fun summarizeHistoryValue(value: String?, sensitive: Boolean): String {
+        val normalized = value.orEmpty()
+        if (normalized.isBlank()) return "(empty)"
+
+        if (sensitive) {
+            return summarizeSensitiveHistoryValue(normalized)
+        }
+
+        val sanitized = normalized
+            .replace("\n", "\\n")
+            .replace("\r", "")
+        if (sanitized.length <= 180) {
+            return sanitized
+        }
+        val head = sanitized.take(120)
+        val tail = sanitized.takeLast(40)
+        val omitted = (sanitized.length - 160).coerceAtLeast(0)
+        return "$head...(omitted=$omitted)...$tail"
+    }
+
+    private fun summarizeSensitiveHistoryValue(normalized: String): String {
+        val lower = normalized.count { it.isLowerCase() }
+        val upper = normalized.count { it.isUpperCase() }
+        val digits = normalized.count { it.isDigit() }
+        val spaces = normalized.count { it.isWhitespace() }
+        val symbols = (normalized.length - lower - upper - digits - spaces).coerceAtLeast(0)
+        val lines = normalized.count { it == '\n' } + 1
+        val format = detectSensitiveFormat(normalized)
+        val pattern = buildClassPattern(normalized)
+
+        return "len=${normalized.length},sha=${shortSha(normalized)},fmt=$format,lines=$lines,mix=u$upper/l$lower/d$digits/s$symbols,pat=$pattern"
+    }
+
+    private fun detectSensitiveFormat(value: String): String {
+        val trimmed = value.trim()
+        if (trimmed.isEmpty()) return "empty"
+        return when {
+            trimmed.startsWith("otpauth://", ignoreCase = true) -> "otpauth"
+            trimmed.startsWith("http://", ignoreCase = true) ||
+                trimmed.startsWith("https://", ignoreCase = true) -> "url"
+            trimmed.startsWith("{") && trimmed.endsWith("}") -> "json_like"
+            trimmed.contains('@') && !trimmed.contains(' ') -> "email_like"
+            trimmed.all { it.isDigit() } -> "digits"
+            trimmed.contains("\n") -> "multiline"
+            else -> "text"
+        }
+    }
+
+    private fun buildClassPattern(value: String, maxLen: Int = 24): String {
+        val pattern = value.take(maxLen).map { ch ->
+            when {
+                ch.isUpperCase() -> 'A'
+                ch.isLowerCase() -> 'a'
+                ch.isDigit() -> '0'
+                ch.isWhitespace() -> '_'
+                else -> '#'
+            }
+        }.joinToString("")
+        return if (value.length > maxLen) "$pattern..." else pattern
+    }
+
+    private fun shortSha(value: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val bytes = digest.digest(value.toByteArray(Charsets.UTF_8))
+        return bytes.take(6).joinToString(separator = "") { b -> "%02x".format(b) }
+    }
+
+    private fun buildBitwardenItemId(vaultId: Long, cipherId: String): Long {
+        return "${vaultId}:$cipherId".hashCode().toLong() and 0x7FFFFFFFL
     }
     
     // ========== 创建各类型 Cipher 请求 ==========
@@ -669,14 +1195,18 @@ class CipherUploadProcessor(
             try {
                 json.decodeFromString(TotpItemData.serializer(), item.itemData)
             } catch (_: Exception) {
-                TotpItemData()
+                throw IllegalArgumentException(
+                    "Unsupported TOTP payload for SecureItem#${item.id}; update skipped to prevent data loss"
+                )
             }
         }
     }
 
     private fun parseBankCardData(item: SecureItem): BankCardData {
         return CardWalletDataCodec.parseBankCardData(item.itemData)
-            ?: BankCardData(cardNumber = "", cardholderName = "", expiryMonth = "", expiryYear = "")
+            ?: throw IllegalArgumentException(
+                "Unsupported BANK_CARD payload for SecureItem#${item.id}; update skipped to prevent data loss"
+            )
     }
 
     private fun parseNoteData(item: SecureItem): NoteItemData {
@@ -691,14 +1221,110 @@ class CipherUploadProcessor(
             try {
                 json.decodeFromString(NoteItemData.serializer(), item.itemData)
             } catch (_: Exception) {
-                NoteItemData(content = item.notes)
+                if (item.itemData.isBlank() && item.notes.isNotBlank()) {
+                    NoteItemData(content = item.notes)
+                } else {
+                    throw IllegalArgumentException(
+                        "Unsupported NOTE payload for SecureItem#${item.id}; update skipped to prevent data loss"
+                    )
+                }
             }
         }
     }
 
     private fun parseDocumentData(item: SecureItem): DocumentData {
         return CardWalletDataCodec.parseDocumentData(item.itemData)
-            ?: DocumentData(documentType = DocumentType.ID_CARD, documentNumber = "", fullName = "")
+            ?: throw IllegalArgumentException(
+                "Unsupported DOCUMENT payload for SecureItem#${item.id}; update skipped to prevent data loss"
+            )
+    }
+
+    private suspend fun fetchCipherForFieldMerge(
+        vaultApi: BitwardenVaultApi,
+        accessToken: String,
+        cipherId: String
+    ): CipherApiResponse? {
+        return try {
+            val response = vaultApi.getCipher(
+                authorization = "Bearer $accessToken",
+                cipherId = cipherId
+            )
+            if (response.isSuccessful) {
+                response.body()
+            } else {
+                android.util.Log.w(
+                    TAG,
+                    "Fetch cipher baseline failed for merge, cipherId=$cipherId, code=${response.code()}"
+                )
+                null
+            }
+        } catch (e: Exception) {
+            android.util.Log.w(
+                TAG,
+                "Fetch cipher baseline exception for merge, cipherId=$cipherId, error=${e.message}"
+            )
+            null
+        }
+    }
+
+    private fun mergeRequestWithCipherBaseline(
+        request: CipherCreateRequest,
+        baselineCipher: CipherApiResponse?,
+        symmetricKey: SymmetricCryptoKey
+    ): CipherCreateRequest {
+        if (baselineCipher == null) return request
+
+        val mergedFields = mergeCipherFields(
+            localFields = request.fields,
+            serverFields = baselineCipher.fields,
+            symmetricKey = symmetricKey
+        )
+
+        return request.copy(fields = mergedFields)
+    }
+
+    private fun mergeCipherFields(
+        localFields: List<CipherFieldApiData>?,
+        serverFields: List<CipherFieldApiData>?,
+        symmetricKey: SymmetricCryptoKey
+    ): List<CipherFieldApiData>? {
+        if (serverFields.isNullOrEmpty()) return localFields
+
+        val merged = localFields.orEmpty().toMutableList()
+        val fieldKeys = localFields.orEmpty()
+            .map { buildFieldMergeKey(it, symmetricKey) }
+            .toMutableSet()
+
+        serverFields.forEach { serverField ->
+            val serverKey = buildFieldMergeKey(serverField, symmetricKey)
+            if (fieldKeys.add(serverKey)) {
+                merged += serverField
+            }
+        }
+
+        return merged.ifEmpty { null }
+    }
+
+    private fun buildFieldMergeKey(
+        field: CipherFieldApiData,
+        symmetricKey: SymmetricCryptoKey
+    ): String {
+        val plainName = decryptOrPlain(field.name, symmetricKey)
+            ?.trim()
+            .orEmpty()
+        return if (plainName.isBlank()) {
+            "opaque|${field.type}|${field.linkedId}|${field.name.orEmpty()}|${field.value.orEmpty()}"
+        } else {
+            "named|${field.type}|${field.linkedId}|$plainName"
+        }
+    }
+
+    private fun decryptOrPlain(value: String?, symmetricKey: SymmetricCryptoKey): String? {
+        if (value.isNullOrBlank()) return value
+        if (!CIPHER_STRING_PATTERN.matches(value)) return value
+        return runCatching {
+            BitwardenCrypto.decryptToString(value, symmetricKey)
+        }.getOrNull()
     }
 
     private fun buildEncryptedDocumentFields(

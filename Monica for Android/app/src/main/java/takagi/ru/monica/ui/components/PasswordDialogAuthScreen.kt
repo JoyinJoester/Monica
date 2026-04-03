@@ -10,17 +10,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -38,14 +31,13 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.Flow
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.ThemeMode
+import takagi.ru.monica.security.MasterPasswordPolicy
 import takagi.ru.monica.ui.theme.MonicaTheme
 
 @Composable
@@ -58,7 +50,7 @@ fun MonicaPasswordDialogAuthScreen(
     confirmText: String,
     cancelText: String,
     emptyError: String,
-    numericError: String,
+    unsupportedCharacterError: String,
     minLengthError: String,
     incorrectError: String,
     verifyPassword: (String) -> Boolean,
@@ -96,7 +88,7 @@ fun MonicaPasswordDialogAuthScreen(
                 confirmText = confirmText,
                 cancelText = cancelText,
                 emptyError = emptyError,
-                numericError = numericError,
+                unsupportedCharacterError = unsupportedCharacterError,
                 minLengthError = minLengthError,
                 incorrectError = incorrectError,
                 verifyPassword = verifyPassword,
@@ -118,7 +110,7 @@ private fun MonicaPasswordDialogAuthCard(
     confirmText: String,
     cancelText: String,
     emptyError: String,
-    numericError: String,
+    unsupportedCharacterError: String,
     minLengthError: String,
     incorrectError: String,
     verifyPassword: (String) -> Boolean,
@@ -176,49 +168,33 @@ private fun MonicaPasswordDialogAuthCard(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            OutlinedTextField(
+            MasterPasswordTextField(
                 value = password,
                 onValueChange = { input ->
-                    val sanitized = input.filter { it.isDigit() }
-                    password = sanitized
-                    errorMessage = when {
-                        input.isEmpty() -> null
-                        input != sanitized -> numericError
-                        else -> null
-                    }
+                    password = input
+                    errorMessage = null
+                },
+                onUnsupportedCharacterAttempt = {
+                    errorMessage = unsupportedCharacterError
                 },
                 label = { Text(passwordLabel) },
                 placeholder = { Text(description) },
-                visualTransformation = if (passwordVisible) {
-                    VisualTransformation.None
+                visible = passwordVisible,
+                onVisibilityChange = { passwordVisible = it },
+                imeAction = ImeAction.Done,
+                isError = errorMessage != null,
+                supportingText = if (errorMessage != null) {
+                    { Text(text = errorMessage.orEmpty()) }
                 } else {
-                    PasswordVisualTransformation()
+                    null
                 },
-                trailingIcon = {
-                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                        Icon(
-                            imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                            contentDescription = null
-                        )
-                    }
-                },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(focusRequester),
-                shape = RoundedCornerShape(28.dp)
             )
 
             if (errorMessage != null) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = errorMessage.orEmpty(),
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodySmall,
-                    textAlign = TextAlign.Start,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                Spacer(modifier = Modifier.height(4.dp))
             }
 
             Spacer(modifier = Modifier.height(20.dp))
@@ -226,8 +202,8 @@ private fun MonicaPasswordDialogAuthCard(
             Button(
                 onClick = {
                     when {
-                        password.isBlank() -> errorMessage = emptyError
-                        password.length < 4 -> errorMessage = minLengthError
+                        MasterPasswordPolicy.isEmpty(password) -> errorMessage = emptyError
+                        !MasterPasswordPolicy.meetsMinLength(password) -> errorMessage = minLengthError
                         !verifyPassword(password) -> errorMessage = incorrectError
                         else -> {
                             keyboardController?.hide()

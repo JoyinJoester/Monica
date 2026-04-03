@@ -227,6 +227,7 @@ class PasswordViewModel(
         observeInvalidCustomCategoryFilter()
         viewModelScope.launch {
             repairLegacyDetachedKeePassEntries()
+            repairLegacyOwnershipConflicts()
         }
     }
     
@@ -828,14 +829,14 @@ class PasswordViewModel(
 
     suspend fun getRawPasswordEntryById(id: Long): PasswordEntry? {
         val entry = repository.getPasswordEntryById(id) ?: return null
-        return normalizeLegacyDetachedKeePassEntry(entry)
+        return normalizeLegacyOwnershipMetadata(entry)
     }
 
     suspend fun getRawActivePasswordEntries(): List<PasswordEntry> {
         val entries = repository.getAllPasswordEntries().first()
         val normalizedEntries = ArrayList<PasswordEntry>(entries.size)
         entries.forEach { entry ->
-            normalizedEntries += normalizeLegacyDetachedKeePassEntry(entry)
+            normalizedEntries += normalizeLegacyOwnershipMetadata(entry)
         }
         return normalizedEntries
     }
@@ -873,6 +874,81 @@ class PasswordViewModel(
         Log.i(
             "PasswordViewModel",
             "Detached legacy KeePass-local password bindings: count=${staleIds.size}"
+        )
+    }
+
+    private suspend fun repairLegacyOwnershipConflicts() {
+        val entries = repository.getAllPasswordEntries().first()
+        var repairedCount = 0
+
+        entries.forEach { entry ->
+            if (!entry.hasOwnershipConflict()) return@forEach
+            val normalized = normalizeLegacyOwnershipConflictEntry(entry)
+            if (normalized != entry) {
+                repairedCount++
+            }
+        }
+
+        if (repairedCount > 0) {
+            Log.i(
+                "PasswordViewModel",
+                "Repaired legacy ownership conflicts: count=$repairedCount"
+            )
+        }
+    }
+
+    private suspend fun normalizeLegacyOwnershipMetadata(entry: PasswordEntry): PasswordEntry {
+        val keePassNormalized = normalizeLegacyDetachedKeePassEntry(entry)
+        return normalizeLegacyOwnershipConflictEntry(keePassNormalized)
+    }
+
+    private suspend fun normalizeLegacyOwnershipConflictEntry(entry: PasswordEntry): PasswordEntry {
+        if (!entry.hasOwnershipConflict()) return entry
+
+        val hasKeePassIdentity =
+            !entry.keepassEntryUuid.isNullOrBlank() ||
+                !entry.keepassGroupUuid.isNullOrBlank() ||
+                !entry.keepassGroupPath.isNullOrBlank()
+
+        val hasBitwardenIdentity =
+            !entry.bitwardenCipherId.isNullOrBlank() ||
+                !entry.bitwardenRevisionDate.isNullOrBlank() ||
+                entry.bitwardenLocalModified
+
+        val normalized = when {
+            hasBitwardenIdentity && !hasKeePassIdentity -> entry.clearKeePassBindingOnly()
+            hasKeePassIdentity && !hasBitwardenIdentity -> entry.clearBitwardenBindingOnly()
+            !hasKeePassIdentity && !hasBitwardenIdentity &&
+                entry.keepassGroupPath.isNullOrBlank() &&
+                entry.bitwardenFolderId.isNullOrBlank() -> {
+                entry.clearKeePassBindingOnly().clearBitwardenBindingOnly()
+            }
+
+            else -> entry
+        }
+
+        if (normalized == entry) return entry
+
+        repository.updatePasswordEntry(normalized)
+        return repository.getPasswordEntryById(entry.id) ?: normalized
+    }
+
+    private fun PasswordEntry.clearKeePassBindingOnly(): PasswordEntry {
+        return copy(
+            keepassDatabaseId = null,
+            keepassGroupPath = null,
+            keepassEntryUuid = null,
+            keepassGroupUuid = null
+        )
+    }
+
+    private fun PasswordEntry.clearBitwardenBindingOnly(): PasswordEntry {
+        return copy(
+            bitwardenVaultId = null,
+            bitwardenCipherId = null,
+            bitwardenFolderId = null,
+            bitwardenRevisionDate = null,
+            bitwardenLocalModified = false
         )
     }
 
@@ -1698,6 +1774,14 @@ class PasswordViewModel(
     fun updatePasswordEntry(entry: PasswordEntry) {
         viewModelScope.launch {
             updatePasswordEntryInternal(entry)
+        }
+    }
+
+    fun updateBoundNoteId(id: Long, noteId: Long?) {
+        viewModelScope.launch {
+            repository.getPasswordEntryById(id)?.let { entry ->
+                updatePasswordEntryInternal(entry.copy(boundNoteId = noteId))
+            }
         }
     }
 
@@ -2711,6 +2795,7 @@ class PasswordViewModel(
                     creditCardExpiry = draftEntry.creditCardExpiry,
                     creditCardCVV = draftEntry.creditCardCVV,
                     categoryId = draftEntry.categoryId,
+                    boundNoteId = draftEntry.boundNoteId,
                     keepassDatabaseId = draftEntry.keepassDatabaseId,
                     keepassGroupPath = draftEntry.keepassGroupPath,
                     authenticatorKey = draftEntry.authenticatorKey,

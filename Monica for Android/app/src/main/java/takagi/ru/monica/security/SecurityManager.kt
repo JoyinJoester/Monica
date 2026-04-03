@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import takagi.ru.monica.data.PredefinedSecurityQuestions
 import takagi.ru.monica.utils.SettingsManager
 import java.security.KeyStore
 import java.security.MessageDigest
@@ -94,8 +95,10 @@ class SecurityManager(private val context: Context) {
         private const val AUTO_LOCK_TIMEOUT_KEY = "auto_lock_timeout"
         private const val SECURITY_QUESTION_1_ID_KEY = "security_question_1_id"
         private const val SECURITY_QUESTION_1_ANSWER_KEY = "security_question_1_answer"
+        private const val SECURITY_QUESTION_1_TEXT_KEY = "security_question_1_text"
         private const val SECURITY_QUESTION_2_ID_KEY = "security_question_2_id"
         private const val SECURITY_QUESTION_2_ANSWER_KEY = "security_question_2_answer"
+        private const val SECURITY_QUESTION_2_TEXT_KEY = "security_question_2_text"
         private const val PBKDF2_ITERATIONS = 100000
         private const val MDK_PASSWORD_BLOB_KEY = "mdk_password_blob"
         private const val MDK_PASSWORD_SALT_KEY = "mdk_password_salt"
@@ -456,15 +459,30 @@ class SecurityManager(private val context: Context) {
     /**
      * Security Questions Management
      */
-    fun setSecurityQuestions(question1Id: Int, answer1: String, question2Id: Int, answer2: String) {
+    fun setSecurityQuestions(
+        question1Id: Int,
+        answer1: String,
+        question2Id: Int,
+        answer2: String,
+        question1Text: String? = null,
+        question2Text: String? = null
+    ) {
         val hashedAnswer1 = hashAnswer(answer1)
         val hashedAnswer2 = hashAnswer(answer2)
         
         sharedPreferences.edit()
             .putInt(SECURITY_QUESTION_1_ID_KEY, question1Id)
             .putString(SECURITY_QUESTION_1_ANSWER_KEY, hashedAnswer1)
+            .putString(
+                SECURITY_QUESTION_1_TEXT_KEY,
+                if (PredefinedSecurityQuestions.isCustomQuestion(question1Id)) question1Text else null
+            )
             .putInt(SECURITY_QUESTION_2_ID_KEY, question2Id)
             .putString(SECURITY_QUESTION_2_ANSWER_KEY, hashedAnswer2)
+            .putString(
+                SECURITY_QUESTION_2_TEXT_KEY,
+                if (PredefinedSecurityQuestions.isCustomQuestion(question2Id)) question2Text else null
+            )
             .apply()
     }
     
@@ -479,6 +497,22 @@ class SecurityManager(private val context: Context) {
     
     fun getSecurityQuestion2Id(): Int {
         return sharedPreferences.getInt(SECURITY_QUESTION_2_ID_KEY, -1)
+    }
+
+    fun getSecurityQuestion1Text(isZh: Boolean = false): String? {
+        return resolveSecurityQuestionText(
+            id = getSecurityQuestion1Id(),
+            customText = sharedPreferences.getString(SECURITY_QUESTION_1_TEXT_KEY, null),
+            isZh = isZh
+        )
+    }
+
+    fun getSecurityQuestion2Text(isZh: Boolean = false): String? {
+        return resolveSecurityQuestionText(
+            id = getSecurityQuestion2Id(),
+            customText = sharedPreferences.getString(SECURITY_QUESTION_2_TEXT_KEY, null),
+            isZh = isZh
+        )
     }
     
     fun verifySecurityAnswers(answer1: String, answer2: String): Boolean {
@@ -502,9 +536,23 @@ class SecurityManager(private val context: Context) {
         sharedPreferences.edit()
             .remove(SECURITY_QUESTION_1_ID_KEY)
             .remove(SECURITY_QUESTION_1_ANSWER_KEY)
+            .remove(SECURITY_QUESTION_1_TEXT_KEY)
             .remove(SECURITY_QUESTION_2_ID_KEY)
             .remove(SECURITY_QUESTION_2_ANSWER_KEY)
+            .remove(SECURITY_QUESTION_2_TEXT_KEY)
             .apply()
+    }
+
+    private fun resolveSecurityQuestionText(
+        id: Int,
+        customText: String?,
+        isZh: Boolean
+    ): String? {
+        return if (PredefinedSecurityQuestions.isCustomQuestion(id)) {
+            customText
+        } else {
+            PredefinedSecurityQuestions.getQuestionById(id, isZh)?.questionText
+        }
     }
     
     /**

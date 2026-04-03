@@ -32,6 +32,14 @@
     <string name="untitled">无标题</string>
     <string name="edit_note">编辑笔记</string>
     <string name="delete_note_confirm">确定要删除这条笔记吗？</string>
+    <string name="note_picker_title">选择笔记</string>
+    <string name="password_bound_note_title">关联笔记</string>
+    <string name="bind_note">绑定笔记</string>
+    <string name="change_bound_note">更换笔记</string>
+    <string name="unbind_note">解绑笔记</string>
+    <string name="open_bound_note">打开笔记</string>
+    <string name="bound_note_missing_message">已绑定的笔记当前不可用，你可以重新绑定或移除此引用。</string>
+    <string name="password_bound_note_empty">暂未绑定笔记。</string>
     <string name="note_mode_plain">纯文本</string>
     <string name="note_mode_markdown">Markdown</string>
     <string name="note_mode_edit">编辑</string>
@@ -168,6 +176,9 @@
     <string name="smart_copy_notification_title">Monica</string>
     <string name="smart_copy_notification_copy_password">点击复制密码</string>
     <string name="smart_copy_notification_copy_username">点击复制账号</string>
+    <string name="smart_copy_notification_unavailable">无法加入第二步复制，请手动复制。</string>
+    <string name="autofill_copy_password_unavailable">密码无法解密，请进入详情后手动复制。</string>
+    <string name="autofill_copy_account_unavailable">账号为空，请进入详情后手动复制。</string>
     
     <!-- Autofill Authentication -->
     <string name="autofill_auth_required">自动填充验证</string>
@@ -542,22 +553,25 @@
     <string name="delete_password_message">确定要删除「%s」吗？</string>
     
     <!-- Error Messages -->
-    <string name="error_password_too_short">主密码至少需要4个字符</string>
-    <string name="error_password_must_be_6_digits">密码必须为4位数字</string>
-    <string name="error_password_min_6_digits">密码至少需要4位数字</string>
-    <string name="error_password_must_be_numeric">密码只能包含数字</string>
+    <string name="error_password_too_short">主密码至少需要3个字符</string>
+    <string name="error_password_must_be_6_digits">主密码至少需要3个字符</string>
+    <string name="error_password_min_6_digits">主密码至少需要3个字符</string>
+    <string name="error_password_must_be_numeric">主密码包含不支持的字符</string>
+    <string name="error_password_contains_unsupported_characters">主密码包含不支持的字符</string>
     <string name="error_passwords_not_match">密码不匹配</string>
     <string name="error_invalid_password">主密码无效</string>
     <string name="error_authentication_failed">认证失败</string>
     <string name="error_title_required">标题为必填项</string>
     <string name="error_password_required">密码为必填项</string>
-    <string name="password_min_6_digits">最少需要4位数字</string>
+    <string name="password_min_6_digits">至少需要3个字符</string>
     
     <!-- Settings Screen -->
     <string name="settings_title">设置</string>
     <string name="language">语言</string>
     <string name="theme">外观</string>  <!-- 将"主题"重命名为"外观" -->
     <string name="security">安全</string>
+    <string name="master_password_and_locking">主密码与锁定</string>
+    <string name="master_password_and_locking_description">管理指纹解锁、自动锁定、密保问题与主密码重设。</string>
     <string name="auto_lock">自动锁定</string>
     <string name="auto_lock_summary">闲置后锁定应用</string>
     <string name="about">关于</string>
@@ -592,12 +606,12 @@
     <string name="reset_password_title">重设密码</string>
     <string name="reset_password">重设密码</string>
     <string name="reset_master_password">重设主密码</string>
-    <string name="reset_password_description">请输入当前密码并设置新的纯数字密码（最低4位数字）</string>
-    <string name="reset_password_verified_description">请设置您的新纯数字密码（最低4位数字）</string>
+    <string name="reset_password_description">请输入当前密码并设置新的主密码（至少3个字符）</string>
+    <string name="reset_password_verified_description">请设置您的新主密码（至少3个字符）</string>
     <string name="current_password">当前密码</string>
     <string name="enter_current_password">输入您的当前密码</string>
     <string name="new_password">新密码</string>
-    <string name="enter_new_password">输入新的纯数字密码（最低4位数字）</string>
+    <string name="enter_new_password">输入新的主密码（至少3个字符）</string>
     <string name="confirm_new_password">确认新密码</string>
     <string name="enter_confirm_password">确认您的新密码</string>
     <string name="current_password_required">请输入当前密码</string>
@@ -606,7 +620,7 @@
     <string name="password_reset_success">密码重设成功</string>
     <string name="password_reset_success_message">您的主密码已成功更改。请记住您的新密码。</string>
     <string name="passwords_do_not_match">密码不匹配</string>
-    <string name="password_too_short">密码至少需要4位字符</string>
+    <string name="password_too_short">密码至少需要3个字符</string>
     
     <!-- Forgot Password -->
     
@@ -620,11 +634,17 @@
     <string name="select_question">选择一个问题</string>
     <string name="your_answer">您的答案</string>
     <string name="enter_answer_hint">输入您的答案（不区分大小写）</string>
+    <string name="security_questions_must_choose_two">请选择两道不同的问题用于找回密码</string>
+    <string name="security_question_custom_label">自定义问题</string>
+    <string name="security_question_custom_placeholder">输入您自己的密保问题</string>
     <string name="save_questions">保存密保问题</string>
     <string name="update_questions">更新密保问题</string>
     <string name="select_first_question">请选择第一个密保问题</string>
     <string name="select_second_question">请选择第二个密保问题</string>
     <string name="questions_must_be_different">请选择两个不同的问题</string>
+    <string name="custom_questions_must_be_different">请输入两个不同的自定义问题</string>
+    <string name="first_custom_question_required">请输入第一个自定义问题</string>
+    <string name="second_custom_question_required">请输入第二个自定义问题</string>
     <string name="first_answer_required">请提供第一个问题的答案</string>
     <string name="second_answer_required">请提供第二个问题的答案</string>
     
@@ -897,16 +917,18 @@
     <string name="change_password_title">修改主密码</string>
     <string name="change_password_warning_title">重要提示</string>
     <string name="change_password_warning_message">修改主密码后，所有已保存的数据将使用新密码重新加密。请确保您能记住新密码,否则将无法访问您的数据。</string>
+    <string name="change_password_intro">请设置一个便于记忆的主密码。现在支持字母、数字、符号以及中文。</string>
+    <string name="change_password_supports_unicode">支持字母、数字、符号和中文</string>
     <string name="change_password_current">当前密码 *</string>
     <string name="change_password_new">新密码 *</string>
     <string name="change_password_confirm">确认新密码 *</string>
-    <string name="change_password_hint">密码长度至少4位数字</string>
+    <string name="change_password_hint">密码长度至少3个字符</string>
     <string name="change_password_button">修改密码</string>
     <string name="change_password_success_title">密码修改成功</string>
     <string name="change_password_success_message">您的主密码已成功修改，所有数据已使用新密码重新加密。请使用新密码登录。</string>
     <string name="change_password_error_current_empty">请输入当前密码</string>
     <string name="change_password_error_new_empty">请输入新密码</string>
-    <string name="change_password_error_new_too_short">新密码长度至少4位数字</string>
+    <string name="change_password_error_new_too_short">新密码长度至少3个字符</string>
     <string name="change_password_error_confirm_empty">请确认新密码</string>
     <string name="change_password_error_not_match">两次输入的新密码不一致</string>
     <string name="change_password_error_same_as_current">新密码不能与当前密码相同</string>
@@ -1484,6 +1506,18 @@
     <string name="developer_functions">开发者功能</string>
     <string name="developer_disable_password_verification">关闭密码验证</string>
     <string name="developer_disable_password_verification_desc">跳过应用启动时的密码验证（仅用于开发测试）</string>
+    <string name="developer_bitwarden_forensics_toggle">启用 Bitwarden 同步取证</string>
+    <string name="developer_bitwarden_forensics_toggle_desc">记录脱敏同步快照（仅长度与计数，不记录明文）</string>
+    <string name="developer_bitwarden_forensics_raw_toggle">记录 Bitwarden 原始请求/响应</string>
+    <string name="developer_bitwarden_forensics_raw_toggle_desc">为同步与上传诊断保留强脱敏的请求/响应预览，敏感字段会脱敏且超长内容自动截断。</string>
+    <string name="developer_bitwarden_forensics_dir">取证输出目录</string>
+    <string name="developer_bitwarden_forensics_dir_not_set">未选择外部目录，日志仅保存在应用私有目录。</string>
+    <string name="developer_bitwarden_forensics_dir_selected">当前目录：%1$s</string>
+    <string name="developer_bitwarden_forensics_dir_saved">取证输出目录已保存</string>
+    <string name="developer_bitwarden_forensics_dir_permission_warning">目录已保存，但持久权限授予失败；如写入失败请重新选择目录。</string>
+    <string name="developer_bitwarden_forensics_clear_dir">清除取证输出目录</string>
+    <string name="developer_bitwarden_forensics_clear_dir_desc">停止镜像到外部存储，仅保留应用内部日志</string>
+    <string name="developer_bitwarden_forensics_dir_cleared">取证输出目录已清除</string>
     <string name="developer_warning">⚠️ 开发者功能仅供测试使用，请勿在生产环境中启用</string>
     <string name="developer_log_buffer_cleared">日志缓冲区已清除</string>
     <string name="developer_clear_failed">清除失败: %s</string>
@@ -1990,6 +2024,11 @@
     <string name="folder_create_first">创建第一个文件夹</string>
     <string name="folder_create">创建文件夹</string>
     <string name="folder_edit">编辑文件夹</string>
+    <string name="move_folder_title">移动文件夹</string>
+    <string name="move_folder_destination_hint">选择要移动到的数据库或父文件夹。</string>
+    <string name="move_folder_root_target">Monica 根目录</string>
+    <string name="move_folder_root_target_hint">将这个文件夹移动到 Monica 根层级。</string>
+    <string name="move_folder_database_root_target">数据库根目录</string>
     <string name="folder_delete">删除文件夹</string>
     <string name="folder_delete_confirm">确定要删除文件夹 \"%1$s\" 吗？此操作无法撤销。</string>
     <string name="folder_name_label">文件夹名称</string>
@@ -2619,6 +2658,17 @@
     <string name="webdav_restore_mode_local_safe_desc">默认只与 Monica 本地数据去重。</string>
     <string name="webdav_restore_mode_replace_warning">KeePass / Bitwarden 数据不会被改动。</string>
     <string name="webdav_restore_action">恢复</string>
+    <string name="webdav_restore_config_detected_title">检测到 Monica 配置</string>
+    <string name="webdav_restore_config_detected_desc">此备份包含 %1$d 项 Monica 配置，是否同时覆盖本地配置？</string>
+    <string name="webdav_restore_config_detected_more">其余 %1$d 项配置…</string>
+    <string name="webdav_restore_config_overwrite_action">覆盖本地配置</string>
+    <string name="webdav_restore_config_keep_local_action">保留本地配置</string>
+    <string name="webdav_restore_restart_title">建议重启应用</string>
+    <string name="webdav_restore_restart_desc">备份“%1$s”中的配置已应用。为确保所有页面使用新配置，请重启一次 Monica。</string>
+    <string name="webdav_restore_restart_countdown">%1$d秒</string>
+    <string name="webdav_restore_restart_ready">可确认</string>
+    <string name="webdav_restore_restart_hint">倒计时结束后点击确认，然后重新打开 Monica。</string>
+    <string name="webdav_restore_restart_wait_action">等待 %1$d秒</string>
     <string name="webdav_restore_encrypted_hint">此备份文件已加密，请输入密码进行解密：</string>
     <string name="webdav_restore_failed">恢复失败: %1$s</string>
     <string name="webdav_restore_summary_part_passwords">%1$d 个密码</string>
@@ -2794,12 +2844,8 @@
     <string name="password_list_quick_folders_style_m3">卡片样式</string>
     <string name="password_list_quick_folder_path_banner_switch_title">路径横幅</string>
     <string name="password_list_quick_folder_path_banner_switch_desc">在密码列表顶部显示当前目录路径横幅，可独立于快捷文件夹卡片单独使用。</string>
-    <string name="category_selection_ui_mode_title">分类选择UI切换</string>
-    <string name="category_selection_ui_mode_desc">选择密码列表打开分类选择时使用的界面形式。</string>
-    <string name="category_selection_ui_mode_bottom_sheet_title">底部弹窗</string>
-    <string name="category_selection_ui_mode_bottom_sheet_desc">使用当前的 Bottom Sheet 形式。</string>
-    <string name="category_selection_ui_mode_chip_menu_title">胶囊菜单</string>
-    <string name="category_selection_ui_mode_chip_menu_desc">在顶部胶囊右侧弹出 chip 菜单，第一行显示数据库，下面显示快捷筛选和分类文件夹。</string>
+    <string name="password_list_system_back_to_parent_folder_switch_title">系统返回键回到上一级文件夹</string>
+    <string name="password_list_system_back_to_parent_folder_switch_desc">开启后，在子文件夹中按系统返回键会先返回父文件夹。</string>
     <string name="category_selection_menu_databases">数据库</string>
     <string name="category_selection_menu_quick_filters">快捷筛选</string>
     <string name="category_selection_menu_folders">分类文件夹</string>
@@ -2817,7 +2863,7 @@
     <string name="password_list_quick_folder_back">返回上一级目录</string>
     <string name="password_list_quick_folder_back_subtitle">返回到父目录</string>
     <string name="password_list_quick_folder_subtitle">进入子目录</string>
-    <string name="password_list_quick_folder_count">%1$d 条密码</string>
+    <string name="password_list_quick_folder_count">%1$d 条项目</string>
     <string name="password_list_quick_folder_root_label">Monica</string>
     <string name="password_list_preview_back_to_parent">返回上一级目录</string>
     <string name="password_list_preview_current_folder">当前目录</string>

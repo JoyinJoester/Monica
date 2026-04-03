@@ -461,14 +461,37 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         )
         if (decryptedPassword.isNullOrBlank()) {
             android.util.Log.w("AutofillPickerV2", "Smart copy skipped: password decryption unavailable")
-            setResult(Activity.RESULT_CANCELED)
-            finish()
+            android.widget.Toast.makeText(
+                this,
+                R.string.autofill_copy_password_unavailable,
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        if (usernameFirst && accountValue.isBlank()) {
+            android.util.Log.w("AutofillPickerV2", "Smart copy skipped: account identifier unavailable")
+            android.widget.Toast.makeText(
+                this,
+                R.string.autofill_copy_account_unavailable,
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        if (!usernameFirst && accountValue.isBlank()) {
+            copyToClipboard(getString(R.string.autofill_password), decryptedPassword, true)
+            android.widget.Toast.makeText(
+                this,
+                R.string.autofill_copy_account_unavailable,
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
             return
         }
         
-        if (usernameFirst) {
+        val queued = if (usernameFirst) {
             // Copy username first, queue password for notification
-            SmartCopyNotificationHelper.copyAndQueueNext(
+            val result = SmartCopyNotificationHelper.copyAndQueueNext(
                 context = this,
                 firstValue = accountValue,
                 firstLabel = getString(R.string.autofill_username),
@@ -476,9 +499,10 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                 secondLabel = getString(R.string.autofill_password)
             )
             android.widget.Toast.makeText(this, R.string.username_copied, android.widget.Toast.LENGTH_SHORT).show()
+            result
         } else {
             // Copy password first, queue username for notification
-            SmartCopyNotificationHelper.copyAndQueueNext(
+            val result = SmartCopyNotificationHelper.copyAndQueueNext(
                 context = this,
                 firstValue = decryptedPassword.orEmpty(),
                 firstLabel = getString(R.string.autofill_password),
@@ -486,11 +510,20 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                 secondLabel = getString(R.string.autofill_username)
             )
             android.widget.Toast.makeText(this, R.string.password_copied, android.widget.Toast.LENGTH_SHORT).show()
+            result
         }
         
-        // Close the picker
-        setResult(Activity.RESULT_CANCELED)
-        finish()
+        if (queued) {
+            // Close the picker only when queued action is available.
+            setResult(Activity.RESULT_CANCELED)
+            finish()
+        } else {
+            android.widget.Toast.makeText(
+                this,
+                R.string.smart_copy_notification_unavailable,
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+        }
     }
         
 
@@ -519,7 +552,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         // 手动模式：复制密码到剪贴板
         if (isManualMode) {
             // 使用智能复制：先复制密码，通知栏提供用户名
-            SmartCopyNotificationHelper.copyAndQueueNext(
+            val queued = SmartCopyNotificationHelper.copyAndQueueNext(
                 context = this,
                 firstValue = decryptedPassword.orEmpty(),
                 firstLabel = getString(R.string.autofill_password),
@@ -527,7 +560,15 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                 secondLabel = getString(R.string.autofill_username)
             )
             android.widget.Toast.makeText(this, R.string.password_copied, android.widget.Toast.LENGTH_SHORT).show()
-            finish()
+            if (queued) {
+                finish()
+            } else {
+                android.widget.Toast.makeText(
+                    this,
+                    R.string.smart_copy_notification_unavailable,
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            }
             return
         }
         
@@ -1168,6 +1209,49 @@ private fun AutofillPickerContent(
     
     val autofillUsernameLabel = stringResource(R.string.autofill_username)
     val autofillPasswordLabel = stringResource(R.string.autofill_password)
+    val autofillCopyPasswordUnavailable = stringResource(R.string.autofill_copy_password_unavailable)
+    val autofillCopyAccountUnavailable = stringResource(R.string.autofill_copy_account_unavailable)
+
+    val handlePasswordAction: (PasswordItemAction) -> Unit = { action ->
+        when (action) {
+            is PasswordItemAction.Autofill -> onAutofill(action.password, false)
+            is PasswordItemAction.AutofillAndSaveUri -> onAutofill(action.password, true)
+            is PasswordItemAction.ViewDetails -> {
+                selectedPassword = action.password
+                currentScreen = "detail"
+            }
+            is PasswordItemAction.CopyUsername -> {
+                val accountValue = AccountFillPolicy.resolveAccountIdentifier(action.password, securityManager)
+                if (accountValue.isNotBlank()) {
+                    onCopy(autofillUsernameLabel, accountValue, false)
+                } else {
+                    android.widget.Toast.makeText(
+                        context,
+                        autofillCopyAccountUnavailable,
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+            is PasswordItemAction.CopyPassword -> {
+                val decryptedPassword = AutofillSecretResolver.decryptPasswordOrNull(
+                    securityManager = securityManager,
+                    encryptedOrPlain = action.password.password,
+                    logTag = "AutofillPickerV2",
+                )
+                if (!decryptedPassword.isNullOrBlank()) {
+                    onCopy(autofillPasswordLabel, decryptedPassword, true)
+                } else {
+                    android.widget.Toast.makeText(
+                        context,
+                        autofillCopyPasswordUnavailable,
+                        android.widget.Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+            is PasswordItemAction.SmartCopyUsernameFirst -> onSmartCopy(action.password, true)
+            is PasswordItemAction.SmartCopyPasswordFirst -> onSmartCopy(action.password, false)
+        }
+    }
     
     // 验证状态：如果可以跳过验证（会话有效），直接标记为已认证
     var isAuthenticated by remember { mutableStateOf(canSkipVerification) }
@@ -1972,29 +2056,7 @@ private fun AutofillPickerContent(
                                                 password = password,
                                                 iconCardsEnabled = iconCardsEnabled,
                                                 showSmartCopyOptions = hasNotificationPermission,
-                                                onAction = { action ->
-                                                    when (action) {
-                                                        is PasswordItemAction.Autofill -> onAutofill(action.password, false)
-                                                        is PasswordItemAction.AutofillAndSaveUri -> onAutofill(action.password, true)
-                                                        is PasswordItemAction.ViewDetails -> {
-                                                            selectedPassword = action.password
-                                                            currentScreen = "detail"
-                                                        }
-                                                        is PasswordItemAction.CopyUsername -> onCopy(autofillUsernameLabel, action.password.username, false)
-                                                        is PasswordItemAction.CopyPassword -> {
-                                                            val decryptedPassword = AutofillSecretResolver.decryptPasswordOrNull(
-                                                                securityManager = securityManager,
-                                                                encryptedOrPlain = action.password.password,
-                                                                logTag = "AutofillPickerV2",
-                                                            )
-                                                            if (!decryptedPassword.isNullOrBlank()) {
-                                                                onCopy(autofillPasswordLabel, decryptedPassword, true)
-                                                            }
-                                                        }
-                                                        is PasswordItemAction.SmartCopyUsernameFirst -> onSmartCopy(action.password, true)
-                                                        is PasswordItemAction.SmartCopyPasswordFirst -> onSmartCopy(action.password, false)
-                                                    }
-                                                }
+                                                onAction = handlePasswordAction
                                             )
                                         }
 
@@ -2049,29 +2111,7 @@ private fun AutofillPickerContent(
                                             showDropdownMenu = true,
                                             iconCardsEnabled = iconCardsEnabled,
                                             showSmartCopyOptions = hasNotificationPermission,
-                                            onAction = { action ->
-                                                when (action) {
-                                                    is PasswordItemAction.Autofill -> onAutofill(action.password, false)
-                                                    is PasswordItemAction.AutofillAndSaveUri -> onAutofill(action.password, true)
-                                                    is PasswordItemAction.ViewDetails -> {
-                                                        selectedPassword = action.password
-                                                        currentScreen = "detail"
-                                                    }
-                                                    is PasswordItemAction.CopyUsername -> onCopy(autofillUsernameLabel, action.password.username, false)
-                                                    is PasswordItemAction.CopyPassword -> {
-                                                        val decryptedPassword = AutofillSecretResolver.decryptPasswordOrNull(
-                                                            securityManager = securityManager,
-                                                            encryptedOrPlain = action.password.password,
-                                                            logTag = "AutofillPickerV2",
-                                                        )
-                                                        if (!decryptedPassword.isNullOrBlank()) {
-                                                            onCopy(autofillPasswordLabel, decryptedPassword, true)
-                                                        }
-                                                    }
-                                                    is PasswordItemAction.SmartCopyUsernameFirst -> onSmartCopy(action.password, true)
-                                                    is PasswordItemAction.SmartCopyPasswordFirst -> onSmartCopy(action.password, false)
-                                                }
-                                            }
+                                            onAction = handlePasswordAction
                                         )
                                     }
 

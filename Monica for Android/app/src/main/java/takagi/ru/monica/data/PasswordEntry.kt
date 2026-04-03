@@ -60,6 +60,8 @@ data class PasswordEntry(
     val creditCardCVV: String = "",           // 加密存储
     
     val categoryId: Long? = null, // 分类ID
+    @ColumnInfo(defaultValue = "NULL")
+    val boundNoteId: Long? = null, // 绑定的笔记ID
     
     // 本地 KeePass 数据库归属
     @ColumnInfo(defaultValue = "NULL")

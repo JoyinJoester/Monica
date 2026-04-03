@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.shareIn
+import kotlinx.coroutines.launch
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.AddButtonBehaviorMode
 import takagi.ru.monica.data.AddButtonMenuAction
@@ -28,7 +29,9 @@ import takagi.ru.monica.data.PasswordListQuickFolderStyle
 import takagi.ru.monica.data.PasswordListTopModule
 import takagi.ru.monica.data.PresetCustomField
 import takagi.ru.monica.data.NoteCodeBlockCollapseMode
+import takagi.ru.monica.data.ProgressBarStyle
 import takagi.ru.monica.data.ThemeMode
+import takagi.ru.monica.data.UnifiedProgressBarMode
 import takagi.ru.monica.data.AutofillSource
 
 private val Context.dataStore by preferencesDataStore("settings")
@@ -63,12 +66,31 @@ data class PageAdjustmentSettingsSnapshot(
     val passwordListQuickFoldersEnabled: Boolean = false,
     val passwordListQuickFolderStyle: String = takagi.ru.monica.data.PasswordListQuickFolderStyle.CLASSIC.name,
     val passwordListQuickFolderPathBannerEnabled: Boolean = false,
+    val passwordListSystemBackToParentFolderEnabled: Boolean = false,
     val addButtonBehaviorMode: String = takagi.ru.monica.data.AddButtonBehaviorMode.DIRECT_PASSWORD.name,
     val addButtonMenuOrder: List<String> = emptyList(),
     val addButtonMenuEnabledActions: List<String> = emptyList(),
     val passwordPageAggregateEnabled: Boolean = false,
     val passwordPageVisibleContentTypes: List<String> = emptyList(),
     val categorySelectionUiMode: String = takagi.ru.monica.data.CategorySelectionUiMode.DEFAULT.name,
+    val colorSettingsVersion: Int = 0,
+    val colorScheme: String = takagi.ru.monica.data.ColorScheme.DEFAULT.name,
+    val customPrimaryColor: Long = 0xFF6650A4L,
+    val customSecondaryColor: Long = 0xFF625B71L,
+    val customTertiaryColor: Long = 0xFF7D5260L,
+    val customNeutralColor: Long = 0xFF605D66L,
+    val customNeutralVariantColor: Long = 0xFF625B71L,
+    val bottomNavSettingsVersion: Int = 0,
+    val bottomNavOrder: List<String> = emptyList(),
+    val bottomNavVisibilityVaultV2: Boolean = false,
+    val bottomNavVisibilityPasswords: Boolean = true,
+    val bottomNavVisibilityAuthenticator: Boolean = true,
+    val bottomNavVisibilityCardWallet: Boolean = true,
+    val bottomNavVisibilityGenerator: Boolean = false,
+    val bottomNavVisibilityNotes: Boolean = false,
+    val bottomNavVisibilitySend: Boolean = false,
+    val bottomNavVisibilityPasskey: Boolean = true,
+    val useDraggableBottomNav: Boolean = false,
     val passwordListQuickAccessEnabled: Boolean = true,
     val passwordListTopModulesOrder: List<String> = emptyList(),
     val passwordCardDisplayMode: String = takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL.name,
@@ -79,11 +101,19 @@ data class PageAdjustmentSettingsSnapshot(
     val passwordGroupMode: String = "smart",
     val passwordWebsiteStackMatchMode: String = "strict",
     val authenticatorCardDisplayFields: List<String> = emptyList(),
+    val validatorProgressBarStyle: String = ProgressBarStyle.LINEAR.name,
+    val validatorUnifiedProgressBar: String = UnifiedProgressBarMode.ENABLED.name,
+    val validatorSmoothProgress: Boolean = true,
+    val validatorVibrationEnabled: Boolean = true,
+    val copyNextCodeWhenExpiring: Boolean = false,
     val iconCardsEnabled: Boolean = false,
     val passwordPageIconEnabled: Boolean = false,
     val authenticatorPageIconEnabled: Boolean = false,
     val passkeyPageIconEnabled: Boolean = false,
     val unmatchedIconHandlingStrategy: String = takagi.ru.monica.data.UnmatchedIconHandlingStrategy.DEFAULT_ICON.name,
+    val passwordFieldSettingsVersion: Int = 0,
+    val separateUsernameAccountEnabled: Boolean = false,
+    val presetCustomFieldsJson: String = "[]",
     val passwordFieldVisibility: PageAdjustmentPasswordFieldVisibilitySnapshot =
         PageAdjustmentPasswordFieldVisibilitySnapshot(),
 )
@@ -94,6 +124,12 @@ data class PageAdjustmentSettingsSnapshot(
 class SettingsManager(private val context: Context) {
     
     private val dataStore: DataStore<Preferences> = context.dataStore
+
+    init {
+        sharedSettingsScope.launch {
+            migrateLegacyCategorySelectionUiModeIfNeeded()
+        }
+    }
     
     companion object {
         private val THEME_MODE_KEY = stringPreferencesKey("theme_mode")
@@ -120,6 +156,12 @@ class SettingsManager(private val context: Context) {
         private val BOTTOM_NAV_ORDER_KEY = stringPreferencesKey("bottom_nav_order")
         private val USE_DRAGGABLE_BOTTOM_NAV_KEY = booleanPreferencesKey("use_draggable_bottom_nav")
         private val DISABLE_PASSWORD_VERIFICATION_KEY = booleanPreferencesKey("disable_password_verification")
+        private val BITWARDEN_SYNC_FORENSICS_ENABLED_KEY =
+            booleanPreferencesKey("bitwarden_sync_forensics_enabled")
+        private val BITWARDEN_SYNC_FORENSICS_DIRECTORY_URI_KEY =
+            stringPreferencesKey("bitwarden_sync_forensics_directory_uri")
+        private val BITWARDEN_SYNC_FORENSICS_RAW_CAPTURE_ENABLED_KEY =
+            booleanPreferencesKey("bitwarden_sync_forensics_raw_capture_enabled")
         private val VALIDATOR_PROGRESS_BAR_STYLE_KEY = stringPreferencesKey("validator_progress_bar_style")
         private val VALIDATOR_UNIFIED_PROGRESS_BAR_KEY = stringPreferencesKey("validator_unified_progress_bar")
         private val VALIDATOR_SMOOTH_PROGRESS_KEY = booleanPreferencesKey("validator_smooth_progress")
@@ -152,6 +194,8 @@ class SettingsManager(private val context: Context) {
         private val PASSWORD_LIST_QUICK_FOLDERS_ENABLED_KEY = booleanPreferencesKey("password_list_quick_folders_enabled") // 密码列表快捷文件夹开关
         private val PASSWORD_LIST_QUICK_FOLDER_STYLE_KEY = stringPreferencesKey("password_list_quick_folder_style") // 密码列表快捷文件夹展示样式
         private val PASSWORD_LIST_QUICK_FOLDER_PATH_BANNER_ENABLED_KEY = booleanPreferencesKey("password_list_quick_folder_path_banner_enabled") // 密码列表路径横幅开关
+        private val PASSWORD_LIST_SYSTEM_BACK_TO_PARENT_FOLDER_ENABLED_KEY =
+            booleanPreferencesKey("password_list_system_back_to_parent_folder_enabled") // 密码页系统返回回到父文件夹
         private val ADD_BUTTON_BEHAVIOR_MODE_KEY = stringPreferencesKey("add_button_behavior_mode") // 添加按钮行为
         private val ADD_BUTTON_MENU_ORDER_KEY = stringPreferencesKey("add_button_menu_order") // 添加按钮菜单顺序
         private val ADD_BUTTON_MENU_ENABLED_ACTIONS_KEY = stringPreferencesKey("add_button_menu_enabled_actions") // 添加按钮菜单启用项
@@ -346,6 +390,30 @@ class SettingsManager(private val context: Context) {
             }
         return PasswordPageContentType.normalizeEnabledTypes(parsed)
     }
+
+    private fun normalizeCategorySelectionUiMode(mode: CategorySelectionUiMode): CategorySelectionUiMode {
+        return when (mode) {
+            CategorySelectionUiMode.BOTTOM_SHEET -> CategorySelectionUiMode.CHIP_MENU
+            CategorySelectionUiMode.CHIP_MENU -> CategorySelectionUiMode.CHIP_MENU
+        }
+    }
+
+    private fun normalizeCategorySelectionUiMode(raw: String?): CategorySelectionUiMode {
+        val parsed = raw?.trim()?.let { value ->
+            runCatching { CategorySelectionUiMode.valueOf(value) }.getOrNull()
+        } ?: CategorySelectionUiMode.DEFAULT
+        return normalizeCategorySelectionUiMode(parsed)
+    }
+
+    private suspend fun migrateLegacyCategorySelectionUiModeIfNeeded() {
+        dataStore.edit { preferences ->
+            val storedMode = preferences[CATEGORY_SELECTION_UI_MODE_KEY] ?: return@edit
+            val normalizedMode = normalizeCategorySelectionUiMode(storedMode)
+            if (storedMode != normalizedMode.name) {
+                preferences[CATEGORY_SELECTION_UI_MODE_KEY] = normalizedMode.name
+            }
+        }
+    }
     
     val settingsFlow: Flow<AppSettings> by lazy(LazyThreadSafetyMode.PUBLICATION) {
         sharedSettingsFlow ?: synchronized(sharedSettingsFlowLock) {
@@ -423,6 +491,12 @@ class SettingsManager(private val context: Context) {
             bottomNavOrder = sanitizedOrder,
             useDraggableBottomNav = preferences[USE_DRAGGABLE_BOTTOM_NAV_KEY] ?: false,
             disablePasswordVerification = preferences[DISABLE_PASSWORD_VERIFICATION_KEY] ?: false,
+            bitwardenSyncForensicsEnabled =
+                preferences[BITWARDEN_SYNC_FORENSICS_ENABLED_KEY] ?: false,
+            bitwardenSyncForensicsDirectoryUri =
+                preferences[BITWARDEN_SYNC_FORENSICS_DIRECTORY_URI_KEY],
+            bitwardenSyncForensicsRawCaptureEnabled =
+                preferences[BITWARDEN_SYNC_FORENSICS_RAW_CAPTURE_ENABLED_KEY] ?: false,
             validatorProgressBarStyle = runCatching {
                 val styleString = preferences[VALIDATOR_PROGRESS_BAR_STYLE_KEY]
                     ?: takagi.ru.monica.data.ProgressBarStyle.LINEAR.name
@@ -501,6 +575,8 @@ class SettingsManager(private val context: Context) {
                         }.getOrDefault(PasswordListQuickFolderStyle.CLASSIC) ==
                             PasswordListQuickFolderStyle.M3_CARD
                     ),
+            passwordListSystemBackToParentFolderEnabled =
+                preferences[PASSWORD_LIST_SYSTEM_BACK_TO_PARENT_FOLDER_ENABLED_KEY] ?: false,
             addButtonBehaviorMode = runCatching {
                 AddButtonBehaviorMode.valueOf(
                     preferences[ADD_BUTTON_BEHAVIOR_MODE_KEY]
@@ -512,12 +588,9 @@ class SettingsManager(private val context: Context) {
             passwordPageAggregateEnabled =
                 preferences[PASSWORD_PAGE_AGGREGATE_ENABLED_KEY] ?: false,
             passwordPageVisibleContentTypes = parsedPasswordPageVisibleContentTypes,
-            categorySelectionUiMode = runCatching {
-                CategorySelectionUiMode.valueOf(
-                    preferences[CATEGORY_SELECTION_UI_MODE_KEY]
-                        ?: CategorySelectionUiMode.DEFAULT.name
-                )
-            }.getOrDefault(CategorySelectionUiMode.DEFAULT),
+            categorySelectionUiMode = normalizeCategorySelectionUiMode(
+                preferences[CATEGORY_SELECTION_UI_MODE_KEY]
+            ),
             passwordListQuickAccessEnabled = preferences[PASSWORD_LIST_QUICK_ACCESS_ENABLED_KEY] ?: true,
             passwordListTopModulesOrder = parsedTopModulesOrder,
             noteGridLayout = preferences[NOTE_GRID_LAYOUT_KEY] ?: true,
@@ -658,6 +731,28 @@ class SettingsManager(private val context: Context) {
     suspend fun updateDisablePasswordVerification(disabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[DISABLE_PASSWORD_VERIFICATION_KEY] = disabled
+        }
+    }
+
+    suspend fun updateBitwardenSyncForensicsEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[BITWARDEN_SYNC_FORENSICS_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun updateBitwardenSyncForensicsDirectoryUri(uri: String?) {
+        dataStore.edit { preferences ->
+            if (uri.isNullOrBlank()) {
+                preferences.remove(BITWARDEN_SYNC_FORENSICS_DIRECTORY_URI_KEY)
+            } else {
+                preferences[BITWARDEN_SYNC_FORENSICS_DIRECTORY_URI_KEY] = uri
+            }
+        }
+    }
+
+    suspend fun updateBitwardenSyncForensicsRawCaptureEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[BITWARDEN_SYNC_FORENSICS_RAW_CAPTURE_ENABLED_KEY] = enabled
         }
     }
 
@@ -871,6 +966,12 @@ class SettingsManager(private val context: Context) {
         }
     }
 
+    suspend fun updatePasswordListSystemBackToParentFolderEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PASSWORD_LIST_SYSTEM_BACK_TO_PARENT_FOLDER_ENABLED_KEY] = enabled
+        }
+    }
+
     suspend fun updateAddButtonBehaviorMode(mode: AddButtonBehaviorMode) {
         dataStore.edit { preferences ->
             preferences[ADD_BUTTON_BEHAVIOR_MODE_KEY] = mode.name
@@ -911,7 +1012,8 @@ class SettingsManager(private val context: Context) {
 
     suspend fun updateCategorySelectionUiMode(mode: CategorySelectionUiMode) {
         dataStore.edit { preferences ->
-            preferences[CATEGORY_SELECTION_UI_MODE_KEY] = mode.name
+            preferences[CATEGORY_SELECTION_UI_MODE_KEY] =
+                normalizeCategorySelectionUiMode(mode).name
         }
     }
 
@@ -962,18 +1064,42 @@ class SettingsManager(private val context: Context) {
 
     suspend fun exportPageAdjustmentSettings(): PageAdjustmentSettingsSnapshot {
         val settings = settingsFlow.first()
+        val normalizedPresetCustomFieldsJson = runCatching {
+            val rawPresetCustomFieldsJson = dataStore.data.first()[PRESET_CUSTOM_FIELDS_KEY] ?: "[]"
+            PresetCustomField.listToJson(PresetCustomField.listFromJson(rawPresetCustomFieldsJson))
+        }.getOrDefault("[]")
         return PageAdjustmentSettingsSnapshot(
             passwordListQuickFiltersEnabled = settings.passwordListQuickFiltersEnabled,
             passwordListQuickFilterItems = settings.passwordListQuickFilterItems.map { it.name },
             passwordListQuickFoldersEnabled = settings.passwordListQuickFoldersEnabled,
             passwordListQuickFolderStyle = settings.passwordListQuickFolderStyle.name,
             passwordListQuickFolderPathBannerEnabled = settings.passwordListQuickFolderPathBannerEnabled,
+            passwordListSystemBackToParentFolderEnabled =
+                settings.passwordListSystemBackToParentFolderEnabled,
             addButtonBehaviorMode = settings.addButtonBehaviorMode.name,
             addButtonMenuOrder = settings.addButtonMenuOrder.map { it.name },
             addButtonMenuEnabledActions = settings.addButtonMenuEnabledActions.map { it.name },
             passwordPageAggregateEnabled = settings.passwordPageAggregateEnabled,
             passwordPageVisibleContentTypes = settings.passwordPageVisibleContentTypes.map { it.name },
             categorySelectionUiMode = settings.categorySelectionUiMode.name,
+            colorSettingsVersion = 1,
+            colorScheme = settings.colorScheme.name,
+            customPrimaryColor = settings.customPrimaryColor,
+            customSecondaryColor = settings.customSecondaryColor,
+            customTertiaryColor = settings.customTertiaryColor,
+            customNeutralColor = settings.customNeutralColor,
+            customNeutralVariantColor = settings.customNeutralVariantColor,
+            bottomNavSettingsVersion = 1,
+            bottomNavOrder = settings.bottomNavOrder.map { it.name },
+            bottomNavVisibilityVaultV2 = settings.bottomNavVisibility.vaultV2,
+            bottomNavVisibilityPasswords = settings.bottomNavVisibility.passwords,
+            bottomNavVisibilityAuthenticator = settings.bottomNavVisibility.authenticator,
+            bottomNavVisibilityCardWallet = settings.bottomNavVisibility.cardWallet,
+            bottomNavVisibilityGenerator = settings.bottomNavVisibility.generator,
+            bottomNavVisibilityNotes = settings.bottomNavVisibility.notes,
+            bottomNavVisibilitySend = settings.bottomNavVisibility.send,
+            bottomNavVisibilityPasskey = settings.bottomNavVisibility.passkey,
+            useDraggableBottomNav = settings.useDraggableBottomNav,
             passwordListQuickAccessEnabled = settings.passwordListQuickAccessEnabled,
             passwordListTopModulesOrder = settings.passwordListTopModulesOrder.map { it.name },
             passwordCardDisplayMode = settings.passwordCardDisplayMode.name,
@@ -985,11 +1111,19 @@ class SettingsManager(private val context: Context) {
             passwordGroupMode = settings.passwordGroupMode,
             passwordWebsiteStackMatchMode = settings.passwordWebsiteStackMatchMode,
             authenticatorCardDisplayFields = settings.authenticatorCardDisplayFields.map { it.name },
+            validatorProgressBarStyle = settings.validatorProgressBarStyle.name,
+            validatorUnifiedProgressBar = settings.validatorUnifiedProgressBar.name,
+            validatorSmoothProgress = settings.validatorSmoothProgress,
+            validatorVibrationEnabled = settings.validatorVibrationEnabled,
+            copyNextCodeWhenExpiring = settings.copyNextCodeWhenExpiring,
             iconCardsEnabled = settings.iconCardsEnabled,
             passwordPageIconEnabled = settings.passwordPageIconEnabled,
             authenticatorPageIconEnabled = settings.authenticatorPageIconEnabled,
             passkeyPageIconEnabled = settings.passkeyPageIconEnabled,
             unmatchedIconHandlingStrategy = settings.unmatchedIconHandlingStrategy.name,
+            passwordFieldSettingsVersion = 1,
+            separateUsernameAccountEnabled = settings.separateUsernameAccountEnabled,
+            presetCustomFieldsJson = normalizedPresetCustomFieldsJson,
             passwordFieldVisibility = PageAdjustmentPasswordFieldVisibilitySnapshot(
                 securityVerification = settings.passwordFieldVisibility.securityVerification,
                 categoryAndNotes = settings.passwordFieldVisibility.categoryAndNotes,
@@ -1029,6 +1163,12 @@ class SettingsManager(private val context: Context) {
         } else {
             parsedAuthenticatorCardFields
         }
+        val parsedValidatorProgressBarStyle = runCatching {
+            ProgressBarStyle.valueOf(snapshot.validatorProgressBarStyle.trim())
+        }.getOrDefault(ProgressBarStyle.LINEAR)
+        val parsedValidatorUnifiedProgressBar = runCatching {
+            UnifiedProgressBarMode.valueOf(snapshot.validatorUnifiedProgressBar.trim())
+        }.getOrDefault(UnifiedProgressBarMode.ENABLED)
         val parsedQuickFolderStyle = runCatching {
             PasswordListQuickFolderStyle.valueOf(snapshot.passwordListQuickFolderStyle.trim())
         }.getOrDefault(PasswordListQuickFolderStyle.CLASSIC)
@@ -1056,9 +1196,23 @@ class SettingsManager(private val context: Context) {
                 runCatching { PasswordPageContentType.valueOf(value.trim()) }.getOrNull()
             }
         )
-        val parsedCategorySelectionUiMode = runCatching {
-            CategorySelectionUiMode.valueOf(snapshot.categorySelectionUiMode.trim())
-        }.getOrDefault(CategorySelectionUiMode.DEFAULT)
+        val shouldRestoreColorSettings = snapshot.colorSettingsVersion > 0
+        val parsedColorScheme = runCatching {
+            ColorScheme.valueOf(snapshot.colorScheme.trim())
+        }.getOrDefault(ColorScheme.DEFAULT)
+        val parsedBottomNavOrder = BottomNavContentTab.sanitizeOrder(
+            snapshot.bottomNavOrder.mapNotNull { value ->
+                runCatching { BottomNavContentTab.valueOf(value.trim()) }.getOrNull()
+            }
+        )
+        val shouldRestoreBottomNavSettings = snapshot.bottomNavSettingsVersion > 0
+        val parsedCategorySelectionUiMode = normalizeCategorySelectionUiMode(
+            snapshot.categorySelectionUiMode
+        )
+        val shouldRestorePasswordFieldSettings = snapshot.passwordFieldSettingsVersion > 0
+        val normalizedPresetCustomFieldsJson = runCatching {
+            PresetCustomField.listToJson(PresetCustomField.listFromJson(snapshot.presetCustomFieldsJson))
+        }.getOrDefault("[]")
         val parsedUnmatchedIconStrategy = runCatching {
             takagi.ru.monica.data.UnmatchedIconHandlingStrategy.valueOf(
                 snapshot.unmatchedIconHandlingStrategy.trim()
@@ -1073,6 +1227,8 @@ class SettingsManager(private val context: Context) {
             preferences[PASSWORD_LIST_QUICK_FOLDER_STYLE_KEY] = parsedQuickFolderStyle.name
             preferences[PASSWORD_LIST_QUICK_FOLDER_PATH_BANNER_ENABLED_KEY] =
                 snapshot.passwordListQuickFolderPathBannerEnabled
+            preferences[PASSWORD_LIST_SYSTEM_BACK_TO_PARENT_FOLDER_ENABLED_KEY] =
+                snapshot.passwordListSystemBackToParentFolderEnabled
             preferences[ADD_BUTTON_BEHAVIOR_MODE_KEY] = parsedAddButtonBehaviorMode.name
             preferences[ADD_BUTTON_MENU_ORDER_KEY] =
                 normalizedAddButtonOrder.joinToString(",") { it.name }
@@ -1082,6 +1238,27 @@ class SettingsManager(private val context: Context) {
             preferences[PASSWORD_PAGE_VISIBLE_CONTENT_TYPES_KEY] =
                 normalizedPasswordPageVisibleContentTypes.joinToString(",") { it.name }
             preferences[CATEGORY_SELECTION_UI_MODE_KEY] = parsedCategorySelectionUiMode.name
+            if (shouldRestoreColorSettings) {
+                preferences[COLOR_SCHEME_KEY] = parsedColorScheme.name
+                preferences[CUSTOM_PRIMARY_COLOR_KEY] = snapshot.customPrimaryColor
+                preferences[CUSTOM_SECONDARY_COLOR_KEY] = snapshot.customSecondaryColor
+                preferences[CUSTOM_TERTIARY_COLOR_KEY] = snapshot.customTertiaryColor
+                preferences[CUSTOM_NEUTRAL_COLOR_KEY] = snapshot.customNeutralColor
+                preferences[CUSTOM_NEUTRAL_VARIANT_COLOR_KEY] = snapshot.customNeutralVariantColor
+            }
+            if (shouldRestoreBottomNavSettings) {
+                preferences[BOTTOM_NAV_ORDER_KEY] =
+                    parsedBottomNavOrder.joinToString(",") { it.name }
+                preferences[SHOW_VAULT_V2_TAB_KEY] = snapshot.bottomNavVisibilityVaultV2
+                preferences[SHOW_PASSWORDS_TAB_KEY] = snapshot.bottomNavVisibilityPasswords
+                preferences[SHOW_AUTHENTICATOR_TAB_KEY] = snapshot.bottomNavVisibilityAuthenticator
+                preferences[SHOW_CARD_WALLET_TAB_KEY] = snapshot.bottomNavVisibilityCardWallet
+                preferences[SHOW_GENERATOR_TAB_KEY] = snapshot.bottomNavVisibilityGenerator
+                preferences[SHOW_NOTES_TAB_KEY] = snapshot.bottomNavVisibilityNotes
+                preferences[SHOW_SEND_TAB_KEY] = snapshot.bottomNavVisibilitySend
+                preferences[SHOW_PASSKEY_TAB_KEY] = snapshot.bottomNavVisibilityPasskey
+                preferences[USE_DRAGGABLE_BOTTOM_NAV_KEY] = snapshot.useDraggableBottomNav
+            }
             preferences[PASSWORD_LIST_QUICK_ACCESS_ENABLED_KEY] = snapshot.passwordListQuickAccessEnabled
             preferences[PASSWORD_LIST_TOP_MODULES_ORDER_KEY] =
                 parsedTopModules.joinToString(",") { it.name }
@@ -1097,11 +1274,21 @@ class SettingsManager(private val context: Context) {
                 snapshot.passwordWebsiteStackMatchMode.ifBlank { "strict" }
             preferences[AUTHENTICATOR_CARD_DISPLAY_FIELDS_KEY] =
                 normalizedAuthenticatorCardFields.joinToString(",") { it.name }
+            preferences[VALIDATOR_PROGRESS_BAR_STYLE_KEY] = parsedValidatorProgressBarStyle.name
+            preferences[VALIDATOR_UNIFIED_PROGRESS_BAR_KEY] = parsedValidatorUnifiedProgressBar.name
+            preferences[VALIDATOR_SMOOTH_PROGRESS_KEY] = snapshot.validatorSmoothProgress
+            preferences[VALIDATOR_VIBRATION_ENABLED_KEY] = snapshot.validatorVibrationEnabled
+            preferences[COPY_NEXT_CODE_WHEN_EXPIRING_KEY] = snapshot.copyNextCodeWhenExpiring
             preferences[ICON_CARDS_ENABLED_KEY] = snapshot.iconCardsEnabled
             preferences[PASSWORD_PAGE_ICON_ENABLED_KEY] = snapshot.passwordPageIconEnabled
             preferences[AUTHENTICATOR_PAGE_ICON_ENABLED_KEY] = snapshot.authenticatorPageIconEnabled
             preferences[PASSKEY_PAGE_ICON_ENABLED_KEY] = snapshot.passkeyPageIconEnabled
             preferences[UNMATCHED_ICON_HANDLING_STRATEGY_KEY] = parsedUnmatchedIconStrategy.name
+            if (shouldRestorePasswordFieldSettings) {
+                preferences[SEPARATE_USERNAME_ACCOUNT_ENABLED_KEY] =
+                    snapshot.separateUsernameAccountEnabled
+                preferences[PRESET_CUSTOM_FIELDS_KEY] = normalizedPresetCustomFieldsJson
+            }
             preferences[FIELD_SECURITY_VERIFICATION_KEY] =
                 snapshot.passwordFieldVisibility.securityVerification
             preferences[FIELD_CATEGORY_AND_NOTES_KEY] =

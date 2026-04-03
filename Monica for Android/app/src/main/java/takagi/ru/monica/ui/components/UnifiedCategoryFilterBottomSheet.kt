@@ -49,6 +49,7 @@ import android.content.ContextWrapper
 import android.os.Build
 import android.view.WindowManager
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -121,7 +122,11 @@ import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.utils.KEEPASS_DISPLAY_PATH_SEPARATOR
 import takagi.ru.monica.utils.KeePassGroupInfo
+import takagi.ru.monica.utils.buildLocalCategoryPath
 import takagi.ru.monica.utils.decodeKeePassPathSegments
+import takagi.ru.monica.utils.getLocalCategoryLeafName
+import takagi.ru.monica.utils.getLocalCategoryParentPath
+import takagi.ru.monica.utils.isLocalCategoryDescendantPath
 import kotlin.math.roundToInt
 
 typealias BiometricVerifyRequester = (onSuccess: () -> Unit, onError: (String) -> Unit) -> Unit
@@ -171,7 +176,9 @@ fun UnifiedCategoryFilterBottomSheet(
     onRequestBiometricVerify: BiometricVerifyRequester? = null,
     onCreateKeePassGroup: ((databaseId: Long, parentPath: String?, name: String) -> Unit)? = null,
     onRenameKeePassGroup: ((databaseId: Long, groupPath: String, newName: String) -> Unit)? = null,
-    onDeleteKeePassGroup: ((databaseId: Long, groupPath: String) -> Unit)? = null
+    onDeleteKeePassGroup: ((databaseId: Long, groupPath: String) -> Unit)? = null,
+    onMoveCategory: ((category: Category, targetParentCategoryId: Long?) -> Unit)? = null,
+    onMoveKeePassGroup: ((sourceDatabaseId: Long, groupPath: String, targetDatabaseId: Long, targetParentPath: String?) -> Unit)? = null
 ) {
     if (!visible) return
 
@@ -186,6 +193,7 @@ fun UnifiedCategoryFilterBottomSheet(
     var renameInput by remember { mutableStateOf("") }
     var localCategoryRenameMode by remember { mutableStateOf(LocalCategoryRenameMode.LeafOnly) }
     var deleteAction by remember { mutableStateOf<DeleteAction?>(null) }
+    var moveAction by remember { mutableStateOf<MoveAction?>(null) }
     var deletePasswordInput by remember { mutableStateOf("") }
     var deletePasswordError by remember { mutableStateOf(false) }
     val expandCollapseSpec = spring<IntSize>(
@@ -340,7 +348,7 @@ fun UnifiedCategoryFilterBottomSheet(
                                             )
                                         )
                                     },
-                                    menu = if (onRenameKeePassGroup != null || onDeleteKeePassGroup != null) {
+                                    menu = if (onMoveKeePassGroup != null || onRenameKeePassGroup != null || onDeleteKeePassGroup != null) {
                                         {
                                             IconButton(onClick = { expandedMenuId = database.id * 1_000_000 + group.path.hashCode().toLong() }) {
                                                 Icon(Icons.Default.MoreVert, contentDescription = null)
@@ -351,6 +359,24 @@ fun UnifiedCategoryFilterBottomSheet(
                                                 onDismissRequest = { expandedMenuId = null },
                                                 modifier = Modifier.clip(RoundedCornerShape(18.dp))
                                             ) {
+                                                if (onMoveKeePassGroup != null) {
+                                                    DropdownMenuItem(
+                                                        text = { Text(stringResource(R.string.move)) },
+                                                        leadingIcon = {
+                                                            Icon(
+                                                                Icons.AutoMirrored.Filled.DriveFileMove,
+                                                                contentDescription = null
+                                                            )
+                                                        },
+                                                        onClick = {
+                                                            expandedMenuId = null
+                                                            moveAction = MoveAction.KeePassGroup(
+                                                                databaseId = database.id,
+                                                                group = group
+                                                            )
+                                                        }
+                                                    )
+                                                }
                                                 if (onRenameKeePassGroup != null) {
                                                     DropdownMenuItem(
                                                         text = { Text(stringResource(R.string.edit)) },
@@ -536,7 +562,7 @@ fun UnifiedCategoryFilterBottomSheet(
                                         } else {
                                             null
                                         },
-                                        menu = if (canCreateLocal || onRenameCategory != null || onDeleteCategory != null) {
+                                        menu = if (canCreateLocal || onMoveCategory != null || onRenameCategory != null || onDeleteCategory != null) {
                                             {
                                                 IconButton(onClick = { expandedMenuId = category.id }) {
                                                     Icon(Icons.Default.MoreVert, contentDescription = null)
@@ -559,6 +585,21 @@ fun UnifiedCategoryFilterBottomSheet(
                                                                 expandedMenuId = null
                                                                 createDialogLocalParentPath = node.fullPath
                                                                 showCreateDialog = true
+                                                            }
+                                                        )
+                                                    }
+                                                    if (onMoveCategory != null) {
+                                                        DropdownMenuItem(
+                                                            text = { Text(stringResource(R.string.move)) },
+                                                            leadingIcon = {
+                                                                Icon(
+                                                                    Icons.AutoMirrored.Filled.DriveFileMove,
+                                                                    contentDescription = null
+                                                                )
+                                                            },
+                                                            onClick = {
+                                                                expandedMenuId = null
+                                                                moveAction = MoveAction.LocalCategory(category)
                                                             }
                                                         )
                                                     }
@@ -965,6 +1006,241 @@ fun UnifiedCategoryFilterBottomSheet(
             }
         )
     }
+
+    if (moveAction != null) {
+        val action = moveAction!!
+        MonicaModalBottomSheet(
+            onDismissRequest = { moveAction = null },
+            sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.88f)
+                    .navigationBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = stringResource(R.string.move_folder_title),
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                        Text(
+                            text = when (action) {
+                                is MoveAction.LocalCategory -> action.category.name
+                                is MoveAction.KeePassGroup -> action.group.displayPath
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Text(
+                    text = stringResource(R.string.move_folder_destination_hint),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+
+                when (action) {
+                    is MoveAction.LocalCategory -> {
+                        val availableTargets = localCategoryNodes.filter { node ->
+                            node.category.id != action.category.id &&
+                                !isLocalCategoryDescendantPath(action.category.name, node.fullPath)
+                        }
+                        LazyColumn(
+                            modifier = Modifier.fillMaxWidth().weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            contentPadding = PaddingValues(bottom = 16.dp)
+                        ) {
+                            item {
+                                StorageSectionCard(title = stringResource(R.string.filter_monica)) {
+                                    MoveDestinationItem(
+                                        title = stringResource(R.string.move_folder_root_target),
+                                        icon = Icons.Default.Smartphone,
+                                        supportingText = stringResource(R.string.move_folder_root_target_hint),
+                                        onClick = {
+                                            onMoveCategory?.invoke(action.category, null)
+                                            moveAction = null
+                                        }
+                                    )
+                                    availableTargets.forEach { node ->
+                                        HierarchyIndentedItem(depth = node.depth + 1) {
+                                            MoveDestinationItem(
+                                                title = buildHierarchyDisplayTitle(node.displayName, node.depth),
+                                                icon = Icons.Default.Folder,
+                                                supportingText = node.parentPathLabel,
+                                                onClick = {
+                                                    onMoveCategory?.invoke(action.category, node.category.id)
+                                                    moveAction = null
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    is MoveAction.KeePassGroup -> {
+                        val moveExpanded = remember(action.databaseId) {
+                            mutableStateMapOf<Long, Boolean>().apply {
+                                this[action.databaseId] = true
+                            }
+                        }
+                        LazyColumn(
+                            modifier = Modifier.fillMaxWidth().weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            contentPadding = PaddingValues(bottom = 16.dp)
+                        ) {
+                            item {
+                                StorageSectionCard(title = stringResource(R.string.local_keepass_database)) {
+                                    keepassDatabases.forEach { database ->
+                                        val expanded = moveExpanded[database.id] ?: (database.id == action.databaseId)
+                                        val groups by (
+                                            getKeePassGroups?.invoke(database.id)
+                                                ?: kotlinx.coroutines.flow.flowOf(emptyList())
+                                            ).collectAsState(initial = emptyList())
+                                        val availableGroups = groups.filter { group ->
+                                            if (database.id != action.databaseId) {
+                                                true
+                                            } else {
+                                                group.path != action.group.path &&
+                                                    !group.path.startsWith("${action.group.path}/")
+                                            }
+                                        }
+                                        Column {
+                                            UnifiedCategoryListItem(
+                                                title = database.name,
+                                                icon = Icons.Default.Key,
+                                                selected = false,
+                                                onClick = {},
+                                                badge = {
+                                                    Text(
+                                                        text = if (database.storageLocation == KeePassStorageLocation.EXTERNAL) {
+                                                            stringResource(R.string.external_storage)
+                                                        } else {
+                                                            stringResource(R.string.internal_storage)
+                                                        },
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                },
+                                                menu = {
+                                                    IconButton(onClick = {
+                                                        moveExpanded[database.id] = !expanded
+                                                    }) {
+                                                        Icon(
+                                                            imageVector = if (expanded) {
+                                                                Icons.Default.ExpandLess
+                                                            } else {
+                                                                Icons.Default.ExpandMore
+                                                            },
+                                                            contentDescription = null
+                                                        )
+                                                    }
+                                                }
+                                            )
+                                            SafeAnimatedVisibility(
+                                                visible = expanded,
+                                                enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = expandCollapseSpec),
+                                                exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)
+                                            ) {
+                                                Column {
+                                                    Spacer(modifier = Modifier.height(8.dp))
+                                                    Box(modifier = Modifier.padding(start = 16.dp)) {
+                                                        MoveDestinationItem(
+                                                            title = stringResource(R.string.move_folder_database_root_target),
+                                                            icon = Icons.Default.Key,
+                                                            supportingText = database.name,
+                                                            onClick = {
+                                                                onMoveKeePassGroup?.invoke(
+                                                                    action.databaseId,
+                                                                    action.group.path,
+                                                                    database.id,
+                                                                    null
+                                                                )
+                                                                moveAction = null
+                                                            }
+                                                        )
+                                                    }
+                                                    availableGroups.forEach { group ->
+                                                        HierarchyIndentedItem(depth = group.depth + 1) {
+                                                            MoveDestinationItem(
+                                                                title = buildHierarchyDisplayTitle(group.name, group.depth),
+                                                                icon = Icons.Default.Folder,
+                                                                supportingText = decodeKeePassPathSegments(group.path)
+                                                                    .dropLast(1)
+                                                                    .takeIf { it.isNotEmpty() }
+                                                                    ?.joinToString(KEEPASS_DISPLAY_PATH_SEPARATOR),
+                                                                onClick = {
+                                                                    onMoveKeePassGroup?.invoke(
+                                                                        action.databaseId,
+                                                                        action.group.path,
+                                                                        database.id,
+                                                                        group.path
+                                                                    )
+                                                                    moveAction = null
+                                                                }
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MoveDestinationItem(
+    title: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    supportingText: String? = null
+) {
+    ListItem(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick),
+        colors = ListItemDefaults.colors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.34f),
+            headlineColor = MaterialTheme.colorScheme.onSurface,
+            leadingIconColor = MaterialTheme.colorScheme.onSurface,
+            supportingColor = MaterialTheme.colorScheme.onSurfaceVariant
+        ),
+        leadingContent = { Icon(icon, contentDescription = null) },
+        headlineContent = { Text(title, style = MaterialTheme.typography.bodyLarge) },
+        supportingContent = if (supportingText.isNullOrBlank()) {
+            null
+        } else {
+            {
+                Text(
+                    text = supportingText,
+                    style = MaterialTheme.typography.labelSmall
+                )
+            }
+        }
+    )
 }
 
 @Composable
@@ -1091,33 +1367,15 @@ private fun buildLocalCategoryNodes(categories: List<Category>): List<LocalCateg
 }
 
 private fun buildNestedLocalCategoryPath(parentPath: String?, name: String): String {
-    val child = name
-        .split("/")
-        .map { it.trim() }
-        .filter { it.isNotBlank() }
-        .joinToString("/")
-    if (child.isBlank()) return ""
-
-    val parent = parentPath
-        ?.split("/")
-        ?.map { it.trim() }
-        ?.filter { it.isNotBlank() }
-        ?.joinToString("/")
-        .orEmpty()
-
-    return if (parent.isBlank()) child else "$parent/$child"
+    return buildLocalCategoryPath(parentPath, name)
 }
 
 private fun getLocalCategoryLeafName(path: String): String {
-    val normalizedPath = buildNestedLocalCategoryPath(null, path)
-    if (normalizedPath.isBlank()) return ""
-    return normalizedPath.substringAfterLast('/')
+    return takagi.ru.monica.utils.getLocalCategoryLeafName(path)
 }
 
 private fun getLocalCategoryParentPath(path: String): String? {
-    val normalizedPath = buildNestedLocalCategoryPath(null, path)
-    if (!normalizedPath.contains('/')) return null
-    return normalizedPath.substringBeforeLast('/').ifBlank { null }
+    return takagi.ru.monica.utils.getLocalCategoryParentPath(path)
 }
 
 private fun buildHierarchyDisplayTitle(baseName: String, depth: Int): String {
@@ -1190,6 +1448,11 @@ private fun SafeAnimatedVisibility(
 private enum class LocalCategoryRenameMode {
     LeafOnly,
     FullPath
+}
+
+private sealed interface MoveAction {
+    data class LocalCategory(val category: Category) : MoveAction
+    data class KeePassGroup(val databaseId: Long, val group: KeePassGroupInfo) : MoveAction
 }
 
 private sealed interface RenameAction {

@@ -10,10 +10,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.PasswordListTopModule
 import takagi.ru.monica.data.PasswordPageContentType
+import takagi.ru.monica.data.bitwarden.BitwardenFolder
+import takagi.ru.monica.data.model.StorageTarget
 import takagi.ru.monica.ui.components.rememberUnifiedCategoryFilterChipMenuWidth
+import takagi.ru.monica.utils.KeePassGroupInfo
 import takagi.ru.monica.viewmodel.CategoryFilter
 
 @Composable
@@ -50,6 +55,10 @@ internal fun PasswordListCategoryChipMenu(
     onSelectFilter: (CategoryFilter) -> Unit,
     categories: List<Category> = emptyList(),
     onCreateCategory: (() -> Unit)? = null,
+    onMoveCategory: ((Category, Long?) -> Unit)? = null,
+    onMoveCategoryToStorageTarget: ((Category, StorageTarget) -> Unit)? = null,
+    getBitwardenFolders: (Long) -> Flow<List<BitwardenFolder>> = { flowOf(emptyList()) },
+    getKeePassGroups: (Long) -> Flow<List<KeePassGroupInfo>> = { flowOf(emptyList()) },
     onRenameCategory: ((Category) -> Unit)? = null,
     onDeleteCategory: ((Category) -> Unit)? = null
 ) {
@@ -154,10 +163,16 @@ internal fun PasswordListCategoryChipMenu(
 
         PasswordListCategoryChipMenuBottomActions(
             categories = categories,
+            keepassDatabases = keepassDatabases,
+            bitwardenVaults = bitwardenVaults,
+            getBitwardenFolders = getBitwardenFolders,
+            getKeePassGroups = getKeePassGroups,
             categoryEditMode = uiState.categoryEditMode,
             onCategoryEditModeChange = uiState.onCategoryEditModeChange,
             onDismiss = onDismiss,
             onCreateCategory = onCreateCategory,
+            onMoveCategory = onMoveCategory,
+            onMoveCategoryToStorageTarget = onMoveCategoryToStorageTarget,
             onRenameCategory = onRenameCategory,
             onDeleteCategory = onDeleteCategory,
             categoryActionTarget = uiState.categoryActionTarget,

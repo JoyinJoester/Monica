@@ -24,6 +24,7 @@ import takagi.ru.monica.data.model.toStorageTarget
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
+import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.util.ImageManager
@@ -43,6 +44,7 @@ data class NoteDraftStorageTarget(
 
 class NoteViewModel(
     private val repository: SecureItemRepository,
+    private val passwordRepository: PasswordRepository? = null,
     context: Context? = null,
     private val localKeePassDatabaseDao: LocalKeePassDatabaseDao? = null,
     securityManager: SecurityManager? = null
@@ -724,6 +726,7 @@ class NoteViewModel(
             }
 
             if (isBitwardenCipher) {
+                passwordRepository?.clearBoundNoteReferences(item.id)
                 repository.updateItem(
                     item.copy(
                         isDeleted = true,
@@ -743,6 +746,7 @@ class NoteViewModel(
 
             if (softDelete) {
                 // 软删除：移动到回收站
+                passwordRepository?.clearBoundNoteReferences(item.id)
                 repository.softDeleteItem(item)
                 // 记录移入回收站操作
                 OperationLogger.logDelete(
@@ -765,6 +769,7 @@ class NoteViewModel(
                 }
             } else {
                 // 永久删除
+                passwordRepository?.clearBoundNoteReferences(item.id)
                 OperationLogger.logDelete(
                     itemType = OperationLogItemType.NOTE,
                     itemId = item.id,
@@ -806,6 +811,7 @@ class NoteViewModel(
                 }
 
                 if (isBitwardenCipher) {
+                    passwordRepository?.clearBoundNoteReferences(item.id)
                     repository.updateItem(
                         item.copy(
                             isDeleted = true,
@@ -825,6 +831,7 @@ class NoteViewModel(
 
                 if (softDelete) {
                     // 软删除：移动到回收站
+                    passwordRepository?.clearBoundNoteReferences(item.id)
                     repository.softDeleteItem(item)
                     OperationLogger.logDelete(
                         itemType = OperationLogItemType.NOTE,
@@ -846,6 +853,7 @@ class NoteViewModel(
                     }
                 } else {
                     // 永久删除
+                    passwordRepository?.clearBoundNoteReferences(item.id)
                     OperationLogger.logDelete(
                         itemType = OperationLogItemType.NOTE,
                         itemId = item.id,

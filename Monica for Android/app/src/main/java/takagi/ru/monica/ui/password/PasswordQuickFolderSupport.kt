@@ -39,20 +39,42 @@ internal fun normalizePasswordQuickFolderPath(path: String): String {
 }
 
 internal fun buildLocalQuickFolderPasswordCountByCategoryId(
-    entries: List<takagi.ru.monica.data.PasswordEntry>
+    entries: List<takagi.ru.monica.data.PasswordEntry>,
+    categories: List<Category>
 ): Map<Long, Int> {
-    return entries
+    if (entries.isEmpty() || categories.isEmpty()) return emptyMap()
+
+    val categoryPathById = categories
         .asSequence()
-        .mapNotNull { entry ->
-            val isLocalEntry = entry.isLocalOnlyEntry()
-            if (!isLocalEntry) {
+        .mapNotNull { category ->
+            val normalizedPath = normalizePasswordQuickFolderPath(category.name)
+            if (normalizedPath.isBlank()) {
                 null
             } else {
-                entry.categoryId
+                category.id to normalizedPath
             }
         }
-        .groupingBy { it }
-        .eachCount()
+        .toMap()
+    if (categoryPathById.isEmpty()) return emptyMap()
+
+    val aggregatedCountByPath = mutableMapOf<String, Int>()
+    entries
+        .asSequence()
+        .filter { entry -> entry.isLocalOnlyEntry() }
+        .mapNotNull { entry -> entry.categoryId?.let(categoryPathById::get) }
+        .forEach { path ->
+            var prefix = ""
+            path.split('/').forEach { segment ->
+                prefix = if (prefix.isEmpty()) segment else "$prefix/$segment"
+                aggregatedCountByPath[prefix] = (aggregatedCountByPath[prefix] ?: 0) + 1
+            }
+        }
+    if (aggregatedCountByPath.isEmpty()) return emptyMap()
+
+    return buildPasswordQuickFolderNodes(categories)
+        .associate { node ->
+            node.category.id to (aggregatedCountByPath[node.path] ?: 0)
+        }
 }
 
 internal fun passwordQuickFolderParentPath(path: String): String? {

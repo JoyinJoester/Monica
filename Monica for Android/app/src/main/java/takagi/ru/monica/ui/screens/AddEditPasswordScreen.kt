@@ -90,6 +90,7 @@ import takagi.ru.monica.ui.components.InlineTotpPreviewCard
 import takagi.ru.monica.ui.components.MultiStorageTargetPickerBottomSheet
 import takagi.ru.monica.ui.components.MultiStorageTargetSelectorCard
 import takagi.ru.monica.ui.components.MonicaExpressiveFilterChip
+import takagi.ru.monica.ui.components.NotePickerBottomSheet
 import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import takagi.ru.monica.ui.components.PasswordStrengthIndicator
 import takagi.ru.monica.ui.components.buildMultiStorageTarget
@@ -112,6 +113,7 @@ import takagi.ru.monica.utils.PasswordStrengthAnalyzer
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
 import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.CategoryFilter
+import takagi.ru.monica.viewmodel.NoteViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.TotpViewModel
 
@@ -157,6 +159,7 @@ fun AddEditPasswordScreen(
     viewModel: PasswordViewModel,
     totpViewModel: TotpViewModel? = null,
     bankCardViewModel: BankCardViewModel? = null,
+    noteViewModel: NoteViewModel? = null,
     localKeePassViewModel: LocalKeePassViewModel? = null,
     passwordId: Long?,
     initialDraft: AddEditPasswordInitialDraft? = null,
@@ -213,6 +216,7 @@ fun AddEditPasswordScreen(
     var existingSshKeyData by rememberSaveable { mutableStateOf("") }
     var existingTotpId by remember { mutableStateOf<Long?>(null) }
     var notes by rememberSaveable { mutableStateOf("") }
+    var boundNoteId by rememberSaveable { mutableStateOf<Long?>(null) }
     var isFavorite by rememberSaveable { mutableStateOf(false) }
     // 每个密码条目维护独立可见状态，避免一个小眼睛影响全部条目
     val passwordVisibilityStates = remember { mutableStateMapOf<Int, Boolean>() }
@@ -273,6 +277,12 @@ fun AddEditPasswordScreen(
     
     // 获取所有密码条目用于SSO关联选择
     val allPasswordsForRef by viewModel.allPasswords.collectAsState(initial = emptyList())
+    val allNotes by (noteViewModel?.allNotes ?: flowOf(emptyList())).collectAsState(initial = emptyList())
+    val selectableNotes = remember(allNotes) { allNotes.filter { !it.isDeleted } }
+    val selectedBoundNote = remember(boundNoteId, selectableNotes) {
+        boundNoteId?.let { noteId -> selectableNotes.firstOrNull { it.id == noteId } }
+    }
+    var showBoundNotePicker by remember { mutableStateOf(false) }
     
     // 自定义字段状态
     val customFields = remember { mutableStateListOf<CustomFieldDraft>() }
@@ -730,7 +740,11 @@ fun AddEditPasswordScreen(
     
     // 判断字段是否应该显示：设置开启 或 条目已有该字段数据
     fun shouldShowSecurityVerification() = fieldVisibility.securityVerification || authenticatorKey.isNotEmpty()
-    fun shouldShowCategoryAndNotes() = fieldVisibility.categoryAndNotes || notes.isNotEmpty()
+    fun shouldShowCategoryAndNotes() =
+        fieldVisibility.categoryAndNotes ||
+            notes.isNotEmpty() ||
+            boundNoteId != null ||
+            noteViewModel != null
     fun shouldShowPersonalInfo() = fieldVisibility.personalInfo ||
         emails.any { it.isNotEmpty() } || phones.any { it.isNotEmpty() }
     fun shouldShowAddressInfo() = fieldVisibility.addressInfo || 
@@ -839,7 +853,7 @@ fun AddEditPasswordScreen(
             coroutineScope.launch {
                 val actualId = if (passwordId < 0) -passwordId else passwordId
                 viewModel.getRawPasswordEntryById(actualId)?.let { rawEntry ->
-                    hasOwnershipConflict = rawEntry.hasOwnershipConflict()
+                    hasOwnershipConflict = viewModel.hasOwnershipConflict(rawEntry)
                     val secretState = viewModel.inspectSecretState(rawEntry)
                     val entry = rawEntry.copy(
                         password = secretState.plainValueOrEmpty()
@@ -848,6 +862,7 @@ fun AddEditPasswordScreen(
                     website = entry.website
                     username = entry.username
                     notes = entry.notes
+                    boundNoteId = entry.boundNoteId
                     appPackageName = entry.appPackageName
                     appName = entry.appName
                     
@@ -1103,6 +1118,7 @@ fun AddEditPasswordScreen(
                 creditCardExpiry = creditCardExpiry,
                 creditCardCVV = creditCardCVV,
                 categoryId = categoryId,
+                boundNoteId = boundNoteId,
                 keepassDatabaseId = keepassDatabaseId,
                 keepassGroupPath = keepassGroupPath,
                 bitwardenVaultId = bitwardenVaultId,  // ✅ 保存到 Bitwarden Vault
@@ -1911,21 +1927,104 @@ fun AddEditPasswordScreen(
                 item {
                     InfoCard(title = stringResource(R.string.notes)) {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        // Notes
-                        OutlinedTextField(
-                            value = notes,
-                            onValueChange = { notes = it },
-                            label = { Text(stringResource(R.string.notes)) },
-                            leadingIcon = { Icon(Icons.Default.Edit, null) },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(88.dp),
-                            maxLines = 4,
-                            shape = RoundedCornerShape(12.dp)
-                        )
+                            val selectedNotePreview = remember(selectedBoundNote) {
+                                selectedBoundNote?.let { note ->
+                                    takagi.ru.monica.notes.domain.NoteContentCodec
+                                        .decodeFromItem(note)
+                                        .content
+                                        .replace("\n", " ")
+                                        .trim()
+                                }.orEmpty()
+                            }
+
+                            OutlinedTextField(
+                                value = notes,
+                                onValueChange = { notes = it },
+                                label = { Text(stringResource(R.string.notes)) },
+                                leadingIcon = { Icon(Icons.Default.Edit, null) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(88.dp),
+                                maxLines = 4,
+                                shape = RoundedCornerShape(12.dp)
+                            )
+
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                            Text(
+                                text = stringResource(R.string.password_bound_note_title),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+
+                            if (selectedBoundNote != null) {
+                                ElevatedCard(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = CardDefaults.elevatedCardColors(
+                                        containerColor = MaterialTheme.colorScheme.secondaryContainer
+                                    )
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(14.dp),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Description,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.onSecondaryContainer
+                                            )
+                                            Column(
+                                                modifier = Modifier.weight(1f),
+                                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = selectedBoundNote.title.ifBlank {
+                                                        stringResource(R.string.untitled)
+                                                    },
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                                                )
+                                                if (selectedNotePreview.isNotBlank()) {
+                                                    Text(
+                                                        text = selectedNotePreview,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f),
+                                                        maxLines = 2,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                            FilledTonalButton(onClick = { showBoundNotePicker = true }) {
+                                                Text(stringResource(R.string.change_bound_note))
+                                            }
+                                            TextButton(onClick = { boundNoteId = null }) {
+                                                Text(stringResource(R.string.unbind_note))
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                OutlinedButton(
+                                    onClick = { showBoundNotePicker = true },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(Icons.Default.Link, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(stringResource(R.string.bind_note))
+                                }
+                            }
+                        }
                     }
                 }
-            }
             }  // 分类与备注 if 结束
             
             // 自定义字段区域标题 (带添加按钮)
@@ -2575,6 +2674,18 @@ fun AddEditPasswordScreen(
             ?: { flowOf(emptyList<takagi.ru.monica.utils.KeePassGroupInfo>()) },
         onDismiss = { showStorageTargetSheet = false },
         onSelectedTargetsChange = ::setSelectedStorageTargets
+    )
+
+    NotePickerBottomSheet(
+        visible = showBoundNotePicker,
+        title = stringResource(R.string.note_picker_title),
+        notes = selectableNotes,
+        selectedNoteId = boundNoteId,
+        onSelect = { note ->
+            boundNoteId = note.id
+            showBoundNotePicker = false
+        },
+        onDismiss = { showBoundNotePicker = false }
     )
 
 }

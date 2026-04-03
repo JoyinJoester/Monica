@@ -103,6 +103,14 @@ class PasswordRepository(
         passwordEntryDao.updateCategoryForPasswords(ids, categoryId)
     }
 
+    suspend fun updateBoundNoteId(id: Long, noteId: Long?) {
+        passwordEntryDao.updateBoundNoteId(id, noteId)
+    }
+
+    suspend fun clearBoundNoteReferences(noteId: Long) {
+        passwordEntryDao.clearBoundNoteReferences(noteId)
+    }
+
     suspend fun bindPasswordsToBitwardenFolder(ids: List<Long>, vaultId: Long, folderId: String) {
         passwordEntryDao.bindPasswordsToBitwardenFolder(ids, vaultId, folderId)
     }

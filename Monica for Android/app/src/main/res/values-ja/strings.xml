@@ -380,22 +380,25 @@
     <string name="password_detail_last_modified">最終更新</string>
     
     <!-- Error Messages -->
-    <string name="error_password_too_short">マスターパスワードは最低6文字必要です</string>
-    <string name="error_password_must_be_6_digits">パスワードは6桁の数字である必要があります</string>
-    <string name="error_password_min_6_digits">パスワードは最低6桁の数字が必要です</string>
-    <string name="error_password_must_be_numeric">パスワードは数字のみ使用できます</string>
+    <string name="error_password_too_short">マスターパスワードは最低3文字必要です</string>
+    <string name="error_password_must_be_6_digits">マスターパスワードは最低3文字必要です</string>
+    <string name="error_password_min_6_digits">マスターパスワードは最低3文字必要です</string>
+    <string name="error_password_must_be_numeric">マスターパスワードに使用できない文字が含まれています</string>
+    <string name="error_password_contains_unsupported_characters">マスターパスワードに使用できない文字が含まれています</string>
     <string name="error_passwords_not_match">パスワードが一致しません</string>
     <string name="error_invalid_password">マスターパスワードが無効です</string>
     <string name="error_authentication_failed">認証に失敗しました</string>
     <string name="error_title_required">タイトルは必須項目です</string>
     <string name="error_password_required">パスワードは必須項目です</string>
-    <string name="password_min_6_digits">最低6桁の数字が必要です</string>
+    <string name="password_min_6_digits">最低3文字必要です</string>
     
     <!-- Settings Screen -->
     <string name="settings_title">設定</string>
     <string name="language">言語</string>
     <string name="theme">外観</string>
     <string name="security">セキュリティ</string>
+    <string name="master_password_and_locking">マスターパスワードとロック</string>
+    <string name="master_password_and_locking_description">指紋ロック解除、自動ロック、セキュリティ質問、マスターパスワードのリセットを管理します。</string>
     <string name="auto_lock">自動ロック</string>
     <string name="auto_lock_summary">アイドル状態後にアプリをロック</string>
     <string name="about">アプリについて</string>
@@ -430,12 +433,12 @@
     <string name="reset_password_title">パスワードをリセット</string>
     <string name="reset_password">パスワードをリセット</string>
     <string name="reset_master_password">マスターパスワードをリセット</string>
-    <string name="reset_password_description">現在のパスワードを入力し、新しい数字パスワード（最低6桁）を設定してください</string>
-    <string name="reset_password_verified_description">新しい数字パスワード（最低6桁）を設定してください</string>
+    <string name="reset_password_description">現在のパスワードを入力し、新しいマスターパスワードを設定してください（最低3文字）</string>
+    <string name="reset_password_verified_description">新しいマスターパスワードを設定してください（最低3文字）</string>
     <string name="current_password">現在のパスワード</string>
     <string name="enter_current_password">現在のパスワードを入力</string>
     <string name="new_password">新しいパスワード</string>
-    <string name="enter_new_password">新しい数字パスワードを入力（最低6桁）</string>
+    <string name="enter_new_password">新しいマスターパスワードを入力（最低3文字）</string>
     <string name="confirm_new_password">新しいパスワードを確認</string>
     <string name="enter_confirm_password">新しいパスワードを確認</string>
     <string name="current_password_required">現在のパスワードを入力してください</string>
@@ -444,7 +447,7 @@
     <string name="password_reset_success">パスワードのリセットが完了しました</string>
     <string name="password_reset_success_message">マスターパスワードが正常に変更されました。新しいパスワードを覚えておいてください。</string>
     <string name="passwords_do_not_match">パスワードが一致しません</string>
-    <string name="password_too_short">パスワードは最低6文字必要です</string>
+    <string name="password_too_short">パスワードは最低3文字必要です</string>
     
     <!-- Forgot Password -->
     <string name="forgot_password">パスワードを忘れた場合</string>
@@ -464,11 +467,17 @@
     <string name="select_question">質問を選択</string>
     <string name="your_answer">あなたの回答</string>
     <string name="enter_answer_hint">回答を入力（大文字小文字を区別しません）</string>
+    <string name="security_questions_must_choose_two">復旧用に異なる2つの質問を選択してください</string>
+    <string name="security_question_custom_label">カスタム質問</string>
+    <string name="security_question_custom_placeholder">独自のセキュリティ質問を入力</string>
     <string name="save_questions">セキュリティ質問を保存</string>
     <string name="update_questions">セキュリティ質問を更新</string>
     <string name="select_first_question">最初のセキュリティ質問を選択してください</string>
     <string name="select_second_question">2番目のセキュリティ質問を選択してください</string>
     <string name="questions_must_be_different">2つの異なる質問を選択してください</string>
+    <string name="custom_questions_must_be_different">2つの異なるカスタム質問を入力してください</string>
+    <string name="first_custom_question_required">1つ目のカスタム質問を入力してください</string>
+    <string name="second_custom_question_required">2つ目のカスタム質問を入力してください</string>
     <string name="first_answer_required">最初の質問の回答を入力してください</string>
     <string name="second_answer_required">2番目の質問の回答を入力してください</string>
     
@@ -606,16 +615,18 @@
     <string name="change_password_title">マスターパスワードを変更</string>
     <string name="change_password_warning_title">重要なお知らせ</string>
     <string name="change_password_warning_message">マスターパスワードを変更すると、保存されているすべてのデータが新しいパスワードで再暗号化されます。新しいパスワードを覚えていないとデータにアクセスできなくなりますのでご注意ください。</string>
+    <string name="change_password_intro">覚えやすいマスターパスワードを設定してください。英字、数字、記号、中国語に対応しています。</string>
+    <string name="change_password_supports_unicode">英字・数字・記号・中国語に対応</string>
     <string name="change_password_current">現在のパスワード *</string>
     <string name="change_password_new">新しいパスワード *</string>
     <string name="change_password_confirm">新しいパスワードを確認 *</string>
-    <string name="change_password_hint">パスワードは最低6桁の数字</string>
+    <string name="change_password_hint">パスワードは最低3文字必要です</string>
     <string name="change_password_button">パスワードを変更</string>
     <string name="change_password_success_title">パスワード変更成功</string>
     <string name="change_password_success_message">マスターパスワードが正常に変更され、すべてのデータが新しいパスワードで再暗号化されました。新しいパスワードでログインしてください。</string>
     <string name="change_password_error_current_empty">現在のパスワードを入力してください</string>
     <string name="change_password_error_new_empty">新しいパスワードを入力してください</string>
-    <string name="change_password_error_new_too_short">新しいパスワードは最低6桁の数字が必要です</string>
+    <string name="change_password_error_new_too_short">新しいパスワードは最低3文字必要です</string>
     <string name="change_password_error_confirm_empty">新しいパスワードを確認してください</string>
     <string name="change_password_error_not_match">入力された新しいパスワードが一致しません</string>
     <string name="change_password_error_same_as_current">新しいパスワードは現在のパスワードと同じにできません</string>
@@ -1079,6 +1090,18 @@
     <string name="developer_functions">開発者機能</string>
     <string name="developer_disable_password_verification">パスワード検証を無効化</string>
     <string name="developer_disable_password_verification_desc">アプリ起動時のパスワード検証をスキップ（開発テスト専用）</string>
+    <string name="developer_bitwarden_forensics_toggle">Bitwarden 同期フォレンジックを有効化</string>
+    <string name="developer_bitwarden_forensics_toggle_desc">マスク済み同期スナップショットを記録（長さ・件数のみ、平文は保存しません）</string>
+    <string name="developer_bitwarden_forensics_raw_toggle">Bitwarden の生リクエスト/レスポンスを記録</string>
+    <string name="developer_bitwarden_forensics_raw_toggle_desc">同期/アップロード診断のため、サニタイズ済みリクエスト/レスポンスのプレビューを保存します。機密項目はマスクされ、長文は自動的に切り詰められます。</string>
+    <string name="developer_bitwarden_forensics_dir">フォレンジック出力フォルダー</string>
+    <string name="developer_bitwarden_forensics_dir_not_set">外部フォルダー未選択。ログはアプリ内ストレージのみ保存されます。</string>
+    <string name="developer_bitwarden_forensics_dir_selected">現在のフォルダー: %1$s</string>
+    <string name="developer_bitwarden_forensics_dir_saved">フォレンジック出力フォルダーを保存しました</string>
+    <string name="developer_bitwarden_forensics_dir_permission_warning">フォルダーは保存されましたが永続権限の付与に失敗しました。書き込み失敗時は再選択してください。</string>
+    <string name="developer_bitwarden_forensics_clear_dir">フォレンジック出力フォルダーをクリア</string>
+    <string name="developer_bitwarden_forensics_clear_dir_desc">外部ストレージへのミラーを停止し、内部ログのみ保持します</string>
+    <string name="developer_bitwarden_forensics_dir_cleared">フォレンジック出力フォルダーをクリアしました</string>
     <string name="developer_warning">⚠️ 開発者機能はテスト専用です。本番環境では有効にしないでください</string>
     <string name="developer_log_buffer_cleared">ログバッファをクリアしました</string>
     <string name="developer_clear_failed">クリア失敗: %s</string>

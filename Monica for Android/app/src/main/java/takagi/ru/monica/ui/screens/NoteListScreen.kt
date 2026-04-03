@@ -87,6 +87,7 @@ import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
+import takagi.ru.monica.utils.planLocalCategoryMove
 import androidx.fragment.app.FragmentActivity
 import androidx.compose.ui.res.stringResource
 import takagi.ru.monica.R
@@ -94,7 +95,6 @@ import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.components.MonicaExpressiveFilterChip
 import takagi.ru.monica.ui.components.SyncStatusIcon
-import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenu
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuDropdown
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuOffset
@@ -641,121 +641,6 @@ fun NoteListScreen(
                 }
             )
 
-            if (isCategorySheetVisible) {
-                when (settings.categorySelectionUiMode) {
-                    takagi.ru.monica.data.CategorySelectionUiMode.BOTTOM_SHEET -> UnifiedCategoryFilterBottomSheet(
-                visible = true,
-                onDismiss = { isCategorySheetVisible = false },
-                selected = selectedUnifiedFilter,
-                onSelect = handleCategorySelection,
-                launchAnchorBounds = categoryPillBoundsInWindow,
-                categories = categories,
-                keepassDatabases = keepassDatabases,
-                bitwardenVaults = bitwardenVaults,
-                getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
-                getKeePassGroups = getKeePassGroups,
-                onVerifyMasterPassword = { input ->
-                    securityManager.verifyMasterPassword(input)
-                },
-                onRequestBiometricVerify = if (activity != null && canUseBiometric) {
-                    { onSuccess, onError ->
-                        biometricHelper.authenticate(
-                            activity = activity,
-                            title = context.getString(R.string.verify_identity),
-                            subtitle = context.getString(R.string.verify_to_delete),
-                            onSuccess = { onSuccess() },
-                            onError = { error -> onError(error) },
-                            onFailed = {}
-                        )
-                    }
-                } else {
-                    null
-                },
-                onCreateCategoryWithName = { name ->
-                    scope.launch {
-                        database.categoryDao().insert(Category(name = name))
-                    }
-                },
-                onRenameCategory = { category ->
-                    scope.launch {
-                        database.categoryDao().update(category)
-                    }
-                },
-                onDeleteCategory = { category ->
-                    scope.launch {
-                        database.passwordEntryDao().removeCategoryFromPasswords(category.id)
-                        database.secureItemDao().removeCategoryFromItems(category.id)
-                        database.passkeyDao().removeCategoryFromPasskeys(category.id)
-                        database.categoryDao().delete(category)
-                        val currentFilter = selectedCategoryFilter
-                        if (currentFilter is NoteCategoryFilter.Custom && currentFilter.categoryId == category.id) {
-                            selectedCategoryFilter = NoteCategoryFilter.All
-                        }
-                    }
-                },
-                onCreateBitwardenFolder = { vaultId, name ->
-                    scope.launch {
-                        bitwardenRepository.createFolder(vaultId, name)
-                    }
-                },
-                onRenameBitwardenFolder = { vaultId, folderId, newName ->
-                    scope.launch {
-                        bitwardenRepository.renameFolder(vaultId, folderId, newName)
-                    }
-                },
-                onDeleteBitwardenFolder = { vaultId, folderId ->
-                    scope.launch {
-                        bitwardenRepository.deleteFolder(vaultId, folderId)
-                    }
-                },
-                onCreateKeePassGroup = { databaseId, parentPath, name ->
-                    scope.launch {
-                        val result = keepassBridge.createLegacyGroup(
-                            databaseId = databaseId,
-                            groupName = name,
-                            parentPath = parentPath
-                        )
-                        if (result.isSuccess) {
-                            val flow = keepassGroupFlows.getOrPut(databaseId) {
-                                kotlinx.coroutines.flow.MutableStateFlow(emptyList())
-                            }
-                            flow.value = keepassBridge.listLegacyGroups(databaseId).getOrDefault(emptyList())
-                        }
-                    }
-                },
-                onRenameKeePassGroup = { databaseId, groupPath, newName ->
-                    scope.launch {
-                        val result = keepassBridge.renameLegacyGroup(
-                            databaseId = databaseId,
-                            groupPath = groupPath,
-                            newName = newName
-                        )
-                        if (result.isSuccess) {
-                            val flow = keepassGroupFlows.getOrPut(databaseId) {
-                                kotlinx.coroutines.flow.MutableStateFlow(emptyList())
-                            }
-                            flow.value = keepassBridge.listLegacyGroups(databaseId).getOrDefault(emptyList())
-                        }
-                    }
-                },
-                onDeleteKeePassGroup = { databaseId, groupPath ->
-                    scope.launch {
-                        val result = keepassBridge.deleteLegacyGroup(
-                            databaseId = databaseId,
-                            groupPath = groupPath
-                        )
-                        if (result.isSuccess) {
-                            val flow = keepassGroupFlows.getOrPut(databaseId) {
-                                kotlinx.coroutines.flow.MutableStateFlow(emptyList())
-                            }
-                            flow.value = keepassBridge.listLegacyGroups(databaseId).getOrDefault(emptyList())
-                        }
-                    }
-                }
-                )
-                    takagi.ru.monica.data.CategorySelectionUiMode.CHIP_MENU -> Unit
-                }
-            }
         },
         bottomBar = {
             if (isSelectionMode) {

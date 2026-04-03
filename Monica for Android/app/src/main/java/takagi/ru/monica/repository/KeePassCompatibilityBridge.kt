@@ -66,6 +66,18 @@ class KeePassCompatibilityBridge(
         groupPath: String
     ) = workspaceRepository.deleteGroup(databaseId, groupPath)
 
+    suspend fun moveLegacyGroup(
+        sourceDatabaseId: Long,
+        groupPath: String,
+        targetDatabaseId: Long,
+        targetParentPath: String? = null
+    ) = workspaceRepository.moveGroup(
+        sourceDatabaseId = sourceDatabaseId,
+        groupPath = groupPath,
+        targetDatabaseId = targetDatabaseId,
+        targetParentPath = targetParentPath
+    )
+
     suspend fun updateLegacyPasswordEntry(
         databaseId: Long,
         entry: PasswordEntry,

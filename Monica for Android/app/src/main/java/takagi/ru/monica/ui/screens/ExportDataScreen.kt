@@ -3,6 +3,8 @@ package takagi.ru.monica.ui.screens
 import android.app.Activity
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -65,7 +67,6 @@ fun ExportDataScreen(
     onExportKdbx: suspend (Uri, String) -> Result<String> = { _, _ -> Result.failure(Exception("Not implemented")) }
 ) {
     val context = LocalContext.current
-    val activity = context as? Activity
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val scrollState = rememberScrollState()
@@ -105,43 +106,54 @@ fun ExportDataScreen(
         }
     }
     
-    // 文件选择器
-    val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = androidx.activity.result.contract.ActivityResultContracts.CreateDocument("*/*")
-    ) { uri: Uri? ->
-        uri?.let { safeUri ->
-            scope.launch {
-                isExporting = true
-                try {
-                    val result = when (selectedOption) {
-                        ExportOption.PASSWORDS -> onExportPasswords(safeUri)
-                        ExportOption.TOTP -> {
-                            val password = if (enableEncryption && totpFormat == TotpExportFormat.AEGIS) {
-                                encryptionPassword
-                            } else null
-                            onExportTotp(safeUri, totpFormat, password)
-                        }
-                        ExportOption.BANK_CARDS_DOCS -> onExportBankCardsAndDocs(safeUri)
-                        ExportOption.NOTES -> onExportNotes(safeUri)
-                        ExportOption.ZIP_BACKUP -> onExportZip(safeUri, backupPreferences)
-                        ExportOption.KDBX -> onExportKdbx(safeUri, kdbxPassword)
-                    }
-                    
-                    isExporting = false
-                    result.onSuccess { message ->
-                        snackbarHostState.showSnackbar(message)
-                        onNavigateBack()
-                    }.onFailure { error ->
-                        snackbarHostState.showSnackbar(
-                            error.message ?: context.getString(R.string.export_data_error)
-                        )
-                    }
-                } catch (e: Exception) {
-                    isExporting = false
+    suspend fun handleExportUri(safeUri: Uri) {
+        isExporting = true
+        try {
+            val result = when (selectedOption) {
+                ExportOption.PASSWORDS -> onExportPasswords(safeUri)
+                ExportOption.TOTP -> {
+                    val password = if (enableEncryption && totpFormat == TotpExportFormat.AEGIS) {
+                        encryptionPassword
+                    } else null
+                    onExportTotp(safeUri, totpFormat, password)
+                }
+                ExportOption.BANK_CARDS_DOCS -> onExportBankCardsAndDocs(safeUri)
+                ExportOption.NOTES -> onExportNotes(safeUri)
+                ExportOption.ZIP_BACKUP -> onExportZip(safeUri, backupPreferences)
+                ExportOption.KDBX -> onExportKdbx(safeUri, kdbxPassword)
+            }
+
+            isExporting = false
+            result.onSuccess { message ->
+                scope.launch {
+                    snackbarHostState.showSnackbar(message)
+                    onNavigateBack()
+                }
+            }.onFailure { error ->
+                scope.launch {
                     snackbarHostState.showSnackbar(
-                        context.getString(R.string.export_data_error) + ": ${e.message}"
+                        error.message ?: context.getString(R.string.export_data_error)
                     )
                 }
+            }
+        } catch (e: Exception) {
+            isExporting = false
+            snackbarHostState.showSnackbar(
+                context.getString(R.string.export_data_error) + ": ${e.message}"
+            )
+        }
+    }
+
+    // 文件选择器
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode != Activity.RESULT_OK) {
+            return@rememberLauncherForActivityResult
+        }
+        result.data?.data?.let { safeUri ->
+            scope.launch {
+                handleExportUri(safeUri)
             }
         }
     }
@@ -174,8 +186,8 @@ fun ExportDataScreen(
             return
         }
         
-        // 根据选项设置文件名
-        val fileName = when (selectedOption) {
+        // 根据选项设置文件名和 MIME
+        val (fileName, mimeType) = when (selectedOption) {
             ExportOption.PASSWORDS -> "monica_passwords_${System.currentTimeMillis()}.csv"
             ExportOption.TOTP -> {
                 if (totpFormat == TotpExportFormat.AEGIS) {
@@ -188,9 +200,32 @@ fun ExportDataScreen(
             ExportOption.NOTES -> "monica_notes_${System.currentTimeMillis()}.csv"
             ExportOption.ZIP_BACKUP -> "monica_backup_${java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())}.zip"
             ExportOption.KDBX -> "monica_${java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())}.kdbx"
+        }.let { name ->
+            val type = when {
+                name.endsWith(".csv") -> "text/csv"
+                name.endsWith(".json") -> "application/json"
+                name.endsWith(".zip") -> "application/zip"
+                name.endsWith(".kdbx") -> "application/octet-stream"
+                else -> "*/*"
+            }
+            name to type
         }
-        
-        filePickerLauncher.launch(fileName)
+
+        val createDocumentIntent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = mimeType
+            putExtra(Intent.EXTRA_TITLE, fileName)
+        }
+
+        try {
+            filePickerLauncher.launch(createDocumentIntent)
+        } catch (e: Exception) {
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    context.getString(R.string.error_launch_export, e.message ?: "unknown")
+                )
+            }
+        }
     }
     
     // 密码输入对话框
@@ -822,17 +857,6 @@ private fun ExportOptionCard(
             }
         }
     }
-}
-
-@androidx.compose.runtime.Composable
-private fun rememberLauncherForActivityResult(
-    contract: androidx.activity.result.contract.ActivityResultContracts.CreateDocument,
-    onResult: (Uri?) -> Unit
-): androidx.activity.compose.ManagedActivityResultLauncher<String, Uri?> {
-    return androidx.activity.compose.rememberLauncherForActivityResult(
-        contract = contract,
-        onResult = onResult
-    )
 }
 
 /**

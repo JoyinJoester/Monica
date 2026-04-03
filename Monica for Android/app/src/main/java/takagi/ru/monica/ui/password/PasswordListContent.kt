@@ -274,6 +274,7 @@ private val stringSetSaver = Saver<Set<String>, ArrayList<String>>(
 
 private const val FAST_SCROLL_LOG_TAG = "PasswordFastScroll"
 private const val PASSWORD_SCROLL_LOG_TAG = "PasswordScrollDebug"
+private const val PASSWORD_EMPTY_STATE_DEBOUNCE_MS = 220L
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -589,6 +590,48 @@ fun PasswordListContent(
     val quickFolderRootFilter = remember(quickFolderRootKey) {
         quickFolderRootKey.toQuickFolderRootFilter()
     }
+    val quickFolderSystemBackTarget =
+        if (!appSettings.passwordListSystemBackToParentFolderEnabled) {
+            null
+        } else {
+            when (val filter = currentFilter) {
+                is CategoryFilter.Custom -> {
+                    val currentPath = quickFolderCurrentPath
+                    if (currentPath == null) {
+                        null
+                    } else {
+                        val parentPath = passwordQuickFolderParentPath(currentPath)
+                        if (parentPath == null) {
+                            quickFolderRootFilter
+                        } else {
+                            quickFolderNodeByPath[parentPath]?.category?.let { parentNode ->
+                                CategoryFilter.Custom(parentNode.id)
+                            } ?: quickFolderRootFilter
+                        }
+                    }
+                }
+
+                is CategoryFilter.KeePassGroupFilter -> {
+                    val currentPath = filter.groupPath.trim('/').trim()
+                    if (currentPath.isBlank()) {
+                        null
+                    } else {
+                        val parentPath = currentPath.substringBeforeLast('/', missingDelimiterValue = "")
+                        if (parentPath.isBlank()) {
+                            CategoryFilter.KeePassDatabase(filter.databaseId)
+                        } else {
+                            CategoryFilter.KeePassGroupFilter(filter.databaseId, parentPath)
+                        }
+                    }
+                }
+
+                is CategoryFilter.BitwardenFolderFilter -> {
+                    CategoryFilter.BitwardenVault(filter.vaultId)
+                }
+
+                else -> null
+            }
+        }
     val quickFolderSourceEntries = remember(searchQuery, passwordEntries, allPasswords) {
         if (searchQuery.isNotBlank()) {
             passwordEntries
@@ -598,9 +641,13 @@ fun PasswordListContent(
     }
     val baseQuickFolderPasswordCountByCategoryId = rememberAsyncComputed(
         quickFolderSourceEntries,
+        categories,
         initialValue = emptyMap()
     ) {
-        buildLocalQuickFolderPasswordCountByCategoryId(quickFolderSourceEntries)
+        buildLocalQuickFolderPasswordCountByCategoryId(
+            entries = quickFolderSourceEntries,
+            categories = categories
+        )
     }
     val quickFolderPasswordCountByCategoryId = remember(
         baseQuickFolderPasswordCountByCategoryId,
@@ -722,6 +769,15 @@ fun PasswordListContent(
         )
     }
 
+    BackHandler(
+        enabled = !isSearchExpanded &&
+            !isSelectionMode &&
+            !isArchiveView &&
+            quickFolderSystemBackTarget != null
+    ) {
+        viewModel.setCategoryFilter(requireNotNull(quickFolderSystemBackTarget))
+    }
+
     val shouldLoadManualStackMetadata =
         effectiveStackCardMode != StackCardMode.ALWAYS_EXPANDED ||
             quickFilterManualStackOnly ||
@@ -776,7 +832,7 @@ fun PasswordListContent(
         quickFilterNeverStack,
         effectiveNoStackEntryIds,
         aggregateUiState.hasActiveContentTypeFilter,
-        aggregateUiState.displayedContentTypes
+        aggregateUiState.contentTypeFilterTypes
     ) {
         var filtered = passwordEntries.filter { it.id !in deletedItemIds }
 
@@ -809,7 +865,7 @@ fun PasswordListContent(
         }
         if (aggregateUiState.hasActiveContentTypeFilter) {
             filtered = filtered.filter { entry ->
-                entry.matchesLinkedAggregateContentTypes(aggregateUiState.displayedContentTypes)
+                entry.matchesLinkedAggregateContentTypes(aggregateUiState.contentTypeFilterTypes)
             }
         }
         filtered
@@ -959,6 +1015,9 @@ fun PasswordListContent(
     var groupedPasswords by remember {
         mutableStateOf<Map<String, List<takagi.ru.monica.data.PasswordEntry>>>(emptyMap())
     }
+    var hasGroupedPasswordsReadyForCurrentInputs by remember {
+        mutableStateOf(false)
+    }
     val visiblePasswordsForAutoGrouping = remember(
         visiblePasswordEntries,
         manualAggregateStackBuildResult.stackedPasswordIds
@@ -976,13 +1035,34 @@ fun PasswordListContent(
         val sourceEntries = visiblePasswordsForAutoGrouping
         if (sourceEntries.isEmpty()) {
             groupedPasswords = emptyMap()
+            hasGroupedPasswordsReadyForCurrentInputs = true
             return@LaunchedEffect
         }
+        hasGroupedPasswordsReadyForCurrentInputs = false
         groupedPasswords = withContext(Dispatchers.Default) {
             buildGroupedPasswordsForEntries(
                 sourceEntries = sourceEntries,
                 config = groupingConfig
             )
+        }
+        hasGroupedPasswordsReadyForCurrentInputs = true
+    }
+
+    val groupedPasswordsForRender = remember(
+        groupedPasswords,
+        hasGroupedPasswordsReadyForCurrentInputs,
+        visiblePasswordsForAutoGrouping
+    ) {
+        if (
+            groupedPasswords.isEmpty() &&
+            !hasGroupedPasswordsReadyForCurrentInputs &&
+            visiblePasswordsForAutoGrouping.isNotEmpty()
+        ) {
+            visiblePasswordsForAutoGrouping
+                .sortedBy { entry -> entry.sortOrder }
+                .associate { entry -> "entry_${entry.id}" to listOf(entry) }
+        } else {
+            groupedPasswords
         }
     }
 
@@ -994,14 +1074,11 @@ fun PasswordListContent(
     val visiblePasswordIds = remember(visiblePasswordsForAutoGrouping) {
         visiblePasswordsForAutoGrouping.map(PasswordEntry::id)
     }
-    val groupedPasswordIds = remember(groupedPasswords) {
-        groupedPasswords.values.flatten().map(PasswordEntry::id)
+    val groupedPasswordIds = remember(groupedPasswordsForRender) {
+        groupedPasswordsForRender.values.flatten().map(PasswordEntry::id)
     }
-    var hasCompletedInitialPasswordListStabilization by remember(
-        currentFilter,
-        searchQuery,
-        aggregateUiState.displayedContentTypes
-    ) {
+    // 首次进入页面后保持稳定态，避免目录切换/返回父级时重复触发首帧门控
+    var hasCompletedInitialPasswordListStabilization by rememberSaveable {
         mutableStateOf(false)
     }
     val initialRenderState = remember(
@@ -1061,12 +1138,12 @@ fun PasswordListContent(
     }
     val passwordPageListItems = remember(
         aggregateUiState.displayedContentTypes,
-        groupedPasswords,
+        groupedPasswordsForRender,
         effectiveVisibleAggregateItems
     ) {
         buildPasswordPageListItems(
             selectedContentTypes = aggregateUiState.displayedContentTypes,
-            groupedPasswords = groupedPasswords,
+            groupedPasswords = groupedPasswordsForRender,
             supplementaryItems = effectiveVisibleAggregateItems,
             manualStackGroups = manualAggregateStackBuildResult.groups
         )
@@ -1143,13 +1220,29 @@ fun PasswordListContent(
             hasVisibleListItems || hasScrollableHeaderContent || searchQuery.isNotEmpty()
         }
     }
-    val showEmptyStateWithHeaders = remember(
+    val shouldShowEmptyState = remember(
         isPasswordPageListModelReady,
         usesLazyColumn,
         hasVisibleListItems,
-        searchQuery
+        searchQuery,
+        shouldGateInitialPasswordFirstFrame
     ) {
-        isPasswordPageListModelReady && usesLazyColumn && !hasVisibleListItems && searchQuery.isEmpty()
+        isPasswordPageListModelReady &&
+            usesLazyColumn &&
+            !hasVisibleListItems &&
+            searchQuery.isEmpty() &&
+            !shouldGateInitialPasswordFirstFrame
+    }
+    var showEmptyStateWithHeaders by remember {
+        mutableStateOf(false)
+    }
+    LaunchedEffect(shouldShowEmptyState) {
+        if (!shouldShowEmptyState) {
+            showEmptyStateWithHeaders = false
+            return@LaunchedEffect
+        }
+        delay(PASSWORD_EMPTY_STATE_DEBOUNCE_MS)
+        showEmptyStateWithHeaders = true
     }
     val listState = rememberPasswordListLazyListState(
         viewModel = viewModel,
@@ -1157,7 +1250,10 @@ fun PasswordListContent(
         scrollToTopRequestKey = scrollToTopRequestKey,
         fastScrollRequestKey = fastScrollRequestKey,
         fastScrollProgress = fastScrollProgress,
-        allowScrollPositionPersistence = isPasswordPageListModelReady && hasVisibleListItems,
+        allowScrollPositionPersistence =
+            isPasswordPageListModelReady &&
+                hasVisibleListItems &&
+                !shouldGateInitialPasswordFirstFrame,
         onBackToTopVisibilityChange = onBackToTopVisibilityChange
     )
 
@@ -1297,6 +1393,7 @@ fun PasswordListContent(
         searchQuery = searchQuery,
         isPasswordPageListModelReady = isPasswordPageListModelReady,
         hasVisibleListItems = hasVisibleListItems,
+        showEmptyState = showEmptyStateWithHeaders,
         hasScrollableHeaderContent = hasScrollableHeaderContent,
         hasVisibleQuickFilters = hasVisibleQuickFilters,
         aggregateUiState = aggregateUiState,

@@ -101,6 +101,7 @@ import takagi.ru.monica.ui.screens.ExportDataScreen
 import takagi.ru.monica.ui.screens.ForgotPasswordScreen
 import takagi.ru.monica.ui.screens.ImportDataScreen
 import takagi.ru.monica.ui.screens.LoginScreen
+import takagi.ru.monica.ui.screens.MasterPasswordLockingSettingsScreen
 import takagi.ru.monica.ui.screens.QrScannerScreen
 import takagi.ru.monica.ui.screens.ResetPasswordScreen
 import takagi.ru.monica.ui.screens.SecurityAnalysisScreen
@@ -402,6 +403,7 @@ fun MonicaApp(
     val noteViewModel: takagi.ru.monica.viewmodel.NoteViewModel = viewModel {
         takagi.ru.monica.viewmodel.NoteViewModel(
             secureItemRepository,
+            repository,
             navController.context,
             database.localKeePassDatabaseDao(),
             securityManager
@@ -834,6 +836,9 @@ fun MonicaContent(
                 onNavigateToSecurityQuestion = {
                     navController.navigate(Screen.SecurityQuestion.route)
                 },
+                onNavigateToMasterPasswordLocking = {
+                    navController.navigate(Screen.MasterPasswordLockingSettings.route)
+                },
                 onNavigateToSyncBackup = {
                     navController.navigate(Screen.SyncBackup.route)
                 },
@@ -962,6 +967,7 @@ fun MonicaContent(
                     viewModel = viewModel,
                     totpViewModel = totpViewModel,
                     bankCardViewModel = bankCardViewModel,
+                    noteViewModel = noteViewModel,
                     localKeePassViewModel = localKeePassViewModel,
                     passwordId = if (passwordId == -1L) null else passwordId,
                     initialCategoryId = pendingStorageDefaults?.categoryId,
@@ -1422,6 +1428,7 @@ fun MonicaContent(
                         takagi.ru.monica.ui.screens.PasswordDetailScreen(
                             viewModel = viewModel,
                             passkeyViewModel = passkeyViewModel,
+                            noteViewModel = noteViewModel,
                             passwordId = passwordId,
                             disablePasswordVerification = settings.disablePasswordVerification,
                             biometricEnabled = settings.biometricEnabled,
@@ -1429,6 +1436,13 @@ fun MonicaContent(
                             unmatchedIconHandlingStrategy = settings.unmatchedIconHandlingStrategy,
                             enableSharedBounds = false,
                             onNavigateBack = navigateBackFromPasswordDetail,
+                            onOpenBoundNote = { noteId ->
+                                scope.launch {
+                                    navController.navigate(Screen.NoteDetail.createRoute(noteId)) {
+                                        launchSingleTop = true
+                                    }
+                                }
+                            },
                             onEditPassword = { id ->
                                 scope.launch {
                                     navController.navigate(Screen.AddEditPassword.createRoute(id)) {
@@ -1767,6 +1781,11 @@ fun MonicaContent(
                         launchSingleTop = true
                     }
                 },
+                onNavigateToMasterPasswordLocking = {
+                    navController.navigate(Screen.MasterPasswordLockingSettings.route) {
+                        launchSingleTop = true
+                    }
+                },
                 onNavigateToSyncBackup = {
                     navController.navigate(Screen.SyncBackup.route)
                 },
@@ -1855,6 +1874,35 @@ fun MonicaContent(
                     }
                 }
             )
+            }
+        }
+
+        composable(
+            route = Screen.MasterPasswordLockingSettings.route,
+            enterTransition = { rightSlideEnterTransition() },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { rightSlidePopExitTransition() }
+        ) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+            ) {
+                MasterPasswordLockingSettingsScreen(
+                    viewModel = settingsViewModel,
+                    onNavigateBack = {
+                        navController.popBackStack()
+                    },
+                    onResetPassword = {
+                        navController.navigate(Screen.ResetPassword.createRoute()) {
+                            launchSingleTop = true
+                        }
+                    },
+                    onSecurityQuestions = {
+                        navController.navigate(Screen.SecurityQuestionsSetup.route) {
+                            launchSingleTop = true
+                        }
+                    }
+                )
             }
         }
 
@@ -2267,9 +2315,6 @@ fun MonicaContent(
                 },
                 onNavigateToPasswordListCustomization = {
                     navController.navigate(Screen.PasswordListCustomization.route)
-                },
-                onNavigateToAddButtonCustomization = {
-                    navController.navigate(Screen.AddButtonCustomization.route)
                 },
                 onNavigateToPasswordCardAdjustment = {
                     navController.navigate(Screen.PasswordCardAdjustment.route)

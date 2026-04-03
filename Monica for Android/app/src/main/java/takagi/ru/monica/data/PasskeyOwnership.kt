@@ -21,12 +21,30 @@ sealed class PasskeyOwnership {
 fun PasskeyEntry.resolveOwnership(): PasskeyOwnership {
     val hasKeePassBinding = keepassDatabaseId != null
     val hasBitwardenBinding = bitwardenVaultId != null || !bitwardenCipherId.isNullOrBlank()
+    val hasConcreteKeePassBinding = !keepassGroupPath.isNullOrBlank()
+    val hasConcreteBitwardenBinding =
+        !bitwardenCipherId.isNullOrBlank() ||
+            !bitwardenFolderId.isNullOrBlank() ||
+            !syncStatus.equals("NONE", ignoreCase = true)
 
     return when {
-        hasKeePassBinding && hasBitwardenBinding -> PasskeyOwnership.Conflict(
-            hasKeePassBinding = true,
-            hasBitwardenBinding = true
-        )
+        hasKeePassBinding && hasBitwardenBinding -> when {
+            hasConcreteKeePassBinding && !hasConcreteBitwardenBinding -> PasskeyOwnership.KeePass(
+                databaseId = keepassDatabaseId!!
+            )
+
+            hasConcreteBitwardenBinding && !hasConcreteKeePassBinding -> PasskeyOwnership.Bitwarden(
+                vaultId = bitwardenVaultId,
+                cipherId = bitwardenCipherId
+            )
+
+            !hasConcreteKeePassBinding && !hasConcreteBitwardenBinding -> PasskeyOwnership.MonicaLocal
+
+            else -> PasskeyOwnership.Conflict(
+                hasKeePassBinding = true,
+                hasBitwardenBinding = true
+            )
+        }
 
         hasKeePassBinding -> PasskeyOwnership.KeePass(
             databaseId = keepassDatabaseId!!

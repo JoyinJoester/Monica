@@ -27,12 +27,35 @@ fun isLocalPasswordOwnership(
 fun PasswordEntry.resolveOwnership(): PasswordOwnership {
     val hasKeePassBinding = keepassDatabaseId != null
     val hasBitwardenBinding = bitwardenVaultId != null
+    val hasConcreteKeePassBinding =
+        !keepassEntryUuid.isNullOrBlank() ||
+            !keepassGroupUuid.isNullOrBlank() ||
+            !keepassGroupPath.isNullOrBlank()
+    val hasConcreteBitwardenBinding =
+        !bitwardenCipherId.isNullOrBlank() ||
+            !bitwardenRevisionDate.isNullOrBlank() ||
+            !bitwardenFolderId.isNullOrBlank() ||
+            bitwardenLocalModified
 
     return when {
-        hasKeePassBinding && hasBitwardenBinding -> PasswordOwnership.Conflict(
-            hasKeePassBinding = true,
-            hasBitwardenBinding = true
-        )
+        hasKeePassBinding && hasBitwardenBinding -> when {
+            hasConcreteKeePassBinding && !hasConcreteBitwardenBinding -> PasswordOwnership.KeePass(
+                databaseId = keepassDatabaseId!!,
+                entryUuid = keepassEntryUuid
+            )
+
+            hasConcreteBitwardenBinding && !hasConcreteKeePassBinding -> PasswordOwnership.Bitwarden(
+                vaultId = bitwardenVaultId!!,
+                cipherId = bitwardenCipherId
+            )
+
+            !hasConcreteKeePassBinding && !hasConcreteBitwardenBinding -> PasswordOwnership.MonicaLocal
+
+            else -> PasswordOwnership.Conflict(
+                hasKeePassBinding = true,
+                hasBitwardenBinding = true
+            )
+        }
 
         hasKeePassBinding -> PasswordOwnership.KeePass(
             databaseId = keepassDatabaseId!!,

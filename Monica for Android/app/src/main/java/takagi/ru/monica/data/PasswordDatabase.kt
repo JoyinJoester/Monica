@@ -30,7 +30,7 @@ import takagi.ru.monica.data.bitwarden.*
         BitwardenConflictBackup::class,
         BitwardenPendingOperation::class
     ],
-    version = 53,
+    version = 54,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -1396,6 +1396,20 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_53_54 = object : androidx.room.migration.Migration(53, 54) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 53→54: password bound note id")
+                    database.execSQL(
+                        "ALTER TABLE password_entries ADD COLUMN boundNoteId INTEGER DEFAULT NULL"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 53→54 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 53→54 failed: ${e.message}")
+                }
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -1455,7 +1469,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_49_50,  // SSH 密钥结构化字段
                         MIGRATION_50_51,  // 密码页聚合堆叠元数据
                         MIGRATION_51_52,  // 密码多目标副本组标识
-                        MIGRATION_52_53   // 安全项多目标副本组标识
+                        MIGRATION_52_53,  // 安全项多目标副本组标识
+                        MIGRATION_53_54   // 密码绑定笔记ID
                     )
                     .build()
                 INSTANCE = instance

@@ -24,8 +24,8 @@ import takagi.ru.monica.data.PasswordListQuickFolderStyle
 import takagi.ru.monica.data.PasswordPageContentType
 import takagi.ru.monica.viewmodel.CategoryFilter
 
-private const val PASSWORD_LIST_QUICK_FILTERS_KEY = "quick_filters"
-private const val PASSWORD_LIST_QUICK_FOLDER_SHORTCUTS_KEY = "quick_folder_shortcuts"
+internal const val PASSWORD_LIST_QUICK_FILTERS_KEY = "quick_filters"
+internal const val PASSWORD_LIST_QUICK_FOLDER_SHORTCUTS_KEY = "quick_folder_shortcuts"
 private const val PASSWORD_LIST_EMPTY_STATE_WITH_HEADERS_KEY = "empty_state_with_quick_headers"
 private const val PASSWORD_LIST_BOTTOM_SPACER_KEY = "password_list_bottom_spacer"
 
@@ -60,6 +60,7 @@ internal fun PasswordListScrollableContent(
     currentFilter: CategoryFilter,
     onNavigateFilter: (CategoryFilter) -> Unit,
     hasVisibleListItems: Boolean,
+    showEmptyState: Boolean,
     searchQuery: String,
     emptyStateMessage: PasswordListEmptyStateMessage,
     renderPasswordRows: LazyListScope.() -> Unit
@@ -124,7 +125,7 @@ internal fun PasswordListScrollableContent(
             }
         }
 
-        if (isPasswordPageListModelReady && !hasVisibleListItems && searchQuery.isEmpty()) {
+        if (showEmptyState) {
             item(key = PASSWORD_LIST_EMPTY_STATE_WITH_HEADERS_KEY) {
                 Box(
                     modifier = Modifier

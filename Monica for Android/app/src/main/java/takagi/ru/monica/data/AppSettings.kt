@@ -460,7 +460,7 @@ enum class CategorySelectionUiMode {
     CHIP_MENU;
 
     companion object {
-        val DEFAULT = BOTTOM_SHEET
+        val DEFAULT = CHIP_MENU
     }
 }
 
@@ -481,6 +481,9 @@ data class AppSettings(
     val bottomNavOrder: List<BottomNavContentTab> = BottomNavContentTab.DEFAULT_ORDER,
     val useDraggableBottomNav: Boolean = false, // 使用可拖拽底部导航栏
     val disablePasswordVerification: Boolean = false, // 开发者选项：关闭密码验证
+    val bitwardenSyncForensicsEnabled: Boolean = false, // 开发者选项：Bitwarden 同步脱敏取证
+    val bitwardenSyncForensicsDirectoryUri: String? = null, // 取证日志外部镜像目录（SAF tree uri）
+    val bitwardenSyncForensicsRawCaptureEnabled: Boolean = false, // 开发者选项：Bitwarden 原始请求/响应留存（强脱敏）
     val validatorProgressBarStyle: ProgressBarStyle = ProgressBarStyle.LINEAR, // 验证器进度条样式
     val validatorUnifiedProgressBar: UnifiedProgressBarMode = UnifiedProgressBarMode.ENABLED, // 统一进度条模式
     val validatorSmoothProgress: Boolean = true, // 平滑进度条（无停顿感）
@@ -514,6 +517,7 @@ data class AppSettings(
     val passwordListQuickFoldersEnabled: Boolean = false, // 密码列表快捷文件夹开关
     val passwordListQuickFolderStyle: PasswordListQuickFolderStyle = PasswordListQuickFolderStyle.CLASSIC, // 密码列表快捷文件夹展示样式
     val passwordListQuickFolderPathBannerEnabled: Boolean = false, // 密码列表路径横幅开关
+    val passwordListSystemBackToParentFolderEnabled: Boolean = false, // 密码页系统返回回到父文件夹
     val addButtonBehaviorMode: AddButtonBehaviorMode = AddButtonBehaviorMode.DIRECT_PASSWORD, // 添加按钮行为
     val addButtonMenuOrder: List<AddButtonMenuAction> = AddButtonMenuAction.DEFAULT_ORDER, // 添加按钮展开菜单顺序
     val addButtonMenuEnabledActions: List<AddButtonMenuAction> = AddButtonMenuAction.DEFAULT_ENABLED_ACTIONS, // 添加按钮展开菜单启用项

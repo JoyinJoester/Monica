@@ -22,12 +22,37 @@ sealed class SecureItemOwnership {
 fun SecureItem.resolveOwnership(): SecureItemOwnership {
     val hasKeePassBinding = keepassDatabaseId != null
     val hasBitwardenBinding = bitwardenVaultId != null || !bitwardenCipherId.isNullOrBlank()
+    val hasConcreteKeePassBinding =
+        !keepassEntryUuid.isNullOrBlank() ||
+            !keepassGroupUuid.isNullOrBlank() ||
+            !keepassGroupPath.isNullOrBlank()
+    val hasConcreteBitwardenBinding =
+        !bitwardenCipherId.isNullOrBlank() ||
+            !bitwardenRevisionDate.isNullOrBlank() ||
+            !bitwardenFolderId.isNullOrBlank() ||
+            bitwardenLocalModified ||
+            !syncStatus.equals("NONE", ignoreCase = true)
 
     return when {
-        hasKeePassBinding && hasBitwardenBinding -> SecureItemOwnership.Conflict(
-            hasKeePassBinding = true,
-            hasBitwardenBinding = true
-        )
+        hasKeePassBinding && hasBitwardenBinding -> when {
+            hasConcreteKeePassBinding && !hasConcreteBitwardenBinding -> SecureItemOwnership.KeePass(
+                databaseId = keepassDatabaseId!!,
+                entryUuid = keepassEntryUuid
+            )
+
+            hasConcreteBitwardenBinding && !hasConcreteKeePassBinding -> SecureItemOwnership.Bitwarden(
+                vaultId = bitwardenVaultId,
+                cipherId = bitwardenCipherId
+            )
+
+            !hasConcreteKeePassBinding && !hasConcreteBitwardenBinding -> SecureItemOwnership.MonicaLocal
+
+            else -> SecureItemOwnership.Conflict(
+                hasKeePassBinding = true,
+                hasBitwardenBinding = true
+            )
+        }
+
         hasKeePassBinding -> SecureItemOwnership.KeePass(
             databaseId = keepassDatabaseId!!,
             entryUuid = keepassEntryUuid

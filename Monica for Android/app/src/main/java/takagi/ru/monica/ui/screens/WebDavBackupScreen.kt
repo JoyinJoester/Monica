@@ -1,6 +1,8 @@
 package takagi.ru.monica.ui.screens
 
 import android.widget.Toast
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -46,6 +48,7 @@ import takagi.ru.monica.util.DataExportImportManager
 import java.text.SimpleDateFormat
 import java.util.Locale
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.delay
 import java.text.DateFormat
 import android.text.format.DateUtils
 import kotlinx.serialization.encodeToString
@@ -55,6 +58,20 @@ import kotlinx.serialization.json.Json
 private fun matchesAnyKeyword(message: String, vararg keywords: String): Boolean {
     val normalized = message.lowercase(Locale.ROOT)
     return keywords.any { keyword -> normalized.contains(keyword.lowercase(Locale.ROOT)) }
+}
+
+private fun monicaConfigEntryDisplayName(entry: String): String {
+    val normalized = entry.substringAfterLast('/').lowercase(Locale.ROOT)
+    return when (normalized) {
+        "webdav_connection.json", "webdav_config.json" -> "WebDAV连接配置"
+        "page_adjustment_settings.json" -> "页面调整设置"
+        "autofill_blocked_fields.json" -> "自动填充屏蔽字段"
+        "autofill_save_blocked_targets.json" -> "自动填充不保存名单"
+        "bitwarden_vaults.json" -> "Bitwarden Vault配置"
+        "common_account.json" -> "常用账号模板"
+        "monica_config.json" -> "Monica聚合配置"
+        else -> entry.substringAfterLast('/')
+    }
 }
 
 private enum class RestoreMode {
@@ -985,6 +1002,11 @@ private fun BackupItem(
     var menuExpanded by remember { mutableStateOf(false) }
     var selectedRestoreMode by remember { mutableStateOf(RestoreMode.MERGE_LOCAL) }
     var restoreGlobalDedup by remember { mutableStateOf(false) }
+    var showMonicaConfigOverwriteDialog by remember { mutableStateOf(false) }
+    var pendingMonicaConfigEntries by remember { mutableStateOf<List<String>>(emptyList()) }
+    var pendingDecryptPassword by remember { mutableStateOf<String?>(null) }
+    var showRestartRequiredDialog by remember { mutableStateOf(false) }
+    var restartCountdownSeconds by remember { mutableStateOf(5) }
     
     // New state variables for smart decryption
     var showPasswordInputDialog by remember { mutableStateOf(false) }
@@ -997,7 +1019,11 @@ private fun BackupItem(
         RestoreMode.REPLACE_LOCAL -> true
     }
 
-    suspend fun handleRestoreResult(result: Result<RestoreResult>, localOnlyDedup: Boolean) {
+    suspend fun handleRestoreResult(
+        result: Result<RestoreResult>,
+        localOnlyDedup: Boolean,
+        decryptPassword: String?,
+    ) {
         if (result.isSuccess) {
             val restoreResult = result.getOrNull() ?: return
             val report = restoreResult.report
@@ -1011,6 +1037,9 @@ private fun BackupItem(
             )
             
             isRestoring = false
+            pendingDecryptPassword = null
+            pendingMonicaConfigEntries = emptyList()
+            showMonicaConfigOverwriteDialog = false
             // P0修复：显示详细报告
             val message = if (report.hasIssues()) {
                 // 有问题，显示详细报告
@@ -1088,12 +1117,22 @@ private fun BackupItem(
                 message,
                 Toast.LENGTH_LONG
             ).show()
+
+            if (restoreResult.restartRecommended) {
+                restartCountdownSeconds = 5
+                showRestartRequiredDialog = true
+            }
             onRestoreSuccess()
         } else {
             isRestoring = false
             val exception = result.exceptionOrNull()
             if (exception is WebDavHelper.PasswordRequiredException) {
+                tempPassword = decryptPassword.orEmpty()
                 showPasswordInputDialog = true
+            } else if (exception is WebDavHelper.MonicaConfigDecisionRequiredException) {
+                pendingDecryptPassword = decryptPassword
+                pendingMonicaConfigEntries = exception.configEntries
+                showMonicaConfigOverwriteDialog = true
             } else {
                 val error = exception?.message ?: context.getString(R.string.import_data_unknown_error)
                 Toast.makeText(
@@ -1104,6 +1143,55 @@ private fun BackupItem(
             }
         }
     }
+
+    fun startRestore(
+        decryptPassword: String? = null,
+        restoreMonicaConfig: Boolean? = null,
+    ) {
+        isRestoring = true
+        coroutineScope.launch {
+            try {
+                val result = webDavHelper.downloadAndRestoreBackup(
+                    backupFile = backup,
+                    decryptPassword = decryptPassword,
+                    overwrite = resolveRestoreOverwrite(),
+                    restoreMonicaConfig = restoreMonicaConfig,
+                )
+                handleRestoreResult(
+                    result = result,
+                    localOnlyDedup = resolveLocalOnlyDedup(),
+                    decryptPassword = decryptPassword,
+                )
+            } catch (e: Exception) {
+                isRestoring = false
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.webdav_restore_failed, e.message),
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+    }
+
+    LaunchedEffect(showRestartRequiredDialog) {
+        if (showRestartRequiredDialog) {
+            while (restartCountdownSeconds > 0) {
+                delay(1000)
+                restartCountdownSeconds -= 1
+            }
+        }
+    }
+
+    val restartCountdownProgress by animateFloatAsState(
+        targetValue = ((5 - restartCountdownSeconds).coerceAtLeast(0) / 5f),
+        animationSpec = tween(durationMillis = 350),
+        label = "restore_restart_progress",
+    )
+    val restartCountdownRingProgress by animateFloatAsState(
+        targetValue = (restartCountdownSeconds.coerceAtLeast(0) / 5f).coerceIn(0f, 1f),
+        animationSpec = tween(durationMillis = 350),
+        label = "restore_restart_ring",
+    )
     
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1434,23 +1522,10 @@ private fun BackupItem(
                         TextButton(
                             onClick = {
                                 showRestoreDialog = false
-                                isRestoring = true
-                                coroutineScope.launch {
-                                    try {
-                                        val result = webDavHelper.downloadAndRestoreBackup(
-                                            backup,
-                                            overwrite = resolveRestoreOverwrite()
-                                        )
-                                        handleRestoreResult(result, localOnlyDedup = resolveLocalOnlyDedup())
-                                    } catch (e: Exception) {
-                                        isRestoring = false
-                                        Toast.makeText(
-                                            context,
-                                            context.getString(R.string.webdav_restore_failed, e.message),
-                                            Toast.LENGTH_LONG
-                                        ).show()
-                                    }
-                                }
+                                startRestore(
+                                    decryptPassword = null,
+                                    restoreMonicaConfig = null,
+                                )
                             }
                         ) {
                             Text(stringResource(R.string.webdav_restore_action))
@@ -1485,24 +1560,11 @@ private fun BackupItem(
                 TextButton(
                     onClick = {
                         showPasswordInputDialog = false
-                        isRestoring = true
-                        coroutineScope.launch {
-                            try {
-                                val result = webDavHelper.downloadAndRestoreBackup(
-                                    backup,
-                                    tempPassword,
-                                    overwrite = resolveRestoreOverwrite()
-                                )
-                                handleRestoreResult(result, localOnlyDedup = resolveLocalOnlyDedup())
-                            } catch (e: Exception) {
-                                isRestoring = false
-                                Toast.makeText(
-                                    context,
-                                    context.getString(R.string.webdav_restore_failed, e.message),
-                                    Toast.LENGTH_LONG
-                                ).show()
-                            }
-                        }
+                        pendingDecryptPassword = tempPassword
+                        startRestore(
+                            decryptPassword = tempPassword,
+                            restoreMonicaConfig = null,
+                        )
                     }
                 ) {
                     Text(stringResource(R.string.confirm))
@@ -1513,6 +1575,144 @@ private fun BackupItem(
                     Text(stringResource(R.string.cancel))
                 }
             }
+        )
+    }
+
+    if (showMonicaConfigOverwriteDialog) {
+        val displayEntries = pendingMonicaConfigEntries
+            .map(::monicaConfigEntryDisplayName)
+            .distinct()
+        AlertDialog(
+            onDismissRequest = {
+                if (!isRestoring) {
+                    showMonicaConfigOverwriteDialog = false
+                }
+            },
+            title = { Text(stringResource(R.string.webdav_restore_config_detected_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = stringResource(
+                            R.string.webdav_restore_config_detected_desc,
+                            displayEntries.size,
+                        )
+                    )
+                    displayEntries.take(4).forEach { entry ->
+                        Text(
+                            text = "• $entry",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (displayEntries.size > 4) {
+                        Text(
+                            text = stringResource(
+                                R.string.webdav_restore_config_detected_more,
+                                displayEntries.size - 4,
+                            ),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !isRestoring,
+                    onClick = {
+                        showMonicaConfigOverwriteDialog = false
+                        startRestore(
+                            decryptPassword = pendingDecryptPassword,
+                            restoreMonicaConfig = true,
+                        )
+                    }
+                ) {
+                    Text(stringResource(R.string.webdav_restore_config_overwrite_action))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !isRestoring,
+                    onClick = {
+                        showMonicaConfigOverwriteDialog = false
+                        startRestore(
+                            decryptPassword = pendingDecryptPassword,
+                            restoreMonicaConfig = false,
+                        )
+                    }
+                ) {
+                    Text(stringResource(R.string.webdav_restore_config_keep_local_action))
+                }
+            }
+        )
+    }
+
+    if (showRestartRequiredDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                if (restartCountdownSeconds <= 0) {
+                    showRestartRequiredDialog = false
+                }
+            },
+            title = { Text(stringResource(R.string.webdav_restore_restart_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = stringResource(
+                            R.string.webdav_restore_restart_desc,
+                            backup.name,
+                        )
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 4.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(
+                            progress = { restartCountdownRingProgress },
+                            strokeWidth = 4.dp,
+                        )
+                        Text(
+                            text = if (restartCountdownSeconds > 0) {
+                                context.getString(
+                                    R.string.webdav_restore_restart_countdown,
+                                    restartCountdownSeconds,
+                                )
+                            } else {
+                                context.getString(R.string.webdav_restore_restart_ready)
+                            },
+                            style = MaterialTheme.typography.labelLarge,
+                        )
+                    }
+                    LinearProgressIndicator(
+                        progress = { restartCountdownProgress },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        text = stringResource(R.string.webdav_restore_restart_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = restartCountdownSeconds <= 0,
+                    onClick = { showRestartRequiredDialog = false }
+                ) {
+                    Text(
+                        if (restartCountdownSeconds > 0) {
+                            context.getString(
+                                R.string.webdav_restore_restart_wait_action,
+                                restartCountdownSeconds,
+                            )
+                        } else {
+                            context.getString(R.string.confirm)
+                        }
+                    )
+                }
+            },
         )
     }
     

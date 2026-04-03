@@ -537,6 +537,7 @@ internal fun PasswordBatchMoveSheet(
         bitwardenVaults = bitwardenVaults,
         getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
         getKeePassGroups = localKeePassViewModel::getGroups,
+        showBitwardenFolderTargets = false,
         allowCopy = true,
         allowMove = selectedEntries.none { it.isKeePassEntry() } && !aggregateSelection.hasKeePassOwned,
         allowArchiveTarget = !hasMixedSelection,

@@ -295,6 +295,44 @@ class LocalKeePassViewModel(
             }
         }
     }
+
+    fun moveGroup(
+        sourceDatabaseId: Long,
+        groupPath: String,
+        targetDatabaseId: Long,
+        targetParentPath: String? = null,
+        onResult: (Result<KeePassGroupInfo>) -> Unit = {}
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = workspaceRepository.moveGroup(
+                sourceDatabaseId = sourceDatabaseId,
+                groupPath = groupPath,
+                targetDatabaseId = targetDatabaseId,
+                targetParentPath = targetParentPath
+            )
+            if (result.isSuccess) {
+                refreshGroups(sourceDatabaseId)
+                if (targetDatabaseId != sourceDatabaseId) {
+                    refreshGroups(targetDatabaseId)
+                }
+                val sourceDatabaseName = dao.getDatabaseById(sourceDatabaseId)?.name ?: "KeePass DB #$sourceDatabaseId"
+                val targetDatabaseName = dao.getDatabaseById(targetDatabaseId)?.name ?: "KeePass DB #$targetDatabaseId"
+                result.getOrNull()?.let { groupInfo ->
+                    logKeepassGroupMove(
+                        sourceDatabaseId = sourceDatabaseId,
+                        sourceDatabaseName = sourceDatabaseName,
+                        sourcePath = groupPath,
+                        targetDatabaseId = targetDatabaseId,
+                        targetDatabaseName = targetDatabaseName,
+                        movedGroup = groupInfo
+                    )
+                }
+            }
+            withContext(Dispatchers.Main) {
+                onResult(result)
+            }
+        }
+    }
     
     /**
      * 创建新的 KeePass 数据库
@@ -1199,6 +1237,27 @@ class LocalKeePassViewModel(
             itemId = buildKeepassGroupItemId(databaseId, groupPath),
             itemTitle = "$databaseName · $groupPath",
             detail = "删除分组"
+        )
+    }
+
+    private fun logKeepassGroupMove(
+        sourceDatabaseId: Long,
+        sourceDatabaseName: String,
+        sourcePath: String,
+        targetDatabaseId: Long,
+        targetDatabaseName: String,
+        movedGroup: KeePassGroupInfo
+    ) {
+        OperationLogger.logUpdate(
+            itemType = OperationLogItemType.KEEPASS_GROUP,
+            itemId = buildKeepassGroupItemId(targetDatabaseId, movedGroup.path),
+            itemTitle = "$targetDatabaseName · ${movedGroup.displayPath}",
+            changes = buildList {
+                if (sourceDatabaseId != targetDatabaseId) {
+                    add(FieldChange("数据库", sourceDatabaseName, targetDatabaseName))
+                }
+                add(FieldChange("路径", sourcePath, movedGroup.path))
+            }
         )
     }
 

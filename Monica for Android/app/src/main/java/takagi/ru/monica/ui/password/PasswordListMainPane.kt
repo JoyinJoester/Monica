@@ -47,6 +47,7 @@ internal fun PasswordListMainPane(
     searchQuery: String,
     isPasswordPageListModelReady: Boolean,
     hasVisibleListItems: Boolean,
+    showEmptyState: Boolean,
     hasScrollableHeaderContent: Boolean,
     hasVisibleQuickFilters: Boolean,
     aggregateUiState: PasswordListAggregateUiState,
@@ -182,7 +183,7 @@ internal fun PasswordListMainPane(
                 ) {
                     PasswordListInitialLoadingIndicator()
                 }
-            } else if (isPasswordPageListModelReady && !hasVisibleListItems && searchQuery.isEmpty() && !hasScrollableHeaderContent) {
+            } else if (showEmptyState && !hasScrollableHeaderContent) {
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -247,6 +248,7 @@ internal fun PasswordListMainPane(
                     currentFilter = currentFilter,
                     onNavigateFilter = onNavigateFilter,
                     hasVisibleListItems = hasVisibleListItems,
+                    showEmptyState = showEmptyState,
                     searchQuery = searchQuery,
                     emptyStateMessage = emptyStateMessage,
                     renderPasswordRows = renderPasswordRows
