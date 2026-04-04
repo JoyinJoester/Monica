@@ -911,7 +911,7 @@ class CipherSyncProcessor(
             // 兼容历史 Monica marker-only passkey：至少落一个引用记录
             val referenceId = buildReferenceCredentialId(cipher.id, 0)
             val existing = passkeyDao.getByBitwardenCipherIdInVault(vault.id, cipher.id)
-                ?: passkeyDao.getPasskeyById(referenceId)
+                ?: passkeyDao.getByBitwardenCipherCredentialIdInVault(vault.id, cipher.id, referenceId)
 
             val rpId = fallbackRpId
             val rpName = name.removeSuffix(" [Passkey]").ifBlank { rpId }
@@ -984,7 +984,11 @@ class CipherSyncProcessor(
             val userName = decoded.userName.ifBlank { fallbackUserName }
             val userDisplayName = decoded.userDisplayName.ifBlank { userName }
 
-            val existing = passkeyDao.getPasskeyById(resolvedCredentialId)
+            val existing = passkeyDao.getByBitwardenCipherCredentialIdInVault(
+                vaultId = vault.id,
+                cipherId = cipher.id,
+                credentialId = resolvedCredentialId
+            )
             if (existing == null) {
                 val syncStatus = if (decoded.keyValue.isBlank()) "REFERENCE" else "SYNCED"
                 passkeyDao.insert(

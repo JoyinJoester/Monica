@@ -9,7 +9,11 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import takagi.ru.monica.bitwarden.api.CipherApiResponse
 import takagi.ru.monica.bitwarden.api.SyncResponse
+import takagi.ru.monica.data.PasswordDatabase
+import takagi.ru.monica.data.bitwarden.BitwardenSyncRawEntryRecord
+import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.SettingsManager
 import java.io.File
 import java.security.MessageDigest
@@ -84,6 +88,7 @@ object BitwardenSyncForensicsLogger {
     private const val RAW_PREVIEW_HEAD_CHARS = 16_000
     private const val RAW_PREVIEW_TAIL_CHARS = 8_000
     private const val MAX_ERROR_CHARS = 600
+    private const val RAW_ENTRY_RECORD_LIMIT = 30
 
     private val fileLock = Any()
     private val fileFormatter = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US)
@@ -100,6 +105,10 @@ object BitwardenSyncForensicsLogger {
     private val queryTokenRegex = Regex(
         "((?:access|refresh)_token=)([^&\\s]+)",
         RegexOption.IGNORE_CASE
+    )
+    private val endpointCipherRegex = Regex("/ciphers/([0-9a-fA-F-]{8,})")
+    private val payloadCipherRegex = Regex(
+        "\\\"(?:Id|id)\\\"\\s*:\\s*\\\"([0-9a-fA-F-]{8,})\\\""
     )
     private val sensitiveJsonKeys = setOf(
         "password",
@@ -291,6 +300,57 @@ object BitwardenSyncForensicsLogger {
         BitwardenDiagLogger.append(
             "[INFO][BW_FORENSICS_RAW] stored=$internalFile mirrored=${mirroredPath ?: "disabled"} op=$operation success=$success code=${responseCode ?: "-"}"
         )
+
+        val detectedCipherId = extractCipherId(endpoint, responseBody, requestBody)
+        if (!detectedCipherId.isNullOrBlank()) {
+            val payloadAndSource = when {
+                !responseBody.isNullOrBlank() -> responseBody to BitwardenSyncRawEntryRecord.SOURCE_RESPONSE
+                !requestBody.isNullOrBlank() -> requestBody to BitwardenSyncRawEntryRecord.SOURCE_REQUEST
+                else -> null
+            }
+            payloadAndSource?.let { (rawPayload, source) ->
+                persistRawEntrySnapshot(
+                    context = appContext,
+                    vaultId = vaultId,
+                    cipherId = detectedCipherId,
+                    operation = operation,
+                    endpoint = endpoint,
+                    payload = rawPayload,
+                    payloadSource = source,
+                    responseCode = responseCode,
+                    success = success
+                )
+            }
+        }
+    }
+
+    suspend fun captureSyncCipherSnapshots(
+        context: Context,
+        vaultId: Long,
+        ciphers: List<CipherApiResponse>
+    ) = withContext(Dispatchers.IO) {
+        if (ciphers.isEmpty()) return@withContext
+
+        val appContext = context.applicationContext
+        initialize(appContext)
+        runCatching { BitwardenDiagLogger.initialize(appContext) }
+
+        ciphers.forEach { cipher ->
+            val cipherId = cipher.id.trim()
+            if (cipherId.isEmpty()) return@forEach
+            val payload = runCatching { json.encodeToString(cipher) }.getOrNull() ?: return@forEach
+            persistRawEntrySnapshot(
+                context = appContext,
+                vaultId = vaultId,
+                cipherId = cipherId,
+                operation = "sync_full",
+                endpoint = "/sync/ciphers/$cipherId",
+                payload = payload,
+                payloadSource = BitwardenSyncRawEntryRecord.SOURCE_SYNC_RESPONSE,
+                responseCode = 200,
+                success = true
+            )
+        }
     }
 
     fun exportPersistedLogs(context: Context, maxFiles: Int = 20): String {
@@ -524,6 +584,56 @@ object BitwardenSyncForensicsLogger {
     private fun summarizeSensitiveToken(value: String): String {
         if (value.isBlank()) return "<redacted empty>"
         return "<redacted len=${value.length} sha=${shortSha(value)}>"
+    }
+
+    private suspend fun persistRawEntrySnapshot(
+        context: Context,
+        vaultId: Long,
+        cipherId: String,
+        operation: String,
+        endpoint: String,
+        payload: String,
+        payloadSource: String,
+        responseCode: Int?,
+        success: Boolean
+    ) {
+        runCatching {
+            val sanitizedPayload = sanitizeRawPayload(payload)?.takeIf { it.isNotBlank() } ?: return@runCatching
+            val digest = shortSha(sanitizedPayload)
+            val dao = PasswordDatabase.getDatabase(context).bitwardenSyncRawEntryRecordDao()
+            val latest = dao.getLatestByCipher(vaultId, cipherId)
+            if (latest?.payloadDigest == digest) {
+                return@runCatching
+            }
+
+            val cipherText = SecurityManager(context).encryptDataLegacyCompat(sanitizedPayload)
+            dao.insert(
+                BitwardenSyncRawEntryRecord(
+                    vaultId = vaultId,
+                    bitwardenCipherId = cipherId,
+                    operation = operation,
+                    endpoint = endpoint,
+                    payloadCipherText = cipherText,
+                    payloadDigest = digest,
+                    payloadSource = payloadSource,
+                    responseCode = responseCode,
+                    success = success,
+                    capturedAt = System.currentTimeMillis()
+                )
+            )
+            dao.trimToLimit(vaultId, cipherId, RAW_ENTRY_RECORD_LIMIT)
+        }.onFailure { error ->
+            BitwardenDiagLogger.append(
+                "[WARN][BW_FORENSICS_RAW_ENTRY] persist_failed vault=$vaultId cipher=$cipherId msg=${error.message}"
+            )
+        }
+    }
+
+    private fun extractCipherId(endpoint: String, responseBody: String?, requestBody: String?): String? {
+        endpointCipherRegex.find(endpoint)?.groupValues?.getOrNull(1)?.let { return it }
+        payloadCipherRegex.find(responseBody.orEmpty())?.groupValues?.getOrNull(1)?.let { return it }
+        payloadCipherRegex.find(requestBody.orEmpty())?.groupValues?.getOrNull(1)?.let { return it }
+        return null
     }
 
     private fun shortSha(value: String): String {

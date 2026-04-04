@@ -141,6 +141,15 @@ class BitwardenSyncService(
                 responseBody = runCatching { json.encodeToString(syncResponse) }.getOrNull(),
                 success = true
             )
+            runCatching {
+                BitwardenSyncForensicsLogger.captureSyncCipherSnapshots(
+                    context = context,
+                    vaultId = vault.id,
+                    ciphers = syncResponse.ciphers
+                )
+            }.onFailure { captureError ->
+                android.util.Log.w(TAG, "Capture sync cipher snapshots failed: ${captureError.message}")
+            }
             
             // ===== 空 Vault 保护检查 =====
             val serverCipherCount = syncResponse.ciphers.size

@@ -229,3 +229,67 @@ data class BitwardenPendingOperation(
      */
     fun isMaxRetriesReached(): Boolean = retryCount >= maxRetries
 }
+
+/**
+ * Bitwarden 条目原始同步快照。
+ *
+ * 设计目标:
+ * - 记录每个 cipher 的最近同步原始载荷，用于离线审计与详情页展示。
+ * - 存储前由上层进行加密；同条目连续相同载荷不重复入库。
+ */
+@Entity(
+    tableName = "bitwarden_sync_raw_entry_records",
+    indices = [
+        Index(value = ["vault_id", "bitwarden_cipher_id", "captured_at"]),
+        Index(value = ["captured_at"])
+    ],
+    foreignKeys = [
+        ForeignKey(
+            entity = BitwardenVault::class,
+            parentColumns = ["id"],
+            childColumns = ["vault_id"],
+            onDelete = ForeignKey.NO_ACTION,
+            onUpdate = ForeignKey.NO_ACTION
+        )
+    ]
+)
+data class BitwardenSyncRawEntryRecord(
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+
+    @ColumnInfo(name = "vault_id")
+    val vaultId: Long,
+
+    @ColumnInfo(name = "bitwarden_cipher_id")
+    val bitwardenCipherId: String,
+
+    @ColumnInfo(name = "operation")
+    val operation: String,
+
+    @ColumnInfo(name = "endpoint")
+    val endpoint: String,
+
+    @ColumnInfo(name = "payload_cipher_text")
+    val payloadCipherText: String,
+
+    @ColumnInfo(name = "payload_digest")
+    val payloadDigest: String,
+
+    @ColumnInfo(name = "payload_source")
+    val payloadSource: String,
+
+    @ColumnInfo(name = "response_code")
+    val responseCode: Int? = null,
+
+    @ColumnInfo(name = "success", defaultValue = "1")
+    val success: Boolean = true,
+
+    @ColumnInfo(name = "captured_at")
+    val capturedAt: Long = System.currentTimeMillis()
+) {
+    companion object {
+        const val SOURCE_REQUEST = "REQUEST"
+        const val SOURCE_RESPONSE = "RESPONSE"
+        const val SOURCE_SYNC_RESPONSE = "SYNC_RESPONSE"
+    }
+}

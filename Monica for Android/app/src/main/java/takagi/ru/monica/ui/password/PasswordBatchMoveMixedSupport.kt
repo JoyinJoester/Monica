@@ -80,14 +80,14 @@ internal fun PasswordListAggregateUiState.resolveBatchAggregateSelection(
         .mapNotNullTo(linkedSetOf()) { it.secureItemId }
     val passkeyIds = selectedSupplementaryItems
         .filter { it.type == PasswordPageContentType.PASSKEY }
-        .mapNotNullTo(linkedSetOf()) { it.passkeyCredentialId }
+        .mapNotNullTo(linkedSetOf()) { it.passkeyRecordId }
 
     return PasswordBatchAggregateSelection(
         bankCards = bankCards.filter { it.id in bankCardIds },
         documents = documents.filter { it.id in documentIds },
         notes = notes.filter { it.id in noteIds },
         totpItems = totpItems.filter { it.id in totpIds },
-        passkeys = passkeys.filter { it.credentialId in passkeyIds }
+        passkeys = passkeys.filter { it.id in passkeyIds }
     )
 }
 

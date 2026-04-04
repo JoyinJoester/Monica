@@ -99,7 +99,7 @@ internal fun LazyListScope.passwordPageListRows(
                 aggregateConfig?.onOpenNote?.invoke(card.secureItemId)
 
             PasswordPageContentType.PASSKEY ->
-                card.passkeyCredentialId?.let { aggregateConfig?.onOpenPasskey?.invoke(it) }
+                card.passkeyRecordId?.let { aggregateConfig?.onOpenPasskey?.invoke(it) }
         }
     }
 

@@ -62,10 +62,14 @@ fun PasswordEntry.resolveOwnership(): PasswordOwnership {
             entryUuid = keepassEntryUuid
         )
 
-        hasBitwardenBinding -> PasswordOwnership.Bitwarden(
-            vaultId = bitwardenVaultId!!,
-            cipherId = bitwardenCipherId
-        )
+        hasBitwardenBinding -> if (hasConcreteBitwardenBinding) {
+            PasswordOwnership.Bitwarden(
+                vaultId = bitwardenVaultId!!,
+                cipherId = bitwardenCipherId
+            )
+        } else {
+            PasswordOwnership.MonicaLocal
+        }
 
         else -> PasswordOwnership.MonicaLocal
     }

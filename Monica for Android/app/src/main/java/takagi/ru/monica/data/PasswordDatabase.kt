@@ -28,9 +28,10 @@ import takagi.ru.monica.data.bitwarden.*
         BitwardenFolder::class,
         BitwardenSend::class,
         BitwardenConflictBackup::class,
-        BitwardenPendingOperation::class
+        BitwardenPendingOperation::class,
+        BitwardenSyncRawEntryRecord::class
     ],
-    version = 54,
+    version = 56,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -54,6 +55,7 @@ abstract class PasswordDatabase : RoomDatabase() {
     abstract fun bitwardenSendDao(): BitwardenSendDao
     abstract fun bitwardenConflictBackupDao(): BitwardenConflictBackupDao
     abstract fun bitwardenPendingOperationDao(): BitwardenPendingOperationDao
+    abstract fun bitwardenSyncRawEntryRecordDao(): BitwardenSyncRawEntryRecordDao
     
     companion object {
         @Volatile
@@ -1410,6 +1412,168 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_54_55 = object : androidx.room.migration.Migration(54, 55) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 54→55: bitwarden raw entry records")
+                    // Recreate to guarantee exact Room schema (column default + index names).
+                    database.execSQL("DROP TABLE IF EXISTS bitwarden_sync_raw_entry_records")
+                    database.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS bitwarden_sync_raw_entry_records (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            vault_id INTEGER NOT NULL,
+                            bitwarden_cipher_id TEXT NOT NULL,
+                            operation TEXT NOT NULL,
+                            endpoint TEXT NOT NULL,
+                            payload_cipher_text TEXT NOT NULL,
+                            payload_digest TEXT NOT NULL,
+                            payload_source TEXT NOT NULL,
+                            response_code INTEGER,
+                            success INTEGER NOT NULL DEFAULT 1,
+                            captured_at INTEGER NOT NULL,
+                            FOREIGN KEY(vault_id) REFERENCES bitwarden_vaults(id) ON DELETE NO ACTION ON UPDATE NO ACTION
+                        )
+                        """.trimIndent()
+                    )
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_bitwarden_sync_raw_entry_records_vault_id_bitwarden_cipher_id_captured_at ON bitwarden_sync_raw_entry_records(vault_id, bitwarden_cipher_id, captured_at)"
+                    )
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_bitwarden_sync_raw_entry_records_captured_at ON bitwarden_sync_raw_entry_records(captured_at)"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 54→55 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 54→55 failed: ${e.message}")
+                }
+            }
+        }
+
+        private val MIGRATION_55_56 = object : androidx.room.migration.Migration(55, 56) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 55→56: passkey internal record id")
+                    database.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS passkeys_new (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            credential_id TEXT NOT NULL,
+                            rp_id TEXT NOT NULL,
+                            rp_name TEXT NOT NULL,
+                            user_id TEXT NOT NULL,
+                            user_name TEXT NOT NULL,
+                            user_display_name TEXT NOT NULL,
+                            public_key_algorithm INTEGER NOT NULL DEFAULT -7,
+                            public_key TEXT NOT NULL,
+                            private_key_alias TEXT NOT NULL,
+                            created_at INTEGER NOT NULL,
+                            last_used_at INTEGER NOT NULL,
+                            use_count INTEGER NOT NULL DEFAULT 0,
+                            icon_url TEXT,
+                            is_discoverable INTEGER NOT NULL DEFAULT 1,
+                            is_user_verification_required INTEGER NOT NULL DEFAULT 1,
+                            transports TEXT NOT NULL DEFAULT 'internal',
+                            aaguid TEXT NOT NULL DEFAULT '',
+                            sign_count INTEGER NOT NULL DEFAULT 0,
+                            is_backed_up INTEGER NOT NULL DEFAULT 0,
+                            notes TEXT NOT NULL DEFAULT '',
+                            bound_password_id INTEGER DEFAULT NULL,
+                            category_id INTEGER DEFAULT NULL,
+                            keepass_database_id INTEGER DEFAULT NULL,
+                            keepass_group_path TEXT DEFAULT NULL,
+                            bitwarden_vault_id INTEGER DEFAULT NULL,
+                            bitwarden_folder_id TEXT DEFAULT NULL,
+                            bitwarden_cipher_id TEXT DEFAULT NULL,
+                            sync_status TEXT NOT NULL DEFAULT 'NONE',
+                            passkey_mode TEXT NOT NULL DEFAULT 'LEGACY'
+                        )
+                        """.trimIndent()
+                    )
+                    database.execSQL(
+                        """
+                        INSERT INTO passkeys_new (
+                            credential_id,
+                            rp_id,
+                            rp_name,
+                            user_id,
+                            user_name,
+                            user_display_name,
+                            public_key_algorithm,
+                            public_key,
+                            private_key_alias,
+                            created_at,
+                            last_used_at,
+                            use_count,
+                            icon_url,
+                            is_discoverable,
+                            is_user_verification_required,
+                            transports,
+                            aaguid,
+                            sign_count,
+                            is_backed_up,
+                            notes,
+                            bound_password_id,
+                            category_id,
+                            keepass_database_id,
+                            keepass_group_path,
+                            bitwarden_vault_id,
+                            bitwarden_folder_id,
+                            bitwarden_cipher_id,
+                            sync_status,
+                            passkey_mode
+                        )
+                        SELECT
+                            credential_id,
+                            rp_id,
+                            rp_name,
+                            user_id,
+                            user_name,
+                            user_display_name,
+                            public_key_algorithm,
+                            public_key,
+                            private_key_alias,
+                            created_at,
+                            last_used_at,
+                            use_count,
+                            icon_url,
+                            is_discoverable,
+                            is_user_verification_required,
+                            transports,
+                            aaguid,
+                            sign_count,
+                            is_backed_up,
+                            notes,
+                            bound_password_id,
+                            category_id,
+                            keepass_database_id,
+                            keepass_group_path,
+                            bitwarden_vault_id,
+                            bitwarden_folder_id,
+                            bitwarden_cipher_id,
+                            sync_status,
+                            passkey_mode
+                        FROM passkeys
+                        """.trimIndent()
+                    )
+                    database.execSQL("DROP TABLE passkeys")
+                    database.execSQL("ALTER TABLE passkeys_new RENAME TO passkeys")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_passkeys_credential_id ON passkeys(credential_id)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_passkeys_rp_id ON passkeys(rp_id)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_passkeys_user_name ON passkeys(user_name)")
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_passkeys_bitwarden_vault_cipher ON passkeys(bitwarden_vault_id, bitwarden_cipher_id)"
+                    )
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_passkeys_bitwarden_scope_credential ON passkeys(bitwarden_vault_id, bitwarden_cipher_id, credential_id)"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 55→56 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 55→56 failed: ${e.message}")
+                    throw e
+                }
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -1470,7 +1634,9 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_50_51,  // 密码页聚合堆叠元数据
                         MIGRATION_51_52,  // 密码多目标副本组标识
                         MIGRATION_52_53,  // 安全项多目标副本组标识
-                        MIGRATION_53_54   // 密码绑定笔记ID
+                        MIGRATION_53_54,  // 密码绑定笔记ID
+                        MIGRATION_54_55,  // Bitwarden 条目原始同步快照
+                        MIGRATION_55_56   // Passkey 内部记录 ID
                     )
                     .build()
                 INSTANCE = instance

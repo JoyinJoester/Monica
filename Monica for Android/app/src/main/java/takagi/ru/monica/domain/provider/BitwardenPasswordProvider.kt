@@ -7,11 +7,18 @@ import takagi.ru.monica.ui.model.SecretValueState
 
 class BitwardenPasswordProvider(
     private val decodePassword: (String) -> String?,
-    private val encryptPassword: (String) -> String
+    private val encryptPassword: (String) -> String,
+    private val loadOfflineCachedSecret: (PasswordEntry) -> String? = { null },
+    private val rememberOfflineCachedSecret: (PasswordEntry, String) -> Unit = { _, _ -> }
 ) : PasswordProvider {
     override fun supports(entry: PasswordEntry): Boolean = entry.bitwardenVaultId != null
 
     override fun sourceOf(entry: PasswordEntry): PasswordSource {
+        val hasRecoverableRemoteBinding =
+            entry.bitwardenVaultId != null && !entry.bitwardenCipherId.isNullOrBlank()
+        if (!hasRecoverableRemoteBinding) {
+            return PasswordSource.Local
+        }
         return PasswordSource.Bitwarden(
             vaultId = entry.bitwardenVaultId,
             cipherId = entry.bitwardenCipherId
@@ -22,9 +29,19 @@ class BitwardenPasswordProvider(
         if (entry.password.isEmpty()) return SecretValueState.Empty
         val decoded = decodePassword(entry.password)
         return when {
-            decoded == null -> SecretValueState.Unreadable(sourceOf(entry))
+            decoded == null -> {
+                val cached = loadOfflineCachedSecret(entry)
+                if (cached.isNullOrEmpty()) {
+                    SecretValueState.Unreadable(sourceOf(entry))
+                } else {
+                    SecretValueState.Available(cached)
+                }
+            }
             decoded.isEmpty() -> SecretValueState.Empty
-            else -> SecretValueState.Available(decoded)
+            else -> {
+                rememberOfflineCachedSecret(entry, decoded)
+                SecretValueState.Available(decoded)
+            }
         }
     }
 

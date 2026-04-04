@@ -63,6 +63,10 @@ import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.domain.provider.PasswordSource
 import takagi.ru.monica.viewmodel.CategoryFilter
 import takagi.ru.monica.viewmodel.BitwardenRecoveryResult
+import takagi.ru.monica.viewmodel.BitwardenSyncRawHistoryItem
+import takagi.ru.monica.viewmodel.BitwardenSyncSnapshotFieldPreview
+import takagi.ru.monica.viewmodel.BitwardenSyncSnapshotPreview
+import takagi.ru.monica.viewmodel.BitwardenSyncSnapshotPreviewStatus
 import takagi.ru.monica.viewmodel.NoteViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.PasskeyViewModel
@@ -91,6 +95,7 @@ import takagi.ru.monica.ui.icons.rememberUploadedPasswordIcon
 import takagi.ru.monica.ui.icons.shouldShowFallbackSlot
 import takagi.ru.monica.autofill_ng.ui.rememberAppIcon
 import takagi.ru.monica.autofill_ng.ui.rememberFavicon
+import takagi.ru.monica.ui.password.BitwardenSyncSnapshotSection
 import takagi.ru.monica.ui.password.getPasswordInfoKey
 import kotlinx.coroutines.flow.flowOf
 import java.text.DateFormat
@@ -160,7 +165,7 @@ fun PasswordDetailScreen(
     // 密码条目状态
     var passwordEntry by remember { mutableStateOf<PasswordEntry?>(null) }
     var groupPasswords by remember { mutableStateOf<List<PasswordEntry>>(emptyList()) }
-    var passwordSecretState by remember { mutableStateOf<SecretValueState?>(null) }
+    var displayPasswords by remember { mutableStateOf<Map<Long, String>>(emptyMap()) }
     var bitwardenFoldersByVault by remember {
         mutableStateOf<Map<Long, List<BitwardenFolder>>>(emptyMap())
     }
@@ -180,6 +185,20 @@ fun PasswordDetailScreen(
     var customFields by remember { mutableStateOf<List<CustomField>>(emptyList()) }
     val passwordHistory by viewModel.getPasswordHistoryFlow(passwordId).collectAsState(initial = emptyList())
     val passwordHistoryVisibility = remember { mutableStateMapOf<Long, Boolean>() }
+    val bitwardenSyncRawHistoryFlow = remember(
+        viewModel,
+        passwordEntry?.bitwardenVaultId,
+        passwordEntry?.bitwardenCipherId
+    ) {
+        val vaultId = passwordEntry?.bitwardenVaultId
+        val cipherId = passwordEntry?.bitwardenCipherId
+        if (vaultId != null && !cipherId.isNullOrBlank()) {
+            viewModel.getBitwardenSyncRawHistoryFlow(vaultId, cipherId)
+        } else {
+            flowOf(emptyList())
+        }
+    }
+    val bitwardenSyncRawHistory by bitwardenSyncRawHistoryFlow.collectAsState(initial = emptyList())
     val customFieldVisibility = remember { mutableStateMapOf<Long, Boolean>() }
     val usernameAliasFallbackTitle = stringResource(R.string.autofill_username)
     val hasAliasMeta = customFields.any {
@@ -217,6 +236,33 @@ fun PasswordDetailScreen(
                 }
             }
             .toList()
+    }
+    val currentBitwardenSnapshotPreview = remember(
+        passwordEntry,
+        displayPasswords,
+        displayCustomFields
+    ) {
+        passwordEntry?.takeIf {
+            it.bitwardenVaultId != null && !it.bitwardenCipherId.isNullOrBlank()
+        }?.let { entry ->
+            BitwardenSyncSnapshotPreview(
+                status = BitwardenSyncSnapshotPreviewStatus.READY,
+                cipherType = entry.bitwardenCipherType,
+                title = entry.title,
+                username = entry.username,
+                password = displayPasswords[entry.id].orEmpty(),
+                totp = entry.authenticatorKey,
+                websites = listOfNotNull(entry.website.takeIf { it.isNotBlank() }),
+                notes = entry.notes,
+                customFields = displayCustomFields.map { field ->
+                    BitwardenSyncSnapshotFieldPreview(
+                        name = field.title,
+                        value = field.value,
+                        hidden = field.isProtected
+                    )
+                }
+            )
+        }
     }
     
     // Helper function for deletion
@@ -329,10 +375,6 @@ fun PasswordDetailScreen(
             val entry = allPasswords.find { it.id == passwordId }
             if (entry != null) {
                 passwordEntry = entry
-                passwordSecretState = withContext(Dispatchers.IO) {
-                    viewModel.getRawPasswordEntryById(passwordId)
-                        ?.let(viewModel::inspectSecretState)
-                }
                 
                 // Find siblings
                 val key = getPasswordInfoKey(entry)
@@ -350,17 +392,30 @@ fun PasswordDetailScreen(
                         .thenBy { it.id }
                 )
                 val detailPasswords = groupPasswords.ifEmpty { listOf(entry) }
-                unavailablePasswordSources = withContext(Dispatchers.IO) {
-                    buildMap {
-                        detailPasswords.forEach { current ->
-                            val rawCurrent = viewModel.getRawPasswordEntryById(current.id) ?: current
-                            val secretState = viewModel.inspectSecretState(rawCurrent)
-                            if (secretState is SecretValueState.Unreadable) {
-                                put(current.id, secretState.source)
+                val (resolvedDisplayPasswords, resolvedUnavailableSources) = withContext(Dispatchers.IO) {
+                    val passwordValues = mutableMapOf<Long, String>()
+                    val unavailableSources = mutableMapOf<Long, PasswordSource>()
+                    detailPasswords.forEach { current ->
+                        val rawCurrent = viewModel.getRawPasswordEntryById(current.id) ?: current
+                        when (val secretState = viewModel.inspectSecretState(rawCurrent)) {
+                            is SecretValueState.Available -> {
+                                passwordValues[current.id] = secretState.value
+                            }
+
+                            SecretValueState.Empty,
+                            SecretValueState.Hidden -> {
+                                passwordValues[current.id] = ""
+                            }
+
+                            is SecretValueState.Unreadable -> {
+                                unavailableSources[current.id] = secretState.source
                             }
                         }
                     }
+                    passwordValues to unavailableSources
                 }
+                displayPasswords = resolvedDisplayPasswords
+                unavailablePasswordSources = resolvedUnavailableSources
                 
                 // 加载自定义字段 (添加错误处理)
                 try {
@@ -614,6 +669,7 @@ fun PasswordDetailScreen(
                 if (shouldShowPasswordCard) {
                     PasswordListCard(
                         passwords = detailPasswords,
+                        displayPasswords = displayPasswords,
                         unavailablePasswordSources = unavailablePasswordSources,
                         onResyncUnreadable = { targetEntry ->
                             if (isResyncingUnreadablePassword) return@PasswordListCard
@@ -818,6 +874,22 @@ fun PasswordDetailScreen(
                         onClearHistory = {
                             showClearHistoryDialog = true
                         }
+                    )
+                }
+
+                val shouldShowBitwardenSnapshotSection =
+                    passwordEntry?.bitwardenVaultId != null &&
+                        !passwordEntry?.bitwardenCipherId.isNullOrBlank()
+
+                AnimatedVisibility(
+                    visible = shouldShowBitwardenSnapshotSection,
+                    enter = expandVertically(),
+                    exit = shrinkVertically()
+                ) {
+                    BitwardenSyncSnapshotSection(
+                        currentPreview = currentBitwardenSnapshotPreview,
+                        history = bitwardenSyncRawHistory,
+                        context = context
                     )
                 }
                 
@@ -2710,6 +2782,7 @@ private fun hasPaymentInfo(entry: PasswordEntry): Boolean {
 @Composable
 private fun PasswordListCard(
     passwords: List<PasswordEntry>,
+    displayPasswords: Map<Long, String>,
     unavailablePasswordSources: Map<Long, PasswordSource>,
     onResyncUnreadable: (PasswordEntry) -> Unit,
     isResyncingUnreadable: Boolean,
@@ -2737,6 +2810,7 @@ private fun PasswordListCard(
             passwords.forEachIndexed { index, entry ->
                 PasswordItemRow(
                     entry = entry,
+                    displayPassword = displayPasswords[entry.id].orEmpty(),
                     unavailableSource = unavailablePasswordSources[entry.id],
                     onResyncUnreadable = { onResyncUnreadable(entry) },
                     isResyncingUnreadable = isResyncingUnreadable,
@@ -2757,6 +2831,7 @@ private fun PasswordListCard(
 @Composable
 private fun PasswordItemRow(
     entry: PasswordEntry,
+    displayPassword: String,
     unavailableSource: PasswordSource?,
     onResyncUnreadable: () -> Unit,
     isResyncingUnreadable: Boolean,
@@ -2768,18 +2843,22 @@ private fun PasswordItemRow(
 ) {
     var visible by remember { mutableStateOf(false) }
     val isUnavailable = unavailableSource != null
-    val isBitwardenUnreadable = unavailableSource is PasswordSource.Bitwarden
-    val unavailableMessage = when (unavailableSource) {
-        is PasswordSource.Bitwarden -> stringResource(R.string.bitwarden_password_unreadable_display)
-        is PasswordSource.Conflict -> stringResource(R.string.password_owner_conflict_display)
-        else -> stringResource(R.string.password_owner_conflict_display)
+    val recoverableBitwardenSource = (unavailableSource as? PasswordSource.Bitwarden)
+        ?.takeIf { it.vaultId != null && !it.cipherId.isNullOrBlank() }
+    val isBitwardenUnreadable = recoverableBitwardenSource != null
+    val unavailableMessage = when {
+        isBitwardenUnreadable -> stringResource(R.string.bitwarden_password_unreadable_display)
+        unavailableSource is PasswordSource.Conflict -> stringResource(R.string.password_owner_conflict_display)
+        unavailableSource != null -> stringResource(R.string.password_unreadable_display)
+        else -> stringResource(R.string.password_unreadable_display)
     }
-    val unavailableCopyMessage = when (unavailableSource) {
-        is PasswordSource.Bitwarden -> stringResource(R.string.bitwarden_password_unreadable_copy)
-        is PasswordSource.Conflict -> stringResource(R.string.password_owner_conflict_copy)
-        else -> stringResource(R.string.password_owner_conflict_copy)
+    val unavailableCopyMessage = when {
+        isBitwardenUnreadable -> stringResource(R.string.bitwarden_password_unreadable_copy)
+        unavailableSource is PasswordSource.Conflict -> stringResource(R.string.password_owner_conflict_copy)
+        unavailableSource != null -> stringResource(R.string.password_unreadable_copy)
+        else -> stringResource(R.string.password_unreadable_copy)
     }
-    val hasPasswordValue = entry.password.isNotBlank()
+    val hasPasswordValue = displayPassword.isNotBlank()
 
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
@@ -2814,7 +2893,7 @@ private fun PasswordItemRow(
                         return@IconButton
                     }
                     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    val clip = ClipData.newPlainText("password", entry.password)
+                    val clip = ClipData.newPlainText("password", displayPassword)
                     clipboard.setPrimaryClip(clip)
                     Toast.makeText(context, context.getString(R.string.password_copied), Toast.LENGTH_SHORT).show()
                 }) {
@@ -2838,7 +2917,7 @@ private fun PasswordItemRow(
             text = when {
                 isUnavailable -> unavailableMessage
                 !hasPasswordValue -> stringResource(R.string.permission_status_unavailable)
-                visible -> entry.password
+                visible -> displayPassword
                 else -> "•".repeat(8)
             },
             style = MaterialTheme.typography.bodyLarge.copy(

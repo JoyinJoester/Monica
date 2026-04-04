@@ -16,7 +16,7 @@ internal data class PasswordPageCardItemUi(
     val badgeColor: Color? = null,
     val passwordId: Long? = null,
     val secureItemId: Long? = null,
-    val passkeyCredentialId: String? = null,
+    val passkeyRecordId: Long? = null,
     val isDocument: Boolean = false
 ) {
     val supportsFavorite: Boolean = type != PasswordPageContentType.PASSKEY
@@ -105,7 +105,7 @@ internal fun PasswordAggregateListItemUi.toPasswordPageCardItemUi(): PasswordPag
         badgeText = badgeText,
         badgeColor = badgeColor,
         secureItemId = secureItemId,
-        passkeyCredentialId = passkeyCredentialId,
+        passkeyRecordId = passkeyRecordId,
         isDocument = isDocument
     )
 }
@@ -149,7 +149,7 @@ internal fun PasswordPageCardItemUi.toSelectedSupplementaryItemOrNull(): Passwor
         badgeColor = badgeColor ?: Color.Unspecified,
         sortTime = sortTime,
         secureItemId = secureItemId,
-        passkeyCredentialId = passkeyCredentialId,
+        passkeyRecordId = passkeyRecordId,
         isDocument = isDocument
     )
 }

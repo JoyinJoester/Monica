@@ -24,10 +24,32 @@ interface PasskeyDao {
     suspend fun getAllPasskeysSync(): List<PasskeyEntry>
 
     /**
-     * 根据凭据 ID 获取 Passkey
+     * 根据协议 credentialId 获取一个最合适的 Passkey
      */
-    @Query("SELECT * FROM passkeys WHERE credential_id = :credentialId")
+    @Query(
+        """
+        SELECT * FROM passkeys
+        WHERE credential_id = :credentialId
+        ORDER BY
+            CASE WHEN sync_status = 'REFERENCE' THEN 1 ELSE 0 END,
+            last_used_at DESC,
+            id DESC
+        LIMIT 1
+        """
+    )
     suspend fun getPasskeyById(credentialId: String): PasskeyEntry?
+
+    @Query("SELECT * FROM passkeys WHERE id = :recordId LIMIT 1")
+    suspend fun getPasskeyByRecordId(recordId: Long): PasskeyEntry?
+
+    @Query(
+        """
+        SELECT * FROM passkeys
+        WHERE credential_id = :credentialId
+        ORDER BY last_used_at DESC, id DESC
+        """
+    )
+    suspend fun getPasskeysByCredentialId(credentialId: String): List<PasskeyEntry>
 
     @Query("""
         SELECT * FROM passkeys
@@ -136,6 +158,21 @@ interface PasskeyDao {
         WHERE credential_id = :credentialId
     """)
     suspend fun updateUsage(credentialId: String, timestamp: Long = System.currentTimeMillis(), signCount: Long)
+
+    @Query(
+        """
+        UPDATE passkeys
+        SET last_used_at = :timestamp,
+            use_count = use_count + 1,
+            sign_count = :signCount
+        WHERE id = :recordId
+        """
+    )
+    suspend fun updateUsageByRecordId(
+        recordId: Long,
+        timestamp: Long = System.currentTimeMillis(),
+        signCount: Long
+    )
     
     /**
      * 标记为已备份
@@ -177,6 +214,9 @@ interface PasskeyDao {
      */
     @Query("DELETE FROM passkeys WHERE credential_id = :credentialId")
     suspend fun deleteById(credentialId: String)
+
+    @Query("DELETE FROM passkeys WHERE id = :recordId")
+    suspend fun deleteByRecordId(recordId: Long)
     
     /**
      * 删除指定域名的所有 Passkeys
@@ -207,6 +247,22 @@ interface PasskeyDao {
         """
     )
     suspend fun getByBitwardenCipherIdInVault(vaultId: Long, cipherId: String): PasskeyEntry?
+
+    @Query(
+        """
+        SELECT * FROM passkeys
+        WHERE bitwarden_vault_id = :vaultId
+          AND bitwarden_cipher_id = :cipherId
+          AND credential_id = :credentialId
+        ORDER BY id DESC
+        LIMIT 1
+        """
+    )
+    suspend fun getByBitwardenCipherCredentialIdInVault(
+        vaultId: Long,
+        cipherId: String,
+        credentialId: String
+    ): PasskeyEntry?
 
     /**
      * 根据 Bitwarden Cipher ID 获取所有 Passkey
@@ -271,6 +327,9 @@ interface PasskeyDao {
     @Query("UPDATE passkeys SET bound_password_id = :passwordId WHERE credential_id = :credentialId")
     suspend fun updateBoundPasswordId(credentialId: String, passwordId: Long?)
 
+    @Query("UPDATE passkeys SET bound_password_id = :passwordId WHERE id = :recordId")
+    suspend fun updateBoundPasswordIdByRecordId(recordId: Long, passwordId: Long?)
+
     @Query("UPDATE passkeys SET category_id = NULL WHERE category_id = :categoryId")
     suspend fun removeCategoryFromPasskeys(categoryId: Long)
 
@@ -293,6 +352,16 @@ interface PasskeyDao {
         """
     )
     suspend fun clearKeePassBindingForCredentialIds(credentialIds: List<String>)
+
+    @Query(
+        """
+        UPDATE passkeys
+        SET keepass_database_id = NULL,
+            keepass_group_path = NULL
+        WHERE id IN (:recordIds)
+        """
+    )
+    suspend fun clearKeePassBindingForRecordIds(recordIds: List<Long>)
 
     @Query(
         """
@@ -338,9 +407,15 @@ interface PasskeyDao {
     @Query("UPDATE passkeys SET sync_status = 'SYNCED', bitwarden_cipher_id = :cipherId WHERE credential_id = :credentialId")
     suspend fun markSynced(credentialId: String, cipherId: String)
 
+    @Query("UPDATE passkeys SET sync_status = 'SYNCED', bitwarden_cipher_id = :cipherId WHERE id = :recordId")
+    suspend fun markSyncedByRecordId(recordId: Long, cipherId: String)
+
     /**
      * 标记 Passkey 同步失败
      */
     @Query("UPDATE passkeys SET sync_status = 'FAILED' WHERE credential_id = :credentialId")
     suspend fun markFailed(credentialId: String)
+
+    @Query("UPDATE passkeys SET sync_status = 'FAILED' WHERE id = :recordId")
+    suspend fun markFailedByRecordId(recordId: Long)
 }

@@ -35,7 +35,7 @@ data class PasswordListAggregateConfig(
     val onOpenBankCard: (Long) -> Unit,
     val onOpenDocument: (Long) -> Unit,
     val onOpenNote: (Long?) -> Unit,
-    val onOpenPasskey: (String) -> Unit
+    val onOpenPasskey: (Long) -> Unit
 )
 
 internal data class PasswordAggregateListItemUi(
@@ -46,7 +46,7 @@ internal data class PasswordAggregateListItemUi(
     val badgeColor: Color,
     val sortTime: Long,
     val secureItemId: Long? = null,
-    val passkeyCredentialId: String? = null,
+    val passkeyRecordId: Long? = null,
     val isDocument: Boolean = false
 )
 
@@ -254,13 +254,13 @@ private fun appendPasskeyItems(
         .filter { it.matchesAggregateCategory(categoryFilter) && it.matchesAggregateQuery(searchQuery) }
         .forEach { passkey ->
             items += PasswordAggregateListItemUi(
-                key = "passkey:${passkey.credentialId}",
+                key = "passkey:${passkey.id.takeIf { it > 0L } ?: passkey.credentialId}",
                 entry = passkey.toAggregatePasswordEntry(),
                 type = PasswordPageContentType.PASSKEY,
                 badgeText = "passkey",
                 badgeColor = Color(0xFF8E24AA),
                 sortTime = passkey.lastUsedAt,
-                passkeyCredentialId = passkey.credentialId
+                passkeyRecordId = passkey.id.takeIf { it > 0L }
             )
         }
 }

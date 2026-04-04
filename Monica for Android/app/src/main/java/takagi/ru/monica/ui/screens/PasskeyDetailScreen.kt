@@ -40,6 +40,7 @@ import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
 import takagi.ru.monica.data.model.PasskeyBinding
 import takagi.ru.monica.data.model.PasskeyBindingCodec
+import takagi.ru.monica.passkey.managementRecordIdOrNull
 import takagi.ru.monica.ui.PasskeyDetailPane
 import takagi.ru.monica.ui.components.ActionStrip
 import takagi.ru.monica.ui.components.ActionStripItem
@@ -53,7 +54,7 @@ import java.security.spec.PKCS8EncodedKeySpec
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PasskeyDetailScreen(
-    credentialId: String,
+    recordId: Long,
     passkeyViewModel: PasskeyViewModel,
     passwordViewModel: PasswordViewModel,
     onNavigateBack: () -> Unit,
@@ -67,7 +68,7 @@ fun PasskeyDetailScreen(
     val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
     val passwordMap = remember(passwords) { passwords.associateBy { it.id } }
     var passkeyToBind by remember { mutableStateOf<PasskeyEntry?>(null) }
-    val passkey = passkeys.firstOrNull { it.credentialId == credentialId }
+    val passkey = passkeys.firstOrNull { it.id == recordId }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -128,6 +129,7 @@ fun PasskeyDetailScreen(
                                     contentDescription = stringResource(R.string.unbind),
                                     onClick = {
                                         unbindPasskey(
+                                            recordId = currentPasskey.id,
                                             credentialId = currentPasskey.credentialId,
                                             boundPasswordId = currentPasskey.boundPasswordId,
                                             passwords = passwords,
@@ -188,6 +190,7 @@ fun PasskeyDetailScreen(
             },
             onUnbindPassword = {
                 unbindPasskey(
+                    recordId = passkey.id,
                     credentialId = passkey.credentialId,
                     boundPasswordId = passkey.boundPasswordId,
                     passwords = passwords,
@@ -296,7 +299,9 @@ private suspend fun bindPasskey(
     }
 
     if (passkey.syncStatus == "REFERENCE") {
-        passkeyViewModel.updateBoundPassword(passkey.credentialId, password.id)
+        passkey.managementRecordIdOrNull()?.let { recordId ->
+            passkeyViewModel.updateBoundPassword(recordId, password.id)
+        }
         return PasskeyBindResult.Success(showLegacyHint = false)
     }
 
@@ -366,6 +371,7 @@ private suspend fun bindPasskey(
 }
 
 private fun unbindPasskey(
+    recordId: Long,
     credentialId: String,
     boundPasswordId: Long?,
     passwords: List<PasswordEntry>,
@@ -378,7 +384,9 @@ private fun unbindPasskey(
             passwordViewModel.updatePasskeyBindings(boundPasswordId, bindings)
         }
     }
-    passkeyViewModel.updateBoundPassword(credentialId, null)
+    if (recordId > 0L) {
+        passkeyViewModel.updateBoundPassword(recordId, null)
+    }
 }
 
 private fun isPasskeyMigratableToBitwarden(passkey: PasskeyEntry): Boolean {

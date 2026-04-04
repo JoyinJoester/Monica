@@ -1323,6 +1323,7 @@ fun PasswordListContent(
         localKeePassViewModel = localKeePassViewModel,
         bitwardenViewModel = bitwardenViewModel,
         selectedBitwardenVaultId = selectedBitwardenVaultId,
+        selectedKeePassDatabaseId = selectedKeePassDatabaseId,
         isTopBarSyncing = isTopBarSyncing,
         isArchiveView = isArchiveView,
         isKeePassDatabaseView = isKeePassDatabaseView,
@@ -1369,6 +1370,7 @@ fun PasswordListContent(
         canUseBiometric = canUseBiometric,
         coroutineScope = coroutineScope,
         bitwardenRepository = bitwardenRepository,
+        securityManager = securityManager,
         onRenameCategory = onRenameCategory,
         onDeleteCategory = onDeleteCategory,
         onOpenCommonAccountTemplates = onOpenCommonAccountTemplates,
@@ -1525,8 +1527,8 @@ fun PasswordListContent(
                     }
 
                     PasswordPageContentType.PASSKEY -> {
-                        item.passkeyCredentialId?.let { credentialId ->
-                            aggregateUiState.passkeyViewModel?.deletePasskeyById(credentialId)
+                        item.passkeyRecordId?.let { recordId ->
+                            aggregateUiState.passkeyViewModel?.deletePasskeyByRecordId(recordId)
                         }
                     }
 

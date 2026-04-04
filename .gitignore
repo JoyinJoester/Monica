@@ -30,16 +30,26 @@ packages/
 *.log
 *.tmp
 monica_logs_*.txt
+[work]_*.md
 Monica for Android/build_errors.txt
 Monica for Android/build_log.txt
 # TRAE files
 .trae/
 .claude/
+.codex/
+.codex-tasks/
 
 # Exclude attached folders
 KeePassDX-master/
 keyguard-app-master/
 stratumauthapp/
+
+# Android build caches
+Monica for Android/.gradle-user-home/
+Monica for Android/.kotlin/
+Monica for Android/.gradle/
+Monica for Android/app/build/
+Monica for Android/build/
 # Documentation and Analysis
 修复文档/
 doc/
@@ -59,3 +69,5 @@ bitwarden/
 !Monica for Android/app/src/main/java/takagi/ru/monica/bitwarden/
 !Monica for Android/app/src/main/java/takagi/ru/monica/bitwarden/**
 fdroiddata/
+CLI-WeChat-Bridge-main/
+

@@ -821,8 +821,8 @@ fun MonicaContent(
                         launchSingleTop = true
                     }
                 },
-                onNavigateToPasskeyDetail = { credentialId ->
-                    navController.navigate(Screen.PasskeyDetail.createRoute(credentialId))
+                onNavigateToPasskeyDetail = { recordId ->
+                    navController.navigate(Screen.PasskeyDetail.createRoute(recordId))
                 },
                 onNavigateToBankCardDetail = { cardId ->
                     navController.navigate("bank_card_detail/$cardId")
@@ -2139,11 +2139,9 @@ fun MonicaContent(
             popEnterTransition = { EnterTransition.None },
             popExitTransition = { rightSlidePopExitTransition() }
         ) { backStackEntry ->
-            val credentialId = Uri.decode(
-                backStackEntry.arguments?.getString("credentialId").orEmpty()
-            )
+            val recordId = backStackEntry.arguments?.getString("recordId")?.toLongOrNull() ?: -1L
             takagi.ru.monica.ui.screens.PasskeyDetailScreen(
-                credentialId = credentialId,
+                recordId = recordId,
                 passkeyViewModel = passkeyViewModel,
                 passwordViewModel = viewModel,
                 onNavigateBack = {

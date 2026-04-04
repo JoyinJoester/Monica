@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.widthIn
@@ -17,6 +18,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
@@ -25,8 +27,10 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -43,6 +47,7 @@ import androidx.fragment.app.FragmentActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
+import takagi.ru.monica.bitwarden.ui.UnlockVaultDialog
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel
 import takagi.ru.monica.data.Category
@@ -51,12 +56,15 @@ import takagi.ru.monica.data.PasswordCardDisplayMode
 import takagi.ru.monica.data.PasswordPageContentType
 import takagi.ru.monica.data.PasswordListQuickFilterItem
 import takagi.ru.monica.data.model.StorageTarget
+import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.components.CreateCategoryDialog
 import takagi.ru.monica.ui.components.ExpressiveTopBar
+import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuDropdown
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuOffset
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
 import takagi.ru.monica.utils.BiometricHelper
+import takagi.ru.monica.utils.KeePassKdbxService
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
 import takagi.ru.monica.utils.planLocalCategoryMove
 import takagi.ru.monica.viewmodel.CategoryFilter
@@ -74,6 +82,7 @@ internal fun PasswordListTopSection(
     localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
     bitwardenViewModel: BitwardenViewModel,
     selectedBitwardenVaultId: Long?,
+    selectedKeePassDatabaseId: Long?,
     isTopBarSyncing: Boolean,
     isArchiveView: Boolean,
     isKeePassDatabaseView: Boolean,
@@ -120,6 +129,7 @@ internal fun PasswordListTopSection(
     canUseBiometric: Boolean,
     coroutineScope: CoroutineScope,
     bitwardenRepository: BitwardenRepository,
+    securityManager: SecurityManager,
     onRenameCategory: (Category) -> Unit,
     onDeleteCategory: (Category) -> Unit,
     onOpenCommonAccountTemplates: () -> Unit,
@@ -128,6 +138,16 @@ internal fun PasswordListTopSection(
 ) {
     val appSettings by settingsViewModel.settings.collectAsState()
     var showCreateCategoryDialog by remember { mutableStateOf(false) }
+    var showReunlockDialog by remember { mutableStateOf(false) }
+    var reunlockPassword by remember { mutableStateOf("") }
+    var reunlockPasswordError by remember { mutableStateOf(false) }
+    var showBitwardenUnlockDialog by remember { mutableStateOf(false) }
+    var showClearBitwardenCacheDialog by remember { mutableStateOf(false) }
+    var clearCacheRiskSummary by remember { mutableStateOf<BitwardenRepository.VaultCacheRiskSummary?>(null) }
+    var isBitwardenMaintenanceActionRunning by remember { mutableStateOf(false) }
+    val selectedBitwardenVault = selectedBitwardenVaultId?.let { vaultId ->
+        bitwardenVaults.find { it.id == vaultId }
+    }
     Column {
         val title = when (val filter = currentFilter) {
             is CategoryFilter.All -> "ALL"
@@ -336,15 +356,79 @@ internal fun PasswordListTopSection(
                             }
                             if (selectedBitwardenVaultId != null) {
                                 DropdownMenuItem(
-                                    text = { Text("同步bitwarden数据库") },
+                                    text = { Text(stringResource(R.string.sync_bitwarden_database_menu)) },
                                     leadingIcon = { Icon(Icons.Default.Sync, contentDescription = null) },
-                                    enabled = !isTopBarSyncing,
+                                    enabled = !isTopBarSyncing && !isBitwardenMaintenanceActionRunning,
                                     onClick = {
-                                        if (isTopBarSyncing) return@DropdownMenuItem
+                                        if (isTopBarSyncing || isBitwardenMaintenanceActionRunning) return@DropdownMenuItem
                                         val vaultId = selectedBitwardenVaultId
                                             ?: return@DropdownMenuItem
                                         onTopActionsMenuExpandedChange(false)
                                         bitwardenViewModel.requestManualSync(vaultId)
+                                    }
+                                )
+                            }
+                            if (selectedBitwardenVaultId != null) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.reunlock_current_database_menu)) },
+                                    leadingIcon = { Icon(Icons.Default.LockOpen, contentDescription = null) },
+                                    onClick = {
+                                        onTopActionsMenuExpandedChange(false)
+                                        showBitwardenUnlockDialog = true
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.lock_current_database_menu)) },
+                                    leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                                    onClick = {
+                                        onTopActionsMenuExpandedChange(false)
+                                        coroutineScope.launch {
+                                            runCatching {
+                                                bitwardenRepository.forceLock(selectedBitwardenVaultId)
+                                            }.onSuccess {
+                                                Toast.makeText(
+                                                    context,
+                                                    context.getString(R.string.current_database_locked),
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }.onFailure { error ->
+                                                Toast.makeText(
+                                                    context,
+                                                    context.getString(
+                                                        R.string.save_failed_with_error,
+                                                        error.message ?: ""
+                                                    ),
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        }
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.clear_bitwarden_cache_menu)) },
+                                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                                    enabled = !isBitwardenMaintenanceActionRunning,
+                                    onClick = {
+                                        val vaultId = selectedBitwardenVaultId
+                                            ?: return@DropdownMenuItem
+                                        onTopActionsMenuExpandedChange(false)
+                                        coroutineScope.launch {
+                                            runCatching {
+                                                viewModel.getBitwardenVaultCacheRiskSummary(vaultId)
+                                            }.onSuccess { summary ->
+                                                clearCacheRiskSummary = summary
+                                                showClearBitwardenCacheDialog = true
+                                            }.onFailure { error ->
+                                                Toast.makeText(
+                                                    context,
+                                                    context.getString(
+                                                        R.string.bitwarden_clear_cache_failed,
+                                                        error.message ?: ""
+                                                    ),
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
+                                        }
                                     }
                                 )
                             }
@@ -393,6 +477,251 @@ internal fun PasswordListTopSection(
                 }
             }
         )
+
+        if (showBitwardenUnlockDialog && selectedBitwardenVault != null) {
+            UnlockVaultDialog(
+                email = selectedBitwardenVault.email,
+                onUnlock = { masterPassword ->
+                    showBitwardenUnlockDialog = false
+                    coroutineScope.launch {
+                        when (val result = bitwardenRepository.unlock(
+                            selectedBitwardenVault.id,
+                            masterPassword
+                        )) {
+                            is BitwardenRepository.UnlockResult.Success -> {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.current_database_unlocked),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+
+                            is BitwardenRepository.UnlockResult.Error -> {
+                                Toast.makeText(
+                                    context,
+                                    result.message,
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        }
+                    }
+                },
+                onDismiss = { showBitwardenUnlockDialog = false }
+            )
+        }
+        if (showClearBitwardenCacheDialog && selectedBitwardenVaultId != null && clearCacheRiskSummary != null) {
+            val vaultId = selectedBitwardenVaultId
+            val riskSummary = clearCacheRiskSummary!!
+            val hasRisk = riskSummary.hasRisk
+            val resetDialogState: () -> Unit = {
+                showClearBitwardenCacheDialog = false
+                clearCacheRiskSummary = null
+            }
+
+            AlertDialog(
+                onDismissRequest = {
+                    if (!isBitwardenMaintenanceActionRunning) {
+                        resetDialogState()
+                    }
+                },
+                title = { Text(stringResource(R.string.bitwarden_clear_cache_confirm_title)) },
+                text = {
+                    Text(
+                        if (hasRisk) {
+                            context.getString(
+                                R.string.bitwarden_clear_cache_confirm_message_with_risk,
+                                riskSummary.pendingOperationCount,
+                                riskSummary.passwordLocalModifiedCount,
+                                riskSummary.secureItemLocalModifiedCount,
+                                riskSummary.unresolvedConflictCount
+                            )
+                        } else {
+                            context.getString(R.string.bitwarden_clear_cache_confirm_message)
+                        }
+                    )
+                },
+                confirmButton = {
+                    TextButton(
+                        enabled = !isBitwardenMaintenanceActionRunning,
+                        onClick = {
+                            coroutineScope.launch {
+                                isBitwardenMaintenanceActionRunning = true
+                                runCatching {
+                                    viewModel.clearBitwardenVaultLocalCache(
+                                        vaultId = vaultId,
+                                        mode = if (hasRisk) {
+                                            BitwardenRepository.CacheClearMode.SAFE_ONLY_SYNCED
+                                        } else {
+                                            BitwardenRepository.CacheClearMode.FULL_FORCE
+                                        }
+                                    )
+                                }.onSuccess { result ->
+                                    val message = if (hasRisk) {
+                                        context.getString(
+                                            R.string.bitwarden_clear_cache_success_safe,
+                                            result.totalClearedCount,
+                                            result.protectedCipherCount
+                                        )
+                                    } else {
+                                        context.getString(
+                                            R.string.bitwarden_clear_cache_success,
+                                            result.totalClearedCount
+                                        )
+                                    }
+                                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                    resetDialogState()
+                                }.onFailure { error ->
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(
+                                            R.string.bitwarden_clear_cache_failed,
+                                            error.message ?: ""
+                                        ),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                                isBitwardenMaintenanceActionRunning = false
+                            }
+                        }
+                    ) {
+                        Text(
+                            stringResource(
+                                if (hasRisk) R.string.bitwarden_clear_cache_action_safe
+                                else R.string.bitwarden_clear_cache_action
+                            )
+                        )
+                    }
+                },
+                dismissButton = {
+                    Row {
+                                if (hasRisk) {
+                                    TextButton(
+                                        enabled = !isBitwardenMaintenanceActionRunning,
+                                        onClick = {
+                                            coroutineScope.launch {
+                                                isBitwardenMaintenanceActionRunning = true
+                                                runCatching {
+                                                    viewModel.clearBitwardenVaultLocalCache(
+                                                        vaultId = vaultId,
+                                                        mode = BitwardenRepository.CacheClearMode.FULL_FORCE
+                                                    )
+                                                }.onSuccess { result ->
+                                                    Toast.makeText(
+                                                context,
+                                                context.getString(
+                                                    R.string.bitwarden_clear_cache_force_success,
+                                                    result.totalClearedCount
+                                                ),
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                            resetDialogState()
+                                        }.onFailure { error ->
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(
+                                                    R.string.bitwarden_clear_cache_failed,
+                                                    error.message ?: ""
+                                                ),
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
+                                        isBitwardenMaintenanceActionRunning = false
+                                    }
+                                }
+                            ) {
+                                Text(stringResource(R.string.bitwarden_clear_cache_action_force))
+                            }
+                        }
+                        TextButton(
+                            enabled = !isBitwardenMaintenanceActionRunning,
+                            onClick = { resetDialogState() }
+                        ) {
+                            Text(stringResource(R.string.cancel))
+                        }
+                    }
+                }
+            )
+        }
+
+        if (showReunlockDialog) {
+            val dismissReunlockDialog: () -> Unit = {
+                showReunlockDialog = false
+                reunlockPassword = ""
+                reunlockPasswordError = false
+            }
+            val biometricAction = if (activity != null && canUseBiometric) {
+                {
+                    biometricHelper.authenticate(
+                        activity = activity,
+                        title = context.getString(R.string.verify_identity),
+                        subtitle = context.getString(R.string.reunlock_current_database_menu),
+                        onSuccess = {
+                            val unlocked = runCatching {
+                                securityManager.unlockVaultWithBiometric()
+                            }.getOrDefault(false)
+                            if (unlocked) {
+                                securityManager.markVaultAuthenticated()
+                                viewModel.restoreAuthenticatedSession()
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.current_database_unlocked),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                dismissReunlockDialog()
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.reunlock_current_database_failed),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                        },
+                        onError = { error ->
+                            Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
+                        },
+                        onFailed = {}
+                    )
+                }
+            } else {
+                null
+            }
+
+            M3IdentityVerifyDialog(
+                title = stringResource(R.string.verify_identity),
+                message = stringResource(R.string.reunlock_current_database_message),
+                passwordValue = reunlockPassword,
+                onPasswordChange = {
+                    reunlockPassword = it
+                    reunlockPasswordError = false
+                },
+                onDismiss = dismissReunlockDialog,
+                onConfirm = {
+                    val unlocked = securityManager.unlockVaultWithPassword(reunlockPassword)
+                    if (unlocked) {
+                        securityManager.markVaultAuthenticated()
+                        viewModel.restoreAuthenticatedSession()
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.current_database_unlocked),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        dismissReunlockDialog()
+                    } else {
+                        reunlockPasswordError = true
+                    }
+                },
+                confirmText = stringResource(R.string.unlock),
+                destructiveConfirm = false,
+                isPasswordError = reunlockPasswordError,
+                passwordErrorText = stringResource(R.string.current_password_incorrect),
+                onBiometricClick = biometricAction,
+                biometricHintText = if (biometricAction == null) {
+                    context.getString(R.string.biometric_not_available)
+                } else {
+                    null
+                }
+            )
+        }
 
         Spacer(modifier = Modifier.height(6.dp))
 

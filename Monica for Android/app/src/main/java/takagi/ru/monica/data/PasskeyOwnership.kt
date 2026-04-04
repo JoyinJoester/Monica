@@ -50,10 +50,14 @@ fun PasskeyEntry.resolveOwnership(): PasskeyOwnership {
             databaseId = keepassDatabaseId!!
         )
 
-        hasBitwardenBinding -> PasskeyOwnership.Bitwarden(
-            vaultId = bitwardenVaultId,
-            cipherId = bitwardenCipherId
-        )
+        hasBitwardenBinding -> if (hasConcreteBitwardenBinding) {
+            PasskeyOwnership.Bitwarden(
+                vaultId = bitwardenVaultId,
+                cipherId = bitwardenCipherId
+            )
+        } else {
+            PasskeyOwnership.MonicaLocal
+        }
 
         else -> PasskeyOwnership.MonicaLocal
     }

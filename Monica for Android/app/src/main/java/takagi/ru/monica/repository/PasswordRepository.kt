@@ -13,6 +13,8 @@ import takagi.ru.monica.data.PasswordHistoryEntry
 import takagi.ru.monica.data.SecureItemDao
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenFolderDao
+import takagi.ru.monica.data.bitwarden.BitwardenSyncRawEntryRecord
+import takagi.ru.monica.data.bitwarden.BitwardenSyncRawEntryRecordDao
 import java.util.Date
 import java.util.Locale
 
@@ -26,7 +28,8 @@ class PasswordRepository(
     private val secureItemDao: SecureItemDao? = null,
     private val passkeyDao: PasskeyDao? = null,
     private val passwordArchiveSyncMetaDao: PasswordArchiveSyncMetaDao? = null,
-    private val passwordHistoryDao: PasswordHistoryDao? = null
+    private val passwordHistoryDao: PasswordHistoryDao? = null,
+    private val bitwardenSyncRawEntryRecordDao: BitwardenSyncRawEntryRecordDao? = null
 ) {
     
     fun getAllPasswordEntries(): Flow<List<PasswordEntry>> {
@@ -207,6 +210,15 @@ class PasswordRepository(
 
     fun getPasswordHistoryByEntryId(entryId: Long): Flow<List<PasswordHistoryEntry>> {
         return passwordHistoryDao?.getHistoryByEntryId(entryId) ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    }
+
+    fun getBitwardenSyncRawRecords(
+        vaultId: Long,
+        cipherId: String
+    ): Flow<List<BitwardenSyncRawEntryRecord>> {
+        if (cipherId.isBlank()) return kotlinx.coroutines.flow.flowOf(emptyList())
+        return bitwardenSyncRawEntryRecordDao?.getByCipherFlow(vaultId, cipherId)
+            ?: kotlinx.coroutines.flow.flowOf(emptyList())
     }
 
     suspend fun getPasswordHistoryByEntryIdSync(entryId: Long): List<PasswordHistoryEntry> {

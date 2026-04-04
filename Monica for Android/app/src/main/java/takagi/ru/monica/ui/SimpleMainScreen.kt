@@ -118,6 +118,7 @@ import takagi.ru.monica.data.PasswordPageContentType
 import takagi.ru.monica.data.PasswordQuickAccessManager
 import takagi.ru.monica.data.model.PasskeyBindingCodec
 import takagi.ru.monica.data.model.TimelineEvent
+import takagi.ru.monica.passkey.managementKey
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.SettingsViewModel
@@ -756,7 +757,7 @@ fun SimpleMainScreen(
     onNavigateToAddNote: (Long?) -> Unit,
     onNavigateToNoteDetail: (Long) -> Unit = {},
     onNavigateToPasswordDetail: (Long) -> Unit = {},
-    onNavigateToPasskeyDetail: (String) -> Unit,
+    onNavigateToPasskeyDetail: (Long) -> Unit,
     onNavigateToBankCardDetail: (Long) -> Unit, // Add this
     onNavigateToDocumentDetail: (Long) -> Unit, // Keep this
     onNavigateToChangePassword: () -> Unit = {},
@@ -1409,10 +1410,17 @@ fun SimpleMainScreen(
                     passwordViewModel.updatePasskeyBindings(boundId, updatedBindings)
                 }
             }
-            if (passkey.syncStatus != "REFERENCE") {
-                passkeyViewModel.updateBoundPassword(passkey.credentialId, null)
+            if (passkey.id > 0L) {
+                passkeyViewModel.updateBoundPassword(passkey.id, null)
             }
-            if (selectedPasskey?.credentialId == passkey.credentialId) {
+            if (selectedPasskey?.let { selected ->
+                    if (selected.id > 0L && passkey.id > 0L) {
+                        selected.id == passkey.id
+                    } else {
+                        selected.managementKey() == passkey.managementKey()
+                    }
+                } == true
+            ) {
                 selectedPasskey = selectedPasskey?.copy(boundPasswordId = null)
             }
         }
@@ -1454,7 +1462,14 @@ fun SimpleMainScreen(
                         }
                         passkeyViewModel.deletePasskey(passkey)
                     }
-                    if (selectedPasskey?.credentialId == passkey.credentialId) {
+                    if (selectedPasskey?.let { selected ->
+                            if (selected.id > 0L && passkey.id > 0L) {
+                                selected.id == passkey.id
+                            } else {
+                                selected.managementKey() == passkey.managementKey()
+                            }
+                        } == true
+                    ) {
                         selectedPasskey = null
                     }
                     pendingPasskeyDelete = null
@@ -2494,7 +2509,7 @@ private fun PasswordTabPane(
     onNavigateToDocumentDetail: (Long) -> Unit,
     onNavigateToAddNote: (Long?) -> Unit,
     onNavigateToNoteDetail: (Long) -> Unit,
-    onNavigateToPasskeyDetail: (String) -> Unit,
+    onNavigateToPasskeyDetail: (Long) -> Unit,
     onOpenHistoryPage: () -> Unit,
     onOpenTrashPage: () -> Unit,
     onOpenCommonAccountTemplatesPage: () -> Unit,
@@ -2835,7 +2850,7 @@ private fun CompactDraggableTabContent(
     onNavigateToAddTotp: (Long?) -> Unit,
     onNavigateToBankCardDetail: (Long) -> Unit,
     onNavigateToDocumentDetail: (Long) -> Unit,
-    onNavigateToPasskeyDetail: (String) -> Unit,
+    onNavigateToPasskeyDetail: (Long) -> Unit,
     onPasswordSelectionModeChange: (
         Boolean,
         Int,

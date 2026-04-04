@@ -52,6 +52,7 @@ class BitwardenRepository(private val context: Context) {
         private const val ARGON2_DEFAULT_ITERATIONS = 3
         private const val ARGON2_DEFAULT_MEMORY_MB = 64
         private const val ARGON2_DEFAULT_PARALLELISM = 4
+        private const val CACHE_KEEP_SENTINEL_CIPHER_ID = "__MONICA_CACHE_KEEP_SENTINEL__"
         private val syncMutex = Mutex()
         
         @Volatile
@@ -202,6 +203,14 @@ class BitwardenRepository(private val context: Context) {
      */
     fun isVaultUnlocked(vaultId: Long): Boolean {
         return symmetricKeyCache.containsKey(vaultId) && accessTokenCache.containsKey(vaultId)
+    }
+
+    fun getCachedSymmetricKey(vaultId: Long): SymmetricCryptoKey? {
+        val key = symmetricKeyCache[vaultId] ?: return null
+        return SymmetricCryptoKey(
+            encKey = key.encKey.copyOf(),
+            macKey = key.macKey.copyOf()
+        )
     }
     
     /**
@@ -697,6 +706,126 @@ class BitwardenRepository(private val context: Context) {
                 SyncResult.Error(e.message ?: "同步失败")
             }
         }
+    }
+
+    suspend fun getVaultCacheRiskSummary(vaultId: Long): VaultCacheRiskSummary = withContext(Dispatchers.IO) {
+        if (vaultDao.getVaultById(vaultId) == null) {
+            throw IllegalStateException("Vault 不存在")
+        }
+        collectVaultCacheRiskSummary(vaultId)
+    }
+
+    suspend fun clearVaultLocalCache(
+        vaultId: Long,
+        mode: CacheClearMode
+    ): CacheClearResult = withContext(Dispatchers.IO) {
+        if (vaultDao.getVaultById(vaultId) == null) {
+            throw IllegalStateException("Vault 不存在")
+        }
+
+        val riskSummary = collectVaultCacheRiskSummary(vaultId)
+        val protectedCipherIds = collectProtectedCipherIds(vaultId)
+        val keepIds = if (protectedCipherIds.isEmpty()) {
+            listOf(CACHE_KEEP_SENTINEL_CIPHER_ID)
+        } else {
+            protectedCipherIds.toList()
+        }
+
+        val passwordBefore = passwordEntryDao.getBitwardenEntryCount(vaultId)
+        val secureBefore = secureItemDao.getBitwardenEntriesCount(vaultId)
+        val passkeyBefore = passkeyDao.getByBitwardenVaultId(vaultId).size
+        val folderBefore = folderDao.getFoldersByVault(vaultId).size
+        val sendBefore = sendDao.getSendsByVault(vaultId).size
+        val conflictBefore = conflictDao.getUnresolvedConflictsByVault(vaultId).size
+        val pendingBefore = pendingOpDao.getRunnableOperationsByVault(vaultId).size
+
+        database.withTransaction {
+            when (mode) {
+                CacheClearMode.SAFE_ONLY_SYNCED -> {
+                    passwordEntryDao.deleteBitwardenEntriesNotIn(vaultId, keepIds)
+                    secureItemDao.deleteBitwardenEntriesNotIn(vaultId, keepIds)
+                    passkeyDao.deleteBitwardenEntriesNotIn(vaultId, keepIds)
+                    folderDao.deleteByVault(vaultId)
+                    sendDao.deleteByVault(vaultId)
+                }
+
+                CacheClearMode.FULL_FORCE -> {
+                    passwordEntryDao.deleteAllByBitwardenVaultId(vaultId)
+                    secureItemDao.deleteAllByBitwardenVaultId(vaultId)
+                    passkeyDao.deleteAllByBitwardenVaultId(vaultId)
+                    folderDao.deleteByVault(vaultId)
+                    sendDao.deleteByVault(vaultId)
+                    conflictDao.deleteByVault(vaultId)
+                    pendingOpDao.deleteByVault(vaultId)
+                }
+            }
+        }
+
+        val passwordAfter = passwordEntryDao.getBitwardenEntryCount(vaultId)
+        val secureAfter = secureItemDao.getBitwardenEntriesCount(vaultId)
+        val passkeyAfter = passkeyDao.getByBitwardenVaultId(vaultId).size
+        val folderAfter = folderDao.getFoldersByVault(vaultId).size
+        val sendAfter = sendDao.getSendsByVault(vaultId).size
+        val conflictAfter = conflictDao.getUnresolvedConflictsByVault(vaultId).size
+        val pendingAfter = pendingOpDao.getRunnableOperationsByVault(vaultId).size
+
+        CacheClearResult(
+            mode = mode,
+            riskSummary = riskSummary,
+            protectedCipherCount = protectedCipherIds.size,
+            passwordClearedCount = (passwordBefore - passwordAfter).coerceAtLeast(0),
+            secureItemClearedCount = (secureBefore - secureAfter).coerceAtLeast(0),
+            passkeyClearedCount = (passkeyBefore - passkeyAfter).coerceAtLeast(0),
+            folderClearedCount = (folderBefore - folderAfter).coerceAtLeast(0),
+            sendClearedCount = (sendBefore - sendAfter).coerceAtLeast(0),
+            unresolvedConflictClearedCount = (conflictBefore - conflictAfter).coerceAtLeast(0),
+            pendingOperationClearedCount = (pendingBefore - pendingAfter).coerceAtLeast(0)
+        )
+    }
+
+    private suspend fun collectVaultCacheRiskSummary(vaultId: Long): VaultCacheRiskSummary {
+        val pendingOperations = pendingOpDao.getRunnableOperationsByVault(vaultId)
+        val passwordLocalModified = passwordEntryDao.getEntriesWithPendingBitwardenSync(vaultId)
+        val secureLocalModified = secureItemDao.getLocalModifiedEntries(vaultId)
+        val unresolvedConflicts = conflictDao.getUnresolvedConflictsByVault(vaultId)
+
+        return VaultCacheRiskSummary(
+            vaultId = vaultId,
+            pendingOperationCount = pendingOperations.size,
+            passwordLocalModifiedCount = passwordLocalModified.size,
+            secureItemLocalModifiedCount = secureLocalModified.size,
+            unresolvedConflictCount = unresolvedConflicts.size
+        )
+    }
+
+    private suspend fun collectProtectedCipherIds(vaultId: Long): Set<String> {
+        val protected = linkedSetOf<String>()
+
+        passwordEntryDao.getEntriesWithPendingBitwardenSync(vaultId).forEach { entry ->
+            entry.bitwardenCipherId
+                ?.takeIf { it.isNotBlank() }
+                ?.let(protected::add)
+        }
+
+        secureItemDao.getLocalModifiedEntries(vaultId).forEach { item ->
+            item.bitwardenCipherId
+                ?.takeIf { it.isNotBlank() }
+                ?.let(protected::add)
+        }
+
+        pendingOpDao.getRunnableOperationsByVault(vaultId).forEach { op ->
+            op.bitwardenCipherId
+                ?.takeIf { it.isNotBlank() }
+                ?.let(protected::add)
+        }
+
+        conflictDao.getUnresolvedConflictsByVault(vaultId).forEach { conflict ->
+            conflict.bitwardenCipherId
+                ?.takeIf { it.isNotBlank() }
+                ?.let(protected::add)
+        }
+
+        return protected
     }
 
     suspend fun repairHistoricalBitwardenTotp(vaultId: Long): Result<BitwardenHistoricalTotpRepairResult> =
@@ -1434,5 +1563,46 @@ class BitwardenRepository(private val context: Context) {
             val serverCount: Int,
             val reason: String
         ) : SyncResult()
+    }
+
+    enum class CacheClearMode {
+        SAFE_ONLY_SYNCED,
+        FULL_FORCE
+    }
+
+    data class VaultCacheRiskSummary(
+        val vaultId: Long,
+        val pendingOperationCount: Int,
+        val passwordLocalModifiedCount: Int,
+        val secureItemLocalModifiedCount: Int,
+        val unresolvedConflictCount: Int
+    ) {
+        val hasRisk: Boolean
+            get() = pendingOperationCount > 0 ||
+                passwordLocalModifiedCount > 0 ||
+                secureItemLocalModifiedCount > 0 ||
+                unresolvedConflictCount > 0
+    }
+
+    data class CacheClearResult(
+        val mode: CacheClearMode,
+        val riskSummary: VaultCacheRiskSummary,
+        val protectedCipherCount: Int,
+        val passwordClearedCount: Int,
+        val secureItemClearedCount: Int,
+        val passkeyClearedCount: Int,
+        val folderClearedCount: Int,
+        val sendClearedCount: Int,
+        val unresolvedConflictClearedCount: Int,
+        val pendingOperationClearedCount: Int
+    ) {
+        val totalClearedCount: Int
+            get() = passwordClearedCount +
+                secureItemClearedCount +
+                passkeyClearedCount +
+                folderClearedCount +
+                sendClearedCount +
+                unresolvedConflictClearedCount +
+                pendingOperationClearedCount
     }
 }

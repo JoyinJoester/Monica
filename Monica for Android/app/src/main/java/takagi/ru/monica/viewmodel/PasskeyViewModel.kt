@@ -165,6 +165,11 @@ class PasskeyViewModel(
         val passkey = repository.getPasskeyById(credentialId) ?: return null
         return repository.normalizeLegacyDetachedKeePassPasskey(passkey, ::hasKeePassDatabase)
     }
+
+    suspend fun getPasskeyByRecordId(recordId: Long): PasskeyEntry? {
+        val passkey = repository.getPasskeyByRecordId(recordId) ?: return null
+        return repository.normalizeLegacyDetachedKeePassPasskey(passkey, ::hasKeePassDatabase)
+    }
     
     /**
      * 根据域名获取 Passkeys
@@ -187,7 +192,11 @@ class PasskeyViewModel(
         viewModelScope.launch {
             try {
                 _isLoading.value = true
-                val existing = repository.getPasskeyById(passkey.credentialId)
+                val existing = if (passkey.hasPersistentId()) {
+                    repository.getPasskeyByRecordId(passkey.id)
+                } else {
+                    repository.getPasskeyById(passkey.credentialId)
+                }
                 repository.savePasskey(passkey)
                 if (existing == null) {
                     logPasskeyCreate(passkey)
@@ -206,7 +215,11 @@ class PasskeyViewModel(
      * 更新 Passkey
      */
     suspend fun updatePasskey(passkey: PasskeyEntry): Result<PasskeyEntry> {
-        val existing = repository.getPasskeyById(passkey.credentialId)
+        val existing = if (passkey.hasPersistentId()) {
+            repository.getPasskeyByRecordId(passkey.id)
+        } else {
+            repository.getPasskeyById(passkey.credentialId)
+        }
             ?: return Result.failure(IllegalArgumentException("Passkey 不存在"))
         return try {
             val result = keepassPasskeyUpdateExecutor.update(
@@ -227,14 +240,14 @@ class PasskeyViewModel(
     /**
      * 更新绑定密码
      */
-    fun updateBoundPassword(credentialId: String, passwordId: Long?) {
+    fun updateBoundPassword(recordId: Long, passwordId: Long?) {
         viewModelScope.launch {
             try {
-                val existing = repository.getPasskeyById(credentialId) ?: return@launch
+                val existing = repository.getPasskeyByRecordId(recordId) ?: return@launch
                 if (existing.boundPasswordId == passwordId) {
                     return@launch
                 }
-                repository.updateBoundPasswordId(credentialId, passwordId)
+                repository.updateBoundPasswordId(recordId, passwordId)
                 logPasskeyUpdate(existing, existing.copy(boundPasswordId = passwordId))
             } catch (e: Exception) {
                 _errorMessage.value = "更新绑定失败: ${e.message}"
@@ -245,10 +258,10 @@ class PasskeyViewModel(
     /**
      * 更新使用记录
      */
-    fun updateUsage(credentialId: String, signCount: Long) {
+    fun updateUsage(recordId: Long, signCount: Long) {
         viewModelScope.launch {
             try {
-                repository.updateUsage(credentialId, signCount)
+                repository.updateUsage(recordId, signCount)
             } catch (e: Exception) {
                 _errorMessage.value = "更新使用记录失败: ${e.message}"
             }
@@ -279,14 +292,14 @@ class PasskeyViewModel(
      * 根据凭据 ID 删除 Passkey
      * 注：PasskeyRepository 会自动处理 Android Keystore 私钥清理
      */
-    fun deletePasskeyById(credentialId: String) {
+    fun deletePasskeyByRecordId(recordId: Long) {
         viewModelScope.launch {
             try {
-                val passkey = repository.getPasskeyById(credentialId)
+                val passkey = repository.getPasskeyByRecordId(recordId)
                 if (passkey != null) {
                     deletePasskey(passkey).getOrThrow()
                 } else {
-                    repository.deletePasskeyById(credentialId)
+                    repository.deletePasskeyByRecordId(recordId)
                 }
             } catch (e: Exception) {
                 _errorMessage.value = "删除 Passkey 失败: ${e.message}"
@@ -342,7 +355,7 @@ class PasskeyViewModel(
 
         OperationLogger.logCreate(
             itemType = OperationLogItemType.PASSKEY,
-            itemId = passkeyTimelineItemId(passkey.credentialId),
+            itemId = passkeyTimelineItemId(passkey),
             itemTitle = passkeyTimelineTitle(passkey),
             details = details
         )
@@ -377,7 +390,7 @@ class PasskeyViewModel(
 
         OperationLogger.logUpdate(
             itemType = OperationLogItemType.PASSKEY,
-            itemId = passkeyTimelineItemId(newPasskey.credentialId),
+            itemId = passkeyTimelineItemId(newPasskey),
             itemTitle = passkeyTimelineTitle(newPasskey),
             changes = changes
         )
@@ -386,12 +399,14 @@ class PasskeyViewModel(
     private fun logPasskeyDelete(passkey: PasskeyEntry) {
         OperationLogger.logDelete(
             itemType = OperationLogItemType.PASSKEY,
-            itemId = passkeyTimelineItemId(passkey.credentialId),
+            itemId = passkeyTimelineItemId(passkey),
             itemTitle = passkeyTimelineTitle(passkey)
         )
     }
 
-    private fun passkeyTimelineItemId(credentialId: String): Long = credentialId.hashCode().toLong()
+    private fun passkeyTimelineItemId(passkey: PasskeyEntry): Long {
+        return passkey.id.takeIf { it > 0L } ?: passkey.credentialId.hashCode().toLong()
+    }
 
     private fun passkeyTimelineTitle(passkey: PasskeyEntry): String {
         return passkey.rpName.ifBlank {

@@ -16,7 +16,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.api.BitwardenTlsConfig
+import takagi.ru.monica.bitwarden.cache.BitwardenOfflineSecretCache
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.bitwarden.service.LoginResult
 import takagi.ru.monica.bitwarden.sync.BitwardenSyncOrchestrator
@@ -31,6 +33,7 @@ import takagi.ru.monica.data.bitwarden.BitwardenConflictBackup
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenSend
 import takagi.ru.monica.data.bitwarden.BitwardenVault
+import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.FieldChange
 import takagi.ru.monica.utils.OperationLogger
 
@@ -55,6 +58,12 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     
     // 仓库
     private val repository = BitwardenRepository.getInstance(application)
+    private val securityManager = SecurityManager(application.applicationContext)
+    private val bitwardenOfflineSecretCache = BitwardenOfflineSecretCache(
+        application.applicationContext,
+        securityManager
+    )
+    private val decryptLock = Any()
     
     // 两步验证临时状态
     private var twoFactorState: LoginResult.TwoFactorRequired? = null
@@ -904,6 +913,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
 
         return when (val result = repository.sync(vault.id)) {
             is BitwardenRepository.SyncResult.Success -> {
+                val warmedCount = warmBitwardenOfflineSecretCacheForVault(vault.id)
                 logBitwardenSyncSummary(
                     vaultId = vault.id,
                     syncedCount = result.syncedCount,
@@ -924,7 +934,15 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                     if (result.conflictCount > 0) {
                         _events.emit(BitwardenEvent.ShowWarning("同步完成，但有 ${result.conflictCount} 个冲突需要处理"))
                     } else {
-                        _events.emit(BitwardenEvent.ShowSuccess("同步完成，共 ${result.syncedCount} 条记录"))
+                        _events.emit(
+                            BitwardenEvent.ShowSuccess(
+                                getApplication<Application>().getString(
+                                    R.string.bitwarden_sync_success_with_offline_ready,
+                                    result.syncedCount,
+                                    warmedCount
+                                )
+                            )
+                        )
                     }
                 }
                 SyncExecutionOutcome.Success(
@@ -963,6 +981,42 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                 SyncExecutionOutcome.FatalError("空 Vault 保护已触发")
             }
         }
+    }
+
+    private suspend fun warmBitwardenOfflineSecretCacheForVault(vaultId: Long): Int {
+        return runCatching {
+            repository.getPasswordEntries(vaultId).fold(0) { warmedCount: Int, entry: PasswordEntry ->
+                if (!entry.hasBitwardenCipherBinding() || entry.password.isBlank()) {
+                    warmedCount
+                } else {
+                    val decoded = decodePasswordOrNull(entry.password)
+                    if (decoded.isNullOrBlank()) {
+                        warmedCount
+                    } else {
+                        bitwardenOfflineSecretCache.remember(entry, decoded)
+                        warmedCount + 1
+                    }
+                }
+            }
+        }.getOrElse { error ->
+            Log.w(TAG, "Warm Bitwarden offline cache skipped: ${error.message}")
+            0
+        }
+    }
+
+    private fun decodePasswordOrNull(rawPassword: String): String? {
+        if (rawPassword.isEmpty()) return ""
+        return runCatching {
+            var current = rawPassword
+            repeat(3) {
+                val decrypted = synchronized(decryptLock) {
+                    securityManager.decryptData(current)
+                }
+                if (decrypted == current) return@runCatching current
+                current = decrypted
+            }
+            current
+        }.getOrNull()
     }
 
     private fun classifyError(message: String): SyncExecutionOutcome {

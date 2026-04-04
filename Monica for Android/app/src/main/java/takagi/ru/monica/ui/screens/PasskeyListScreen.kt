@@ -103,6 +103,8 @@ import takagi.ru.monica.ui.icons.UnmatchedIconFallback
 import takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon
 import takagi.ru.monica.ui.icons.shouldShowFallbackSlot
 import takagi.ru.monica.bitwarden.sync.SyncStatus
+import takagi.ru.monica.passkey.managementKey
+import takagi.ru.monica.passkey.managementRecordIdOrNull
 import java.security.KeyFactory
 import java.security.KeyStore
 import java.security.spec.PKCS8EncodedKeySpec
@@ -217,21 +219,19 @@ fun PasskeyListScreen(
                     passkey.userName.contains(searchQuery, ignoreCase = true) ||
                     passkey.userDisplayName.contains(searchQuery, ignoreCase = true)
             }
-        }.distinctBy { it.credentialId }
+        }
     }
 
     val combinedPasskeys = remember(passkeys, bindingPasskeys) {
         if (bindingPasskeys.isEmpty()) return@remember passkeys
-        val merged = LinkedHashMap<String, PasskeyEntry>(passkeys.size + bindingPasskeys.size)
-        passkeys.forEach { merged[it.credentialId] = it }
-        bindingPasskeys.forEach { if (!merged.containsKey(it.credentialId)) merged[it.credentialId] = it }
-        merged.values.toList()
+        val existingCredentialIds = passkeys.mapTo(mutableSetOf()) { it.credentialId }
+        passkeys + bindingPasskeys.filter { binding -> binding.credentialId !in existingCredentialIds }
     }
     var passkeyMigratableById by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
     LaunchedEffect(combinedPasskeys) {
         passkeyMigratableById = withContext(Dispatchers.IO) {
             combinedPasskeys.associate { passkey ->
-                passkey.credentialId to isPasskeyMigratableToBitwarden(passkey)
+                passkey.managementKey() to isPasskeyMigratableToBitwarden(passkey)
             }
         }
     }
@@ -280,7 +280,7 @@ fun PasskeyListScreen(
         { passkey ->
             val boundPassword = boundPasswordForPasskey(passkey)
             val boundVaultId = boundPassword?.bitwardenVaultId
-            val canSyncToBitwarden = passkeyMigratableById[passkey.credentialId] ?: false
+            val canSyncToBitwarden = passkeyMigratableById[passkey.managementKey()] ?: false
             if (boundVaultId != null && !canSyncToBitwarden) {
                 passkey.bitwardenVaultId
             } else {
@@ -292,7 +292,7 @@ fun PasskeyListScreen(
         { passkey ->
             val boundPassword = boundPasswordForPasskey(passkey)
             val boundVaultId = boundPassword?.bitwardenVaultId
-            val canSyncToBitwarden = passkeyMigratableById[passkey.credentialId] ?: false
+            val canSyncToBitwarden = passkeyMigratableById[passkey.managementKey()] ?: false
             if (boundVaultId != null && !canSyncToBitwarden) {
                 passkey.bitwardenFolderId
             } else {
@@ -354,14 +354,13 @@ fun PasskeyListScreen(
         )
     }
     val visiblePasskeys = remember(categoryFilteredPasskeys, pendingDeletePasskey) {
-        val deletingId = pendingDeletePasskey?.credentialId
+        val deletingId = pendingDeletePasskey?.managementKey()
         val baseList = if (deletingId == null) {
             categoryFilteredPasskeys
         } else {
-            categoryFilteredPasskeys.filterNot { it.credentialId == deletingId }
+            categoryFilteredPasskeys.filterNot { it.managementKey() == deletingId }
         }
-        // 防御性去重：避免历史重复绑定数据触发 LazyColumn key 冲突崩溃
-        baseList.distinctBy { it.credentialId }
+        baseList
     }
     val failedPasskeyCount = remember(visiblePasskeys) {
         visiblePasskeys.count { it.syncStatus == "FAILED" }
@@ -1116,17 +1115,18 @@ fun PasskeyListScreen(
                         ) {
                             items(
                                 items = visiblePasskeys,
-                                key = { it.credentialId }
+                                key = { it.managementKey() }
                             ) { passkey ->
+                                val passkeyKey = passkey.managementKey()
                                 val boundPassword = passkey.boundPasswordId?.let { passwordMap[it] }
                                 val currentCategoryId = effectiveCategoryId(passkey)
                                 val categoryName = currentCategoryId
                                     ?.let { categoryMap[it]?.name }
                                     ?: context.getString(R.string.category_none)
-                                val isSelected = selectedPasskeys.contains(passkey.credentialId)
-                                val isPendingDelete = pendingDeletePasskey?.credentialId == passkey.credentialId
+                                val isSelected = selectedPasskeys.contains(passkeyKey)
+                                val isPendingDelete = pendingDeletePasskey?.managementKey() == passkeyKey
 
-                                key(passkey.credentialId, isSelected, isPendingDelete, selectionMode) {
+                                key(passkeyKey, isSelected, isPendingDelete, selectionMode) {
                                     SwipeActions(
                                         onSwipeLeft = {
                                             haptic.performWarning()
@@ -1135,10 +1135,10 @@ fun PasskeyListScreen(
                                         },
                                         onSwipeRight = {
                                             haptic.performSuccess()
-                                            val updatedSelection = if (selectedPasskeys.contains(passkey.credentialId)) {
-                                                selectedPasskeys - passkey.credentialId
+                                            val updatedSelection = if (selectedPasskeys.contains(passkeyKey)) {
+                                                selectedPasskeys - passkeyKey
                                             } else {
-                                                selectedPasskeys + passkey.credentialId
+                                                selectedPasskeys + passkeyKey
                                             }
                                             selectedPasskeys = updatedSelection
                                             selectionMode = updatedSelection.isNotEmpty()
@@ -1156,12 +1156,18 @@ fun PasskeyListScreen(
                                             unmatchedIconHandlingStrategy = appSettings.unmatchedIconHandlingStrategy,
                                             isSelected = isSelected,
                                             selectionMode = selectionMode,
-                                            onClick = { onPasskeyClick(passkey) },
+                                            onClick = {
+                                                passkey.managementRecordIdOrNull()?.let { recordId ->
+                                                    if (recordId > 0L) {
+                                                        onPasskeyClick(passkey)
+                                                    }
+                                                }
+                                            },
                                             onToggleSelect = {
-                                                val updatedSelection = if (selectedPasskeys.contains(passkey.credentialId)) {
-                                                    selectedPasskeys - passkey.credentialId
+                                                val updatedSelection = if (selectedPasskeys.contains(passkeyKey)) {
+                                                    selectedPasskeys - passkeyKey
                                                 } else {
-                                                    selectedPasskeys + passkey.credentialId
+                                                    selectedPasskeys + passkeyKey
                                                 }
                                                 selectedPasskeys = updatedSelection
                                                 selectionMode = updatedSelection.isNotEmpty()
@@ -1170,7 +1176,7 @@ fun PasskeyListScreen(
                                                 haptic.performLongPress()
                                                 if (!selectionMode) {
                                                     selectionMode = true
-                                                    selectedPasskeys = setOf(passkey.credentialId)
+                                                    selectedPasskeys = setOf(passkeyKey)
                                                 }
                                             },
                                             onDeleteRequest = {
@@ -1183,8 +1189,8 @@ fun PasskeyListScreen(
                                                     val updatedBindings = PasskeyBindingCodec.removeBinding(boundPassword.passkeyBindings, passkey.credentialId)
                                                     passwordViewModel.updatePasskeyBindings(boundPassword.id, updatedBindings)
                                                 }
-                                                if (passkey.syncStatus != "REFERENCE") {
-                                                    viewModel.updateBoundPassword(passkey.credentialId, null)
+                                                passkey.managementRecordIdOrNull()?.let { recordId ->
+                                                    viewModel.updateBoundPassword(recordId, null)
                                                 }
                                             },
                                             onOpenBoundPassword = { passwordId -> onNavigateToPasswordDetail(passwordId) },
@@ -1213,7 +1219,7 @@ fun PasskeyListScreen(
                         selectedPasskeys = emptySet()
                     },
                     onSelectAll = {
-                        val allKeys = categoryFilteredPasskeys.map { it.credentialId }.toSet()
+                        val allKeys = categoryFilteredPasskeys.mapTo(linkedSetOf()) { it.managementKey() }
                         val updatedSelection = if (selectedPasskeys.size == allKeys.size) {
                             emptySet()
                         } else {
@@ -1238,7 +1244,7 @@ fun PasskeyListScreen(
         val deleteTargets = if (pendingDeletePasskey != null) {
             listOf(pendingDeletePasskey!!)
         } else {
-            combinedPasskeys.filter { selectedPasskeys.contains(it.credentialId) }
+            combinedPasskeys.filter { selectedPasskeys.contains(it.managementKey()) }
         }
 
         val biometricAction = if (activity != null && canUseBiometric) {
@@ -1346,7 +1352,12 @@ fun PasskeyListScreen(
                     }
                 }
 
-                if (passkey.syncStatus != "REFERENCE") {
+                val passkeyRecordId = passkey.managementRecordIdOrNull()
+                if (passkey.syncStatus == "REFERENCE") {
+                    passkeyRecordId?.let { recordId ->
+                        viewModel.updateBoundPassword(recordId, password.id)
+                    }
+                } else {
                     val targetVaultId = when {
                         password.bitwardenVaultId != null && !nonMigratableForBitwarden -> password.bitwardenVaultId
                         password.bitwardenVaultId != null && nonMigratableForBitwarden -> passkey.bitwardenVaultId
@@ -1488,11 +1499,11 @@ fun PasskeyListScreen(
         getKeePassGroups = getKeePassGroups,
         allowCopy = true,
         allowMove = combinedPasskeys
-            .filter { selectedPasskeys.contains(it.credentialId) }
+            .filter { selectedPasskeys.contains(it.managementKey()) }
             .none { it.isKeePassOwned() },
         onTargetSelected = { target, action ->
             scope.launch {
-                val selectedItems = combinedPasskeys.filter { selectedPasskeys.contains(it.credentialId) }
+                val selectedItems = combinedPasskeys.filter { selectedPasskeys.contains(it.managementKey()) }
                 val movable = selectedItems.filter { it.boundPasswordId == null && it.syncStatus != "REFERENCE" }
                 val lockedCount = selectedItems.size - movable.size
                 var movedCount = 0

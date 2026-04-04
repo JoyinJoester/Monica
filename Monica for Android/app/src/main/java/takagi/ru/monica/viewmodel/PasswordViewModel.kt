@@ -4,6 +4,8 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import takagi.ru.monica.bitwarden.cache.BitwardenOfflineSecretCache
+import takagi.ru.monica.bitwarden.service.BitwardenSyncSnapshotPreviewParser
 import takagi.ru.monica.domain.provider.BitwardenPasswordProvider
 import takagi.ru.monica.domain.provider.DefaultPasswordProvider
 import takagi.ru.monica.domain.provider.KeePassPasswordProvider
@@ -82,6 +84,19 @@ sealed class BitwardenRecoveryResult {
     data class EmptyVaultBlocked(val reason: String) : BitwardenRecoveryResult()
 }
 
+data class BitwardenSyncRawHistoryItem(
+    val id: Long,
+    val operation: String,
+    val endpoint: String,
+    val payloadSource: String,
+    val payloadDigest: String,
+    val responseCode: Int?,
+    val success: Boolean,
+    val capturedAt: Long,
+    val payload: String?,
+    val preview: BitwardenSyncSnapshotPreview? = null
+)
+
 private const val PASSWORD_SCROLL_LOG_TAG = "PasswordScrollDebug"
 
 /**
@@ -96,6 +111,7 @@ class PasswordViewModel(
     private val localKeePassDatabaseDao: LocalKeePassDatabaseDao? = null
 ) : ViewModel() {
     private val decryptLock = Any()
+    private val bitwardenSnapshotPreviewParser = BitwardenSyncSnapshotPreviewParser()
 
     companion object {
         private const val SAVED_FILTER_ALL = "all"
@@ -131,6 +147,9 @@ class PasswordViewModel(
     private val passwordHistoryManager: PasswordHistoryManager? = context?.let { PasswordHistoryManager(it) }
     private val settingsManager: takagi.ru.monica.utils.SettingsManager? = context?.let { takagi.ru.monica.utils.SettingsManager(it) }
     private val bitwardenRepository: BitwardenRepository? = context?.let { BitwardenRepository.getInstance(it.applicationContext) }
+    private val bitwardenOfflineSecretCache: BitwardenOfflineSecretCache? = context?.applicationContext?.let {
+        BitwardenOfflineSecretCache(it, securityManager)
+    }
     private val keepassBridge = if (context != null && localKeePassDatabaseDao != null) {
         KeePassCompatibilityBridge(
             KeePassWorkspaceRepository(
@@ -158,7 +177,9 @@ class PasswordViewModel(
             ),
             BitwardenPasswordProvider(
                 decodePassword = ::decodePasswordOrNull,
-                encryptPassword = securityManager::encryptData
+                encryptPassword = securityManager::encryptData,
+                loadOfflineCachedSecret = ::loadBitwardenOfflineCachedSecret,
+                rememberOfflineCachedSecret = ::rememberBitwardenOfflineCachedSecret
             )
         ),
         fallbackProvider = defaultPasswordProvider
@@ -228,6 +249,9 @@ class PasswordViewModel(
         viewModelScope.launch {
             repairLegacyDetachedKeePassEntries()
             repairLegacyOwnershipConflicts()
+        }
+        viewModelScope.launch(Dispatchers.Default) {
+            warmupBitwardenOfflineSecretCache()
         }
     }
     
@@ -847,6 +871,35 @@ class PasswordViewModel(
         }
     }
 
+    suspend fun getBitwardenVaultCacheRiskSummary(vaultId: Long): BitwardenRepository.VaultCacheRiskSummary {
+        val repositoryInstance = bitwardenRepository
+            ?: throw IllegalStateException("Bitwarden repository unavailable")
+        return repositoryInstance.getVaultCacheRiskSummary(vaultId)
+    }
+
+    suspend fun clearBitwardenVaultLocalCache(
+        vaultId: Long,
+        mode: BitwardenRepository.CacheClearMode
+    ): BitwardenRepository.CacheClearResult {
+        val repositoryInstance = bitwardenRepository
+            ?: throw IllegalStateException("Bitwarden repository unavailable")
+        val beforeEntryIds = repositoryInstance.getPasswordEntries(vaultId)
+            .mapTo(linkedSetOf()) { it.id }
+        val result = repositoryInstance.clearVaultLocalCache(vaultId, mode)
+        if (beforeEntryIds.isNotEmpty()) {
+            val afterEntryIds = repositoryInstance.getPasswordEntries(vaultId)
+                .asSequence()
+                .map { it.id }
+                .toHashSet()
+            beforeEntryIds
+                .filterNot(afterEntryIds::contains)
+                .forEach { entryId ->
+                    bitwardenOfflineSecretCache?.clear(entryId)
+                }
+        }
+        return result
+    }
+
     private fun decodePasswordOrNull(rawPassword: String): String? {
         if (rawPassword.isEmpty()) return ""
         return try {
@@ -858,6 +911,41 @@ class PasswordViewModel(
             }
             null
         }
+    }
+
+    private fun loadBitwardenOfflineCachedSecret(entry: PasswordEntry): String? {
+        return bitwardenOfflineSecretCache?.recall(entry)
+    }
+
+    private fun rememberBitwardenOfflineCachedSecret(entry: PasswordEntry, plainSecret: String) {
+        if (plainSecret.isBlank()) return
+        bitwardenOfflineSecretCache?.remember(entry, plainSecret)
+    }
+
+    suspend fun clearBitwardenOfflineSecretCacheForVault(vaultId: Long): Int {
+        val cache = bitwardenOfflineSecretCache ?: return 0
+        val entries = bitwardenRepository?.getPasswordEntries(vaultId).orEmpty()
+        entries.forEach { entry -> cache.clear(entry.id) }
+        return entries.size
+    }
+
+    private suspend fun warmupBitwardenOfflineSecretCache() {
+        val entries = repository.getAllPasswordEntries().first()
+        rememberDecodedBitwardenSecrets(entries)
+    }
+
+    private fun rememberDecodedBitwardenSecrets(entries: List<PasswordEntry>): Int {
+        val cache = bitwardenOfflineSecretCache ?: return 0
+        var warmedCount = 0
+        entries.forEach { entry ->
+            if (!entry.hasBitwardenCipherBinding() || entry.password.isBlank()) return@forEach
+            val decoded = decodePasswordOrNull(entry.password)
+            if (!decoded.isNullOrBlank()) {
+                cache.remember(entry, decoded)
+                warmedCount += 1
+            }
+        }
+        return warmedCount
     }
 
     private suspend fun repairLegacyDetachedKeePassEntries() {
@@ -2370,6 +2458,9 @@ class PasswordViewModel(
             ?: return BitwardenRecoveryResult.Error("Entry not found")
         val vaultId = entry.bitwardenVaultId
             ?: return BitwardenRecoveryResult.Error("Entry is not backed by Bitwarden")
+        if (entry.bitwardenCipherId.isNullOrBlank()) {
+            return BitwardenRecoveryResult.Error("Entry has no Bitwarden cipher binding")
+        }
         val repositoryInstance = bitwardenRepository
             ?: return BitwardenRecoveryResult.Error("Bitwarden repository unavailable")
 
@@ -2393,6 +2484,35 @@ class PasswordViewModel(
                         entry.copy(password = decoded)
                     }
                 }
+            }
+            .flowOn(Dispatchers.IO)
+    }
+
+    fun getBitwardenSyncRawHistoryFlow(
+        vaultId: Long,
+        cipherId: String
+    ): Flow<List<BitwardenSyncRawHistoryItem>> {
+        if (cipherId.isBlank()) return flowOf(emptyList())
+        return repository.getBitwardenSyncRawRecords(vaultId, cipherId)
+            .map { entries ->
+                entries.map { entry ->
+                    val payload = decodePasswordOrNull(entry.payloadCipherText)
+                    BitwardenSyncRawHistoryItem(
+                        id = entry.id,
+                        operation = entry.operation,
+                        endpoint = entry.endpoint,
+                        payloadSource = entry.payloadSource,
+                        payloadDigest = entry.payloadDigest,
+                        responseCode = entry.responseCode,
+                        success = entry.success,
+                        capturedAt = entry.capturedAt,
+                        payload = payload,
+                        preview = bitwardenSnapshotPreviewParser.parse(
+                            payload = payload,
+                            symmetricKey = bitwardenRepository?.getCachedSymmetricKey(vaultId)
+                        )
+                    )
+                }.filter { it.payloadSource == "SYNC_RESPONSE" }
             }
             .flowOn(Dispatchers.IO)
     }

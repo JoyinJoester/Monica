@@ -81,9 +81,9 @@ sealed class Screen(val route: String) {
             return "password_detail/$passwordId"
         }
     }
-    object PasskeyDetail : Screen("passkey_detail/{credentialId}") {
-        fun createRoute(credentialId: String): String {
-            return "passkey_detail/${Uri.encode(credentialId)}"
+    object PasskeyDetail : Screen("passkey_detail/{recordId}") {
+        fun createRoute(recordId: Long): String {
+            return "passkey_detail/$recordId"
         }
     }
     object QrScanner : Screen("qr_scanner")

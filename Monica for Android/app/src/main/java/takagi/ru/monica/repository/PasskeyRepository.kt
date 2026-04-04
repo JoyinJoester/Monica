@@ -37,13 +37,20 @@ class PasskeyRepository(private val passkeyDao: PasskeyDao) {
     suspend fun getPasskeyById(credentialId: String): PasskeyEntry? = 
         passkeyDao.getPasskeyById(credentialId)
 
+    suspend fun getPasskeyByRecordId(recordId: Long): PasskeyEntry? =
+        passkeyDao.getPasskeyByRecordId(recordId)
+
     suspend fun normalizeLegacyDetachedKeePassPasskey(
         passkey: PasskeyEntry,
         databaseExists: suspend (Long) -> Boolean = { false }
     ): PasskeyEntry {
         if (!isLegacyDetachedKeePassPasskey(passkey, databaseExists)) return passkey
-        passkeyDao.clearKeePassBindingForCredentialIds(listOf(passkey.credentialId))
-        return passkeyDao.getPasskeyById(passkey.credentialId) ?: passkey.copy(
+        if (passkey.hasPersistentId()) {
+            passkeyDao.clearKeePassBindingForRecordIds(listOf(passkey.id))
+        } else {
+            passkeyDao.clearKeePassBindingForCredentialIds(listOf(passkey.credentialId))
+        }
+        return resolveExistingPasskey(passkey) ?: passkey.copy(
             keepassDatabaseId = null,
             keepassGroupPath = null
         )
@@ -93,14 +100,14 @@ class PasskeyRepository(private val passkeyDao: PasskeyDao) {
     suspend fun repairLegacyDetachedKeePassPasskeys(
         databaseExists: suspend (Long) -> Boolean = { false }
     ): Int {
-        val staleCredentialIds = passkeyDao.getAllPasskeysSync()
+        val staleRecordIds = passkeyDao.getAllPasskeysSync()
             .filter { isLegacyDetachedKeePassPasskey(it, databaseExists) }
-            .map { it.credentialId }
-        if (staleCredentialIds.isEmpty()) return 0
+            .mapNotNull { it.id.takeIf { recordId -> recordId > 0L } }
+        if (staleRecordIds.isEmpty()) return 0
 
-        passkeyDao.clearKeePassBindingForCredentialIds(staleCredentialIds)
-        Log.i(TAG, "Detached legacy KeePass-local passkey bindings: count=${staleCredentialIds.size}")
-        return staleCredentialIds.size
+        passkeyDao.clearKeePassBindingForRecordIds(staleRecordIds)
+        Log.i(TAG, "Detached legacy KeePass-local passkey bindings: count=${staleRecordIds.size}")
+        return staleRecordIds.size
     }
 
     /**
@@ -124,7 +131,15 @@ class PasskeyRepository(private val passkeyDao: PasskeyDao) {
     /**
      * 更新 Passkey
      */
-    suspend fun updatePasskey(passkey: PasskeyEntry) = passkeyDao.update(passkey)
+    suspend fun updatePasskey(passkey: PasskeyEntry) {
+        val existing = resolveExistingPasskey(passkey)
+        val normalized = if (existing == null) {
+            passkey
+        } else {
+            normalizeBitwardenSyncState(existing, passkey)
+        }
+        passkeyDao.update(normalized)
+    }
 
     suspend fun syncKeePassPasskeys(
         databaseId: Long,
@@ -161,14 +176,14 @@ class PasskeyRepository(private val passkeyDao: PasskeyDao) {
     /**
      * 更新绑定的密码 ID
      */
-    suspend fun updateBoundPasswordId(credentialId: String, passwordId: Long?) =
-        passkeyDao.updateBoundPasswordId(credentialId, passwordId)
+    suspend fun updateBoundPasswordId(recordId: Long, passwordId: Long?) =
+        passkeyDao.updateBoundPasswordIdByRecordId(recordId, passwordId)
     
     /**
      * 更新使用记录
      */
-    suspend fun updateUsage(credentialId: String, signCount: Long) = 
-        passkeyDao.updateUsage(credentialId, System.currentTimeMillis(), signCount)
+    suspend fun updateUsage(recordId: Long, signCount: Long) =
+        passkeyDao.updateUsageByRecordId(recordId, System.currentTimeMillis(), signCount)
     
     /**
      * 标记为已备份
@@ -190,17 +205,13 @@ class PasskeyRepository(private val passkeyDao: PasskeyDao) {
         deletePasskeyLocalOnly(passkey)
     }
     
-    /**
-     * 根据凭据 ID 删除 Passkey 并清理 Keystore
-     */
-    suspend fun deletePasskeyById(credentialId: String) {
-        // 先获取 Passkey 以获取私钥别名
-        val passkey = passkeyDao.getPasskeyById(credentialId)
+    suspend fun deletePasskeyByRecordId(recordId: Long) {
+        val passkey = passkeyDao.getPasskeyByRecordId(recordId)
         if (passkey != null) {
             deletePasskeyLocalOnly(passkey)
             return
         }
-        passkeyDao.deleteById(credentialId)
+        passkeyDao.deleteByRecordId(recordId)
     }
     
     /**
@@ -271,6 +282,14 @@ class PasskeyRepository(private val passkeyDao: PasskeyDao) {
         Log.i("PasskeyAudit", "[$action] $details")
     }
 
+    private suspend fun resolveExistingPasskey(passkey: PasskeyEntry): PasskeyEntry? {
+        return if (passkey.hasPersistentId()) {
+            passkeyDao.getPasskeyByRecordId(passkey.id)
+        } else {
+            passkeyDao.getPasskeyById(passkey.credentialId)
+        }
+    }
+
     private suspend fun isLegacyDetachedKeePassPasskey(
         passkey: PasskeyEntry,
         databaseExists: suspend (Long) -> Boolean
@@ -279,5 +298,61 @@ class PasskeyRepository(private val passkeyDao: PasskeyDao) {
         if (passkey.bitwardenVaultId != null || !passkey.bitwardenCipherId.isNullOrBlank()) return false
         if (passkey.categoryId != null) return true
         return !databaseExists(keepassDatabaseId) && passkey.keepassGroupPath.isNullOrBlank()
+    }
+
+    private fun normalizeBitwardenSyncState(
+        existing: PasskeyEntry,
+        updated: PasskeyEntry
+    ): PasskeyEntry {
+        if (updated.syncStatus == "REFERENCE") return updated
+        if (updated.bitwardenVaultId == null) return updated
+        if (updated.bitwardenCipherId.isNullOrBlank()) return updated
+
+        val keepsSameRemoteCipher =
+            existing.bitwardenVaultId == updated.bitwardenVaultId &&
+                existing.bitwardenCipherId == updated.bitwardenCipherId
+        if (!keepsSameRemoteCipher) return updated
+
+        val remoteRelevantChanged = PasskeyBitwardenSyncSnapshot.from(existing) !=
+            PasskeyBitwardenSyncSnapshot.from(updated)
+        if (!remoteRelevantChanged) return updated
+
+        return updated.copy(syncStatus = "PENDING")
+    }
+
+    private data class PasskeyBitwardenSyncSnapshot(
+        val bitwardenFolderId: String?,
+        val rpId: String,
+        val rpName: String,
+        val userId: String,
+        val userName: String,
+        val userDisplayName: String,
+        val publicKeyAlgorithm: Int,
+        val privateKeyAlias: String,
+        val isDiscoverable: Boolean,
+        val notes: String,
+        val signCount: Long,
+        val createdAt: Long,
+        val passkeyMode: String
+    ) {
+        companion object {
+            fun from(entry: PasskeyEntry): PasskeyBitwardenSyncSnapshot {
+                return PasskeyBitwardenSyncSnapshot(
+                    bitwardenFolderId = entry.bitwardenFolderId,
+                    rpId = entry.rpId,
+                    rpName = entry.rpName,
+                    userId = entry.userId,
+                    userName = entry.userName,
+                    userDisplayName = entry.userDisplayName,
+                    publicKeyAlgorithm = entry.publicKeyAlgorithm,
+                    privateKeyAlias = entry.privateKeyAlias,
+                    isDiscoverable = entry.isDiscoverable,
+                    notes = entry.notes,
+                    signCount = entry.signCount,
+                    createdAt = entry.createdAt,
+                    passkeyMode = entry.passkeyMode
+                )
+            }
+        }
     }
 }

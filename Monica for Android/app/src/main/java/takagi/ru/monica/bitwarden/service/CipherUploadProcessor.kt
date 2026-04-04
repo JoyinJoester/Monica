@@ -293,7 +293,7 @@ class CipherUploadProcessor(
     ): UploadItemResult {
         return try {
             suspend fun fail(message: String): UploadItemResult {
-                passkeyDao.markFailed(passkey.credentialId)
+                passkeyDao.markFailedByRecordId(passkey.id)
                 return UploadItemResult.Error(message)
             }
 
@@ -303,7 +303,7 @@ class CipherUploadProcessor(
 
             val normalizedPasskey = normalizePasskeyForUpload(passkey)
             val mapper = PasskeyMapper()
-            val request = mapper.toCreateRequest(normalizedPasskey, null)
+            val request = mapper.toCreateRequest(normalizedPasskey, normalizedPasskey.bitwardenFolderId)
             if (request.login?.fido2Credentials.isNullOrEmpty()) {
                 return fail(
                     "Passkey key material is missing or invalid; cannot sync as FIDO2 credential"
@@ -366,12 +366,12 @@ class CipherUploadProcessor(
             }
             
             // 更新本地 Passkey
-            passkeyDao.markSynced(passkey.credentialId, createdCipher.id)
+            passkeyDao.markSyncedByRecordId(passkey.id, createdCipher.id)
             
             android.util.Log.d(TAG, "Uploaded Passkey ${passkey.credentialId} as cipher ${createdCipher.id}")
             UploadItemResult.Success(createdCipher.id)
         } catch (e: Exception) {
-            runCatching { passkeyDao.markFailed(passkey.credentialId) }
+            runCatching { passkeyDao.markFailedByRecordId(passkey.id) }
             captureRawExchange(
                 vaultId = vault.id,
                 operation = "upload_passkey_create",
@@ -400,7 +400,7 @@ class CipherUploadProcessor(
     ): UploadItemResult {
         return try {
             suspend fun fail(message: String): UploadItemResult {
-                passkeyDao.markFailed(passkey.credentialId)
+                passkeyDao.markFailedByRecordId(passkey.id)
                 return UploadItemResult.Error(message)
             }
 
@@ -410,7 +410,7 @@ class CipherUploadProcessor(
 
             val normalizedPasskey = normalizePasskeyForUpload(passkey)
             val mapper = PasskeyMapper()
-            val createRequest = mapper.toCreateRequest(normalizedPasskey, null)
+            val createRequest = mapper.toCreateRequest(normalizedPasskey, normalizedPasskey.bitwardenFolderId)
             if (createRequest.login?.fido2Credentials.isNullOrEmpty()) {
                 return fail(
                     "Passkey key material is missing or invalid; cannot sync as FIDO2 credential"
@@ -473,10 +473,10 @@ class CipherUploadProcessor(
                 return fail("Server updated cipher without FIDO2 credential")
             }
 
-            passkeyDao.markSynced(passkey.credentialId, updatedCipher.id)
+            passkeyDao.markSyncedByRecordId(passkey.id, updatedCipher.id)
             UploadItemResult.Success(updatedCipher.id)
         } catch (e: Exception) {
-            runCatching { passkeyDao.markFailed(passkey.credentialId) }
+            runCatching { passkeyDao.markFailedByRecordId(passkey.id) }
             captureRawExchange(
                 vaultId = vault.id,
                 operation = "upload_passkey_update",
@@ -626,7 +626,19 @@ class CipherUploadProcessor(
             }
         }
 
-        val uniquePending = pending.distinctBy { it.credentialId }
+        val uniquePending = pending.distinctBy { passkey ->
+            passkey.id.takeIf { it > 0L }?.let { recordId ->
+                "record:$recordId"
+            } ?: listOf(
+                passkey.credentialId,
+                passkey.rpId,
+                passkey.userName,
+                passkey.userDisplayName,
+                passkey.boundPasswordId?.toString().orEmpty(),
+                passkey.privateKeyAlias,
+                passkey.bitwardenCipherId.orEmpty()
+            ).joinToString("|")
+        }
         if (uniquePending.isEmpty()) {
             return BatchUploadResult(uploaded = 0, failed = 0, total = 0)
         }
@@ -657,6 +669,7 @@ class CipherUploadProcessor(
             .filter { passkey ->
                 canSyncPasskeyToBitwarden(passkey) &&
                 passkey.syncStatus != "REFERENCE" &&
+                    (passkey.syncStatus == "PENDING" || passkey.syncStatus == "FAILED") &&
                     !passkey.bitwardenCipherId.isNullOrBlank() &&
                     passkey.privateKeyAlias.isNotBlank()
             }

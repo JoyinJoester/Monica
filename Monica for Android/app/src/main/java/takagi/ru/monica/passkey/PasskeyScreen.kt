@@ -71,7 +71,7 @@ fun PasskeyScreen(
             }
         }
     }
-    val renderPasskeys = remember(filteredPasskeys) { filteredPasskeys.distinctBy { it.credentialId } }
+    val renderPasskeys = remember(filteredPasskeys) { filteredPasskeys }
     
     // 删除确认对话框
     if (showDeleteDialog && passkeyToDelete != null) {
@@ -167,7 +167,7 @@ fun PasskeyScreen(
             ) {
                 items(
                     items = renderPasskeys,
-                    key = { it.credentialId }
+                    key = { it.id.takeIf { recordId -> recordId > 0L } ?: it.credentialId }
                 ) { passkey ->
                     PasskeyCard(
                         passkey = passkey,

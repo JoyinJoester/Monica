@@ -35,16 +35,23 @@ import androidx.room.PrimaryKey
 @Entity(
     tableName = "passkeys",
     indices = [
+        Index(value = ["credential_id"], name = "index_passkeys_credential_id"),
         Index(value = ["rp_id"], name = "index_passkeys_rp_id"),
         Index(value = ["user_name"], name = "index_passkeys_user_name"),
         Index(
             value = ["bitwarden_vault_id", "bitwarden_cipher_id"],
             name = "index_passkeys_bitwarden_vault_cipher"
+        ),
+        Index(
+            value = ["bitwarden_vault_id", "bitwarden_cipher_id", "credential_id"],
+            name = "index_passkeys_bitwarden_scope_credential"
         )
     ]
 )
 data class PasskeyEntry(
-    @PrimaryKey
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+
     @ColumnInfo(name = "credential_id")
     val credentialId: String,
     
@@ -196,4 +203,6 @@ data class PasskeyEntry(
     fun isBitwardenCompatible(): Boolean = passkeyMode == MODE_BW_COMPAT
 
     fun isKeePassCompatible(): Boolean = passkeyMode == MODE_KEEPASS_COMPAT
+
+    fun hasPersistentId(): Boolean = id > 0L
 }

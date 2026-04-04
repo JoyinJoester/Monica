@@ -57,10 +57,14 @@ fun SecureItem.resolveOwnership(): SecureItemOwnership {
             databaseId = keepassDatabaseId!!,
             entryUuid = keepassEntryUuid
         )
-        hasBitwardenBinding -> SecureItemOwnership.Bitwarden(
-            vaultId = bitwardenVaultId,
-            cipherId = bitwardenCipherId
-        )
+        hasBitwardenBinding -> if (hasConcreteBitwardenBinding) {
+            SecureItemOwnership.Bitwarden(
+                vaultId = bitwardenVaultId,
+                cipherId = bitwardenCipherId
+            )
+        } else {
+            SecureItemOwnership.MonicaLocal
+        }
         else -> SecureItemOwnership.MonicaLocal
     }
 }

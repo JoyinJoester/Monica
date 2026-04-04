@@ -524,3 +524,48 @@ data class ItemTypeCount(
     @ColumnInfo(name = "item_type") val itemType: String,
     @ColumnInfo(name = "count") val count: Int
 )
+
+@Dao
+interface BitwardenSyncRawEntryRecordDao {
+
+    @Query(
+        """
+        SELECT * FROM bitwarden_sync_raw_entry_records
+        WHERE vault_id = :vaultId AND bitwarden_cipher_id = :cipherId
+        ORDER BY captured_at DESC, id DESC
+        """
+    )
+    fun getByCipherFlow(vaultId: Long, cipherId: String): Flow<List<BitwardenSyncRawEntryRecord>>
+
+    @Query(
+        """
+        SELECT * FROM bitwarden_sync_raw_entry_records
+        WHERE vault_id = :vaultId AND bitwarden_cipher_id = :cipherId
+        ORDER BY captured_at DESC, id DESC
+        LIMIT 1
+        """
+    )
+    suspend fun getLatestByCipher(vaultId: Long, cipherId: String): BitwardenSyncRawEntryRecord?
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insert(record: BitwardenSyncRawEntryRecord): Long
+
+    @Query(
+        """
+        DELETE FROM bitwarden_sync_raw_entry_records
+        WHERE vault_id = :vaultId
+          AND bitwarden_cipher_id = :cipherId
+          AND id NOT IN (
+              SELECT id
+              FROM bitwarden_sync_raw_entry_records
+              WHERE vault_id = :vaultId AND bitwarden_cipher_id = :cipherId
+              ORDER BY captured_at DESC, id DESC
+              LIMIT :limit
+          )
+        """
+    )
+    suspend fun trimToLimit(vaultId: Long, cipherId: String, limit: Int)
+
+    @Query("DELETE FROM bitwarden_sync_raw_entry_records WHERE vault_id = :vaultId")
+    suspend fun deleteByVault(vaultId: Long)
+}
