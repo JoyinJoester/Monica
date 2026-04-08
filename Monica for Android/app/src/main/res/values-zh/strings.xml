@@ -907,7 +907,7 @@
     <string name="custom_icon_load_more">加载更多图标（剩余 %1$d 个）</string>
     <string name="custom_icon_upload_success">图标上传成功</string>
     <string name="custom_icon_upload_failed">上传失败：%1$s</string>
-    <string name="settings_version_number">V1.0.281</string>
+    <string name="settings_version_number">V1.0.282</string>
     <string name="settings_support_author">支持作者</string>
     <string name="settings_support_author_description">感谢您的支持</string>
     <string name="settings_privacy_policy">隐私政策</string>
@@ -1824,12 +1824,15 @@
     <string name="external_storage">外部存储</string>
     <string name="external_storage_description">存储在用户选择的位置</string>
     <string name="external_storage_option_description">自选位置，其他应用可访问</string>
+    <string name="remote_storage">远端存储</string>
+    <string name="remote_storage_description">挂载来自 WebDAV 或其他云盘的工作副本</string>
     <string name="location_selected">已选择位置</string>
     <string name="select_location">选择</string>
     <string name="default_label">默认</string>
     <string name="last_updated_format">最后访问: %1$s</string>
     <string name="open_external_database">打开外部数据库</string>
     <string name="open_external_database_description">添加外部存储中已有的 .kdbx 文件</string>
+    <string name="keepass_webdav_attach_card_description">把 WebDAV 服务器上的现有 .kdbx 文件接入为本地工作副本</string>
     <string name="create_keepass_database">创建 KeePass 数据库</string>
     <string name="database_name">数据库名称</string>
     <string name="database_name_placeholder">我的密码</string>
@@ -1851,11 +1854,23 @@
     <string name="confirm_remove">移除数据库？</string>
     <string name="confirm_remove_internal_description">这将移除数据库记录，内部存储中的文件也会被删除。</string>
     <string name="confirm_remove_external_description">这将移除数据库引用，原始文件不会被删除。</string>
+    <string name="confirm_remove_remote_description">这将移除远端数据库记录与本地工作副本，WebDAV 上的原始文件不会被删除。</string>
     <string name="remove">移除</string>
     <string name="create">创建</string>
     <string name="import_existing_database">导入已有数据库</string>
     <string name="enter_database_password_hint">输入此 KeePass 数据库的密码以解锁</string>
     <string name="import_button">导入</string>
+    <string name="keepass_remote_sync_status">同步状态</string>
+    <string name="keepass_remote_sync_status_format">远端同步：%1$s</string>
+    <string name="keepass_remote_sync_status_local_only">仅本地</string>
+    <string name="keepass_remote_sync_status_in_sync">已同步</string>
+    <string name="keepass_remote_sync_status_syncing">同步中</string>
+    <string name="keepass_remote_sync_status_pending_upload">待上传</string>
+    <string name="keepass_remote_sync_status_remote_changed">远端已变化</string>
+    <string name="keepass_remote_sync_status_conflict">存在冲突</string>
+    <string name="keepass_remote_sync_status_failed">同步失败</string>
+    <string name="keepass_remote_path">远端路径</string>
+    <string name="keepass_remote_path_placeholder">示例：vault/main.kdbx</string>
     
     <!-- Vault Selector -->
     <string name="vault_monica_only">仅 Monica 本地存储</string>
@@ -2770,6 +2785,7 @@
     <string name="keepass_webdav_force_overwrite_not_attached">该远端数据库尚未接入</string>
     <string name="keepass_webdav_attach_title">接入远端数据库</string>
     <string name="keepass_webdav_attach_message">将接入以下远端数据库：</string>
+    <string name="keepass_webdav_browser_message">先登录 WebDAV，然后浏览文件夹，选择已有的 .kdbx，或在当前目录直接创建新数据库。</string>
     <string name="keepass_webdav_attach_success">接入成功：%1$d 个条目</string>
     <string name="keepass_webdav_attach_failed">接入失败：%1$s</string>
     <string name="keepass_webdav_attach_exception">接入异常：%1$s</string>
@@ -2779,6 +2795,18 @@
     <string name="keepass_webdav_database">KeePass WebDAV 数据库</string>
     <string name="keepass_webdav_database_badge">WebDAV</string>
     <string name="keepass_webdav_remote_files_title">云端 .kdbx 文件</string>
+    <string name="keepass_webdav_status_title">连接状态</string>
+    <string name="keepass_webdav_current_path">当前路径</string>
+    <string name="keepass_webdav_root_path">/</string>
+    <string name="keepass_webdav_go_parent">返回上一级目录</string>
+    <string name="keepass_webdav_parent_hint">回到父目录继续浏览</string>
+    <string name="keepass_webdav_browser_empty">当前目录下没有文件夹或 .kdbx 数据库</string>
+    <string name="keepass_webdav_create_folder_action">新建文件夹</string>
+    <string name="keepass_webdav_create_folder_title">新建远端文件夹</string>
+    <string name="keepass_webdav_create_folder_message">在当前 WebDAV 目录下创建一个新文件夹。</string>
+    <string name="keepass_webdav_create_folder_confirm">确认创建</string>
+    <string name="keepass_webdav_create_folder_failed">创建文件夹失败</string>
+    <string name="keepass_webdav_create_target_path">创建位置：%1$s</string>
     <string name="keepass_webdav_no_files">暂无 .kdbx 文件</string>
     <string name="keepass_webdav_connection_test_failed">连接测试失败</string>
     <string name="keepass_webdav_not_configured">WebDAV 未配置</string>

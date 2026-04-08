@@ -458,6 +458,10 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
             _sends.value = emptyList()
         }
     }
+
+    fun isVaultUnlocked(vaultId: Long): Boolean {
+        return repository.isVaultUnlocked(vaultId)
+    }
     
     /**
      * 同步

@@ -17,6 +17,8 @@ import takagi.ru.monica.data.bitwarden.*
         Category::class,
         OperationLog::class,
         LocalKeePassDatabase::class,
+        KeepassRemoteSource::class,
+        KeepassRemoteSyncState::class,
         KeepassGroupSyncConfig::class,
         CustomField::class,  // 自定义字段表
         PasswordPageAggregateStackEntry::class, // 密码页聚合堆叠元数据
@@ -31,7 +33,7 @@ import takagi.ru.monica.data.bitwarden.*
         BitwardenPendingOperation::class,
         BitwardenSyncRawEntryRecord::class
     ],
-    version = 56,
+    version = 57,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -42,6 +44,8 @@ abstract class PasswordDatabase : RoomDatabase() {
     abstract fun categoryDao(): CategoryDao
     abstract fun operationLogDao(): OperationLogDao
     abstract fun localKeePassDatabaseDao(): LocalKeePassDatabaseDao
+    abstract fun keepassRemoteSourceDao(): KeepassRemoteSourceDao
+    abstract fun keepassRemoteSyncStateDao(): KeepassRemoteSyncStateDao
     abstract fun keepassGroupSyncConfigDao(): KeepassGroupSyncConfigDao
     abstract fun customFieldDao(): CustomFieldDao  // 自定义字段 DAO
     abstract fun passwordPageAggregateStackDao(): PasswordPageAggregateStackDao
@@ -1574,6 +1578,114 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_56_57 = object : androidx.room.migration.Migration(56, 57) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting Migration 56→57: KeePass remote source foundation")
+
+                    database.execSQL(
+                        "ALTER TABLE local_keepass_databases ADD COLUMN source_type TEXT NOT NULL DEFAULT 'LOCAL_INTERNAL'"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE local_keepass_databases ADD COLUMN source_id INTEGER"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE local_keepass_databases ADD COLUMN open_mode TEXT NOT NULL DEFAULT 'DIRECT'"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE local_keepass_databases ADD COLUMN working_copy_path TEXT"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE local_keepass_databases ADD COLUMN cache_copy_path TEXT"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE local_keepass_databases ADD COLUMN is_offline_available INTEGER NOT NULL DEFAULT 0"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE local_keepass_databases ADD COLUMN last_sync_status TEXT NOT NULL DEFAULT 'LOCAL_ONLY'"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE local_keepass_databases ADD COLUMN last_sync_error TEXT"
+                    )
+                    database.execSQL(
+                        "UPDATE local_keepass_databases SET source_type = 'LOCAL_INTERNAL', is_offline_available = 1 WHERE storage_location = 'INTERNAL'"
+                    )
+                    database.execSQL(
+                        "UPDATE local_keepass_databases SET source_type = 'LOCAL_DOCUMENT_URI', is_offline_available = 0 WHERE storage_location = 'EXTERNAL'"
+                    )
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_local_keepass_databases_source_type ON local_keepass_databases(source_type)"
+                    )
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_local_keepass_databases_source_id ON local_keepass_databases(source_id)"
+                    )
+
+                    database.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS keepass_remote_sources (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            provider_type TEXT NOT NULL,
+                            display_name TEXT NOT NULL,
+                            remote_path TEXT NOT NULL,
+                            remote_parent_path TEXT,
+                            base_url TEXT,
+                            account_id TEXT,
+                            drive_id TEXT,
+                            item_id TEXT,
+                            username_encrypted TEXT,
+                            password_encrypted TEXT,
+                            token_ref TEXT,
+                            allow_metered_network INTEGER NOT NULL DEFAULT 0,
+                            auto_sync_enabled INTEGER NOT NULL DEFAULT 0,
+                            created_at INTEGER NOT NULL,
+                            updated_at INTEGER NOT NULL
+                        )
+                        """.trimIndent()
+                    )
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_keepass_remote_sources_provider_type ON keepass_remote_sources(provider_type)"
+                    )
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_keepass_remote_sources_display_name ON keepass_remote_sources(display_name)"
+                    )
+
+                    database.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS keepass_remote_sync_states (
+                            database_id INTEGER NOT NULL,
+                            remote_version_token TEXT,
+                            remote_etag TEXT,
+                            remote_last_modified INTEGER,
+                            base_hash TEXT,
+                            working_hash TEXT,
+                            has_local_changes INTEGER NOT NULL DEFAULT 0,
+                            has_remote_changes INTEGER NOT NULL DEFAULT 0,
+                            sync_phase TEXT NOT NULL DEFAULT 'IDLE',
+                            last_success_at INTEGER,
+                            last_failure_at INTEGER,
+                            failure_code TEXT,
+                            failure_message TEXT,
+                            retry_count INTEGER NOT NULL DEFAULT 0,
+                            PRIMARY KEY(database_id),
+                            FOREIGN KEY(database_id) REFERENCES local_keepass_databases(id) ON DELETE CASCADE
+                        )
+                        """.trimIndent()
+                    )
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_keepass_remote_sync_states_sync_phase ON keepass_remote_sync_states(sync_phase)"
+                    )
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_keepass_remote_sync_states_last_failure_at ON keepass_remote_sync_states(last_failure_at)"
+                    )
+
+                    android.util.Log.i("PasswordDatabase", "Migration 56→57 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 56→57 failed: ${e.message}")
+                    throw e
+                }
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -1636,7 +1748,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_52_53,  // 安全项多目标副本组标识
                         MIGRATION_53_54,  // 密码绑定笔记ID
                         MIGRATION_54_55,  // Bitwarden 条目原始同步快照
-                        MIGRATION_55_56   // Passkey 内部记录 ID
+                        MIGRATION_55_56,  // Passkey 内部记录 ID
+                        MIGRATION_56_57   // KeePass 远端来源与同步骨架
                     )
                     .build()
                 INSTANCE = instance

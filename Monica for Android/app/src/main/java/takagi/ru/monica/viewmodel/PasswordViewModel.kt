@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import takagi.ru.monica.bitwarden.BitwardenMutationStateHelper
 import takagi.ru.monica.bitwarden.cache.BitwardenOfflineSecretCache
 import takagi.ru.monica.bitwarden.service.BitwardenSyncSnapshotPreviewParser
 import takagi.ru.monica.domain.provider.BitwardenPasswordProvider
@@ -1809,21 +1810,22 @@ class PasswordViewModel(
                 candidate
             }
         }
-        if (boundEntry.hasOwnershipConflict()) {
+        val normalizedBoundEntry = BitwardenMutationStateHelper.normalizePasswordInsert(boundEntry)
+        if (normalizedBoundEntry.hasOwnershipConflict()) {
             Log.w(
                 "PasswordViewModel",
                 "Blocked password create because of ownership conflict"
             )
             return null
         }
-        val encryptedEntry = boundEntry.copy(
-            password = securityManager.encryptData(boundEntry.password),
+        val encryptedEntry = normalizedBoundEntry.copy(
+            password = securityManager.encryptData(normalizedBoundEntry.password),
             createdAt = Date(),
             updatedAt = Date()
         )
         val id = keepassPasswordCreateExecutor.create(
             localEntry = encryptedEntry,
-            syncEntry = boundEntry,
+            syncEntry = normalizedBoundEntry,
             insertEntry = repository::insertPasswordEntry,
             rollbackEntry = repository::deletePasswordEntryById,
             resolvePassword = { it.password }
@@ -1831,23 +1833,27 @@ class PasswordViewModel(
 
         if (includeDetailedLog) {
             val createDetails = mutableListOf<takagi.ru.monica.utils.FieldChange>()
-            if (boundEntry.username.isNotBlank()) {
-                createDetails.add(takagi.ru.monica.utils.FieldChange("用户名", "", boundEntry.username))
+            if (normalizedBoundEntry.username.isNotBlank()) {
+                createDetails.add(takagi.ru.monica.utils.FieldChange("用户名", "", normalizedBoundEntry.username))
             }
-            if (boundEntry.website.isNotBlank()) {
-                createDetails.add(takagi.ru.monica.utils.FieldChange("网站", "", boundEntry.website))
+            if (normalizedBoundEntry.website.isNotBlank()) {
+                createDetails.add(takagi.ru.monica.utils.FieldChange("网站", "", normalizedBoundEntry.website))
             }
-            if (boundEntry.password.isNotBlank()) {
+            if (normalizedBoundEntry.password.isNotBlank()) {
                 // 记录真实密码，在UI层隐藏显示
-                createDetails.add(takagi.ru.monica.utils.FieldChange("密码", "", boundEntry.password))
+                createDetails.add(takagi.ru.monica.utils.FieldChange("密码", "", normalizedBoundEntry.password))
             }
-            if (boundEntry.notes.isNotBlank()) {
-                createDetails.add(takagi.ru.monica.utils.FieldChange("备注", "", boundEntry.notes.take(50)))
+            if (normalizedBoundEntry.notes.isNotBlank()) {
+                val truncatedNotes = normalizedBoundEntry.notes.substring(
+                    startIndex = 0,
+                    endIndex = minOf(normalizedBoundEntry.notes.length, 50)
+                )
+                createDetails.add(takagi.ru.monica.utils.FieldChange("备注", "", truncatedNotes))
             }
             takagi.ru.monica.utils.OperationLogger.logCreate(
                 itemType = takagi.ru.monica.data.OperationLogItemType.PASSWORD,
                 itemId = id,
-                itemTitle = boundEntry.title,
+                itemTitle = normalizedBoundEntry.title,
                 details = createDetails
             )
         }

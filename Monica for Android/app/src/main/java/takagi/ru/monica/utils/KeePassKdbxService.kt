@@ -27,14 +27,19 @@ import kotlinx.serialization.json.Json
 import takagi.ru.monica.data.KeePassStorageLocation
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.KeePassCipherAlgorithm
+import takagi.ru.monica.data.KeePassDatabaseSourceType
 import takagi.ru.monica.data.KeePassDatabaseCreationOptions
 import takagi.ru.monica.data.KeePassFormatVersion
 import takagi.ru.monica.data.KeePassKdfAlgorithm
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
+import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.isRemoteSource
+import takagi.ru.monica.data.resolvedActiveFilePath
+import takagi.ru.monica.data.resolvedActiveStorageLocation
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.SshKeyData
 import takagi.ru.monica.data.model.SshKeyDataCodec
@@ -316,7 +321,7 @@ class KeePassKdbxService(
                 bytes = bytes,
                 credentialsResolution = credentials,
                 sourceLabel = "databaseId=$databaseId",
-                sourceName = database.filePath
+                sourceName = database.resolvedActiveFilePath()
             )
             val (entries, hasRecycleBinMeta) = collectEntryContexts(keePassDatabase)
             val resolutionContext = KeePassFieldReferenceResolver.buildContext(entries.map { it.entry })
@@ -2688,7 +2693,7 @@ class KeePassKdbxService(
             bytes = snapshot.bytes,
             credentialsResolution = credentials,
             sourceLabel = "databaseId=$databaseId",
-            sourceName = database.filePath
+            sourceName = database.resolvedActiveFilePath()
         )
         val loaded = LoadedDatabase(
             database = database,
@@ -2850,8 +2855,8 @@ class KeePassKdbxService(
 
     private fun readDatabaseSnapshot(database: LocalKeePassDatabase): DatabaseSnapshot {
         return try {
-            if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
-                val file = File(context.filesDir, database.filePath)
+            if (database.resolvedActiveStorageLocation() == KeePassStorageLocation.INTERNAL) {
+                val file = File(context.filesDir, database.resolvedActiveFilePath())
                 if (!file.exists()) throw FileNotFoundException("数据库文件不存在")
                 val signature = DatabaseSourceSignature(
                     sizeBytes = file.length(),
@@ -2864,7 +2869,7 @@ class KeePassKdbxService(
                     signature = signature
                 )
             } else {
-                val uri = Uri.parse(database.filePath)
+                val uri = Uri.parse(database.resolvedActiveFilePath())
                 val bytes = readBytesFromUri(uri, "无法打开数据库文件")
                 DatabaseSnapshot(bytes = bytes, etag = null, lastModified = null, signature = null)
             }
@@ -2884,10 +2889,17 @@ class KeePassKdbxService(
         if (ENABLE_POST_WRITE_DECODE_VERIFICATION) {
             decodeDatabase(bytes, credentials)
         }
-        if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
+        if (database.resolvedActiveStorageLocation() == KeePassStorageLocation.INTERNAL) {
             writeInternal(database, bytes)
         } else {
             writeExternal(database, bytes)
+        }
+        var resolvedSourceEtag = sourceEtag
+        var resolvedSourceLastModified = sourceLastModified
+        if (database.isRemoteSource()) {
+            val syncResult = syncRemoteWorkingCopy(database, bytes)
+            resolvedSourceEtag = syncResult?.etag ?: resolvedSourceEtag
+            resolvedSourceLastModified = syncResult?.lastModified?.toString() ?: resolvedSourceLastModified
         }
         val updatedSignature = currentSourceSignature(database)
         cacheLoadedDatabase(
@@ -2895,11 +2907,60 @@ class KeePassKdbxService(
                 database = database,
                 credentials = credentials,
                 keePassDatabase = keePassDatabase,
-                sourceEtag = sourceEtag,
-                sourceLastModified = sourceLastModified,
+                sourceEtag = resolvedSourceEtag,
+                sourceLastModified = resolvedSourceLastModified,
                 sourceSignature = updatedSignature
             )
         )
+    }
+
+    private suspend fun syncRemoteWorkingCopy(
+        database: LocalKeePassDatabase,
+        bytes: ByteArray
+    ): FileSourceWriteResult? {
+        if (!database.isRemoteSource() || database.sourceId == null) {
+            return null
+        }
+
+        val remoteDb = PasswordDatabase.getDatabase(context)
+        val syncService = RemoteKeePassSyncService(
+            databaseDao = dao,
+            remoteSourceDao = remoteDb.keepassRemoteSourceDao(),
+            syncStateDao = remoteDb.keepassRemoteSyncStateDao()
+        )
+        val workingHash = WebDavKeePassSupport.sha256Hex(bytes)
+
+        return try {
+            when (database.sourceType) {
+                KeePassDatabaseSourceType.REMOTE_WEBDAV -> {
+                    val remoteSource = remoteDb.keepassRemoteSourceDao().getSourceById(database.sourceId)
+                        ?: throw IllegalStateException("远端来源不存在")
+                    val fileSource = WebDavKeePassSupport.createFileSource(remoteSource, securityManager)
+                    val writeResult = fileSource.write(bytes)
+                    database.cacheCopyPath?.let { cachePath ->
+                        writeInternalRelative(cachePath, bytes)
+                    }
+                    syncService.markSynchronized(
+                        databaseId = database.id,
+                        versionToken = writeResult.versionToken,
+                        etag = writeResult.etag,
+                        baseHash = workingHash,
+                        workingHash = workingHash
+                    )
+                    writeResult
+                }
+                else -> null
+            }
+        } catch (error: Exception) {
+            syncService.markLocalChanges(database.id, workingHash)
+            syncService.markSyncFailure(
+                databaseId = database.id,
+                failureCode = "REMOTE_WRITE_FAILED",
+                failureMessage = error.message ?: "远端同步失败"
+            )
+            Log.w(TAG, "Remote working copy sync failed for db=${database.id}", error)
+            null
+        }
     }
 
     private suspend fun getCachedLoadedDatabase(databaseId: Long): LoadedDatabase? {
@@ -2916,6 +2977,10 @@ class KeePassKdbxService(
         val configChanged =
             latestDatabase.filePath != previous.filePath ||
                 latestDatabase.storageLocation != previous.storageLocation ||
+                latestDatabase.sourceType != previous.sourceType ||
+                latestDatabase.sourceId != previous.sourceId ||
+                latestDatabase.workingCopyPath != previous.workingCopyPath ||
+                latestDatabase.cacheCopyPath != previous.cacheCopyPath ||
                 latestDatabase.keyFileUri != previous.keyFileUri ||
                 latestDatabase.encryptedPassword != previous.encryptedPassword
         if (configChanged) {
@@ -2941,8 +3006,8 @@ class KeePassKdbxService(
     }
 
     private fun currentSourceSignature(database: LocalKeePassDatabase): DatabaseSourceSignature? {
-        if (database.storageLocation != KeePassStorageLocation.INTERNAL) return null
-        val file = File(context.filesDir, database.filePath)
+        if (database.resolvedActiveStorageLocation() != KeePassStorageLocation.INTERNAL) return null
+        val file = File(context.filesDir, database.resolvedActiveFilePath())
         if (!file.exists()) return null
         return DatabaseSourceSignature(
             sizeBytes = file.length(),
@@ -2974,39 +3039,52 @@ class KeePassKdbxService(
 
     private fun writeInternal(database: LocalKeePassDatabase, bytes: ByteArray) {
         try {
-            val file = File(context.filesDir, database.filePath)
-            val parent = file.parentFile ?: throw IOException("无效的文件路径")
-            if (!parent.exists()) parent.mkdirs()
-            val tempFile = File(parent, "${file.name}.tmp")
-            val backupFile = File(parent, "${file.name}.bak")
-            FileOutputStream(tempFile).use {
-                it.write(bytes)
-                it.flush()
-                it.fd.sync()
-            }
-            if (file.exists()) {
-                if (backupFile.exists()) backupFile.delete()
-                if (!file.renameTo(backupFile)) {
-                    backupFile.delete()
-                }
-            }
-            val renamed = tempFile.renameTo(file)
-            if (!renamed) {
-                FileOutputStream(file).use {
-                    it.write(bytes)
-                    it.flush()
-                    it.fd.sync()
-                }
-                tempFile.delete()
-            }
-            if (backupFile.exists()) backupFile.delete()
+            val file = File(context.filesDir, database.resolvedActiveFilePath())
+            writeInternalFile(file, bytes)
         } catch (t: Throwable) {
             throw normalizeError(t)
         }
     }
 
+    private fun writeInternalRelative(relativePath: String, bytes: ByteArray) {
+        try {
+            val file = File(context.filesDir, relativePath)
+            writeInternalFile(file, bytes)
+        } catch (t: Throwable) {
+            throw normalizeError(t)
+        }
+    }
+
+    private fun writeInternalFile(file: File, bytes: ByteArray) {
+        val parent = file.parentFile ?: throw IOException("无效的文件路径")
+        if (!parent.exists()) parent.mkdirs()
+        val tempFile = File(parent, "${file.name}.tmp")
+        val backupFile = File(parent, "${file.name}.bak")
+        FileOutputStream(tempFile).use {
+            it.write(bytes)
+            it.flush()
+            it.fd.sync()
+        }
+        if (file.exists()) {
+            if (backupFile.exists()) backupFile.delete()
+            if (!file.renameTo(backupFile)) {
+                backupFile.delete()
+            }
+        }
+        val renamed = tempFile.renameTo(file)
+        if (!renamed) {
+            FileOutputStream(file).use {
+                it.write(bytes)
+                it.flush()
+                it.fd.sync()
+            }
+            tempFile.delete()
+        }
+        if (backupFile.exists()) backupFile.delete()
+    }
+
     private fun writeExternal(database: LocalKeePassDatabase, bytes: ByteArray) {
-        val uri = Uri.parse(database.filePath)
+        val uri = Uri.parse(database.resolvedActiveFilePath())
         val originalBytes = runCatching { readDatabaseBytes(database) }.getOrNull()
         try {
             writeExternalBytes(uri, bytes)

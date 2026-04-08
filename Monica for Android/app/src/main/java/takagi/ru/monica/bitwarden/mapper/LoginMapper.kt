@@ -35,9 +35,13 @@ class LoginMapper : BitwardenMapper<PasswordEntry> {
             folderId = folderId,
             favorite = item.isFavorite,
             login = CipherLoginApiData(
-                uris = buildUriList(item),
+                uris = buildUriList(item) ?: emptyList(),
                 username = item.username.takeIf { it.isNotBlank() },
                 password = item.password.takeIf { it.isNotBlank() },
+                passwordRevisionDate = item.password.takeIf { it.isNotBlank() }?.let {
+                    java.time.Instant.now().toString()
+                },
+                fido2Credentials = emptyList(),
                 totp = totpPayload
             ),
             // 可选：添加自定义字段

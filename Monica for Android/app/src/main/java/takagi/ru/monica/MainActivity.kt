@@ -445,7 +445,7 @@ fun MonicaApp(
             }.getOrDefault(false)
             val canRestoreSession = runCatching {
                 SessionManager.updateAutoLockTimeout(settingsSnapshot.autoLockMinutes)
-                securityManager.canAccessVaultNowStrict(
+                securityManager.canRestoreMainAppSession(
                     context.applicationContext,
                     settingsSnapshot.autoLockMinutes
                 )
@@ -577,7 +577,7 @@ fun MonicaContent(
         )
     }
     var hasRenderedLoginFirstFrame by remember { mutableStateOf(false) }
-    val canRestoreVaultSession = !bypassEnabled && securityManager.canAccessVaultNowStrict(
+    val canRestoreVaultSession = !bypassEnabled && securityManager.canRestoreMainAppSession(
         context.applicationContext,
         settings.autoLockMinutes
     )
@@ -605,7 +605,7 @@ fun MonicaContent(
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_START -> {
-                    val canRestoreSession = securityManager.canAccessVaultNowStrict(
+                    val canRestoreSession = securityManager.canRestoreMainAppSession(
                         context.applicationContext,
                         currentSettings.autoLockMinutes
                     )
@@ -672,7 +672,7 @@ fun MonicaContent(
                 }
             }
         } else if (!(settings.disablePasswordVerification && !isFirstTime)) {
-            if (securityManager.canAccessVaultNowStrict(context.applicationContext, settings.autoLockMinutes)) {
+            if (securityManager.canRestoreMainAppSession(context.applicationContext, settings.autoLockMinutes)) {
                 viewModel.restoreAuthenticatedSession()
                 return@LaunchedEffect
             }

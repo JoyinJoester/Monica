@@ -150,11 +150,20 @@ jobs:
         if: github.event_name != 'pull_request'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
         run: |
-          if gh release view preview >/dev/null 2>&1; then
+          set +e
+          check_output=$(gh api repos/${{ github.repository }}/releases/tags/preview 2>&1)
+          check_rc=$?
+          set -e
+
+          if [ "$check_rc" -eq 0 ]; then
             gh release delete preview --yes --cleanup-tag
-          else
+          elif echo "$check_output" | grep -qi "404"; then
             echo "No existing preview release to delete"
+          else
+            echo "::error title=Failed to query preview release::${check_output}"
+            exit 1
           fi
 
       - name: Move preview tag to current commit
@@ -185,6 +194,7 @@ jobs:
             > *   **Ref**: `${{ github.ref }}`
           files: |
             Monica for Android/app/build/outputs/apk/release/*.apk
+          draft: false
           prerelease: true
           make_latest: false
         env:

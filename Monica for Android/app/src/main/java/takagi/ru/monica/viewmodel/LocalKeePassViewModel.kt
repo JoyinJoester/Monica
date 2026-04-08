@@ -21,9 +21,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import takagi.ru.monica.data.KeePassCipherAlgorithm
 import takagi.ru.monica.data.KeePassDatabaseCreationOptions
+import takagi.ru.monica.data.KeePassDatabaseSourceType
 import takagi.ru.monica.data.KeePassFormatVersion
 import takagi.ru.monica.data.KeePassKdfAlgorithm
+import takagi.ru.monica.data.KeePassOpenMode
+import takagi.ru.monica.data.KeePassRemoteProviderType
 import takagi.ru.monica.data.KeePassStorageLocation
+import takagi.ru.monica.data.KeePassSyncStatus
+import takagi.ru.monica.data.KeepassRemoteSource
+import takagi.ru.monica.data.isRemoteSource
+import takagi.ru.monica.data.toSourceType
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
 import takagi.ru.monica.data.OperationLogItemType
@@ -33,11 +40,15 @@ import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.FieldChange
+import takagi.ru.monica.utils.FileSourceEntry
 import takagi.ru.monica.utils.KeePassCodecSupport
 import takagi.ru.monica.utils.KeePassOperationException
 import takagi.ru.monica.utils.KeePassGroupInfo
 import takagi.ru.monica.utils.KeePassKdbxService
 import takagi.ru.monica.utils.OperationLogger
+import takagi.ru.monica.utils.RemoteKeePassSyncService
+import takagi.ru.monica.utils.WebDavKeePassFileSource
+import takagi.ru.monica.utils.WebDavKeePassSupport
 import java.io.File
 import java.io.FileOutputStream
 
@@ -62,11 +73,18 @@ class LocalKeePassViewModel(
     /** 内部数据库列表 */
     val internalDatabases: StateFlow<List<LocalKeePassDatabase>> = 
         dao.getDatabasesByLocation(KeePassStorageLocation.INTERNAL)
+            .map { databases -> databases.filterNot { it.isRemoteSource() } }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     
     /** 外部数据库列表 */
     val externalDatabases: StateFlow<List<LocalKeePassDatabase>> = 
         dao.getDatabasesByLocation(KeePassStorageLocation.EXTERNAL)
+            .map { databases -> databases.filterNot { it.isRemoteSource() } }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    /** 远端数据库列表 */
+    val remoteDatabases: StateFlow<List<LocalKeePassDatabase>> =
+        dao.getRemoteDatabases()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
     
     /** 操作状态 */
@@ -85,6 +103,25 @@ class LocalKeePassViewModel(
     private val kdbxService = KeePassKdbxService(context, dao, securityManager)
     private val workspaceRepository = KeePassWorkspaceRepository(kdbxService)
     private val compatibilityBridge = KeePassCompatibilityBridge(workspaceRepository)
+    private val appDatabase by lazy { PasswordDatabase.getDatabase(context) }
+    private val remoteSyncService by lazy {
+        RemoteKeePassSyncService(
+            databaseDao = dao,
+            remoteSourceDao = appDatabase.keepassRemoteSourceDao(),
+            syncStateDao = appDatabase.keepassRemoteSyncStateDao()
+        )
+    }
+
+    data class WebDavDirectoryListing(
+        val currentPath: String,
+        val entries: List<FileSourceEntry>
+    )
+
+    private data class WebDavAttachResult(
+        val databaseId: Long,
+        val databaseName: String,
+        val entryCount: Int
+    )
 
     fun getGroups(databaseId: Long): Flow<List<KeePassGroupInfo>> {
         return _groupsByDatabase
@@ -667,6 +704,254 @@ class LocalKeePassViewModel(
             }
         }
     }
+
+    fun addWebDavDatabase(
+        name: String,
+        serverUrl: String,
+        username: String,
+        webDavPassword: String,
+        remotePath: String,
+        databasePassword: String,
+        keyFileUri: Uri? = null,
+        description: String? = null
+    ) {
+        viewModelScope.launch {
+            _operationState.value = OperationState.Loading("正在接入 WebDAV 数据库...")
+
+            try {
+                val attachResult = withContext(Dispatchers.IO) {
+                    attachWebDavDatabaseBlocking(
+                        name = name,
+                        serverUrl = serverUrl,
+                        username = username,
+                        webDavPassword = webDavPassword,
+                        remotePath = remotePath,
+                        databasePassword = databasePassword,
+                        keyFileUri = keyFileUri,
+                        description = description
+                    )
+                }
+
+                _operationState.value = OperationState.Success("WebDAV 数据库接入成功")
+                logKeepassDatabaseCreate(
+                    databaseId = attachResult.databaseId,
+                    databaseName = attachResult.databaseName,
+                    details = listOf(
+                        FieldChange("来源", "", "WebDAV"),
+                        FieldChange("打开方式", "", "工作副本"),
+                        FieldChange("条目数量", "", attachResult.entryCount.toString())
+                    )
+                )
+            } catch (e: Exception) {
+                _operationState.value = OperationState.Error("接入失败: ${formatOperationError(e)}")
+            }
+        }
+    }
+
+    fun createWebDavDatabase(
+        directoryPath: String?,
+        name: String,
+        serverUrl: String,
+        username: String,
+        webDavPassword: String,
+        databasePassword: String,
+        keyFileUri: Uri? = null,
+        creationOptions: KeePassDatabaseCreationOptions = KeePassDatabaseCreationOptions(),
+        description: String? = null
+    ) {
+        viewModelScope.launch {
+            _operationState.value = OperationState.Loading("正在创建远端数据库...")
+
+            try {
+                val attachResult = withContext(Dispatchers.IO) {
+                    val normalizedDirectoryPath = WebDavKeePassFileSource.normalizeOptionalRemotePath(directoryPath)
+                    val fileSource = buildWebDavFileSource(
+                        serverUrl = serverUrl,
+                        username = username,
+                        webDavPassword = webDavPassword
+                    )
+                    fileSource.testConnection().getOrThrow()
+
+                    val displayName = name.trim()
+                        .removeSuffix(".kdbx")
+                        .ifBlank { throw IllegalArgumentException("数据库名称不能为空") }
+                    val remoteFileName = if (name.trim().endsWith(".kdbx", ignoreCase = true)) {
+                        name.trim()
+                    } else {
+                        "$displayName.kdbx"
+                    }
+                    val keyFileBytes = readKeyFileBytes(keyFileUri)
+                    val bytes = createEmptyKdbxContent(
+                        password = databasePassword,
+                        keyFileBytes = keyFileBytes,
+                        options = creationOptions,
+                        databaseName = displayName
+                    )
+                    fileSource.createFileInDirectory(
+                        parentPath = normalizedDirectoryPath,
+                        name = remoteFileName,
+                        bytes = bytes
+                    )
+                    attachWebDavDatabaseBlocking(
+                        name = displayName,
+                        serverUrl = serverUrl,
+                        username = username,
+                        webDavPassword = webDavPassword,
+                        remotePath = WebDavKeePassFileSource.buildChildPath(
+                            normalizedDirectoryPath,
+                            remoteFileName
+                        ),
+                        databasePassword = databasePassword,
+                        keyFileUri = keyFileUri,
+                        description = description
+                    )
+                }
+
+                _operationState.value = OperationState.Success("远端数据库创建并接入成功")
+                logKeepassDatabaseCreate(
+                    databaseId = attachResult.databaseId,
+                    databaseName = attachResult.databaseName,
+                    details = listOf(
+                        FieldChange("来源", "", "WebDAV"),
+                        FieldChange("创建方式", "", "远端新建"),
+                        FieldChange("条目数量", "", attachResult.entryCount.toString())
+                    )
+                )
+            } catch (e: Exception) {
+                _operationState.value = OperationState.Error("创建失败: ${formatOperationError(e)}")
+            }
+        }
+    }
+
+    suspend fun testWebDavConnection(
+        serverUrl: String,
+        username: String,
+        webDavPassword: String
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            buildWebDavFileSource(
+                serverUrl = serverUrl,
+                username = username,
+                webDavPassword = webDavPassword
+            ).testConnection().getOrThrow()
+        }
+    }
+
+    suspend fun listWebDavDirectory(
+        serverUrl: String,
+        username: String,
+        webDavPassword: String,
+        currentPath: String?
+    ): Result<WebDavDirectoryListing> = withContext(Dispatchers.IO) {
+        runCatching {
+            val normalizedPath = WebDavKeePassFileSource.normalizeOptionalRemotePath(currentPath)
+            val entries = buildWebDavFileSource(
+                serverUrl = serverUrl,
+                username = username,
+                webDavPassword = webDavPassword
+            ).listDirectory(normalizedPath)
+                .filter { it.isDirectory || it.name.endsWith(".kdbx", ignoreCase = true) }
+            WebDavDirectoryListing(
+                currentPath = normalizedPath,
+                entries = entries
+            )
+        }
+    }
+
+    suspend fun createWebDavFolder(
+        serverUrl: String,
+        username: String,
+        webDavPassword: String,
+        currentPath: String?,
+        folderName: String
+    ): Result<WebDavDirectoryListing> = withContext(Dispatchers.IO) {
+        runCatching {
+            val normalizedPath = WebDavKeePassFileSource.normalizeOptionalRemotePath(currentPath)
+            val fileSource = buildWebDavFileSource(
+                serverUrl = serverUrl,
+                username = username,
+                webDavPassword = webDavPassword
+            )
+            fileSource.createDirectory(normalizedPath, folderName)
+            val entries = fileSource.listDirectory(normalizedPath)
+                .filter { it.isDirectory || it.name.endsWith(".kdbx", ignoreCase = true) }
+            WebDavDirectoryListing(
+                currentPath = normalizedPath,
+                entries = entries
+            )
+        }
+    }
+
+    fun syncRemoteDatabase(databaseId: Long) {
+        viewModelScope.launch {
+            _operationState.value = OperationState.Loading("正在同步远端数据库...")
+
+            try {
+                var syncedDatabaseName = ""
+                withContext(Dispatchers.IO) {
+                    val database = dao.getDatabaseById(databaseId)
+                        ?: throw Exception("数据库不存在")
+                    syncedDatabaseName = database.name
+                    if (database.sourceType != KeePassDatabaseSourceType.REMOTE_WEBDAV || database.sourceId == null) {
+                        throw IllegalArgumentException("当前数据库不是 WebDAV 远端来源")
+                    }
+
+                    val source = appDatabase.keepassRemoteSourceDao().getSourceById(database.sourceId)
+                        ?: throw IllegalStateException("远端来源不存在")
+                    val fileSource = WebDavKeePassSupport.createFileSource(source, securityManager)
+                    val workingPath = database.workingCopyPath ?: throw IllegalStateException("本地工作副本不存在")
+                    val workingFile = File(context.filesDir, workingPath)
+                    if (!workingFile.exists()) {
+                        throw IllegalStateException("本地工作副本不存在")
+                    }
+                    val bytes = workingFile.readBytes()
+                    val hash = WebDavKeePassSupport.sha256Hex(bytes)
+                    remoteSyncService.markLocalChanges(databaseId, hash)
+                    val writeResult = fileSource.write(bytes)
+                    database.cacheCopyPath?.let { cachePath ->
+                        WebDavKeePassSupport.writeRelativeFile(context, cachePath, bytes)
+                    }
+                    remoteSyncService.markSynchronized(
+                        databaseId = databaseId,
+                        versionToken = writeResult.versionToken,
+                        etag = writeResult.etag,
+                        baseHash = hash,
+                        workingHash = hash
+                    )
+                    KeePassKdbxService.invalidateProcessCache(databaseId)
+                }
+
+                _operationState.value = OperationState.Success("远端同步成功")
+                logKeepassDatabaseUpdate(
+                    databaseId = databaseId,
+                    databaseName = syncedDatabaseName,
+                    changes = listOf(
+                        FieldChange("远端同步", "待同步", "已同步")
+                    )
+                )
+            } catch (e: Exception) {
+                withContext(Dispatchers.IO) {
+                    val database = dao.getDatabaseById(databaseId)
+                    if (database != null && database.sourceType == KeePassDatabaseSourceType.REMOTE_WEBDAV) {
+                        val workingHash = database.workingCopyPath
+                            ?.let { path -> File(context.filesDir, path) }
+                            ?.takeIf { it.exists() }
+                            ?.readBytes()
+                            ?.let(WebDavKeePassSupport::sha256Hex)
+                        if (workingHash != null) {
+                            remoteSyncService.markLocalChanges(databaseId, workingHash)
+                        }
+                        remoteSyncService.markSyncFailure(
+                            databaseId = databaseId,
+                            failureCode = "WEBDAV_MANUAL_SYNC_FAILED",
+                            failureMessage = e.message ?: "远端同步失败"
+                        )
+                    }
+                }
+                _operationState.value = OperationState.Error("同步失败: ${formatOperationError(e)}")
+            }
+        }
+    }
     
     /**
      * 复制外部数据库到内部存储
@@ -856,7 +1141,12 @@ class LocalKeePassViewModel(
                     }
                     
                     // 更新数据库记录
-                    dao.updateStorageLocation(databaseId, targetLocation, newPath)
+                    dao.updateStorageLocation(
+                        databaseId,
+                        targetLocation,
+                        targetLocation.toSourceType(),
+                        newPath
+                    )
                     transferChanges = listOf(
                         FieldChange(
                             "存储位置",
@@ -896,10 +1186,9 @@ class LocalKeePassViewModel(
                     val database = dao.getDatabaseById(databaseId)
                         ?: throw Exception("数据库不存在")
                     deletedDatabaseName = database.name
-                    val appDatabase = PasswordDatabase.getDatabase(context)
                     
                     if (deleteFile) {
-                        if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
+                        if (!database.isRemoteSource() && database.storageLocation == KeePassStorageLocation.INTERNAL) {
                             val file = File(context.filesDir, database.filePath)
                             if (file.exists()) {
                                 file.delete()
@@ -912,6 +1201,13 @@ class LocalKeePassViewModel(
                     appDatabase.secureItemDao().clearKeePassBindingForDatabase(databaseId)
                     appDatabase.passkeyDao().clearKeePassBindingForDatabase(databaseId)
                     appDatabase.keepassGroupSyncConfigDao().deleteByDatabaseId(databaseId)
+                    if (database.sourceType == KeePassDatabaseSourceType.REMOTE_WEBDAV) {
+                        cleanupRemoteLocalCopies(database.workingCopyPath, database.cacheCopyPath)
+                        appDatabase.keepassRemoteSyncStateDao().deleteState(databaseId)
+                        database.sourceId?.let { sourceId ->
+                            appDatabase.keepassRemoteSourceDao().deleteSourceById(sourceId)
+                        }
+                    }
                     KeePassKdbxService.invalidateProcessCache(databaseId)
                     
                     dao.deleteDatabaseById(databaseId)
@@ -1278,6 +1574,206 @@ class LocalKeePassViewModel(
         } else {
             path
         }
+    }
+
+    private fun buildWebDavFileSource(
+        serverUrl: String,
+        username: String,
+        webDavPassword: String,
+        remotePath: String? = null
+    ): WebDavKeePassFileSource {
+        return WebDavKeePassFileSource(
+            serverUrl = serverUrl.trim().trimEnd('/'),
+            username = username.trim(),
+            password = webDavPassword,
+            remotePath = remotePath
+        )
+    }
+
+    private suspend fun readKeyFileBytes(keyFileUri: Uri?): ByteArray? {
+        if (keyFileUri == null) {
+            return null
+        }
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                keyFileUri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        }
+        return context.contentResolver.openInputStream(keyFileUri)?.use { input ->
+            input.readBytes()
+        } ?: throw Exception("无法访问密钥文件")
+    }
+
+    private suspend fun attachWebDavDatabaseBlocking(
+        name: String,
+        serverUrl: String,
+        username: String,
+        webDavPassword: String,
+        remotePath: String,
+        databasePassword: String,
+        keyFileUri: Uri?,
+        description: String?
+    ): WebDavAttachResult {
+        val normalizedBaseUrl = serverUrl.trim().trimEnd('/')
+        val normalizedRemotePath = WebDavKeePassFileSource.normalizeRemotePath(remotePath)
+        val displayName = name.ifBlank {
+            WebDavKeePassSupport.displayNameFromRemotePath(normalizedRemotePath)
+                .removeSuffix(".kdbx")
+        }
+        val remoteSourceDao = appDatabase.keepassRemoteSourceDao()
+        val syncStateDao = appDatabase.keepassRemoteSyncStateDao()
+
+        readKeyFileBytes(keyFileUri)
+
+        val existingSource = remoteSourceDao
+            .getAllSourcesSync()
+            .firstOrNull {
+                it.providerType == KeePassRemoteProviderType.WEBDAV &&
+                    it.baseUrl == normalizedBaseUrl &&
+                    it.remotePath == normalizedRemotePath
+            }
+        if (existingSource != null) {
+            val duplicate = dao.getAllDatabasesSync().firstOrNull { it.sourceId == existingSource.id }
+            if (duplicate != null) {
+                throw IllegalArgumentException("该 WebDAV 数据库已接入")
+            }
+        }
+
+        var createdRemoteSourceId: Long? = null
+        var createdWorkingCopyPath: String? = null
+        var createdCacheCopyPath: String? = null
+
+        try {
+            val sourceToSave = (existingSource ?: KeepassRemoteSource(
+                providerType = KeePassRemoteProviderType.WEBDAV,
+                displayName = displayName,
+                remotePath = normalizedRemotePath,
+                remoteParentPath = WebDavKeePassFileSource.parentPathOf(normalizedRemotePath),
+                baseUrl = normalizedBaseUrl,
+                usernameEncrypted = securityManager.encryptData(username.trim()),
+                passwordEncrypted = securityManager.encryptData(webDavPassword),
+                autoSyncEnabled = true,
+                allowMeteredNetwork = true
+            )).copy(
+                displayName = displayName,
+                remotePath = normalizedRemotePath,
+                remoteParentPath = WebDavKeePassFileSource.parentPathOf(normalizedRemotePath),
+                baseUrl = normalizedBaseUrl,
+                usernameEncrypted = securityManager.encryptData(username.trim()),
+                passwordEncrypted = securityManager.encryptData(webDavPassword),
+                autoSyncEnabled = true,
+                allowMeteredNetwork = true,
+                updatedAt = System.currentTimeMillis()
+            )
+
+            val remoteSourceId = if (existingSource == null) {
+                remoteSourceDao.insertSource(sourceToSave).also { createdRemoteSourceId = it }
+            } else {
+                remoteSourceDao.updateSource(sourceToSave)
+                existingSource.id
+            }
+
+            val remoteSource = remoteSourceDao.getSourceById(remoteSourceId)
+                ?: throw IllegalStateException("远端来源创建失败")
+            val fileSource = WebDavKeePassSupport.createFileSource(remoteSource, securityManager)
+            fileSource.testConnection().getOrThrow()
+
+            val remoteBytes = fileSource.read()
+            val remoteStat = runCatching { fileSource.stat() }.getOrDefault(takagi.ru.monica.utils.FileSourceStat())
+            val mirrorPaths = WebDavKeePassSupport.buildLocalMirrorPaths(
+                sourceId = remoteSourceId,
+                remotePath = normalizedRemotePath
+            )
+            createdWorkingCopyPath = mirrorPaths.workingCopyPath
+            createdCacheCopyPath = mirrorPaths.cacheCopyPath
+            WebDavKeePassSupport.writeRelativeFile(context, mirrorPaths.workingCopyPath, remoteBytes)
+            WebDavKeePassSupport.writeRelativeFile(context, mirrorPaths.cacheCopyPath, remoteBytes)
+
+            val encryptedPassword = if (databasePassword.isNotBlank()) {
+                securityManager.encryptData(databasePassword)
+            } else {
+                null
+            }
+
+            val localDatabase = LocalKeePassDatabase(
+                name = displayName,
+                filePath = normalizedRemotePath,
+                keyFileUri = keyFileUri?.toString(),
+                storageLocation = KeePassStorageLocation.INTERNAL,
+                sourceType = KeePassDatabaseSourceType.REMOTE_WEBDAV,
+                sourceId = remoteSourceId,
+                openMode = KeePassOpenMode.WORKING_COPY,
+                workingCopyPath = mirrorPaths.workingCopyPath,
+                cacheCopyPath = mirrorPaths.cacheCopyPath,
+                isOfflineAvailable = true,
+                encryptedPassword = encryptedPassword,
+                description = description,
+                isDefault = allDatabases.value.isEmpty(),
+                lastSyncStatus = KeePassSyncStatus.SYNCING
+            )
+            val databaseId = dao.insertDatabase(localDatabase)
+
+            try {
+                val diagnostics = workspaceRepository.inspectDatabase(
+                    databaseId = databaseId,
+                    passwordOverride = databasePassword,
+                    keyFileUriOverride = keyFileUri
+                ).getOrElse { throw it }
+                val now = System.currentTimeMillis()
+                dao.updateDatabase(
+                    localDatabase.copy(
+                        id = databaseId,
+                        entryCount = diagnostics.entryCount,
+                        kdbxMajorVersion = diagnostics.creationOptions.formatVersion.majorVersion,
+                        cipherAlgorithm = diagnostics.creationOptions.cipherAlgorithm.name,
+                        kdfAlgorithm = diagnostics.creationOptions.kdfAlgorithm.name,
+                        kdfTransformRounds = diagnostics.creationOptions.transformRounds,
+                        kdfMemoryBytes = diagnostics.creationOptions.memoryBytes,
+                        kdfParallelism = diagnostics.creationOptions.parallelism,
+                        lastAccessedAt = now,
+                        lastSyncedAt = now,
+                        lastSyncStatus = KeePassSyncStatus.IN_SYNC,
+                        lastSyncError = null
+                    )
+                )
+                remoteSyncService.markSynchronized(
+                    databaseId = databaseId,
+                    versionToken = remoteStat.versionToken,
+                    etag = remoteStat.etag,
+                    baseHash = WebDavKeePassSupport.sha256Hex(remoteBytes),
+                    workingHash = WebDavKeePassSupport.sha256Hex(remoteBytes)
+                )
+                KeePassKdbxService.invalidateProcessCache(databaseId)
+                return WebDavAttachResult(
+                    databaseId = databaseId,
+                    databaseName = displayName,
+                    entryCount = diagnostics.entryCount
+                )
+            } catch (error: Exception) {
+                dao.deleteDatabaseById(databaseId)
+                syncStateDao.deleteState(databaseId)
+                if (createdRemoteSourceId != null) {
+                    remoteSourceDao.deleteSourceById(remoteSourceId)
+                }
+                cleanupRemoteLocalCopies(mirrorPaths.workingCopyPath, mirrorPaths.cacheCopyPath)
+                throw error
+            }
+        } catch (error: Exception) {
+            if (createdRemoteSourceId != null) {
+                remoteSourceDao.deleteSourceById(createdRemoteSourceId!!)
+            }
+            cleanupRemoteLocalCopies(createdWorkingCopyPath, createdCacheCopyPath)
+            throw error
+        }
+    }
+
+    private fun cleanupRemoteLocalCopies(
+        workingCopyPath: String?,
+        cacheCopyPath: String?
+    ) {
+        WebDavKeePassSupport.deleteRelativeFile(context, workingCopyPath)
+        WebDavKeePassSupport.deleteRelativeFile(context, cacheCopyPath)
     }
 
     private fun formatOperationError(error: Throwable): String {

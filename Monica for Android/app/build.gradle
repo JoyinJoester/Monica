@@ -92,7 +92,7 @@ android {
         minSdk 26
         targetSdk 34
         versionCode 10
-        versionName previewVersionSuffix ? "1.0.281-${previewVersionSuffix}" : "1.0.281"
+        versionName previewVersionSuffix ? "1.0.282-${previewVersionSuffix}" : "1.0.282"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

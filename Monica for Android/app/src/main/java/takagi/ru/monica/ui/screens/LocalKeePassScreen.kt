@@ -36,9 +36,11 @@ import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
 import takagi.ru.monica.data.KeePassCipherAlgorithm
 import takagi.ru.monica.data.KeePassDatabaseCreationOptions
+import takagi.ru.monica.data.KeePassDatabaseSourceType
 import takagi.ru.monica.data.KeePassFormatVersion
 import takagi.ru.monica.data.KeePassKdfAlgorithm
 import takagi.ru.monica.data.KeePassStorageLocation
+import takagi.ru.monica.data.KeePassSyncStatus
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.toCreationOptions
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
@@ -61,12 +63,14 @@ fun LocalKeePassScreen(
     val allDatabases by viewModel.allDatabases.collectAsState()
     val internalDatabases by viewModel.internalDatabases.collectAsState()
     val externalDatabases by viewModel.externalDatabases.collectAsState()
+    val remoteDatabases by viewModel.remoteDatabases.collectAsState()
     val operationState by viewModel.operationState.collectAsState()
     val verificationStates by viewModel.verificationStates.collectAsState()
     
     // 对话框状态
     var showCreateDialog by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
+    var showWebDavAttachSheet by remember { mutableStateOf(false) }
     var selectedDatabase by remember { mutableStateOf<LocalKeePassDatabase?>(null) }
     var showDatabaseDetailSheet by remember { mutableStateOf(false) }
     var databaseToTransferExternal by remember { mutableStateOf<LocalKeePassDatabase?>(null) }
@@ -157,7 +161,8 @@ fun LocalKeePassScreen(
                 // 空状态
                 EmptyKeePassState(
                     onCreateClick = { showCreateDialog = true },
-                    onImportClick = { filePickerLauncher.launch(arrayOf("*/*")) }
+                    onImportClick = { filePickerLauncher.launch(arrayOf("*/*")) },
+                    onAttachWebDavClick = { showWebDavAttachSheet = true }
                 )
             } else {
                 // 数据库列表
@@ -225,12 +230,41 @@ fun LocalKeePassScreen(
                             )
                         }
                     }
+
+                    if (remoteDatabases.isNotEmpty()) {
+                        item {
+                            if (internalDatabases.isNotEmpty() || externalDatabases.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
+                            SectionHeader(
+                                icon = Icons.Outlined.Cloud,
+                                title = stringResource(R.string.remote_storage),
+                                subtitle = stringResource(R.string.remote_storage_description),
+                                color = MaterialTheme.colorScheme.tertiary
+                            )
+                        }
+
+                        items(
+                            items = remoteDatabases,
+                            key = { it.id }
+                        ) { database ->
+                            KeePassDatabaseCard(
+                                database = database,
+                                verificationState = verificationStates[database.id] ?: LocalKeePassViewModel.VerificationState.Unknown,
+                                onClick = {
+                                    selectedDatabase = database
+                                    showDatabaseDetailSheet = true
+                                }
+                            )
+                        }
+                    }
                     
                     // 快捷操作
                     item {
                         Spacer(modifier = Modifier.height(16.dp))
                         QuickActionsCard(
-                            onImportClick = { filePickerLauncher.launch(arrayOf("*/*")) }
+                            onImportClick = { filePickerLauncher.launch(arrayOf("*/*")) },
+                            onAttachWebDavClick = { showWebDavAttachSheet = true }
                         )
                     }
                 }
@@ -277,6 +311,13 @@ fun LocalKeePassScreen(
             }
         )
     }
+
+    if (showWebDavAttachSheet) {
+        AttachWebDavDatabaseBottomSheet(
+            viewModel = viewModel,
+            onDismiss = { showWebDavAttachSheet = false },
+        )
+    }
     
     // 数据库详情底部弹窗
     if (showDatabaseDetailSheet && selectedDatabase != null) {
@@ -300,6 +341,9 @@ fun LocalKeePassScreen(
             onVerifyPassword = { db, password, keyFileUri ->
                 viewModel.reverifyDatabasePassword(db.id, password, keyFileUri)
             },
+            onSyncRemote = { db ->
+                viewModel.syncRemoteDatabase(db.id)
+            },
             onExport = { /* 需要文件选择器 */ }
         )
     }
@@ -311,7 +355,8 @@ fun LocalKeePassScreen(
 @Composable
 private fun EmptyKeePassState(
     onCreateClick: () -> Unit,
-    onImportClick: () -> Unit
+    onImportClick: () -> Unit,
+    onAttachWebDavClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -372,6 +417,15 @@ private fun EmptyKeePassState(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.fillMaxWidth(0.8f)
         ) {
+            OutlinedButton(
+                onClick = onAttachWebDavClick,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.CloudSync, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(stringResource(R.string.keepass_webdav_attach_action))
+            }
+
             OutlinedButton(
                 onClick = onImportClick,
                 modifier = Modifier.fillMaxWidth()
@@ -452,6 +506,24 @@ private fun KeePassDatabaseCard(
     onClick: () -> Unit
 ) {
     val dateFormat = remember { SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()) }
+    val accentColor = when (database.sourceType) {
+        KeePassDatabaseSourceType.LOCAL_INTERNAL -> MaterialTheme.colorScheme.primary
+        KeePassDatabaseSourceType.LOCAL_DOCUMENT_URI -> MaterialTheme.colorScheme.secondary
+        KeePassDatabaseSourceType.REMOTE_WEBDAV -> MaterialTheme.colorScheme.tertiary
+        KeePassDatabaseSourceType.REMOTE_ONEDRIVE -> MaterialTheme.colorScheme.tertiary
+    }
+    val sourceLabel = when (database.sourceType) {
+        KeePassDatabaseSourceType.LOCAL_INTERNAL -> stringResource(R.string.internal_storage)
+        KeePassDatabaseSourceType.LOCAL_DOCUMENT_URI -> stringResource(R.string.external_storage)
+        KeePassDatabaseSourceType.REMOTE_WEBDAV -> stringResource(R.string.keepass_webdav_database_badge)
+        KeePassDatabaseSourceType.REMOTE_ONEDRIVE -> stringResource(R.string.remote_storage)
+    }
+    val sourceIcon = when (database.sourceType) {
+        KeePassDatabaseSourceType.LOCAL_INTERNAL -> Icons.Filled.Lock
+        KeePassDatabaseSourceType.LOCAL_DOCUMENT_URI -> Icons.Filled.LockOpen
+        KeePassDatabaseSourceType.REMOTE_WEBDAV -> Icons.Filled.CloudSync
+        KeePassDatabaseSourceType.REMOTE_ONEDRIVE -> Icons.Filled.Cloud
+    }
     
     Card(
         onClick = onClick,
@@ -475,24 +547,15 @@ private fun KeePassDatabaseCard(
             // 图标
             Surface(
                 shape = RoundedCornerShape(12.dp),
-                color = if (database.storageLocation == KeePassStorageLocation.INTERNAL)
-                    MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                else
-                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f),
+                color = accentColor.copy(alpha = 0.12f),
                 modifier = Modifier.size(48.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
-                        if (database.storageLocation == KeePassStorageLocation.INTERNAL)
-                            Icons.Filled.Lock
-                        else
-                            Icons.Filled.LockOpen,
+                        sourceIcon,
                         contentDescription = null,
                         modifier = Modifier.size(24.dp),
-                        tint = if (database.storageLocation == KeePassStorageLocation.INTERNAL)
-                            MaterialTheme.colorScheme.primary
-                        else
-                            MaterialTheme.colorScheme.secondary
+                        tint = accentColor
                     )
                 }
             }
@@ -531,10 +594,7 @@ private fun KeePassDatabaseCard(
                 
                 // 位置信息
                 Text(
-                    if (database.storageLocation == KeePassStorageLocation.INTERNAL)
-                        stringResource(R.string.internal_storage)
-                    else
-                        stringResource(R.string.external_storage),
+                    sourceLabel,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -563,6 +623,18 @@ private fun KeePassDatabaseCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = statusColor
                 )
+                if (database.sourceType == KeePassDatabaseSourceType.REMOTE_WEBDAV ||
+                    database.sourceType == KeePassDatabaseSourceType.REMOTE_ONEDRIVE
+                ) {
+                    Text(
+                        text = stringResource(
+                            R.string.keepass_remote_sync_status_format,
+                            remoteSyncStatusLabel(database.lastSyncStatus)
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = remoteSyncStatusColor(database.lastSyncStatus)
+                    )
+                }
                 if (verificationState is LocalKeePassViewModel.VerificationState.Verified) {
                     Text(
                         text = stringResource(
@@ -589,46 +661,100 @@ private fun KeePassDatabaseCard(
  */
 @Composable
 private fun QuickActionsCard(
-    onImportClick: () -> Unit
+    onImportClick: () -> Unit,
+    onAttachWebDavClick: () -> Unit
 ) {
     OutlinedCard(
         modifier = Modifier.fillMaxWidth()
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onImportClick)
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                Icons.Default.FileOpen,
-                contentDescription = null,
-                modifier = Modifier.size(24.dp),
-                tint = MaterialTheme.colorScheme.primary
+        Column {
+            QuickActionRow(
+                icon = Icons.Default.CloudSync,
+                title = stringResource(R.string.keepass_webdav_attach_action),
+                description = stringResource(R.string.keepass_webdav_attach_card_description),
+                accentColor = MaterialTheme.colorScheme.tertiary,
+                onClick = onAttachWebDavClick
             )
-            
-            Spacer(modifier = Modifier.width(16.dp))
-            
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    stringResource(R.string.open_external_database),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Medium
-                )
-                Text(
-                    stringResource(R.string.open_external_database_description),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            QuickActionRow(
+                icon = Icons.Default.FileOpen,
+                title = stringResource(R.string.open_external_database),
+                description = stringResource(R.string.open_external_database_description),
+                accentColor = MaterialTheme.colorScheme.primary,
+                onClick = onImportClick
             )
         }
+    }
+}
+
+@Composable
+private fun QuickActionRow(
+    icon: ImageVector,
+    title: String,
+    description: String,
+    accentColor: Color,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            icon,
+            contentDescription = null,
+            modifier = Modifier.size(24.dp),
+            tint = accentColor
+        )
+
+        Spacer(modifier = Modifier.width(16.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Icon(
+            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun remoteSyncStatusLabel(status: KeePassSyncStatus): String {
+    return when (status) {
+        KeePassSyncStatus.LOCAL_ONLY -> stringResource(R.string.keepass_remote_sync_status_local_only)
+        KeePassSyncStatus.IN_SYNC -> stringResource(R.string.keepass_remote_sync_status_in_sync)
+        KeePassSyncStatus.SYNCING -> stringResource(R.string.keepass_remote_sync_status_syncing)
+        KeePassSyncStatus.PENDING_UPLOAD -> stringResource(R.string.keepass_remote_sync_status_pending_upload)
+        KeePassSyncStatus.REMOTE_CHANGED -> stringResource(R.string.keepass_remote_sync_status_remote_changed)
+        KeePassSyncStatus.CONFLICT -> stringResource(R.string.keepass_remote_sync_status_conflict)
+        KeePassSyncStatus.FAILED -> stringResource(R.string.keepass_remote_sync_status_failed)
+    }
+}
+
+@Composable
+private fun remoteSyncStatusColor(status: KeePassSyncStatus): Color {
+    return when (status) {
+        KeePassSyncStatus.IN_SYNC -> MaterialTheme.colorScheme.primary
+        KeePassSyncStatus.SYNCING -> MaterialTheme.colorScheme.secondary
+        KeePassSyncStatus.PENDING_UPLOAD -> MaterialTheme.colorScheme.tertiary
+        KeePassSyncStatus.REMOTE_CHANGED,
+        KeePassSyncStatus.CONFLICT,
+        KeePassSyncStatus.FAILED -> MaterialTheme.colorScheme.error
+        KeePassSyncStatus.LOCAL_ONLY -> MaterialTheme.colorScheme.onSurfaceVariant
     }
 }
 
@@ -1218,6 +1344,18 @@ private fun CreateKeePassDatabaseBottomSheet(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AttachWebDavDatabaseBottomSheet(
+    viewModel: LocalKeePassViewModel,
+    onDismiss: () -> Unit
+) {
+    KeepassWebDavBrowserBottomSheet(
+        viewModel = viewModel,
+        onDismiss = onDismiss
+    )
+}
+
 /**
  * KeePass 参数下拉框
  */
@@ -1572,10 +1710,25 @@ private fun DatabaseDetailBottomSheet(
     onTransferToInternal: (LocalKeePassDatabase) -> Unit,
     onTransferToExternal: (LocalKeePassDatabase) -> Unit,
     onVerifyPassword: (LocalKeePassDatabase, String, Uri?) -> Unit,
+    onSyncRemote: (LocalKeePassDatabase) -> Unit,
     onExport: (LocalKeePassDatabase) -> Unit
 ) {
     val dateFormat = remember { SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()) }
     val creationOptions = database.toCreationOptions()
+    val isRemoteDatabase = database.sourceType == KeePassDatabaseSourceType.REMOTE_WEBDAV ||
+        database.sourceType == KeePassDatabaseSourceType.REMOTE_ONEDRIVE
+    val sourceChipText = when (database.sourceType) {
+        KeePassDatabaseSourceType.LOCAL_INTERNAL -> stringResource(R.string.internal_storage)
+        KeePassDatabaseSourceType.LOCAL_DOCUMENT_URI -> stringResource(R.string.external_storage)
+        KeePassDatabaseSourceType.REMOTE_WEBDAV -> stringResource(R.string.keepass_webdav_database_badge)
+        KeePassDatabaseSourceType.REMOTE_ONEDRIVE -> stringResource(R.string.remote_storage)
+    }
+    val sourceChipColor = when (database.sourceType) {
+        KeePassDatabaseSourceType.LOCAL_INTERNAL -> MaterialTheme.colorScheme.primary
+        KeePassDatabaseSourceType.LOCAL_DOCUMENT_URI -> MaterialTheme.colorScheme.secondary
+        KeePassDatabaseSourceType.REMOTE_WEBDAV -> MaterialTheme.colorScheme.tertiary
+        KeePassDatabaseSourceType.REMOTE_ONEDRIVE -> MaterialTheme.colorScheme.tertiary
+    }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showVerifyDialog by remember { mutableStateOf(false) }
     var verifyPassword by remember { mutableStateOf("") }
@@ -1649,22 +1802,13 @@ private fun DatabaseDetailBottomSheet(
                     ) {
                         Surface(
                             shape = RoundedCornerShape(4.dp),
-                            color = if (database.storageLocation == KeePassStorageLocation.INTERNAL)
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                            else
-                                MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f)
+                            color = sourceChipColor.copy(alpha = 0.12f)
                         ) {
                             Text(
-                                if (database.storageLocation == KeePassStorageLocation.INTERNAL)
-                                    stringResource(R.string.internal_storage)
-                                else
-                                    stringResource(R.string.external_storage),
+                                sourceChipText,
                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = if (database.storageLocation == KeePassStorageLocation.INTERNAL)
-                                    MaterialTheme.colorScheme.primary
-                                else
-                                    MaterialTheme.colorScheme.secondary
+                                color = sourceChipColor
                             )
                         }
                         
@@ -1724,6 +1868,26 @@ private fun DatabaseDetailBottomSheet(
                         label = stringResource(R.string.local_keepass_verify_status),
                         value = verifyStatus
                     )
+
+                    if (isRemoteDatabase) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 12.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                        InfoRow(
+                            label = stringResource(R.string.keepass_remote_sync_status),
+                            value = remoteSyncStatusLabel(database.lastSyncStatus)
+                        )
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 12.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                        )
+                        InfoRow(
+                            label = stringResource(R.string.keepass_remote_path),
+                            value = database.filePath
+                        )
+                    }
 
                     if (verificationState is LocalKeePassViewModel.VerificationState.Verified) {
                         HorizontalDivider(
@@ -1851,9 +2015,21 @@ private fun DatabaseDetailBottomSheet(
                     }
                 )
             }
+
+            if (isRemoteDatabase) {
+                ActionButton(
+                    icon = Icons.Default.Sync,
+                    text = stringResource(R.string.sync_now),
+                    onClick = {
+                        dismissSheet {
+                            onSyncRemote(database)
+                        }
+                    }
+                )
+            }
             
             // 导出（仅内部存储）
-            if (database.storageLocation == KeePassStorageLocation.INTERNAL) {
+            if (!isRemoteDatabase && database.storageLocation == KeePassStorageLocation.INTERNAL) {
                 ActionButton(
                     icon = Icons.Default.Upload,
                     text = stringResource(R.string.export_to_external),
@@ -1877,7 +2053,7 @@ private fun DatabaseDetailBottomSheet(
             }
             
             // 转移到内部（仅外部存储）
-            if (database.storageLocation == KeePassStorageLocation.EXTERNAL) {
+            if (!isRemoteDatabase && database.storageLocation == KeePassStorageLocation.EXTERNAL) {
                 ActionButton(
                     icon = Icons.Default.MoveToInbox,
                     text = stringResource(R.string.transfer_to_internal),
@@ -1916,7 +2092,9 @@ private fun DatabaseDetailBottomSheet(
             title = { Text(stringResource(R.string.confirm_remove)) },
             text = { 
                 Text(
-                    if (database.storageLocation == KeePassStorageLocation.INTERNAL)
+                    if (isRemoteDatabase)
+                        stringResource(R.string.confirm_remove_remote_description)
+                    else if (database.storageLocation == KeePassStorageLocation.INTERNAL)
                         stringResource(R.string.confirm_remove_internal_description)
                     else
                         stringResource(R.string.confirm_remove_external_description)

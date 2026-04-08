@@ -948,7 +948,7 @@
     <string name="all_navigation_items">All Navigation Items</string>
     <string name="category_all">All</string>
     <string name="hidden">Hidden</string>
-    <string name="settings_version_number">V1.0.281</string>
+    <string name="settings_version_number">V1.0.282</string>
     <string name="settings_support_author">Support Author</string>
     <string name="settings_support_author_description">Thank you for your support</string>
     <string name="settings_privacy_policy">Privacy Policy</string>
@@ -1980,12 +1980,15 @@
     <string name="external_storage">External Storage</string>
     <string name="external_storage_description">Stored in user-selected location</string>
     <string name="external_storage_option_description">Choose your own location, accessible by other apps</string>
+    <string name="remote_storage">Remote Storage</string>
+    <string name="remote_storage_description">Mounted working copies from WebDAV or other cloud providers</string>
     <string name="location_selected">Location selected</string>
     <string name="select_location">Select</string>
     <string name="default_label">Default</string>
     <string name="last_updated_format">Last accessed: %1$s</string>
     <string name="open_external_database">Open External Database</string>
     <string name="open_external_database_description">Add an existing .kdbx file from external storage</string>
+    <string name="keepass_webdav_attach_card_description">Attach an existing .kdbx file from your WebDAV server as a working copy</string>
     <string name="create_keepass_database">Create KeePass Database</string>
     <string name="database_name">Database Name</string>
     <string name="database_name_placeholder">My Passwords</string>
@@ -2007,11 +2010,23 @@
     <string name="confirm_remove">Remove Database?</string>
     <string name="confirm_remove_internal_description">This will remove the database record. The file will also be deleted from internal storage.</string>
     <string name="confirm_remove_external_description">This will remove the database reference. The original file will not be deleted.</string>
+    <string name="confirm_remove_remote_description">This will remove the remote database record and local working copy. The file on WebDAV will not be deleted.</string>
     <string name="remove">Remove</string>
     <string name="create">Create</string>
     <string name="import_existing_database">Import Existing Database</string>
     <string name="enter_database_password_hint">Enter the password to unlock this KeePass database</string>
     <string name="import_button">Import</string>
+    <string name="keepass_remote_sync_status">Sync Status</string>
+    <string name="keepass_remote_sync_status_format">Remote sync: %1$s</string>
+    <string name="keepass_remote_sync_status_local_only">Local only</string>
+    <string name="keepass_remote_sync_status_in_sync">In sync</string>
+    <string name="keepass_remote_sync_status_syncing">Syncing</string>
+    <string name="keepass_remote_sync_status_pending_upload">Pending upload</string>
+    <string name="keepass_remote_sync_status_remote_changed">Remote changed</string>
+    <string name="keepass_remote_sync_status_conflict">Conflict</string>
+    <string name="keepass_remote_sync_status_failed">Sync failed</string>
+    <string name="keepass_remote_path">Remote Path</string>
+    <string name="keepass_remote_path_placeholder">Example: vault/main.kdbx</string>
     
     <!-- Vault Selector -->
     <string name="vault_monica_only">Monica Local Storage</string>
@@ -2952,6 +2967,7 @@
     <string name="keepass_webdav_force_overwrite_not_attached">This remote database is not attached yet</string>
     <string name="keepass_webdav_attach_title">Attach Remote Database</string>
     <string name="keepass_webdav_attach_message">Attach the following remote database:</string>
+    <string name="keepass_webdav_browser_message">Sign in to WebDAV first, then browse folders, pick an existing .kdbx, or create a new database in the current directory.</string>
     <string name="keepass_webdav_attach_success">Attached successfully: %1$d entries</string>
     <string name="keepass_webdav_attach_failed">Attach failed: %1$s</string>
     <string name="keepass_webdav_attach_exception">Attach exception: %1$s</string>
@@ -2961,6 +2977,18 @@
     <string name="keepass_webdav_database">KeePass WebDAV Database</string>
     <string name="keepass_webdav_database_badge">WebDAV</string>
     <string name="keepass_webdav_remote_files_title">Remote .kdbx files</string>
+    <string name="keepass_webdav_status_title">Connection Status</string>
+    <string name="keepass_webdav_current_path">Current Path</string>
+    <string name="keepass_webdav_root_path">/</string>
+    <string name="keepass_webdav_go_parent">Go to parent folder</string>
+    <string name="keepass_webdav_parent_hint">Return to the previous directory</string>
+    <string name="keepass_webdav_browser_empty">No folders or .kdbx databases found in this directory</string>
+    <string name="keepass_webdav_create_folder_action">Create Folder</string>
+    <string name="keepass_webdav_create_folder_title">Create Remote Folder</string>
+    <string name="keepass_webdav_create_folder_message">Create a new folder in the current WebDAV directory.</string>
+    <string name="keepass_webdav_create_folder_confirm">Create Folder</string>
+    <string name="keepass_webdav_create_folder_failed">Failed to create folder</string>
+    <string name="keepass_webdav_create_target_path">Create location: %1$s</string>
     <string name="keepass_webdav_no_files">No .kdbx files found</string>
     <string name="keepass_webdav_connection_test_failed">Connection test failed</string>
     <string name="keepass_webdav_not_configured">WebDAV is not configured</string>

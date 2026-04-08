@@ -66,10 +66,12 @@ class BitwardenSyncService(
     private val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
+        explicitNulls = false
     }
 
     init {
         runCatching { OperationLogger.init(context.applicationContext) }
+        runCatching { BitwardenDiagLogger.initialize(context.applicationContext) }
     }
 
     private data class ParsedLoginUris(
@@ -800,9 +802,29 @@ class BitwardenSyncService(
         symmetricKey: SymmetricCryptoKey
     ): UploadResult = withContext(Dispatchers.IO) {
         android.util.Log.i(TAG, "Checking for local entries to upload for vault ${vault.id}")
+
+        val repairedCount = passwordEntryDao.markHistoricalPendingBitwardenUploads(vault.id)
+        if (repairedCount > 0) {
+            val line = "$TAG repairHistoricalPendingUploads: vaultId=${vault.id}, repaired=$repairedCount"
+            android.util.Log.i(TAG, line)
+            BitwardenDiagLogger.append(line)
+        }
         
-        // 查找所有需要上传的条目：有 bitwardenVaultId 但没有 bitwardenCipherId
-        val entriesToUpload = passwordEntryDao.getLocalEntriesPendingUpload(vault.id)
+        var entriesToUpload = passwordEntryDao.getLocalEntriesPendingUpload(vault.id)
+        if (entriesToUpload.isNotEmpty()) {
+            val reconciled = reconcilePendingPasswordUploadsFromRemote(
+                vault = vault,
+                accessToken = accessToken,
+                symmetricKey = symmetricKey,
+                pendingEntries = entriesToUpload
+            )
+            if (reconciled > 0) {
+                val line = "$TAG reconcilePendingPasswordUploadsFromRemote: vaultId=${vault.id}, reconciled=$reconciled"
+                android.util.Log.i(TAG, line)
+                BitwardenDiagLogger.append(line)
+                entriesToUpload = passwordEntryDao.getLocalEntriesPendingUpload(vault.id)
+            }
+        }
         
         var uploaded = 0
         var failed = 0
@@ -928,8 +950,17 @@ class BitwardenSyncService(
         accessToken: String,
         symmetricKey: SymmetricCryptoKey
     ): UploadAttemptResult {
+        val latestEntry = passwordEntryDao.getPasswordEntryById(entry.id) ?: entry
+        if (!latestEntry.bitwardenCipherId.isNullOrBlank()) {
+            android.util.Log.i(
+                TAG,
+                "Skip uploadLocalEntry for ${entry.id}: entry already bound to cipher ${latestEntry.bitwardenCipherId}"
+            )
+            return UploadAttemptResult(success = true)
+        }
+
         // 构建加密的 Cipher 请求
-        val createRequest = passwordEntryToCipherRequest(entry, symmetricKey)
+        val createRequest = passwordEntryToCipherRequest(latestEntry, symmetricKey)
         val requestPayload = runCatching { json.encodeToString(createRequest) }.getOrNull()
 
         try {
@@ -952,6 +983,15 @@ class BitwardenSyncService(
                     success = false,
                     error = "create cipher failed: ${response.code()} ${response.message()}"
                 )
+                appendPasswordUploadFailureLog(
+                    vaultId = vault.id,
+                    operation = "create",
+                    entry = latestEntry,
+                    cipherId = null,
+                    responseCode = response.code(),
+                    errorPayload = errorPayload,
+                    throwable = null
+                )
                 android.util.Log.e(TAG, "Create cipher failed: ${response.code()} ${response.message()}")
                 return UploadAttemptResult(success = false)
             }
@@ -969,6 +1009,15 @@ class BitwardenSyncService(
                     success = false,
                     error = "create cipher returned empty body"
                 )
+                appendPasswordUploadFailureLog(
+                    vaultId = vault.id,
+                    operation = "create",
+                    entry = latestEntry,
+                    cipherId = null,
+                    responseCode = response.code(),
+                    errorPayload = "empty-body",
+                    throwable = null
+                )
                 return UploadAttemptResult(success = false)
             }
 
@@ -984,7 +1033,7 @@ class BitwardenSyncService(
             )
 
             // 更新本地条目，添加服务器返回的 cipherId 和 revisionDate
-            val updatedEntry = entry.copy(
+            val updatedEntry = latestEntry.copy(
                 bitwardenCipherId = createdCipher.id,
                 bitwardenRevisionDate = createdCipher.revisionDate,
                 bitwardenLocalModified = false,
@@ -1005,6 +1054,15 @@ class BitwardenSyncService(
                 responseBody = null,
                 success = false,
                 error = e.message ?: "unknown"
+            )
+            appendPasswordUploadFailureLog(
+                vaultId = vault.id,
+                operation = "create",
+                entry = latestEntry,
+                cipherId = null,
+                responseCode = null,
+                errorPayload = null,
+                throwable = e
             )
             android.util.Log.e(TAG, "Upload entry failed: ${e.message}", e)
             return UploadAttemptResult(
@@ -1070,6 +1128,15 @@ class BitwardenSyncService(
                     success = false,
                     error = "update cipher failed: ${response.code()}"
                 )
+                appendPasswordUploadFailureLog(
+                    vaultId = vault.id,
+                    operation = "update",
+                    entry = entry,
+                    cipherId = cipherId,
+                    responseCode = response.code(),
+                    errorPayload = errorPayload,
+                    throwable = null
+                )
                 android.util.Log.e(TAG, "Update cipher failed: ${response.code()}")
                 return UploadAttemptResult(success = false)
             }
@@ -1086,6 +1153,15 @@ class BitwardenSyncService(
                     responseBody = null,
                     success = false,
                     error = "update cipher returned empty body"
+                )
+                appendPasswordUploadFailureLog(
+                    vaultId = vault.id,
+                    operation = "update",
+                    entry = entry,
+                    cipherId = cipherId,
+                    responseCode = response.code(),
+                    errorPayload = "empty-body",
+                    throwable = null
                 )
                 return UploadAttemptResult(success = false)
             }
@@ -1130,6 +1206,15 @@ class BitwardenSyncService(
                 responseBody = null,
                 success = false,
                 error = e.message ?: "unknown"
+            )
+            appendPasswordUploadFailureLog(
+                vaultId = vault.id,
+                operation = "update",
+                entry = entry,
+                cipherId = cipherId,
+                responseCode = null,
+                errorPayload = null,
+                throwable = e
             )
             android.util.Log.e(TAG, "Update remote cipher failed: ${e.message}", e)
             return UploadAttemptResult(
@@ -1458,10 +1543,14 @@ class BitwardenSyncService(
             password = if (plainPassword.isNotBlank()) {
                 crypto.encryptString(plainPassword, symmetricKey)
             } else null,
+            passwordRevisionDate = if (plainPassword.isNotBlank()) {
+                java.time.Instant.now().toString()
+            } else null,
             totp = if (entry.authenticatorKey.isNotBlank()) {
                 crypto.encryptString(resolveBitwardenTotpPayload(entry), symmetricKey)
             } else null,
-            uris = buildEncryptedLoginUris(entry, symmetricKey)
+            uris = buildEncryptedLoginUris(entry, symmetricKey) ?: emptyList(),
+            fido2Credentials = emptyList()
         )
         
         return CipherCreateRequest(
@@ -1499,10 +1588,14 @@ class BitwardenSyncService(
             password = if (plainPassword.isNotBlank()) {
                 crypto.encryptString(plainPassword, symmetricKey)
             } else null,
+            passwordRevisionDate = if (plainPassword.isNotBlank()) {
+                java.time.Instant.now().toString()
+            } else null,
             totp = if (entry.authenticatorKey.isNotBlank()) {
                 crypto.encryptString(resolveBitwardenTotpPayload(entry), symmetricKey)
             } else null,
-            uris = buildEncryptedLoginUris(entry, symmetricKey)
+            uris = buildEncryptedLoginUris(entry, symmetricKey) ?: emptyList(),
+            fido2Credentials = emptyList()
         )
         
         return CipherUpdateRequest(
@@ -1571,9 +1664,10 @@ class BitwardenSyncService(
         val crypto = takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
         val uris = mutableListOf<CipherUriApiData>()
         if (entry.website.isNotBlank()) {
+            val normalizedWebsite = normalizeBitwardenWebsite(entry.website)
             uris.add(
                 CipherUriApiData(
-                    uri = crypto.encryptString(entry.website, symmetricKey),
+                    uri = crypto.encryptString(normalizedWebsite, symmetricKey),
                     match = null
                 )
             )
@@ -1588,6 +1682,151 @@ class BitwardenSyncService(
             )
         }
         return uris.ifEmpty { null }
+    }
+
+    private fun normalizeBitwardenWebsite(rawWebsite: String): String {
+        val trimmed = rawWebsite.trim()
+        if (trimmed.isBlank()) return trimmed
+        return if (
+            trimmed.startsWith("http://", ignoreCase = true) ||
+            trimmed.startsWith("https://", ignoreCase = true) ||
+            trimmed.startsWith("androidapp://", ignoreCase = true)
+        ) {
+            trimmed
+        } else {
+            "https://$trimmed"
+        }
+    }
+
+    private suspend fun reconcilePendingPasswordUploadsFromRemote(
+        vault: BitwardenVault,
+        accessToken: String,
+        symmetricKey: SymmetricCryptoKey,
+        pendingEntries: List<PasswordEntry>
+    ): Int {
+        if (pendingEntries.isEmpty()) return 0
+
+        return runCatching {
+            val vaultApi = apiManager.getVaultApi(vault)
+            val response = vaultApi.sync(
+                authorization = "Bearer $accessToken",
+                excludeDomains = true
+            )
+            if (!response.isSuccessful) {
+                android.util.Log.w(
+                    TAG,
+                    "Failed to reconcile pending uploads before create: sync code=${response.code()}"
+                )
+                return@runCatching 0
+            }
+
+            val syncResponse = response.body() ?: return@runCatching 0
+            val remoteLoginCiphers = syncResponse.ciphers
+                .filter { it.type == 1 && it.deletedDate == null && !it.id.isBlank() }
+
+            var reconciled = 0
+            for (entry in pendingEntries) {
+                val current = passwordEntryDao.getPasswordEntryById(entry.id) ?: continue
+                if (!current.bitwardenCipherId.isNullOrBlank()) continue
+
+                val matches = remoteLoginCiphers.filter { cipher ->
+                    pendingEntryMatchesRemoteCipher(current, cipher, symmetricKey)
+                }
+                if (matches.size != 1) continue
+
+                val matched = matches.first()
+                val rebound = current.copy(
+                    bitwardenCipherId = matched.id,
+                    bitwardenFolderId = matched.folderId,
+                    bitwardenRevisionDate = matched.revisionDate,
+                    bitwardenCipherType = matched.type,
+                    bitwardenLocalModified = false,
+                    updatedAt = Date()
+                )
+                passwordEntryDao.update(rebound)
+                reconciled++
+            }
+
+            reconciled
+        }.getOrElse { error ->
+            android.util.Log.w(
+                TAG,
+                "Pending upload reconciliation skipped: ${error.message}",
+                error
+            )
+            0
+        }
+    }
+
+    private fun pendingEntryMatchesRemoteCipher(
+        entry: PasswordEntry,
+        cipher: CipherApiResponse,
+        symmetricKey: SymmetricCryptoKey
+    ): Boolean {
+        val login = cipher.login ?: return false
+        val remoteTitle = decryptString(cipher.name, symmetricKey) ?: return false
+        val remoteUsername = decryptString(login.username, symmetricKey).orEmpty()
+        val remotePassword = decryptString(login.password, symmetricKey).orEmpty()
+        val remoteNotes = decryptString(cipher.notes, symmetricKey).orEmpty()
+        val remoteTotp = decryptString(login.totp, symmetricKey).orEmpty()
+        val remoteUris = parseLoginUris(login.uris, symmetricKey)
+        val remoteWebsite = remoteUris.website.trim()
+        val remoteAppPackage = remoteUris.appPackageName.trim()
+        val localWebsite = normalizeBitwardenWebsite(entry.website).trim()
+        val remoteNormalizedWebsite = normalizeBitwardenWebsite(remoteWebsite).trim()
+        val localPassword = resolvePlainPasswordForBitwardenUpload(entry.password, entry.id)
+
+        return entry.title == remoteTitle &&
+            entry.username == remoteUsername &&
+            localPassword == remotePassword &&
+            entry.notes == remoteNotes &&
+            entry.authenticatorKey == remoteTotp &&
+            entry.isFavorite == cipher.favorite &&
+            entry.bitwardenFolderId == cipher.folderId &&
+            entry.appPackageName.trim() == remoteAppPackage &&
+            localWebsite == remoteNormalizedWebsite
+    }
+
+    private fun appendPasswordUploadFailureLog(
+        vaultId: Long,
+        operation: String,
+        entry: PasswordEntry,
+        cipherId: String?,
+        responseCode: Int?,
+        errorPayload: String?,
+        throwable: Throwable?
+    ) {
+        val summary = buildString {
+            append(TAG)
+            append(" passwordUploadFailure")
+            append(": vaultId=")
+            append(vaultId)
+            append(", op=")
+            append(operation)
+            append(", entryId=")
+            append(entry.id)
+            append(", cipherId=")
+            append(cipherId ?: "pending")
+            append(", hasFolder=")
+            append(!entry.bitwardenFolderId.isNullOrBlank())
+            append(", website=")
+            append(normalizeBitwardenWebsite(entry.website).take(120))
+            responseCode?.let {
+                append(", code=")
+                append(it)
+            }
+            errorPayload?.takeIf { it.isNotBlank() }?.let {
+                append(", errorPayload=")
+                append(it.take(240))
+            }
+            throwable?.let {
+                append(", exception=")
+                append(it.javaClass.simpleName)
+                append(":")
+                append(it.message?.take(180) ?: "unknown")
+            }
+        }
+        BitwardenDiagLogger.append(summary)
     }
 
     private fun buildEncryptedPasswordCustomFields(

@@ -160,7 +160,8 @@ class PasswordRepository(
     }
     
     suspend fun insertPasswordEntry(entry: PasswordEntry): Long {
-        return passwordEntryDao.insertPasswordEntry(entry)
+        val normalizedEntry = BitwardenMutationStateHelper.normalizePasswordInsert(entry)
+        return passwordEntryDao.insertPasswordEntry(normalizedEntry)
     }
     
     suspend fun updatePasswordEntry(entry: PasswordEntry) {

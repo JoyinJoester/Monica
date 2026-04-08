@@ -271,6 +271,52 @@ class SecurityManager(private val context: Context) {
     }
 
     /**
+     * App UI gate for Monica's main process.
+     * Requires an active app session before any keystore-backed MDK recovery can restore access.
+     */
+    fun canRestoreMainAppSession(context: Context, autoLockMinutes: Int): Boolean {
+        if (!isMasterPasswordSet()) {
+            android.util.Log.d(logTag, "canRestoreMainAppSession: no master password set -> accessible")
+            SecurityDiagLogger.append("D/$logTag canRestoreMainAppSession: no master password set -> accessible")
+            return true
+        }
+
+        SessionManager.updateAutoLockTimeout(autoLockMinutes)
+        val sessionActive = SessionManager.canSkipVerification(context)
+        if (!sessionActive) {
+            android.util.Log.d(logTag, "canRestoreMainAppSession: session inactive -> locked")
+            SecurityDiagLogger.append("D/$logTag canRestoreMainAppSession: session inactive -> locked")
+            return false
+        }
+
+        if (isVaultRuntimeUnlocked()) {
+            android.util.Log.d(logTag, "canRestoreMainAppSession: runtime MDK cache present")
+            SecurityDiagLogger.append("D/$logTag canRestoreMainAppSession: runtime MDK cache present")
+            return true
+        }
+
+        if (isMdkReadable()) {
+            android.util.Log.d(logTag, "canRestoreMainAppSession: MDK readable with active session")
+            SecurityDiagLogger.append("D/$logTag canRestoreMainAppSession: MDK readable with active session")
+            markVaultAuthenticated()
+            return true
+        }
+
+        mdkAuthUnavailableUntilMillis = 0L
+        val retriedAccessible = isMdkReadable()
+        if (retriedAccessible) {
+            android.util.Log.d(logTag, "canRestoreMainAppSession: MDK readable on retry with active session")
+            SecurityDiagLogger.append("D/$logTag canRestoreMainAppSession: MDK readable on retry with active session")
+            markVaultAuthenticated()
+            return true
+        }
+
+        android.util.Log.w(logTag, "canRestoreMainAppSession: active session but MDK unavailable")
+        SecurityDiagLogger.append("W/$logTag canRestoreMainAppSession: active session but MDK unavailable")
+        return false
+    }
+
+    /**
      * Single-source vault accessibility check for IME/autofill style callers.
      * Requires both a valid session window and usable runtime key material.
      */

@@ -46,6 +46,7 @@ object BitwardenApiFactory {
         isLenient = true
         encodeDefaults = true
         coerceInputValues = true
+        explicitNulls = false
     }
     
     enum class HeaderProfile {

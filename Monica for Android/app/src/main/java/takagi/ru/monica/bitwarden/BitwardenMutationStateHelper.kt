@@ -5,6 +5,14 @@ import takagi.ru.monica.data.SecureItem
 
 object BitwardenMutationStateHelper {
 
+    fun normalizePasswordInsert(candidate: PasswordEntry): PasswordEntry {
+        if (!candidate.hasBitwardenBinding()) return candidate
+        if (candidate.hasBitwardenCipherBinding()) return candidate
+        if (candidate.bitwardenLocalModified) return candidate
+
+        return candidate.copy(bitwardenLocalModified = true)
+    }
+
     fun normalizePasswordUpdate(
         existing: PasswordEntry?,
         candidate: PasswordEntry

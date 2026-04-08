@@ -21,6 +21,7 @@ import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto.SymmetricCryptoKey
 import takagi.ru.monica.bitwarden.mapper.BitwardenSendMapper
 import takagi.ru.monica.bitwarden.service.BitwardenAuthService
+import takagi.ru.monica.bitwarden.service.BitwardenDiagLogger
 import takagi.ru.monica.bitwarden.service.BitwardenHistoricalTotpRepairResult
 import takagi.ru.monica.bitwarden.service.BitwardenHistoricalTotpRepairService
 import takagi.ru.monica.bitwarden.service.BitwardenSyncService
@@ -693,10 +694,23 @@ class BitwardenRepository(private val context: Context) {
 
                 when (result) {
                     is ServiceSyncResult.Success -> {
+                        val totalUploadFailedCount = uploadFailedCount + modifiedUploadFailedCount
+                        val overallResult = if (totalUploadFailedCount > 0) {
+                            "PARTIAL_SUCCESS"
+                        } else {
+                            "SUCCESS"
+                        }
+                        BitwardenDiagLogger.append(
+                            "BitwardenRepository overallSyncResult: vaultId=$vaultId, result=$overallResult, " +
+                                "uploaded=$uploadedCount, modifiedUploaded=$modifiedUploadedCount, " +
+                                "uploadFailed=$totalUploadFailedCount, deletes=$processedDeleteCount, " +
+                                "ciphersAdded=${result.ciphersAdded}, ciphersUpdated=${result.ciphersUpdated}, " +
+                                "conflicts=${result.conflictsDetected}, skippedLocalDirty=${result.skippedDueToLocalDirty}"
+                        )
                         SyncResult.Success(
                             syncedCount = result.ciphersAdded + result.ciphersUpdated + uploadedCount + modifiedUploadedCount + processedDeleteCount,
                             conflictCount = result.conflictsDetected,
-                            uploadFailedCount = uploadFailedCount + modifiedUploadFailedCount,
+                            uploadFailedCount = totalUploadFailedCount,
                             skippedDueToLocalDirtyCount = result.skippedDueToLocalDirty
                         )
                     }

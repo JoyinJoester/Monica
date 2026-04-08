@@ -487,111 +487,114 @@ data class CipherApiResponse(
 
 @Serializable
 data class CipherLoginApiData(
-    @JsonNames("username")
-    @SerialName("Username")
+    @JsonNames("Username", "username")
+    @SerialName("username")
     val username: String? = null,
-    @JsonNames("password")
-    @SerialName("Password")
+    @JsonNames("Password", "password")
+    @SerialName("password")
     val password: String? = null,
-    @JsonNames("totp")
-    @SerialName("Totp")
+    @JsonNames("PasswordRevisionDate", "passwordRevisionDate")
+    @SerialName("passwordRevisionDate")
+    val passwordRevisionDate: String? = null,
+    @JsonNames("Totp", "totp")
+    @SerialName("totp")
     val totp: String? = null,
-    @JsonNames("uris")
-    @SerialName("Uris")
+    @JsonNames("Uris", "uris")
+    @SerialName("uris")
     val uris: List<CipherUriApiData>? = null,
-    @JsonNames("fido2Credentials")
-    @SerialName("Fido2Credentials")
+    @JsonNames("Fido2Credentials", "fido2Credentials")
+    @SerialName("fido2Credentials")
     val fido2Credentials: List<CipherLoginFido2CredentialApiData>? = null
 )
 
 @Serializable
 data class CipherLoginFido2CredentialApiData(
-    @JsonNames("credentialId")
-    @SerialName("CredentialId")
+    @JsonNames("CredentialId", "credentialId")
+    @SerialName("credentialId")
     val credentialId: String? = null,
-    @JsonNames("keyType")
-    @SerialName("KeyType")
+    @JsonNames("KeyType", "keyType")
+    @SerialName("keyType")
     val keyType: String? = null,
-    @JsonNames("keyAlgorithm")
-    @SerialName("KeyAlgorithm")
+    @JsonNames("KeyAlgorithm", "keyAlgorithm")
+    @SerialName("keyAlgorithm")
     val keyAlgorithm: String? = null,
-    @JsonNames("keyCurve")
-    @SerialName("KeyCurve")
+    @JsonNames("KeyCurve", "keyCurve")
+    @SerialName("keyCurve")
     val keyCurve: String? = null,
-    @JsonNames("keyValue")
-    @SerialName("KeyValue")
+    @JsonNames("KeyValue", "keyValue")
+    @SerialName("keyValue")
     val keyValue: String? = null,
-    @JsonNames("rpId")
-    @SerialName("RpId")
+    @JsonNames("RpId", "rpId")
+    @SerialName("rpId")
     val rpId: String? = null,
-    @JsonNames("rpName")
-    @SerialName("RpName")
+    @JsonNames("RpName", "rpName")
+    @SerialName("rpName")
     val rpName: String? = null,
-    @JsonNames("counter")
-    @SerialName("Counter")
+    @JsonNames("Counter", "counter")
+    @SerialName("counter")
     val counter: String? = null,
-    @JsonNames("userHandle")
-    @SerialName("UserHandle")
+    @JsonNames("UserHandle", "userHandle")
+    @SerialName("userHandle")
     val userHandle: String? = null,
-    @JsonNames("userName")
-    @SerialName("UserName")
+    @JsonNames("UserName", "userName")
+    @SerialName("userName")
     val userName: String? = null,
-    @JsonNames("userDisplayName")
-    @SerialName("UserDisplayName")
+    @JsonNames("UserDisplayName", "userDisplayName")
+    @SerialName("userDisplayName")
     val userDisplayName: String? = null,
-    @JsonNames("discoverable")
-    @SerialName("Discoverable")
+    @JsonNames("Discoverable", "discoverable")
+    @SerialName("discoverable")
     val discoverable: String? = null,
-    @JsonNames("creationDate")
-    @SerialName("CreationDate")
+    @JsonNames("CreationDate", "creationDate")
+    @SerialName("creationDate")
     val creationDate: String? = null
 )
 
 @Serializable
 data class CipherUriApiData(
-    @JsonNames("uri")
-    @SerialName("Uri")
+    @JsonNames("Uri", "uri")
+    @SerialName("uri")
     val uri: String? = null,
-    @JsonNames("match")
-    @SerialName("Match")
+    @JsonNames("Match", "match")
+    @SerialName("match")
     val match: Int? = null
 )
 
 @Serializable
 data class CipherCardApiData(
-    @JsonNames("cardholderName")
-    @SerialName("CardholderName")
+    @JsonNames("CardholderName", "cardholderName")
+    @SerialName("cardholderName")
     val cardholderName: String? = null,
-    @JsonNames("brand")
-    @SerialName("Brand")
+    @JsonNames("Brand", "brand")
+    @SerialName("brand")
     val brand: String? = null,
-    @JsonNames("number")
-    @SerialName("Number")
+    @JsonNames("Number", "number")
+    @SerialName("number")
     val number: String? = null,
-    @JsonNames("expMonth")
-    @SerialName("ExpMonth")
+    @JsonNames("ExpMonth", "expMonth")
+    @SerialName("expMonth")
     val expMonth: String? = null,
-    @JsonNames("expYear")
-    @SerialName("ExpYear")
+    @JsonNames("ExpYear", "expYear")
+    @SerialName("expYear")
     val expYear: String? = null,
-    @JsonNames("code")
-    @SerialName("Code")
+    @JsonNames("Code", "code")
+    @SerialName("code")
     val code: String? = null
 )
 
 @Serializable
 data class CipherIdentityApiData(
-    @JsonNames("title")
-    @SerialName("Title")
+    @JsonNames("Title", "title")
+    @SerialName("title")
     val title: String? = null,
-    @JsonNames("firstName")
-    @SerialName("FirstName")
+    @JsonNames("FirstName", "firstName")
+    @SerialName("firstName")
     val firstName: String? = null,
-    @JsonNames("middleName")
-    @SerialName("MiddleName")
+    @JsonNames("MiddleName", "middleName")
+    @SerialName("middleName")
     val middleName: String? = null,
-    @JsonNames("lastName")
-    @SerialName("LastName")
+    @JsonNames("LastName", "lastName")
+    @SerialName("lastName")
     val lastName: String? = null,
     @JsonNames("address1")
     @SerialName("Address1")
@@ -602,61 +605,61 @@ data class CipherIdentityApiData(
     @JsonNames("address3")
     @SerialName("Address3")
     val address3: String? = null,
-    @JsonNames("city")
-    @SerialName("City")
+    @JsonNames("City", "city")
+    @SerialName("city")
     val city: String? = null,
-    @JsonNames("state")
-    @SerialName("State")
+    @JsonNames("State", "state")
+    @SerialName("state")
     val state: String? = null,
-    @JsonNames("postalCode")
-    @SerialName("PostalCode")
+    @JsonNames("PostalCode", "postalCode")
+    @SerialName("postalCode")
     val postalCode: String? = null,
-    @JsonNames("country")
-    @SerialName("Country")
+    @JsonNames("Country", "country")
+    @SerialName("country")
     val country: String? = null,
-    @JsonNames("company")
-    @SerialName("Company")
+    @JsonNames("Company", "company")
+    @SerialName("company")
     val company: String? = null,
-    @JsonNames("email")
-    @SerialName("Email")
+    @JsonNames("Email", "email")
+    @SerialName("email")
     val email: String? = null,
-    @JsonNames("phone")
-    @SerialName("Phone")
+    @JsonNames("Phone", "phone")
+    @SerialName("phone")
     val phone: String? = null,
-    @JsonNames("ssn")
-    @SerialName("SSN")
+    @JsonNames("SSN", "ssn")
+    @SerialName("ssn")
     val ssn: String? = null,
-    @JsonNames("username")
-    @SerialName("Username")
+    @JsonNames("Username", "username")
+    @SerialName("username")
     val username: String? = null,
-    @JsonNames("passportNumber")
-    @SerialName("PassportNumber")
+    @JsonNames("PassportNumber", "passportNumber")
+    @SerialName("passportNumber")
     val passportNumber: String? = null,
-    @JsonNames("licenseNumber")
-    @SerialName("LicenseNumber")
+    @JsonNames("LicenseNumber", "licenseNumber")
+    @SerialName("licenseNumber")
     val licenseNumber: String? = null
 )
 
 @Serializable
 data class CipherSecureNoteApiData(
-    @JsonNames("type")
-    @SerialName("Type")
+    @JsonNames("Type", "type")
+    @SerialName("type")
     val type: Int = 0
 )
 
 @Serializable
 data class CipherFieldApiData(
-    @JsonNames("name")
-    @SerialName("Name")
+    @JsonNames("Name", "name")
+    @SerialName("name")
     val name: String? = null,
-    @JsonNames("value")
-    @SerialName("Value")
+    @JsonNames("Value", "value")
+    @SerialName("value")
     val value: String? = null,
-    @JsonNames("type")
-    @SerialName("Type")
+    @JsonNames("Type", "type")
+    @SerialName("type")
     val type: Int = 0,
-    @JsonNames("linkedId")
-    @SerialName("LinkedId")
+    @JsonNames("LinkedId", "linkedId")
+    @SerialName("linkedId")
     val linkedId: Int? = null
 )
 
@@ -768,69 +771,95 @@ data class SendFileApiData(
 
 @Serializable
 data class CipherCreateRequest(
-    @SerialName("Type")
+    @JsonNames("Type", "type")
+    @SerialName("type")
     val type: Int,
-    @SerialName("FolderId")
+    @JsonNames("FolderId", "folderId")
+    @SerialName("folderId")
     val folderId: String? = null,
-    @SerialName("Name")
+    @JsonNames("Name", "name")
+    @SerialName("name")
     val name: String,          // 加密
-    @SerialName("Notes")
+    @JsonNames("Notes", "notes")
+    @SerialName("notes")
     val notes: String? = null, // 加密
-    @SerialName("Login")
+    @JsonNames("Login", "login")
+    @SerialName("login")
     val login: CipherLoginApiData? = null,
-    @SerialName("Card")
+    @JsonNames("Card", "card")
+    @SerialName("card")
     val card: CipherCardApiData? = null,
-    @SerialName("Identity")
+    @JsonNames("Identity", "identity")
+    @SerialName("identity")
     val identity: CipherIdentityApiData? = null,
-    @SerialName("SecureNote")
+    @JsonNames("SecureNote", "secureNote")
+    @SerialName("secureNote")
     val secureNote: CipherSecureNoteApiData? = null,
-    @SerialName("Fields")
+    @JsonNames("Fields", "fields")
+    @SerialName("fields")
     val fields: List<CipherFieldApiData>? = null,
-    @SerialName("Favorite")
+    @JsonNames("Favorite", "favorite")
+    @SerialName("favorite")
     val favorite: Boolean = false,
-    @SerialName("Reprompt")
+    @JsonNames("Reprompt", "reprompt")
+    @SerialName("reprompt")
     val reprompt: Int = 0,
-    @SerialName("ArchivedDate")
+    @JsonNames("ArchivedDate", "archivedDate")
+    @SerialName("archivedDate")
     val archivedDate: String? = null
 )
 
 @Serializable
 data class CipherUpdateRequest(
-    @SerialName("Type")
+    @JsonNames("Type", "type")
+    @SerialName("type")
     val type: Int,
-    @SerialName("FolderId")
+    @JsonNames("FolderId", "folderId")
+    @SerialName("folderId")
     val folderId: String? = null,
-    @SerialName("Name")
+    @JsonNames("Name", "name")
+    @SerialName("name")
     val name: String,
-    @SerialName("Notes")
+    @JsonNames("Notes", "notes")
+    @SerialName("notes")
     val notes: String? = null,
-    @SerialName("Login")
+    @JsonNames("Login", "login")
+    @SerialName("login")
     val login: CipherLoginApiData? = null,
-    @SerialName("Card")
+    @JsonNames("Card", "card")
+    @SerialName("card")
     val card: CipherCardApiData? = null,
-    @SerialName("Identity")
+    @JsonNames("Identity", "identity")
+    @SerialName("identity")
     val identity: CipherIdentityApiData? = null,
-    @SerialName("SecureNote")
+    @JsonNames("SecureNote", "secureNote")
+    @SerialName("secureNote")
     val secureNote: CipherSecureNoteApiData? = null,
-    @SerialName("Fields")
+    @JsonNames("Fields", "fields")
+    @SerialName("fields")
     val fields: List<CipherFieldApiData>? = null,
-    @SerialName("Favorite")
+    @JsonNames("Favorite", "favorite")
+    @SerialName("favorite")
     val favorite: Boolean = false,
-    @SerialName("Reprompt")
+    @JsonNames("Reprompt", "reprompt")
+    @SerialName("reprompt")
     val reprompt: Int = 0,
-    @SerialName("ArchivedDate")
+    @JsonNames("ArchivedDate", "archivedDate")
+    @SerialName("archivedDate")
     val archivedDate: String? = null
 )
 
 @Serializable
 data class FolderCreateRequest(
-    @SerialName("Name")
+    @JsonNames("Name", "name")
+    @SerialName("name")
     val name: String  // 加密
 )
 
 @Serializable
 data class FolderUpdateRequest(
-    @SerialName("Name")
+    @JsonNames("Name", "name")
+    @SerialName("name")
     val name: String  // 加密
 )
 

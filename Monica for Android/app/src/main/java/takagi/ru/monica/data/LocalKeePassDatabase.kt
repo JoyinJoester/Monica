@@ -11,6 +11,34 @@ enum class KeePassStorageLocation {
     EXTERNAL   // 外部存储（用户选择的位置）
 }
 
+enum class KeePassDatabaseSourceType {
+    LOCAL_INTERNAL,
+    LOCAL_DOCUMENT_URI,
+    REMOTE_WEBDAV,
+    REMOTE_ONEDRIVE
+}
+
+enum class KeePassOpenMode {
+    DIRECT,
+    CACHED_MIRROR,
+    WORKING_COPY
+}
+
+enum class KeePassSyncStatus {
+    LOCAL_ONLY,
+    IN_SYNC,
+    SYNCING,
+    PENDING_UPLOAD,
+    REMOTE_CHANGED,
+    CONFLICT,
+    FAILED
+}
+
+fun KeePassStorageLocation.toSourceType(): KeePassDatabaseSourceType = when (this) {
+    KeePassStorageLocation.INTERNAL -> KeePassDatabaseSourceType.LOCAL_INTERNAL
+    KeePassStorageLocation.EXTERNAL -> KeePassDatabaseSourceType.LOCAL_DOCUMENT_URI
+}
+
 enum class KeePassFormatVersion(val majorVersion: Int) {
     KDBX3(3),
     KDBX4(4)
@@ -71,7 +99,11 @@ data class KeePassDatabaseCreationOptions(
  */
 @Entity(
     tableName = "local_keepass_databases",
-    indices = [Index(value = ["storage_location"])]
+    indices = [
+        Index(value = ["storage_location"]),
+        Index(value = ["source_type"]),
+        Index(value = ["source_id"])
+    ]
 )
 data class LocalKeePassDatabase(
     @PrimaryKey(autoGenerate = true)
@@ -89,6 +121,30 @@ data class LocalKeePassDatabase(
     /** 存储位置 */
     @ColumnInfo(name = "storage_location")
     val storageLocation: KeePassStorageLocation = KeePassStorageLocation.INTERNAL,
+
+    /** 数据源类型 */
+    @ColumnInfo(name = "source_type")
+    val sourceType: KeePassDatabaseSourceType = storageLocation.toSourceType(),
+
+    /** 远端/附加数据源引用 */
+    @ColumnInfo(name = "source_id")
+    val sourceId: Long? = null,
+
+    /** 打开方式 */
+    @ColumnInfo(name = "open_mode")
+    val openMode: KeePassOpenMode = KeePassOpenMode.DIRECT,
+
+    /** 本地工作副本路径 */
+    @ColumnInfo(name = "working_copy_path")
+    val workingCopyPath: String? = null,
+
+    /** 本地缓存副本路径 */
+    @ColumnInfo(name = "cache_copy_path")
+    val cacheCopyPath: String? = null,
+
+    /** 是否可离线使用 */
+    @ColumnInfo(name = "is_offline_available")
+    val isOfflineAvailable: Boolean = storageLocation == KeePassStorageLocation.INTERNAL,
     
     /** 加密后的主密码（用于自动解锁） */
     @ColumnInfo(name = "encrypted_password")
@@ -105,6 +161,14 @@ data class LocalKeePassDatabase(
     /** 最后同步时间 */
     @ColumnInfo(name = "last_synced_at")
     val lastSyncedAt: Long? = null,
+
+    /** 最近同步状态 */
+    @ColumnInfo(name = "last_sync_status")
+    val lastSyncStatus: KeePassSyncStatus = KeePassSyncStatus.LOCAL_ONLY,
+
+    /** 最近同步错误 */
+    @ColumnInfo(name = "last_sync_error")
+    val lastSyncError: String? = null,
     
     /** 是否为默认数据库 */
     @ColumnInfo(name = "is_default")
@@ -166,6 +230,20 @@ fun LocalKeePassDatabase.toCreationOptions(): KeePassDatabaseCreationOptions {
     ).normalized()
 }
 
+fun LocalKeePassDatabase.isRemoteSource(): Boolean = when (sourceType) {
+    KeePassDatabaseSourceType.REMOTE_WEBDAV,
+    KeePassDatabaseSourceType.REMOTE_ONEDRIVE -> true
+    else -> false
+}
+
+fun LocalKeePassDatabase.resolvedActiveFilePath(): String {
+    return workingCopyPath?.takeIf { it.isNotBlank() } ?: filePath
+}
+
+fun LocalKeePassDatabase.resolvedActiveStorageLocation(): KeePassStorageLocation {
+    return if (workingCopyPath.isNullOrBlank()) storageLocation else KeePassStorageLocation.INTERNAL
+}
+
 /**
  * 本地 KeePass 数据库 DAO
  */
@@ -186,6 +264,12 @@ interface LocalKeePassDatabaseDao {
     
     @Query("SELECT * FROM local_keepass_databases WHERE storage_location = :location ORDER BY sort_order ASC")
     fun getDatabasesByLocation(location: KeePassStorageLocation): Flow<List<LocalKeePassDatabase>>
+
+    @Query("SELECT * FROM local_keepass_databases WHERE source_type = :sourceType ORDER BY sort_order ASC, created_at DESC")
+    fun getDatabasesBySourceType(sourceType: KeePassDatabaseSourceType): Flow<List<LocalKeePassDatabase>>
+
+    @Query("SELECT * FROM local_keepass_databases WHERE source_type IN ('REMOTE_WEBDAV', 'REMOTE_ONEDRIVE') ORDER BY sort_order ASC, created_at DESC")
+    fun getRemoteDatabases(): Flow<List<LocalKeePassDatabase>>
     
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertDatabase(database: LocalKeePassDatabase): Long
@@ -211,6 +295,59 @@ interface LocalKeePassDatabaseDao {
     @Query("UPDATE local_keepass_databases SET entry_count = :count WHERE id = :id")
     suspend fun updateEntryCount(id: Long, count: Int)
     
-    @Query("UPDATE local_keepass_databases SET storage_location = :location, filePath = :newPath WHERE id = :id")
-    suspend fun updateStorageLocation(id: Long, location: KeePassStorageLocation, newPath: String)
+    @Query("UPDATE local_keepass_databases SET storage_location = :location, source_type = :sourceType, filePath = :newPath WHERE id = :id")
+    suspend fun updateStorageLocation(
+        id: Long,
+        location: KeePassStorageLocation,
+        sourceType: KeePassDatabaseSourceType,
+        newPath: String
+    )
+
+    @Query(
+        """
+        UPDATE local_keepass_databases
+        SET source_type = :sourceType,
+            source_id = :sourceId,
+            open_mode = :openMode
+        WHERE id = :id
+        """
+    )
+    suspend fun updateSourceBinding(
+        id: Long,
+        sourceType: KeePassDatabaseSourceType,
+        sourceId: Long?,
+        openMode: KeePassOpenMode
+    )
+
+    @Query(
+        """
+        UPDATE local_keepass_databases
+        SET working_copy_path = :workingCopyPath,
+            cache_copy_path = :cacheCopyPath,
+            is_offline_available = :isOfflineAvailable
+        WHERE id = :id
+        """
+    )
+    suspend fun updateLocalCopies(
+        id: Long,
+        workingCopyPath: String?,
+        cacheCopyPath: String?,
+        isOfflineAvailable: Boolean
+    )
+
+    @Query(
+        """
+        UPDATE local_keepass_databases
+        SET last_sync_status = :status,
+            last_sync_error = :error,
+            last_synced_at = :syncedAt
+        WHERE id = :id
+        """
+    )
+    suspend fun updateSyncStatus(
+        id: Long,
+        status: KeePassSyncStatus,
+        error: String?,
+        syncedAt: Long?
+    )
 }

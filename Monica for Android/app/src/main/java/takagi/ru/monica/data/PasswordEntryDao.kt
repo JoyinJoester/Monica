@@ -720,6 +720,21 @@ interface PasswordEntryDao {
     suspend fun getLocalEntriesPendingUpload(vaultId: Long): List<PasswordEntry>
 
     /**
+     * 修复历史上缺失待上传标记的 Bitwarden 本地新建条目。
+     */
+    @Query(
+        """
+        UPDATE password_entries
+        SET bitwarden_local_modified = 1
+        WHERE bitwarden_vault_id = :vaultId
+          AND bitwarden_cipher_id IS NULL
+          AND bitwarden_local_modified = 0
+          AND isDeleted = 0
+        """
+    )
+    suspend fun markHistoricalPendingBitwardenUploads(vaultId: Long): Int
+
+    /**
      * 标记所有未关联 Bitwarden 的条目为指定 Vault
      */
     @Query("UPDATE password_entries SET bitwarden_vault_id = :vaultId WHERE bitwarden_vault_id IS NULL AND isDeleted = 0")

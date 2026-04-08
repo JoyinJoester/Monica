@@ -156,11 +156,11 @@ fun BitwardenSettingsScreen(
                 }
             } else {
                 items(vaults, key = { it.id }) { vault ->
+                    val vaultUnlocked = viewModel.isVaultUnlocked(vault.id)
                     VaultCard(
                         vault = vault,
                         isActive = vault.id == activeVault?.id,
-                        isUnlocked = vault.id == activeVault?.id && 
-                                unlockState == BitwardenViewModel.UnlockState.Unlocked,
+                        isUnlocked = vaultUnlocked,
                         syncState = if (vault.id == activeVault?.id) syncState else null,
                         lastSyncTime = viewModel.lastSyncTime,
                         onSelect = { 
