@@ -134,17 +134,37 @@ jobs:
 
       - name: Rename APK
         if: github.event_name != 'pull_request'
+        shell: bash
         run: |
           cd app/build/outputs/apk/release
-          if [ -f app-release.apk ]; then
-            mv app-release.apk Monica-Android-Preview-${PREVIEW_VERSION_SUFFIX}.apk
-          elif [ -f app-release-unsigned.apk ]; then
-            mv app-release-unsigned.apk Monica-Android-Preview-${PREVIEW_VERSION_SUFFIX}.apk
-          else
+
+          mapfile -t apk_files < <(find . -maxdepth 1 -type f \( -iname '*.apk' \) -printf '%f\n' | sort)
+          if [ "${#apk_files[@]}" -eq 0 ]; then
             echo "No release APK found"
             ls -la
             exit 1
           fi
+
+          preview_apk="Monica-Android-Preview-${PREVIEW_VERSION_SUFFIX}.apk"
+          src_apk=""
+
+          if [ -f app-release.apk ]; then
+            src_apk="app-release.apk"
+          elif [ -f app-release-unsigned.apk ]; then
+            src_apk="app-release-unsigned.apk"
+          else
+            src_apk="${apk_files[0]}"
+          fi
+
+          if [ "$src_apk" = "$preview_apk" ]; then
+            echo "Preview APK already named: $preview_apk"
+          else
+            mv "$src_apk" "$preview_apk"
+            echo "Renamed $src_apk -> $preview_apk"
+          fi
+
+          echo "Release APKs after rename:"
+          ls -la
 
       - name: Delete existing preview release
         if: github.event_name != 'pull_request'
@@ -194,6 +214,7 @@ jobs:
             > *   **Ref**: `${{ github.ref }}`
           files: |
             Monica for Android/app/build/outputs/apk/release/*.apk
+            Monica for Android/app/build/outputs/apk/release/*.APK
           draft: false
           prerelease: true
           make_latest: false
