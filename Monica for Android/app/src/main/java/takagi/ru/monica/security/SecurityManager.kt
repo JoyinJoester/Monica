@@ -239,11 +239,46 @@ class SecurityManager(private val context: Context) {
         hasLoggedMdkFallbackEncryption = false
     }
 
+    fun forceVaultReauthentication(reason: String) {
+        android.util.Log.w(logTag, "forceVaultReauthentication: $reason")
+        SecurityDiagLogger.append("W/$logTag forceVaultReauthentication: $reason")
+        SessionManager.markLocked()
+        mdkAuthUnavailableUntilMillis = 0L
+        hasLoggedMdkAuthExpiredWarning = false
+        hasLoggedMdkFallbackEncryption = false
+    }
+
+    fun shouldForceVaultReauthenticationAfterDecryptFailure(error: Throwable?): Boolean {
+        if (error == null || !isMasterPasswordSet()) return false
+        if (error is android.security.keystore.KeyPermanentlyInvalidatedException) return true
+        if (error is UserNotAuthenticatedException) return true
+        if (error.message == "MDK not available") return true
+        return !isVaultRuntimeUnlocked() && requiresPasswordReentryForWrapperRebuild()
+    }
+
+    fun handleVaultDecryptFailure(error: Throwable?): Boolean {
+        if (!shouldForceVaultReauthenticationAfterDecryptFailure(error)) {
+            return false
+        }
+        forceVaultReauthentication(
+            "decrypt failure requires reauth: ${error?.javaClass?.simpleName ?: "unknown"}"
+        )
+        return true
+    }
+
+    fun canAccessVaultNowStrict(context: Context, autoLockMinutes: Int): Boolean {
+        return canAccessVaultNow(context, autoLockMinutes, allowSessionOnlyFallback = false)
+    }
+
     /**
      * Single-source vault accessibility check for IME/autofill style callers.
      * Requires both a valid session window and usable runtime key material.
      */
-    fun canAccessVaultNow(context: Context, autoLockMinutes: Int): Boolean {
+    fun canAccessVaultNow(
+        context: Context,
+        autoLockMinutes: Int,
+        allowSessionOnlyFallback: Boolean = true
+    ): Boolean {
         if (!isMasterPasswordSet()) {
             android.util.Log.d(logTag, "canAccessVaultNow: no master password set -> accessible")
             SecurityDiagLogger.append("D/$logTag canAccessVaultNow: no master password set -> accessible")
@@ -291,7 +326,7 @@ class SecurityManager(private val context: Context) {
         // in clone/cold-process scenarios, biometric/session can be valid while keystore wrapper
         // is temporarily unavailable. Prefer allowing access over hard-blocking with "vault locked".
         val authCooldownActive = System.currentTimeMillis() < mdkAuthUnavailableUntilMillis
-        if (!hasKeystoreWrapper || authCooldownActive) {
+        if (allowSessionOnlyFallback && (!hasKeystoreWrapper || authCooldownActive)) {
             SessionManager.markUnlocked()
             android.util.Log.w(
                 logTag,
@@ -315,7 +350,7 @@ class SecurityManager(private val context: Context) {
     }
 
     fun getVaultAccessState(context: Context, autoLockMinutes: Int): VaultAccessState {
-        if (canAccessVaultNow(context, autoLockMinutes)) {
+        if (canAccessVaultNowStrict(context, autoLockMinutes)) {
             return VaultAccessState.ACCESSIBLE
         }
         return if (requiresPasswordReentryForWrapperRebuild()) {

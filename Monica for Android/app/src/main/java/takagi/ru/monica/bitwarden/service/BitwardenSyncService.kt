@@ -230,6 +230,7 @@ class BitwardenSyncService(
         var ciphersAdded = 0
         var ciphersUpdated = 0
         var conflictsDetected = 0
+        var skippedDueToLocalDirty = 0
         var sendsSynced = 0
         val activeServerCipherIds = response.ciphers
             .asSequence()
@@ -288,7 +289,11 @@ class BitwardenSyncService(
                         is CipherSyncResult.Added -> ciphersAdded++
                         is CipherSyncResult.Updated -> ciphersUpdated++
                         is CipherSyncResult.Conflict -> conflictsDetected++
-                        is CipherSyncResult.Skipped -> { /* 跳过 */ }
+                        is CipherSyncResult.Skipped -> {
+                            if (result.reason == "Local changes pending upload") {
+                                skippedDueToLocalDirty++
+                            }
+                        }
                         is CipherSyncResult.Error -> {
                             android.util.Log.w(TAG, "Cipher sync error: ${result.message}")
                         }
@@ -353,7 +358,8 @@ class BitwardenSyncService(
                 foldersAdded = foldersAdded,
                 ciphersAdded = ciphersAdded,
                 ciphersUpdated = ciphersUpdated,
-                conflictsDetected = conflictsDetected
+                conflictsDetected = conflictsDetected,
+                skippedDueToLocalDirty = skippedDueToLocalDirty
             )
             BitwardenSyncForensicsLogger.finishSession(context, forensicsSession, successResult)
             return successResult
@@ -1778,7 +1784,8 @@ sealed class SyncResult {
         val foldersAdded: Int,
         val ciphersAdded: Int,
         val ciphersUpdated: Int,
-        val conflictsDetected: Int
+        val conflictsDetected: Int,
+        val skippedDueToLocalDirty: Int
     ) : SyncResult()
     
     data class Error(val message: String) : SyncResult()

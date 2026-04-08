@@ -85,6 +85,7 @@ import takagi.ru.monica.viewmodel.TotpViewModel
 import takagi.ru.monica.utils.RememberedStorageTarget
 import takagi.ru.monica.utils.SettingsManager
 import java.io.File
+import takagi.ru.monica.ui.components.OutlinedTextField
 
 private const val ICON_PICKER_PAGE_SIZE = 120
 

@@ -793,6 +793,8 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
         vaultId: Long,
         syncedCount: Int,
         conflictCount: Int,
+        uploadFailedCount: Int,
+        skippedDueToLocalDirtyCount: Int,
         silent: Boolean
     ) {
         OperationLogger.logSync(
@@ -802,7 +804,9 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
             details = listOf(
                 FieldChange("模式", "", if (silent) "静默同步" else "手动同步"),
                 FieldChange("同步条目", "", syncedCount.toString()),
-                FieldChange("冲突数", "", conflictCount.toString())
+                FieldChange("冲突数", "", conflictCount.toString()),
+                FieldChange("上传失败", "", uploadFailedCount.toString()),
+                FieldChange("本地待上传阻塞", "", skippedDueToLocalDirtyCount.toString())
             )
         )
     }
@@ -918,21 +922,37 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                     vaultId = vault.id,
                     syncedCount = result.syncedCount,
                     conflictCount = result.conflictCount,
+                    uploadFailedCount = result.uploadFailedCount,
+                    skippedDueToLocalDirtyCount = result.skippedDueToLocalDirtyCount,
                     silent = silent
                 )
                 if (result.conflictCount > 0) {
                     logBitwardenConflictDetected(vault.id, result.conflictCount)
                 }
                 if (!silent) {
-                    _syncState.value = SyncState.Success(result.syncedCount, result.conflictCount)
+                    _syncState.value = SyncState.Success(
+                        syncedCount = result.syncedCount,
+                        conflictCount = result.conflictCount,
+                        uploadFailedCount = result.uploadFailedCount,
+                        skippedDueToLocalDirtyCount = result.skippedDueToLocalDirtyCount
+                    )
                 }
                 if (!silent) {
                     loadVaultData(vault.id)
                 }
 
                 if (!silent) {
-                    if (result.conflictCount > 0) {
-                        _events.emit(BitwardenEvent.ShowWarning("同步完成，但有 ${result.conflictCount} 个冲突需要处理"))
+                    if (result.conflictCount > 0 || result.uploadFailedCount > 0 || result.skippedDueToLocalDirtyCount > 0) {
+                        val warningParts = buildList {
+                            if (result.conflictCount > 0) add("${result.conflictCount} 个冲突")
+                            if (result.uploadFailedCount > 0) add("${result.uploadFailedCount} 个上传失败")
+                            if (result.skippedDueToLocalDirtyCount > 0) add("${result.skippedDueToLocalDirtyCount} 个条目因本地待上传被跳过")
+                        }
+                        _events.emit(
+                            BitwardenEvent.ShowWarning(
+                                "同步完成，但存在 ${warningParts.joinToString("，")}"
+                            )
+                        )
                     } else {
                         _events.emit(
                             BitwardenEvent.ShowSuccess(
@@ -947,7 +967,9 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                 }
                 SyncExecutionOutcome.Success(
                     syncedCount = result.syncedCount,
-                    conflictCount = result.conflictCount
+                    conflictCount = result.conflictCount,
+                    uploadFailedCount = result.uploadFailedCount,
+                    skippedDueToLocalDirtyCount = result.skippedDueToLocalDirtyCount
                 )
             }
 
@@ -1067,7 +1089,12 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     sealed class SyncState {
         object Idle : SyncState()
         object Syncing : SyncState()
-        data class Success(val syncedCount: Int, val conflictCount: Int) : SyncState()
+        data class Success(
+            val syncedCount: Int,
+            val conflictCount: Int,
+            val uploadFailedCount: Int,
+            val skippedDueToLocalDirtyCount: Int
+        ) : SyncState()
         data class Error(val message: String) : SyncState()
     }
 

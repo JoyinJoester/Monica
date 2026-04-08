@@ -16,6 +16,7 @@ import takagi.ru.monica.bitwarden.api.BitwardenApiManager
 import takagi.ru.monica.bitwarden.api.BitwardenTlsConfig
 import takagi.ru.monica.bitwarden.api.FolderCreateRequest
 import takagi.ru.monica.bitwarden.api.FolderUpdateRequest
+import takagi.ru.monica.bitwarden.BitwardenRestoreQueueOutcome
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto.SymmetricCryptoKey
 import takagi.ru.monica.bitwarden.mapper.BitwardenSendMapper
@@ -668,11 +669,19 @@ class BitwardenRepository(private val context: Context) {
                     is takagi.ru.monica.bitwarden.service.UploadResult.Success -> uploadResult.uploaded
                     else -> 0
                 }
+                val uploadFailedCount = when (uploadResult) {
+                    is takagi.ru.monica.bitwarden.service.UploadResult.Success -> uploadResult.failed
+                    else -> 0
+                }
 
                 // 3. 上传本地已修改的条目到服务器（update）
                 val modifiedUploadResult = syncService.uploadModifiedEntries(vault, accessToken, symmetricKey)
                 val modifiedUploadedCount = when (modifiedUploadResult) {
                     is takagi.ru.monica.bitwarden.service.UploadResult.Success -> modifiedUploadResult.uploaded
+                    else -> 0
+                }
+                val modifiedUploadFailedCount = when (modifiedUploadResult) {
+                    is takagi.ru.monica.bitwarden.service.UploadResult.Success -> modifiedUploadResult.failed
                     else -> 0
                 }
 
@@ -686,7 +695,9 @@ class BitwardenRepository(private val context: Context) {
                     is ServiceSyncResult.Success -> {
                         SyncResult.Success(
                             syncedCount = result.ciphersAdded + result.ciphersUpdated + uploadedCount + modifiedUploadedCount + processedDeleteCount,
-                            conflictCount = result.conflictsDetected
+                            conflictCount = result.conflictsDetected,
+                            uploadFailedCount = uploadFailedCount + modifiedUploadFailedCount,
+                            skippedDueToLocalDirtyCount = result.skippedDueToLocalDirty
                         )
                     }
                     is ServiceSyncResult.Error -> {
@@ -1109,20 +1120,20 @@ class BitwardenRepository(private val context: Context) {
         cipherId: String,
         entryId: Long? = null,
         itemType: String = BitwardenPendingOperation.ITEM_TYPE_PASSWORD
-    ): Result<Unit> = withContext(Dispatchers.IO) {
+    ): Result<BitwardenRestoreQueueOutcome> = withContext(Dispatchers.IO) {
         try {
             val vault = vaultDao.getVaultById(vaultId)
                 ?: return@withContext Result.failure(IllegalStateException("Vault 不存在"))
 
             val existingRestore = pendingOpDao.findActiveRestoreByCipher(vaultId, cipherId)
             if (existingRestore != null) {
-                return@withContext Result.success(Unit)
+                return@withContext Result.success(BitwardenRestoreQueueOutcome.REMOTE_RESTORE_ALREADY_QUEUED)
             }
 
             val existingDelete = pendingOpDao.findActiveDeleteByCipher(vaultId, cipherId)
             if (existingDelete != null) {
                 pendingOpDao.cancelActiveDeleteByCipher(vaultId, cipherId)
-                return@withContext Result.success(Unit)
+                return@withContext Result.success(BitwardenRestoreQueueOutcome.CANCELED_PENDING_DELETE)
             }
 
             entryId?.let { id ->
@@ -1142,7 +1153,7 @@ class BitwardenRepository(private val context: Context) {
                 )
             )
 
-            Result.success(Unit)
+            Result.success(BitwardenRestoreQueueOutcome.ENQUEUED_REMOTE_RESTORE)
         } catch (e: Exception) {
             Log.e(TAG, "加入 Bitwarden 恢复队列失败", e)
             Result.failure(e)
@@ -1551,7 +1562,12 @@ class BitwardenRepository(private val context: Context) {
     }
     
     sealed class SyncResult {
-        data class Success(val syncedCount: Int, val conflictCount: Int) : SyncResult()
+        data class Success(
+            val syncedCount: Int,
+            val conflictCount: Int,
+            val uploadFailedCount: Int,
+            val skippedDueToLocalDirtyCount: Int
+        ) : SyncResult()
         data class Error(val message: String) : SyncResult()
         
         /**

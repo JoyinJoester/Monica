@@ -13,6 +13,80 @@ android {
 
     def previewVersionSuffix = project.findProperty('previewVersionSuffix')?.toString()?.trim()
 
+    def normalizeTwoDigits = { raw ->
+        def value = raw?.toString()?.trim()?.replaceAll('\\D', '')
+        if (!value) {
+            return '01'
+        }
+        value = value.padLeft(2, '0')
+        value.length() > 2 ? value[-2..-1] : value
+    }
+
+    def sanitizeTag = { raw, fallback ->
+        def value = raw?.toString()?.trim()
+        if (!value) {
+            return fallback
+        }
+        def cleaned = value.replaceAll('[^0-9A-Za-z._+-]', '_')
+        cleaned ?: fallback
+    }
+
+    def resolveArchTag = { output ->
+        def manualArch = project.findProperty('apkArch')
+        if (manualArch?.toString()?.trim()) {
+            return sanitizeTag(manualArch, 'universal')
+        }
+
+        if (output?.metaClass?.respondsTo(output, 'getFilters')) {
+            def abiFilter = output.filters?.find {
+                def typeText = it?.filterType?.toString()
+                typeText?.equalsIgnoreCase('ABI') || typeText?.toUpperCase()?.endsWith('.ABI')
+            }
+            if (abiFilter?.identifier?.toString()?.trim()) {
+                return sanitizeTag(abiFilter.identifier, 'universal')
+            }
+        }
+
+        def configuredAbis = defaultConfig.ndk?.abiFilters
+        if (configuredAbis && !configuredAbis.isEmpty()) {
+            return sanitizeTag(configuredAbis.toList().sort().join('+'), 'universal')
+        }
+
+        'universal'
+    }
+
+    // Key: apkPrefix-dateVersionPrefix, Value: next sequence in current Gradle session.
+    def allocatedDailySeqByPrefix = [:]
+
+    def findNextDailySeq = { String namePrefix ->
+        if (allocatedDailySeqByPrefix.containsKey(namePrefix)) {
+            allocatedDailySeqByPrefix[namePrefix] = allocatedDailySeqByPrefix[namePrefix] + 1
+            return allocatedDailySeqByPrefix[namePrefix]
+        }
+
+        def outputsDir = file("$buildDir/outputs/apk")
+        def maxSeq = 0
+        if (outputsDir.exists()) {
+            def fileNamePattern = java.util.regex.Pattern.compile('^' + java.util.regex.Pattern.quote(namePrefix) + '-(\\d{2})\\.[aA][pP][kK]$')
+            outputsDir.eachFileRecurse { outputFile ->
+                if (!outputFile.isFile()) {
+                    return
+                }
+                def matcher = fileNamePattern.matcher(outputFile.name)
+                if (matcher.matches()) {
+                    def seq = matcher.group(1).toInteger()
+                    if (seq > maxSeq) {
+                        maxSeq = seq
+                    }
+                }
+            }
+        }
+
+        def nextSeq = maxSeq + 1
+        allocatedDailySeqByPrefix[namePrefix] = nextSeq
+        nextSeq
+    }
+
     defaultConfig {
         applicationId "takagi.ru.monica"
         minSdk 26
@@ -61,6 +135,24 @@ android {
         compose true
         buildConfig true
     }
+
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            // 目标格式: Monica-Android-[架构]-[版本号]-yyMMddVV-SS.APK
+            def apkPrefix = 'Monica'
+            def archTag = resolveArchTag(output)
+            def versionNameTag = sanitizeTag(project.findProperty('apkVersionName') ?: variant.versionName ?: defaultConfig.versionName, '0.0.0')
+            def dateTag = new Date().format('yyMMdd', java.util.TimeZone.getTimeZone('Asia/Shanghai'))
+            def versionTag = normalizeTwoDigits(project.findProperty('apkVersionTag') ?: defaultConfig.versionCode)
+            def namePrefix = "${apkPrefix}-Android-${archTag}-${versionNameTag}-${dateTag}${versionTag}"
+            def manualDailySeq = project.findProperty('dailySeq')
+            def dailySeq = manualDailySeq != null
+                    ? normalizeTwoDigits(manualDailySeq)
+                    : normalizeTwoDigits(findNextDailySeq(namePrefix))
+            outputFileName = "${namePrefix}-${dailySeq}.APK"
+        }
+    }
+
     sourceSets {
         test {
             java {

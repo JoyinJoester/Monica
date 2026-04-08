@@ -445,7 +445,10 @@ fun MonicaApp(
             }.getOrDefault(false)
             val canRestoreSession = runCatching {
                 SessionManager.updateAutoLockTimeout(settingsSnapshot.autoLockMinutes)
-                SessionManager.canSkipVerification(context)
+                securityManager.canAccessVaultNowStrict(
+                    context.applicationContext,
+                    settingsSnapshot.autoLockMinutes
+                )
             }.getOrDefault(false)
             StartupAuthState(
                 disablePasswordVerification = disablePasswordVerification,
@@ -574,9 +577,13 @@ fun MonicaContent(
         )
     }
     var hasRenderedLoginFirstFrame by remember { mutableStateOf(false) }
+    val canRestoreVaultSession = !bypassEnabled && securityManager.canAccessVaultNowStrict(
+        context.applicationContext,
+        settings.autoLockMinutes
+    )
     val shouldRequireAuthentication = !isAuthenticated &&
         !bypassEnabled &&
-        !SessionManager.canSkipVerification(context)
+        !canRestoreVaultSession
     val isOnAuthRoute = currentRoute != null && currentRoute in authRouteSet
     val showAuthTransitionGate = shouldRequireAuthentication && (
         !isOnAuthRoute ||
@@ -598,15 +605,18 @@ fun MonicaContent(
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_START -> {
-                    val canSkipVerification = SessionManager.canSkipVerification(context)
+                    val canRestoreSession = securityManager.canAccessVaultNowStrict(
+                        context.applicationContext,
+                        currentSettings.autoLockMinutes
+                    )
                     val bypassEnabled =
                         currentSettings.disablePasswordVerification && !currentIsFirstTime
 
-                    if (!currentIsAuthenticated && canSkipVerification) {
+                    if (!currentIsAuthenticated && canRestoreSession) {
                         viewModel.restoreAuthenticatedSession()
                     }
 
-                    if (currentIsAuthenticated && !canSkipVerification && !bypassEnabled) {
+                    if (currentIsAuthenticated && !canRestoreSession && !bypassEnabled) {
                         viewModel.logout()
                         return@LifecycleEventObserver
                     }
@@ -615,7 +625,7 @@ fun MonicaContent(
                         viewModel.refreshKeePassFromSourceForCurrentContext()
                     }
                     if (!currentIsAuthenticated &&
-                        !canSkipVerification &&
+                        !canRestoreSession &&
                         !bypassEnabled
                     ) {
                         navController.navigate(Screen.Login.route) {
@@ -662,7 +672,7 @@ fun MonicaContent(
                 }
             }
         } else if (!(settings.disablePasswordVerification && !isFirstTime)) {
-            if (SessionManager.canSkipVerification(context)) {
+            if (securityManager.canAccessVaultNowStrict(context.applicationContext, settings.autoLockMinutes)) {
                 viewModel.restoreAuthenticatedSession()
                 return@LaunchedEffect
             }

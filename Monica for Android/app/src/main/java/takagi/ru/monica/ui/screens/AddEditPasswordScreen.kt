@@ -127,6 +127,7 @@ import takagi.ru.monica.ui.model.SecretValueState
 import takagi.ru.monica.ui.model.plainValueOrEmpty
 import java.io.File
 import java.util.Locale
+import takagi.ru.monica.ui.components.OutlinedTextField
 
 private const val MONICA_USERNAME_ALIAS_FIELD_TITLE = "__monica_username_alias"
 private const val MONICA_USERNAME_ALIAS_META_FIELD_TITLE = "__monica_username_alias_meta"

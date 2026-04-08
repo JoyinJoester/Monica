@@ -11,6 +11,7 @@ import takagi.ru.monica.data.PasswordEntryDao
 import takagi.ru.monica.data.PasswordHistoryDao
 import takagi.ru.monica.data.PasswordHistoryEntry
 import takagi.ru.monica.data.SecureItemDao
+import takagi.ru.monica.bitwarden.BitwardenMutationStateHelper
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenFolderDao
 import takagi.ru.monica.data.bitwarden.BitwardenSyncRawEntryRecord
@@ -163,7 +164,9 @@ class PasswordRepository(
     }
     
     suspend fun updatePasswordEntry(entry: PasswordEntry) {
-        passwordEntryDao.updatePasswordEntry(entry)
+        val existingEntry = if (entry.id != 0L) passwordEntryDao.getPasswordEntryById(entry.id) else null
+        val normalizedEntry = BitwardenMutationStateHelper.normalizePasswordUpdate(existingEntry, entry)
+        passwordEntryDao.updatePasswordEntry(normalizedEntry)
     }
 
     suspend fun updatePasswordUpdatedAt(id: Long, updatedAt: java.util.Date) {
@@ -246,7 +249,13 @@ class PasswordRepository(
     }
     
     suspend fun toggleFavorite(id: Long, isFavorite: Boolean) {
-        passwordEntryDao.updateFavoriteStatus(id, isFavorite)
+        val existingEntry = passwordEntryDao.getPasswordEntryById(id) ?: return
+        updatePasswordEntry(
+            existingEntry.copy(
+                isFavorite = isFavorite,
+                updatedAt = Date()
+            )
+        )
     }
     
     suspend fun updateGroupCoverStatus(id: Long, isGroupCover: Boolean) {
@@ -370,12 +379,10 @@ class PasswordRepository(
      */
     suspend fun updateAuthenticatorKey(id: Long, authenticatorKey: String) {
         val existing = passwordEntryDao.getPasswordEntryById(id) ?: return
-        val isBitwardenCipher = existing.bitwardenVaultId != null && !existing.bitwardenCipherId.isNullOrBlank()
-        passwordEntryDao.updatePasswordEntry(
+        updatePasswordEntry(
             existing.copy(
                 authenticatorKey = authenticatorKey,
-                updatedAt = Date(),
-                bitwardenLocalModified = if (isBitwardenCipher) true else existing.bitwardenLocalModified
+                updatedAt = Date()
             )
         )
     }
@@ -385,12 +392,10 @@ class PasswordRepository(
      */
     suspend fun updatePasskeyBindings(id: Long, passkeyBindings: String) {
         val existing = passwordEntryDao.getPasswordEntryById(id) ?: return
-        val isBitwardenCipher = existing.bitwardenVaultId != null && !existing.bitwardenCipherId.isNullOrBlank()
-        passwordEntryDao.updatePasswordEntry(
+        updatePasswordEntry(
             existing.copy(
                 passkeyBindings = passkeyBindings,
-                updatedAt = Date(),
-                bitwardenLocalModified = if (isBitwardenCipher) true else existing.bitwardenLocalModified
+                updatedAt = Date()
             )
         )
     }

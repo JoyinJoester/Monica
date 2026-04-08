@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.Velocity
 import takagi.ru.monica.util.VibrationPatterns
 import androidx.activity.compose.BackHandler
 import androidx.fragment.app.FragmentActivity
+import takagi.ru.monica.ui.components.OutlinedTextField
 
 @OptIn(ExperimentalMaterial3Api::class)  
 @Composable

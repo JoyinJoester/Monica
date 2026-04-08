@@ -20,6 +20,7 @@ import takagi.ru.monica.data.model.TIMELINE_FIELD_BATCH_MOVE_PAYLOAD
 import takagi.ru.monica.data.model.TimelineBatchCopyPayload
 import takagi.ru.monica.data.model.TimelineBatchMovePayload
 import takagi.ru.monica.data.model.TimelinePasswordLocationState
+import takagi.ru.monica.data.model.TimelinePasswordRecreatedEntry
 import takagi.ru.monica.ui.password.PasswordAggregateListItemUi
 import takagi.ru.monica.ui.components.UNIFIED_MOVE_ARCHIVE_SENTINEL_CATEGORY_ID
 import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
@@ -81,7 +82,9 @@ internal fun toLocationState(entry: PasswordEntry): TimelinePasswordLocationStat
         keepassDatabaseId = entry.keepassDatabaseId,
         keepassGroupPath = entry.keepassGroupPath,
         bitwardenVaultId = entry.bitwardenVaultId,
+        bitwardenCipherId = entry.bitwardenCipherId,
         bitwardenFolderId = entry.bitwardenFolderId,
+        bitwardenRevisionDate = entry.bitwardenRevisionDate,
         bitwardenLocalModified = entry.bitwardenLocalModified,
         isArchived = entry.isArchived,
         archivedAtMillis = entry.archivedAt?.time
@@ -107,7 +110,9 @@ internal fun toMovedLocationState(
             keepassDatabaseId = null,
             keepassGroupPath = null,
             bitwardenVaultId = null,
+            bitwardenCipherId = null,
             bitwardenFolderId = null,
+            bitwardenRevisionDate = null,
             bitwardenLocalModified = false,
             isArchived = false,
             archivedAtMillis = null
@@ -121,7 +126,9 @@ internal fun toMovedLocationState(
                     keepassDatabaseId = null,
                     keepassGroupPath = null,
                     bitwardenVaultId = null,
+                    bitwardenCipherId = null,
                     bitwardenFolderId = null,
+                    bitwardenRevisionDate = null,
                     bitwardenLocalModified = false,
                     isArchived = true,
                     archivedAtMillis = archivedAt
@@ -133,7 +140,9 @@ internal fun toMovedLocationState(
                     keepassDatabaseId = null,
                     keepassGroupPath = null,
                     bitwardenVaultId = null,
+                    bitwardenCipherId = null,
                     bitwardenFolderId = null,
+                    bitwardenRevisionDate = null,
                     bitwardenLocalModified = false,
                     isArchived = false,
                     archivedAtMillis = null
@@ -147,7 +156,9 @@ internal fun toMovedLocationState(
             keepassDatabaseId = null,
             keepassGroupPath = null,
             bitwardenVaultId = target.vaultId,
+            bitwardenCipherId = null,
             bitwardenFolderId = "",
+            bitwardenRevisionDate = null,
             bitwardenLocalModified = false,
             isArchived = false,
             archivedAtMillis = null
@@ -159,7 +170,9 @@ internal fun toMovedLocationState(
             keepassDatabaseId = null,
             keepassGroupPath = null,
             bitwardenVaultId = target.vaultId,
+            bitwardenCipherId = null,
             bitwardenFolderId = target.folderId,
+            bitwardenRevisionDate = null,
             bitwardenLocalModified = false,
             isArchived = false,
             archivedAtMillis = null
@@ -171,7 +184,9 @@ internal fun toMovedLocationState(
             keepassDatabaseId = target.databaseId,
             keepassGroupPath = null,
             bitwardenVaultId = null,
+            bitwardenCipherId = null,
             bitwardenFolderId = null,
+            bitwardenRevisionDate = null,
             bitwardenLocalModified = false,
             isArchived = false,
             archivedAtMillis = null
@@ -183,7 +198,9 @@ internal fun toMovedLocationState(
             keepassDatabaseId = target.databaseId,
             keepassGroupPath = target.groupPath,
             bitwardenVaultId = null,
+            bitwardenCipherId = null,
             bitwardenFolderId = null,
+            bitwardenRevisionDate = null,
             bitwardenLocalModified = false,
             isArchived = false,
             archivedAtMillis = null
@@ -465,10 +482,15 @@ internal fun logPasswordBatchMoveTimeline(
     selectedEntries: List<PasswordEntry>,
     oldStates: List<TimelinePasswordLocationState>,
     newStates: List<TimelinePasswordLocationState>,
+    recreatedEntries: List<TimelinePasswordRecreatedEntry> = emptyList(),
     targetLabel: String
 ) {
     if (selectedEntries.isEmpty()) return
-    val payload = TimelineBatchMovePayload(oldStates = oldStates, newStates = newStates)
+    val payload = TimelineBatchMovePayload(
+        oldStates = oldStates,
+        newStates = newStates,
+        recreatedEntries = recreatedEntries
+    )
     val payloadJson = timelineBatchJson.encodeToString(payload)
     OperationLogger.logUpdate(
         itemType = OperationLogItemType.PASSWORD,
@@ -619,6 +641,7 @@ internal fun PasswordBatchMoveSheet(
                 val oldStates = selectedEntries.map(::toLocationState)
                 val newStates = selectedEntries.map { toMovedLocationState(it, target) }
                 coroutineScope.launch {
+                    val recreatedEntries = mutableListOf<TimelinePasswordRecreatedEntry>()
                     try {
                         when {
                             targetRouting.isArchiveTarget -> {
@@ -668,6 +691,10 @@ internal fun PasswordBatchMoveSheet(
                                         ).show()
                                         return@launch
                                     }
+                                    recreatedEntries += TimelinePasswordRecreatedEntry(
+                                        sourceEntryId = entry.id,
+                                        recreatedEntryId = result.getOrThrow()
+                                    )
                                 }
 
                                 if (localIds.isNotEmpty()) {
@@ -723,6 +750,10 @@ internal fun PasswordBatchMoveSheet(
                                         ).show()
                                         return@launch
                                     }
+                                    recreatedEntries += TimelinePasswordRecreatedEntry(
+                                        sourceEntryId = entry.id,
+                                        recreatedEntryId = result.getOrThrow()
+                                    )
                                 }
 
                                 if (localIds.isNotEmpty()) {
@@ -818,6 +849,7 @@ internal fun PasswordBatchMoveSheet(
                             selectedEntries = selectedEntries,
                             oldStates = oldStates,
                             newStates = newStates,
+                            recreatedEntries = recreatedEntries,
                             targetLabel = targetLabel
                         )
                         onDismiss()

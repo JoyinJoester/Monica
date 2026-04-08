@@ -13,16 +13,25 @@ data class TimelinePasswordLocationState(
     val keepassDatabaseId: Long? = null,
     val keepassGroupPath: String? = null,
     val bitwardenVaultId: Long? = null,
+    val bitwardenCipherId: String? = null,
     val bitwardenFolderId: String? = null,
+    val bitwardenRevisionDate: String? = null,
     val bitwardenLocalModified: Boolean = false,
     val isArchived: Boolean = false,
     val archivedAtMillis: Long? = null
 )
 
 @Serializable
+data class TimelinePasswordRecreatedEntry(
+    val sourceEntryId: Long,
+    val recreatedEntryId: Long
+)
+
+@Serializable
 data class TimelineBatchMovePayload(
     val oldStates: List<TimelinePasswordLocationState>,
-    val newStates: List<TimelinePasswordLocationState>
+    val newStates: List<TimelinePasswordLocationState>,
+    val recreatedEntries: List<TimelinePasswordRecreatedEntry> = emptyList()
 )
 
 @Serializable

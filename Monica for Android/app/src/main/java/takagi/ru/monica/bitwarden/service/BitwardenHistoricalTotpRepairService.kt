@@ -10,6 +10,7 @@ import takagi.ru.monica.bitwarden.api.BitwardenApiManager
 import takagi.ru.monica.bitwarden.api.BitwardenVaultApi
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto.SymmetricCryptoKey
+import takagi.ru.monica.bitwarden.BitwardenHistoricalRepairStateHelper
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
@@ -117,12 +118,13 @@ class BitwardenHistoricalTotpRepairService(
         val normalizedPayload = TotpDataResolver.toBitwardenPayload(remote.displayName, normalizedData)
         val shouldQueueRemoteRewrite = shouldQueueRemoteRewrite(remote.totpRaw, normalizedPayload)
 
-        val updatedItem = item.copy(
+        val updatedItem = BitwardenHistoricalRepairStateHelper.applyToSecureItem(
+            candidate = item.copy(
             itemData = normalizedItemData,
             updatedAt = if (normalizedItemData != item.itemData || shouldQueueRemoteRewrite) now else item.updatedAt,
-            bitwardenRevisionDate = remote.revisionDate ?: item.bitwardenRevisionDate,
-            bitwardenLocalModified = if (shouldQueueRemoteRewrite) true else item.bitwardenLocalModified,
-            syncStatus = if (shouldQueueRemoteRewrite) "PENDING" else item.syncStatus
+            bitwardenRevisionDate = remote.revisionDate ?: item.bitwardenRevisionDate
+            ),
+            shouldQueueRemoteRewrite = shouldQueueRemoteRewrite
         )
         if (updatedItem != item) {
             secureItemDao.update(updatedItem)
@@ -154,11 +156,13 @@ class BitwardenHistoricalTotpRepairService(
         val normalizedPayload = TotpDataResolver.toBitwardenPayload(remote.displayName, normalizedTotp)
         val shouldQueueRemoteRewrite = shouldQueueRemoteRewrite(remote.totpRaw, normalizedPayload)
 
-        val updatedEntry = entry.copy(
+        val updatedEntry = BitwardenHistoricalRepairStateHelper.applyToPasswordEntry(
+            candidate = entry.copy(
             authenticatorKey = normalizedPayload,
             updatedAt = if (normalizedPayload != entry.authenticatorKey || shouldQueueRemoteRewrite) now else entry.updatedAt,
-            bitwardenRevisionDate = remote.revisionDate ?: entry.bitwardenRevisionDate,
-            bitwardenLocalModified = if (shouldQueueRemoteRewrite) true else entry.bitwardenLocalModified
+            bitwardenRevisionDate = remote.revisionDate ?: entry.bitwardenRevisionDate
+            ),
+            shouldQueueRemoteRewrite = shouldQueueRemoteRewrite
         )
         if (updatedEntry != entry) {
             passwordEntryDao.update(updatedEntry)
@@ -186,11 +190,12 @@ class BitwardenHistoricalTotpRepairService(
                     TotpDataResolver.hasNonDefaultOtpSettings(normalizedData)
                 )
 
-        val updatedItem = item.copy(
+        val updatedItem = BitwardenHistoricalRepairStateHelper.applyToSecureItem(
+            candidate = item.copy(
             itemData = normalizedItemData,
-            updatedAt = if (normalizedItemData != item.itemData || shouldQueueRemoteRewrite) now else item.updatedAt,
-            bitwardenLocalModified = if (shouldQueueRemoteRewrite) true else item.bitwardenLocalModified,
-            syncStatus = if (shouldQueueRemoteRewrite) "PENDING" else item.syncStatus
+            updatedAt = if (normalizedItemData != item.itemData || shouldQueueRemoteRewrite) now else item.updatedAt
+            ),
+            shouldQueueRemoteRewrite = shouldQueueRemoteRewrite
         )
         if (updatedItem != item) {
             secureItemDao.update(updatedItem)
@@ -223,10 +228,12 @@ class BitwardenHistoricalTotpRepairService(
                     TotpDataResolver.hasNonDefaultOtpSettings(normalizedTotp)
                 )
 
-        val updatedEntry = entry.copy(
+        val updatedEntry = BitwardenHistoricalRepairStateHelper.applyToPasswordEntry(
+            candidate = entry.copy(
             authenticatorKey = normalizedPayload,
-            updatedAt = if (normalizedPayload != entry.authenticatorKey || shouldQueueRemoteRewrite) now else entry.updatedAt,
-            bitwardenLocalModified = if (shouldQueueRemoteRewrite) true else entry.bitwardenLocalModified
+            updatedAt = if (normalizedPayload != entry.authenticatorKey || shouldQueueRemoteRewrite) now else entry.updatedAt
+            ),
+            shouldQueueRemoteRewrite = shouldQueueRemoteRewrite
         )
         if (updatedEntry != entry) {
             passwordEntryDao.update(updatedEntry)

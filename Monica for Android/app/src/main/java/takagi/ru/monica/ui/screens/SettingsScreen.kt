@@ -62,6 +62,7 @@ import androidx.compose.ui.draw.scale
 import takagi.ru.monica.data.SecureItem
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
+import takagi.ru.monica.ui.components.OutlinedTextField
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
 @Composable

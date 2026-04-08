@@ -29,7 +29,12 @@ enum class SyncBlockReason {
 }
 
 sealed class SyncExecutionOutcome {
-    data class Success(val syncedCount: Int, val conflictCount: Int) : SyncExecutionOutcome()
+    data class Success(
+        val syncedCount: Int,
+        val conflictCount: Int,
+        val uploadFailedCount: Int,
+        val skippedDueToLocalDirtyCount: Int
+    ) : SyncExecutionOutcome()
     data class RetryableError(val message: String) : SyncExecutionOutcome()
     data class Blocked(val reason: SyncBlockReason, val message: String? = null) : SyncExecutionOutcome()
     data class FatalError(val message: String) : SyncExecutionOutcome()

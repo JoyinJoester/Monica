@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
+import takagi.ru.monica.bitwarden.BitwardenRestoreQueueOutcome
+import takagi.ru.monica.bitwarden.BitwardenTrashRestoreStateHelper
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordDatabase
@@ -249,12 +251,17 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun restoreItem(item: TrashItem, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
+            var restoreOutcome = BitwardenRestoreQueueOutcome.NO_REMOTE_ACTION
             try {
-                if (!queueRemoteRestoreIfNeeded(item.originalData)) {
+                restoreOutcome = queueRemoteRestoreIfNeeded(item.originalData).getOrElse {
+                    android.util.Log.e("TrashViewModel", "Queue remote restore failed for item id=${item.id}", it)
                     onResult(false)
                     return@launch
                 }
-                applyLocalRestore(item.originalData)
+                applyLocalRestore(
+                    item.originalData,
+                    restoreOutcome = restoreOutcome
+                )
                 onResult(true)
 
                 if (!needsKeepassRestore(item.originalData)) {
@@ -273,7 +280,11 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
                     rollbackLocalRestore(item.originalData)
                     return@keepassRestoreSync
                 }
-                applyLocalRestore(item.originalData, keepassRestoreTarget)
+                applyLocalRestore(
+                    item.originalData,
+                    restoreTarget = keepassRestoreTarget,
+                    restoreOutcome = restoreOutcome
+                )
                 logTrashRestore(item)
                 android.util.Log.i("TrashViewModel", "KeePass restore synced: id=${item.id}, type=${item.itemType}")
             }
@@ -306,16 +317,19 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val queuedPasswords = mutableListOf<PasswordEntry>()
             val queuedSecureItems = mutableListOf<SecureItem>()
+            val restoreOutcomes = mutableMapOf<Long, BitwardenRestoreQueueOutcome>()
             val failedItemIds = mutableSetOf<Long>()
             var keepassPasswords: List<PasswordEntry> = emptyList()
             var keepassSecureItems: List<SecureItem> = emptyList()
 
             try {
                 category.items.forEach { item ->
-                    if (!queueRemoteRestoreIfNeeded(item.originalData)) {
+                    val restoreOutcome = queueRemoteRestoreIfNeeded(item.originalData).getOrNull()
+                    if (restoreOutcome == null) {
                         failedItemIds += item.id
                         return@forEach
                     }
+                    restoreOutcomes[item.id] = restoreOutcome
                     when (val data = item.originalData) {
                         is PasswordEntry -> queuedPasswords += data
                         is SecureItem -> queuedSecureItems += data
@@ -324,10 +338,22 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
 
                 queuedPasswords
                     .filterNot { it.id in failedItemIds }
-                    .forEach { applyLocalRestore(it) }
+                    .forEach { entry ->
+                        applyLocalRestore(
+                            entry,
+                            restoreOutcome = restoreOutcomes[entry.id]
+                                ?: BitwardenRestoreQueueOutcome.NO_REMOTE_ACTION
+                        )
+                    }
                 queuedSecureItems
                     .filterNot { it.id in failedItemIds }
-                    .forEach { applyLocalRestore(it) }
+                    .forEach { item ->
+                        applyLocalRestore(
+                            item,
+                            restoreOutcome = restoreOutcomes[item.id]
+                                ?: BitwardenRestoreQueueOutcome.NO_REMOTE_ACTION
+                        )
+                    }
 
                 onResult(failedItemIds.isEmpty())
 
@@ -361,14 +387,24 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
                 keepassPasswords.forEach { entry ->
                     if (entry.id in keepassBatchResult.failedIds) return@forEach
                     val restoreTarget = keepassBatchResult.passwordTargets[entry.id]
-                    applyLocalRestore(entry, restoreTarget)
+                    applyLocalRestore(
+                        entry,
+                        restoreTarget = restoreTarget,
+                        restoreOutcome = restoreOutcomes[entry.id]
+                            ?: BitwardenRestoreQueueOutcome.NO_REMOTE_ACTION
+                    )
                     android.util.Log.i("TrashViewModel", "KeePass restore synced: id=${entry.id}, type=${ItemType.PASSWORD}")
                 }
 
                 keepassSecureItems.forEach { item ->
                     if (item.id in keepassBatchResult.failedIds) return@forEach
                     val restoreTarget = keepassBatchResult.secureItemTargets[item.id]
-                    applyLocalRestore(item, restoreTarget)
+                    applyLocalRestore(
+                        item,
+                        restoreTarget = restoreTarget,
+                        restoreOutcome = restoreOutcomes[item.id]
+                            ?: BitwardenRestoreQueueOutcome.NO_REMOTE_ACTION
+                    )
                     android.util.Log.i("TrashViewModel", "KeePass restore synced: id=${item.id}, type=${item.itemType}")
                 }
             }
@@ -462,37 +498,65 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun buildRestoredPasswordEntry(entry: PasswordEntry, restoreTarget: KeePassRestoreTarget?): PasswordEntry {
-        return entry.copy(
-            isDeleted = false,
-            deletedAt = null,
-            updatedAt = Date(),
-            bitwardenLocalModified = false,
-            keepassGroupPath = restoreTarget?.groupPath,
-            keepassGroupUuid = restoreTarget?.groupUuid
+    private fun buildRestoredPasswordEntry(
+        entry: PasswordEntry,
+        restoreTarget: KeePassRestoreTarget?,
+        restoreOutcome: BitwardenRestoreQueueOutcome
+    ): PasswordEntry {
+        return BitwardenTrashRestoreStateHelper.applyToPasswordEntry(
+            candidate = entry.copy(
+                isDeleted = false,
+                deletedAt = null,
+                updatedAt = Date(),
+                keepassGroupPath = restoreTarget?.groupPath,
+                keepassGroupUuid = restoreTarget?.groupUuid
+            ),
+            restoreOutcome = restoreOutcome
         )
     }
 
-    private fun buildRestoredSecureItem(item: SecureItem, restoreTarget: KeePassRestoreTarget?): SecureItem {
-        return item.copy(
-            isDeleted = false,
-            deletedAt = null,
-            updatedAt = Date(),
-            bitwardenLocalModified = false,
-            keepassGroupPath = restoreTarget?.groupPath,
-            keepassGroupUuid = restoreTarget?.groupUuid
+    private fun buildRestoredSecureItem(
+        item: SecureItem,
+        restoreTarget: KeePassRestoreTarget?,
+        restoreOutcome: BitwardenRestoreQueueOutcome
+    ): SecureItem {
+        return BitwardenTrashRestoreStateHelper.applyToSecureItem(
+            candidate = item.copy(
+                isDeleted = false,
+                deletedAt = null,
+                updatedAt = Date(),
+                keepassGroupPath = restoreTarget?.groupPath,
+                keepassGroupUuid = restoreTarget?.groupUuid
+            ),
+            restoreOutcome = restoreOutcome
         )
     }
 
-    private suspend fun applyLocalRestore(data: Any, restoreTarget: KeePassRestoreTarget? = null) {
+    private suspend fun applyLocalRestore(
+        data: Any,
+        restoreTarget: KeePassRestoreTarget? = null,
+        restoreOutcome: BitwardenRestoreQueueOutcome = BitwardenRestoreQueueOutcome.NO_REMOTE_ACTION
+    ) {
         when (data) {
             is PasswordEntry -> {
                 val resolvedTarget = restoreTarget ?: KeePassRestoreTarget(data.keepassGroupPath, data.keepassGroupUuid)
-                database.passwordEntryDao().update(buildRestoredPasswordEntry(data, resolvedTarget))
+                database.passwordEntryDao().update(
+                    buildRestoredPasswordEntry(
+                        entry = data,
+                        restoreTarget = resolvedTarget,
+                        restoreOutcome = restoreOutcome
+                    )
+                )
             }
             is SecureItem -> {
                 val resolvedTarget = restoreTarget ?: KeePassRestoreTarget(data.keepassGroupPath, data.keepassGroupUuid)
-                database.secureItemDao().update(buildRestoredSecureItem(data, resolvedTarget))
+                database.secureItemDao().update(
+                    buildRestoredSecureItem(
+                        item = data,
+                        restoreTarget = resolvedTarget,
+                        restoreOutcome = restoreOutcome
+                    )
+                )
             }
         }
     }
@@ -522,7 +586,11 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
                     databaseId = keepassId,
                     entry = data.copy(keepassDatabaseId = keepassId)
                 ).getOrElse { return Result.failure(it) }
-                val restoredForKeepass = buildRestoredPasswordEntry(data, restoreTarget).copy(
+                val restoredForKeepass = buildRestoredPasswordEntry(
+                    entry = data,
+                    restoreTarget = restoreTarget,
+                    restoreOutcome = BitwardenRestoreQueueOutcome.NO_REMOTE_ACTION
+                ).copy(
                     keepassDatabaseId = keepassId,
                     keepassGroupPath = restoreTarget.groupPath,
                     keepassGroupUuid = restoreTarget.groupUuid
@@ -548,7 +616,11 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
                     databaseId = keepassId,
                     item = data.copy(keepassDatabaseId = keepassId)
                 ).getOrElse { return Result.failure(it) }
-                val restoredForKeepass = buildRestoredSecureItem(data, restoreTarget).copy(
+                val restoredForKeepass = buildRestoredSecureItem(
+                    item = data,
+                    restoreTarget = restoreTarget,
+                    restoreOutcome = BitwardenRestoreQueueOutcome.NO_REMOTE_ACTION
+                ).copy(
                     keepassDatabaseId = keepassId,
                     keepassGroupPath = restoreTarget.groupPath,
                     keepassGroupUuid = restoreTarget.groupUuid
@@ -604,7 +676,11 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
                     failedIds += entry.id
                     return@entryLoop
                 }
-                restoredEntries += buildRestoredPasswordEntry(entry, restoreTarget).copy(
+                restoredEntries += buildRestoredPasswordEntry(
+                    entry = entry,
+                    restoreTarget = restoreTarget,
+                    restoreOutcome = BitwardenRestoreQueueOutcome.NO_REMOTE_ACTION
+                ).copy(
                     keepassDatabaseId = databaseId,
                     keepassGroupPath = restoreTarget.groupPath,
                     keepassGroupUuid = restoreTarget.groupUuid
@@ -657,7 +733,11 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
                     failedIds += item.id
                     return@itemLoop
                 }
-                restoredItems += buildRestoredSecureItem(item, restoreTarget).copy(
+                restoredItems += buildRestoredSecureItem(
+                    item = item,
+                    restoreTarget = restoreTarget,
+                    restoreOutcome = BitwardenRestoreQueueOutcome.NO_REMOTE_ACTION
+                ).copy(
                     keepassDatabaseId = databaseId,
                     keepassGroupPath = restoreTarget.groupPath,
                     keepassGroupUuid = restoreTarget.groupUuid
@@ -749,7 +829,7 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun queueRemoteRestoreIfNeeded(data: Any): Boolean {
+    private suspend fun queueRemoteRestoreIfNeeded(data: Any): Result<BitwardenRestoreQueueOutcome> {
         return when (data) {
             is PasswordEntry -> {
                 val vaultId = data.bitwardenVaultId
@@ -760,9 +840,9 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
                         cipherId = cipherId,
                         entryId = data.id,
                         itemType = BitwardenPendingOperation.ITEM_TYPE_PASSWORD
-                    ).isSuccess
+                    )
                 } else {
-                    true
+                    Result.success(BitwardenRestoreQueueOutcome.NO_REMOTE_ACTION)
                 }
             }
             is SecureItem -> {
@@ -774,12 +854,12 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
                         cipherId = cipherId,
                         entryId = data.id,
                         itemType = data.itemType.toPendingItemType()
-                    ).isSuccess
+                    )
                 } else {
-                    true
+                    Result.success(BitwardenRestoreQueueOutcome.NO_REMOTE_ACTION)
                 }
             }
-            else -> true
+            else -> Result.success(BitwardenRestoreQueueOutcome.NO_REMOTE_ACTION)
         }
     }
 

@@ -22,6 +22,7 @@ import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
 import takagi.ru.monica.data.isKeePassOwned
 import takagi.ru.monica.data.isLocalOnlyItem
+import takagi.ru.monica.data.model.TimelinePasswordRecreatedEntry
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.security.SecurityManager
@@ -338,6 +339,7 @@ internal suspend fun executeMixedPasswordBatchMove(
     } else {
         val oldStates = selectedEntries.map(::toLocationState)
         val newStates = selectedEntries.map { toMovedLocationState(it, target) }
+        val recreatedEntries = mutableListOf<TimelinePasswordRecreatedEntry>()
         when {
             target == UnifiedMoveCategoryTarget.Uncategorized -> {
                 try {
@@ -359,7 +361,15 @@ internal suspend fun executeMixedPasswordBatchMove(
 
                     bitwardenEntries.forEach { entry ->
                         val result = viewModel.moveBitwardenPasswordToMonicaLocal(entry, null)
-                        if (result.isSuccess) successCount++ else failedCount++
+                        if (result.isSuccess) {
+                            recreatedEntries += TimelinePasswordRecreatedEntry(
+                                sourceEntryId = entry.id,
+                                recreatedEntryId = result.getOrThrow()
+                            )
+                            successCount++
+                        } else {
+                            failedCount++
+                        }
                     }
 
                     if (localIds.isNotEmpty()) {
@@ -395,7 +405,15 @@ internal suspend fun executeMixedPasswordBatchMove(
                             entry = entry,
                             categoryId = target.categoryId
                         )
-                        if (result.isSuccess) successCount++ else failedCount++
+                        if (result.isSuccess) {
+                            recreatedEntries += TimelinePasswordRecreatedEntry(
+                                sourceEntryId = entry.id,
+                                recreatedEntryId = result.getOrThrow()
+                            )
+                            successCount++
+                        } else {
+                            failedCount++
+                        }
                     }
 
                     if (localIds.isNotEmpty()) {
@@ -637,6 +655,7 @@ internal suspend fun executeMixedPasswordBatchMove(
                 selectedEntries = selectedEntries,
                 oldStates = oldStates,
                 newStates = newStates,
+                recreatedEntries = recreatedEntries,
                 targetLabel = targetLabel
             )
         }

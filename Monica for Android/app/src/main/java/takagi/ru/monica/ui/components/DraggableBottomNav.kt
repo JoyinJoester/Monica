@@ -44,6 +44,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import kotlin.math.roundToInt
+import takagi.ru.monica.ui.components.OutlinedTextField
 
 /**
  * 底部导航项数据类（用于可拖拽导航栏）

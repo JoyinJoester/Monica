@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.bitwarden.BitwardenVault
+import takagi.ru.monica.ui.components.OutlinedTextField
 
 /**
  * 增强版分类编辑对话框

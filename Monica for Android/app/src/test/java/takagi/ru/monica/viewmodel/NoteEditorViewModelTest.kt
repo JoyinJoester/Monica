@@ -89,6 +89,7 @@ class NoteEditorViewModelTest {
             isEditing = false,
             initialCategoryId = 1L,
             initialKeePassDatabaseId = null,
+            initialKeePassGroupPath = null,
             initialBitwardenVaultId = null,
             initialBitwardenFolderId = null,
             draftStorageTarget = NoteDraftStorageTarget(
@@ -98,6 +99,7 @@ class NoteEditorViewModelTest {
             rememberedStorageTarget = RememberedStorageTarget(
                 categoryId = 4L,
                 keepassDatabaseId = 5L,
+                keepassGroupPath = null,
                 bitwardenVaultId = 6L,
                 bitwardenFolderId = "f-1"
             )

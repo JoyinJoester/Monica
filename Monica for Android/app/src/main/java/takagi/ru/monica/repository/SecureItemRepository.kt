@@ -1,6 +1,7 @@
 package takagi.ru.monica.repository
 
 import android.util.Log
+import takagi.ru.monica.bitwarden.BitwardenMutationStateHelper
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.SecureItemDao
@@ -87,7 +88,9 @@ class SecureItemRepository(
     }
     
     suspend fun updateItem(item: SecureItem) {
-        secureItemDao.updateItem(item)
+        val existingItem = if (item.id != 0L) secureItemDao.getItemById(item.id) else null
+        val normalizedItem = BitwardenMutationStateHelper.normalizeSecureItemUpdate(existingItem, item)
+        secureItemDao.updateItem(normalizedItem)
     }
     
     suspend fun deleteItem(item: SecureItem) {
@@ -99,11 +102,17 @@ class SecureItemRepository(
     }
     
     suspend fun updateFavoriteStatus(id: Long, isFavorite: Boolean) {
-        secureItemDao.updateFavoriteStatus(id, isFavorite)
+        val existingItem = secureItemDao.getItemById(id) ?: return
+        updateItem(
+            existingItem.copy(
+                isFavorite = isFavorite,
+                updatedAt = java.util.Date()
+            )
+        )
     }
     
     suspend fun toggleFavorite(id: Long, isFavorite: Boolean) {
-        secureItemDao.updateFavoriteStatus(id, isFavorite)
+        updateFavoriteStatus(id, isFavorite)
     }
     
     suspend fun updateSortOrder(id: Long, sortOrder: Int) {

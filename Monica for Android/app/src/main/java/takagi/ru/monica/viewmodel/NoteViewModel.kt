@@ -9,6 +9,7 @@ import kotlinx.coroutines.launch
 import takagi.ru.monica.keepass.KeePassSecureItemCreateExecutor
 import takagi.ru.monica.keepass.KeePassSecureItemDeleteExecutor
 import takagi.ru.monica.keepass.KeePassSecureItemUpdateExecutor
+import takagi.ru.monica.bitwarden.SecureItemBitwardenTransitionResolver
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
@@ -71,13 +72,6 @@ class NoteViewModel(
     private val imageManager = context?.let { ImageManager(it.applicationContext) }
 
     private val bitwardenRepository = context?.let { BitwardenRepository.getInstance(it.applicationContext) }
-
-    private data class BitwardenTransition(
-        val cipherId: String?,
-        val revisionDate: String?,
-        val localModified: Boolean,
-        val syncStatus: String
-    )
 
     private data class KeePassMutationIdentity(
         val groupPath: String?,
@@ -904,52 +898,19 @@ class NoteViewModel(
         targetFolderId: String?,
         forcePendingWhenKeepingCipher: Boolean,
         abortOnQueueFailure: Boolean
-    ): BitwardenTransition? {
-        val previousVaultId = existingItem?.bitwardenVaultId
-        val previousCipherId = existingItem?.bitwardenCipherId
-        val hasExistingCipher = previousVaultId != null && !previousCipherId.isNullOrBlank()
-
-        val leavingExistingCipher = hasExistingCipher && previousVaultId != targetVaultId
-        if (leavingExistingCipher) {
-            val queueResult = bitwardenRepository?.queueCipherDelete(
-                vaultId = previousVaultId!!,
-                cipherId = previousCipherId!!,
-                entryId = existingItem.id,
-                itemType = BitwardenPendingOperation.ITEM_TYPE_NOTE
-            )
-            if (queueResult?.isSuccess != true) {
-                val err = queueResult?.exceptionOrNull()?.message ?: "Bitwarden repository unavailable"
-                Log.e(TAG, "Queue Bitwarden note delete failed: $err")
-                if (abortOnQueueFailure) return null
-            }
-        }
-
-        val keepExistingCipher = hasExistingCipher && previousVaultId == targetVaultId
-        if (targetVaultId == null) {
-            return BitwardenTransition(
-                cipherId = null,
-                revisionDate = null,
-                localModified = false,
-                syncStatus = "NONE"
-            )
-        }
-
-        if (!keepExistingCipher) {
-            return BitwardenTransition(
-                cipherId = null,
-                revisionDate = null,
-                localModified = false,
-                syncStatus = "PENDING"
-            )
-        }
-
-        val folderChanged = existingItem?.bitwardenFolderId != targetFolderId
-        val localModified = forcePendingWhenKeepingCipher || folderChanged || (existingItem?.bitwardenLocalModified == true)
-        return BitwardenTransition(
-            cipherId = previousCipherId,
-            revisionDate = existingItem?.bitwardenRevisionDate,
-            localModified = localModified,
-            syncStatus = if (localModified) "PENDING" else "SYNCED"
+    ) = SecureItemBitwardenTransitionResolver.resolve(
+        tag = TAG,
+        existingItem = existingItem,
+        targetVaultId = targetVaultId,
+        targetFolderId = targetFolderId,
+        forcePendingWhenKeepingCipher = forcePendingWhenKeepingCipher,
+        abortOnQueueFailure = abortOnQueueFailure
+    ) { vaultId, cipherId, entryId ->
+        bitwardenRepository?.queueCipherDelete(
+            vaultId = vaultId,
+            cipherId = cipherId,
+            entryId = entryId,
+            itemType = BitwardenPendingOperation.ITEM_TYPE_NOTE
         )
     }
 }

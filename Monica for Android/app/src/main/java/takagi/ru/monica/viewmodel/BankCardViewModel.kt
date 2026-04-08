@@ -11,6 +11,7 @@ import kotlinx.coroutines.withContext
 import takagi.ru.monica.keepass.KeePassSecureItemCreateExecutor
 import takagi.ru.monica.keepass.KeePassSecureItemDeleteExecutor
 import takagi.ru.monica.keepass.KeePassSecureItemUpdateExecutor
+import takagi.ru.monica.bitwarden.SecureItemBitwardenTransitionResolver
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.LocalKeePassDatabaseDao
@@ -278,18 +279,40 @@ class BankCardViewModel(
                     keepassGroupUuid = keepassIdentity.groupUuid,
                     bitwardenVaultId = bitwardenVaultId,
                     bitwardenFolderId = bitwardenFolderId,
-                    bitwardenLocalModified = existingItem.bitwardenCipherId != null && bitwardenVaultId != null,
-                    syncStatus = if (bitwardenVaultId != null) {
-                        if (existingItem.bitwardenCipherId != null) "PENDING" else existingItem.syncStatus
-                    } else {
-                        "NONE"
-                    },
                     replicaGroupId = replicaGroupId ?: existingItem.replicaGroupId,
                     updatedAt = Date(),
                     imagePaths = imagePaths
                 )
-                repository.updateItem(updatedItem)
-                keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = existingItem, updatedItem = updatedItem)
+                val transition = SecureItemBitwardenTransitionResolver.resolve(
+                    tag = "BankCardViewModel",
+                    existingItem = existingItem,
+                    targetVaultId = bitwardenVaultId,
+                    targetFolderId = bitwardenFolderId,
+                    forcePendingWhenKeepingCipher = bitwardenVaultId != null &&
+                        existingItem.bitwardenVaultId == bitwardenVaultId &&
+                        existingItem.bitwardenCipherId != null,
+                    abortOnQueueFailure = true
+                ) { vaultId, cipherId, entryId ->
+                    bitwardenRepository?.queueCipherDelete(
+                        vaultId = vaultId,
+                        cipherId = cipherId,
+                        entryId = entryId,
+                        itemType = BitwardenPendingOperation.ITEM_TYPE_CARD
+                    )
+                } ?: return@launch
+                val finalUpdatedItem = updatedItem.copy(
+                    bitwardenLocalModified = transition.localModified,
+                    bitwardenCipherId = transition.cipherId,
+                    bitwardenRevisionDate = transition.revisionDate,
+                    syncStatus = transition.syncStatus
+                )
+                repository.updateItem(
+                    finalUpdatedItem
+                )
+                keepassSecureItemUpdateExecutor.syncUpdatedItem(
+                    existingItem = existingItem,
+                    updatedItem = finalUpdatedItem
+                )
                 
                 // 记录更新操作 - 始终记录，即使没有检测到字段变更
                 OperationLogger.logUpdate(
@@ -338,16 +361,33 @@ class BankCardViewModel(
             keepassGroupUuid = keepassIdentity.groupUuid,
             bitwardenVaultId = bitwardenVaultId,
             bitwardenFolderId = bitwardenFolderId,
-            bitwardenLocalModified = existingItem.bitwardenCipherId != null && bitwardenVaultId != null,
-            syncStatus = if (bitwardenVaultId != null) {
-                if (existingItem.bitwardenCipherId != null) "PENDING" else existingItem.syncStatus
-            } else {
-                "NONE"
-            },
             updatedAt = Date()
         )
-        repository.updateItem(updatedItem)
-        keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = existingItem, updatedItem = updatedItem)
+        val transition = SecureItemBitwardenTransitionResolver.resolve(
+            tag = "BankCardViewModel",
+            existingItem = existingItem,
+            targetVaultId = bitwardenVaultId,
+            targetFolderId = bitwardenFolderId,
+            forcePendingWhenKeepingCipher = bitwardenVaultId != null &&
+                existingItem.bitwardenVaultId == bitwardenVaultId &&
+                existingItem.bitwardenCipherId != null,
+            abortOnQueueFailure = true
+        ) { vaultId, cipherId, entryId ->
+            bitwardenRepository?.queueCipherDelete(
+                vaultId = vaultId,
+                cipherId = cipherId,
+                entryId = entryId,
+                itemType = BitwardenPendingOperation.ITEM_TYPE_CARD
+            )
+        } ?: return false
+        val finalUpdatedItem = updatedItem.copy(
+            bitwardenLocalModified = transition.localModified,
+            bitwardenCipherId = transition.cipherId,
+            bitwardenRevisionDate = transition.revisionDate,
+            syncStatus = transition.syncStatus
+        )
+        repository.updateItem(finalUpdatedItem)
+        keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = existingItem, updatedItem = finalUpdatedItem)
         return true
     }
 

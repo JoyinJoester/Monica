@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
+import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.OperationLog
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.maintenance.MaintenanceSnapshotManager
@@ -40,6 +41,7 @@ class TimelineViewModel(application: Application) : AndroidViewModel(application
     private val repository = OperationLogRepository(database.operationLogDao())
     private val passwordRepository = PasswordRepository(database.passwordEntryDao())
     private val secureItemRepository = SecureItemRepository(database.secureItemDao())
+    private val bitwardenRepository = BitwardenRepository.getInstance(application)
     private val securityManager = SecurityManager(application)
     private val maintenanceSnapshotManager = MaintenanceSnapshotManager(database)
     
@@ -317,24 +319,62 @@ class TimelineViewModel(application: Application) : AndroidViewModel(application
         val targetStates = payload.oldStates
         if (targetStates.isEmpty()) return false
 
+        val recreatedEntryMap = payload.recreatedEntries.associate { it.sourceEntryId to it.recreatedEntryId }
         var changed = false
         targetStates.forEach { state ->
-            val entry = passwordRepository.getPasswordEntryById(state.id) ?: return@forEach
+            val effectiveEntryId = recreatedEntryMap[state.id] ?: state.id
+            val entry = passwordRepository.getPasswordEntryById(effectiveEntryId)
+                ?: passwordRepository.getPasswordEntryById(state.id)
+                ?: return@forEach
+            if (!restoreBatchMoveRemoteState(entry, state)) {
+                return@forEach
+            }
             val updatedEntry = entry.copy(
                 categoryId = state.categoryId,
                 keepassDatabaseId = state.keepassDatabaseId,
                 keepassGroupPath = state.keepassGroupPath,
                 bitwardenVaultId = state.bitwardenVaultId,
+                bitwardenCipherId = state.bitwardenCipherId,
                 bitwardenFolderId = state.bitwardenFolderId,
+                bitwardenRevisionDate = state.bitwardenRevisionDate,
                 bitwardenLocalModified = state.bitwardenLocalModified,
                 isArchived = state.isArchived,
                 archivedAt = state.archivedAtMillis?.let { Date(it) },
                 updatedAt = Date()
             )
-            passwordRepository.updatePasswordEntry(updatedEntry)
+            database.passwordEntryDao().update(updatedEntry)
             changed = true
         }
         return changed
+    }
+
+    private suspend fun restoreBatchMoveRemoteState(
+        entry: takagi.ru.monica.data.PasswordEntry,
+        targetState: takagi.ru.monica.data.model.TimelinePasswordLocationState
+    ): Boolean {
+        val targetVaultId = targetState.bitwardenVaultId
+        val targetCipherId = targetState.bitwardenCipherId
+        if (targetVaultId != null && !targetCipherId.isNullOrBlank()) {
+            if (entry.bitwardenVaultId == targetVaultId && entry.bitwardenCipherId == targetCipherId) {
+                return true
+            }
+            return bitwardenRepository.queueCipherRestore(
+                vaultId = targetVaultId,
+                cipherId = targetCipherId,
+                entryId = entry.id
+            ).isSuccess
+        }
+
+        val currentVaultId = entry.bitwardenVaultId
+        val currentCipherId = entry.bitwardenCipherId
+        if (currentVaultId != null && !currentCipherId.isNullOrBlank()) {
+            return bitwardenRepository.queueCipherDelete(
+                vaultId = currentVaultId,
+                cipherId = currentCipherId,
+                entryId = entry.id
+            ).isSuccess
+        }
+        return true
     }
 
     private suspend fun restoreBatchCopy(payloadJson: String): Boolean {

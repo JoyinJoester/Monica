@@ -905,8 +905,15 @@ class PasswordViewModel(
         return try {
             unwrapPasswordLayersForDisplay(rawPassword)
         } catch (error: Exception) {
+            val forcedReauth = securityManager.handleVaultDecryptFailure(error)
+            if (forcedReauth) {
+                _isAuthenticated.value = false
+            }
             if (!hasLoggedDecryptAuthStateWarning) {
-                Log.w("PasswordViewModel", "Skip decrypt due to auth/key state: ${error.message}")
+                Log.w(
+                    "PasswordViewModel",
+                    "Skip decrypt due to auth/key state: ${error.message}, forcedReauth=$forcedReauth"
+                )
                 hasLoggedDecryptAuthStateWarning = true
             }
             null
@@ -1614,8 +1621,27 @@ class PasswordViewModel(
 
     suspend fun movePasswordsToKeePassDatabaseAwait(ids: List<Long>, databaseId: Long?) {
         if (ids.isEmpty()) return
-        repository.clearBitwardenBindingForPasswords(ids)
-        repository.updateKeePassDatabaseForPasswords(ids, databaseId)
+        movePasswordsToKeePassInternal(
+            ids = ids,
+            buildUpdatedEntry = { entry ->
+                entry.copy(
+                    keepassDatabaseId = databaseId,
+                    keepassGroupPath = null,
+                    keepassEntryUuid = null,
+                    keepassGroupUuid = null,
+                    bitwardenVaultId = null,
+                    bitwardenFolderId = null,
+                    bitwardenCipherId = null,
+                    bitwardenRevisionDate = null,
+                    bitwardenLocalModified = false,
+                    updatedAt = Date()
+                )
+            },
+            applyBatchForRemaining = { remainingIds ->
+                repository.clearBitwardenBindingForPasswords(remainingIds)
+                repository.updateKeePassDatabaseForPasswords(remainingIds, databaseId)
+            }
+        )
     }
 
     fun movePasswordsToKeePassGroup(ids: List<Long>, databaseId: Long, groupPath: String) {
@@ -1626,8 +1652,61 @@ class PasswordViewModel(
 
     suspend fun movePasswordsToKeePassGroupAwait(ids: List<Long>, databaseId: Long, groupPath: String) {
         if (ids.isEmpty()) return
-        repository.clearBitwardenBindingForPasswords(ids)
-        repository.updateKeePassGroupForPasswords(ids, databaseId, groupPath)
+        movePasswordsToKeePassInternal(
+            ids = ids,
+            buildUpdatedEntry = { entry ->
+                entry.copy(
+                    keepassDatabaseId = databaseId,
+                    keepassGroupPath = groupPath,
+                    keepassEntryUuid = null,
+                    keepassGroupUuid = null,
+                    bitwardenVaultId = null,
+                    bitwardenFolderId = null,
+                    bitwardenCipherId = null,
+                    bitwardenRevisionDate = null,
+                    bitwardenLocalModified = false,
+                    updatedAt = Date()
+                )
+            },
+            applyBatchForRemaining = { remainingIds ->
+                repository.clearBitwardenBindingForPasswords(remainingIds)
+                repository.updateKeePassGroupForPasswords(remainingIds, databaseId, groupPath)
+            }
+        )
+    }
+
+    private suspend fun movePasswordsToKeePassInternal(
+        ids: List<Long>,
+        buildUpdatedEntry: (PasswordEntry) -> PasswordEntry,
+        applyBatchForRemaining: suspend (List<Long>) -> Unit
+    ) {
+        val entries = repository.getPasswordsByIds(ids)
+        val entriesWithRemoteCipher = entries.filter { it.hasBitwardenCipherBinding() }
+        val handledIds = mutableSetOf<Long>()
+
+        entriesWithRemoteCipher.forEach { entry ->
+            val vaultId = entry.bitwardenVaultId
+            val cipherId = entry.bitwardenCipherId
+            if (vaultId == null || cipherId.isNullOrBlank()) return@forEach
+
+            val queueResult = bitwardenRepository?.queueCipherDelete(
+                vaultId = vaultId,
+                cipherId = cipherId,
+                entryId = entry.id
+            ) ?: Result.failure(IllegalStateException("Bitwarden 仓库不可用"))
+            if (queueResult.isFailure) {
+                throw queueResult.exceptionOrNull()
+                    ?: IllegalStateException("排队删除 Bitwarden 条目失败")
+            }
+
+            repository.updatePasswordEntry(buildUpdatedEntry(entry))
+            handledIds += entry.id
+        }
+
+        val remainingIds = ids.filterNot { handledIds.contains(it) }
+        if (remainingIds.isNotEmpty()) {
+            applyBatchForRemaining(remainingIds)
+        }
     }
 
     fun movePasswordsToBitwardenFolder(ids: List<Long>, vaultId: Long, folderId: String) {

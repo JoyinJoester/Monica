@@ -28,6 +28,7 @@ import java.security.SecureRandom
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.shape.CircleShape
+import takagi.ru.monica.ui.components.OutlinedTextField
 
 /**
  * 存储位置选择器卡片

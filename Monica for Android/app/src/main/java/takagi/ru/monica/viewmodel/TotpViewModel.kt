@@ -10,6 +10,8 @@ import kotlinx.coroutines.launch
 import takagi.ru.monica.keepass.KeePassSecureItemCreateExecutor
 import takagi.ru.monica.keepass.KeePassSecureItemDeleteExecutor
 import takagi.ru.monica.keepass.KeePassSecureItemUpdateExecutor
+import takagi.ru.monica.bitwarden.BitwardenHistoricalRepairStateHelper
+import takagi.ru.monica.bitwarden.SecureItemBitwardenTransitionResolver
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.ItemType
@@ -397,19 +399,12 @@ class TotpViewModel(
                     item.itemData.contains("://", ignoreCase = true) ||
                         TotpDataResolver.hasNonDefaultOtpSettings(normalizedData)
 
-                val updatedItem = item.copy(
-                    itemData = normalizedItemData,
-                    updatedAt = if (normalizedItemData != item.itemData || canSafelyQueueRemoteRepair) now else item.updatedAt,
-                    bitwardenLocalModified = if (canSafelyQueueRemoteRepair && item.bitwardenCipherId != null) {
-                        true
-                    } else {
-                        item.bitwardenLocalModified
-                    },
-                    syncStatus = if (canSafelyQueueRemoteRepair && item.bitwardenCipherId != null) {
-                        "PENDING"
-                    } else {
-                        item.syncStatus
-                    }
+                val updatedItem = BitwardenHistoricalRepairStateHelper.applyToSecureItem(
+                    candidate = item.copy(
+                        itemData = normalizedItemData,
+                        updatedAt = if (normalizedItemData != item.itemData || canSafelyQueueRemoteRepair) now else item.updatedAt
+                    ),
+                    shouldQueueRemoteRewrite = canSafelyQueueRemoteRepair
                 )
 
                 if (updatedItem != item) {
@@ -443,14 +438,12 @@ class TotpViewModel(
                     entry.authenticatorKey.contains("://", ignoreCase = true) ||
                         TotpDataResolver.hasNonDefaultOtpSettings(normalizedTotp)
 
-                val updatedEntry = entry.copy(
-                    authenticatorKey = normalizedPayload,
-                    updatedAt = if (normalizedPayload != entry.authenticatorKey || canSafelyQueueRemoteRepair) now else entry.updatedAt,
-                    bitwardenLocalModified = if (canSafelyQueueRemoteRepair && entry.bitwardenCipherId != null) {
-                        true
-                    } else {
-                        entry.bitwardenLocalModified
-                    }
+                val updatedEntry = BitwardenHistoricalRepairStateHelper.applyToPasswordEntry(
+                    candidate = entry.copy(
+                        authenticatorKey = normalizedPayload,
+                        updatedAt = if (normalizedPayload != entry.authenticatorKey || canSafelyQueueRemoteRepair) now else entry.updatedAt
+                    ),
+                    shouldQueueRemoteRewrite = canSafelyQueueRemoteRepair
                 )
 
                 if (updatedEntry != entry) {
@@ -829,29 +822,19 @@ class TotpViewModel(
         )
         val itemDataJson = Json.encodeToString(updatedTotpData)
 
-        if (shouldFollowBoundPassword &&
-            existingItem != null &&
-            existingItem.bitwardenVaultId != null &&
-            !existingItem.bitwardenCipherId.isNullOrBlank()
-        ) {
-            val queueResult = bitwardenRepository?.queueCipherDelete(
-                vaultId = existingItem.bitwardenVaultId,
-                cipherId = existingItem.bitwardenCipherId,
-                entryId = existingItem.id,
-                itemType = BitwardenPendingOperation.ITEM_TYPE_TOTP
-            )
-            if (queueResult?.isSuccess != true) {
-                Log.e(
-                    "TotpViewModel",
-                    "Queue Bitwarden delete failed: ${queueResult?.exceptionOrNull()?.message ?: "Bitwarden repository unavailable"}"
-                )
-                return
-            }
-        }
-
         val resolvedBitwardenVaultId = if (shouldFollowBoundPassword) null else bitwardenVaultId
         val resolvedBitwardenFolderId = if (shouldFollowBoundPassword) null else bitwardenFolderId
         val resolvedReplicaGroupId = replicaGroupId ?: existingItem?.replicaGroupId
+        val transition = resolveBitwardenTransition(
+            existingItem = existingItem,
+            targetVaultId = resolvedBitwardenVaultId,
+            targetFolderId = resolvedBitwardenFolderId,
+            forcePendingWhenKeepingCipher = !shouldFollowBoundPassword &&
+                resolvedBitwardenVaultId != null &&
+                existingItem?.bitwardenVaultId == resolvedBitwardenVaultId &&
+                !existingItem?.bitwardenCipherId.isNullOrBlank(),
+            abortOnQueueFailure = true
+        ) ?: return
 
         val item = if (id != null && id > 0) {
             existingItem?.copy(
@@ -865,20 +848,10 @@ class TotpViewModel(
                 keepassGroupUuid = keepassIdentity.groupUuid,
                 bitwardenVaultId = resolvedBitwardenVaultId,
                 bitwardenFolderId = resolvedBitwardenFolderId,
-                bitwardenCipherId = if (shouldFollowBoundPassword) null else existingItem.bitwardenCipherId,
-                bitwardenRevisionDate = if (shouldFollowBoundPassword) null else existingItem.bitwardenRevisionDate,
-                bitwardenLocalModified = if (shouldFollowBoundPassword) {
-                    false
-                } else {
-                    existingItem.bitwardenCipherId != null && resolvedBitwardenVaultId != null
-                },
-                syncStatus = if (shouldFollowBoundPassword) {
-                    "NONE"
-                } else if (resolvedBitwardenVaultId != null) {
-                    if (existingItem.bitwardenCipherId != null) "PENDING" else existingItem.syncStatus
-                } else {
-                    "NONE"
-                },
+                bitwardenCipherId = transition.cipherId,
+                bitwardenRevisionDate = transition.revisionDate,
+                bitwardenLocalModified = transition.localModified,
+                syncStatus = transition.syncStatus,
                 replicaGroupId = resolvedReplicaGroupId,
                 updatedAt = Date()
             ) ?: return
@@ -896,7 +869,10 @@ class TotpViewModel(
                 keepassGroupUuid = keepassIdentity.groupUuid,
                 bitwardenVaultId = resolvedBitwardenVaultId,
                 bitwardenFolderId = resolvedBitwardenFolderId,
-                syncStatus = if (resolvedBitwardenVaultId != null) "PENDING" else "NONE",
+                bitwardenCipherId = transition.cipherId,
+                bitwardenRevisionDate = transition.revisionDate,
+                bitwardenLocalModified = transition.localModified,
+                syncStatus = transition.syncStatus,
                 createdAt = Date(),
                 updatedAt = Date(),
                 imagePaths = "",
@@ -1321,12 +1297,23 @@ class TotpViewModel(
                         keepassGroupUuid = keepassIdentity.groupUuid,
                         bitwardenVaultId = null,
                         bitwardenFolderId = null,
-                        bitwardenLocalModified = false,
-                        syncStatus = "NONE",
                         updatedAt = Date()
                     )
-                    repository.updateItem(updatedItem)
-                    keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = item, updatedItem = updatedItem)
+                    val transition = resolveBitwardenTransition(
+                        existingItem = item,
+                        targetVaultId = null,
+                        targetFolderId = null,
+                        forcePendingWhenKeepingCipher = false,
+                        abortOnQueueFailure = true
+                    ) ?: return@forEach
+                    val finalUpdatedItem = updatedItem.copy(
+                        bitwardenCipherId = transition.cipherId,
+                        bitwardenRevisionDate = transition.revisionDate,
+                        bitwardenLocalModified = transition.localModified,
+                        syncStatus = transition.syncStatus
+                    )
+                    repository.updateItem(finalUpdatedItem)
+                    keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = item, updatedItem = finalUpdatedItem)
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
@@ -1354,12 +1341,23 @@ class TotpViewModel(
                         keepassGroupUuid = keepassIdentity.groupUuid,
                         bitwardenVaultId = null,
                         bitwardenFolderId = null,
-                        bitwardenLocalModified = false,
-                        syncStatus = "NONE",
                         updatedAt = Date()
                     )
-                    repository.updateItem(updatedItem)
-                    keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = item, updatedItem = updatedItem)
+                    val transition = resolveBitwardenTransition(
+                        existingItem = item,
+                        targetVaultId = null,
+                        targetFolderId = null,
+                        forcePendingWhenKeepingCipher = false,
+                        abortOnQueueFailure = true
+                    ) ?: return@forEach
+                    val finalUpdatedItem = updatedItem.copy(
+                        bitwardenCipherId = transition.cipherId,
+                        bitwardenRevisionDate = transition.revisionDate,
+                        bitwardenLocalModified = transition.localModified,
+                        syncStatus = transition.syncStatus
+                    )
+                    repository.updateItem(finalUpdatedItem)
+                    keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = item, updatedItem = finalUpdatedItem)
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
@@ -1387,17 +1385,51 @@ class TotpViewModel(
                         keepassGroupUuid = keepassIdentity.groupUuid,
                         bitwardenVaultId = vaultId,
                         bitwardenFolderId = folderId,
-                        bitwardenLocalModified = item.bitwardenCipherId != null,
-                        syncStatus = if (item.bitwardenCipherId != null) "PENDING" else item.syncStatus,
                         updatedAt = Date()
                     )
-                    repository.updateItem(updatedItem)
-                    keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = item, updatedItem = updatedItem)
+                    val transition = resolveBitwardenTransition(
+                        existingItem = item,
+                        targetVaultId = vaultId,
+                        targetFolderId = folderId,
+                        forcePendingWhenKeepingCipher =
+                            item.bitwardenVaultId == vaultId && !item.bitwardenCipherId.isNullOrBlank(),
+                        abortOnQueueFailure = true
+                    ) ?: return@forEach
+                    val finalUpdatedItem = updatedItem.copy(
+                        bitwardenCipherId = transition.cipherId,
+                        bitwardenRevisionDate = transition.revisionDate,
+                        bitwardenLocalModified = transition.localModified,
+                        syncStatus = transition.syncStatus
+                    )
+                    repository.updateItem(finalUpdatedItem)
+                    keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = item, updatedItem = finalUpdatedItem)
                 } catch (e: Exception) {
                     e.printStackTrace()
                 }
             }
         }
+    }
+
+    private suspend fun resolveBitwardenTransition(
+        existingItem: SecureItem?,
+        targetVaultId: Long?,
+        targetFolderId: String?,
+        forcePendingWhenKeepingCipher: Boolean,
+        abortOnQueueFailure: Boolean
+    ) = SecureItemBitwardenTransitionResolver.resolve(
+        tag = "TotpViewModel",
+        existingItem = existingItem,
+        targetVaultId = targetVaultId,
+        targetFolderId = targetFolderId,
+        forcePendingWhenKeepingCipher = forcePendingWhenKeepingCipher,
+        abortOnQueueFailure = abortOnQueueFailure
+    ) { vaultId, cipherId, entryId ->
+        bitwardenRepository?.queueCipherDelete(
+            vaultId = vaultId,
+            cipherId = cipherId,
+            entryId = entryId,
+            itemType = BitwardenPendingOperation.ITEM_TYPE_TOTP
+        )
     }
     
     /**
