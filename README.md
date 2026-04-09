@@ -9,7 +9,14 @@
 <p><strong>聚合 Bitwarden 与 KeePass 的本地优先密码库</strong></p>
 <p>Android / Browser · Local Vault · TOTP · WebDAV Backup</p>
 
-[官网](https://joyinjoester.github.io/Monica/) · [Releases](https://github.com/JoyinJoester/Monica/releases) · [Android 文档](Monica%20for%20Android/README.md) · [Browser 文档](Monica%20for%20Browser/README.md)
+
+<p>
+	友情链接：
+	<a href="https://linux.do" title="Linux.do">
+		<img src="https://www.google.com/s2/favicons?domain=linux.do&sz=64" alt="Linux.do" width="22" />
+		Linux.do
+	</a>
+</p>
 
 [![Release](https://img.shields.io/github/v/release/JoyinJoester/Monica?style=flat-square)](https://github.com/JoyinJoester/Monica/releases)
 [![Downloads](https://img.shields.io/github/downloads/JoyinJoester/Monica/total?style=flat-square)](https://github.com/JoyinJoester/Monica/releases)

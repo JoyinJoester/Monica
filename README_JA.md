@@ -9,12 +9,10 @@
 <p><strong>Bitwarden と KeePass をつなぐローカル優先のパスワード保管庫</strong></p>
 <p>Android / Browser · Local Vault · TOTP · WebDAV Backup</p>
 
-[サイト](https://joyinjoester.github.io/Monica/) · [Releases](https://github.com/JoyinJoester/Monica/releases) · [Android ドキュメント](Monica%20for%20Android/README.md) · [Browser ドキュメント](Monica%20for%20Browser/README.md)
-
 <p>
 	友達リンク:
 	<a href="https://linux.do" title="Linux.do">
-		<img src="https://linux.do/logo-96.svg" alt="Linux.do" width="22" />
+		<img src="https://www.google.com/s2/favicons?domain=linux.do&sz=64" alt="Linux.do" width="22" />
 		Linux.do
 	</a>
 </p>

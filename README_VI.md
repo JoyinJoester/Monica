@@ -9,12 +9,10 @@
 <p><strong>Kho mat khau uu tien local, ket noi Bitwarden va KeePass</strong></p>
 <p>Android / Browser · Local Vault · TOTP · WebDAV Backup</p>
 
-[Trang web](https://joyinjoester.github.io/Monica/) · [Releases](https://github.com/JoyinJoester/Monica/releases) · [Tai lieu Android](Monica%20for%20Android/README.md) · [Tai lieu Browser](Monica%20for%20Browser/README.md)
-
 <p>
 	Lien ket ban be:
 	<a href="https://linux.do" title="Linux.do">
-		<img src="https://linux.do/logo-96.svg" alt="Linux.do" width="22" />
+		<img src="https://www.google.com/s2/favicons?domain=linux.do&sz=64" alt="Linux.do" width="22" />
 		Linux.do
 	</a>
 </p>
