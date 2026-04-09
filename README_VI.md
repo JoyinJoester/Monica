@@ -11,6 +11,14 @@
 
 [Trang web](https://joyinjoester.github.io/Monica/) · [Releases](https://github.com/JoyinJoester/Monica/releases) · [Tai lieu Android](Monica%20for%20Android/README.md) · [Tai lieu Browser](Monica%20for%20Browser/README.md)
 
+<p>
+	Lien ket ban be:
+	<a href="https://linux.do" title="Linux.do">
+		<img src="https://linux.do/logo-96.svg" alt="Linux.do" width="22" />
+		Linux.do
+	</a>
+</p>
+
 [![Release](https://img.shields.io/github/v/release/JoyinJoester/Monica?style=flat-square)](https://github.com/JoyinJoester/Monica/releases)
 [![Downloads](https://img.shields.io/github/downloads/JoyinJoester/Monica/total?style=flat-square)](https://github.com/JoyinJoester/Monica/releases)
 [![License](https://img.shields.io/github/license/JoyinJoester/Monica?style=flat-square)](LICENSE)
