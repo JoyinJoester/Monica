@@ -348,8 +348,12 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             )
         }
         
-        // 检查是否可以跳过验证（基于会话管理器的安全窗规则）
-        val canSkipAuth = canSkipVerification()
+        // 主应用已解锁时可直接进入；否则在自动填充页内复用同款验证界面，
+        // 但验证结果仅用于本次自动填充，不回写主应用共享会话。
+        val canOpenPicker = securityManager.canRestoreMainAppSession(
+            applicationContext,
+            cachedSettings?.autoLockMinutes ?: 5
+        )
         
         setContent {
             // 读取截图保护设置（截图保护已由 BaseMonicaActivity 统一处理）
@@ -381,12 +385,11 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                     repository = repository,
                     securityManager = securityManager,
                     keepassDatabases = keepassDatabases,
-                    canSkipVerification = canSkipAuth,
+                    canSkipVerification = canOpenPicker,
                     biometricEnabled = settings.biometricEnabled,
                     iconCardsEnabled = settings.iconCardsEnabled,
                     isManualMode = isManualMode,
                     manualModeReason = manualModeReason,
-                    onAuthenticationSuccess = { markAuthenticationSuccess() },
                     onAutofill = { password, forceAddUri ->
                         handleAutofill(password, forceAddUri)
                     },
@@ -404,6 +407,10 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                 )
             }
         }
+    }
+
+    override fun shouldEnforceSharedSessionLock(): Boolean {
+        return false
     }
 
     private fun markCurrentFieldAsNonAutofill() {
@@ -1142,7 +1149,6 @@ private fun AutofillPickerContent(
     iconCardsEnabled: Boolean = false,
     isManualMode: Boolean = false,
     manualModeReason: String = "unknown",
-    onAuthenticationSuccess: () -> Unit = {},
     onAutofill: (PasswordEntry, Boolean) -> Unit,
     onAutofillBankCard: (SecureItem) -> Unit,
     onAutofillDocument: (SecureItem) -> Unit,
@@ -1252,15 +1258,24 @@ private fun AutofillPickerContent(
             is PasswordItemAction.SmartCopyPasswordFirst -> onSmartCopy(action.password, false)
         }
     }
-    
-    // 验证状态：如果可以跳过验证（会话有效），直接标记为已认证
+
     var isAuthenticated by remember { mutableStateOf(canSkipVerification) }
-    
-    // 如果会话有效，通知外部
-    LaunchedEffect(canSkipVerification) {
-        if (canSkipVerification) {
-            onAuthenticationSuccess()
+
+    if (!isAuthenticated) {
+        Surface(modifier = Modifier.fillMaxSize()) {
+            PasswordVerificationContent(
+                modifier = Modifier.fillMaxSize(),
+                isFirstTime = false,
+                disablePasswordVerification = false,
+                biometricEnabled = biometricEnabled,
+                persistVaultUnlockToSession = false,
+                onVerifyPassword = { input -> securityManager.unlockVaultWithPassword(input) },
+                onSuccess = {
+                    isAuthenticated = true
+                }
+            )
         }
+        return
     }
 
     LaunchedEffect(Unit) {
@@ -1284,23 +1299,6 @@ private fun AutofillPickerContent(
                 android.util.Log.w("AutofillPickerV2", "Failed to persist picker defaults: ${it.message}")
             }
         }
-    }
-    
-    // 显示验证界面（完全复用 PasswordVerificationContent，与主程序一致）
-    if (!isAuthenticated) {
-        Surface(modifier = Modifier.fillMaxSize()) {
-            PasswordVerificationContent(
-                isFirstTime = false,
-                disablePasswordVerification = false, // 自动填充始终需要验证
-                biometricEnabled = biometricEnabled,
-                onVerifyPassword = { input -> securityManager.verifyMasterPassword(input) },
-                onSuccess = { 
-                    isAuthenticated = true
-                    onAuthenticationSuccess()
-                }
-            )
-        }
-        return
     }
     
     val (appIcon, appName) = remember(args.applicationId) {
@@ -1332,8 +1330,7 @@ private fun AutofillPickerContent(
             metadata = mapOf(
                 "manualMode" to isManualMode,
                 "manualReason" to manualModeReason,
-                "canSkipVerification" to canSkipVerification,
-                "biometricEnabled" to biometricEnabled,
+                "mainAppAuthenticated" to canSkipVerification,
                 "iconCardsEnabled" to iconCardsEnabled,
                 "responseAuth" to args.responseAuthMode,
                 "idCount" to (args.autofillIds?.size ?: 0),

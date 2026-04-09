@@ -40,7 +40,6 @@ fun LoginScreen(
             isFirstTime = isFirstTime,
             disablePasswordVerification = disablePasswordVerification,
             biometricEnabled = biometricEnabled,
-            forceShowBiometricOption = true,
             onVerifyPassword = { password -> 
                 viewModel.authenticate(password)
             },
@@ -48,7 +47,7 @@ fun LoginScreen(
                 viewModel.setMasterPassword(password)
             },
             onSuccess = {
-                viewModel.restoreAuthenticatedSession()
+                viewModel.restoreAuthenticatedUiState()
             },
             onForgotPassword = onForgotPassword
         )

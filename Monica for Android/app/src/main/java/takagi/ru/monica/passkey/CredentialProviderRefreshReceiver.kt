@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
+import takagi.ru.monica.security.AppUpdateSecurityGuard
 
 /**
  * Records CredentialProviderService state right after app update.
@@ -18,9 +19,15 @@ import android.util.Log
  */
 class CredentialProviderRefreshReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
         val action = intent?.action ?: return
         if (!shouldHandleAction(context, intent, action)) return
+
+        AppUpdateSecurityGuard.enforceLockIfAppUpdated(
+            context = context,
+            reason = "credential_provider_refresh_receiver:$action"
+        )
+
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return
 
         runCatching {
             logCredentialProviderComponentState(context, action)

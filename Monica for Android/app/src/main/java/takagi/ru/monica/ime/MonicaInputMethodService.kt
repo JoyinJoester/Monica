@@ -409,7 +409,7 @@ class MonicaInputMethodService : InputMethodService() {
     }
 
     private fun updateUnlockState(autoLockMinutes: Int): Boolean {
-        val unlocked = securityManager.canAccessVaultNow(this, autoLockMinutes)
+        val unlocked = securityManager.canAccessVaultNowStrict(this, autoLockMinutes)
         if (unlocked) {
             uiState.update { it.copy(unlocked = true, errorMessage = null) }
         } else {

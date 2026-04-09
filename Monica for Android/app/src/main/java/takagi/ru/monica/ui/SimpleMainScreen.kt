@@ -195,6 +195,8 @@ import takagi.ru.monica.ui.password.getGroupKeyForMode
 import takagi.ru.monica.ui.password.getPasswordGroupTitle
 import takagi.ru.monica.ui.password.getPasswordInfoKey
 import takagi.ru.monica.ui.vaultv2.VaultV2Pane
+import takagi.ru.monica.ui.vaultv2.VaultV2PaneState
+import takagi.ru.monica.ui.vaultv2.rememberVaultV2PaneState
 import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
 import takagi.ru.monica.data.bitwarden.BitwardenSend
 import takagi.ru.monica.bitwarden.sync.SyncBlockReason
@@ -853,6 +855,7 @@ fun SimpleMainScreen(
     var passwordListShowBackToTop by remember { mutableStateOf(false) }
     var passwordScrollToTopRequestKey by remember { mutableIntStateOf(0) }
     var showPasswordQuickAccessSheet by rememberSaveable { mutableStateOf(false) }
+    val vaultV2PaneState = rememberVaultV2PaneState()
     
     LaunchedEffect(passwordPageVisibleContentTypes) {
         passwordPageSelectedContentTypes = sanitizeSelectedPasswordPageTypes(
@@ -1110,7 +1113,6 @@ fun SimpleMainScreen(
     // 监听 FAB 展开状态，展开时禁用隐藏逻辑
     var isFabExpanded by remember { mutableStateOf(false) }
     var isFastScrollStripVisible by rememberSaveable(currentTab) { mutableStateOf(false) }
-    var fastScrollIndicatorLabel by rememberSaveable(currentTab.key) { mutableStateOf<String?>(null) }
     // 使用 rememberUpdatedState 确保 currentTab 始终是最新的
     val currentTabState = rememberUpdatedState(currentTab)
     // 确保滚动监听器能获取到最新的设置值
@@ -1562,7 +1564,10 @@ fun SimpleMainScreen(
             resetPasswordPaneState()
             passwordHistoryPageMode = PasswordHistoryPageMode.NONE
         },
-        onHideBackToTop = { passwordListShowBackToTop = false },
+        onHideBackToTop = {
+            passwordListShowBackToTop = false
+            vaultV2PaneState.clearTransientUi()
+        },
         onResetTotpPane = {
             resetTotpPaneState()
         },
@@ -1864,6 +1869,7 @@ fun SimpleMainScreen(
                     onSelectAllDocuments = onSelectAllDocuments,
                     onMoveToCategoryDocuments = onMoveToCategoryDocuments,
                     onDeleteSelectedDocuments = onDeleteSelectedDocuments,
+                    vaultV2PaneState = vaultV2PaneState,
                 )
             }
         )
@@ -1950,19 +1956,16 @@ fun SimpleMainScreen(
                         documentViewModel = documentViewModel,
                         noteViewModel = noteViewModel,
                         passkeyViewModel = passkeyViewModel,
+                        keepassDatabases = keepassDatabases,
+                        bitwardenVaults = bitwardenVaults,
+                        localKeePassViewModel = localKeePassViewModel,
+                        state = vaultV2PaneState,
                         onOpenPassword = handlePasswordDetailOpen,
                         onOpenTotp = handleTotpOpen,
                         onOpenBankCard = handleBankCardOpen,
                         onOpenDocument = handleDocumentOpen,
                         onOpenNote = { handleNoteOpen(it) },
                         onOpenPasskey = handlePasskeyOpen,
-                        onBackToTopVisibilityChange = { visible ->
-                            passwordListShowBackToTop = visible
-                        },
-                        onFastScrollSectionLabelChange = { label ->
-                            fastScrollIndicatorLabel = label
-                        },
-                        scrollToTopRequestKey = passwordScrollToTopRequestKey,
                         appSettings = appSettings,
                         modifier = Modifier.fillMaxSize(),
                     )
@@ -2027,7 +2030,6 @@ fun SimpleMainScreen(
                         noteViewModel = noteViewModel,
                         documentViewModel = documentViewModel,
                         passkeyViewModel = passkeyViewModel,
-                        disablePasswordVerification = appSettings.disablePasswordVerification,
                         biometricEnabled = appSettings.biometricEnabled,
                         iconCardsEnabled = appSettings.iconCardsEnabled && appSettings.passwordPageIconEnabled,
                         unmatchedIconHandlingStrategy = appSettings.unmatchedIconHandlingStrategy,
@@ -2337,6 +2339,7 @@ fun SimpleMainScreen(
         }
     }
 
+    val passwordFastScrollStripProgress by passwordViewModel.fastScrollProgress.collectAsState()
     MainScreenFabOverlay(
         currentTab = currentTab,
         isCompactWidth = isCompactWidth,
@@ -2362,10 +2365,34 @@ fun SimpleMainScreen(
         onFabExpandedChange = { expanded -> isFabExpanded = expanded },
         fastScrollStripVisible = isFastScrollStripVisible,
         onFastScrollStripVisibleChange = { visible -> isFastScrollStripVisible = visible },
-        fastScrollIndicatorLabel = if (currentTab == BottomNavItem.VaultV2) fastScrollIndicatorLabel else null,
-        passwordListShowBackToTop = passwordListShowBackToTop,
-        onBackToTop = { passwordScrollToTopRequestKey++ },
-        quickAccessEnabled = appSettings.passwordListQuickAccessEnabled,
+        fastScrollStripProgress = if (currentTab == BottomNavItem.VaultV2) {
+            vaultV2PaneState.fastScrollProgress
+        } else {
+            passwordFastScrollStripProgress
+        },
+        onFastScrollProgressChange = if (currentTab == BottomNavItem.VaultV2) {
+            vaultV2PaneState::requestFastScroll
+        } else {
+            passwordViewModel::requestFastScroll
+        },
+        fastScrollIndicatorLabel = if (currentTab == BottomNavItem.VaultV2) {
+            vaultV2PaneState.fastScrollIndicatorLabel
+        } else {
+            null
+        },
+        passwordListShowBackToTop = if (currentTab == BottomNavItem.VaultV2) {
+            vaultV2PaneState.showBackToTop
+        } else {
+            passwordListShowBackToTop
+        },
+        onBackToTop = {
+            if (currentTab == BottomNavItem.VaultV2) {
+                vaultV2PaneState.requestScrollToTop()
+            } else {
+                passwordScrollToTopRequestKey++
+            }
+        },
+        quickAccessEnabled = currentTab == BottomNavItem.Passwords && appSettings.passwordListQuickAccessEnabled,
         showPasswordQuickAccessSheet = showPasswordQuickAccessSheet,
         onShowPasswordQuickAccessSheetChange = { showPasswordQuickAccessSheet = it },
         recentOpenedPasswords = recentOpenedPasswords,
@@ -2539,7 +2566,6 @@ private fun PasswordTabPane(
     noteViewModel: NoteViewModel,
     documentViewModel: DocumentViewModel,
     passkeyViewModel: PasskeyViewModel,
-    disablePasswordVerification: Boolean,
     biometricEnabled: Boolean,
     iconCardsEnabled: Boolean,
     unmatchedIconHandlingStrategy: takagi.ru.monica.data.UnmatchedIconHandlingStrategy,
@@ -2659,7 +2685,6 @@ private fun PasswordTabPane(
                             passkeyViewModel = passkeyViewModel,
                             noteViewModel = noteViewModel,
                             passwordId = selectedPasswordId,
-                            disablePasswordVerification = disablePasswordVerification,
                             biometricEnabled = biometricEnabled,
                             iconCardsEnabled = iconCardsEnabled,
                             unmatchedIconHandlingStrategy = unmatchedIconHandlingStrategy,
@@ -2938,7 +2963,8 @@ private fun CompactDraggableTabContent(
     onExitDocumentSelection: () -> Unit,
     onSelectAllDocuments: () -> Unit,
     onMoveToCategoryDocuments: () -> Unit,
-    onDeleteSelectedDocuments: () -> Unit
+    onDeleteSelectedDocuments: () -> Unit,
+    vaultV2PaneState: VaultV2PaneState
 ) {
     val appSettings by settingsViewModel.settings.collectAsState()
     val currentFilter by passwordViewModel.categoryFilter.collectAsState()
@@ -2978,15 +3004,16 @@ private fun CompactDraggableTabContent(
                     documentViewModel = documentViewModel,
                     noteViewModel = noteViewModel,
                     passkeyViewModel = passkeyViewModel,
+                    keepassDatabases = keepassDatabases,
+                    bitwardenVaults = bitwardenVaults,
+                    localKeePassViewModel = localKeePassViewModel,
+                    state = vaultV2PaneState,
                     onOpenPassword = onPasswordOpen,
                     onOpenTotp = onTotpOpen,
                     onOpenBankCard = onBankCardOpen,
                     onOpenDocument = onDocumentOpen,
                     onOpenNote = onNoteOpen,
                     onOpenPasskey = onPasskeyOpen,
-                    onBackToTopVisibilityChange = onBackToTopVisibilityChange,
-                    onFastScrollSectionLabelChange = { },
-                    scrollToTopRequestKey = passwordScrollToTopRequestKey,
                     appSettings = appSettings,
                     modifier = Modifier.fillMaxSize()
                 )
@@ -3040,7 +3067,6 @@ private fun CompactDraggableTabContent(
                     noteViewModel = noteViewModel,
                     documentViewModel = documentViewModel,
                     passkeyViewModel = passkeyViewModel,
-                    disablePasswordVerification = appSettings.disablePasswordVerification,
                     biometricEnabled = appSettings.biometricEnabled,
                     iconCardsEnabled = appSettings.iconCardsEnabled && appSettings.passwordPageIconEnabled,
                     unmatchedIconHandlingStrategy = appSettings.unmatchedIconHandlingStrategy,
@@ -3258,6 +3284,8 @@ private fun BoxScope.MainScreenFabOverlay(
     onFabExpandedChange: (Boolean) -> Unit,
     fastScrollStripVisible: Boolean,
     onFastScrollStripVisibleChange: (Boolean) -> Unit,
+    fastScrollStripProgress: Float,
+    onFastScrollProgressChange: (Float) -> Unit,
     fastScrollIndicatorLabel: String?,
     passwordListShowBackToTop: Boolean,
     onBackToTop: () -> Unit,
@@ -3298,8 +3326,6 @@ private fun BoxScope.MainScreenFabOverlay(
 ) {
     // FAB visibility is computed from tab context + selection mode + detail pane occupancy.
     // This avoids conflicting gestures between fast-scroll, quick access, and expandable add menu.
-    val fastScrollStripProgress by passwordViewModel.fastScrollProgress.collectAsState()
-
     val hasWideDetailSelection = !isCompactWidth && when (currentTab) {
         BottomNavItem.Passwords -> isAddingPasswordInline || inlinePasswordEditorId != null
         BottomNavItem.Authenticator -> isAddingTotpInline || selectedTotpId != null
@@ -3358,7 +3384,7 @@ private fun BoxScope.MainScreenFabOverlay(
         showFab &&
             isFabVisible &&
             !isFabExpanded &&
-            isVaultLikeTab &&
+            currentTab == BottomNavItem.Passwords &&
             quickAccessEnabled &&
             !isAnySelectionMode &&
             !fastScrollStripVisible
@@ -3540,7 +3566,7 @@ private fun BoxScope.MainScreenFabOverlay(
                 visible = fastScrollStripVisible,
                 progress = fastScrollStripProgress,
                 indicatorLabel = fastScrollIndicatorLabel,
-                onProgressChange = passwordViewModel::requestFastScroll,
+                onProgressChange = onFastScrollProgressChange,
                 onDismiss = { onFastScrollStripVisibleChange(false) },
                 modifier = Modifier
                     .align(Alignment.CenterEnd)
@@ -3550,8 +3576,7 @@ private fun BoxScope.MainScreenFabOverlay(
     }
 
     LaunchedEffect(currentTab, quickAccessEnabled, passwordHistoryPageMode) {
-        val quickAccessTabAllowed =
-            currentTab == BottomNavItem.Passwords || currentTab == BottomNavItem.VaultV2
+        val quickAccessTabAllowed = currentTab == BottomNavItem.Passwords
         val shouldHideBecausePasswordHistory =
             currentTab == BottomNavItem.Passwords && passwordHistoryPageMode.isVisible
         if (
@@ -3896,7 +3921,7 @@ private fun MainScreenAddFab(
         CardWalletTab.ALL -> walletUnifiedAddType
     }
     val shouldApplyPasswordAggregateDefaults =
-        currentTab == BottomNavItem.Passwords || currentTab == BottomNavItem.VaultV2
+        currentTab == BottomNavItem.Passwords
     val aggregateStorageDefaults = if (shouldApplyPasswordAggregateDefaults) {
         passwordNewItemDefaults
     } else {

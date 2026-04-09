@@ -2,10 +2,6 @@ package takagi.ru.monica
 
 import android.app.Application
 import android.util.Log
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
@@ -14,6 +10,7 @@ import takagi.ru.monica.bitwarden.sync.NetworkMonitor
 import takagi.ru.monica.bitwarden.sync.SyncQueueManager
 import takagi.ru.monica.bitwarden.sync.SyncQueueManagerHolder
 import takagi.ru.monica.data.PasswordDatabase
+import takagi.ru.monica.security.AppUpdateSecurityGuard
 
 /**
  * Monica 应用程序入口
@@ -30,11 +27,14 @@ class MonicaApplication : Application() {
     companion object {
         private const val TAG = "MonicaApplication"
     }
-
-    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     
     override fun onCreate() {
         super.onCreate()
+
+        AppUpdateSecurityGuard.enforceLockIfAppUpdated(
+            context = this,
+            reason = "application_on_create"
+        )
         
         initKoin()
         initBitwardenSyncInfrastructure()
@@ -70,6 +70,6 @@ class MonicaApplication : Application() {
             Log.w(TAG, "Failed to init Bitwarden sync infrastructure", error)
         }
     }
-    
+
 }
 

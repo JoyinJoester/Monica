@@ -227,10 +227,6 @@ class PasswordViewModel(
     val passwordListScrollOffset: StateFlow<Int> = _passwordListScrollOffset.asStateFlow()
     private val _passwordListScrollAnchorKey = MutableStateFlow<String?>(null)
     val passwordListScrollAnchorKey: StateFlow<String?> = _passwordListScrollAnchorKey.asStateFlow()
-    private val _vaultV2ScrollIndex = MutableStateFlow(0)
-    val vaultV2ScrollIndex: StateFlow<Int> = _vaultV2ScrollIndex.asStateFlow()
-    private val _vaultV2ScrollOffset = MutableStateFlow(0)
-    val vaultV2ScrollOffset: StateFlow<Int> = _vaultV2ScrollOffset.asStateFlow()
 
     private val categoriesSource = repository.getAllCategories()
         .distinctUntilChanged()
@@ -306,17 +302,6 @@ class PasswordViewModel(
         }
     }
 
-    fun updateVaultV2ScrollPosition(index: Int, offset: Int) {
-        val safeIndex = index.coerceAtLeast(0)
-        val safeOffset = offset.coerceAtLeast(0)
-        if (_vaultV2ScrollIndex.value != safeIndex) {
-            _vaultV2ScrollIndex.value = safeIndex
-        }
-        if (_vaultV2ScrollOffset.value != safeOffset) {
-            _vaultV2ScrollOffset.value = safeOffset
-        }
-    }
-    
     private val debouncedSearchQuery: Flow<String> = searchQuery
         .debounce(300)
         .distinctUntilChanged()
@@ -1733,25 +1718,29 @@ class PasswordViewModel(
     }
 
     /**
-     * Restore the in-memory authenticated state when an existing session is still valid.
-     * This is used for developer bypass and activity recreation while the app remains unlocked.
+     * Restore only the UI-level authenticated flag.
+     *
+     * SessionManager and runtime unlock state must already be valid before this
+     * is called. This method must not create or extend an unlock window.
      */
-    fun restoreAuthenticatedSession() {
+    fun restoreAuthenticatedUiState() {
         if (!_isAuthenticated.value) {
             _isAuthenticated.value = true
-        }
-        // Keep the original unlock timestamp when we are only restoring UI state
-        // after an Activity recreation, so auto-lock timing remains accurate.
-        if (!SessionManager.isUnlocked.value) {
-            SessionManager.markUnlocked()
         }
     }
 
     /**
-     * Backward-compatible wrapper for the old startup bypass flow.
+     * Backward-compatible wrapper for old call sites.
+     */
+    fun restoreAuthenticatedSession() {
+        restoreAuthenticatedUiState()
+    }
+
+    /**
+     * Developer bypass only affects UI state and must not mark the app session unlocked.
      */
     fun markAuthenticatedForBypass() {
-        restoreAuthenticatedSession()
+        restoreAuthenticatedUiState()
     }
     
     fun setMasterPassword(password: String) {

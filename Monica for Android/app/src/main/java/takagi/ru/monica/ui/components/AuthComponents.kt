@@ -38,7 +38,7 @@ fun PasswordVerificationContent(
     isConfirmingPassword: Boolean = false,
     disablePasswordVerification: Boolean = false,
     biometricEnabled: Boolean = false,
-    forceShowBiometricOption: Boolean = false,
+    persistVaultUnlockToSession: Boolean = true,
     onVerifyPassword: (String) -> Boolean,
     onSetPassword: (String) -> Unit = {},
     onSuccess: () -> Unit,
@@ -61,11 +61,13 @@ fun PasswordVerificationContent(
     val securityManager = remember(context) { SecurityManager(context.applicationContext) }
     val settingsManager = remember(context) { SettingsManager(context.applicationContext) }
     val isBiometricAvailable = remember { biometricHelper.isBiometricAvailable() }
-    val canUseBiometric = !isFirstTime && isBiometricAvailable && (biometricEnabled || forceShowBiometricOption)
+    val canUseBiometric = !isFirstTime && isBiometricAvailable && biometricEnabled
     var autoBiometricTried by remember { mutableStateOf(false) }
 
     fun completeAuthentication() {
-        securityManager.markVaultAuthenticated()
+        if (persistVaultUnlockToSession) {
+            securityManager.markVaultAuthenticated()
+        }
         onSuccess()
     }
 
@@ -81,6 +83,10 @@ fun PasswordVerificationContent(
         val autoLockMinutes = runCatching {
             runBlocking { settingsManager.settingsFlow.first().autoLockMinutes }
         }.getOrDefault(5)
+        if (securityManager.canAccessVaultMaterialNow()) {
+            android.util.Log.d("PasswordVerification", "Biometric post-check: vault material accessible after retry")
+            return PasswordVerificationBiometricAccessResult.PROCEED
+        }
         val vaultState = securityManager.getVaultAccessState(context.applicationContext, autoLockMinutes)
         if (vaultState == SecurityManager.VaultAccessState.REQUIRES_PASSWORD_REENTRY) {
             val rebuilt = securityManager.rebuildKeystoreWrapperFromRuntimeCacheIfNeeded()
@@ -123,7 +129,7 @@ fun PasswordVerificationContent(
     }
     
     // 自动触发生物识别
-    LaunchedEffect(isFirstTime, isBiometricAvailable, biometricEnabled, forceShowBiometricOption, activity) {
+    LaunchedEffect(isFirstTime, isBiometricAvailable, biometricEnabled, activity) {
         if (!autoBiometricTried && canUseBiometric && activity != null) {
             autoBiometricTried = true
             biometricHelper.authenticate(

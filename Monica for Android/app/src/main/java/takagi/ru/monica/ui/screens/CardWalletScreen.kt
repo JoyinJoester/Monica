@@ -531,10 +531,6 @@ fun CardWalletScreen(
 
     val requestDeleteVerification: (Set<Long>) -> Unit = requestDeleteVerification@{ ids ->
         if (ids.isEmpty()) return@requestDeleteVerification
-        if (appSettings.disablePasswordVerification) {
-            performDelete(ids)
-            return@requestDeleteVerification
-        }
         verifyDeleteIds = ids
         verifyPassword = ""
         verifyPasswordError = false

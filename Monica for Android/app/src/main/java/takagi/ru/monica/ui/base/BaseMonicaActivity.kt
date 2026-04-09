@@ -102,6 +102,10 @@ abstract class BaseMonicaActivity : FragmentActivity() {
         // Sync latest timeout before expiration check to avoid using stale defaults.
         // Only update if settings have been loaded; do not overwrite with fallback default.
         cachedSettings?.let { SessionManager.updateAutoLockTimeout(it.autoLockMinutes) }
+
+        if (!shouldEnforceSharedSessionLock()) {
+            return
+        }
         
         // 检查会话是否过期
         if (SessionManager.isSessionExpired()) {
@@ -137,12 +141,13 @@ abstract class BaseMonicaActivity : FragmentActivity() {
         // 默认空实现，子类可覆写
         android.util.Log.d("BaseMonicaActivity", "Session expired")
     }
-    
+
     /**
-     * 检查是否可以跳过验证（基于 SessionManager 的安全窗规则）
+     * 是否沿用主应用共享会话门控。
+     * 某些独立鉴权页面只借用验证界面，不应把共享会话作为前置条件。
      */
-    protected fun canSkipVerification(): Boolean {
-        return SessionManager.canSkipVerification(this)
+    protected open fun shouldEnforceSharedSessionLock(): Boolean {
+        return true
     }
     
     /**

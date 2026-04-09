@@ -661,7 +661,7 @@ internal fun PasswordListTopSection(
                             }.getOrDefault(false)
                             if (unlocked) {
                                 securityManager.markVaultAuthenticated()
-                                viewModel.restoreAuthenticatedSession()
+                                viewModel.restoreAuthenticatedUiState()
                                 Toast.makeText(
                                     context,
                                     context.getString(R.string.current_database_unlocked),
@@ -699,7 +699,7 @@ internal fun PasswordListTopSection(
                     val unlocked = securityManager.unlockVaultWithPassword(reunlockPassword)
                     if (unlocked) {
                         securityManager.markVaultAuthenticated()
-                        viewModel.restoreAuthenticatedSession()
+                        viewModel.restoreAuthenticatedUiState()
                         Toast.makeText(
                             context,
                             context.getString(R.string.current_database_unlocked),

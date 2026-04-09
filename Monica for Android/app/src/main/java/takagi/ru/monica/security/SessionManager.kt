@@ -53,6 +53,7 @@ object SessionManager {
         _isUnlocked.value = false
         unlockTimestamp = 0L
         SecurityManager.clearRuntimeUnlockCache()
+        SecondarySessionManager.markLocked(clearRuntimeUnlockCache = false)
         android.util.Log.d(TAG, "Session locked, PID=$processId")
     }
     

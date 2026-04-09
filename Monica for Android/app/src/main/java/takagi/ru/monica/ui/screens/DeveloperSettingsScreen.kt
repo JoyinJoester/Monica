@@ -76,6 +76,7 @@ import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import takagi.ru.monica.BuildConfig
 import takagi.ru.monica.R
 import takagi.ru.monica.autofill_ng.AutofillPickerActivityV2
 import takagi.ru.monica.autofill_ng.core.AutofillLogger
@@ -362,36 +363,38 @@ fun DeveloperSettingsScreen(
                 )
 
                 // 显示会话状态
-                val sessionUnlocked by SessionManager.isUnlocked.collectAsState()
-                val remainingMinutes = SessionManager.getRemainingMinutes()
+                if (BuildConfig.DEBUG) {
+                    val sessionUnlocked by SessionManager.isUnlocked.collectAsState()
+                    val remainingMinutes = SessionManager.getRemainingMinutes()
 
-                SettingsItem(
-                    icon = if (sessionUnlocked) Icons.Default.LockOpen else Icons.Default.Lock,
-                    title = stringResource(R.string.developer_session_status),
-                    subtitle = if (sessionUnlocked) {
-                        stringResource(R.string.developer_session_unlocked_remaining, remainingMinutes)
-                    } else {
-                        stringResource(R.string.developer_session_locked)
-                    },
-                    onClick = {
-                        // 手动锁定/解锁会话（用于测试）
-                        if (sessionUnlocked) {
-                            SessionManager.markLocked()
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.developer_session_locked_toast),
-                                Toast.LENGTH_SHORT
-                            ).show()
+                    SettingsItem(
+                        icon = if (sessionUnlocked) Icons.Default.LockOpen else Icons.Default.Lock,
+                        title = stringResource(R.string.developer_session_status),
+                        subtitle = if (sessionUnlocked) {
+                            stringResource(R.string.developer_session_unlocked_remaining, remainingMinutes)
                         } else {
-                            SessionManager.markUnlocked()
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.developer_session_unlocked_toast),
-                                Toast.LENGTH_SHORT
-                            ).show()
+                            stringResource(R.string.developer_session_locked)
+                        },
+                        onClick = {
+                            // 手动锁定/解锁会话（用于测试）
+                            if (sessionUnlocked) {
+                                SessionManager.markLocked()
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.developer_session_locked_toast),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            } else {
+                                SessionManager.markUnlocked()
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.developer_session_unlocked_toast),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
                         }
-                    }
-                )
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))

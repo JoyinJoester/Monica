@@ -7,12 +7,7 @@ import android.security.keystore.KeyProperties
 import android.security.keystore.UserNotAuthenticatedException
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
 import takagi.ru.monica.data.PredefinedSecurityQuestions
-import takagi.ru.monica.utils.SettingsManager
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -44,12 +39,9 @@ class SecurityManager(private val context: Context) {
         val mode: WrapperMode,
         val payload: String
     )
-    
-    private val settingsManager = SettingsManager(context)
+
     private val logTag = "SecurityManager"
-    
-    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    private var isVerificationDisabled = false
+
     @Volatile
     private var mdkAuthUnavailableUntilMillis: Long = 0L
     @Volatile
@@ -61,12 +53,6 @@ class SecurityManager(private val context: Context) {
 
     init {
         SecurityDiagLogger.initialize(context.applicationContext)
-        scope.launch {
-            settingsManager.settingsFlow.collect { settings ->
-                isVerificationDisabled = settings.disablePasswordVerification
-                android.util.Log.d("SecurityManager", "Updated cache: disablePasswordVerification = $isVerificationDisabled")
-            }
-        }
     }
     
     private val masterKey = MasterKey.Builder(context)
@@ -146,19 +132,9 @@ class SecurityManager(private val context: Context) {
     }
     
     /**
-     * Verify the master password
-     * 如果开发者设置中启用了"关闭密码验证",则直接返回true
+     * Verify the master password.
      */
     fun verifyMasterPassword(inputPassword: String): Boolean {
-        // 检查是否禁用密码验证(开发者选项) - 使用缓存值，避免 runBlocking 阻塞主线程
-        android.util.Log.d("SecurityManager", "Password verification check: disabled = $isVerificationDisabled")
-        
-        // 如果禁用验证,直接返回true
-        if (isVerificationDisabled) {
-            android.util.Log.d("SecurityManager", "Password verification BYPASSED by developer settings")
-            return true
-        }
-        
         android.util.Log.d("SecurityManager", "Performing normal password verification")
         val storedHash = sharedPreferences.getString(MASTER_PASSWORD_HASH_KEY, null) ?: return false
         val storedSalt = sharedPreferences.getString(MASTER_PASSWORD_SALT_KEY, null)?.let { saltStr ->
@@ -183,26 +159,21 @@ class SecurityManager(private val context: Context) {
             return true
         }
 
-        android.util.Log.d("SecurityManager", "Vault unlock requested. verificationDisabled=$isVerificationDisabled")
+        android.util.Log.d("SecurityManager", "Vault unlock requested")
 
         return try {
-            if (isVerificationDisabled) {
-                ensureMdkInitializedWithPassword(inputPassword)
-                true
-            } else {
-                val storedHash = sharedPreferences.getString(MASTER_PASSWORD_HASH_KEY, null) ?: return false
-                val storedSalt = sharedPreferences.getString(MASTER_PASSWORD_SALT_KEY, null)?.let { saltStr ->
-                    saltStr.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
-                } ?: return false
+            val storedHash = sharedPreferences.getString(MASTER_PASSWORD_HASH_KEY, null) ?: return false
+            val storedSalt = sharedPreferences.getString(MASTER_PASSWORD_SALT_KEY, null)?.let { saltStr ->
+                saltStr.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+            } ?: return false
 
-                val (computedHash, _) = hashMasterPassword(inputPassword, storedSalt)
-                if (computedHash != storedHash) {
-                    return false
-                }
-
-                ensureMdkInitializedWithPassword(inputPassword)
-                true
+            val (computedHash, _) = hashMasterPassword(inputPassword, storedSalt)
+            if (computedHash != storedHash) {
+                return false
             }
+
+            ensureMdkInitializedWithPassword(inputPassword)
+            true
         } catch (e: Exception) {
             android.util.Log.w("SecurityManager", "Vault password unlock failed: ${e.message}")
             false
@@ -229,11 +200,23 @@ class SecurityManager(private val context: Context) {
     }
 
     /**
-     * Unified success hook for any authentication flow (password/biometric/app/IME/autofill).
-     * Keeps session and keystore cooldown states in sync to avoid false locked prompts.
+     * Main app authentication success hook.
+     * Writes the shared app session and clears temporary keystore cooldown flags.
      */
     fun markVaultAuthenticated() {
         SessionManager.markUnlocked()
+        mdkAuthUnavailableUntilMillis = 0L
+        hasLoggedMdkAuthExpiredWarning = false
+        hasLoggedMdkFallbackEncryption = false
+    }
+
+    /**
+     * Secondary entry-point authentication success hook.
+     * Grants Autofill and IME their own unlock window without unlocking the main app.
+     */
+    fun markSecondaryVaultAuthenticated(autoLockMinutes: Int) {
+        SecondarySessionManager.updateAutoLockTimeout(autoLockMinutes)
+        SecondarySessionManager.markUnlocked()
         mdkAuthUnavailableUntilMillis = 0L
         hasLoggedMdkAuthExpiredWarning = false
         hasLoggedMdkFallbackEncryption = false
@@ -266,14 +249,6 @@ class SecurityManager(private val context: Context) {
         return true
     }
 
-    fun canAccessVaultNowStrict(context: Context, autoLockMinutes: Int): Boolean {
-        return canAccessVaultNow(context, autoLockMinutes, allowSessionOnlyFallback = false)
-    }
-
-    /**
-     * App UI gate for Monica's main process.
-     * Requires an active app session before any keystore-backed MDK recovery can restore access.
-     */
     fun canRestoreMainAppSession(context: Context, autoLockMinutes: Int): Boolean {
         if (!isMasterPasswordSet()) {
             android.util.Log.d(logTag, "canRestoreMainAppSession: no master password set -> accessible")
@@ -281,9 +256,7 @@ class SecurityManager(private val context: Context) {
             return true
         }
 
-        SessionManager.updateAutoLockTimeout(autoLockMinutes)
-        val sessionActive = SessionManager.canSkipVerification(context)
-        if (!sessionActive) {
+        if (!hasActiveSharedSession(context, autoLockMinutes)) {
             android.util.Log.d(logTag, "canRestoreMainAppSession: session inactive -> locked")
             SecurityDiagLogger.append("D/$logTag canRestoreMainAppSession: session inactive -> locked")
             return false
@@ -298,7 +271,6 @@ class SecurityManager(private val context: Context) {
         if (isMdkReadable()) {
             android.util.Log.d(logTag, "canRestoreMainAppSession: MDK readable with active session")
             SecurityDiagLogger.append("D/$logTag canRestoreMainAppSession: MDK readable with active session")
-            markVaultAuthenticated()
             return true
         }
 
@@ -307,7 +279,6 @@ class SecurityManager(private val context: Context) {
         if (retriedAccessible) {
             android.util.Log.d(logTag, "canRestoreMainAppSession: MDK readable on retry with active session")
             SecurityDiagLogger.append("D/$logTag canRestoreMainAppSession: MDK readable on retry with active session")
-            markVaultAuthenticated()
             return true
         }
 
@@ -316,9 +287,14 @@ class SecurityManager(private val context: Context) {
         return false
     }
 
+    fun canAccessVaultNowStrict(context: Context, autoLockMinutes: Int): Boolean {
+        return canAccessVaultNow(context, autoLockMinutes, allowSessionOnlyFallback = false)
+    }
+
     /**
-     * Single-source vault accessibility check for IME/autofill style callers.
-     * Requires both a valid session window and usable runtime key material.
+     * Vault accessibility check for secondary secure entry points.
+     * Requires an active access window from either the main app session or the
+     * isolated secondary session, plus usable runtime key material.
      */
     fun canAccessVaultNow(
         context: Context,
@@ -330,30 +306,24 @@ class SecurityManager(private val context: Context) {
             SecurityDiagLogger.append("D/$logTag canAccessVaultNow: no master password set -> accessible")
             return true
         }
+        val sharedSessionActive = hasActiveSharedSession(context, autoLockMinutes)
+        val secondarySessionActive = hasActiveSecondarySession(context, autoLockMinutes)
+        if (!sharedSessionActive && !secondarySessionActive) {
+            android.util.Log.d(logTag, "canAccessVaultNow: session inactive -> locked")
+            SecurityDiagLogger.append("D/$logTag canAccessVaultNow: session inactive -> locked")
+            return false
+        }
+
         if (isVaultRuntimeUnlocked()) {
             android.util.Log.d(logTag, "canAccessVaultNow: runtime MDK cache present -> accessible")
             SecurityDiagLogger.append("D/$logTag canAccessVaultNow: runtime MDK cache present -> accessible")
             return true
         }
-        val hasKeystoreWrapper = sharedPreferences.contains(MDK_KEYSTORE_BLOB_KEY)
 
-        val mdkAccessible = isMdkReadable()
-
-        // Cross-process/cold-process recovery: if keystore-authenticated MDK is readable,
-        // treat vault as unlocked and sync session state immediately.
-        if (mdkAccessible) {
+        if (isMdkReadable()) {
             android.util.Log.d(logTag, "canAccessVaultNow: MDK readable on first attempt")
             SecurityDiagLogger.append("D/$logTag canAccessVaultNow: MDK readable on first attempt")
-            markVaultAuthenticated()
             return true
-        }
-
-        SessionManager.updateAutoLockTimeout(autoLockMinutes)
-        val sessionActive = SessionManager.canSkipVerification(context)
-        if (!sessionActive) {
-            android.util.Log.d(logTag, "canAccessVaultNow: session inactive -> locked")
-            SecurityDiagLogger.append("D/$logTag canAccessVaultNow: session inactive -> locked")
-            return false
         }
 
         // Session is still valid but MDK read previously failed (often due a stale auth cooldown).
@@ -364,35 +334,39 @@ class SecurityManager(private val context: Context) {
         if (retriedAccessible) {
             android.util.Log.d(logTag, "canAccessVaultNow: MDK readable on retry")
             SecurityDiagLogger.append("D/$logTag canAccessVaultNow: MDK readable on retry")
-            markVaultAuthenticated()
             return true
         }
 
-        // Keyguard-like graceful fallback:
-        // in clone/cold-process scenarios, biometric/session can be valid while keystore wrapper
-        // is temporarily unavailable. Prefer allowing access over hard-blocking with "vault locked".
+        val hasKeystoreWrapper = sharedPreferences.contains(MDK_KEYSTORE_BLOB_KEY)
         val authCooldownActive = System.currentTimeMillis() < mdkAuthUnavailableUntilMillis
-        if (allowSessionOnlyFallback && (!hasKeystoreWrapper || authCooldownActive)) {
-            SessionManager.markUnlocked()
-            android.util.Log.w(
-                logTag,
-                "Allowing session-only vault access fallback: wrapperPresent=$hasKeystoreWrapper, authCooldownActive=$authCooldownActive"
-            )
-            SecurityDiagLogger.append(
-                "W/$logTag canAccessVaultNow: session-only fallback wrapperPresent=$hasKeystoreWrapper authCooldownActive=$authCooldownActive"
-            )
-            return true
-        }
 
         android.util.Log.w(
             logTag,
-            "canAccessVaultNow: locked after retry; wrapperPresent=$hasKeystoreWrapper, sessionActive=$sessionActive, authCooldownActive=$authCooldownActive"
+            "canAccessVaultNow: locked after retry; wrapperPresent=$hasKeystoreWrapper, sharedSessionActive=$sharedSessionActive, secondarySessionActive=$secondarySessionActive, allowSessionOnlyFallback=$allowSessionOnlyFallback, authCooldownActive=$authCooldownActive"
         )
         SecurityDiagLogger.append(
-            "W/$logTag canAccessVaultNow: locked after retry wrapperPresent=$hasKeystoreWrapper sessionActive=$sessionActive authCooldownActive=$authCooldownActive"
+            "W/$logTag canAccessVaultNow: locked after retry wrapperPresent=$hasKeystoreWrapper sharedSessionActive=$sharedSessionActive secondarySessionActive=$secondarySessionActive allowSessionOnlyFallback=$allowSessionOnlyFallback authCooldownActive=$authCooldownActive"
         )
 
         return false
+    }
+
+    /**
+     * Checks whether usable vault key material is immediately available after an
+     * explicit authentication step, without consulting any app session window.
+     */
+    fun canAccessVaultMaterialNow(): Boolean {
+        if (!isMasterPasswordSet()) {
+            return true
+        }
+        if (isVaultRuntimeUnlocked()) {
+            return true
+        }
+        if (isMdkReadable()) {
+            return true
+        }
+        mdkAuthUnavailableUntilMillis = 0L
+        return isMdkReadable()
     }
 
     fun getVaultAccessState(context: Context, autoLockMinutes: Int): VaultAccessState {
@@ -444,6 +418,16 @@ class SecurityManager(private val context: Context) {
         android.util.Log.d(logTag, "rebuildKeystoreWrapperFromRuntimeCacheIfNeeded: persisted=$persisted")
         SecurityDiagLogger.append("D/$logTag rebuildWrapper: persisted=$persisted")
         return persisted
+    }
+
+    private fun hasActiveSharedSession(context: Context, autoLockMinutes: Int): Boolean {
+        SessionManager.updateAutoLockTimeout(autoLockMinutes)
+        return SessionManager.canSkipVerification(context)
+    }
+
+    private fun hasActiveSecondarySession(context: Context, autoLockMinutes: Int): Boolean {
+        SecondarySessionManager.updateAutoLockTimeout(autoLockMinutes)
+        return SecondarySessionManager.canSkipVerification(context)
     }
     
     /**

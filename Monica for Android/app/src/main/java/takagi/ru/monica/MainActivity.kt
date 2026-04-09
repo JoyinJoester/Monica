@@ -85,6 +85,8 @@ import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.PasskeyRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.security.lock.MainAppAccessState
+import takagi.ru.monica.security.lock.MainAppLockPolicy
 import takagi.ru.monica.ui.SimpleMainScreen
 import takagi.ru.monica.ui.screens.AddEditBankCardScreen
 import takagi.ru.monica.ui.screens.AddEditDocumentScreen
@@ -433,34 +435,46 @@ fun MonicaApp(
         )
     }
 
-    var startupAuthState by remember { mutableStateOf<StartupAuthState?>(null) }
+    var startupAuthState by remember { mutableStateOf<MainAppAccessState?>(null) }
     LaunchedEffect(viewModel, settingsManager) {
         val loadedState = withContext(Dispatchers.IO) {
             val settingsSnapshot = runCatching {
                 settingsManager.settingsFlow.first()
             }.getOrElse { AppSettings() }
-            val disablePasswordVerification = settingsSnapshot.disablePasswordVerification
-            val isFirstTime = runCatching {
-                !viewModel.isMasterPasswordSet()
-            }.getOrDefault(false)
-            val canRestoreSession = runCatching {
+            runCatching {
                 SessionManager.updateAutoLockTimeout(settingsSnapshot.autoLockMinutes)
-                securityManager.canRestoreMainAppSession(
+                MainAppLockPolicy.resolveAccessState(
+                    securityManager,
                     context.applicationContext,
-                    settingsSnapshot.autoLockMinutes
+                    settingsSnapshot.autoLockMinutes,
+                    settingsSnapshot.disablePasswordVerification
                 )
-            }.getOrDefault(false)
-            StartupAuthState(
-                disablePasswordVerification = disablePasswordVerification,
-                isFirstTime = isFirstTime,
-                canRestoreSession = canRestoreSession
-            )
+            }.getOrElse {
+                MainAppAccessState(
+                    isFirstTime = false,
+                    bypassEnabled = false,
+                    canRestoreSession = false,
+                    reason = "startup_load_error"
+                )
+            }
         }
-        if (
-            (loadedState.disablePasswordVerification && !loadedState.isFirstTime) ||
-            loadedState.canRestoreSession
-        ) {
+        if (loadedState.bypassEnabled) {
+            android.util.Log.w(
+                "MonicaAuthGate",
+                "Startup allowed via ${loadedState.reason}"
+            )
             viewModel.markAuthenticatedForBypass()
+        } else if (loadedState.canRestoreSession) {
+            android.util.Log.d(
+                "MonicaAuthGate",
+                "Startup restored via ${loadedState.reason}"
+            )
+            viewModel.restoreAuthenticatedUiState()
+        } else {
+            android.util.Log.d(
+                "MonicaAuthGate",
+                "Startup requires authentication via ${loadedState.reason}"
+            )
         }
         startupAuthState = loadedState
     }
@@ -516,9 +530,7 @@ fun MonicaApp(
                     database = database,
                     secureItemRepository = secureItemRepository,
                     passwordHistoryManager = passwordHistoryManager,
-                    initialDisablePasswordVerification = authState.disablePasswordVerification,
-                    initialIsFirstTime = authState.isFirstTime,
-                    initialCanRestoreSession = authState.canRestoreSession,
+                    initialAuthState = authState,
                     onPermissionRequested = { permission, callback ->
                         pendingSupportPermissionCallback = callback
                         sharedSupportPermissionLauncher.launch(permission)
@@ -528,12 +540,6 @@ fun MonicaApp(
         }
     }
 }
-
-private data class StartupAuthState(
-    val disablePasswordVerification: Boolean,
-    val isFirstTime: Boolean,
-    val canRestoreSession: Boolean
-)
 
 @Composable
 fun MonicaContent(
@@ -553,9 +559,13 @@ fun MonicaContent(
     database: PasswordDatabase,
     secureItemRepository: SecureItemRepository,
     passwordHistoryManager: PasswordHistoryManager,
-    initialDisablePasswordVerification: Boolean = false,
-    initialIsFirstTime: Boolean = false,
-    initialCanRestoreSession: Boolean = false,
+    initialAuthState: MainAppAccessState =
+        MainAppAccessState(
+            isFirstTime = false,
+            bypassEnabled = false,
+            canRestoreSession = false,
+            reason = "default"
+        ),
     onPermissionRequested: (String, (Boolean) -> Unit) -> Unit
 ) {
     val context = LocalContext.current
@@ -564,8 +574,7 @@ fun MonicaContent(
     val lifecycleOwner = LocalLifecycleOwner.current
     val navBackStackEntry by navController.currentBackStackEntryAsState()
 
-    val isFirstTime = initialIsFirstTime
-    val bypassEnabled = settings.disablePasswordVerification && !isFirstTime
+    val isFirstTime = initialAuthState.isFirstTime
     val currentRoute = navBackStackEntry?.destination?.route
     val authRouteSet = remember {
         setOf(
@@ -577,13 +586,13 @@ fun MonicaContent(
         )
     }
     var hasRenderedLoginFirstFrame by remember { mutableStateOf(false) }
-    val canRestoreVaultSession = !bypassEnabled && securityManager.canRestoreMainAppSession(
+    val mainAppAccessState = MainAppLockPolicy.resolveAccessState(
+        securityManager,
         context.applicationContext,
-        settings.autoLockMinutes
+        settings.autoLockMinutes,
+        settings.disablePasswordVerification
     )
-    val shouldRequireAuthentication = !isAuthenticated &&
-        !bypassEnabled &&
-        !canRestoreVaultSession
+    val shouldRequireAuthentication = !isAuthenticated && !mainAppAccessState.canEnterMainApp
     val isOnAuthRoute = currentRoute != null && currentRoute in authRouteSet
     val showAuthTransitionGate = shouldRequireAuthentication && (
         !isOnAuthRoute ||
@@ -599,35 +608,46 @@ fun MonicaContent(
     // 使用 rememberUpdatedState 确保生命周期观察者闭包始终访问最新值
     val currentIsAuthenticated by rememberUpdatedState(isAuthenticated)
     val currentSettings by rememberUpdatedState(settings)
-    val currentIsFirstTime by rememberUpdatedState(isFirstTime)
-
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             when (event) {
                 Lifecycle.Event.ON_START -> {
-                    val canRestoreSession = securityManager.canRestoreMainAppSession(
+                    val accessState = MainAppLockPolicy.resolveAccessState(
+                        securityManager,
                         context.applicationContext,
-                        currentSettings.autoLockMinutes
+                        currentSettings.autoLockMinutes,
+                        currentSettings.disablePasswordVerification
                     )
-                    val bypassEnabled =
-                        currentSettings.disablePasswordVerification && !currentIsFirstTime
 
-                    if (!currentIsAuthenticated && canRestoreSession) {
-                        viewModel.restoreAuthenticatedSession()
+                    if (!currentIsAuthenticated && accessState.canEnterMainApp) {
+                        android.util.Log.d(
+                            "MonicaAuthGate",
+                            "ON_START allowed while unauthenticated via ${accessState.reason}"
+                        )
+                        if (accessState.bypassEnabled) {
+                            viewModel.markAuthenticatedForBypass()
+                        } else if (accessState.canRestoreSession) {
+                            viewModel.restoreAuthenticatedUiState()
+                        }
                     }
 
-                    if (currentIsAuthenticated && !canRestoreSession && !bypassEnabled) {
+                    if (currentIsAuthenticated && !accessState.canEnterMainApp) {
+                        android.util.Log.w(
+                            "MonicaAuthGate",
+                            "ON_START revoked authenticated UI state via ${accessState.reason}"
+                        )
                         viewModel.logout()
                         return@LifecycleEventObserver
                     }
 
-                    if (currentIsAuthenticated || bypassEnabled) {
+                    if (currentIsAuthenticated || accessState.bypassEnabled) {
                         viewModel.refreshKeePassFromSourceForCurrentContext()
                     }
-                    if (!currentIsAuthenticated &&
-                        !canRestoreSession &&
-                        !bypassEnabled
-                    ) {
+                    if (!currentIsAuthenticated && !accessState.canEnterMainApp) {
+                        android.util.Log.d(
+                            "MonicaAuthGate",
+                            "ON_START navigating to auth via ${accessState.reason}"
+                        )
                         navController.navigate(Screen.Login.route) {
                             launchSingleTop = true
                             popUpTo(0) { inclusive = true }
@@ -646,15 +666,8 @@ fun MonicaContent(
     
     // 使用固定的 startDestination 避免竞态条件
     // 认证状态变化时通过 LaunchedEffect 处理导航
-    val fixedStartDestination = remember(
-        initialDisablePasswordVerification,
-        initialIsFirstTime,
-        initialCanRestoreSession
-    ) {
-        if (
-            (initialDisablePasswordVerification && !initialIsFirstTime) ||
-            initialCanRestoreSession
-        ) {
+    val fixedStartDestination = remember(initialAuthState.canEnterMainApp) {
+        if (initialAuthState.canEnterMainApp) {
             Screen.Main.createRoute()
         } else {
             Screen.Login.route
@@ -671,9 +684,21 @@ fun MonicaContent(
                     popUpTo(Screen.Login.route) { inclusive = true }
                 }
             }
-        } else if (!(settings.disablePasswordVerification && !isFirstTime)) {
-            if (securityManager.canRestoreMainAppSession(context.applicationContext, settings.autoLockMinutes)) {
-                viewModel.restoreAuthenticatedSession()
+        } else {
+            if (mainAppAccessState.bypassEnabled) {
+                android.util.Log.w(
+                    "MonicaAuthGate",
+                    "Auth effect allowed via ${mainAppAccessState.reason}"
+                )
+                viewModel.markAuthenticatedForBypass()
+                return@LaunchedEffect
+            }
+            if (mainAppAccessState.canRestoreSession) {
+                android.util.Log.d(
+                    "MonicaAuthGate",
+                    "Auth effect restored via ${mainAppAccessState.reason}"
+                )
+                viewModel.restoreAuthenticatedUiState()
                 return@LaunchedEffect
             }
             if (!lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
@@ -1440,7 +1465,6 @@ fun MonicaContent(
                             passkeyViewModel = passkeyViewModel,
                             noteViewModel = noteViewModel,
                             passwordId = passwordId,
-                            disablePasswordVerification = settings.disablePasswordVerification,
                             biometricEnabled = settings.biometricEnabled,
                             iconCardsEnabled = settings.iconCardsEnabled && settings.passwordPageIconEnabled,
                             unmatchedIconHandlingStrategy = settings.unmatchedIconHandlingStrategy,

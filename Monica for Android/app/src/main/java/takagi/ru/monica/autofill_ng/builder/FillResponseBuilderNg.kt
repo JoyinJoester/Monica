@@ -10,7 +10,6 @@ import android.service.autofill.InlinePresentation
 import android.service.autofill.SaveInfo
 import android.view.autofill.AutofillId
 import android.view.autofill.AutofillValue
-import takagi.ru.monica.MainActivity
 import takagi.ru.monica.R
 import takagi.ru.monica.autofill_ng.AutofillPickerActivityV2
 import takagi.ru.monica.autofill_ng.builder.AutofillDatasetBuilder
@@ -183,16 +182,10 @@ class FillResponseBuilderNg(
             rememberLastFilled = false,
         )
         val pickerIntent = AutofillPickerActivityV2.getIntent(context, args)
-        val unlockIntent = Intent(context, MainActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
-            addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        }
-        val authIntent = if (filledData.isVaultLocked) unlockIntent else pickerIntent
         val pendingIntent = PendingIntent.getActivity(
             context,
             Random.nextInt(),
-            authIntent,
+            pickerIntent,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_MUTABLE
             } else {

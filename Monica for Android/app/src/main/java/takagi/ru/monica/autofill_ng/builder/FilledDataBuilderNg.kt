@@ -48,7 +48,7 @@ class FilledDataBuilderNg(
         passwords: List<PasswordEntry>,
     ): FilledData {
         val autoLockMinutes = resolveAutoLockTimeoutForAutofill()
-        val isVaultLocked = !securityManager.canAccessVaultNow(context, autoLockMinutes)
+        val isVaultLocked = !securityManager.canAccessVaultNowStrict(context, autoLockMinutes)
         val maxCipherInlineSuggestionsCount = (request.maxInlineSuggestionsCount - 1)
             .coerceAtMost(MAX_INLINE_SUGGESTION_COUNT)
 

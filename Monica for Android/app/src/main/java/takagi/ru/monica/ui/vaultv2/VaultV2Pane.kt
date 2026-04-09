@@ -8,6 +8,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -83,20 +84,27 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
+import takagi.ru.monica.data.Category
+import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.isLocalOnlyItem
 import takagi.ru.monica.data.isLocalOnlyPasskey
 import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.bitwarden.BitwardenFolder
+import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.BankCardData
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.UnmatchedIconHandlingStrategy
 import takagi.ru.monica.notes.domain.NoteContentCodec
+import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
+import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_SIMPLE
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_UPLOADED
@@ -112,11 +120,14 @@ import takagi.ru.monica.ui.password.PasswordAuthenticatorDisplayState
 import takagi.ru.monica.ui.password.rememberPasswordAuthenticatorDisplayState
 import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
+import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import takagi.ru.monica.viewmodel.NoteViewModel
 import takagi.ru.monica.viewmodel.PasskeyViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.TotpViewModel
 import takagi.ru.monica.util.TotpGenerator
+import takagi.ru.monica.utils.KEEPASS_DISPLAY_PATH_SEPARATOR
+import takagi.ru.monica.utils.decodeKeePassPathSegments
 import java.util.concurrent.CancellationException
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -178,6 +189,304 @@ private fun PasskeyEntry.isVaultV2LocalOnly(): Boolean {
 	return isLocalOnlyPasskey()
 }
 
+private fun VaultV2PaneState.toUnifiedCategoryFilterSelection(): UnifiedCategoryFilterSelection {
+	return when (storageFilterType) {
+		VAULT_V2_STORAGE_FILTER_ALL -> UnifiedCategoryFilterSelection.All
+		VAULT_V2_STORAGE_FILTER_LOCAL -> UnifiedCategoryFilterSelection.Local
+		VAULT_V2_STORAGE_FILTER_STARRED -> UnifiedCategoryFilterSelection.Starred
+		VAULT_V2_STORAGE_FILTER_UNCATEGORIZED -> UnifiedCategoryFilterSelection.Uncategorized
+		VAULT_V2_STORAGE_FILTER_LOCAL_STARRED -> UnifiedCategoryFilterSelection.LocalStarred
+		VAULT_V2_STORAGE_FILTER_LOCAL_UNCATEGORIZED -> UnifiedCategoryFilterSelection.LocalUncategorized
+		VAULT_V2_STORAGE_FILTER_CUSTOM -> {
+			storageFilterPrimaryId?.let(UnifiedCategoryFilterSelection::Custom)
+				?: UnifiedCategoryFilterSelection.Local
+		}
+		VAULT_V2_STORAGE_FILTER_KEEPASS_DATABASE -> {
+			storageFilterPrimaryId?.let(UnifiedCategoryFilterSelection::KeePassDatabaseFilter)
+				?: UnifiedCategoryFilterSelection.Local
+		}
+		VAULT_V2_STORAGE_FILTER_KEEPASS_GROUP -> {
+			val databaseId = storageFilterPrimaryId
+			val groupPath = storageFilterSecondaryKey
+			if (databaseId != null && !groupPath.isNullOrBlank()) {
+				UnifiedCategoryFilterSelection.KeePassGroupFilter(databaseId, groupPath)
+			} else if (databaseId != null) {
+				UnifiedCategoryFilterSelection.KeePassDatabaseFilter(databaseId)
+			} else {
+				UnifiedCategoryFilterSelection.Local
+			}
+		}
+		VAULT_V2_STORAGE_FILTER_KEEPASS_DATABASE_STARRED -> {
+			storageFilterPrimaryId?.let(UnifiedCategoryFilterSelection::KeePassDatabaseStarredFilter)
+				?: UnifiedCategoryFilterSelection.Local
+		}
+		VAULT_V2_STORAGE_FILTER_KEEPASS_DATABASE_UNCATEGORIZED -> {
+			storageFilterPrimaryId?.let(UnifiedCategoryFilterSelection::KeePassDatabaseUncategorizedFilter)
+				?: UnifiedCategoryFilterSelection.Local
+		}
+		VAULT_V2_STORAGE_FILTER_BITWARDEN_VAULT -> {
+			storageFilterPrimaryId?.let(UnifiedCategoryFilterSelection::BitwardenVaultFilter)
+				?: UnifiedCategoryFilterSelection.Local
+		}
+		VAULT_V2_STORAGE_FILTER_BITWARDEN_FOLDER -> {
+			val vaultId = storageFilterPrimaryId
+			val folderId = storageFilterSecondaryKey
+			if (vaultId != null && !folderId.isNullOrBlank()) {
+				UnifiedCategoryFilterSelection.BitwardenFolderFilter(vaultId, folderId)
+			} else if (vaultId != null) {
+				UnifiedCategoryFilterSelection.BitwardenVaultFilter(vaultId)
+			} else {
+				UnifiedCategoryFilterSelection.Local
+			}
+		}
+		VAULT_V2_STORAGE_FILTER_BITWARDEN_VAULT_STARRED -> {
+			storageFilterPrimaryId?.let(UnifiedCategoryFilterSelection::BitwardenVaultStarredFilter)
+				?: UnifiedCategoryFilterSelection.Local
+		}
+		VAULT_V2_STORAGE_FILTER_BITWARDEN_VAULT_UNCATEGORIZED -> {
+			storageFilterPrimaryId?.let(UnifiedCategoryFilterSelection::BitwardenVaultUncategorizedFilter)
+				?: UnifiedCategoryFilterSelection.Local
+		}
+		else -> UnifiedCategoryFilterSelection.Local
+	}
+}
+
+private fun VaultV2PaneState.updateStorageFilter(selection: UnifiedCategoryFilterSelection) {
+	when (selection) {
+		UnifiedCategoryFilterSelection.All -> updateStorageFilter(VAULT_V2_STORAGE_FILTER_ALL)
+		UnifiedCategoryFilterSelection.Local -> updateStorageFilter(VAULT_V2_STORAGE_FILTER_LOCAL)
+		UnifiedCategoryFilterSelection.Starred -> updateStorageFilter(VAULT_V2_STORAGE_FILTER_STARRED)
+		UnifiedCategoryFilterSelection.Uncategorized -> {
+			updateStorageFilter(VAULT_V2_STORAGE_FILTER_UNCATEGORIZED)
+		}
+		UnifiedCategoryFilterSelection.LocalStarred -> {
+			updateStorageFilter(VAULT_V2_STORAGE_FILTER_LOCAL_STARRED)
+		}
+		UnifiedCategoryFilterSelection.LocalUncategorized -> {
+			updateStorageFilter(VAULT_V2_STORAGE_FILTER_LOCAL_UNCATEGORIZED)
+		}
+		is UnifiedCategoryFilterSelection.Custom -> {
+			updateStorageFilter(
+				type = VAULT_V2_STORAGE_FILTER_CUSTOM,
+				primaryId = selection.categoryId,
+			)
+		}
+		is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> {
+			updateStorageFilter(
+				type = VAULT_V2_STORAGE_FILTER_KEEPASS_DATABASE,
+				primaryId = selection.databaseId,
+			)
+		}
+		is UnifiedCategoryFilterSelection.KeePassGroupFilter -> {
+			updateStorageFilter(
+				type = VAULT_V2_STORAGE_FILTER_KEEPASS_GROUP,
+				primaryId = selection.databaseId,
+				secondaryKey = selection.groupPath,
+			)
+		}
+		is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> {
+			updateStorageFilter(
+				type = VAULT_V2_STORAGE_FILTER_KEEPASS_DATABASE_STARRED,
+				primaryId = selection.databaseId,
+			)
+		}
+		is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> {
+			updateStorageFilter(
+				type = VAULT_V2_STORAGE_FILTER_KEEPASS_DATABASE_UNCATEGORIZED,
+				primaryId = selection.databaseId,
+			)
+		}
+		is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> {
+			updateStorageFilter(
+				type = VAULT_V2_STORAGE_FILTER_BITWARDEN_VAULT,
+				primaryId = selection.vaultId,
+			)
+		}
+		is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> {
+			updateStorageFilter(
+				type = VAULT_V2_STORAGE_FILTER_BITWARDEN_FOLDER,
+				primaryId = selection.vaultId,
+				secondaryKey = selection.folderId,
+			)
+		}
+		is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> {
+			updateStorageFilter(
+				type = VAULT_V2_STORAGE_FILTER_BITWARDEN_VAULT_STARRED,
+				primaryId = selection.vaultId,
+			)
+		}
+		is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> {
+			updateStorageFilter(
+				type = VAULT_V2_STORAGE_FILTER_BITWARDEN_VAULT_UNCATEGORIZED,
+				primaryId = selection.vaultId,
+			)
+		}
+	}
+}
+
+@Composable
+private fun rememberVaultV2StorageFilterLabel(
+	selected: UnifiedCategoryFilterSelection,
+	categories: List<Category>,
+	keepassDatabases: List<LocalKeePassDatabase>,
+	bitwardenVaults: List<BitwardenVault>,
+	bitwardenFolders: List<BitwardenFolder>,
+): String {
+	val monica = stringResource(R.string.filter_monica)
+	val bitwarden = stringResource(R.string.filter_bitwarden)
+	val keepass = stringResource(R.string.filter_keepass)
+	val starred = stringResource(R.string.filter_starred)
+	val uncategorized = stringResource(R.string.filter_uncategorized)
+	return when (selected) {
+		UnifiedCategoryFilterSelection.All -> stringResource(R.string.category_all)
+		UnifiedCategoryFilterSelection.Local -> monica
+		UnifiedCategoryFilterSelection.Starred -> starred
+		UnifiedCategoryFilterSelection.Uncategorized -> uncategorized
+		UnifiedCategoryFilterSelection.LocalStarred -> "$monica · $starred"
+		UnifiedCategoryFilterSelection.LocalUncategorized -> "$monica · $uncategorized"
+		is UnifiedCategoryFilterSelection.Custom -> {
+			categories.find { it.id == selected.categoryId }?.name
+				?: stringResource(R.string.unknown_category)
+		}
+		is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> {
+			keepassDatabases.find { it.id == selected.databaseId }?.name ?: keepass
+		}
+		is UnifiedCategoryFilterSelection.KeePassGroupFilter -> {
+			val databaseLabel = keepassDatabases.find { it.id == selected.databaseId }?.name ?: keepass
+			val groupLabel = decodeKeePassPathSegments(selected.groupPath)
+				.joinToString(KEEPASS_DISPLAY_PATH_SEPARATOR)
+				.ifBlank { keepass }
+			"$databaseLabel · $groupLabel"
+		}
+		is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> {
+			"${keepassDatabases.find { it.id == selected.databaseId }?.name ?: keepass} · $starred"
+		}
+		is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> {
+			"${keepassDatabases.find { it.id == selected.databaseId }?.name ?: keepass} · $uncategorized"
+		}
+		is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> {
+			bitwardenVaults.find { it.id == selected.vaultId }?.displayLabel() ?: bitwarden
+		}
+		is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> {
+			val vaultLabel = bitwardenVaults.find { it.id == selected.vaultId }?.displayLabel() ?: bitwarden
+			val folderLabel = bitwardenFolders.find { it.bitwardenFolderId == selected.folderId }?.name
+			if (folderLabel.isNullOrBlank()) vaultLabel else "$vaultLabel · $folderLabel"
+		}
+		is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> {
+			"${bitwardenVaults.find { it.id == selected.vaultId }?.displayLabel() ?: bitwarden} · $starred"
+		}
+		is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> {
+			"${bitwardenVaults.find { it.id == selected.vaultId }?.displayLabel() ?: bitwarden} · $uncategorized"
+		}
+	}
+}
+
+private fun BitwardenVault.displayLabel(): String {
+	return displayName?.takeIf { it.isNotBlank() } ?: email
+}
+
+private fun VaultV2Item.matchesStorageFilter(selection: UnifiedCategoryFilterSelection): Boolean {
+	return when (selection) {
+		UnifiedCategoryFilterSelection.All -> true
+		UnifiedCategoryFilterSelection.Local -> isLocalOnly()
+		UnifiedCategoryFilterSelection.Starred -> isFavorite
+		UnifiedCategoryFilterSelection.Uncategorized -> categoryId() == null
+		UnifiedCategoryFilterSelection.LocalStarred -> isLocalOnly() && isFavorite
+		UnifiedCategoryFilterSelection.LocalUncategorized -> isLocalOnly() && categoryId() == null
+		is UnifiedCategoryFilterSelection.Custom -> categoryId() == selection.categoryId
+		is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> {
+			keepassDatabaseId() == selection.databaseId
+		}
+		is UnifiedCategoryFilterSelection.KeePassGroupFilter -> {
+			keepassDatabaseId() == selection.databaseId && keepassGroupPath() == selection.groupPath
+		}
+		is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> {
+			keepassDatabaseId() == selection.databaseId && isFavorite
+		}
+		is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> {
+			keepassDatabaseId() == selection.databaseId && keepassGroupPath().isNullOrBlank()
+		}
+		is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> {
+			bitwardenVaultId() == selection.vaultId
+		}
+		is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> {
+			bitwardenVaultId() == selection.vaultId && bitwardenFolderId() == selection.folderId
+		}
+		is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> {
+			bitwardenVaultId() == selection.vaultId && isFavorite
+		}
+		is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> {
+			bitwardenVaultId() == selection.vaultId && bitwardenFolderId().isNullOrBlank()
+		}
+	}
+}
+
+private fun VaultV2Item.isLocalOnly(): Boolean {
+	return when (type) {
+		VaultV2ItemType.PASSWORD -> passwordEntry?.isVaultV2LocalOnly() == true
+		VaultV2ItemType.AUTHENTICATOR -> totpItem?.isVaultV2LocalOnly() == true
+		VaultV2ItemType.NOTE,
+		VaultV2ItemType.BANK_CARD,
+		VaultV2ItemType.DOCUMENT -> secureItem?.isVaultV2LocalOnly() == true
+		VaultV2ItemType.PASSKEY -> passkeyEntry?.isVaultV2LocalOnly() == true
+	}
+}
+
+private fun VaultV2Item.categoryId(): Long? {
+	return when (type) {
+		VaultV2ItemType.PASSWORD -> passwordEntry?.categoryId
+		VaultV2ItemType.AUTHENTICATOR -> totpItem?.categoryId
+		VaultV2ItemType.NOTE,
+		VaultV2ItemType.BANK_CARD,
+		VaultV2ItemType.DOCUMENT -> secureItem?.categoryId
+		VaultV2ItemType.PASSKEY -> passkeyEntry?.categoryId
+	}
+}
+
+private fun VaultV2Item.keepassDatabaseId(): Long? {
+	return when (type) {
+		VaultV2ItemType.PASSWORD -> passwordEntry?.keepassDatabaseId
+		VaultV2ItemType.AUTHENTICATOR -> totpItem?.keepassDatabaseId
+		VaultV2ItemType.NOTE,
+		VaultV2ItemType.BANK_CARD,
+		VaultV2ItemType.DOCUMENT -> secureItem?.keepassDatabaseId
+		VaultV2ItemType.PASSKEY -> passkeyEntry?.keepassDatabaseId
+	}
+}
+
+private fun VaultV2Item.keepassGroupPath(): String? {
+	return when (type) {
+		VaultV2ItemType.PASSWORD -> passwordEntry?.keepassGroupPath
+		VaultV2ItemType.AUTHENTICATOR -> totpItem?.keepassGroupPath
+		VaultV2ItemType.NOTE,
+		VaultV2ItemType.BANK_CARD,
+		VaultV2ItemType.DOCUMENT -> secureItem?.keepassGroupPath
+		VaultV2ItemType.PASSKEY -> passkeyEntry?.keepassGroupPath
+	}
+}
+
+private fun VaultV2Item.bitwardenVaultId(): Long? {
+	return when (type) {
+		VaultV2ItemType.PASSWORD -> passwordEntry?.bitwardenVaultId
+		VaultV2ItemType.AUTHENTICATOR -> totpItem?.bitwardenVaultId
+		VaultV2ItemType.NOTE,
+		VaultV2ItemType.BANK_CARD,
+		VaultV2ItemType.DOCUMENT -> secureItem?.bitwardenVaultId
+		VaultV2ItemType.PASSKEY -> passkeyEntry?.bitwardenVaultId
+	}
+}
+
+private fun VaultV2Item.bitwardenFolderId(): String? {
+	return when (type) {
+		VaultV2ItemType.PASSWORD -> passwordEntry?.bitwardenFolderId
+		VaultV2ItemType.AUTHENTICATOR -> totpItem?.bitwardenFolderId
+		VaultV2ItemType.NOTE,
+		VaultV2ItemType.BANK_CARD,
+		VaultV2ItemType.DOCUMENT -> secureItem?.bitwardenFolderId
+		VaultV2ItemType.PASSKEY -> passkeyEntry?.bitwardenFolderId
+	}
+}
+
 @OptIn(
 	ExperimentalMaterial3Api::class,
 	ExperimentalFoundationApi::class,
@@ -190,28 +499,28 @@ fun VaultV2Pane(
 	documentViewModel: DocumentViewModel,
 	noteViewModel: NoteViewModel,
 	passkeyViewModel: PasskeyViewModel,
+	keepassDatabases: List<LocalKeePassDatabase>,
+	bitwardenVaults: List<BitwardenVault>,
+	localKeePassViewModel: LocalKeePassViewModel,
+	state: VaultV2PaneState,
 	onOpenPassword: (Long) -> Unit,
 	onOpenTotp: (Long) -> Unit,
 	onOpenBankCard: (Long) -> Unit,
 	onOpenDocument: (Long) -> Unit,
 	onOpenNote: (Long) -> Unit,
 	onOpenPasskey: (PasskeyEntry) -> Unit,
-	onBackToTopVisibilityChange: (Boolean) -> Unit = {},
-	onFastScrollSectionLabelChange: (String?) -> Unit = {},
-	scrollToTopRequestKey: Int = 0,
-	showOnlyLocalData: Boolean = true,
+	showOnlyLocalData: Boolean = false,
 	appSettings: AppSettings = AppSettings(),
 	modifier: Modifier = Modifier,
 ) {
 	var searchQuery by rememberSaveable { mutableStateOf("") }
 	var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
+	var isStorageFilterSheetVisible by rememberSaveable { mutableStateOf(false) }
 	var filter by rememberSaveable { mutableStateOf(VaultV2Filter.ALL) }
 	val selectedKeys = remember { mutableStateListOf<String>() }
-	val savedListIndex by passwordViewModel.vaultV2ScrollIndex.collectAsState()
-	val savedListOffset by passwordViewModel.vaultV2ScrollOffset.collectAsState()
 	val listState = rememberLazyListState(
-		initialFirstVisibleItemIndex = savedListIndex,
-		initialFirstVisibleItemScrollOffset = savedListOffset
+		initialFirstVisibleItemIndex = state.scrollIndex,
+		initialFirstVisibleItemScrollOffset = state.scrollOffset
 	)
 	val context = LocalContext.current
 	val density = LocalDensity.current
@@ -232,14 +541,42 @@ fun VaultV2Pane(
 		onSearchTriggered = { isSearchExpanded = true },
 	)
 
-	val passwordEntries by passwordViewModel.passwordEntries.collectAsState()
-	val totpItems by totpViewModel.totpItems.collectAsState()
+	val passwordEntries by passwordViewModel.allPasswords.collectAsState()
+	val categories by passwordViewModel.categories.collectAsState()
+	val totpItems by totpViewModel.allTotpItems.collectAsState()
 	val bankCardItems by bankCardViewModel.allCards.collectAsState(initial = emptyList())
 	val documentItems by documentViewModel.allDocuments.collectAsState(initial = emptyList())
 	val noteItems by noteViewModel.allNotes.collectAsState(initial = emptyList())
 	val passkeyItems by passkeyViewModel.allPasskeys.collectAsState()
-	val fastScrollRequestKey by passwordViewModel.fastScrollRequestKey.collectAsState()
-	val fastScrollProgress by passwordViewModel.fastScrollProgress.collectAsState()
+	val fastScrollRequestKey = state.fastScrollRequestKey
+	val fastScrollProgress = state.fastScrollProgress
+	val storageSelection = remember(
+		state.storageFilterType,
+		state.storageFilterPrimaryId,
+		state.storageFilterSecondaryKey,
+	) {
+		state.toUnifiedCategoryFilterSelection()
+	}
+	val selectedBitwardenVaultId = remember(storageSelection) {
+		when (storageSelection) {
+			is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> storageSelection.vaultId
+			is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> storageSelection.vaultId
+			is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> storageSelection.vaultId
+			is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> storageSelection.vaultId
+			else -> null
+		}
+	}
+	val selectedBitwardenFoldersFlow = remember(passwordViewModel, selectedBitwardenVaultId) {
+		selectedBitwardenVaultId?.let(passwordViewModel::getBitwardenFolders) ?: flowOf(emptyList())
+	}
+	val selectedBitwardenFolders by selectedBitwardenFoldersFlow.collectAsState(initial = emptyList())
+	val storageFilterLabel = rememberVaultV2StorageFilterLabel(
+		selected = storageSelection,
+		categories = categories,
+		keepassDatabases = keepassDatabases,
+		bitwardenVaults = bitwardenVaults,
+		bitwardenFolders = selectedBitwardenFolders,
+	)
 
 	val visiblePasswordEntries = remember(passwordEntries, showOnlyLocalData) {
 		if (showOnlyLocalData) passwordEntries.filter { it.isVaultV2LocalOnly() } else passwordEntries
@@ -441,8 +778,11 @@ fun VaultV2Pane(
 	}
 
 	val normalizedQuery = remember(searchQuery) { searchQuery.trim() }
-	val filteredItems = remember(allItems, filter, normalizedQuery) {
-		allItems.filter { item ->
+	val storageFilteredItems = remember(allItems, storageSelection) {
+		allItems.filter { item -> item.matchesStorageFilter(storageSelection) }
+	}
+	val filteredItems = remember(storageFilteredItems, filter, normalizedQuery) {
+		storageFilteredItems.filter { item ->
 			val matchesFilter = when (filter) {
 				VaultV2Filter.ALL -> true
 				VaultV2Filter.PASSWORD -> item.type == VaultV2ItemType.PASSWORD
@@ -515,17 +855,17 @@ fun VaultV2Pane(
 	}
 
 	LaunchedEffect(showBackToTop) {
-		onBackToTopVisibilityChange(showBackToTop)
+		state.showBackToTop = showBackToTop
 	}
 
 	DisposableEffect(Unit) {
 		onDispose {
-			onFastScrollSectionLabelChange(null)
+			state.fastScrollIndicatorLabel = null
 		}
 	}
 
-	LaunchedEffect(scrollToTopRequestKey) {
-		if (scrollToTopRequestKey > lastHandledScrollToTopRequestKey) {
+	LaunchedEffect(state.scrollToTopRequestKey) {
+		if (state.scrollToTopRequestKey > lastHandledScrollToTopRequestKey) {
 			isAutoScrollingToTop = true
 			try {
 				runCatching {
@@ -534,7 +874,7 @@ fun VaultV2Pane(
 				listState.scrollToItem(0)
 			} finally {
 				isAutoScrollingToTop = false
-				lastHandledScrollToTopRequestKey = scrollToTopRequestKey
+				lastHandledScrollToTopRequestKey = state.scrollToTopRequestKey
 			}
 		}
 	}
@@ -545,7 +885,7 @@ fun VaultV2Pane(
 		}
 			.distinctUntilChanged()
 			.collect { (index, offset) ->
-				passwordViewModel.updateVaultV2ScrollPosition(index, offset)
+				state.updateScrollPosition(index, offset)
 			}
 	}
 
@@ -604,7 +944,7 @@ fun VaultV2Pane(
 		}
 			.distinctUntilChanged()
 			.collect { progress ->
-				passwordViewModel.updateFastScrollProgress(progress)
+				state.updateFastScrollProgress(progress)
 			}
 	}
 
@@ -621,7 +961,7 @@ fun VaultV2Pane(
 		}
 			.distinctUntilChanged()
 			.collect { sectionTitle ->
-				onFastScrollSectionLabelChange(sectionTitle)
+				state.fastScrollIndicatorLabel = sectionTitle
 			}
 	}
 
@@ -645,8 +985,9 @@ fun VaultV2Pane(
 			)
 
 			VaultV2PathBanner(
-				pathLabel = stringResource(R.string.filter_monica),
+				pathLabel = storageFilterLabel,
 				currentSectionLabel = currentSectionIndicatorLabel,
+				onClick = { isStorageFilterSheetVisible = true },
 			)
 
 			val contentPullOffset = pullAction.currentOffset.toInt()
@@ -700,6 +1041,22 @@ fun VaultV2Pane(
 				},
 			)
 		}
+
+		UnifiedCategoryFilterBottomSheet(
+			visible = isStorageFilterSheetVisible,
+			onDismiss = { isStorageFilterSheetVisible = false },
+			selected = storageSelection,
+			onSelect = { selection ->
+				selectedKeys.clear()
+				state.updateStorageFilter(selection)
+				isStorageFilterSheetVisible = false
+			},
+			categories = categories,
+			keepassDatabases = keepassDatabases,
+			bitwardenVaults = bitwardenVaults,
+			getBitwardenFolders = passwordViewModel::getBitwardenFolders,
+			getKeePassGroups = localKeePassViewModel::getGroups,
+		)
 
 		if (selectedCount > 0) {
 			SelectionActionBar(
@@ -985,6 +1342,7 @@ private fun VaultV2List(
 private fun VaultV2PathBanner(
 	pathLabel: String,
 	currentSectionLabel: String,
+	onClick: () -> Unit,
 ) {
 	Row(
 		modifier = Modifier
@@ -1015,6 +1373,7 @@ private fun VaultV2PathBanner(
 				.weight(1f)
 				.clip(RoundedCornerShape(14.dp))
 				.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+				.clickable(onClick = onClick)
 		) {
 			Row(
 				modifier = Modifier
@@ -1721,4 +2080,3 @@ private fun vaultV2SectionTitleForLazyIndex(
 	}
 	return sectionLayouts.lastOrNull()?.title
 }
-

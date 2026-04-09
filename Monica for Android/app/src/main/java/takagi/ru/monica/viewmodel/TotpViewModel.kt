@@ -170,24 +170,18 @@ class TotpViewModel(
             folderFlow.map { folders -> folders.mapTo(linkedSetOf()) { it.bitwardenFolderId } }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
-    
-    // TOTP项目列表 - 合并实际存储的TOTP和从密码authenticatorKey生成的虚拟TOTP
-    val totpItems: StateFlow<List<SecureItem>> = combine(
-        _searchQuery,
-        _categoryFilter,
-        repository.getItemsByType(ItemType.TOTP),
-        passwordRepository.getAllPasswordEntries(),
-        selectedBitwardenVaultFolderIds
-    ) { query, filter, storedTotps, allPasswords, selectedVaultFolderIds ->
-        // 收集所有已存储的 TOTP 标识（归一化后去重，兼容 otpauth URI）
+
+    private fun mergeStoredAndVirtualTotps(
+        storedTotps: List<SecureItem>,
+        allPasswords: List<PasswordEntry>
+    ): List<SecureItem> {
         val existingKeys = storedTotps.mapNotNull { item ->
             runCatching { Json.decodeFromString<TotpData>(item.itemData) }
                 .getOrNull()
                 ?.let(TotpDataResolver::normalizeTotpData)
                 ?.let(::buildTotpIdentityKey)
         }.toSet()
-        
-        // 从密码的 authenticatorKey 生成虚拟 TOTP 项目
+
         val seenVirtualKeys = mutableSetOf<String>()
         val virtualTotps = allPasswords.mapNotNull { password ->
             val resolvedTotpData = resolvePasswordAuthenticatorTotp(password) ?: return@mapNotNull null
@@ -197,7 +191,7 @@ class TotpViewModel(
             }
 
             SecureItem(
-                id = -password.id, // 使用负ID标识这是虚拟项目
+                id = -password.id,
                 itemType = ItemType.TOTP,
                 title = password.title,
                 notes = "来自密码: ${password.title}",
@@ -206,17 +200,40 @@ class TotpViewModel(
                 createdAt = password.createdAt,
                 updatedAt = password.updatedAt,
                 imagePaths = "",
-                categoryId = password.categoryId,  // 继承密码的分类
+                categoryId = password.categoryId,
                 keepassDatabaseId = password.keepassDatabaseId,
                 keepassGroupPath = password.keepassGroupPath,
                 bitwardenVaultId = password.bitwardenVaultId,
                 bitwardenFolderId = password.bitwardenFolderId
             )
         }
-        
-        // 合并实际TOTP和虚拟TOTP
-        val allTotps = storedTotps + virtualTotps
-        
+
+        return storedTotps + virtualTotps
+    }
+
+    private val allTotpItemsSource: Flow<List<SecureItem>> = combine(
+        repository.getItemsByType(ItemType.TOTP),
+        passwordRepository.getAllPasswordEntries()
+    ) { storedTotps, allPasswords ->
+        mergeStoredAndVirtualTotps(
+            storedTotps = storedTotps,
+            allPasswords = allPasswords
+        )
+    }
+
+    val allTotpItems: StateFlow<List<SecureItem>> = allTotpItemsSource.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+    
+    // TOTP项目列表 - 合并实际存储的TOTP和从密码authenticatorKey生成的虚拟TOTP
+    val totpItems: StateFlow<List<SecureItem>> = combine(
+        _searchQuery,
+        _categoryFilter,
+        allTotpItemsSource,
+        selectedBitwardenVaultFolderIds
+    ) { query, filter, allTotps, selectedVaultFolderIds ->
         // 首先应用分类过滤
         val categoryFiltered = when (filter) {
             is TotpCategoryFilter.All -> allTotps

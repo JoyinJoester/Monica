@@ -657,12 +657,11 @@ fun SettingsScreen(
                             modifier = getSharedModifier("developer_settings_card"),
                             onClick = {
                                 val hasActivity = activity != null
-                                val disablePasswordVerification = settings.disablePasswordVerification
                                 val biometricEnabled = settings.biometricEnabled
                                 val biometricAvailableNow = hasActivity && biometricEnabled && biometricHelper.isBiometricAvailable()
                                 android.util.Log.d(
                                     "SettingsScreen",
-                                    "Developer settings tapped. hasActivity=$hasActivity, biometricEnabled=$biometricEnabled, biometricAvailable=$biometricAvailableNow, disablePasswordVerification=$disablePasswordVerification"
+                                    "Developer settings tapped. hasActivity=$hasActivity, biometricEnabled=$biometricEnabled, biometricAvailable=$biometricAvailableNow"
                                 )
 
                                 developerPasswordInput = ""
@@ -670,9 +669,6 @@ fun SettingsScreen(
                                 showDeveloperVerifyDialog = false
 
                                 when {
-                                    disablePasswordVerification -> {
-                                        onNavigateToDeveloperSettings()
-                                    }
                                     !hasActivity -> {
                                         android.util.Log.w(
                                             "SettingsScreen",

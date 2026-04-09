@@ -141,7 +141,6 @@ fun PasswordDetailScreen(
     passkeyViewModel: PasskeyViewModel? = null,
     noteViewModel: NoteViewModel? = null,
     passwordId: Long,
-    disablePasswordVerification: Boolean,
     biometricEnabled: Boolean,
     iconCardsEnabled: Boolean = false,
     unmatchedIconHandlingStrategy: UnmatchedIconHandlingStrategy = UnmatchedIconHandlingStrategy.DEFAULT_ICON,
@@ -286,10 +285,6 @@ fun PasswordDetailScreen(
     
     // Verification Logic calling Biometric or falling back to Password Dialog
     fun startVerificationForDeletion() {
-        if (disablePasswordVerification) {
-            executeDeletion()
-            return
-        }
         if (biometricEnabled && biometricHelper.isBiometricAvailable()) {
             (context as? FragmentActivity)?.let { activity ->
                 biometricHelper.authenticate(
@@ -697,9 +692,10 @@ fun PasswordDetailScreen(
                     )
                 }
 
-                if (entry.website.isNotBlank()) {
+                val websiteTargets = remember(entry.website) { normalizeWebsiteUrls(entry.website) }
+                if (websiteTargets.isNotEmpty()) {
                     WebsiteCard(
-                        website = entry.website,
+                        websites = websiteTargets,
                         context = context
                     )
                 }
@@ -1502,9 +1498,10 @@ private fun PasswordDetailIcon(
         tintColor = MaterialTheme.colorScheme.primary,
         enabled = entry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
     )
-    val favicon = if (entry.website.isNotBlank()) {
+    val primaryWebsite = remember(entry.website) { normalizeWebsiteUrl(entry.website) }
+    val favicon = if (!primaryWebsite.isNullOrBlank()) {
         rememberFavicon(
-            url = entry.website,
+            url = primaryWebsite,
             enabled = autoMatchedSimpleIcon.resolved && autoMatchedSimpleIcon.slug == null
         )
     } else null
@@ -1564,46 +1561,68 @@ private fun PasswordDetailIcon(
 
 @Composable
 private fun WebsiteCard(
-    website: String,
+    websites: List<String>,
     context: Context
 ) {
     Card(
-        onClick = { openWebsiteInBrowser(context, website) },
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
         )
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Icon(
-                imageVector = Icons.Default.Language,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Column(modifier = Modifier.weight(1f)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Language,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
                 Text(
                     text = stringResource(R.string.website_url),
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Text(
-                    text = website,
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
             }
-            Icon(
-                imageVector = Icons.Default.OpenInNew,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+
+            websites.forEach { website ->
+                Surface(
+                    onClick = { openWebsiteInBrowser(context, website) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = website,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Icon(
+                            imageVector = Icons.Default.OpenInNew,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -2672,9 +2691,16 @@ private fun openWebsiteInBrowser(context: Context, website: String) {
     }
 }
 
-private fun normalizeWebsiteUrl(input: String): String? {
-    val value = input.trim()
-    if (value.isEmpty()) return null
+private fun splitWebsiteCandidates(input: String): List<String> {
+    return input
+        .split(',', '，')
+        .asSequence()
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .toList()
+}
+
+private fun normalizeSingleWebsiteUrl(value: String): String {
     return if (value.startsWith("http://", ignoreCase = true) ||
         value.startsWith("https://", ignoreCase = true)
     ) {
@@ -2682,6 +2708,16 @@ private fun normalizeWebsiteUrl(input: String): String? {
     } else {
         "https://$value"
     }
+}
+
+internal fun normalizeWebsiteUrls(input: String): List<String> {
+    return splitWebsiteCandidates(input)
+        .map(::normalizeSingleWebsiteUrl)
+        .distinct()
+}
+
+internal fun normalizeWebsiteUrl(input: String): String? {
+    return normalizeWebsiteUrls(input).firstOrNull()
 }
 
 private fun buildPasswordStorageInfo(

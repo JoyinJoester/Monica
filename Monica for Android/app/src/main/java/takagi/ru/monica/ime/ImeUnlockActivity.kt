@@ -20,6 +20,7 @@ import takagi.ru.monica.utils.SettingsManager
 class ImeUnlockActivity : AppCompatActivity() {
 
     private var resultPublished = false
+    private var startupAutoLockMinutes: Int = 5
     private lateinit var securityManager: SecurityManager
     private lateinit var settingsManager: SettingsManager
     private lateinit var biometricAuthHelper: BiometricAuthHelper
@@ -38,12 +39,12 @@ class ImeUnlockActivity : AppCompatActivity() {
         settingsManager = SettingsManager(applicationContext)
         biometricAuthHelper = BiometricAuthHelper(this)
 
-        val startupAutoLockMinutes = runCatching {
+        startupAutoLockMinutes = runCatching {
             runBlocking { settingsManager.settingsFlow.first().autoLockMinutes }
         }
             .getOrDefault(5)
         if (!securityManager.isMasterPasswordSet() ||
-            securityManager.canAccessVaultNow(this, startupAutoLockMinutes)
+            securityManager.canAccessVaultNowStrict(this, startupAutoLockMinutes)
         ) {
             publishResult(success = true, errorMessage = null)
             return
@@ -75,7 +76,7 @@ class ImeUnlockActivity : AppCompatActivity() {
             onSuccess = {
                 val unlocked = runCatching { securityManager.unlockVaultWithBiometric() }.getOrDefault(false)
                 if (unlocked) {
-                    securityManager.markVaultAuthenticated()
+                    securityManager.markSecondaryVaultAuthenticated(startupAutoLockMinutes)
                     publishResult(success = true, errorMessage = null)
                 } else {
                     showPasswordAuthentication()
@@ -107,7 +108,7 @@ class ImeUnlockActivity : AppCompatActivity() {
                 incorrectError = getString(R.string.ime_unlock_error),
                 verifyPassword = { input -> securityManager.unlockVaultWithPassword(input) },
                 onSuccess = {
-                    securityManager.markVaultAuthenticated()
+                    securityManager.markSecondaryVaultAuthenticated(startupAutoLockMinutes)
                     publishResult(success = true, errorMessage = null)
                 },
                 onCancel = { publishResult(success = false, errorMessage = null) }

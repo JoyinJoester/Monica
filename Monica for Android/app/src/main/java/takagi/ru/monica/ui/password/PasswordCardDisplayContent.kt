@@ -105,7 +105,9 @@ fun rememberPasswordAuthenticatorDisplayState(
             currentSeconds = currentSeconds
         )
     }
-    val formattedCode = remember(rawCode) { formatAuthenticatorCode(rawCode) }
+    val formattedCode = remember(rawCode, totpData.otpType) {
+        formatAuthenticatorCode(rawCode, totpData.otpType)
+    }
 
     return if (totpData.otpType == OtpType.HOTP) {
         PasswordAuthenticatorDisplayState(
@@ -155,9 +157,14 @@ private fun parsePasswordAuthenticatorTotpData(
     return TotpDataResolver.fromAuthenticatorKey(authenticatorKey)
 }
 
-private fun formatAuthenticatorCode(code: String): String {
+private fun formatAuthenticatorCode(code: String, otpType: OtpType): String {
     val compact = code.replace(" ", "")
     if (compact.length <= 4) return compact
+
+    if (otpType == OtpType.STEAM && compact.length == 5) {
+        return "${compact.substring(0, 2)} ${compact.substring(2)}"
+    }
+
     if (compact.length % 2 == 0) {
         return compact.chunked(compact.length / 2).joinToString(" ")
     }
