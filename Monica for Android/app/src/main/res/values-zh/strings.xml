@@ -589,7 +589,12 @@
     <string name="theme_system">跟随系统</string>
     <string name="theme_light">浅色</string>
     <string name="theme_dark">深色</string>
-    
+    <string name="oled_pure_black">OLED绝对深色</string>
+    <string name="oled_pure_black_description">在深色模式下将背景和表面容器强制切换为纯黑。</string>
+    <string name="oled_pure_black_dark_mode_hint">仅在应用处于深色模式时生效。</string>
+    <string name="appearance_sheet_description">选择应用外观模式，并决定深色表面是否切换为 OLED 绝对深色。</string>
+    <string name="appearance_with_oled_subtitle">%1$s · OLED绝对深色</string>
+
     <!-- Auto Lock Options -->
     <string name="auto_lock_immediately">立即</string>
     <string name="auto_lock_1_minute">1分钟</string>
@@ -2238,6 +2243,7 @@
     <string name="pull_syncing_bitwarden">正在同步 Bitwarden...</string>
     <string name="pull_sync_requires_bitwarden_login">请先登录并解锁 Bitwarden</string>
     <string name="pull_sync_success">Bitwarden 同步完成</string>
+    <string name="bitwarden_sync_success_with_offline_ready">同步完成。本次处理 %1$d 处变更，当前有 %2$d 条数据可离线查看。</string>
     <string name="time_just_now">刚刚</string>
     <string name="time_minutes_ago">%1$d 分钟前</string>
     <string name="time_hours_ago">%1$d 小时前</string>

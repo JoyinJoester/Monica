@@ -33,7 +33,7 @@ import takagi.ru.monica.data.bitwarden.*
         BitwardenPendingOperation::class,
         BitwardenSyncRawEntryRecord::class
     ],
-    version = 57,
+    version = 58,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -1686,6 +1686,61 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_57_58 = object : androidx.room.migration.Migration(57, 58) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 57→58: bitwarden vault identity stabilization")
+
+                    database.execSQL(
+                        "ALTER TABLE bitwarden_vaults ADD COLUMN canonical_email TEXT NOT NULL DEFAULT ''"
+                    )
+                    database.execSQL(
+                        "ALTER TABLE bitwarden_vaults ADD COLUMN account_key TEXT NOT NULL DEFAULT ''"
+                    )
+
+                    database.execSQL(
+                        """
+                        UPDATE bitwarden_vaults
+                        SET canonical_email = LOWER(TRIM(email))
+                        """
+                        .trimIndent()
+                    )
+                    database.execSQL(
+                        """
+                        UPDATE bitwarden_vaults
+                        SET account_key = LOWER(RTRIM(server_url, '/')) || '|' ||
+                            CASE
+                                WHEN user_id IS NOT NULL AND TRIM(user_id) <> '' THEN LOWER(TRIM(user_id))
+                                ELSE LOWER(TRIM(email))
+                            END
+                        """
+                        .trimIndent()
+                    )
+
+                    database.execSQL("DROP INDEX IF EXISTS index_bitwarden_vaults_email")
+                    database.execSQL("DROP INDEX IF EXISTS index_bitwarden_vaults_isDefault")
+                    database.execSQL("DROP INDEX IF EXISTS index_bitwarden_vaults_is_default")
+                    database.execSQL("DROP INDEX IF EXISTS index_bitwarden_vaults_canonical_email")
+                    database.execSQL("DROP INDEX IF EXISTS index_bitwarden_vaults_account_key")
+
+                    database.execSQL(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS index_bitwarden_vaults_account_key ON bitwarden_vaults(account_key)"
+                    )
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_bitwarden_vaults_canonical_email ON bitwarden_vaults(canonical_email)"
+                    )
+                    database.execSQL(
+                        "CREATE INDEX IF NOT EXISTS index_bitwarden_vaults_is_default ON bitwarden_vaults(is_default)"
+                    )
+
+                    android.util.Log.i("PasswordDatabase", "Migration 57→58 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 57→58 failed: ${e.message}")
+                    throw e
+                }
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -1749,7 +1804,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_53_54,  // 密码绑定笔记ID
                         MIGRATION_54_55,  // Bitwarden 条目原始同步快照
                         MIGRATION_55_56,  // Passkey 内部记录 ID
-                        MIGRATION_56_57   // KeePass 远端来源与同步骨架
+                        MIGRATION_56_57,  // KeePass 远端来源与同步骨架
+                        MIGRATION_57_58   // Bitwarden Vault 身份稳定化
                     )
                     .build()
                 INSTANCE = instance

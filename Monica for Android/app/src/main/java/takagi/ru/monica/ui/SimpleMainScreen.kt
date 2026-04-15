@@ -1121,7 +1121,13 @@ fun SimpleMainScreen(
 
     // 检测是否有任何选择模式处于激活状态
     var isNoteSelectionMode by remember { mutableStateOf(false) }
-    val isAnySelectionMode = isPasswordSelectionMode || isTotpSelectionMode || isDocumentSelectionMode || isBankCardSelectionMode || isNoteSelectionMode
+    val isAnySelectionMode =
+        isPasswordSelectionMode ||
+            isTotpSelectionMode ||
+            isDocumentSelectionMode ||
+            isBankCardSelectionMode ||
+            isNoteSelectionMode ||
+            vaultV2PaneState.selectionCount > 0
     var generatorRefreshRequestKey by remember { mutableIntStateOf(0) }
     
     val nestedScrollConnection = remember {
@@ -1835,6 +1841,19 @@ fun SimpleMainScreen(
                     onNavigateToExtensions = onNavigateToExtensions,
                     onNavigateToCommonAccountTemplates = onNavigateToCommonAccountTemplates,
                     onNavigateToPageCustomization = onNavigateToPageCustomization,
+                    onOpenVaultV2HistoryPage = {
+                        selectedTabKey = BottomNavItem.Passwords.key
+                        openHistoryPage()
+                    },
+                    onOpenVaultV2TrashPage = {
+                        selectedTabKey = BottomNavItem.Passwords.key
+                        openTrashPage()
+                    },
+                    onOpenVaultV2ArchivePage = {
+                        closeHistoryPage()
+                        selectedTabKey = BottomNavItem.Passwords.key
+                        passwordViewModel.setCategoryFilter(CategoryFilter.Archived)
+                    },
                     onClearAllData = onClearAllData,
                     cardWalletSubTab = cardWalletSubTab,
                     passwordHistoryPageMode = passwordHistoryPageMode,
@@ -1956,19 +1975,34 @@ fun SimpleMainScreen(
                         documentViewModel = documentViewModel,
                         noteViewModel = noteViewModel,
                         passkeyViewModel = passkeyViewModel,
-                        keepassDatabases = keepassDatabases,
-                        bitwardenVaults = bitwardenVaults,
-                        localKeePassViewModel = localKeePassViewModel,
-                        state = vaultV2PaneState,
-                        onOpenPassword = handlePasswordDetailOpen,
-                        onOpenTotp = handleTotpOpen,
+                    keepassDatabases = keepassDatabases,
+                    bitwardenVaults = bitwardenVaults,
+                    localKeePassViewModel = localKeePassViewModel,
+                    settingsViewModel = settingsViewModel,
+                    state = vaultV2PaneState,
+                    onOpenPassword = handlePasswordDetailOpen,
+                    onOpenTotp = handleTotpOpen,
                         onOpenBankCard = handleBankCardOpen,
-                        onOpenDocument = handleDocumentOpen,
-                        onOpenNote = { handleNoteOpen(it) },
-                        onOpenPasskey = handlePasskeyOpen,
-                        appSettings = appSettings,
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    onOpenDocument = handleDocumentOpen,
+                    onOpenNote = { handleNoteOpen(it) },
+                    onOpenPasskey = onNavigateToPasskeyDetail,
+                    onOpenHistory = {
+                        selectedTabKey = BottomNavItem.Passwords.key
+                        openHistoryPage()
+                    },
+                    onOpenTrashPage = {
+                        selectedTabKey = BottomNavItem.Passwords.key
+                        openTrashPage()
+                    },
+                    onOpenArchivePage = {
+                        closeHistoryPage()
+                        selectedTabKey = BottomNavItem.Passwords.key
+                        passwordViewModel.setCategoryFilter(CategoryFilter.Archived)
+                    },
+                    onOpenCommonAccountTemplates = onNavigateToCommonAccountTemplates,
+                    appSettings = appSettings,
+                    modifier = Modifier.fillMaxSize(),
+                )
                 }
                 BottomNavItem.Passwords -> {
                     PasswordTabPane(
@@ -2392,7 +2426,9 @@ fun SimpleMainScreen(
                 passwordScrollToTopRequestKey++
             }
         },
-        quickAccessEnabled = currentTab == BottomNavItem.Passwords && appSettings.passwordListQuickAccessEnabled,
+        quickAccessEnabled =
+            (currentTab == BottomNavItem.Passwords || currentTab == BottomNavItem.VaultV2) &&
+                appSettings.passwordListQuickAccessEnabled,
         showPasswordQuickAccessSheet = showPasswordQuickAccessSheet,
         onShowPasswordQuickAccessSheetChange = { showPasswordQuickAccessSheet = it },
         recentOpenedPasswords = recentOpenedPasswords,
@@ -2930,6 +2966,9 @@ private fun CompactDraggableTabContent(
     onNavigateToExtensions: () -> Unit,
     onNavigateToCommonAccountTemplates: () -> Unit,
     onNavigateToPageCustomization: () -> Unit,
+    onOpenVaultV2HistoryPage: () -> Unit,
+    onOpenVaultV2TrashPage: () -> Unit,
+    onOpenVaultV2ArchivePage: () -> Unit,
     onClearAllData: (Boolean, Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit,
     cardWalletSubTab: CardWalletTab,
     passwordHistoryPageMode: PasswordHistoryPageMode,
@@ -3007,13 +3046,18 @@ private fun CompactDraggableTabContent(
                     keepassDatabases = keepassDatabases,
                     bitwardenVaults = bitwardenVaults,
                     localKeePassViewModel = localKeePassViewModel,
+                    settingsViewModel = settingsViewModel,
                     state = vaultV2PaneState,
                     onOpenPassword = onPasswordOpen,
                     onOpenTotp = onTotpOpen,
                     onOpenBankCard = onBankCardOpen,
                     onOpenDocument = onDocumentOpen,
                     onOpenNote = onNoteOpen,
-                    onOpenPasskey = onPasskeyOpen,
+                    onOpenPasskey = onNavigateToPasskeyDetail,
+                    onOpenHistory = onOpenVaultV2HistoryPage,
+                    onOpenTrashPage = onOpenVaultV2TrashPage,
+                    onOpenArchivePage = onOpenVaultV2ArchivePage,
+                    onOpenCommonAccountTemplates = onNavigateToCommonAccountTemplates,
                     appSettings = appSettings,
                     modifier = Modifier.fillMaxSize()
                 )
@@ -3384,7 +3428,7 @@ private fun BoxScope.MainScreenFabOverlay(
         showFab &&
             isFabVisible &&
             !isFabExpanded &&
-            currentTab == BottomNavItem.Passwords &&
+            (currentTab == BottomNavItem.Passwords || currentTab == BottomNavItem.VaultV2) &&
             quickAccessEnabled &&
             !isAnySelectionMode &&
             !fastScrollStripVisible
@@ -3576,7 +3620,8 @@ private fun BoxScope.MainScreenFabOverlay(
     }
 
     LaunchedEffect(currentTab, quickAccessEnabled, passwordHistoryPageMode) {
-        val quickAccessTabAllowed = currentTab == BottomNavItem.Passwords
+        val quickAccessTabAllowed =
+            currentTab == BottomNavItem.Passwords || currentTab == BottomNavItem.VaultV2
         val shouldHideBecausePasswordHistory =
             currentTab == BottomNavItem.Passwords && passwordHistoryPageMode.isVisible
         if (

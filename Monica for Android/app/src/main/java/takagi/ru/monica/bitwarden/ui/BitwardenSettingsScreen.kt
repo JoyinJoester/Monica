@@ -22,6 +22,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import takagi.ru.monica.bitwarden.sync.VaultSyncStatus
 import takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import java.text.SimpleDateFormat
@@ -50,6 +51,8 @@ fun BitwardenSettingsScreen(
     val vaults by viewModel.vaults.collectAsState()
     val activeVault by viewModel.activeVault.collectAsState()
     val unlockState by viewModel.unlockState.collectAsState()
+    val unlockStateByVault by viewModel.unlockStateByVault.collectAsState()
+    val syncStatusByVault by viewModel.syncStatusByVault.collectAsState()
     val syncState by viewModel.syncState.collectAsState()
     val isNeverLockEnabled by viewModel.isNeverLockEnabledFlow.collectAsState()
     val isAutoSyncEnabled by viewModel.isAutoSyncEnabledFlow.collectAsState()
@@ -57,6 +60,12 @@ fun BitwardenSettingsScreen(
     val pendingCount by viewModel.pendingSyncCount.collectAsState()
     val failedCount by viewModel.failedSyncCount.collectAsState()
     val context = LocalContext.current
+    val hasUnlockedVault = vaults.any { vault ->
+        (unlockStateByVault[vault.id] ?: BitwardenViewModel.UnlockState.Locked) ==
+            BitwardenViewModel.UnlockState.Unlocked || viewModel.isVaultUnlocked(vault.id)
+    }
+    val isAnyVaultSyncing = syncStatusByVault.values.any { it.isRunning } ||
+        syncState is BitwardenViewModel.SyncState.Syncing
     
     // 对话框状态
     var showLogoutConfirmDialog by remember { mutableStateOf(false) }
@@ -107,13 +116,13 @@ fun BitwardenSettingsScreen(
                     }
                 },
                 actions = {
-                    if (activeVault != null && unlockState == BitwardenViewModel.UnlockState.Unlocked) {
+                    if (hasUnlockedVault) {
                         // 同步按钮
                         IconButton(
-                            onClick = { viewModel.sync() },
-                            enabled = syncState !is BitwardenViewModel.SyncState.Syncing
+                            onClick = { viewModel.syncUnlockedVaults() },
+                            enabled = !isAnyVaultSyncing
                         ) {
-                            if (syncState is BitwardenViewModel.SyncState.Syncing) {
+                            if (isAnyVaultSyncing) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(24.dp),
                                     strokeWidth = 2.dp
@@ -156,23 +165,28 @@ fun BitwardenSettingsScreen(
                 }
             } else {
                 items(vaults, key = { it.id }) { vault ->
-                    val vaultUnlocked = viewModel.isVaultUnlocked(vault.id)
+                    val vaultUnlockState = unlockStateByVault[vault.id]
+                        ?: if (viewModel.isVaultUnlocked(vault.id)) {
+                            BitwardenViewModel.UnlockState.Unlocked
+                        } else {
+                            BitwardenViewModel.UnlockState.Locked
+                        }
+                    val vaultSyncStatus = syncStatusByVault[vault.id]
                     VaultCard(
                         vault = vault,
                         isActive = vault.id == activeVault?.id,
-                        isUnlocked = vaultUnlocked,
-                        syncState = if (vault.id == activeVault?.id) syncState else null,
-                        lastSyncTime = viewModel.lastSyncTime,
+                        unlockState = vaultUnlockState,
+                        syncStatus = vaultSyncStatus,
                         onSelect = { 
                             viewModel.setActiveVault(vault)
                             onNavigateToVault(vault.id)
                         },
-                        onLock = { viewModel.lock() },
+                        onLock = { viewModel.lock(vault.id) },
                         onUnlock = {
                             vaultToUnlock = vault
                             showUnlockDialog = true
                         },
-                        onSync = { viewModel.sync() },
+                        onSync = { viewModel.requestManualSync(vault.id) },
                         onLogout = {
                             vaultToLogout = vault
                             showLogoutConfirmDialog = true
@@ -308,8 +322,7 @@ fun BitwardenSettingsScreen(
         UnlockVaultDialog(
             email = vaultToUnlock!!.email,
             onUnlock = { password ->
-                viewModel.setActiveVault(vaultToUnlock!!)
-                viewModel.unlock(password)
+                viewModel.unlock(vaultToUnlock!!.id, password)
                 showUnlockDialog = false
                 vaultToUnlock = null
             },
@@ -325,8 +338,7 @@ fun BitwardenSettingsScreen(
         UnlockVaultDialog(
             email = vault?.email ?: "",
             onUnlock = { password ->
-                vault?.let { viewModel.setActiveVault(it) }
-                viewModel.unlock(password)
+                vault?.let { viewModel.unlock(it.id, password) }
                 showNeverLockUnlockDialog = false
             },
             onDismiss = {
@@ -344,9 +356,8 @@ fun BitwardenSettingsScreen(
 fun VaultCard(
     vault: BitwardenVault,
     isActive: Boolean,
-    isUnlocked: Boolean,
-    syncState: BitwardenViewModel.SyncState?,
-    lastSyncTime: Long,
+    unlockState: BitwardenViewModel.UnlockState,
+    syncStatus: VaultSyncStatus?,
     onSelect: () -> Unit,
     onLock: () -> Unit,
     onUnlock: () -> Unit,
@@ -358,6 +369,16 @@ fun VaultCard(
         targetValue = if (expanded) 180f else 0f,
         label = "expand_rotation"
     )
+    val isUnlocked = unlockState == BitwardenViewModel.UnlockState.Unlocked
+    val isUnlocking = unlockState == BitwardenViewModel.UnlockState.Unlocking
+    val isSyncing = syncStatus?.isRunning == true
+    val lastSyncTime = vault.lastSyncAt ?: syncStatus?.lastSuccessAt ?: 0L
+    val secondaryStatus = when {
+        isSyncing -> "同步中"
+        syncStatus?.queuedReason != null -> "等待同步"
+        syncStatus?.blockedReason != null -> formatSyncBlockReason(syncStatus.blockedReason)
+        else -> null
+    }
     
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -384,7 +405,12 @@ fun VaultCard(
                         .size(48.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    if (isUnlocked) {
+                    if (isUnlocking) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else if (isUnlocked) {
                         Icon(
                             Icons.Outlined.LockOpen,
                             contentDescription = "已解锁",
@@ -419,7 +445,13 @@ fun VaultCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     
-                    if (isActive && lastSyncTime > 0) {
+                    if (secondaryStatus != null) {
+                        Text(
+                            text = secondaryStatus,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    } else if (lastSyncTime > 0) {
                         Text(
                             text = "上次同步: ${formatTime(lastSyncTime)}",
                             style = MaterialTheme.typography.bodySmall,
@@ -446,48 +478,53 @@ fun VaultCard(
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    if (isActive) {
-                        if (isUnlocked) {
-                            // 锁定按钮
-                            OutlinedButton(
-                                onClick = onLock,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Outlined.Lock, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("锁定")
-                            }
-                            
-                            // 同步按钮
-                            OutlinedButton(
-                                onClick = onSync,
-                                enabled = syncState !is BitwardenViewModel.SyncState.Syncing,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Outlined.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("同步")
-                            }
-                        } else {
-                            // 解锁按钮
-                            Button(
-                                onClick = onUnlock,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Outlined.LockOpen, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("解锁")
-                            }
+                    if (isUnlocked) {
+                        OutlinedButton(
+                            onClick = onLock,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Outlined.Lock, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("锁定")
                         }
                     } else {
-                        // 选择此 Vault
                         Button(
+                            onClick = onUnlock,
+                            enabled = !isUnlocking,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Icon(Icons.Outlined.LockOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(if (isUnlocking) "解锁中" else "解锁")
+                        }
+                    }
+
+                    if (isUnlocked) {
+                        OutlinedButton(
+                            onClick = onSync,
+                            enabled = !isSyncing,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            if (isSyncing) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    strokeWidth = 2.dp
+                                )
+                            } else {
+                                Icon(Icons.Outlined.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
+                            }
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(if (isSyncing) "同步中" else "同步")
+                        }
+                    } else {
+                        OutlinedButton(
                             onClick = onSelect,
+                            enabled = !isActive,
                             modifier = Modifier.weight(1f)
                         ) {
                             Icon(Icons.Outlined.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("选择")
+                            Text(if (isActive) "当前 Vault" else "选择")
                         }
                     }
                     
@@ -780,6 +817,16 @@ private fun formatTime(timestamp: Long): String {
             val sdf = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
             sdf.format(Date(timestamp))
         }
+    }
+}
+
+private fun formatSyncBlockReason(reason: takagi.ru.monica.bitwarden.sync.SyncBlockReason): String {
+    return when (reason) {
+        takagi.ru.monica.bitwarden.sync.SyncBlockReason.AUTO_SYNC_DISABLED -> "自动同步已关闭"
+        takagi.ru.monica.bitwarden.sync.SyncBlockReason.NETWORK_UNAVAILABLE -> "网络不可用"
+        takagi.ru.monica.bitwarden.sync.SyncBlockReason.WIFI_REQUIRED -> "等待 Wi-Fi"
+        takagi.ru.monica.bitwarden.sync.SyncBlockReason.VAULT_LOCKED -> "Vault 未解锁"
+        takagi.ru.monica.bitwarden.sync.SyncBlockReason.AUTH_REQUIRED -> "需要重新认证"
     }
 }
 

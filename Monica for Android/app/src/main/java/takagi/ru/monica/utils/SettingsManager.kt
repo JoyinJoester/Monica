@@ -74,6 +74,7 @@ data class PageAdjustmentSettingsSnapshot(
     val passwordPageVisibleContentTypes: List<String> = emptyList(),
     val categorySelectionUiMode: String = takagi.ru.monica.data.CategorySelectionUiMode.DEFAULT.name,
     val colorSettingsVersion: Int = 0,
+    val oledPureBlackEnabled: Boolean = false,
     val colorScheme: String = takagi.ru.monica.data.ColorScheme.DEFAULT.name,
     val customPrimaryColor: Long = 0xFF6650A4L,
     val customSecondaryColor: Long = 0xFF625B71L,
@@ -133,6 +134,7 @@ class SettingsManager(private val context: Context) {
     
     companion object {
         private val THEME_MODE_KEY = stringPreferencesKey("theme_mode")
+        private val OLED_PURE_BLACK_ENABLED_KEY = booleanPreferencesKey("oled_pure_black_enabled")
         private val COLOR_SCHEME_KEY = stringPreferencesKey("color_scheme")
         private val CUSTOM_PRIMARY_COLOR_KEY = longPreferencesKey("custom_primary_color")
         private val CUSTOM_SECONDARY_COLOR_KEY = longPreferencesKey("custom_secondary_color")
@@ -459,6 +461,7 @@ class SettingsManager(private val context: Context) {
             themeMode = ThemeMode.valueOf(
                 preferences[THEME_MODE_KEY] ?: ThemeMode.SYSTEM.name
             ),
+            oledPureBlackEnabled = preferences[OLED_PURE_BLACK_ENABLED_KEY] ?: false,
             colorScheme = runCatching {
                 ColorScheme.valueOf(
                     preferences[COLOR_SCHEME_KEY] ?: ColorScheme.DEFAULT.name
@@ -638,6 +641,12 @@ class SettingsManager(private val context: Context) {
     suspend fun updateThemeMode(themeMode: ThemeMode) {
         dataStore.edit { preferences ->
             preferences[THEME_MODE_KEY] = themeMode.name
+        }
+    }
+
+    suspend fun updateOledPureBlackEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[OLED_PURE_BLACK_ENABLED_KEY] = enabled
         }
     }
 
@@ -1083,6 +1092,7 @@ class SettingsManager(private val context: Context) {
             passwordPageVisibleContentTypes = settings.passwordPageVisibleContentTypes.map { it.name },
             categorySelectionUiMode = settings.categorySelectionUiMode.name,
             colorSettingsVersion = 1,
+            oledPureBlackEnabled = settings.oledPureBlackEnabled,
             colorScheme = settings.colorScheme.name,
             customPrimaryColor = settings.customPrimaryColor,
             customSecondaryColor = settings.customSecondaryColor,
@@ -1239,6 +1249,7 @@ class SettingsManager(private val context: Context) {
                 normalizedPasswordPageVisibleContentTypes.joinToString(",") { it.name }
             preferences[CATEGORY_SELECTION_UI_MODE_KEY] = parsedCategorySelectionUiMode.name
             if (shouldRestoreColorSettings) {
+                preferences[OLED_PURE_BLACK_ENABLED_KEY] = snapshot.oledPureBlackEnabled
                 preferences[COLOR_SCHEME_KEY] = parsedColorScheme.name
                 preferences[CUSTOM_PRIMARY_COLOR_KEY] = snapshot.customPrimaryColor
                 preferences[CUSTOM_SECONDARY_COLOR_KEY] = snapshot.customSecondaryColor

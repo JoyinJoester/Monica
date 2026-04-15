@@ -933,9 +933,9 @@ class TotpViewModel(
         }
 
         val boundId = updatedTotpData.boundPasswordId
-        val secret = updatedTotpData.secret
-        if (boundId != null && secret.isNotBlank()) {
-            passwordRepository.updateAuthenticatorKey(boundId, secret)
+        val authenticatorPayload = TotpDataResolver.toBitwardenPayload(title, updatedTotpData)
+        if (boundId != null && authenticatorPayload.isNotBlank()) {
+            passwordRepository.updateAuthenticatorKey(boundId, authenticatorPayload)
         }
 
         if (previousBoundId != null && previousBoundId != boundId && previousSecret.isNotBlank()) {

@@ -170,6 +170,9 @@ fun AddEditPasswordScreen(
     initialKeePassGroupPath: String? = null,
     initialBitwardenVaultId: Long? = null,
     initialBitwardenFolderId: String? = null,
+    pendingQrResult: String? = null,
+    onConsumePendingQrResult: () -> Unit = {},
+    onScanAuthenticatorQrCode: (() -> Unit)? = null,
     onSaveCompleted: ((Long?) -> Unit)? = null,
     onNavigateBack: () -> Unit
 ) {
@@ -211,7 +214,8 @@ fun AddEditPasswordScreen(
     var unreadablePasswordIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var hasOwnershipConflict by remember { mutableStateOf(false) }
     
-    var authenticatorKey by rememberSaveable { mutableStateOf("") }
+    var authenticatorSecret by rememberSaveable { mutableStateOf("") }
+    var selectedAuthenticatorOtpTypeName by rememberSaveable { mutableStateOf(OtpType.TOTP.name) }
     var passkeyBindings by rememberSaveable { mutableStateOf("") }
     var originalAuthenticatorKey by rememberSaveable { mutableStateOf("") }
     var existingSshKeyData by rememberSaveable { mutableStateOf("") }
@@ -291,9 +295,20 @@ fun AddEditPasswordScreen(
     var separatedUsername by rememberSaveable { mutableStateOf("") }
     val inlineGeneratedPasswords = remember { mutableStateMapOf<Int, String>() }
     val inlinePasswordGenerator = remember { PasswordGenerator() }
+    val selectedAuthenticatorOtpType = remember(selectedAuthenticatorOtpTypeName) {
+        runCatching { OtpType.valueOf(selectedAuthenticatorOtpTypeName) }.getOrDefault(OtpType.TOTP)
+    }
+    val authenticatorKey = remember(authenticatorSecret, selectedAuthenticatorOtpType, title, username) {
+        buildPasswordScreenAuthenticatorPayload(
+            secret = authenticatorSecret,
+            otpType = selectedAuthenticatorOtpType,
+            issuer = title,
+            accountName = username
+        )
+    }
     val authenticatorPreviewTotpData = remember(authenticatorKey, title, username) {
         buildPasswordScreenInlinePreviewTotpData(
-            secret = authenticatorKey,
+            rawKey = authenticatorKey,
             issuer = title,
             accountName = username
         )
@@ -377,6 +392,87 @@ fun AddEditPasswordScreen(
     val fieldAccountLabel = stringResource(R.string.field_account)
     val fieldEmailLabel = stringResource(R.string.field_email)
     val fieldPhoneLabel = stringResource(R.string.field_phone)
+    var authenticatorTypeExpanded by remember { mutableStateOf(false) }
+
+    fun applyAuthenticatorInput(rawValue: String) {
+        val trimmed = rawValue.trim()
+        val parsed = if (trimmed.contains("://")) {
+            TotpDataResolver.fromAuthenticatorKey(
+                rawKey = trimmed,
+                fallbackIssuer = title,
+                fallbackAccountName = username
+            )
+        } else {
+            null
+        }
+        if (parsed != null) {
+            authenticatorSecret = parsed.secret
+            selectedAuthenticatorOtpTypeName = parsed.otpType.toPasswordScreenOtpType().name
+        } else {
+            authenticatorSecret = rawValue
+        }
+    }
+
+    fun applyScannedAuthenticator(rawValue: String) {
+        when (val scanResult = takagi.ru.monica.util.TotpUriParser.parseScannedContent(rawValue)) {
+            is takagi.ru.monica.util.TotpScanParseResult.Single -> {
+                val imported = scanResult.item.totpData
+                authenticatorSecret = imported.secret
+                selectedAuthenticatorOtpTypeName = imported.otpType.toPasswordScreenOtpType().name
+                if (title.isBlank()) {
+                    title = scanResult.item.label
+                        .substringBefore(":")
+                        .ifBlank { imported.issuer }
+                        .ifBlank { title }
+                }
+                if (username.isBlank()) {
+                    username = imported.accountName
+                }
+            }
+            is takagi.ru.monica.util.TotpScanParseResult.Multiple -> {
+                scanResult.items.firstOrNull()?.let { first ->
+                    val imported = first.totpData
+                    authenticatorSecret = imported.secret
+                    selectedAuthenticatorOtpTypeName = imported.otpType.toPasswordScreenOtpType().name
+                    if (title.isBlank()) {
+                        title = first.label
+                            .substringBefore(":")
+                            .ifBlank { imported.issuer }
+                            .ifBlank { title }
+                    }
+                    if (username.isBlank()) {
+                        username = imported.accountName
+                    }
+                }
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.qr_migration_multiple_fill_first, scanResult.items.size),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            takagi.ru.monica.util.TotpScanParseResult.UnsupportedPhoneFactor -> {
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.qr_phonefactor_not_supported),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+            takagi.ru.monica.util.TotpScanParseResult.InvalidFormat -> {
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.qr_invalid_authenticator),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    LaunchedEffect(pendingQrResult) {
+        pendingQrResult?.let { qrValue ->
+            applyScannedAuthenticator(qrValue)
+            onConsumePendingQrResult()
+        }
+    }
 
     fun syncLegacyStorageState(targets: List<StorageTarget>) {
         when (val primaryTarget = targets.firstOrNull()) {
@@ -740,7 +836,7 @@ fun AddEditPasswordScreen(
     }
     
     // 判断字段是否应该显示：设置开启 或 条目已有该字段数据
-    fun shouldShowSecurityVerification() = fieldVisibility.securityVerification || authenticatorKey.isNotEmpty()
+    fun shouldShowSecurityVerification() = fieldVisibility.securityVerification || authenticatorSecret.isNotEmpty()
     fun shouldShowCategoryAndNotes() =
         fieldVisibility.categoryAndNotes ||
             notes.isNotEmpty() ||
@@ -895,7 +991,13 @@ fun AddEditPasswordScreen(
                     bitwardenVaultId = entry.bitwardenVaultId
                     bitwardenFolderId = entry.bitwardenFolderId
                     currentReplicaGroupId = entry.replicaGroupId
-                    authenticatorKey = entry.authenticatorKey  // ✅ 从密码条目中读取验证器密钥
+                    val authenticatorDraft = resolvePasswordScreenAuthenticatorDraft(
+                        rawKey = entry.authenticatorKey,
+                        fallbackIssuer = entry.title,
+                        fallbackAccountName = entry.username
+                    )
+                    authenticatorSecret = authenticatorDraft.secret
+                    selectedAuthenticatorOtpTypeName = authenticatorDraft.otpType.toPasswordScreenOtpType().name
                     originalAuthenticatorKey = entry.authenticatorKey
                     passkeyBindings = entry.passkeyBindings
                     existingSshKeyData = entry.sshKeyData
@@ -1185,7 +1287,7 @@ fun AddEditPasswordScreen(
                         )
 
                         // 检查是否已有相同密钥的验证器
-                        val existingTotp = totpViewModel.findTotpBySecret(currentAuthKey)
+                        val existingTotp = totpViewModel.findTotpBySecret(resolvedAuthTotp.secret)
                         val existingTotpData = existingTotp?.let {
                             runCatching { Json.decodeFromString<TotpData>(it.itemData) }.getOrNull()
                         }
@@ -1873,16 +1975,89 @@ fun AddEditPasswordScreen(
                     InfoCard(title = stringResource(R.string.section_security_verification)) {
                         Column {
                             OutlinedTextField(
-                                value = authenticatorKey,
-                                onValueChange = { authenticatorKey = it },
+                                value = authenticatorSecret,
+                                onValueChange = ::applyAuthenticatorInput,
                                 label = { Text(stringResource(R.string.authenticator_key_optional)) },
                                 placeholder = { Text(stringResource(R.string.authenticator_key_hint)) },
                                 leadingIcon = { Icon(Icons.Default.VpnKey, null) },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                                supportingText = {
+                                    if (selectedAuthenticatorOtpType == OtpType.STEAM) {
+                                        Text(stringResource(R.string.steam_uses_5_chars))
+                                    }
+                                },
                                 shape = RoundedCornerShape(12.dp)
                             )
+
+                            ExposedDropdownMenuBox(
+                                expanded = authenticatorTypeExpanded,
+                                onExpandedChange = { authenticatorTypeExpanded = it }
+                            ) {
+                                OutlinedTextField(
+                                    value = when (selectedAuthenticatorOtpType) {
+                                        OtpType.STEAM -> stringResource(R.string.otp_type_steam)
+                                        else -> stringResource(R.string.otp_type_totp)
+                                    },
+                                    onValueChange = {},
+                                    readOnly = true,
+                                    label = { Text(stringResource(R.string.otp_type)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = if (selectedAuthenticatorOtpType == OtpType.STEAM) {
+                                                Icons.Default.Games
+                                            } else {
+                                                Icons.Default.Shield
+                                            },
+                                            contentDescription = null
+                                        )
+                                    },
+                                    trailingIcon = {
+                                        ExposedDropdownMenuDefaults.TrailingIcon(expanded = authenticatorTypeExpanded)
+                                    },
+                                    modifier = Modifier
+                                        .menuAnchor()
+                                        .fillMaxWidth()
+                                        .padding(top = 10.dp),
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+
+                                ExposedDropdownMenu(
+                                    expanded = authenticatorTypeExpanded,
+                                    onDismissRequest = { authenticatorTypeExpanded = false }
+                                ) {
+                                    listOf(
+                                        OtpType.TOTP to R.string.otp_type_totp,
+                                        OtpType.STEAM to R.string.otp_type_steam
+                                    ).forEach { (type, labelRes) ->
+                                        DropdownMenuItem(
+                                            text = { Text(stringResource(labelRes)) },
+                                            onClick = {
+                                                selectedAuthenticatorOtpTypeName = type.name
+                                                authenticatorTypeExpanded = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+
+                            if (onScanAuthenticatorQrCode != null) {
+                                FilledTonalButton(
+                                    onClick = onScanAuthenticatorQrCode,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 10.dp),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.QrCodeScanner,
+                                        contentDescription = null
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(stringResource(R.string.scan_qr_code))
+                                }
+                            }
 
                             AnimatedVisibility(
                                 visible = authenticatorPreviewVisible,
@@ -2749,15 +2924,70 @@ private fun InlinePrimarySuggestionCard(
 }
 
 private fun buildPasswordScreenInlinePreviewTotpData(
-    secret: String,
+    rawKey: String,
     issuer: String,
     accountName: String
 ): TotpData? {
     return TotpDataResolver.fromAuthenticatorKey(
-        rawKey = secret,
+        rawKey = rawKey,
         fallbackIssuer = issuer,
         fallbackAccountName = accountName
     )
+}
+
+private data class PasswordScreenAuthenticatorDraft(
+    val secret: String,
+    val otpType: OtpType
+)
+
+private fun resolvePasswordScreenAuthenticatorDraft(
+    rawKey: String,
+    fallbackIssuer: String = "",
+    fallbackAccountName: String = ""
+): PasswordScreenAuthenticatorDraft {
+    val resolved = TotpDataResolver.fromAuthenticatorKey(
+        rawKey = rawKey,
+        fallbackIssuer = fallbackIssuer,
+        fallbackAccountName = fallbackAccountName
+    )
+    return if (resolved != null) {
+        PasswordScreenAuthenticatorDraft(
+            secret = resolved.secret,
+            otpType = resolved.otpType
+        )
+    } else {
+        PasswordScreenAuthenticatorDraft(
+            secret = rawKey.trim(),
+            otpType = OtpType.TOTP
+        )
+    }
+}
+
+private fun buildPasswordScreenAuthenticatorPayload(
+    secret: String,
+    otpType: OtpType,
+    issuer: String,
+    accountName: String
+): String {
+    val normalizedSecret = TotpDataResolver.normalizeBase32Secret(secret)
+    if (normalizedSecret.isBlank()) return ""
+    if (otpType == OtpType.TOTP) return normalizedSecret
+
+    return TotpDataResolver.toBitwardenPayload(
+        title = issuer,
+        data = TotpData(
+            secret = normalizedSecret,
+            issuer = issuer.trim(),
+            accountName = accountName.trim(),
+            otpType = otpType,
+            digits = if (otpType == OtpType.STEAM) 5 else 6,
+            period = 30
+        )
+    )
+}
+
+private fun OtpType.toPasswordScreenOtpType(): OtpType {
+    return if (this == OtpType.STEAM) OtpType.STEAM else OtpType.TOTP
 }
 
 /**

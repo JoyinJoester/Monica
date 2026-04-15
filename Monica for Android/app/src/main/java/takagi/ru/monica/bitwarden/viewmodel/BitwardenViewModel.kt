@@ -86,9 +86,13 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     private val _activeVault = MutableStateFlow<BitwardenVault?>(null)
     val activeVault: StateFlow<BitwardenVault?> = _activeVault.asStateFlow()
     
-    // Vault 解锁状态
+    // 当前活跃 Vault 的解锁状态
     private val _unlockState = MutableStateFlow<UnlockState>(UnlockState.Locked)
     val unlockState: StateFlow<UnlockState> = _unlockState.asStateFlow()
+
+    // 每个 Vault 的解锁状态
+    private val _unlockStateByVault = MutableStateFlow<Map<Long, UnlockState>>(emptyMap())
+    val unlockStateByVault: StateFlow<Map<Long, UnlockState>> = _unlockStateByVault.asStateFlow()
     
     // 同步状态
     private val _syncState = MutableStateFlow<SyncState>(SyncState.Idle)
@@ -151,7 +155,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
         _isNeverLockEnabled.value = repository.isNeverLockEnabled
         _isAutoSyncEnabled.value = repository.isAutoSyncEnabled
         _isSyncOnWifiOnly.value = repository.isSyncOnWifiOnly
-        loadVaults()
+        loadVaults(triggerStartupAutoSync = true)
     }
     
     // ==================== 公开方法 ====================
@@ -159,47 +163,51 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     /**
      * 加载 Vault 列表
      */
-    fun loadVaults() {
+    fun loadVaults(triggerStartupAutoSync: Boolean = false) {
         viewModelScope.launch {
             try {
+                val restoredVaultIds = if (_isNeverLockEnabled.value) {
+                    repository.restoreUnlockedVaults()
+                } else {
+                    emptySet()
+                }
                 val vaultList = repository.getAllVaults()
                 _vaults.value = vaultList
+                replaceUnlockStates(vaultList)
                 
                 // 加载活跃 Vault
                 val active = repository.getActiveVault()
                 _activeVault.value = active
-                
-                if (active != null) {
-                    // 检查是否已解锁
-                    if (repository.isVaultUnlocked(active.id)) {
-                        _unlockState.value = UnlockState.Unlocked
-                        _sendState.value = SendState.Idle
-                        loadVaultData(active.id)
-                        maybeTriggerSilentAutoSync(active, trigger = "loadVaults:activeUnlocked")
-                    } else if (_isNeverLockEnabled.value) {
-                        // 永不锁定模式：尝试从存储恢复解锁状态
-                        Log.d(TAG, "永不锁定模式：尝试恢复 Vault 解锁状态")
-                        val restored = repository.tryRestoreUnlockState(active.id)
-                        if (restored) {
-                            _unlockState.value = UnlockState.Unlocked
-                            _sendState.value = SendState.Idle
-                            loadVaultData(active.id)
-                            maybeTriggerSilentAutoSync(active, trigger = "loadVaults:restoredUnlock")
-                            Log.d(TAG, "成功恢复 Vault 解锁状态")
-                        } else {
-                            _unlockState.value = UnlockState.Locked
-                            _sendState.value = SendState.Locked
-                            _sends.value = emptyList()
-                            Log.w(TAG, "无法恢复 Vault 解锁状态，需要手动解锁")
-                        }
-                    } else {
-                        _unlockState.value = UnlockState.Locked
-                        _sendState.value = SendState.Locked
-                        _sends.value = emptyList()
+
+                val activeUnlockState = active?.let { currentUnlockState(it.id) } ?: UnlockState.Locked
+                _unlockState.value = activeUnlockState
+
+                if (active != null && activeUnlockState == UnlockState.Unlocked) {
+                    _sendState.value = SendState.Idle
+                    loadVaultData(active.id)
+                    if (active.id in restoredVaultIds) {
+                        Log.d(TAG, "成功恢复 Vault 解锁状态")
                     }
                 } else {
-                    _sendState.value = SendState.Idle
-                    _sends.value = emptyList()
+                    clearActiveVaultContent(
+                        sendState = if (active == null) SendState.Idle else SendState.Locked
+                    )
+                }
+
+                if (triggerStartupAutoSync) {
+                    val reason = if (restoredVaultIds.isNotEmpty()) {
+                        SyncTriggerReason.APP_RESUME
+                    } else {
+                        SyncTriggerReason.PAGE_ENTER
+                    }
+                    requestAutoSyncForUnlockedVaults(vaultList, reason)
+                } else if (active != null && activeUnlockState == UnlockState.Unlocked) {
+                    val trigger = if (active.id in restoredVaultIds) {
+                        "loadVaults:restoredUnlock"
+                    } else {
+                        "loadVaults:activeUnlocked"
+                    }
+                    maybeTriggerSilentAutoSync(active, trigger = trigger)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "加载 Vault 失败", e)
@@ -240,6 +248,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                 is BitwardenRepository.RepositoryLoginResult.Success -> {
                     _loginState.value = LoginState.Success(result.vault)
                     _activeVault.value = result.vault
+                    setUnlockState(result.vault.id, UnlockState.Unlocked)
                     _unlockState.value = UnlockState.Unlocked
                     _events.emit(BitwardenEvent.ShowSuccess("登录成功"))
                     _events.emit(BitwardenEvent.NavigateToVault(result.vault.id))
@@ -316,6 +325,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                     pendingTlsConfig = null
                     _loginState.value = LoginState.Success(result.vault)
                     _activeVault.value = result.vault
+                    setUnlockState(result.vault.id, UnlockState.Unlocked)
                     _unlockState.value = UnlockState.Unlocked
                     loadVaults()
                     loadVaultData(result.vault.id)
@@ -359,24 +369,38 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
      * 解锁 Vault
      */
     fun unlock(masterPassword: String) {
-        val vault = _activeVault.value ?: return
+        val vaultId = _activeVault.value?.id ?: return
+        unlock(vaultId, masterPassword)
+    }
+
+    fun unlock(vaultId: Long, masterPassword: String) {
+        val vault = resolveVault(vaultId) ?: return
+        val isActiveVault = _activeVault.value?.id == vaultId
         
         viewModelScope.launch {
-            _unlockState.value = UnlockState.Unlocking
+            setUnlockState(vaultId, UnlockState.Unlocking)
+            if (isActiveVault) {
+                _unlockState.value = UnlockState.Unlocking
+            }
             
             when (val result = repository.unlock(vault.id, masterPassword)) {
                 is BitwardenRepository.UnlockResult.Success -> {
-                    _unlockState.value = UnlockState.Unlocked
-                    _sendState.value = SendState.Idle
-                    loadVaultData(vault.id)
-                    maybeTriggerSilentAutoSync(vault, trigger = "unlock")
+                    setUnlockState(vaultId, UnlockState.Unlocked)
+                    if (isActiveVault) {
+                        _unlockState.value = UnlockState.Unlocked
+                        _sendState.value = SendState.Idle
+                        loadVaultData(vault.id)
+                        maybeTriggerSilentAutoSync(vault, trigger = "unlock")
+                    }
                     _events.emit(BitwardenEvent.ShowSuccess("Vault 已解锁"))
                 }
                 
                 is BitwardenRepository.UnlockResult.Error -> {
-                    _unlockState.value = UnlockState.Locked
-                    _sendState.value = SendState.Locked
-                    _sends.value = emptyList()
+                    setUnlockState(vaultId, UnlockState.Locked)
+                    if (isActiveVault) {
+                        _unlockState.value = UnlockState.Locked
+                        clearActiveVaultContent(sendState = SendState.Locked)
+                    }
                     _events.emit(BitwardenEvent.ShowError(result.message))
                 }
             }
@@ -387,15 +411,30 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
      * 锁定 Vault
      */
     fun lock() {
-        val vault = _activeVault.value ?: return
+        val vaultId = _activeVault.value?.id ?: return
+        lock(vaultId)
+    }
+
+    fun lock(vaultId: Long) {
+        val isActiveVault = _activeVault.value?.id == vaultId
         
         viewModelScope.launch {
-            repository.lock(vault.id)
-            syncOrchestrator.clearVault(vault.id)
-            _unlockState.value = UnlockState.Locked
-            _entries.value = emptyList()
-            _folders.value = emptyList()
-            _sends.value = emptyList()
+            repository.lock(vaultId)
+            syncOrchestrator.clearVault(vaultId)
+            setUnlockState(vaultId, currentRepositoryUnlockState(vaultId))
+            if (isActiveVault) {
+                _unlockState.value = currentUnlockState(vaultId)
+                clearActiveVaultContent(
+                    sendState = if (currentUnlockState(vaultId) == UnlockState.Unlocked) {
+                        SendState.Idle
+                    } else {
+                        SendState.Locked
+                    }
+                )
+                if (currentUnlockState(vaultId) == UnlockState.Unlocked) {
+                    resolveVault(vaultId)?.let { loadVaultData(it.id) }
+                }
+            }
             _events.emit(BitwardenEvent.ShowSuccess("Vault 已锁定"))
         }
     }
@@ -406,11 +445,21 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     fun lockAll() {
         viewModelScope.launch {
             repository.lockAll()
-            _vaults.value.forEach { syncOrchestrator.clearVault(it.id) }
-            _unlockState.value = UnlockState.Locked
-            _entries.value = emptyList()
-            _folders.value = emptyList()
-            _sends.value = emptyList()
+            val currentVaults = repository.getAllVaults()
+            _vaults.value = currentVaults
+            currentVaults.forEach { syncOrchestrator.clearVault(it.id) }
+            replaceUnlockStates(currentVaults)
+            val active = _activeVault.value
+            val activeUnlockState = active?.let { currentUnlockState(it.id) } ?: UnlockState.Locked
+            _unlockState.value = activeUnlockState
+            if (active != null && activeUnlockState == UnlockState.Unlocked) {
+                _sendState.value = SendState.Idle
+                loadVaultData(active.id)
+            } else {
+                clearActiveVaultContent(
+                    sendState = if (active == null) SendState.Idle else SendState.Locked
+                )
+            }
         }
     }
     
@@ -425,10 +474,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
             if (success) {
                 syncOrchestrator.clearVault(targetVaultId)
                 loadVaults()
-                _entries.value = emptyList()
-                _folders.value = emptyList()
-                _sends.value = emptyList()
-                _unlockState.value = UnlockState.Locked
+                removeUnlockState(targetVaultId)
                 _loginState.value = LoginState.Idle
                 _events.emit(BitwardenEvent.ShowSuccess("已登出"))
                 _events.emit(BitwardenEvent.NavigateToLogin)
@@ -444,18 +490,17 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     fun setActiveVault(vault: BitwardenVault) {
         repository.setActiveVault(vault.id)
         _activeVault.value = vault
-        
-        if (repository.isVaultUnlocked(vault.id)) {
-            _unlockState.value = UnlockState.Unlocked
+        val activeUnlockState = currentUnlockState(vault.id)
+        _unlockState.value = activeUnlockState
+
+        if (activeUnlockState == UnlockState.Unlocked) {
             viewModelScope.launch {
+                _sendState.value = SendState.Idle
                 loadVaultData(vault.id)
                 maybeTriggerSilentAutoSync(vault, trigger = "setActiveVault")
             }
         } else {
-            _unlockState.value = UnlockState.Locked
-            _entries.value = emptyList()
-            _folders.value = emptyList()
-            _sends.value = emptyList()
+            clearActiveVaultContent(sendState = SendState.Locked)
         }
     }
 
@@ -481,6 +526,29 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
             reason = SyncTriggerReason.MANUAL,
             force = true
         )
+    }
+
+    fun syncUnlockedVaults() {
+        val unlockedVaultIds = collectUnlockedVaultIds()
+        if (unlockedVaultIds.isEmpty()) {
+            viewModelScope.launch {
+                _events.emit(BitwardenEvent.ShowError("请先解锁至少一个 Vault"))
+            }
+            return
+        }
+
+        val visibleVaultId = _activeVault.value?.id?.takeIf { it in unlockedVaultIds } ?: unlockedVaultIds.first()
+        unlockedVaultIds.forEach { vaultId ->
+            syncOrchestrator.requestSync(
+                vaultId = vaultId,
+                reason = if (vaultId == visibleVaultId) {
+                    SyncTriggerReason.MANUAL
+                } else {
+                    SyncTriggerReason.PAGE_ENTER
+                },
+                force = true
+            )
+        }
     }
 
     /**
@@ -772,6 +840,68 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     
     // ==================== 私有方法 ====================
 
+    private fun resolveVault(vaultId: Long): BitwardenVault? {
+        return _vaults.value.firstOrNull { it.id == vaultId }
+            ?: _activeVault.value?.takeIf { it.id == vaultId }
+    }
+
+    private fun currentRepositoryUnlockState(vaultId: Long): UnlockState {
+        return if (repository.isVaultUnlocked(vaultId)) {
+            UnlockState.Unlocked
+        } else {
+            UnlockState.Locked
+        }
+    }
+
+    private fun currentUnlockState(vaultId: Long): UnlockState {
+        return _unlockStateByVault.value[vaultId] ?: currentRepositoryUnlockState(vaultId)
+    }
+
+    private fun setUnlockState(vaultId: Long, state: UnlockState) {
+        val updated = _unlockStateByVault.value.toMutableMap()
+        updated[vaultId] = state
+        _unlockStateByVault.value = updated
+    }
+
+    private fun removeUnlockState(vaultId: Long) {
+        val updated = _unlockStateByVault.value.toMutableMap()
+        updated.remove(vaultId)
+        _unlockStateByVault.value = updated
+    }
+
+    private fun replaceUnlockStates(vaults: List<BitwardenVault>) {
+        _unlockStateByVault.value = vaults.associate { vault ->
+            vault.id to currentRepositoryUnlockState(vault.id)
+        }
+    }
+
+    private fun collectUnlockedVaultIds(vaults: List<BitwardenVault> = _vaults.value): List<Long> {
+        return vaults
+            .asSequence()
+            .map { it.id }
+            .filter(repository::isVaultUnlocked)
+            .toList()
+    }
+
+    private suspend fun refreshVaultListSnapshot(preferredActiveVaultId: Long? = _activeVault.value?.id) {
+        val vaultList = repository.getAllVaults()
+        _vaults.value = vaultList
+        replaceUnlockStates(vaultList)
+
+        val refreshedActive = preferredActiveVaultId
+            ?.let { activeVaultId -> vaultList.firstOrNull { it.id == activeVaultId } }
+            ?: repository.getActiveVault()
+        _activeVault.value = refreshedActive
+        _unlockState.value = refreshedActive?.let { currentUnlockState(it.id) } ?: UnlockState.Locked
+    }
+
+    private fun clearActiveVaultContent(sendState: SendState) {
+        _entries.value = emptyList()
+        _folders.value = emptyList()
+        _sends.value = emptyList()
+        _sendState.value = sendState
+    }
+
     private fun logBitwardenSendCreate(vaultId: Long, send: BitwardenSend) {
         OperationLogger.logCreate(
             itemType = OperationLogItemType.BITWARDEN_SEND,
@@ -795,7 +925,12 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
 
     private fun logBitwardenSyncSummary(
         vaultId: Long,
-        syncedCount: Int,
+        appliedChangeCount: Int,
+        availableOfflineCount: Int,
+        remoteAddedCount: Int,
+        remoteUpdatedCount: Int,
+        uploadedCount: Int,
+        deletedCount: Int,
         conflictCount: Int,
         uploadFailedCount: Int,
         skippedDueToLocalDirtyCount: Int,
@@ -807,7 +942,12 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
             itemTitle = "Bitwarden Vault #$vaultId",
             details = listOf(
                 FieldChange("模式", "", if (silent) "静默同步" else "手动同步"),
-                FieldChange("同步条目", "", syncedCount.toString()),
+                FieldChange("本次变更", "", appliedChangeCount.toString()),
+                FieldChange("离线可查看总数", "", availableOfflineCount.toString()),
+                FieldChange("远端新增", "", remoteAddedCount.toString()),
+                FieldChange("远端更新", "", remoteUpdatedCount.toString()),
+                FieldChange("本地上传", "", uploadedCount.toString()),
+                FieldChange("删除处理", "", deletedCount.toString()),
                 FieldChange("冲突数", "", conflictCount.toString()),
                 FieldChange("上传失败", "", uploadFailedCount.toString()),
                 FieldChange("本地待上传阻塞", "", skippedDueToLocalDirtyCount.toString())
@@ -875,6 +1015,12 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
         requestAutoSyncWithStartupGrace(vault.id, reason)
     }
 
+    private fun requestAutoSyncForUnlockedVaults(vaults: List<BitwardenVault>, reason: SyncTriggerReason) {
+        collectUnlockedVaultIds(vaults).forEach { vaultId ->
+            requestAutoSyncWithStartupGrace(vaultId, reason)
+        }
+    }
+
     private fun requestAutoSyncWithStartupGrace(vaultId: Long, reason: SyncTriggerReason) {
         val elapsed = System.currentTimeMillis() - processStartMs
         val remaining = COLD_START_AUTO_SYNC_GRACE_MS - elapsed
@@ -924,7 +1070,12 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                 val warmedCount = warmBitwardenOfflineSecretCacheForVault(vault.id)
                 logBitwardenSyncSummary(
                     vaultId = vault.id,
-                    syncedCount = result.syncedCount,
+                    appliedChangeCount = result.appliedChangeCount,
+                    availableOfflineCount = result.availableOfflineCount,
+                    remoteAddedCount = result.remoteAddedCount,
+                    remoteUpdatedCount = result.remoteUpdatedCount,
+                    uploadedCount = result.uploadedCount,
+                    deletedCount = result.deletedCount,
                     conflictCount = result.conflictCount,
                     uploadFailedCount = result.uploadFailedCount,
                     skippedDueToLocalDirtyCount = result.skippedDueToLocalDirtyCount,
@@ -935,13 +1086,15 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                 }
                 if (!silent) {
                     _syncState.value = SyncState.Success(
-                        syncedCount = result.syncedCount,
+                        appliedChangeCount = result.appliedChangeCount,
+                        availableOfflineCount = result.availableOfflineCount,
                         conflictCount = result.conflictCount,
                         uploadFailedCount = result.uploadFailedCount,
                         skippedDueToLocalDirtyCount = result.skippedDueToLocalDirtyCount
                     )
                 }
-                if (!silent) {
+                refreshVaultListSnapshot()
+                if (_activeVault.value?.id == vault.id) {
                     loadVaultData(vault.id)
                 }
 
@@ -958,19 +1111,21 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                             )
                         )
                     } else {
+                        val offlineReadyCount = maxOf(result.availableOfflineCount, warmedCount)
                         _events.emit(
                             BitwardenEvent.ShowSuccess(
                                 getApplication<Application>().getString(
                                     R.string.bitwarden_sync_success_with_offline_ready,
-                                    result.syncedCount,
-                                    warmedCount
+                                    result.appliedChangeCount,
+                                    offlineReadyCount
                                 )
                             )
                         )
                     }
                 }
                 SyncExecutionOutcome.Success(
-                    syncedCount = result.syncedCount,
+                    appliedChangeCount = result.appliedChangeCount,
+                    availableOfflineCount = result.availableOfflineCount,
                     conflictCount = result.conflictCount,
                     uploadFailedCount = result.uploadFailedCount,
                     skippedDueToLocalDirtyCount = result.skippedDueToLocalDirtyCount
@@ -1094,7 +1249,8 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
         object Idle : SyncState()
         object Syncing : SyncState()
         data class Success(
-            val syncedCount: Int,
+            val appliedChangeCount: Int,
+            val availableOfflineCount: Int,
             val conflictCount: Int,
             val uploadFailedCount: Int,
             val skippedDueToLocalDirtyCount: Int

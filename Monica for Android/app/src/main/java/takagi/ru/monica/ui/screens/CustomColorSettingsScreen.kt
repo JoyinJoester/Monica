@@ -53,6 +53,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
@@ -471,9 +472,12 @@ fun CustomColorSettingsScreen(
                                 ) {
                                     Text(
                                         text = stringResource(R.string.custom_preview_button),
-                                        modifier = Modifier.padding(vertical = 8.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 8.dp),
                                         color = previewScheme.onPrimary,
-                                        style = MaterialTheme.typography.labelMedium
+                                        style = MaterialTheme.typography.labelMedium,
+                                        textAlign = TextAlign.Center
                                     )
                                 }
                                 Surface(
@@ -483,9 +487,12 @@ fun CustomColorSettingsScreen(
                                 ) {
                                     Text(
                                         text = stringResource(R.string.custom_preview_chip),
-                                        modifier = Modifier.padding(vertical = 8.dp),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 8.dp),
                                         color = previewScheme.onSecondaryContainer,
-                                        style = MaterialTheme.typography.labelMedium
+                                        style = MaterialTheme.typography.labelMedium,
+                                        textAlign = TextAlign.Center
                                     )
                                 }
                             }
@@ -500,7 +507,8 @@ fun CustomColorSettingsScreen(
                                         .fillMaxWidth()
                                         .padding(horizontal = 10.dp, vertical = 8.dp),
                                     color = previewScheme.onTertiaryContainer,
-                                    style = MaterialTheme.typography.bodySmall
+                                    style = MaterialTheme.typography.bodySmall,
+                                    textAlign = TextAlign.Center
                                 )
                             }
                         }

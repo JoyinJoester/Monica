@@ -46,25 +46,33 @@ object TotpDataResolver {
             mergeParsedData(data, parsed)
         } ?: data
 
-        val safePeriod = mergedData.period.takeIf { it > 0 } ?: DEFAULT_PERIOD
-        val safeDigits = when (mergedData.otpType) {
-            OtpType.STEAM -> 5
-            else -> mergedData.digits.coerceIn(4, 10)
+        val contextAwareData = applyContextualOtpType(mergedData)
+
+        val safePeriod = when (contextAwareData.otpType) {
+            OtpType.STEAM -> DEFAULT_PERIOD
+            else -> contextAwareData.period.takeIf { it > 0 } ?: DEFAULT_PERIOD
         }
-        val normalizedAlgorithm = normalizeAlgorithm(mergedData.algorithm)
-        val normalizedSecret = when (mergedData.otpType) {
-            OtpType.MOTP -> mergedData.secret.trim()
-            else -> normalizeBase32Secret(mergedData.secret)
+        val safeDigits = when (contextAwareData.otpType) {
+            OtpType.STEAM -> 5
+            else -> contextAwareData.digits.coerceIn(4, 10)
+        }
+        val normalizedAlgorithm = when (contextAwareData.otpType) {
+            OtpType.STEAM -> DEFAULT_ALGORITHM
+            else -> normalizeAlgorithm(contextAwareData.algorithm)
+        }
+        val normalizedSecret = when (contextAwareData.otpType) {
+            OtpType.MOTP -> contextAwareData.secret.trim()
+            else -> normalizeBase32Secret(contextAwareData.secret)
         }
 
-        return mergedData.copy(
+        return contextAwareData.copy(
             secret = normalizedSecret,
-            issuer = mergedData.issuer.trim(),
-            accountName = mergedData.accountName.trim(),
+            issuer = contextAwareData.issuer.trim(),
+            accountName = contextAwareData.accountName.trim(),
             period = safePeriod,
             digits = safeDigits,
             algorithm = normalizedAlgorithm,
-            counter = mergedData.counter.coerceAtLeast(0L)
+            counter = contextAwareData.counter.coerceAtLeast(0L)
         )
     }
 
@@ -176,6 +184,34 @@ object TotpDataResolver {
     private fun parseUriTotpData(raw: String): TotpData? {
         if (!raw.contains("://")) return null
         return TotpUriParser.parseUri(raw.trim())?.totpData
+    }
+
+    private fun applyContextualOtpType(source: TotpData): TotpData {
+        if (source.otpType != OtpType.TOTP) return source
+
+        val context = buildString {
+            append(source.issuer)
+            append(' ')
+            append(source.accountName)
+            append(' ')
+            append(source.associatedApp)
+            append(' ')
+            append(source.link)
+        }.lowercase()
+
+        val looksLikeSteam =
+            context.contains("steamcommunity") ||
+                context.contains("steampowered") ||
+                context.contains("steam")
+
+        if (!looksLikeSteam) return source
+
+        return source.copy(
+            otpType = OtpType.STEAM,
+            digits = 5,
+            period = DEFAULT_PERIOD,
+            algorithm = DEFAULT_ALGORITHM
+        )
     }
 
     private fun mergeParsedData(source: TotpData, parsed: TotpData): TotpData {

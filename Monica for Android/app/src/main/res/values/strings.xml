@@ -590,7 +590,12 @@
     <string name="theme_system">System Default</string>
     <string name="theme_light">Light</string>
     <string name="theme_dark">Dark</string>
-    
+    <string name="oled_pure_black">OLED Pure Black</string>
+    <string name="oled_pure_black_description">Force backgrounds and surface containers to use absolute black in dark mode.</string>
+    <string name="oled_pure_black_dark_mode_hint">Pure black only takes effect while the app is in dark mode.</string>
+    <string name="appearance_sheet_description">Choose the app appearance mode and decide whether dark surfaces should switch to OLED pure black.</string>
+    <string name="appearance_with_oled_subtitle">%1$s · OLED Pure Black</string>
+
     <!-- Auto Lock Options -->
     <string name="auto_lock_immediately">Immediately</string>
     <string name="auto_lock_1_minute">1 minute</string>
@@ -2428,7 +2433,7 @@
     <string name="bitwarden_cache_failed">Bitwarden cache failed: %1$s</string>
     <string name="bitwarden_cache_requires_unlock">Please unlock Bitwarden vault first</string>
     <string name="bitwarden_cache_blocked_empty_vault">Bitwarden cache blocked: %1$s</string>
-    <string name="bitwarden_sync_success_with_offline_ready">Sync completed. %1$d records refreshed and %2$d offline secrets are ready to view.</string>
+    <string name="bitwarden_sync_success_with_offline_ready">Sync completed. %1$d changes were applied in this sync, and %2$d secrets are currently available offline.</string>
     <string name="bitwarden_clear_cache_confirm_title">Clear Bitwarden cache?</string>
     <string name="bitwarden_clear_cache_confirm_message">This will remove local Bitwarden cache data for the current vault. You can sync again later.</string>
     <string name="bitwarden_clear_cache_confirm_message_with_risk">Pending changes detected (pending ops: %1$d, password edits: %2$d, secure item edits: %3$d, unresolved conflicts: %4$d). You can clear synced cache only, or force clear all local Bitwarden cache.</string>

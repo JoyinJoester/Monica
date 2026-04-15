@@ -6,6 +6,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.bitwarden.api.*
+import takagi.ru.monica.bitwarden.BitwardenVaultIdentity
 import takagi.ru.monica.bitwarden.mapper.BitwardenSendMapper
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto.SymmetricCryptoKey
 import takagi.ru.monica.bitwarden.sync.EmptyVaultProtection
@@ -200,8 +201,18 @@ class BitwardenSyncService(
             
             // 更新 Vault 同步状态
             val now = System.currentTimeMillis()
-            vaultDao.updateSyncStatus(
+            val profileIdentity = BitwardenVaultIdentity.createProfileIdentity(
+                serverUrl = vault.serverUrl,
+                profile = syncResponse.profile,
+                fallbackEmail = vault.email
+            )
+            vaultDao.updateIdentityAndSyncStatus(
                 vaultId = vault.id,
+                email = profileIdentity.email,
+                canonicalEmail = profileIdentity.canonicalEmail,
+                userId = profileIdentity.userId,
+                accountKey = profileIdentity.accountKey,
+                displayName = profileIdentity.displayName,
                 lastSyncAt = now,
                 revisionDate = syncResponse.profile.securityStamp
             )

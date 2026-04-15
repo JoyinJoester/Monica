@@ -712,6 +712,13 @@ class WebDavHelper(
             null
         }
     }
+
+    /**
+     * 获取当前已保存的 WebDAV 密码（用于编辑配置时回填）。
+     */
+    fun getCurrentPasswordForEdit(): String {
+        return if (isConfigured()) password else ""
+    }
     
     /**
      * 清除配置
@@ -4527,17 +4534,29 @@ class WebDavHelper(
         var defaultVaultId: Long? = null
 
         backups.forEach { backup ->
-            val normalizedEmail = backup.email.trim()
-            if (normalizedEmail.isEmpty()) {
+            val displayEmail = backup.email.trim()
+            if (displayEmail.isEmpty()) {
                 return@forEach
             }
 
             try {
-                val existingVault = vaultDao.getVaultByEmail(normalizedEmail)
+                val canonicalEmail = takagi.ru.monica.bitwarden.BitwardenVaultIdentity
+                    .canonicalizeEmail(displayEmail)
+                val serverUrl = backup.serverUrl.trim().ifEmpty { "https://vault.bitwarden.com" }
+                val accountKey = takagi.ru.monica.bitwarden.BitwardenVaultIdentity.buildAccountKey(
+                    serverUrl = serverUrl,
+                    userId = backup.userId,
+                    canonicalEmail = canonicalEmail
+                )
+                val existingVault = vaultDao.getVaultByAccountKey(accountKey)
+                    ?: vaultDao.getVaultByServerAndCanonicalEmail(serverUrl, canonicalEmail)
                 val backupId = backup.id.takeIf { it > 0 }
                 val conflictingVault = backupId
                     ?.let { candidateId -> vaultDao.getVaultById(candidateId) }
-                    ?.takeIf { candidateVault -> candidateVault.email != normalizedEmail }
+                    ?.takeIf { candidateVault ->
+                        candidateVault.id != existingVault?.id &&
+                            candidateVault.accountKey != accountKey
+                    }
                 val targetId = when {
                     existingVault != null -> existingVault.id
                     conflictingVault == null -> backupId ?: 0L
@@ -4551,10 +4570,12 @@ class WebDavHelper(
                 val now = System.currentTimeMillis()
                 val restoredVault = takagi.ru.monica.data.bitwarden.BitwardenVault(
                     id = targetId,
-                    email = normalizedEmail,
+                    email = displayEmail,
+                    canonicalEmail = canonicalEmail,
                     userId = backup.userId?.trim()?.ifBlank { null },
+                    accountKey = accountKey,
                     displayName = backup.displayName?.trim()?.ifBlank { null },
-                    serverUrl = backup.serverUrl.trim().ifEmpty { "https://vault.bitwarden.com" },
+                    serverUrl = serverUrl,
                     identityUrl = backup.identityUrl.trim().ifEmpty { "https://identity.bitwarden.com" },
                     apiUrl = backup.apiUrl.trim().ifEmpty { "https://api.bitwarden.com" },
                     eventsUrl = backup.eventsUrl?.trim()?.ifBlank { null },
@@ -4603,7 +4624,7 @@ class WebDavHelper(
             } catch (e: Exception) {
                 android.util.Log.w(
                     "WebDavHelper",
-                    "Failed to restore Bitwarden vault ${normalizedEmail}: ${e.message}"
+                    "Failed to restore Bitwarden vault ${displayEmail}: ${e.message}"
                 )
             }
         }

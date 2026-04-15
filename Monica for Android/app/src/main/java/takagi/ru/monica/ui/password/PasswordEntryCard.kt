@@ -264,6 +264,8 @@ fun PasswordEntryCard(
                     val authenticatorState = if (showAuthenticator) {
                         rememberPasswordAuthenticatorDisplayState(
                             authenticatorKey = entry.authenticatorKey,
+                            fallbackIssuer = entry.website.ifBlank { entry.title },
+                            fallbackAccountName = entry.username.ifBlank { entry.title },
                             timeOffsetSeconds = totpTimeOffsetSeconds,
                             smoothProgress = smoothAuthenticatorProgress
                         )

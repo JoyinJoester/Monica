@@ -33,10 +33,17 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowRight
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.DashboardCustomize
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.VpnKey
@@ -48,6 +55,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -59,6 +68,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -79,15 +89,18 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
+import takagi.ru.monica.data.CategorySelectionUiMode
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.isLocalOnlyItem
@@ -104,6 +117,9 @@ import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.UnmatchedIconHandlingStrategy
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
+import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenu
+import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuDropdown
+import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuOffset
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_SIMPLE
@@ -114,16 +130,24 @@ import takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon
 import takagi.ru.monica.ui.icons.rememberSimpleIconBitmap
 import takagi.ru.monica.ui.icons.rememberUploadedPasswordIcon
 import takagi.ru.monica.ui.icons.shouldShowFallbackSlot
+import takagi.ru.monica.ui.PasswordQuickFolderBreadcrumb
+import takagi.ru.monica.ui.PasswordQuickFolderBreadcrumbBanner
+import takagi.ru.monica.ui.PasswordDisplayOptionsSheet
+import takagi.ru.monica.ui.buildPasswordQuickFolderNodes
+import takagi.ru.monica.ui.buildQuickFolderBreadcrumbs
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.common.selection.SelectionActionBar
 import takagi.ru.monica.ui.password.PasswordAuthenticatorDisplayState
+import takagi.ru.monica.ui.password.StackCardMode
 import takagi.ru.monica.ui.password.rememberPasswordAuthenticatorDisplayState
 import takagi.ru.monica.viewmodel.BankCardViewModel
+import takagi.ru.monica.viewmodel.CategoryFilter
 import takagi.ru.monica.viewmodel.DocumentViewModel
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import takagi.ru.monica.viewmodel.NoteViewModel
 import takagi.ru.monica.viewmodel.PasskeyViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
+import takagi.ru.monica.viewmodel.SettingsViewModel
 import takagi.ru.monica.viewmodel.TotpViewModel
 import takagi.ru.monica.util.TotpGenerator
 import takagi.ru.monica.utils.KEEPASS_DISPLAY_PATH_SEPARATOR
@@ -170,6 +194,11 @@ private data class VaultV2SectionLayout(
 	val items: List<VaultV2Item>,
 	val itemStartIndex: Int,
 	val firstItemLazyIndex: Int,
+)
+
+private data class VaultV2ComputedListState(
+	val allItemsRaw: List<VaultV2Item> = emptyList(),
+	val passwordById: Map<Long, PasswordEntry> = emptyMap(),
 )
 
 private const val VAULT_V2_FAST_SCROLL_LOG_TAG = "VaultV2FastScroll"
@@ -324,6 +353,90 @@ private fun VaultV2PaneState.updateStorageFilter(selection: UnifiedCategoryFilte
 	}
 }
 
+private fun UnifiedCategoryFilterSelection.toCategoryFilterOrNull(): CategoryFilter? {
+	return when (this) {
+		UnifiedCategoryFilterSelection.All -> CategoryFilter.All
+		UnifiedCategoryFilterSelection.Local -> CategoryFilter.Local
+		UnifiedCategoryFilterSelection.Starred -> CategoryFilter.Starred
+		UnifiedCategoryFilterSelection.Uncategorized -> CategoryFilter.Uncategorized
+		UnifiedCategoryFilterSelection.LocalStarred -> CategoryFilter.LocalStarred
+		UnifiedCategoryFilterSelection.LocalUncategorized -> CategoryFilter.LocalUncategorized
+		is UnifiedCategoryFilterSelection.Custom -> CategoryFilter.Custom(categoryId)
+		is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> CategoryFilter.KeePassDatabase(databaseId)
+		is UnifiedCategoryFilterSelection.KeePassGroupFilter -> {
+			CategoryFilter.KeePassGroupFilter(databaseId, groupPath)
+		}
+		is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> {
+			CategoryFilter.KeePassDatabaseStarred(databaseId)
+		}
+		is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> {
+			CategoryFilter.KeePassDatabaseUncategorized(databaseId)
+		}
+		is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> CategoryFilter.BitwardenVault(vaultId)
+		is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> {
+			CategoryFilter.BitwardenFolderFilter(folderId = folderId, vaultId = vaultId)
+		}
+		is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> {
+			CategoryFilter.BitwardenVaultStarred(vaultId)
+		}
+		is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> {
+			CategoryFilter.BitwardenVaultUncategorized(vaultId)
+		}
+	}
+}
+
+private fun CategoryFilter.toUnifiedCategoryFilterSelectionOrNull(): UnifiedCategoryFilterSelection? {
+	return when (this) {
+		is CategoryFilter.All -> UnifiedCategoryFilterSelection.All
+		is CategoryFilter.Local -> UnifiedCategoryFilterSelection.Local
+		is CategoryFilter.LocalOnly -> UnifiedCategoryFilterSelection.Local
+		is CategoryFilter.Starred -> UnifiedCategoryFilterSelection.Starred
+		is CategoryFilter.Uncategorized -> UnifiedCategoryFilterSelection.Uncategorized
+		is CategoryFilter.LocalStarred -> UnifiedCategoryFilterSelection.LocalStarred
+		is CategoryFilter.LocalUncategorized -> UnifiedCategoryFilterSelection.LocalUncategorized
+		is CategoryFilter.Custom -> UnifiedCategoryFilterSelection.Custom(categoryId)
+		is CategoryFilter.KeePassDatabase -> UnifiedCategoryFilterSelection.KeePassDatabaseFilter(databaseId)
+		is CategoryFilter.KeePassGroupFilter -> {
+			UnifiedCategoryFilterSelection.KeePassGroupFilter(databaseId, groupPath)
+		}
+		is CategoryFilter.KeePassDatabaseStarred -> {
+			UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter(databaseId)
+		}
+		is CategoryFilter.KeePassDatabaseUncategorized -> {
+			UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter(databaseId)
+		}
+		is CategoryFilter.BitwardenVault -> UnifiedCategoryFilterSelection.BitwardenVaultFilter(vaultId)
+		is CategoryFilter.BitwardenFolderFilter -> {
+			UnifiedCategoryFilterSelection.BitwardenFolderFilter(vaultId, folderId)
+		}
+		is CategoryFilter.BitwardenVaultStarred -> {
+			UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter(vaultId)
+		}
+		is CategoryFilter.BitwardenVaultUncategorized -> {
+			UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter(vaultId)
+		}
+		is CategoryFilter.Archived -> null
+	}
+}
+
+@Composable
+private fun <T> rememberVaultV2AsyncComputed(
+	vararg keys: Any?,
+	initialValue: T,
+	compute: suspend () -> T,
+): T {
+	val state = remember { mutableStateOf(initialValue) }
+	val latestCompute by rememberUpdatedState(compute)
+
+	LaunchedEffect(*keys) {
+		state.value = withContext(Dispatchers.Default) {
+			latestCompute()
+		}
+	}
+
+	return state.value
+}
+
 @Composable
 private fun rememberVaultV2StorageFilterLabel(
 	selected: UnifiedCategoryFilterSelection,
@@ -345,8 +458,9 @@ private fun rememberVaultV2StorageFilterLabel(
 		UnifiedCategoryFilterSelection.LocalStarred -> "$monica · $starred"
 		UnifiedCategoryFilterSelection.LocalUncategorized -> "$monica · $uncategorized"
 		is UnifiedCategoryFilterSelection.Custom -> {
-			categories.find { it.id == selected.categoryId }?.name
+			val categoryLabel = categories.find { it.id == selected.categoryId }?.name
 				?: stringResource(R.string.unknown_category)
+			"$monica · $categoryLabel"
 		}
 		is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> {
 			keepassDatabases.find { it.id == selected.databaseId }?.name ?: keepass
@@ -502,13 +616,18 @@ fun VaultV2Pane(
 	keepassDatabases: List<LocalKeePassDatabase>,
 	bitwardenVaults: List<BitwardenVault>,
 	localKeePassViewModel: LocalKeePassViewModel,
+	settingsViewModel: SettingsViewModel,
 	state: VaultV2PaneState,
 	onOpenPassword: (Long) -> Unit,
 	onOpenTotp: (Long) -> Unit,
 	onOpenBankCard: (Long) -> Unit,
 	onOpenDocument: (Long) -> Unit,
 	onOpenNote: (Long) -> Unit,
-	onOpenPasskey: (PasskeyEntry) -> Unit,
+	onOpenPasskey: (Long) -> Unit,
+	onOpenHistory: () -> Unit,
+	onOpenTrashPage: () -> Unit,
+	onOpenArchivePage: () -> Unit,
+	onOpenCommonAccountTemplates: () -> Unit,
 	showOnlyLocalData: Boolean = false,
 	appSettings: AppSettings = AppSettings(),
 	modifier: Modifier = Modifier,
@@ -516,6 +635,8 @@ fun VaultV2Pane(
 	var searchQuery by rememberSaveable { mutableStateOf("") }
 	var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
 	var isStorageFilterSheetVisible by rememberSaveable { mutableStateOf(false) }
+	var isTopActionsMenuExpanded by rememberSaveable { mutableStateOf(false) }
+	var showDisplayOptionsSheet by rememberSaveable { mutableStateOf(false) }
 	var filter by rememberSaveable { mutableStateOf(VaultV2Filter.ALL) }
 	val selectedKeys = remember { mutableStateListOf<String>() }
 	val listState = rememberLazyListState(
@@ -540,8 +661,11 @@ fun VaultV2Pane(
 		bitwardenRepository = bitwardenRepository,
 		onSearchTriggered = { isSearchExpanded = true },
 	)
+	val stackCardMode = remember(appSettings.stackCardMode) {
+		runCatching { StackCardMode.valueOf(appSettings.stackCardMode) }.getOrDefault(StackCardMode.AUTO)
+	}
 
-	val passwordEntries by passwordViewModel.allPasswords.collectAsState()
+	val passwordEntries by passwordViewModel.allPasswordsForUi.collectAsState()
 	val categories by passwordViewModel.categories.collectAsState()
 	val totpItems by totpViewModel.allTotpItems.collectAsState()
 	val bankCardItems by bankCardViewModel.allCards.collectAsState(initial = emptyList())
@@ -550,6 +674,9 @@ fun VaultV2Pane(
 	val passkeyItems by passkeyViewModel.allPasskeys.collectAsState()
 	val fastScrollRequestKey = state.fastScrollRequestKey
 	val fastScrollProgress = state.fastScrollProgress
+	LaunchedEffect(state) {
+		state.ensureAggregateDefaultStorageFilter()
+	}
 	val storageSelection = remember(
 		state.storageFilterType,
 		state.storageFilterPrimaryId,
@@ -570,6 +697,50 @@ fun VaultV2Pane(
 		selectedBitwardenVaultId?.let(passwordViewModel::getBitwardenFolders) ?: flowOf(emptyList())
 	}
 	val selectedBitwardenFolders by selectedBitwardenFoldersFlow.collectAsState(initial = emptyList())
+	val quickFolderNodes = remember(categories) { buildPasswordQuickFolderNodes(categories) }
+	val quickFolderNodeByPath = remember(quickFolderNodes) { quickFolderNodes.associateBy { it.path } }
+	val breadcrumbCategoryFilter = remember(storageSelection) {
+		storageSelection.toCategoryFilterOrNull()
+	}
+	val quickFolderCurrentPath = remember(breadcrumbCategoryFilter, quickFolderNodes) {
+		when (val filter = breadcrumbCategoryFilter) {
+			is CategoryFilter.Custom -> quickFolderNodes.firstOrNull { it.category.id == filter.categoryId }?.path
+			else -> null
+		}
+	}
+	val breadcrumbRootFilter = remember(breadcrumbCategoryFilter) {
+		when (breadcrumbCategoryFilter) {
+			is CategoryFilter.Custom,
+			is CategoryFilter.Local,
+			is CategoryFilter.LocalStarred,
+			is CategoryFilter.LocalUncategorized -> CategoryFilter.Local
+			else -> CategoryFilter.All
+		}
+	}
+	val pathBreadcrumbs = rememberVaultV2AsyncComputed(
+		breadcrumbCategoryFilter,
+		quickFolderCurrentPath,
+		quickFolderNodeByPath,
+		keepassDatabases,
+		bitwardenVaults,
+		selectedBitwardenFolders,
+		categories,
+		initialValue = emptyList<PasswordQuickFolderBreadcrumb>()
+	) {
+		val currentFilter = breadcrumbCategoryFilter ?: return@rememberVaultV2AsyncComputed emptyList()
+		buildQuickFolderBreadcrumbs(
+			context = context,
+			quickFolderPathBannerEnabledForCurrentFilter = true,
+			currentFilter = currentFilter,
+			quickFolderCurrentPath = quickFolderCurrentPath,
+			quickFolderNodeByPath = quickFolderNodeByPath,
+			quickFolderRootFilter = breadcrumbRootFilter,
+			keepassDatabases = keepassDatabases,
+			bitwardenVaults = bitwardenVaults,
+			selectedBitwardenFolders = selectedBitwardenFolders,
+			categories = categories,
+		)
+	}
 	val storageFilterLabel = rememberVaultV2StorageFilterLabel(
 		selected = storageSelection,
 		categories = categories,
@@ -597,13 +768,14 @@ fun VaultV2Pane(
 		if (showOnlyLocalData) passkeyItems.filter { it.isVaultV2LocalOnly() } else passkeyItems
 	}
 
-	val allItemsRaw = remember(
+	val computedListState = rememberVaultV2AsyncComputed(
 		visiblePasswordEntries,
 		visibleTotpItems,
 		visibleBankCardItems,
 		visibleDocumentItems,
 		visibleNoteItems,
 		visiblePasskeyItems,
+		initialValue = VaultV2ComputedListState(),
 	) {
 		val passwordList = visiblePasswordEntries.map { entry ->
 			val displayTitle = entry.title.ifBlank { "(Untitled)" }
@@ -743,13 +915,20 @@ fun VaultV2Pane(
 			)
 		}
 
-		dedupeExactVaultItems(passwordList + totpList + noteList + passkeyList + bankCardList + documentList)
-			.sortedWith(
+		val allItemsRaw = dedupeExactVaultItems(
+			passwordList + totpList + noteList + passkeyList + bankCardList + documentList
+		).sortedWith(
 				compareBy<VaultV2Item> { it.sortKey.lowercase(Locale.ROOT) }
 					.thenBy { it.type.ordinal }
 					.thenBy { it.key }
 			)
+		VaultV2ComputedListState(
+			allItemsRaw = allItemsRaw,
+			passwordById = visiblePasswordEntries.associateBy { it.id },
+		)
 	}
+	val allItemsRaw = computedListState.allItemsRaw
+	val passwordById = computedListState.passwordById
 
 	var allItems by remember { mutableStateOf(allItemsRaw) }
 	var pendingAllItems by remember { mutableStateOf<List<VaultV2Item>?>(null) }
@@ -847,15 +1026,16 @@ fun VaultV2Pane(
 			}
 		}
 	}
-	val passwordById = remember(passwordEntries) {
-		passwordEntries.associateBy { it.id }
-	}
 	val showBackToTop by remember(listState) {
 		derivedStateOf { listState.firstVisibleItemIndex > 3 }
 	}
 
-	LaunchedEffect(showBackToTop) {
-		state.showBackToTop = showBackToTop
+	LaunchedEffect(selectedCount) {
+		state.updateSelectionCount(selectedCount)
+	}
+
+	LaunchedEffect(showBackToTop, selectedCount) {
+		state.showBackToTop = showBackToTop && selectedCount == 0
 	}
 
 	DisposableEffect(Unit) {
@@ -889,45 +1069,40 @@ fun VaultV2Pane(
 			}
 	}
 
-	LaunchedEffect(listState, sectionLayouts, filteredItems.size) {
-		snapshotFlow {
-			if (
-				fastScrollRequestKey <= lastHandledFastScrollRequestKey ||
-				filteredItems.isEmpty() ||
-				sectionLayouts.isEmpty()
-			) {
-				null
-			} else {
-				val targetItemIndex = (
-					fastScrollProgress.coerceIn(0f, 1f) * (filteredItems.size - 1)
-				).roundToInt().coerceIn(0, filteredItems.size - 1)
-				fastScrollRequestKey to vaultV2LazyIndexForItemIndex(
-					sectionLayouts = sectionLayouts,
-					targetItemIndex = targetItemIndex,
-				)
-			}
+	LaunchedEffect(fastScrollRequestKey, fastScrollProgress, sectionLayouts, filteredItems.size) {
+		if (fastScrollRequestKey <= lastHandledFastScrollRequestKey) {
+			return@LaunchedEffect
 		}
-			.filterNotNull()
-			.distinctUntilChanged()
-			.conflate()
-			.collectLatest { (requestKey, targetLazyIndex) ->
-				try {
-					if (listState.firstVisibleItemIndex != targetLazyIndex) {
-						runCatching {
-							listState.scrollToItem(index = targetLazyIndex)
-						}.onFailure { throwable ->
-							if (throwable is CancellationException) return@onFailure
-							Log.e(
-								VAULT_V2_FAST_SCROLL_LOG_TAG,
-								"scrollToItem failed: targetLazyIndex=$targetLazyIndex filteredSize=${filteredItems.size}",
-								throwable
-							)
-						}
-					}
-				} finally {
-					lastHandledFastScrollRequestKey = requestKey
+
+		if (filteredItems.isEmpty() || sectionLayouts.isEmpty()) {
+			lastHandledFastScrollRequestKey = fastScrollRequestKey
+			return@LaunchedEffect
+		}
+
+		val targetItemIndex = (
+			fastScrollProgress.coerceIn(0f, 1f) * (filteredItems.size - 1)
+		).roundToInt().coerceIn(0, filteredItems.size - 1)
+		val targetLazyIndex = vaultV2LazyIndexForItemIndex(
+			sectionLayouts = sectionLayouts,
+			targetItemIndex = targetItemIndex,
+		)
+
+		try {
+			if (listState.firstVisibleItemIndex != targetLazyIndex) {
+				runCatching {
+					listState.scrollToItem(index = targetLazyIndex)
+				}.onFailure { throwable ->
+					if (throwable is CancellationException) return@onFailure
+					Log.e(
+						VAULT_V2_FAST_SCROLL_LOG_TAG,
+						"scrollToItem failed: targetLazyIndex=$targetLazyIndex filteredSize=${filteredItems.size}",
+						throwable
+					)
 				}
 			}
+		} finally {
+			lastHandledFastScrollRequestKey = fastScrollRequestKey
+		}
 	}
 
 	LaunchedEffect(listState, sectionLayouts, filteredItems.size) {
@@ -968,27 +1143,142 @@ fun VaultV2Pane(
 	Box(modifier = modifier.fillMaxSize()) {
 		Column(modifier = Modifier.fillMaxSize()) {
 			ExpressiveTopBar(
-				title = stringResource(R.string.nav_v2_vault),
+				title = storageFilterLabel,
 				searchQuery = searchQuery,
 				onSearchQueryChange = { searchQuery = it },
 				isSearchExpanded = isSearchExpanded,
 				onSearchExpandedChange = { isSearchExpanded = it },
 				searchHint = stringResource(R.string.topbar_search_hint),
 				actions = {
+					Box {
+						IconButton(onClick = { isStorageFilterSheetVisible = true }) {
+							Icon(
+								imageVector = Icons.Default.Folder,
+								contentDescription = stringResource(R.string.category),
+							)
+						}
+						if (appSettings.categorySelectionUiMode == CategorySelectionUiMode.CHIP_MENU) {
+							UnifiedCategoryFilterChipMenuDropdown(
+								expanded = isStorageFilterSheetVisible,
+								onDismissRequest = { isStorageFilterSheetVisible = false },
+								offset = UnifiedCategoryFilterChipMenuOffset
+							) {
+								UnifiedCategoryFilterChipMenu(
+									visible = isStorageFilterSheetVisible,
+									onDismiss = { isStorageFilterSheetVisible = false },
+									selected = storageSelection,
+									onSelect = { selection ->
+										selectedKeys.clear()
+										state.updateStorageFilter(selection)
+										isStorageFilterSheetVisible = false
+									},
+									categories = categories,
+									keepassDatabases = keepassDatabases,
+									bitwardenVaults = bitwardenVaults,
+									getBitwardenFolders = passwordViewModel::getBitwardenFolders,
+									getKeePassGroups = localKeePassViewModel::getGroups,
+								)
+							}
+						}
+					}
 					IconButton(onClick = { isSearchExpanded = true }) {
 						Icon(
 							imageVector = Icons.Default.Search,
 							contentDescription = stringResource(R.string.search),
 						)
 					}
+					Box {
+						IconButton(onClick = { isTopActionsMenuExpanded = true }) {
+							Icon(
+								imageVector = Icons.Default.MoreVert,
+								contentDescription = stringResource(R.string.more_options),
+							)
+						}
+						DropdownMenu(
+							expanded = isTopActionsMenuExpanded,
+							onDismissRequest = { isTopActionsMenuExpanded = false }
+						) {
+							DropdownMenuItem(
+								text = { Text(stringResource(R.string.display_options_menu_title)) },
+								leadingIcon = { Icon(Icons.Default.DashboardCustomize, contentDescription = null) },
+								onClick = {
+									isTopActionsMenuExpanded = false
+									showDisplayOptionsSheet = true
+								}
+							)
+							DropdownMenuItem(
+								text = { Text(stringResource(R.string.common_account_title)) },
+								leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
+								onClick = {
+									isTopActionsMenuExpanded = false
+									onOpenCommonAccountTemplates()
+								}
+							)
+							DropdownMenuItem(
+								text = { Text(stringResource(R.string.timeline_title)) },
+								leadingIcon = { Icon(Icons.Default.History, contentDescription = null) },
+								onClick = {
+									isTopActionsMenuExpanded = false
+									onOpenHistory()
+								}
+							)
+							DropdownMenuItem(
+								text = { Text(stringResource(R.string.timeline_trash_title)) },
+								leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
+								onClick = {
+									isTopActionsMenuExpanded = false
+									onOpenTrashPage()
+								}
+							)
+							DropdownMenuItem(
+								text = { Text(stringResource(R.string.archive_page_title)) },
+								leadingIcon = { Icon(Icons.Default.Archive, contentDescription = null) },
+								onClick = {
+									isTopActionsMenuExpanded = false
+									onOpenArchivePage()
+								}
+							)
+						}
+					}
 				}
 			)
 
-			VaultV2PathBanner(
-				pathLabel = storageFilterLabel,
-				currentSectionLabel = currentSectionIndicatorLabel,
-				onClick = { isStorageFilterSheetVisible = true },
-			)
+			if (showDisplayOptionsSheet) {
+				PasswordDisplayOptionsSheet(
+					stackCardMode = stackCardMode,
+					groupMode = appSettings.passwordGroupMode,
+					passwordCardDisplayMode = appSettings.passwordCardDisplayMode,
+					onDismiss = { showDisplayOptionsSheet = false },
+					onStackCardModeSelected = { mode ->
+						settingsViewModel.updateStackCardMode(mode.name)
+					},
+					onGroupModeSelected = { modeKey ->
+						settingsViewModel.updatePasswordGroupMode(modeKey)
+					},
+					onPasswordCardDisplayModeSelected = { mode ->
+						settingsViewModel.updatePasswordCardDisplayMode(mode)
+					}
+				)
+			}
+
+			if (pathBreadcrumbs.isNotEmpty() && breadcrumbCategoryFilter != null) {
+				PasswordQuickFolderBreadcrumbBanner(
+					breadcrumbs = pathBreadcrumbs,
+					currentFilter = breadcrumbCategoryFilter,
+					onNavigate = { filter ->
+						filter.toUnifiedCategoryFilterSelectionOrNull()?.let { selection ->
+							selectedKeys.clear()
+							state.updateStorageFilter(selection)
+						}
+					}
+				)
+			} else {
+				VaultV2PathBanner(
+					pathLabel = storageFilterLabel,
+					currentSectionLabel = currentSectionIndicatorLabel,
+					onClick = { isStorageFilterSheetVisible = true },
+				)
+			}
 
 			val contentPullOffset = pullAction.currentOffset.toInt()
 			val listInteractionModifier = Modifier
@@ -1034,7 +1324,9 @@ fun VaultV2Pane(
 							}
 						}
 						VaultV2ItemType.NOTE -> item.secureItem?.id?.let(onOpenNote)
-						VaultV2ItemType.PASSKEY -> item.passkeyEntry?.let(onOpenPasskey)
+						VaultV2ItemType.PASSKEY -> {
+							item.passkeyEntry?.id?.takeIf { it > 0L }?.let(onOpenPasskey)
+						}
 						VaultV2ItemType.BANK_CARD -> item.secureItem?.id?.let(onOpenBankCard)
 						VaultV2ItemType.DOCUMENT -> item.secureItem?.id?.let(onOpenDocument)
 					}
@@ -1042,27 +1334,29 @@ fun VaultV2Pane(
 			)
 		}
 
-		UnifiedCategoryFilterBottomSheet(
-			visible = isStorageFilterSheetVisible,
-			onDismiss = { isStorageFilterSheetVisible = false },
-			selected = storageSelection,
-			onSelect = { selection ->
-				selectedKeys.clear()
-				state.updateStorageFilter(selection)
-				isStorageFilterSheetVisible = false
-			},
-			categories = categories,
-			keepassDatabases = keepassDatabases,
-			bitwardenVaults = bitwardenVaults,
-			getBitwardenFolders = passwordViewModel::getBitwardenFolders,
-			getKeePassGroups = localKeePassViewModel::getGroups,
-		)
+		if (appSettings.categorySelectionUiMode != CategorySelectionUiMode.CHIP_MENU) {
+			UnifiedCategoryFilterBottomSheet(
+				visible = isStorageFilterSheetVisible,
+				onDismiss = { isStorageFilterSheetVisible = false },
+				selected = storageSelection,
+				onSelect = { selection ->
+					selectedKeys.clear()
+					state.updateStorageFilter(selection)
+					isStorageFilterSheetVisible = false
+				},
+				categories = categories,
+				keepassDatabases = keepassDatabases,
+				bitwardenVaults = bitwardenVaults,
+				getBitwardenFolders = passwordViewModel::getBitwardenFolders,
+				getKeePassGroups = localKeePassViewModel::getGroups,
+			)
+		}
 
 		if (selectedCount > 0) {
 			SelectionActionBar(
 				modifier = Modifier
-					.align(Alignment.BottomCenter)
-					.padding(bottom = 20.dp),
+					.align(Alignment.BottomStart)
+					.padding(start = 16.dp, bottom = 20.dp),
 				selectedCount = selectedCount,
 				onExit = { selectedKeys.clear() },
 				onSelectAll = {
@@ -1492,11 +1786,19 @@ private fun VaultV2ItemCard(
 	val authenticatorState = when (item.type) {
 		VaultV2ItemType.PASSWORD -> {
 			val authenticatorKey = item.passwordEntry?.authenticatorKey.orEmpty()
+			val fallbackIssuer = item.passwordEntry?.website.orEmpty().ifBlank {
+				item.passwordEntry?.title.orEmpty()
+			}
+			val fallbackAccountName = item.passwordEntry?.username.orEmpty().ifBlank {
+				item.passwordEntry?.title.orEmpty()
+			}
 			if (authenticatorKey.isBlank()) {
 				null
 			} else {
 				rememberPasswordAuthenticatorDisplayState(
 					authenticatorKey = authenticatorKey,
+					fallbackIssuer = fallbackIssuer,
+					fallbackAccountName = fallbackAccountName,
 					timeOffsetSeconds = appSettings.totpTimeOffset,
 					smoothProgress = appSettings.validatorSmoothProgress
 				)
@@ -1881,10 +2183,20 @@ private fun buildVaultV2ExactDisplayKey(item: VaultV2Item): String {
 			val entry = item.passwordEntry
 			listOf(
 				item.type.name,
+				buildVaultV2SourceKey(
+					categoryId = entry?.categoryId,
+					keepassDatabaseId = entry?.keepassDatabaseId,
+					keepassEntryUuid = entry?.keepassEntryUuid,
+					keepassGroupPath = entry?.keepassGroupPath,
+					bitwardenVaultId = entry?.bitwardenVaultId,
+					bitwardenCipherId = entry?.bitwardenCipherId,
+					bitwardenFolderId = entry?.bitwardenFolderId,
+				),
 				normalizeVaultV2ComparableText(item.title),
 				normalizeVaultV2ComparableText(entry?.username.orEmpty()),
 				normalizeVaultV2Website(entry?.website.orEmpty()),
-				entry?.password.orEmpty(),
+				entry?.replicaGroupId.orEmpty(),
+				entry?.id?.toString().orEmpty(),
 			).joinToString("|")
 		}
 

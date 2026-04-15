@@ -15,6 +15,7 @@ import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.model.displayFullName
 import takagi.ru.monica.notes.domain.NoteContentCodec
+import takagi.ru.monica.util.TotpDataResolver
 import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.CategoryFilter
 import takagi.ru.monica.viewmodel.DocumentViewModel
@@ -227,7 +228,7 @@ private fun appendAuthenticatorItems(
                 entry = item.toAggregatePasswordEntry(
                     subtitlePrimary = data.issuer,
                     subtitleSecondary = data.accountName,
-                    authenticatorKey = data.secret,
+                    authenticatorKey = TotpDataResolver.toBitwardenPayload(item.title, data),
                     websiteOverride = data.issuer
                 ),
                 type = PasswordPageContentType.AUTHENTICATOR,

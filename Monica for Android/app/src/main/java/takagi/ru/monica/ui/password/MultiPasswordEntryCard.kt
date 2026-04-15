@@ -262,6 +262,8 @@ fun MultiPasswordEntryCard(
             val authenticatorState = if (showAuthenticator) {
                 rememberPasswordAuthenticatorDisplayState(
                     authenticatorKey = firstEntry.authenticatorKey,
+                    fallbackIssuer = firstEntry.website.ifBlank { firstEntry.title },
+                    fallbackAccountName = firstEntry.username.ifBlank { firstEntry.title },
                     timeOffsetSeconds = totpTimeOffsetSeconds,
                     smoothProgress = smoothAuthenticatorProgress
                 )

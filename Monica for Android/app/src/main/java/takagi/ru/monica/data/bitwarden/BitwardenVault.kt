@@ -22,8 +22,9 @@ import java.util.Date
 @Entity(
     tableName = "bitwarden_vaults",
     indices = [
-        Index(value = ["email"], unique = true),
-        Index(value = ["is_default"])
+        Index(name = "index_bitwarden_vaults_account_key", value = ["account_key"], unique = true),
+        Index(name = "index_bitwarden_vaults_canonical_email", value = ["canonical_email"]),
+        Index(name = "index_bitwarden_vaults_is_default", value = ["is_default"])
     ]
 )
 data class BitwardenVault(
@@ -33,9 +34,15 @@ data class BitwardenVault(
     // === 账户标识 ===
     @ColumnInfo(name = "email")
     val email: String,
+
+    @ColumnInfo(name = "canonical_email", defaultValue = "''")
+    val canonicalEmail: String = "",
     
     @ColumnInfo(name = "user_id")
     val userId: String? = null,  // Bitwarden 用户 UUID
+
+    @ColumnInfo(name = "account_key", defaultValue = "''")
+    val accountKey: String = "",
     
     @ColumnInfo(name = "display_name")
     val displayName: String? = null,

@@ -285,6 +285,9 @@ interface PasskeyDao {
     @Query("SELECT * FROM passkeys WHERE bitwarden_vault_id = :vaultId")
     suspend fun getByBitwardenVaultId(vaultId: Long): List<PasskeyEntry>
 
+    @Query("SELECT COUNT(*) FROM passkeys WHERE bitwarden_vault_id = :vaultId")
+    suspend fun getBitwardenEntriesCount(vaultId: Long): Int
+
     /**
      * 删除指定 Vault 的所有同步 Passkeys
      */

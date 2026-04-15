@@ -466,6 +466,7 @@ enum class CategorySelectionUiMode {
 
 data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    val oledPureBlackEnabled: Boolean = false,
     val colorScheme: ColorScheme = ColorScheme.DEFAULT,
     val customPrimaryColor: Long = 0xFF6650a4, // 默认紫色
     val customSecondaryColor: Long = 0xFF625b71, // 默认紫色灰色

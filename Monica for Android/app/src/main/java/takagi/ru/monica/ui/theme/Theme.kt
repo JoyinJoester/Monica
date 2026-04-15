@@ -11,6 +11,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.ColorScheme as MaterialColorScheme
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -943,6 +944,7 @@ private fun generatedSchemeForCatppuccin(
 @Composable
 fun MonicaTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    oledPureBlackEnabled: Boolean = false,
     colorScheme: ColorScheme = ColorScheme.DEFAULT,
     customPrimaryColor: Long = 0xFF6650a4,
     customSecondaryColor: Long = 0xFF625b71,
@@ -951,7 +953,7 @@ fun MonicaTheme(
     customNeutralVariantColor: Long = 0xFF625B71,
     content: @Composable () -> Unit
 ) {
-    val finalColorScheme = when {
+    val baseColorScheme = when {
         colorScheme == ColorScheme.DEFAULT && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
@@ -1224,6 +1226,11 @@ fun MonicaTheme(
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }
+    val finalColorScheme = if (darkTheme && oledPureBlackEnabled) {
+        baseColorScheme.withPureBlackSurfaces()
+    } else {
+        baseColorScheme
+    }
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -1239,5 +1246,26 @@ fun MonicaTheme(
         colorScheme = finalColorScheme,
         typography = Typography,
         content = content
+    )
+}
+
+private fun MaterialColorScheme.withPureBlackSurfaces(): MaterialColorScheme {
+    val pureBlack = Color(0xFF000000)
+    val elevatedBlack = Color(0xFF050505)
+    val outlineBlack = Color(0xFF141414)
+    return copy(
+        background = pureBlack,
+        surface = pureBlack,
+        surfaceDim = pureBlack,
+        surfaceBright = elevatedBlack,
+        surfaceContainerLowest = pureBlack,
+        surfaceContainerLow = pureBlack,
+        surfaceContainer = pureBlack,
+        surfaceContainerHigh = elevatedBlack,
+        surfaceContainerHighest = outlineBlack,
+        inverseSurface = Color(0xFFF2F2F2),
+        surfaceVariant = outlineBlack,
+        outlineVariant = Color(0xFF1F1F1F),
+        scrim = pureBlack
     )
 }

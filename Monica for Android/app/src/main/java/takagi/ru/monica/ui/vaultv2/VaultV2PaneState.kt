@@ -21,6 +21,8 @@ class VaultV2PaneState internal constructor(
     storageFilterType: String,
     storageFilterPrimaryId: Long?,
     storageFilterSecondaryKey: String?,
+    hasInitializedStorageFilter: Boolean,
+    selectionCount: Int,
 ) {
     var scrollIndex by mutableIntStateOf(scrollIndex)
         private set
@@ -48,6 +50,12 @@ class VaultV2PaneState internal constructor(
         private set
 
     var storageFilterSecondaryKey by mutableStateOf(storageFilterSecondaryKey)
+        private set
+
+    var hasInitializedStorageFilter by mutableStateOf(hasInitializedStorageFilter)
+        private set
+
+    var selectionCount by mutableIntStateOf(selectionCount)
         private set
 
     fun updateScrollPosition(index: Int, offset: Int) {
@@ -82,11 +90,28 @@ class VaultV2PaneState internal constructor(
         storageFilterType = type
         storageFilterPrimaryId = primaryId
         storageFilterSecondaryKey = secondaryKey
+        hasInitializedStorageFilter = true
+    }
+
+    fun ensureAggregateDefaultStorageFilter() {
+        if (hasInitializedStorageFilter) return
+        hasInitializedStorageFilter = true
+        if (
+            storageFilterType == VAULT_V2_STORAGE_FILTER_LOCAL &&
+            storageFilterPrimaryId == null &&
+            storageFilterSecondaryKey == null
+        ) {
+            storageFilterType = VAULT_V2_STORAGE_FILTER_ALL
+        }
     }
 
     fun clearTransientUi() {
         showBackToTop = false
         fastScrollIndicatorLabel = null
+    }
+
+    fun updateSelectionCount(count: Int) {
+        selectionCount = count.coerceAtLeast(0)
     }
 
     companion object {
@@ -101,6 +126,8 @@ class VaultV2PaneState internal constructor(
                     it.storageFilterType,
                     it.storageFilterPrimaryId,
                     it.storageFilterSecondaryKey,
+                    it.hasInitializedStorageFilter,
+                    it.selectionCount,
                 )
             },
             restore = { restored ->
@@ -113,6 +140,8 @@ class VaultV2PaneState internal constructor(
                     storageFilterType = restored[5] as String,
                     storageFilterPrimaryId = restored[6] as Long?,
                     storageFilterSecondaryKey = restored[7] as String?,
+                    hasInitializedStorageFilter = restored.getOrNull(8) as? Boolean ?: false,
+                    selectionCount = restored.getOrNull(9) as? Int ?: 0,
                 )
             }
         )
@@ -128,9 +157,11 @@ fun rememberVaultV2PaneState(): VaultV2PaneState {
             fastScrollRequestKey = 0,
             fastScrollProgress = 0f,
             scrollToTopRequestKey = 0,
-            storageFilterType = VAULT_V2_STORAGE_FILTER_LOCAL,
+            storageFilterType = VAULT_V2_STORAGE_FILTER_ALL,
             storageFilterPrimaryId = null,
             storageFilterSecondaryKey = null,
+            hasInitializedStorageFilter = false,
+            selectionCount = 0,
         )
     }
 }

@@ -11,12 +11,14 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import java.util.concurrent.ConcurrentHashMap
 import takagi.ru.monica.bitwarden.api.BitwardenApiFactory
 import takagi.ru.monica.bitwarden.api.BitwardenApiManager
 import takagi.ru.monica.bitwarden.api.BitwardenTlsConfig
 import takagi.ru.monica.bitwarden.api.FolderCreateRequest
 import takagi.ru.monica.bitwarden.api.FolderUpdateRequest
 import takagi.ru.monica.bitwarden.BitwardenRestoreQueueOutcome
+import takagi.ru.monica.bitwarden.BitwardenVaultIdentity
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto.SymmetricCryptoKey
 import takagi.ru.monica.bitwarden.mapper.BitwardenSendMapper
@@ -55,7 +57,7 @@ class BitwardenRepository(private val context: Context) {
         private const val ARGON2_DEFAULT_MEMORY_MB = 64
         private const val ARGON2_DEFAULT_PARALLELISM = 4
         private const val CACHE_KEEP_SENTINEL_CIPHER_ID = "__MONICA_CACHE_KEEP_SENTINEL__"
-        private val syncMutex = Mutex()
+        private val vaultSyncMutexes = ConcurrentHashMap<Long, Mutex>()
         
         @Volatile
         private var instance: BitwardenRepository? = null
@@ -131,6 +133,7 @@ class BitwardenRepository(private val context: Context) {
                 }
             }
         }
+
     }
     
     // Database DAOs
@@ -167,8 +170,8 @@ class BitwardenRepository(private val context: Context) {
     }
     
     // 内存中的密钥缓存（不持久化）
-    private val symmetricKeyCache = mutableMapOf<Long, SymmetricCryptoKey>()
-    private val accessTokenCache = mutableMapOf<Long, String>()
+    private val symmetricKeyCache = ConcurrentHashMap<Long, SymmetricCryptoKey>()
+    private val accessTokenCache = ConcurrentHashMap<Long, String>()
     
     // ==================== Vault 管理 ====================
     
@@ -339,6 +342,13 @@ class BitwardenRepository(private val context: Context) {
         email: String,
         tlsConfig: BitwardenTlsConfig?
     ): RepositoryLoginResult {
+        val displayEmail = email.trim()
+        val canonicalEmail = BitwardenVaultIdentity.canonicalizeEmail(displayEmail)
+        val accountKey = BitwardenVaultIdentity.buildAccountKey(
+            serverUrl = result.serverUrls.vault,
+            userId = null,
+            canonicalEmail = canonicalEmail
+        )
         // 加密敏感数据用于存储
         val encryptedAccessToken = encryptForStorage(result.accessToken)
         val encryptedRefreshToken = result.refreshToken?.let { encryptForStorage(it) }
@@ -349,11 +359,18 @@ class BitwardenRepository(private val context: Context) {
         val encryptedMacKey = encryptForStorage(Base64.encodeToString(result.symmetricKey.macKey, Base64.NO_WRAP))
         
         // 查找或创建 Vault
-        val existingVault = vaultDao.getVaultByEmail(email)
+        val existingVault = vaultDao.getVaultByAccountKey(accountKey)
+            ?: vaultDao.getVaultByServerAndCanonicalEmail(
+                serverUrl = result.serverUrls.vault,
+                canonicalEmail = canonicalEmail
+            )
         val expiresAt = System.currentTimeMillis() + (result.expiresIn * 1000L)
         
         val vault = if (existingVault != null) {
             existingVault.copy(
+                email = displayEmail,
+                canonicalEmail = canonicalEmail,
+                accountKey = accountKey,
                 serverUrl = result.serverUrls.vault,
                 identityUrl = result.serverUrls.identity,
                 apiUrl = result.serverUrls.api,
@@ -380,7 +397,9 @@ class BitwardenRepository(private val context: Context) {
             ).also { vaultDao.update(it) }
         } else {
             BitwardenVault(
-                email = email,
+                email = displayEmail,
+                canonicalEmail = canonicalEmail,
+                accountKey = accountKey,
                 serverUrl = result.serverUrls.vault,
                 identityUrl = result.serverUrls.identity,
                 apiUrl = result.serverUrls.api,
@@ -425,6 +444,7 @@ class BitwardenRepository(private val context: Context) {
     suspend fun unlock(vaultId: Long, masterPassword: String): UnlockResult = withContext(Dispatchers.IO) {
         try {
             val vault = vaultDao.getVaultById(vaultId) ?: return@withContext UnlockResult.Error("Vault 不存在")
+            val canonicalEmail = BitwardenVaultIdentity.resolveCanonicalEmail(vault)
             val normalizedIterations = when (vault.kdfType) {
                 BitwardenVault.KDF_TYPE_PBKDF2 -> vault.kdfIterations.takeIf { it > 0 } ?: PBKDF2_DEFAULT_ITERATIONS
                 BitwardenVault.KDF_TYPE_ARGON2ID -> vault.kdfIterations.takeIf { it > 0 } ?: ARGON2_DEFAULT_ITERATIONS
@@ -438,7 +458,7 @@ class BitwardenRepository(private val context: Context) {
                 BitwardenVault.KDF_TYPE_ARGON2ID -> {
                     BitwardenCrypto.deriveMasterKeyArgon2(
                         password = masterPassword,
-                        salt = vault.email,
+                        salt = canonicalEmail,
                         iterations = normalizedIterations,
                         memory = normalizedMemory,
                         parallelism = normalizedParallelism
@@ -448,7 +468,7 @@ class BitwardenRepository(private val context: Context) {
                 BitwardenVault.KDF_TYPE_PBKDF2 -> {
                     BitwardenCrypto.deriveMasterKeyPbkdf2(
                         password = masterPassword,
-                        salt = vault.email,
+                        salt = canonicalEmail,
                         iterations = normalizedIterations
                     )
                 }
@@ -528,39 +548,25 @@ class BitwardenRepository(private val context: Context) {
     suspend fun tryRestoreUnlockState(vaultId: Long): Boolean = withContext(Dispatchers.IO) {
         try {
             val vault = vaultDao.getVaultById(vaultId) ?: return@withContext false
-            if (vault.isLocked) {
-                return@withContext false
-            }
-            
-            // 尝试从存储中恢复密钥
-            val storedEncKey = vault.encryptedEncKey?.let { decryptFromStorage(it) }
-            val storedMacKey = vault.encryptedMacKey?.let { decryptFromStorage(it) }
-            
-            if (storedEncKey != null && storedMacKey != null) {
-                val encKeyBytes = Base64.decode(storedEncKey, Base64.NO_WRAP)
-                val macKeyBytes = Base64.decode(storedMacKey, Base64.NO_WRAP)
-                val symmetricKey = SymmetricCryptoKey(encKeyBytes, macKeyBytes)
-                
-                // 缓存密钥
-                symmetricKeyCache[vaultId] = symmetricKey
-                
-                // 尝试恢复访问令牌
-                vault.encryptedAccessToken?.let { 
-                    accessTokenCache[vaultId] = decryptFromStorage(it)
-                }
-                
-                // 更新状态
-                vaultDao.setLocked(vaultId, false)
-                
-                Log.d(TAG, "成功恢复 Vault 解锁状态: $vaultId")
-                return@withContext true
-            }
-            
-            false
+            restoreUnlockStateFromVault(vault)
         } catch (e: Exception) {
             Log.e(TAG, "恢复解锁状态失败", e)
             false
         }
+    }
+
+    suspend fun restoreUnlockedVaults(): Set<Long> = withContext(Dispatchers.IO) {
+        if (!isNeverLockEnabled) {
+            return@withContext emptySet()
+        }
+
+        val restoredVaultIds = linkedSetOf<Long>()
+        getAllVaults().forEach { vault ->
+            if (restoreUnlockStateFromVault(vault)) {
+                restoredVaultIds += vault.id
+            }
+        }
+        restoredVaultIds
     }
 
     suspend fun forceLock(vaultId: Long) = withContext(Dispatchers.IO) {
@@ -595,6 +601,7 @@ class BitwardenRepository(private val context: Context) {
             // 清除缓存
             symmetricKeyCache.remove(vaultId)
             accessTokenCache.remove(vaultId)
+            clearVaultSyncMutex(vaultId)
 
             database.withTransaction {
                 // 先清理所有引用 vault_id 的表，避免外键约束导致登出失败。
@@ -638,7 +645,7 @@ class BitwardenRepository(private val context: Context) {
      * 4. 从服务器拉取最新数据（pull）
      */
     suspend fun sync(vaultId: Long): SyncResult = withContext(Dispatchers.IO) {
-        syncMutex.withLock {
+        syncMutexForVault(vaultId).withLock {
             try {
                 val vault = vaultDao.getVaultById(vaultId) ?: return@withLock SyncResult.Error("Vault 不存在")
 
@@ -694,7 +701,14 @@ class BitwardenRepository(private val context: Context) {
 
                 when (result) {
                     is ServiceSyncResult.Success -> {
+                        val totalUploadedCount = uploadedCount + modifiedUploadedCount
                         val totalUploadFailedCount = uploadFailedCount + modifiedUploadFailedCount
+                        val appliedChangeCount =
+                            result.ciphersAdded +
+                                result.ciphersUpdated +
+                                totalUploadedCount +
+                                processedDeleteCount
+                        val availableOfflineCount = getAvailableOfflineSecretCount(vaultId)
                         val overallResult = if (totalUploadFailedCount > 0) {
                             "PARTIAL_SUCCESS"
                         } else {
@@ -705,10 +719,16 @@ class BitwardenRepository(private val context: Context) {
                                 "uploaded=$uploadedCount, modifiedUploaded=$modifiedUploadedCount, " +
                                 "uploadFailed=$totalUploadFailedCount, deletes=$processedDeleteCount, " +
                                 "ciphersAdded=${result.ciphersAdded}, ciphersUpdated=${result.ciphersUpdated}, " +
-                                "conflicts=${result.conflictsDetected}, skippedLocalDirty=${result.skippedDueToLocalDirty}"
+                                "conflicts=${result.conflictsDetected}, skippedLocalDirty=${result.skippedDueToLocalDirty}, " +
+                                "appliedChanges=$appliedChangeCount, availableOffline=$availableOfflineCount"
                         )
                         SyncResult.Success(
-                            syncedCount = result.ciphersAdded + result.ciphersUpdated + uploadedCount + modifiedUploadedCount + processedDeleteCount,
+                            appliedChangeCount = appliedChangeCount,
+                            remoteAddedCount = result.ciphersAdded,
+                            remoteUpdatedCount = result.ciphersUpdated,
+                            uploadedCount = totalUploadedCount,
+                            deletedCount = processedDeleteCount,
+                            availableOfflineCount = availableOfflineCount,
                             conflictCount = result.conflictsDetected,
                             uploadFailedCount = totalUploadFailedCount,
                             skippedDueToLocalDirtyCount = result.skippedDueToLocalDirty
@@ -1542,6 +1562,56 @@ class BitwardenRepository(private val context: Context) {
     private fun decryptFromStorage(data: String): String {
         return String(Base64.decode(data, Base64.NO_WRAP), Charsets.UTF_8)
     }
+
+    private suspend fun restoreUnlockStateFromVault(vault: BitwardenVault): Boolean {
+        if (vault.isLocked) {
+            return false
+        }
+
+        val storedEncKey = vault.encryptedEncKey?.let { decryptFromStorage(it) }
+        val storedMacKey = vault.encryptedMacKey?.let { decryptFromStorage(it) }
+
+        if (storedEncKey.isNullOrBlank() || storedMacKey.isNullOrBlank()) {
+            return false
+        }
+
+        val encKeyBytes = Base64.decode(storedEncKey, Base64.NO_WRAP)
+        val macKeyBytes = Base64.decode(storedMacKey, Base64.NO_WRAP)
+        val symmetricKey = SymmetricCryptoKey(encKeyBytes, macKeyBytes)
+
+        symmetricKeyCache[vault.id] = symmetricKey
+        vault.encryptedAccessToken
+            ?.let { decryptFromStorage(it) }
+            ?.takeIf { it.isNotBlank() }
+            ?.let { restoredAccessToken ->
+                accessTokenCache[vault.id] = restoredAccessToken
+            }
+
+        vaultDao.setLocked(vault.id, false)
+        Log.d(TAG, "成功恢复 Vault 解锁状态: ${vault.id}")
+        return true
+    }
+
+    private suspend fun getAvailableOfflineSecretCount(vaultId: Long): Int {
+        return passwordEntryDao.getBitwardenEntriesCount(vaultId) +
+            secureItemDao.getBitwardenEntriesCount(vaultId) +
+            passkeyDao.getBitwardenEntriesCount(vaultId)
+    }
+
+    private fun syncMutexForVault(vaultId: Long): Mutex {
+        val existing = vaultSyncMutexes[vaultId]
+        if (existing != null) {
+            return existing
+        }
+
+        val created = Mutex()
+        val raced = vaultSyncMutexes.putIfAbsent(vaultId, created)
+        return raced ?: created
+    }
+
+    private fun clearVaultSyncMutex(vaultId: Long) {
+        vaultSyncMutexes.remove(vaultId)
+    }
     
     // ==================== 结果类型 ====================
 
@@ -1577,7 +1647,12 @@ class BitwardenRepository(private val context: Context) {
     
     sealed class SyncResult {
         data class Success(
-            val syncedCount: Int,
+            val appliedChangeCount: Int,
+            val remoteAddedCount: Int,
+            val remoteUpdatedCount: Int,
+            val uploadedCount: Int,
+            val deletedCount: Int,
+            val availableOfflineCount: Int,
             val conflictCount: Int,
             val uploadFailedCount: Int,
             val skippedDueToLocalDirtyCount: Int

@@ -220,7 +220,11 @@ fun SettingsScreen(
     } else {
         context.getString(R.string.trash_status_disabled_permanent_delete)
     }
-    val themeSubtitle = getThemeDisplayName(settings.themeMode, context)
+    val themeSubtitle = getAppearanceDisplayName(
+        theme = settings.themeMode,
+        oledPureBlackEnabled = settings.oledPureBlackEnabled,
+        context = context
+    )
     val colorSchemeSubtitle = getColorSchemeDisplayName(settings.colorScheme, context)
     val languageSubtitle = getLanguageDisplayName(settings.language, context)
 
@@ -781,11 +785,14 @@ fun SettingsScreen(
     
     // Theme Selection Dialog
     if (showThemeDialog) {
-        ThemeSelectionDialog(
+        AppearanceSelectionSheet(
             currentTheme = settings.themeMode,
+            oledPureBlackEnabled = settings.oledPureBlackEnabled,
             onThemeSelected = { theme ->
                 viewModel.updateThemeMode(theme)
-                showThemeDialog = false
+            },
+            onOledPureBlackChanged = { enabled ->
+                viewModel.updateOledPureBlackEnabled(enabled)
             },
             onDismiss = { showThemeDialog = false }
         )
@@ -1749,42 +1756,123 @@ private fun BottomNavContentTab.toLabelRes(): Int = when (this) {
     BottomNavContentTab.SEND -> R.string.nav_v2_send
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ThemeSelectionDialog(
+fun AppearanceSelectionSheet(
     currentTheme: ThemeMode,
+    oledPureBlackEnabled: Boolean,
     onThemeSelected: (ThemeMode) -> Unit,
+    onOledPureBlackChanged: (Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    
-    AlertDialog(
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = { Text(context.getString(R.string.theme)) },
-        text = {
-            Column {
-                ThemeMode.values().forEach { theme ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(
-                            selected = theme == currentTheme,
-                            onClick = { onThemeSelected(theme) }
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(getThemeDisplayName(theme, context))
+        sheetState = sheetState,
+        containerColor = MaterialTheme.colorScheme.surface,
+        dragHandle = { BottomSheetDefaults.DragHandle() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                text = context.getString(R.string.theme),
+                style = MaterialTheme.typography.headlineSmall
+            )
+            Text(
+                text = context.getString(R.string.appearance_sheet_description),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                ),
+                shape = RoundedCornerShape(24.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                ) {
+                    ThemeMode.values().forEach { theme ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(18.dp))
+                                .clickable { onThemeSelected(theme) }
+                                .padding(horizontal = 8.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = theme == currentTheme,
+                                onClick = { onThemeSelected(theme) }
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(getThemeDisplayName(theme, context))
+                                if (theme == ThemeMode.DARK) {
+                                    Text(
+                                        text = context.getString(R.string.oled_pure_black_dark_mode_hint),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(context.getString(R.string.ok))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                ),
+                shape = RoundedCornerShape(24.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onOledPureBlackChanged(!oledPureBlackEnabled) }
+                        .padding(horizontal = 16.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = context.getString(R.string.oled_pure_black),
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = context.getString(R.string.oled_pure_black_description),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Switch(
+                        checked = oledPureBlackEnabled,
+                        onCheckedChange = onOledPureBlackChanged
+                    )
+                }
+            }
+
+            FilledTonalButton(
+                onClick = onDismiss,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Text(context.getString(R.string.close))
             }
         }
-    )
+    }
 }
 
 @Composable
@@ -1918,6 +2006,19 @@ private fun getThemeDisplayName(theme: ThemeMode, context: android.content.Conte
         ThemeMode.SYSTEM -> context.getString(R.string.theme_system)
         ThemeMode.LIGHT -> context.getString(R.string.theme_light)
         ThemeMode.DARK -> context.getString(R.string.theme_dark)
+    }
+}
+
+private fun getAppearanceDisplayName(
+    theme: ThemeMode,
+    oledPureBlackEnabled: Boolean,
+    context: android.content.Context
+): String {
+    val themeLabel = getThemeDisplayName(theme, context)
+    return if (oledPureBlackEnabled) {
+        context.getString(R.string.appearance_with_oled_subtitle, themeLabel)
+    } else {
+        themeLabel
     }
 }
 

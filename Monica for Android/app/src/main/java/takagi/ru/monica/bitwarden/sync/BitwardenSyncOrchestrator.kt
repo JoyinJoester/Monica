@@ -30,7 +30,8 @@ enum class SyncBlockReason {
 
 sealed class SyncExecutionOutcome {
     data class Success(
-        val syncedCount: Int,
+        val appliedChangeCount: Int,
+        val availableOfflineCount: Int,
         val conflictCount: Int,
         val uploadFailedCount: Int,
         val skippedDueToLocalDirtyCount: Int

@@ -72,11 +72,17 @@ fun resolvePasswordCardDisplayLines(
 @Composable
 fun rememberPasswordAuthenticatorDisplayState(
     authenticatorKey: String,
+    fallbackIssuer: String = "",
+    fallbackAccountName: String = "",
     timeOffsetSeconds: Int,
     smoothProgress: Boolean
 ): PasswordAuthenticatorDisplayState? {
-    val totpData = remember(authenticatorKey) {
-        parsePasswordAuthenticatorTotpData(authenticatorKey)
+    val totpData = remember(authenticatorKey, fallbackIssuer, fallbackAccountName) {
+        parsePasswordAuthenticatorTotpData(
+            authenticatorKey = authenticatorKey,
+            fallbackIssuer = fallbackIssuer,
+            fallbackAccountName = fallbackAccountName
+        )
     } ?: return null
 
     val currentTimeMillis by produceState(
@@ -152,9 +158,15 @@ fun rememberPasswordAuthenticatorDisplayState(
 }
 
 private fun parsePasswordAuthenticatorTotpData(
-    authenticatorKey: String
+    authenticatorKey: String,
+    fallbackIssuer: String,
+    fallbackAccountName: String
 ): TotpData? {
-    return TotpDataResolver.fromAuthenticatorKey(authenticatorKey)
+    return TotpDataResolver.fromAuthenticatorKey(
+        rawKey = authenticatorKey,
+        fallbackIssuer = fallbackIssuer,
+        fallbackAccountName = fallbackAccountName
+    )
 }
 
 private fun formatAuthenticatorCode(code: String, otpType: OtpType): String {

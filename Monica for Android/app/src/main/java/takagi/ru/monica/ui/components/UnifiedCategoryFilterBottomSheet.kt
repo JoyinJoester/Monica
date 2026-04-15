@@ -203,6 +203,7 @@ fun UnifiedCategoryFilterBottomSheet(
 
     LaunchedEffect(selected) {
         when (selected) {
+            UnifiedCategoryFilterSelection.Local,
             is UnifiedCategoryFilterSelection.Custom,
             is UnifiedCategoryFilterSelection.LocalStarred,
             is UnifiedCategoryFilterSelection.LocalUncategorized -> monicaExpanded = true

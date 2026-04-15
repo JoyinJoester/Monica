@@ -27,8 +27,25 @@ interface BitwardenVaultDao {
     @Query("SELECT * FROM bitwarden_vaults WHERE id = :id")
     fun getVaultByIdFlow(id: Long): Flow<BitwardenVault?>
     
-    @Query("SELECT * FROM bitwarden_vaults WHERE email = :email LIMIT 1")
+    @Query("SELECT * FROM bitwarden_vaults WHERE LOWER(email) = LOWER(:email) ORDER BY updated_at DESC, created_at DESC LIMIT 1")
     suspend fun getVaultByEmail(email: String): BitwardenVault?
+
+    @Query("SELECT * FROM bitwarden_vaults WHERE account_key = :accountKey LIMIT 1")
+    suspend fun getVaultByAccountKey(accountKey: String): BitwardenVault?
+
+    @Query(
+        """
+        SELECT * FROM bitwarden_vaults
+        WHERE canonical_email = :canonicalEmail
+          AND LOWER(RTRIM(server_url, '/')) = LOWER(RTRIM(:serverUrl, '/'))
+        ORDER BY updated_at DESC, created_at DESC
+        LIMIT 1
+        """
+    )
+    suspend fun getVaultByServerAndCanonicalEmail(
+        serverUrl: String,
+        canonicalEmail: String
+    ): BitwardenVault?
     
     @Query("SELECT * FROM bitwarden_vaults WHERE is_default = 1 LIMIT 1")
     suspend fun getDefaultVault(): BitwardenVault?
@@ -115,6 +132,32 @@ interface BitwardenVaultDao {
     """)
     suspend fun updateSyncStatus(
         vaultId: Long,
+        lastSyncAt: Long,
+        revisionDate: String?,
+        updatedAt: Long = System.currentTimeMillis()
+    )
+
+    @Query(
+        """
+        UPDATE bitwarden_vaults
+        SET email = :email,
+            canonical_email = :canonicalEmail,
+            user_id = :userId,
+            account_key = :accountKey,
+            display_name = :displayName,
+            last_sync_at = :lastSyncAt,
+            revision_date = :revisionDate,
+            updated_at = :updatedAt
+        WHERE id = :vaultId
+        """
+    )
+    suspend fun updateIdentityAndSyncStatus(
+        vaultId: Long,
+        email: String,
+        canonicalEmail: String,
+        userId: String?,
+        accountKey: String,
+        displayName: String?,
         lastSyncAt: Long,
         revisionDate: String?,
         updatedAt: Long = System.currentTimeMillis()

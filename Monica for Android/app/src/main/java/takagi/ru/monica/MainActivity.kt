@@ -489,7 +489,8 @@ fun MonicaApp(
     }
 
     MonicaTheme(
-        darkTheme = darkTheme, 
+        darkTheme = darkTheme,
+        oledPureBlackEnabled = settings.oledPureBlackEnabled,
         colorScheme = settings.colorScheme,
         customPrimaryColor = settings.customPrimaryColor,
         customSecondaryColor = settings.customSecondaryColor,
@@ -985,6 +986,9 @@ fun MonicaContent(
                     navController.previousBackStackEntry?.savedStateHandle?.consumePendingAddStorageDefaults()
                 }
             }
+            val qrResult = navController.currentBackStackEntry
+                ?.savedStateHandle
+                ?.get<String>("qr_result")
             val navigateBackFromAddEditPassword = {
                 val popped = navController.popBackStack()
                 if (!popped) {
@@ -1010,6 +1014,17 @@ fun MonicaContent(
                     initialKeePassGroupPath = pendingStorageDefaults?.keepassGroupPath,
                     initialBitwardenVaultId = pendingStorageDefaults?.bitwardenVaultId,
                     initialBitwardenFolderId = pendingStorageDefaults?.bitwardenFolderId,
+                    pendingQrResult = qrResult,
+                    onConsumePendingQrResult = {
+                        navController.currentBackStackEntry
+                            ?.savedStateHandle
+                            ?.remove<String>("qr_result")
+                    },
+                    onScanAuthenticatorQrCode = {
+                        navController.navigate(Screen.QrScanner.route) {
+                            launchSingleTop = true
+                        }
+                    },
                     onNavigateBack = navigateBackFromAddEditPassword
                 )
             }

@@ -58,6 +58,12 @@ class SettingsViewModel(
         }
     }
 
+    fun updateOledPureBlackEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateOledPureBlackEnabled(enabled)
+        }
+    }
+
     fun updateColorScheme(colorScheme: ColorScheme) {
         viewModelScope.launch {
             settingsManager.updateColorScheme(colorScheme)

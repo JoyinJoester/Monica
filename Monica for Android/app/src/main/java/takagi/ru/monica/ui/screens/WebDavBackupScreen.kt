@@ -297,6 +297,8 @@ fun WebDavBackupScreen(
                             isConfigured = false
                             serverUrl = config.serverUrl
                             username = config.username
+                            password = webDavHelper.getCurrentPasswordForEdit()
+                            passwordVisible = false
                         },
                         onClear = {
                             webDavHelper.clearConfig()
