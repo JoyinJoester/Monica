@@ -74,7 +74,8 @@ private data class VaultRuntime(
     var lastAppResumeAt: Long = 0L,
     var retryAttempt: Int = 0,
     var mutationDebounceJob: Job? = null,
-    var retryJob: Job? = null
+    var retryJob: Job? = null,
+    var delayedRequestJob: Job? = null
 )
 
 class BitwardenSyncOrchestrator(
@@ -97,12 +98,28 @@ class BitwardenSyncOrchestrator(
         }
     }
 
+    fun requestSyncWithDelay(
+        vaultId: Long,
+        reason: SyncTriggerReason,
+        delayMs: Long,
+        force: Boolean = false
+    ) {
+        if (delayMs <= 0L) {
+            requestSync(vaultId = vaultId, reason = reason, force = force)
+            return
+        }
+        scope.launch {
+            scheduleDelayedRequest(vaultId = vaultId, reason = reason, delayMs = delayMs, force = force)
+        }
+    }
+
     fun clearVault(vaultId: Long) {
         scope.launch {
             mutex.withLock {
                 runtimes.remove(vaultId)?.let { runtime ->
                     runtime.retryJob?.cancel()
                     runtime.mutationDebounceJob?.cancel()
+                    runtime.delayedRequestJob?.cancel()
                 }
                 updateStatus(vaultId) { null }
             }
@@ -255,6 +272,36 @@ class BitwardenSyncOrchestrator(
 
     private fun runtimeOf(vaultId: Long): VaultRuntime {
         return runtimes.getOrPut(vaultId) { VaultRuntime() }
+    }
+
+    private suspend fun scheduleDelayedRequest(
+        vaultId: Long,
+        reason: SyncTriggerReason,
+        delayMs: Long,
+        force: Boolean
+    ) {
+        mutex.withLock {
+            val runtime = runtimeOf(vaultId)
+            val effectiveReason = pickHigherPriority(runtime.pendingReason, reason)
+            runtime.pendingReason = effectiveReason
+            runtime.delayedRequestJob?.cancel()
+            runtime.delayedRequestJob = scope.launch {
+                delay(delayMs)
+                var reasonToRun: SyncTriggerReason? = null
+                mutex.withLock {
+                    val delayedRuntime = runtimeOf(vaultId)
+                    reasonToRun = delayedRuntime.pendingReason
+                    delayedRuntime.pendingReason = null
+                    delayedRuntime.delayedRequestJob = null
+                }
+                requestSync(
+                    vaultId = vaultId,
+                    reason = reasonToRun ?: reason,
+                    force = force
+                )
+            }
+            setQueued(vaultId, runtime, effectiveReason)
+        }
     }
 
     private fun isAutoReason(reason: SyncTriggerReason): Boolean {

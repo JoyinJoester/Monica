@@ -59,20 +59,22 @@ object BackupRestoreApplier {
 
         passwords.forEach { password ->
             try {
-                val existingEntry = if (localOnlyDedup) {
-                    passwordRepository.getLocalDuplicateEntry(
-                        password.title,
-                        password.username,
-                        password.website
-                    )
-                } else {
-                    passwordRepository.getDuplicateEntry(
-                        password.title,
-                        password.username,
-                        password.website
-                    )
-                }
                 val originalId = password.id
+                val existingEntry = PasswordImportDuplicateResolver.findMatchingEntry(
+                    passwordRepository = passwordRepository,
+                    securityManager = securityManager,
+                    snapshot = ImportedPasswordSnapshot(
+                        title = password.title,
+                        username = password.username,
+                        website = password.website,
+                        password = password.password,
+                        notes = password.notes,
+                        email = password.email,
+                        phone = password.phone,
+                        authenticatorKey = password.authenticatorKey
+                    ),
+                    localOnly = localOnlyDedup
+                )
                 val encryptedImportedPassword = encryptImportedPasswordForDisplay(password.password, securityManager, logTag)
 
                 if (existingEntry == null) {

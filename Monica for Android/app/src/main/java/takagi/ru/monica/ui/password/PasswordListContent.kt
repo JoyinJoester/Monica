@@ -125,6 +125,7 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import takagi.ru.monica.R
+import takagi.ru.monica.bitwarden.sync.isUserVisibleSyncInProgress
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.CategorySelectionUiMode
@@ -392,7 +393,7 @@ fun PasswordListContent(
     }
     val selectedBitwardenFolders by selectedBitwardenFoldersFlow.collectAsState(initial = emptyList())
     val isTopBarSyncing = selectedBitwardenVaultId?.let { vaultId ->
-        bitwardenSyncStatusByVault[vaultId]?.isRunning == true
+        bitwardenSyncStatusByVault[vaultId].isUserVisibleSyncInProgress()
     } == true
     val isArchiveView = currentFilter is CategoryFilter.Archived
     val effectiveGroupMode = if (isLocalOnlyView) "none" else groupMode

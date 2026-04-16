@@ -2,32 +2,25 @@ package takagi.ru.monica.ui
 
 import android.content.Context
 import android.widget.Toast
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Archive
-import androidx.compose.material.icons.filled.DashboardCustomize
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Sync
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -38,10 +31,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.fragment.app.FragmentActivity
 import kotlinx.coroutines.CoroutineScope
@@ -71,6 +61,13 @@ import takagi.ru.monica.viewmodel.CategoryFilter
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.SettingsViewModel
 import takagi.ru.monica.ui.password.StackCardMode
+import takagi.ru.monica.ui.password.BitwardenClearCacheTopActionsMenuItem
+import takagi.ru.monica.ui.password.BitwardenLockTopActionsMenuItem
+import takagi.ru.monica.ui.password.BitwardenReunlockTopActionsMenuItem
+import takagi.ru.monica.ui.password.BitwardenSyncTopActionsMenuItem
+import takagi.ru.monica.ui.password.CommonPasswordTopActionsMenuItems
+import takagi.ru.monica.ui.password.KeepassRefreshTopActionsMenuItem
+import takagi.ru.monica.ui.password.PasswordTopActionsDropdownMenu
 
 @Composable
 internal fun PasswordListTopSection(
@@ -321,33 +318,12 @@ internal fun PasswordListTopSection(
                             )
                         }
                     }
-                    MaterialTheme(
-                        shapes = MaterialTheme.shapes.copy(
-                            extraSmall = RoundedCornerShape(20.dp),
-                            small = RoundedCornerShape(20.dp)
-                        )
+                    PasswordTopActionsDropdownMenu(
+                        expanded = topActionsMenuExpanded,
+                        onDismissRequest = { onTopActionsMenuExpandedChange(false) }
                     ) {
-                        DropdownMenu(
-                            expanded = topActionsMenuExpanded,
-                            onDismissRequest = { onTopActionsMenuExpandedChange(false) },
-                            offset = DpOffset(x = 48.dp, y = 6.dp),
-                            modifier = Modifier
-                                .widthIn(min = 220.dp, max = 260.dp)
-                                .shadow(10.dp, RoundedCornerShape(20.dp))
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(MaterialTheme.colorScheme.surfaceContainerHigh)
-                                .border(
-                                    width = 1.dp,
-                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
-                                    shape = RoundedCornerShape(20.dp)
-                                )
-                        ) {
                             if (isKeePassDatabaseView) {
-                                DropdownMenuItem(
-                                    text = {
-                                        Text("${stringResource(R.string.refresh)} ${stringResource(R.string.filter_keepass)}")
-                                    },
-                                    leadingIcon = { Icon(Icons.Default.Sync, contentDescription = null) },
+                                KeepassRefreshTopActionsMenuItem(
                                     onClick = {
                                         onTopActionsMenuExpandedChange(false)
                                         viewModel.refreshKeePassFromSourceForCurrentContext()
@@ -355,31 +331,26 @@ internal fun PasswordListTopSection(
                                 )
                             }
                             if (selectedBitwardenVaultId != null) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.sync_bitwarden_database_menu)) },
-                                    leadingIcon = { Icon(Icons.Default.Sync, contentDescription = null) },
+                                BitwardenSyncTopActionsMenuItem(
+                                    isSyncing = isTopBarSyncing,
                                     enabled = !isTopBarSyncing && !isBitwardenMaintenanceActionRunning,
                                     onClick = {
-                                        if (isTopBarSyncing || isBitwardenMaintenanceActionRunning) return@DropdownMenuItem
                                         val vaultId = selectedBitwardenVaultId
-                                            ?: return@DropdownMenuItem
-                                        onTopActionsMenuExpandedChange(false)
-                                        bitwardenViewModel.requestManualSync(vaultId)
-                                    }
+                                        if (!isTopBarSyncing && !isBitwardenMaintenanceActionRunning && vaultId != null) {
+                                            onTopActionsMenuExpandedChange(false)
+                                            bitwardenViewModel.requestManualSync(vaultId)
+                                        }
+                                    },
                                 )
                             }
                             if (selectedBitwardenVaultId != null) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.reunlock_current_database_menu)) },
-                                    leadingIcon = { Icon(Icons.Default.LockOpen, contentDescription = null) },
+                                BitwardenReunlockTopActionsMenuItem(
                                     onClick = {
                                         onTopActionsMenuExpandedChange(false)
                                         showBitwardenUnlockDialog = true
-                                    }
+                                    },
                                 )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.lock_current_database_menu)) },
-                                    leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                                BitwardenLockTopActionsMenuItem(
                                     onClick = {
                                         onTopActionsMenuExpandedChange(false)
                                         coroutineScope.launch {
@@ -402,78 +373,44 @@ internal fun PasswordListTopSection(
                                                 ).show()
                                             }
                                         }
-                                    }
+                                    },
                                 )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.clear_bitwarden_cache_menu)) },
-                                    leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
+                                BitwardenClearCacheTopActionsMenuItem(
                                     enabled = !isBitwardenMaintenanceActionRunning,
                                     onClick = {
                                         val vaultId = selectedBitwardenVaultId
-                                            ?: return@DropdownMenuItem
-                                        onTopActionsMenuExpandedChange(false)
-                                        coroutineScope.launch {
-                                            runCatching {
-                                                viewModel.getBitwardenVaultCacheRiskSummary(vaultId)
-                                            }.onSuccess { summary ->
-                                                clearCacheRiskSummary = summary
-                                                showClearBitwardenCacheDialog = true
-                                            }.onFailure { error ->
-                                                Toast.makeText(
-                                                    context,
-                                                    context.getString(
-                                                        R.string.bitwarden_clear_cache_failed,
-                                                        error.message ?: ""
-                                                    ),
-                                                    Toast.LENGTH_SHORT
-                                                ).show()
+                                        if (vaultId != null) {
+                                            onTopActionsMenuExpandedChange(false)
+                                            coroutineScope.launch {
+                                                runCatching {
+                                                    viewModel.getBitwardenVaultCacheRiskSummary(vaultId)
+                                                }.onSuccess { summary ->
+                                                    clearCacheRiskSummary = summary
+                                                    showClearBitwardenCacheDialog = true
+                                                }.onFailure { error ->
+                                                    Toast.makeText(
+                                                        context,
+                                                        context.getString(
+                                                            R.string.bitwarden_clear_cache_failed,
+                                                            error.message ?: ""
+                                                        ),
+                                                        Toast.LENGTH_SHORT
+                                                    ).show()
+                                                }
                                             }
                                         }
-                                    }
+                                    },
                                 )
                             }
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.display_options_menu_title)) },
-                                leadingIcon = { Icon(Icons.Default.DashboardCustomize, contentDescription = null) },
-                                onClick = {
-                                    onTopActionsMenuExpandedChange(false)
-                                    onShowDisplayOptionsSheetChange(true)
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.common_account_title)) },
-                                leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
-                                onClick = {
-                                    onTopActionsMenuExpandedChange(false)
-                                    onOpenCommonAccountTemplates()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.timeline_title)) },
-                                leadingIcon = { Icon(Icons.Default.History, contentDescription = null) },
-                                onClick = {
-                                    onTopActionsMenuExpandedChange(false)
-                                    onOpenHistory()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.timeline_trash_title)) },
-                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
-                                onClick = {
-                                    onTopActionsMenuExpandedChange(false)
-                                    onOpenTrash()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.archive_page_title)) },
-                                leadingIcon = { Icon(Icons.Default.Archive, contentDescription = null) },
-                                onClick = {
-                                    onTopActionsMenuExpandedChange(false)
-                                    viewModel.setCategoryFilter(CategoryFilter.Archived)
-                                }
+                            CommonPasswordTopActionsMenuItems(
+                                onDismissMenu = { onTopActionsMenuExpandedChange(false) },
+                                onShowDisplayOptions = { onShowDisplayOptionsSheetChange(true) },
+                                onOpenCommonAccountTemplates = onOpenCommonAccountTemplates,
+                                onOpenHistory = onOpenHistory,
+                                onOpenTrash = onOpenTrash,
+                                onOpenArchive = { viewModel.setCategoryFilter(CategoryFilter.Archived) }
                             )
                         }
-                    }
                 }
             }
         )

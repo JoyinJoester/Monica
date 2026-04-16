@@ -213,7 +213,11 @@ fun rememberPullActionState(
 
     fun onVerticalDrag(dragAmount: Float) {
         if (lockPullUntilSyncFinished || dragAmount <= 0f) return
-        val newOffset = (currentOffset + dragAmount * 0.5f).coerceAtMost(maxDragDistance)
+        val newOffset = calculateDampedPullOffset(
+            currentOffset = currentOffset,
+            dragDelta = dragAmount,
+            maxDragDistance = maxDragDistance
+        )
         val oldOffset = currentOffset
         currentOffset = newOffset
         updatePullThresholdHaptics(oldOffset = oldOffset, newOffset = newOffset)
@@ -295,8 +299,11 @@ fun rememberPullActionState(
                     return available
                 }
                 if (available.y > 0 && source == NestedScrollSource.UserInput) {
-                    val delta = available.y * 0.5f
-                    val newOffset = (currentOffset + delta).coerceAtMost(maxDragDistance)
+                    val newOffset = calculateDampedPullOffset(
+                        currentOffset = currentOffset,
+                        dragDelta = available.y,
+                        maxDragDistance = maxDragDistance
+                    )
                     val oldOffset = currentOffset
                     currentOffset = newOffset
                     updatePullThresholdHaptics(oldOffset = oldOffset, newOffset = newOffset)

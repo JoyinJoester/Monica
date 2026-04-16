@@ -70,6 +70,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -80,7 +81,6 @@ import takagi.ru.monica.R
 import takagi.ru.monica.autofill_ng.core.AutofillLogger
 import takagi.ru.monica.autofill_ng.ui.*
 import takagi.ru.monica.autofill_ng.utils.SmartCopyNotificationHelper
-import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.isLocalPasswordOwnership
@@ -1176,8 +1176,6 @@ private fun AutofillPickerContent(
     var selectedFolderId by remember { mutableStateOf<String?>(null) }
     var isFilterExpanded by remember { mutableStateOf(false) }
     var isLoading by remember { mutableStateOf(true) }
-    var bitwardenVaults by remember { mutableStateOf<List<BitwardenVault>>(emptyList()) }
-    var foldersByVault by remember { mutableStateOf<Map<Long, List<BitwardenFolder>>>(emptyMap()) }
     val coroutineScope = rememberCoroutineScope()
     
     // 检查通知权限 - 用于决定是否显示智能复制选项
@@ -1321,7 +1319,14 @@ private fun AutofillPickerContent(
             ?: ""
     }
     
-    val bitwardenRepository = remember(context) { BitwardenRepository.getInstance(context) }
+    val bitwardenVaults by appDb.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
+    val selectedVaultFolders by remember(appDb, selectedVaultId) {
+        if (selectedVaultId != null) {
+            appDb.bitwardenFolderDao().getFoldersByVaultFlow(selectedVaultId!!)
+        } else {
+            flowOf(emptyList<BitwardenFolder>())
+        }
+    }.collectAsState(initial = emptyList())
 
     LaunchedEffect(Unit) {
         AutofillLogger.i(
@@ -1445,20 +1450,6 @@ private fun AutofillPickerContent(
         }
     }
 
-    LaunchedEffect(Unit) {
-        bitwardenVaults = withContext(Dispatchers.IO) {
-            bitwardenRepository.getAllVaults()
-        }
-    }
-
-    LaunchedEffect(bitwardenVaults) {
-        foldersByVault = withContext(Dispatchers.IO) {
-            bitwardenVaults.associate { vault ->
-                vault.id to bitwardenRepository.getFolders(vault.id)
-            }
-        }
-    }
-
     val keepassNameById = remember(keepassDatabases) {
         keepassDatabases.associate { it.id to it.name }
     }
@@ -1466,9 +1457,6 @@ private fun AutofillPickerContent(
         bitwardenVaults.associate { vault ->
             vault.id to (vault.displayName?.takeIf { it.isNotBlank() } ?: vault.email)
         }
-    }
-    val selectedVaultFolders = remember(selectedVaultId, foldersByVault) {
-        selectedVaultId?.let { foldersByVault[it] }.orEmpty()
     }
     val folderNameById = remember(selectedVaultFolders) {
         selectedVaultFolders.associate { it.bitwardenFolderId to it.name }

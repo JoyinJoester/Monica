@@ -58,6 +58,7 @@ import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.notes.ui.model.NoteListItemUiModel
 import takagi.ru.monica.ui.components.PullActionVisualState
 import takagi.ru.monica.ui.components.PullGestureIndicator
+import takagi.ru.monica.ui.common.pull.calculateDampedPullOffset
 import takagi.ru.monica.util.VibrationPatterns
 
 @Composable
@@ -289,8 +290,11 @@ fun NoteListContent(
                 if (lockPullUntilSyncFinished) return available
                 if (!isSearchExpanded && available.y > 0 && canTriggerPullToSearch) {
                     if (source == NestedScrollSource.UserInput) {
-                        val delta = available.y * 0.5f
-                        val newOffset = (currentOffset + delta).coerceAtMost(maxDragDistance)
+                        val newOffset = calculateDampedPullOffset(
+                            currentOffset = currentOffset,
+                            dragDelta = available.y,
+                            maxDragDistance = maxDragDistance
+                        )
                         val oldOffset = currentOffset
                         currentOffset = newOffset
                         updatePullThresholdHaptics(oldOffset = oldOffset, newOffset = newOffset)
@@ -316,7 +320,11 @@ fun NoteListContent(
             detectVerticalDragGestures(
                 onVerticalDrag = { _, dragAmount ->
                     if (!isSearchExpanded && dragAmount > 0f) {
-                        val newOffset = (currentOffset + dragAmount * 0.5f).coerceAtMost(maxDragDistance)
+                        val newOffset = calculateDampedPullOffset(
+                            currentOffset = currentOffset,
+                            dragDelta = dragAmount,
+                            maxDragDistance = maxDragDistance
+                        )
                         val oldOffset = currentOffset
                         currentOffset = newOffset
                         updatePullThresholdHaptics(oldOffset = oldOffset, newOffset = newOffset)
@@ -356,20 +364,18 @@ fun NoteListContent(
             }
         }
         PullActionVisualState.SYNC_READY -> stringResource(R.string.pull_release_to_sync_bitwarden)
-        PullActionVisualState.SEARCH_READY -> if (isBitwardenDatabaseView) {
-            stringResource(R.string.pull_release_to_search)
-        } else {
-            null
-        }
+        PullActionVisualState.SEARCH_READY,
         PullActionVisualState.IDLE -> null
     }
     val shouldPinIndicator = isBitwardenDatabaseView && (
         syncHintArmed || isBitwardenSyncing || showSyncFeedback
     )
     val revealHeightTarget = with(density) {
-        if (isBitwardenDatabaseView) {
-            val pullHeight = currentOffset.toDp().coerceIn(0.dp, 112.dp)
-            if (shouldPinIndicator) maxOf(pullHeight, 92.dp) else pullHeight
+        val pullHeight = currentOffset.toDp().coerceIn(0.dp, 72.dp)
+        if (shouldPinIndicator) {
+            maxOf(pullHeight, 52.dp)
+        } else if (currentOffset > 0.5f) {
+            maxOf(pullHeight, 36.dp)
         } else {
             0.dp
         }
@@ -379,7 +385,9 @@ fun NoteListContent(
         animationSpec = tween(durationMillis = 220),
         label = "note_pull_reveal_height"
     )
-    val showPullIndicator = pullHintText != null && revealHeight > 0.5.dp
+    val showPullIndicator = revealHeight > 0.5.dp && (
+        currentOffset > 0.5f || shouldPinIndicator
+    )
     val contentPullOffset = if (isBitwardenDatabaseView) {
         (currentOffset * 0.28f).toInt()
     } else {

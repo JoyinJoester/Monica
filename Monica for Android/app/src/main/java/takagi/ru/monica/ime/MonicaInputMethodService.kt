@@ -22,8 +22,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -56,6 +59,7 @@ class MonicaInputMethodService : InputMethodService() {
     private var composeView: ComposeView? = null
     private var recomposer: Recomposer? = null
     private var refreshJob: Job? = null
+    private var databaseObserverJob: Job? = null
     private var pendingUnlockPanel: MonicaImePanel? = null
     private var unlockFlowInProgress = false
     private var suppressAutoUnlockUntilNextAttempt = false
@@ -109,6 +113,7 @@ class MonicaInputMethodService : InputMethodService() {
             IntentFilter(ACTION_IME_BIOMETRIC_RESULT),
             receiverFlags
         )
+        observeDatabaseSources()
 
         serviceScope.launch {
             val settings = settingsManager.settingsFlow.first()
@@ -211,6 +216,7 @@ class MonicaInputMethodService : InputMethodService() {
     }
 
     override fun onDestroy() {
+        databaseObserverJob?.cancel()
         refreshJob?.cancel()
         unregisterReceiver(imeUnlockResultReceiver)
         composeView?.disposeComposition()
@@ -257,6 +263,35 @@ class MonicaInputMethodService : InputMethodService() {
         refreshJob?.cancel()
         refreshJob = serviceScope.launch {
             refreshVaultEntries(force = force)
+        }
+    }
+
+    private fun observeDatabaseSources() {
+        databaseObserverJob?.cancel()
+        databaseObserverJob = serviceScope.launch {
+            combine(
+                database.localKeePassDatabaseDao().getAllDatabases()
+                    .map { databases ->
+                        databases.map { database ->
+                            Triple(database.id, database.name, database.filePath)
+                        }
+                    }
+                    .distinctUntilChanged(),
+                database.bitwardenVaultDao().getAllVaultsFlow()
+                    .map { vaults ->
+                        vaults.map { vault ->
+                            Triple(vault.id, vault.email, vault.displayName.orEmpty())
+                        }
+                    }
+                    .distinctUntilChanged()
+            ) { keepassSignatures, bitwardenSignatures ->
+                keepassSignatures to bitwardenSignatures
+            }.collect {
+                val currentState = uiState.value
+                if (currentState.activePanel != MonicaImePanel.KEYBOARD || currentState.unlocked) {
+                    requestRefreshVaultEntries(force = true)
+                }
+            }
         }
     }
 

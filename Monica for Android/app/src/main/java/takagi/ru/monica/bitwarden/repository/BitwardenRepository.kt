@@ -1593,9 +1593,7 @@ class BitwardenRepository(private val context: Context) {
     }
 
     private suspend fun getAvailableOfflineSecretCount(vaultId: Long): Int {
-        return passwordEntryDao.getBitwardenEntriesCount(vaultId) +
-            secureItemDao.getBitwardenEntriesCount(vaultId) +
-            passkeyDao.getBitwardenEntriesCount(vaultId)
+        return passwordEntryDao.getBitwardenEntriesCount(vaultId)
     }
 
     private fun syncMutexForVault(vaultId: Long): Mutex {

@@ -114,6 +114,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel
+import takagi.ru.monica.bitwarden.sync.buildHeadline
+import takagi.ru.monica.ui.common.pull.calculateDampedPullOffset
 import takagi.ru.monica.data.bitwarden.BitwardenSend
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.util.VibrationPatterns
@@ -195,6 +197,8 @@ fun SendScreen(
                 is BitwardenViewModel.BitwardenEvent.ShowSuccess -> snackbarHostState.showSnackbar(event.message)
                 is BitwardenViewModel.BitwardenEvent.ShowError -> snackbarHostState.showSnackbar(event.message)
                 is BitwardenViewModel.BitwardenEvent.ShowWarning -> snackbarHostState.showSnackbar(event.message)
+                is BitwardenViewModel.BitwardenEvent.SyncFinished ->
+                    snackbarHostState.showSnackbar(event.summary.buildHeadline(context))
                 is BitwardenViewModel.BitwardenEvent.SendCreated -> snackbarHostState.showSnackbar(event.message)
                 is BitwardenViewModel.BitwardenEvent.SendDeleted -> snackbarHostState.showSnackbar(event.message)
                 else -> Unit
@@ -310,8 +314,11 @@ fun SendScreen(
                                 override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
                                     if (!isSearchExpanded && available.y > 0 && canTriggerPullToSearch) {
                                         if (source == NestedScrollSource.UserInput) {
-                                            val delta = available.y * 0.5f
-                                            val newOffset = currentOffset + delta
+                                            val newOffset = calculateDampedPullOffset(
+                                                currentOffset = currentOffset,
+                                                dragDelta = available.y,
+                                                maxDragDistance = triggerDistance * 1.6f
+                                            )
                                             val oldOffset = currentOffset
                                             currentOffset = newOffset
 

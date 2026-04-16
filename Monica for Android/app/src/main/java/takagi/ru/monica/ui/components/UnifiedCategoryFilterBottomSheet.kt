@@ -19,6 +19,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.WindowInsets
@@ -178,7 +179,8 @@ fun UnifiedCategoryFilterBottomSheet(
     onRenameKeePassGroup: ((databaseId: Long, groupPath: String, newName: String) -> Unit)? = null,
     onDeleteKeePassGroup: ((databaseId: Long, groupPath: String) -> Unit)? = null,
     onMoveCategory: ((category: Category, targetParentCategoryId: Long?) -> Unit)? = null,
-    onMoveKeePassGroup: ((sourceDatabaseId: Long, groupPath: String, targetDatabaseId: Long, targetParentPath: String?) -> Unit)? = null
+    onMoveKeePassGroup: ((sourceDatabaseId: Long, groupPath: String, targetDatabaseId: Long, targetParentPath: String?) -> Unit)? = null,
+    quickFilterContent: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     if (!visible) return
 
@@ -463,36 +465,44 @@ fun UnifiedCategoryFilterBottomSheet(
                         shape = RoundedCornerShape(20.dp),
                         color = MaterialTheme.colorScheme.surfaceContainerLow
                     ) {
-                        FlowRow(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            QuickFilterChip(
-                                label = stringResource(R.string.category_all),
-                                icon = Icons.Default.List,
-                                selected = selected is UnifiedCategoryFilterSelection.All,
-                                onClick = { onSelect(UnifiedCategoryFilterSelection.All) }
-                            )
-                            QuickFilterChip(
-                                label = stringResource(R.string.filter_starred),
-                                icon = Icons.Outlined.CheckCircle,
-                                selected = selected is UnifiedCategoryFilterSelection.Starred,
-                                onClick = { onSelect(UnifiedCategoryFilterSelection.Starred) }
-                            )
-                            QuickFilterChip(
-                                label = stringResource(R.string.filter_uncategorized),
-                                icon = Icons.Default.FolderOff,
-                                selected = selected is UnifiedCategoryFilterSelection.Uncategorized,
-                                onClick = { onSelect(UnifiedCategoryFilterSelection.Uncategorized) }
-                            )
-                            if (showLocalOnlyQuickFilter && onSelectLocalOnlyQuickFilter != null) {
+                        if (quickFilterContent != null) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp)
+                            ) {
+                                quickFilterContent.invoke(this)
+                            }
+                        } else {
+                            FlowRow(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
                                 QuickFilterChip(
-                                    label = stringResource(R.string.filter_local_only),
-                                    icon = Icons.Default.Smartphone,
-                                    selected = isLocalOnlyQuickFilterSelected,
-                                    onClick = onSelectLocalOnlyQuickFilter
+                                    label = stringResource(R.string.category_all),
+                                    icon = Icons.Default.List,
+                                    selected = selected is UnifiedCategoryFilterSelection.All,
+                                    onClick = { onSelect(UnifiedCategoryFilterSelection.All) }
                                 )
+                                QuickFilterChip(
+                                    label = stringResource(R.string.filter_starred),
+                                    icon = Icons.Outlined.CheckCircle,
+                                    selected = selected is UnifiedCategoryFilterSelection.Starred,
+                                    onClick = { onSelect(UnifiedCategoryFilterSelection.Starred) }
+                                )
+                                QuickFilterChip(
+                                    label = stringResource(R.string.filter_uncategorized),
+                                    icon = Icons.Default.FolderOff,
+                                    selected = selected is UnifiedCategoryFilterSelection.Uncategorized,
+                                    onClick = { onSelect(UnifiedCategoryFilterSelection.Uncategorized) }
+                                )
+                                if (showLocalOnlyQuickFilter && onSelectLocalOnlyQuickFilter != null) {
+                                    QuickFilterChip(
+                                        label = stringResource(R.string.filter_local_only),
+                                        icon = Icons.Default.Smartphone,
+                                        selected = isLocalOnlyQuickFilterSelected,
+                                        onClick = onSelectLocalOnlyQuickFilter
+                                    )
+                                }
                             }
                         }
                     }

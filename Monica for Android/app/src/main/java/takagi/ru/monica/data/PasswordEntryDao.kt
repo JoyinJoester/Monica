@@ -270,6 +270,23 @@ interface PasswordEntryDao {
     @Query(
         """
         SELECT * FROM password_entries
+        WHERE isDeleted = 0
+          AND isArchived = 0
+          AND LOWER(title) = :title
+          AND LOWER(username) = :username
+          AND LOWER(website) = :website
+        ORDER BY updatedAt DESC, id DESC
+        """
+    )
+    suspend fun findActiveDuplicateCandidatesByKey(
+        title: String,
+        username: String,
+        website: String
+    ): List<PasswordEntry>
+
+    @Query(
+        """
+        SELECT * FROM password_entries
         WHERE keepassDatabaseId = :databaseId
           AND title = :title
           AND username = :username
@@ -523,6 +540,25 @@ interface PasswordEntryDao {
                 LIMIT 1
         """)
         suspend fun findLocalDuplicateByKey(title: String, username: String, website: String): PasswordEntry?
+
+        @Query(
+            """
+                SELECT * FROM password_entries
+                WHERE bitwarden_vault_id IS NULL
+                    AND keepassDatabaseId IS NULL
+                    AND isDeleted = 0
+                    AND isArchived = 0
+                    AND LOWER(title) = :title
+                    AND LOWER(username) = :username
+                    AND LOWER(website) = :website
+                ORDER BY updatedAt DESC, id DESC
+        """
+        )
+        suspend fun findLocalDuplicateCandidatesByKey(
+            title: String,
+            username: String,
+            website: String
+        ): List<PasswordEntry>
     
     /**
      * 根据 Bitwarden Vault ID 获取所有条目

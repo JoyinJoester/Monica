@@ -74,6 +74,7 @@ import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.isLocalOnlyItem
 import takagi.ru.monica.data.resolveOwnership
+import takagi.ru.monica.bitwarden.sync.isUserVisibleSyncInProgress
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.KeePassStorageLocation
 import takagi.ru.monica.data.bitwarden.BitwardenVault
@@ -299,7 +300,7 @@ fun NoteListScreen(
     val bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel()
     val bitwardenSyncStatusByVault by bitwardenViewModel.syncStatusByVault.collectAsState()
     val isTopBarSyncing = selectedBitwardenVaultId?.let { vaultId ->
-        bitwardenSyncStatusByVault[vaultId]?.isRunning == true
+        bitwardenSyncStatusByVault[vaultId].isUserVisibleSyncInProgress()
     } == true
     
     // 过滤笔记
@@ -612,8 +613,25 @@ fun NoteListScreen(
                                 )
                                 if (selectedBitwardenVaultId != null) {
                                     DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.sync_bitwarden_database_menu)) },
-                                        leadingIcon = { Icon(Icons.Default.Sync, contentDescription = null) },
+                                        text = {
+                                            Text(
+                                                if (isTopBarSyncing) {
+                                                    "${stringResource(R.string.sync_status_syncing_short)}..."
+                                                } else {
+                                                    stringResource(R.string.sync_bitwarden_database_menu)
+                                                }
+                                            )
+                                        },
+                                        leadingIcon = {
+                                            if (isTopBarSyncing) {
+                                                androidx.compose.material3.CircularProgressIndicator(
+                                                    modifier = Modifier.size(18.dp),
+                                                    strokeWidth = 2.dp
+                                                )
+                                            } else {
+                                                Icon(Icons.Default.Sync, contentDescription = null)
+                                            }
+                                        },
                                         enabled = !isTopBarSyncing,
                                         onClick = {
                                             if (isTopBarSyncing) return@DropdownMenuItem

@@ -318,6 +318,22 @@ class PasswordRepository(
         )
     }
 
+    suspend fun getDuplicateCandidates(title: String, username: String, website: String): List<PasswordEntry> {
+        return passwordEntryDao.findActiveDuplicateCandidatesByKey(
+            title.lowercase(Locale.ROOT),
+            username.lowercase(Locale.ROOT),
+            website.lowercase(Locale.ROOT)
+        )
+    }
+
+    suspend fun getLocalDuplicateCandidates(title: String, username: String, website: String): List<PasswordEntry> {
+        return passwordEntryDao.findLocalDuplicateCandidatesByKey(
+            title.lowercase(Locale.ROOT),
+            username.lowercase(Locale.ROOT),
+            website.lowercase(Locale.ROOT)
+        )
+    }
+
     suspend fun getDuplicateEntryInKeePass(
         databaseId: Long,
         title: String,

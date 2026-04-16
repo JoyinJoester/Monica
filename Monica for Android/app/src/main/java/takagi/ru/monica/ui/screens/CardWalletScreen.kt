@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -79,6 +80,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
+import takagi.ru.monica.bitwarden.sync.isUserVisibleSyncInProgress
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.Category
@@ -98,6 +100,7 @@ import takagi.ru.monica.ui.components.LoadingIndicator
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.components.PullActionVisualState
 import takagi.ru.monica.ui.components.PullGestureIndicator
+import takagi.ru.monica.ui.common.pull.calculateDampedPullOffset
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenu
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuDropdown
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuOffset
@@ -222,7 +225,7 @@ fun CardWalletScreen(
     val bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel()
     val bitwardenSyncStatusByVault by bitwardenViewModel.syncStatusByVault.collectAsState()
     val isTopBarSyncing = selectedBitwardenVaultId?.let { vaultId ->
-        bitwardenSyncStatusByVault[vaultId]?.isRunning == true
+        bitwardenSyncStatusByVault[vaultId].isUserVisibleSyncInProgress()
     } == true
     var currentOffset by remember { mutableStateOf(0f) }
     val searchTriggerDistance = remember(density, isBitwardenDatabaseView) {
@@ -484,8 +487,11 @@ fun CardWalletScreen(
                     return available
                 }
                 if (available.y > 0 && source == NestedScrollSource.UserInput) {
-                    val delta = available.y * 0.5f
-                    val newOffset = (currentOffset + delta).coerceAtMost(maxDragDistance)
+                    val newOffset = calculateDampedPullOffset(
+                        currentOffset = currentOffset,
+                        dragDelta = available.y,
+                        maxDragDistance = maxDragDistance
+                    )
                     val oldOffset = currentOffset
                     currentOffset = newOffset
                     updatePullThresholdHaptics(oldOffset = oldOffset, newOffset = newOffset)
@@ -959,8 +965,25 @@ fun CardWalletScreen(
                             )
                             if (selectedBitwardenVaultId != null) {
                                 DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.sync_bitwarden_database_menu)) },
-                                    leadingIcon = { Icon(Icons.Default.Sync, contentDescription = null) },
+                                    text = {
+                                        Text(
+                                            if (isTopBarSyncing) {
+                                                "${stringResource(R.string.sync_status_syncing_short)}..."
+                                            } else {
+                                                stringResource(R.string.sync_bitwarden_database_menu)
+                                            }
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        if (isTopBarSyncing) {
+                                            androidx.compose.material3.CircularProgressIndicator(
+                                                modifier = Modifier.size(18.dp),
+                                                strokeWidth = 2.dp
+                                            )
+                                        } else {
+                                            Icon(Icons.Default.Sync, contentDescription = null)
+                                        }
+                                    },
                                     enabled = !isTopBarSyncing,
                                     onClick = {
                                         if (isTopBarSyncing) return@DropdownMenuItem
@@ -1006,24 +1029,18 @@ fun CardWalletScreen(
                 }
             }
             PullActionVisualState.SYNC_READY -> stringResource(R.string.pull_release_to_sync_bitwarden)
-            PullActionVisualState.SEARCH_READY -> if (isBitwardenDatabaseView) {
-                stringResource(R.string.pull_release_to_search)
-            } else {
-                null
-            }
+            PullActionVisualState.SEARCH_READY,
             PullActionVisualState.IDLE -> null
         }
         val shouldPinIndicator = isBitwardenDatabaseView && (
             syncHintArmed || isBitwardenSyncing || showSyncFeedback
         )
         val revealHeightTarget = with(density) {
-            if (isBitwardenDatabaseView) {
-                val pullHeight = currentOffset.toDp().coerceIn(0.dp, 112.dp)
-                if (shouldPinIndicator) {
-                    maxOf(pullHeight, 92.dp)
-                } else {
-                    pullHeight
-                }
+            val pullHeight = currentOffset.toDp().coerceIn(0.dp, 72.dp)
+            if (shouldPinIndicator) {
+                maxOf(pullHeight, 52.dp)
+            } else if (currentOffset > 0.5f) {
+                maxOf(pullHeight, 36.dp)
             } else {
                 0.dp
             }
@@ -1033,7 +1050,9 @@ fun CardWalletScreen(
             animationSpec = tween(durationMillis = 220),
             label = "wallet_pull_reveal_height"
         )
-        val showPullIndicator = pullHintText != null && revealHeight > 0.5.dp
+        val showPullIndicator = revealHeight > 0.5.dp && (
+            currentOffset > 0.5f || shouldPinIndicator
+        )
         val contentPullOffset = if (isBitwardenDatabaseView) {
             (currentOffset * 0.28f).toInt()
         } else {
@@ -1076,7 +1095,11 @@ fun CardWalletScreen(
                                     detectVerticalDragGestures(
                                         onVerticalDrag = { _, dragAmount ->
                                             if (dragAmount > 0f) {
-                                                val newOffset = (currentOffset + dragAmount * 0.5f).coerceAtMost(maxDragDistance)
+                                                val newOffset = calculateDampedPullOffset(
+                                                    currentOffset = currentOffset,
+                                                    dragDelta = dragAmount,
+                                                    maxDragDistance = maxDragDistance
+                                                )
                                                 val oldOffset = currentOffset
                                                 currentOffset = newOffset
                                                 updatePullThresholdHaptics(oldOffset = oldOffset, newOffset = newOffset)

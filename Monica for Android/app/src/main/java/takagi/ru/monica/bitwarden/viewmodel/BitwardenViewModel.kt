@@ -6,7 +6,6 @@ import android.net.NetworkCapabilities
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,6 +21,8 @@ import takagi.ru.monica.bitwarden.cache.BitwardenOfflineSecretCache
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.bitwarden.service.LoginResult
 import takagi.ru.monica.bitwarden.sync.BitwardenSyncOrchestrator
+import takagi.ru.monica.bitwarden.sync.BitwardenSyncNotificationHelper
+import takagi.ru.monica.bitwarden.sync.BitwardenSyncSummary
 import takagi.ru.monica.bitwarden.sync.NetworkGateResult
 import takagi.ru.monica.bitwarden.sync.SyncBlockReason
 import takagi.ru.monica.bitwarden.sync.SyncExecutionOutcome
@@ -70,7 +71,6 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     private var pendingServerUrl: String? = null
     private var pendingTlsConfig: BitwardenTlsConfig? = null
     private val processStartMs = System.currentTimeMillis()
-    private val delayedAutoSyncJobs = mutableMapOf<Long, Job>()
     
     // ==================== UI 状态 ====================
     
@@ -155,6 +155,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
         _isNeverLockEnabled.value = repository.isNeverLockEnabled
         _isAutoSyncEnabled.value = repository.isAutoSyncEnabled
         _isSyncOnWifiOnly.value = repository.isSyncOnWifiOnly
+        observeVaultSnapshots()
         loadVaults(triggerStartupAutoSync = true)
     }
     
@@ -521,7 +522,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
             return
         }
 
-        syncOrchestrator.requestSync(
+        requestSyncWithStartupGrace(
             vaultId = vault.id,
             reason = SyncTriggerReason.MANUAL,
             force = true
@@ -539,7 +540,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
 
         val visibleVaultId = _activeVault.value?.id?.takeIf { it in unlockedVaultIds } ?: unlockedVaultIds.first()
         unlockedVaultIds.forEach { vaultId ->
-            syncOrchestrator.requestSync(
+            requestSyncWithStartupGrace(
                 vaultId = vaultId,
                 reason = if (vaultId == visibleVaultId) {
                     SyncTriggerReason.MANUAL
@@ -574,7 +575,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
      * 指定 vault 的手动同步请求（用于页面顶部“一键同步”按钮）。
      */
     fun requestManualSync(vaultId: Long) {
-        syncOrchestrator.requestSync(
+        requestSyncWithStartupGrace(
             vaultId = vaultId,
             reason = SyncTriggerReason.MANUAL,
             force = true
@@ -883,6 +884,37 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
             .toList()
     }
 
+    private fun observeVaultSnapshots() {
+        viewModelScope.launch {
+            repository.getAllVaultsFlow().collect { vaultList ->
+                val previousActiveVaultId = _activeVault.value?.id
+                _vaults.value = vaultList
+                replaceUnlockStates(vaultList)
+
+                val refreshedActive = when {
+                    previousActiveVaultId != null -> {
+                        vaultList.firstOrNull { it.id == previousActiveVaultId }
+                            ?: repository.getActiveVault()
+                    }
+                    else -> repository.getActiveVault()
+                }
+
+                _activeVault.value = refreshedActive
+                val activeUnlockState = refreshedActive?.let { currentUnlockState(it.id) } ?: UnlockState.Locked
+                _unlockState.value = activeUnlockState
+
+                if (previousActiveVaultId != null &&
+                    vaultList.none { it.id == previousActiveVaultId } &&
+                    (refreshedActive == null || activeUnlockState != UnlockState.Unlocked)
+                ) {
+                    clearActiveVaultContent(
+                        sendState = if (refreshedActive == null) SendState.Idle else SendState.Locked
+                    )
+                }
+            }
+        }
+    }
+
     private suspend fun refreshVaultListSnapshot(preferredActiveVaultId: Long? = _activeVault.value?.id) {
         val vaultList = repository.getAllVaults()
         _vaults.value = vaultList
@@ -1017,26 +1049,31 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
 
     private fun requestAutoSyncForUnlockedVaults(vaults: List<BitwardenVault>, reason: SyncTriggerReason) {
         collectUnlockedVaultIds(vaults).forEach { vaultId ->
-            requestAutoSyncWithStartupGrace(vaultId, reason)
+            requestSyncWithStartupGrace(vaultId, reason)
         }
     }
 
     private fun requestAutoSyncWithStartupGrace(vaultId: Long, reason: SyncTriggerReason) {
+        requestSyncWithStartupGrace(vaultId = vaultId, reason = reason)
+    }
+
+    private fun requestSyncWithStartupGrace(
+        vaultId: Long,
+        reason: SyncTriggerReason,
+        force: Boolean = false
+    ) {
         val elapsed = System.currentTimeMillis() - processStartMs
         val remaining = COLD_START_AUTO_SYNC_GRACE_MS - elapsed
         if (remaining <= 0L) {
-            syncOrchestrator.requestSync(vaultId, reason)
+            syncOrchestrator.requestSync(vaultId, reason, force = force)
             return
         }
-
-        val existingJob = delayedAutoSyncJobs[vaultId]
-        if (existingJob?.isActive == true) return
-
-        delayedAutoSyncJobs[vaultId] = viewModelScope.launch {
-            delay(remaining)
-            syncOrchestrator.requestSync(vaultId, reason)
-            delayedAutoSyncJobs.remove(vaultId)
-        }
+        syncOrchestrator.requestSyncWithDelay(
+            vaultId = vaultId,
+            reason = reason,
+            delayMs = remaining,
+            force = force
+        )
     }
 
     private fun evaluateNetworkGate(): NetworkGateResult {
@@ -1068,10 +1105,20 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
         return when (val result = repository.sync(vault.id)) {
             is BitwardenRepository.SyncResult.Success -> {
                 val warmedCount = warmBitwardenOfflineSecretCacheForVault(vault.id)
+                val offlineReadyCount = maxOf(result.availableOfflineCount, warmedCount)
+                val syncSummary = BitwardenSyncSummary(
+                    vaultId = vault.id,
+                    vaultLabel = vault.displayName?.takeIf { it.isNotBlank() } ?: vault.email,
+                    appliedChangeCount = result.appliedChangeCount,
+                    offlineReadyCount = offlineReadyCount,
+                    conflictCount = result.conflictCount,
+                    uploadFailedCount = result.uploadFailedCount,
+                    skippedDueToLocalDirtyCount = result.skippedDueToLocalDirtyCount
+                )
                 logBitwardenSyncSummary(
                     vaultId = vault.id,
                     appliedChangeCount = result.appliedChangeCount,
-                    availableOfflineCount = result.availableOfflineCount,
+                    availableOfflineCount = offlineReadyCount,
                     remoteAddedCount = result.remoteAddedCount,
                     remoteUpdatedCount = result.remoteUpdatedCount,
                     uploadedCount = result.uploadedCount,
@@ -1087,7 +1134,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                 if (!silent) {
                     _syncState.value = SyncState.Success(
                         appliedChangeCount = result.appliedChangeCount,
-                        availableOfflineCount = result.availableOfflineCount,
+                        availableOfflineCount = offlineReadyCount,
                         conflictCount = result.conflictCount,
                         uploadFailedCount = result.uploadFailedCount,
                         skippedDueToLocalDirtyCount = result.skippedDueToLocalDirtyCount
@@ -1099,6 +1146,11 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                 }
 
                 if (!silent) {
+                    _events.emit(BitwardenEvent.SyncFinished(syncSummary))
+                    BitwardenSyncNotificationHelper.showSyncSummary(
+                        context = getApplication<Application>().applicationContext,
+                        summary = syncSummary
+                    )
                     if (result.conflictCount > 0 || result.uploadFailedCount > 0 || result.skippedDueToLocalDirtyCount > 0) {
                         val warningParts = buildList {
                             if (result.conflictCount > 0) add("${result.conflictCount} 个冲突")
@@ -1111,13 +1163,12 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                             )
                         )
                     } else {
-                        val offlineReadyCount = maxOf(result.availableOfflineCount, warmedCount)
                         _events.emit(
                             BitwardenEvent.ShowSuccess(
                                 getApplication<Application>().getString(
                                     R.string.bitwarden_sync_success_with_offline_ready,
                                     result.appliedChangeCount,
-                                    offlineReadyCount
+                                    syncSummary.offlineReadyCount
                                 )
                             )
                         )
@@ -1125,7 +1176,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                 }
                 SyncExecutionOutcome.Success(
                     appliedChangeCount = result.appliedChangeCount,
-                    availableOfflineCount = result.availableOfflineCount,
+                    availableOfflineCount = syncSummary.offlineReadyCount,
                     conflictCount = result.conflictCount,
                     uploadFailedCount = result.uploadFailedCount,
                     skippedDueToLocalDirtyCount = result.skippedDueToLocalDirtyCount
@@ -1275,6 +1326,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
         data class ShowSuccess(val message: String) : BitwardenEvent()
         data class ShowError(val message: String) : BitwardenEvent()
         data class ShowWarning(val message: String) : BitwardenEvent()
+        data class SyncFinished(val summary: BitwardenSyncSummary) : BitwardenEvent()
         data class SendCreated(val message: String) : BitwardenEvent()
         data class SendDeleted(val message: String) : BitwardenEvent()
         data class ShowTwoFactorDialog(val methods: List<Int>) : BitwardenEvent()

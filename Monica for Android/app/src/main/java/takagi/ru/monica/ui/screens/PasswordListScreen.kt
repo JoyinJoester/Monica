@@ -52,6 +52,7 @@ import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.ClipboardUtils
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
+import takagi.ru.monica.ui.common.pull.calculateDampedPullOffset
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.CategoryFilter
 
@@ -136,8 +137,11 @@ fun PasswordListScreen(
                      
                     if (source == NestedScrollSource.UserInput) {
                         // 添加阻尼感 (0.5f 系数)
-                        val delta = available.y * 0.5f
-                        val newOffset = (currentOffset + delta)
+                        val newOffset = calculateDampedPullOffset(
+                            currentOffset = currentOffset,
+                            dragDelta = available.y,
+                            maxDragDistance = triggerDistance * 2.5f
+                        )
                         val oldOffset = currentOffset
                         currentOffset = newOffset
                         
@@ -391,7 +395,11 @@ fun PasswordListScreen(
                                 onVerticalDrag = { _, dragAmount ->
                                     if (!searchExpanded && dragAmount > 0f) {
                                         // 阻尼效果
-                                        val newOffset = currentOffset + dragAmount * 0.5f
+                                        val newOffset = calculateDampedPullOffset(
+                                            currentOffset = currentOffset,
+                                            dragDelta = dragAmount,
+                                            maxDragDistance = triggerDistance * 2.5f
+                                        )
                                         val oldOffset = currentOffset
                                         currentOffset = newOffset
                                         

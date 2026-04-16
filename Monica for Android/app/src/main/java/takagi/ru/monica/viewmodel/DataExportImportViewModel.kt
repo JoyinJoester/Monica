@@ -20,7 +20,9 @@ import takagi.ru.monica.repository.CustomFieldRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.BackupRestoreApplier
 import takagi.ru.monica.utils.FieldChange
+import takagi.ru.monica.utils.ImportedPasswordSnapshot
 import takagi.ru.monica.utils.OperationLogger
+import takagi.ru.monica.utils.PasswordImportDuplicateResolver
 import takagi.ru.monica.util.DataExportImportManager
 import takagi.ru.monica.util.TotpUriParser
 import takagi.ru.monica.notes.domain.NoteContentCodec
@@ -169,10 +171,20 @@ class DataExportImportViewModel(
                             val originalId = exportItem.id
                             
                             // 检查是否重复
-                            val existingEntry = passwordRepository.getDuplicateEntry(
-                                exportItem.title,
-                                username,
-                                website
+                            val existingEntry = PasswordImportDuplicateResolver.findMatchingEntry(
+                                passwordRepository = passwordRepository,
+                                securityManager = securityManager,
+                                snapshot = ImportedPasswordSnapshot(
+                                    title = exportItem.title,
+                                    username = username,
+                                    website = website,
+                                    password = passwordData["password"] ?: "",
+                                    notes = exportItem.notes,
+                                    email = passwordData["email"] ?: "",
+                                    phone = passwordData["phone"] ?: "",
+                                    authenticatorKey = importedAuthenticator?.authenticatorKey.orEmpty()
+                                ),
+                                localOnly = false
                             )
                             
                             if (existingEntry == null) {

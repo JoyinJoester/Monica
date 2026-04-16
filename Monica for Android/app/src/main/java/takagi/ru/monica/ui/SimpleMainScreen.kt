@@ -200,6 +200,10 @@ import takagi.ru.monica.ui.vaultv2.rememberVaultV2PaneState
 import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
 import takagi.ru.monica.data.bitwarden.BitwardenSend
 import takagi.ru.monica.bitwarden.sync.SyncBlockReason
+import takagi.ru.monica.bitwarden.sync.buildMiniHintDetail
+import takagi.ru.monica.bitwarden.sync.buildMiniHintTitle
+import takagi.ru.monica.bitwarden.sync.buildDetailLine
+import takagi.ru.monica.bitwarden.sync.buildHeadline
 import takagi.ru.monica.bitwarden.sync.SyncStatus
 import takagi.ru.monica.bitwarden.sync.VaultSyncStatus
 import takagi.ru.monica.security.SecurityManager
@@ -513,7 +517,8 @@ private data class BitwardenBottomStatusUiState(
 
 private data class BottomMiniHintMessage(
     val id: Long,
-    val message: String
+    val title: String,
+    val supportingText: String? = null
 )
 
 private data class MainScreenHandlers(
@@ -551,7 +556,8 @@ private const val MAX_BOTTOM_MINI_HINTS = 2
 @Composable
 private fun BottomMiniHintBubble(
     visible: Boolean,
-    text: String,
+    title: String,
+    supportingText: String? = null,
     containerColor: Color,
     textColor: Color
 ) {
@@ -585,18 +591,76 @@ private fun BottomMiniHintBubble(
         )
     ) {
         Surface(
+            modifier = Modifier.widthIn(max = 260.dp),
             shape = RoundedCornerShape(14.dp),
             tonalElevation = 2.dp,
             color = containerColor
         ) {
-            Text(
-                text = text,
-                style = MaterialTheme.typography.labelLarge,
-                color = textColor,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-            )
+            Column(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(if (supportingText != null) 2.dp else 0.dp)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = textColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (!supportingText.isNullOrBlank()) {
+                    Text(
+                        text = supportingText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = textColor.copy(alpha = 0.9f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
         }
     }
+}
+
+private fun buildBitwardenSyncMiniHint(
+    context: Context,
+    summary: takagi.ru.monica.bitwarden.sync.BitwardenSyncSummary
+): BottomMiniHintMessage {
+    return BottomMiniHintMessage(
+        id = System.currentTimeMillis(),
+        title = summary.buildMiniHintTitle(context),
+        supportingText = summary.buildMiniHintDetail(context)
+    )
+}
+
+@Composable
+private fun SyncMiniHintBubble(
+    visible: Boolean,
+    text: String,
+    containerColor: Color,
+    textColor: Color
+) {
+    BottomMiniHintBubble(
+        visible = visible,
+        title = text,
+        containerColor = containerColor,
+        textColor = textColor
+    )
+}
+
+@Composable
+private fun CustomMiniHintBubble(
+    visible: Boolean,
+    hint: BottomMiniHintMessage,
+    containerColor: Color,
+    textColor: Color
+) {
+    BottomMiniHintBubble(
+        visible = visible,
+        title = hint.title,
+        supportingText = hint.supportingText,
+        containerColor = containerColor,
+        textColor = textColor
+    )
 }
 
 private fun isBitwardenPasswordFilter(filter: CategoryFilter): Boolean = when (filter) {
@@ -1695,27 +1759,40 @@ fun SimpleMainScreen(
         }
     }
 
-    val enqueueMiniHint: (String) -> Unit = { message ->
+    val enqueueMiniHint: (String, String?) -> Unit = { title, supportingText ->
         val hintId = ++sendHintSeed
         queuedMiniHints += BottomMiniHintMessage(
             id = hintId,
-            message = message
+            title = title,
+            supportingText = supportingText
         )
         tryActivateQueuedMiniHints()
     }
     val handleSendBitwardenEvent: (takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel.BitwardenEvent) -> Boolean = { event ->
         when (event) {
             is takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel.BitwardenEvent.SendCreated -> {
-                enqueueMiniHint(event.message)
+                enqueueMiniHint(event.message, null)
                 true
             }
 
             is takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel.BitwardenEvent.SendDeleted -> {
-                enqueueMiniHint(event.message)
+                enqueueMiniHint(event.message, null)
+                true
+            }
+
+            is takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel.BitwardenEvent.SyncFinished -> {
                 true
             }
 
             else -> false
+        }
+    }
+    LaunchedEffect(bitwardenViewModel, context) {
+        bitwardenViewModel.events.collect { event ->
+            if (event is takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel.BitwardenEvent.SyncFinished) {
+                val hint = buildBitwardenSyncMiniHint(context, event.summary)
+                enqueueMiniHint(hint.title, hint.supportingText)
+            }
         }
     }
     LaunchedEffect(shouldHandleBitwardenStatusVisual, bottomStatusUiState?.messageRes) {
@@ -2473,7 +2550,7 @@ fun SimpleMainScreen(
     val hintModifier = if (isCompactWidth) {
         Modifier
             .align(Alignment.BottomStart)
-            .padding(start = 16.dp, bottom = compactBottomOffset + 12.dp)
+            .padding(start = 16.dp, bottom = compactBottomOffset + 28.dp)
             .zIndex(4f)
     } else {
         Modifier
@@ -2498,7 +2575,7 @@ fun SimpleMainScreen(
         ),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        BottomMiniHintBubble(
+        SyncMiniHintBubble(
             visible = syncHintVisible,
             text = stringResource(bottomStatusUiState?.messageRes ?: R.string.sync_status_syncing_short),
             containerColor = statusHintContainerColor,
@@ -2507,9 +2584,9 @@ fun SimpleMainScreen(
 
         activeMiniHints.forEach { hint ->
             val hintVisible = hint.id !in dismissingHintIds
-            BottomMiniHintBubble(
+            CustomMiniHintBubble(
                 visible = hintVisible,
-                text = hint.message,
+                hint = hint,
                 containerColor = statusHintContainerColor,
                 textColor = statusHintTextColor
             )

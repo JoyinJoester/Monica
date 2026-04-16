@@ -102,6 +102,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import takagi.ru.monica.R
+import takagi.ru.monica.bitwarden.sync.isUserVisibleSyncInProgress
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.data.BottomNavContentTab
@@ -336,7 +337,7 @@ fun TotpListContent(
     val bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel()
     val bitwardenSyncStatusByVault by bitwardenViewModel.syncStatusByVault.collectAsState()
     val isTopBarSyncing = selectedBitwardenVaultId?.let { vaultId ->
-        bitwardenSyncStatusByVault[vaultId]?.isRunning == true
+        bitwardenSyncStatusByVault[vaultId].isUserVisibleSyncInProgress()
     } == true
     var isBitwardenTotpRepairing by remember { mutableStateOf(false) }
     // Verifier page uses plain pull-to-search only; disable pull-to-sync UX here.
@@ -676,8 +677,25 @@ fun TotpListContent(
                             )
                             if (selectedBitwardenVaultId != null) {
                                 DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.sync_bitwarden_database_menu)) },
-                                    leadingIcon = { Icon(Icons.Default.Sync, contentDescription = null) },
+                                    text = {
+                                        Text(
+                                            if (isTopBarSyncing) {
+                                                "${stringResource(R.string.sync_status_syncing_short)}..."
+                                            } else {
+                                                stringResource(R.string.sync_bitwarden_database_menu)
+                                            }
+                                        )
+                                    },
+                                    leadingIcon = {
+                                        if (isTopBarSyncing) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(18.dp),
+                                                strokeWidth = 2.dp
+                                            )
+                                        } else {
+                                            Icon(Icons.Default.Sync, contentDescription = null)
+                                        }
+                                    },
                                     enabled = !isTopBarSyncing && !isBitwardenTotpRepairing,
                                     onClick = {
                                         if (isTopBarSyncing || isBitwardenTotpRepairing) return@DropdownMenuItem
@@ -793,24 +811,18 @@ fun TotpListContent(
                 }
             }
             PullActionVisualState.SYNC_READY -> stringResource(R.string.pull_release_to_sync_bitwarden)
-            PullActionVisualState.SEARCH_READY -> if (enableBitwardenPullSync) {
-                stringResource(R.string.pull_release_to_search)
-            } else {
-                null
-            }
+            PullActionVisualState.SEARCH_READY,
             PullActionVisualState.IDLE -> null
         }
         val shouldPinIndicator = enableBitwardenPullSync && (
             pullAction.syncHintArmed || pullAction.isBitwardenSyncing || pullAction.showSyncFeedback
         )
         val revealHeightTarget = with(density) {
-            if (enableBitwardenPullSync) {
-                val pullHeight = pullAction.currentOffset.toDp().coerceIn(0.dp, 112.dp)
-                if (shouldPinIndicator) {
-                    maxOf(pullHeight, 92.dp)
-                } else {
-                    pullHeight
-                }
+            val pullHeight = pullAction.currentOffset.toDp().coerceIn(0.dp, 72.dp)
+            if (shouldPinIndicator) {
+                maxOf(pullHeight, 52.dp)
+            } else if (pullAction.currentOffset > 0.5f) {
+                maxOf(pullHeight, 36.dp)
             } else {
                 0.dp
             }
@@ -820,7 +832,9 @@ fun TotpListContent(
             animationSpec = tween(durationMillis = 220),
             label = "totp_pull_reveal_height"
         )
-        val showPullIndicator = pullHintText != null && revealHeight > 0.5.dp
+        val showPullIndicator = revealHeight > 0.5.dp && (
+            pullAction.currentOffset > 0.5f || shouldPinIndicator
+        )
         val contentPullOffset = if (enableBitwardenPullSync) 0 else pullAction.currentOffset.toInt()
 
         Box(

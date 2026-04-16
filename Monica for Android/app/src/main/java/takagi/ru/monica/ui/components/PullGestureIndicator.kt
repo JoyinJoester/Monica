@@ -10,8 +10,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import takagi.ru.monica.ui.common.pull.calculatePullVisualProgress
 
 enum class PullActionVisualState {
     IDLE,
@@ -95,6 +96,12 @@ fun PullGestureIndicator(
     text: String,
     modifier: Modifier = Modifier
 ) {
+    val rawProgress = if (state == PullActionVisualState.SEARCH_READY) {
+        searchProgress
+    } else {
+        syncProgress
+    }
+    val visualProgress = calculatePullVisualProgress(rawProgress)
     val highlight = state == PullActionVisualState.SYNC_READY ||
         state == PullActionVisualState.SYNCING ||
         state == PullActionVisualState.SYNC_DONE
@@ -113,7 +120,13 @@ fun PullGestureIndicator(
         color = containerColor,
         tonalElevation = 4.dp,
         shadowElevation = 6.dp,
-        modifier = modifier
+        modifier = modifier.graphicsLayer {
+            alpha = visualProgress.coerceIn(0f, 1f)
+            val scale = visualProgress.coerceAtLeast(0.12f)
+            scaleX = scale
+            scaleY = scale
+            translationY = (visualProgress - 1f) * 18f * density
+        }
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),

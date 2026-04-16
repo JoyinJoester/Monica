@@ -2407,7 +2407,7 @@
     <string name="password_owner_conflict_inline">This entry is bound to multiple vaults at the same time. Editing is blocked until the ownership conflict is repaired.</string>
     <string name="password_owner_conflict_display">This entry currently has conflicting storage ownership. Monica local, KeePass, and Bitwarden ownership must be repaired before editing.</string>
     <string name="password_owner_conflict_copy">This entry has conflicting ownership and its password cannot be copied safely.</string>
-    <string name="pull_release_to_search">Release to search</string>
+    <string name="pull_release_to_search">Pull to search</string>
     <string name="pull_release_to_sync_bitwarden">Release to sync Bitwarden</string>
     <string name="pull_syncing_bitwarden">Syncing Bitwarden...</string>
     <string name="pull_sync_requires_bitwarden_login">Please login and unlock Bitwarden first</string>
@@ -2433,7 +2433,17 @@
     <string name="bitwarden_cache_failed">Bitwarden cache failed: %1$s</string>
     <string name="bitwarden_cache_requires_unlock">Please unlock Bitwarden vault first</string>
     <string name="bitwarden_cache_blocked_empty_vault">Bitwarden cache blocked: %1$s</string>
-    <string name="bitwarden_sync_success_with_offline_ready">Sync completed. %1$d changes were applied in this sync, and %2$d secrets are currently available offline.</string>
+    <string name="bitwarden_sync_success_with_offline_ready">Sync completed. %1$d changes were applied in this sync, and %2$d passwords are currently available offline.</string>
+    <string name="bitwarden_sync_summary_success_title">Bitwarden synced %1$d changes</string>
+    <string name="bitwarden_sync_summary_warning_title">Bitwarden synced %1$d changes with warnings</string>
+    <string name="bitwarden_sync_summary_offline_detail">%1$d passwords available offline</string>
+    <string name="bitwarden_sync_summary_conflict_detail">%1$d conflicts</string>
+    <string name="bitwarden_sync_summary_upload_failed_detail">%1$d uploads failed</string>
+    <string name="bitwarden_sync_summary_local_dirty_detail">%1$d items waiting to upload</string>
+    <string name="bitwarden_sync_mini_hint_success_title">Synced %1$d changes</string>
+    <string name="bitwarden_sync_mini_hint_warning_title">Synced %1$d changes with warnings</string>
+    <string name="bitwarden_sync_notification_channel_name">Bitwarden sync</string>
+    <string name="bitwarden_sync_notification_channel_desc">Shows Bitwarden sync summaries and warning counts</string>
     <string name="bitwarden_clear_cache_confirm_title">Clear Bitwarden cache?</string>
     <string name="bitwarden_clear_cache_confirm_message">This will remove local Bitwarden cache data for the current vault. You can sync again later.</string>
     <string name="bitwarden_clear_cache_confirm_message_with_risk">Pending changes detected (pending ops: %1$d, password edits: %2$d, secure item edits: %3$d, unresolved conflicts: %4$d). You can clear synced cache only, or force clear all local Bitwarden cache.</string>

@@ -107,11 +107,7 @@ internal fun PasswordListMainPane(
                 }
             }
             PullActionVisualState.SYNC_READY -> stringResource(R.string.pull_release_to_sync_bitwarden)
-            PullActionVisualState.SEARCH_READY -> if (isBitwardenDatabaseView) {
-                stringResource(R.string.pull_release_to_search)
-            } else {
-                null
-            }
+            PullActionVisualState.SEARCH_READY,
             PullActionVisualState.IDLE -> null
         }
         val shouldPinIndicator = isBitwardenDatabaseView && (

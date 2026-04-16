@@ -2,6 +2,7 @@ package takagi.ru.monica.ui.vaultv2
 
 import android.icu.text.Transliterator
 import android.util.Log
+import android.widget.Toast
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -11,6 +12,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,9 +26,9 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -48,17 +50,15 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.outlined.Favorite
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -88,6 +88,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collectLatest
@@ -99,10 +100,16 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
+import takagi.ru.monica.bitwarden.repository.BitwardenRepository
+import takagi.ru.monica.bitwarden.sync.isUserVisibleSyncInProgress
+import takagi.ru.monica.bitwarden.ui.UnlockVaultDialog
+import takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.CategorySelectionUiMode
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.PasswordListQuickFilterItem
+import takagi.ru.monica.data.PasswordPageContentType
 import takagi.ru.monica.data.isLocalOnlyItem
 import takagi.ru.monica.data.isLocalOnlyPasskey
 import takagi.ru.monica.data.PasskeyEntry
@@ -110,14 +117,17 @@ import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenVault
+import takagi.ru.monica.data.model.StorageTarget
 import takagi.ru.monica.data.model.BankCardData
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.UnmatchedIconHandlingStrategy
 import takagi.ru.monica.notes.domain.NoteContentCodec
+import takagi.ru.monica.ui.PasswordListCategoryChipMenu
+import takagi.ru.monica.ui.buildCategoryMenuQuickFilterBindings
+import takagi.ru.monica.ui.components.CreateCategoryDialog
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
-import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenu
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuDropdown
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuOffset
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterSelection
@@ -131,14 +141,30 @@ import takagi.ru.monica.ui.icons.rememberSimpleIconBitmap
 import takagi.ru.monica.ui.icons.rememberUploadedPasswordIcon
 import takagi.ru.monica.ui.icons.shouldShowFallbackSlot
 import takagi.ru.monica.ui.PasswordQuickFolderBreadcrumb
-import takagi.ru.monica.ui.PasswordQuickFolderBreadcrumbBanner
 import takagi.ru.monica.ui.PasswordDisplayOptionsSheet
+import takagi.ru.monica.ui.PasswordListInitialLoadingIndicator
 import takagi.ru.monica.ui.buildPasswordQuickFolderNodes
+import takagi.ru.monica.ui.buildCategoryMenuFolderShortcuts
+import takagi.ru.monica.ui.buildLocalQuickFolderPasswordCountByCategoryId
 import takagi.ru.monica.ui.buildQuickFolderBreadcrumbs
+import takagi.ru.monica.ui.PasswordQuickFilterChipCallbacks
+import takagi.ru.monica.ui.PasswordQuickFilterChipState
+import takagi.ru.monica.ui.supportsQuickFolders
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.common.selection.SelectionActionBar
 import takagi.ru.monica.ui.password.PasswordAuthenticatorDisplayState
+import takagi.ru.monica.ui.password.BitwardenClearCacheTopActionsMenuItem
+import takagi.ru.monica.ui.password.BitwardenLockTopActionsMenuItem
+import takagi.ru.monica.ui.password.BitwardenReunlockTopActionsMenuItem
+import takagi.ru.monica.ui.password.BitwardenSyncTopActionsMenuItem
+import takagi.ru.monica.ui.password.CommonPasswordTopActionsMenuItems
+import takagi.ru.monica.ui.password.KeepassRefreshTopActionsMenuItem
+import takagi.ru.monica.ui.password.PasswordTopActionsDropdownMenu
 import takagi.ru.monica.ui.password.StackCardMode
+import takagi.ru.monica.ui.password.appendAggregateContentQuickFilterItems
+import takagi.ru.monica.ui.password.resolvePasswordPageDisplayedTypes
+import takagi.ru.monica.ui.password.resolvePasswordPageVisibleTypes
+import takagi.ru.monica.ui.password.sanitizeSelectedPasswordPageTypes
 import takagi.ru.monica.ui.password.rememberPasswordAuthenticatorDisplayState
 import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.CategoryFilter
@@ -152,18 +178,10 @@ import takagi.ru.monica.viewmodel.TotpViewModel
 import takagi.ru.monica.util.TotpGenerator
 import takagi.ru.monica.utils.KEEPASS_DISPLAY_PATH_SEPARATOR
 import takagi.ru.monica.utils.decodeKeePassPathSegments
+import takagi.ru.monica.utils.planLocalCategoryMove
 import java.util.concurrent.CancellationException
 import java.util.Locale
 import kotlin.math.roundToInt
-
-private enum class VaultV2Filter {
-	ALL,
-	PASSWORD,
-	AUTHENTICATOR,
-	NOTE,
-	PASSKEY,
-	CARD_WALLET,
-}
 
 private enum class VaultV2ItemType {
 	PASSWORD,
@@ -201,7 +219,15 @@ private data class VaultV2ComputedListState(
 	val passwordById: Map<Long, PasswordEntry> = emptyMap(),
 )
 
+private data class VaultV2AsyncComputedValue<T>(
+	val value: T,
+	val isComputing: Boolean,
+)
+
 private const val VAULT_V2_FAST_SCROLL_LOG_TAG = "VaultV2FastScroll"
+private const val VAULT_V2_EMPTY_STATE_DEBOUNCE_MS = 220L
+private const val MONICA_MANUAL_STACK_GROUP_FIELD_TITLE = "__monica_manual_stack_group"
+private const val MONICA_NO_STACK_FIELD_TITLE = "__monica_no_stack"
 private val vaultV2Transliterator: Transliterator by lazy(LazyThreadSafetyMode.NONE) {
 	Transliterator.getInstance("Any-Latin; Latin-ASCII")
 }
@@ -216,6 +242,23 @@ private fun SecureItem.isVaultV2LocalOnly(): Boolean {
 
 private fun PasskeyEntry.isVaultV2LocalOnly(): Boolean {
 	return isLocalOnlyPasskey()
+}
+
+private fun PasswordPageContentType.toVaultV2ItemTypes(): Set<VaultV2ItemType> = when (this) {
+	PasswordPageContentType.PASSWORD -> setOf(VaultV2ItemType.PASSWORD)
+	PasswordPageContentType.AUTHENTICATOR -> setOf(VaultV2ItemType.AUTHENTICATOR)
+	PasswordPageContentType.NOTE -> setOf(VaultV2ItemType.NOTE)
+	PasswordPageContentType.PASSKEY -> setOf(VaultV2ItemType.PASSKEY)
+	PasswordPageContentType.CARD_WALLET -> setOf(VaultV2ItemType.BANK_CARD, VaultV2ItemType.DOCUMENT)
+}
+
+private fun VaultV2Item.toPasswordPageContentType(): PasswordPageContentType = when (type) {
+	VaultV2ItemType.PASSWORD -> PasswordPageContentType.PASSWORD
+	VaultV2ItemType.AUTHENTICATOR -> PasswordPageContentType.AUTHENTICATOR
+	VaultV2ItemType.NOTE -> PasswordPageContentType.NOTE
+	VaultV2ItemType.PASSKEY -> PasswordPageContentType.PASSKEY
+	VaultV2ItemType.BANK_CARD,
+	VaultV2ItemType.DOCUMENT -> PasswordPageContentType.CARD_WALLET
 }
 
 private fun VaultV2PaneState.toUnifiedCategoryFilterSelection(): UnifiedCategoryFilterSelection {
@@ -438,6 +481,30 @@ private fun <T> rememberVaultV2AsyncComputed(
 }
 
 @Composable
+private fun <T> rememberVaultV2AsyncComputedValue(
+	vararg keys: Any?,
+	initialValue: T,
+	compute: suspend () -> T,
+): VaultV2AsyncComputedValue<T> {
+	var value by remember { mutableStateOf(initialValue) }
+	var isComputing by remember { mutableStateOf(true) }
+	val latestCompute by rememberUpdatedState(compute)
+
+	LaunchedEffect(*keys) {
+		isComputing = true
+		value = withContext(Dispatchers.Default) {
+			latestCompute()
+		}
+		isComputing = false
+	}
+
+	return VaultV2AsyncComputedValue(
+		value = value,
+		isComputing = isComputing,
+	)
+}
+
+@Composable
 private fun rememberVaultV2StorageFilterLabel(
 	selected: UnifiedCategoryFilterSelection,
 	categories: List<Category>,
@@ -601,6 +668,100 @@ private fun VaultV2Item.bitwardenFolderId(): String? {
 	}
 }
 
+private fun toggleVaultV2ContentType(
+	currentTypes: Set<PasswordPageContentType>,
+	toggledType: PasswordPageContentType,
+	visibleTypes: List<PasswordPageContentType>
+): Set<PasswordPageContentType> {
+	val nextTypes = if (toggledType in currentTypes) {
+		currentTypes - toggledType
+	} else {
+		currentTypes + toggledType
+	}
+	return sanitizeSelectedPasswordPageTypes(
+		visibleTypes = visibleTypes,
+		selectedTypes = nextTypes
+	)
+}
+
+private fun VaultV2Item.matchesDisplayedTypes(
+	displayedTypes: Set<PasswordPageContentType>
+): Boolean {
+	return toPasswordPageContentType() in displayedTypes
+}
+
+private fun VaultV2Item.matchesPasswordQuickFilters(
+	configuredQuickFilterItems: List<PasswordListQuickFilterItem>,
+	quickFilterFavorite: Boolean,
+	quickFilter2fa: Boolean,
+	quickFilterNotes: Boolean,
+	quickFilterUncategorized: Boolean,
+	quickFilterLocalOnly: Boolean,
+	quickFilterManualStackOnly: Boolean,
+	quickFilterNeverStack: Boolean,
+	quickFilterUnstacked: Boolean,
+	manualStackGroupByEntryId: Map<Long, String>,
+	noStackEntryIds: Set<Long>,
+): Boolean {
+	if (quickFilterFavorite && PasswordListQuickFilterItem.FAVORITE in configuredQuickFilterItems && !isFavorite) {
+		return false
+	}
+	if (
+		quickFilter2fa &&
+		PasswordListQuickFilterItem.TWO_FA in configuredQuickFilterItems &&
+		type != VaultV2ItemType.AUTHENTICATOR &&
+		passwordEntry?.authenticatorKey.isNullOrBlank()
+	) {
+		return false
+	}
+	if (
+		quickFilterNotes &&
+		PasswordListQuickFilterItem.NOTES in configuredQuickFilterItems &&
+		passwordEntry?.notes.isNullOrBlank()
+	) {
+		return false
+	}
+	if (
+		quickFilterUncategorized &&
+		PasswordListQuickFilterItem.UNCATEGORIZED in configuredQuickFilterItems &&
+		categoryId() != null
+	) {
+		return false
+	}
+	if (
+		quickFilterLocalOnly &&
+		PasswordListQuickFilterItem.LOCAL_ONLY in configuredQuickFilterItems &&
+		!isLocalOnly()
+	) {
+		return false
+	}
+
+	val passwordId = passwordEntry?.id
+	if (
+		quickFilterManualStackOnly &&
+		PasswordListQuickFilterItem.MANUAL_STACK_ONLY in configuredQuickFilterItems &&
+		(passwordId == null || passwordId !in manualStackGroupByEntryId)
+	) {
+		return false
+	}
+	if (
+		quickFilterNeverStack &&
+		PasswordListQuickFilterItem.NEVER_STACK in configuredQuickFilterItems &&
+		(passwordId == null || passwordId !in noStackEntryIds)
+	) {
+		return false
+	}
+	if (
+		quickFilterUnstacked &&
+		PasswordListQuickFilterItem.UNSTACKED in configuredQuickFilterItems &&
+		(passwordId == null || passwordId in manualStackGroupByEntryId)
+	) {
+		return false
+	}
+
+	return true
+}
+
 @OptIn(
 	ExperimentalMaterial3Api::class,
 	ExperimentalFoundationApi::class,
@@ -637,7 +798,18 @@ fun VaultV2Pane(
 	var isStorageFilterSheetVisible by rememberSaveable { mutableStateOf(false) }
 	var isTopActionsMenuExpanded by rememberSaveable { mutableStateOf(false) }
 	var showDisplayOptionsSheet by rememberSaveable { mutableStateOf(false) }
-	var filter by rememberSaveable { mutableStateOf(VaultV2Filter.ALL) }
+	var showBitwardenUnlockDialog by rememberSaveable { mutableStateOf(false) }
+	var showClearBitwardenCacheDialog by rememberSaveable { mutableStateOf(false) }
+	var showCreateCategoryDialog by rememberSaveable { mutableStateOf(false) }
+	var quickFilterFavorite by rememberSaveable { mutableStateOf(false) }
+	var quickFilter2fa by rememberSaveable { mutableStateOf(false) }
+	var quickFilterNotes by rememberSaveable { mutableStateOf(false) }
+	var quickFilterUncategorized by rememberSaveable { mutableStateOf(false) }
+	var quickFilterLocalOnly by rememberSaveable { mutableStateOf(false) }
+	var quickFilterManualStackOnly by rememberSaveable { mutableStateOf(false) }
+	var quickFilterNeverStack by rememberSaveable { mutableStateOf(false) }
+	var quickFilterUnstacked by rememberSaveable { mutableStateOf(false) }
+	var selectedAggregateTypes by remember { mutableStateOf<Set<PasswordPageContentType>>(emptySet()) }
 	val selectedKeys = remember { mutableStateListOf<String>() }
 	val listState = rememberLazyListState(
 		initialFirstVisibleItemIndex = state.scrollIndex,
@@ -646,9 +818,11 @@ fun VaultV2Pane(
 	val context = LocalContext.current
 	val density = LocalDensity.current
 	val scope = rememberCoroutineScope()
+	val bitwardenViewModel: BitwardenViewModel = viewModel()
 	val bitwardenRepository = remember(context) {
 		takagi.ru.monica.bitwarden.repository.BitwardenRepository.getInstance(context)
 	}
+	val bitwardenSyncStatusByVault by bitwardenViewModel.syncStatusByVault.collectAsState()
 	val pullSearchTriggerDistance = remember(density) { with(density) { 40.dp.toPx() } }
 	val pullSyncTriggerDistance = remember(density) { with(density) { 72.dp.toPx() } }
 	val pullMaxDragDistance = remember(density) { with(density) { 100.dp.toPx() } }
@@ -692,6 +866,25 @@ fun VaultV2Pane(
 			is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> storageSelection.vaultId
 			else -> null
 		}
+	}
+	val selectedKeePassDatabaseId = remember(storageSelection) {
+		when (storageSelection) {
+			is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> storageSelection.databaseId
+			is UnifiedCategoryFilterSelection.KeePassGroupFilter -> storageSelection.databaseId
+			is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> storageSelection.databaseId
+			is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> storageSelection.databaseId
+			else -> null
+		}
+	}
+	val isTopBarSyncing = selectedBitwardenVaultId?.let { vaultId ->
+		bitwardenSyncStatusByVault[vaultId].isUserVisibleSyncInProgress()
+	} == true
+	var clearCacheRiskSummary by remember {
+		mutableStateOf<BitwardenRepository.VaultCacheRiskSummary?>(null)
+	}
+	var isBitwardenMaintenanceActionRunning by remember { mutableStateOf(false) }
+	val selectedBitwardenVault = selectedBitwardenVaultId?.let { vaultId ->
+		bitwardenVaults.find { it.id == vaultId }
 	}
 	val selectedBitwardenFoldersFlow = remember(passwordViewModel, selectedBitwardenVaultId) {
 		selectedBitwardenVaultId?.let(passwordViewModel::getBitwardenFolders) ?: flowOf(emptyList())
@@ -767,8 +960,205 @@ fun VaultV2Pane(
 	val visiblePasskeyItems = remember(passkeyItems, showOnlyLocalData) {
 		if (showOnlyLocalData) passkeyItems.filter { it.isVaultV2LocalOnly() } else passkeyItems
 	}
+	val categoryMenuFilter = remember(storageSelection) {
+		storageSelection.toCategoryFilterOrNull() ?: CategoryFilter.All
+	}
+	val selectedKeePassGroupsFlow = remember(localKeePassViewModel, selectedKeePassDatabaseId) {
+		selectedKeePassDatabaseId?.let(localKeePassViewModel::getGroups) ?: flowOf(emptyList())
+	}
+	val selectedKeePassGroups by selectedKeePassGroupsFlow.collectAsState(initial = emptyList())
+	val quickFilterVisibleTypes = remember(
+		appSettings.passwordPageAggregateEnabled,
+		appSettings.passwordPageVisibleContentTypes
+	) {
+		resolvePasswordPageVisibleTypes(
+			aggregateEnabled = appSettings.passwordPageAggregateEnabled,
+			configuredTypes = appSettings.passwordPageVisibleContentTypes
+		)
+	}
+	val configuredQuickFilterItems = remember(
+		appSettings.passwordListQuickFilterItems,
+		appSettings.passwordPageAggregateEnabled,
+		quickFilterVisibleTypes
+	) {
+		appendAggregateContentQuickFilterItems(
+			configuredItems = appSettings.passwordListQuickFilterItems,
+			visibleTypes = quickFilterVisibleTypes,
+			aggregateEnabled = appSettings.passwordPageAggregateEnabled
+		)
+	}
+	LaunchedEffect(configuredQuickFilterItems, quickFilterVisibleTypes) {
+		selectedAggregateTypes = sanitizeSelectedPasswordPageTypes(
+			visibleTypes = quickFilterVisibleTypes,
+			selectedTypes = selectedAggregateTypes
+		)
+		if (PasswordListQuickFilterItem.FAVORITE !in configuredQuickFilterItems) quickFilterFavorite = false
+		if (PasswordListQuickFilterItem.TWO_FA !in configuredQuickFilterItems) quickFilter2fa = false
+		if (PasswordListQuickFilterItem.NOTES !in configuredQuickFilterItems) quickFilterNotes = false
+		if (PasswordListQuickFilterItem.UNCATEGORIZED !in configuredQuickFilterItems) quickFilterUncategorized = false
+		if (PasswordListQuickFilterItem.LOCAL_ONLY !in configuredQuickFilterItems) quickFilterLocalOnly = false
+		if (PasswordListQuickFilterItem.MANUAL_STACK_ONLY !in configuredQuickFilterItems) quickFilterManualStackOnly = false
+		if (PasswordListQuickFilterItem.NEVER_STACK !in configuredQuickFilterItems) quickFilterNeverStack = false
+		if (PasswordListQuickFilterItem.UNSTACKED !in configuredQuickFilterItems) quickFilterUnstacked = false
+	}
+	val displayedContentTypes = remember(quickFilterVisibleTypes, selectedAggregateTypes) {
+		resolvePasswordPageDisplayedTypes(
+			visibleTypes = quickFilterVisibleTypes,
+			selectedTypes = selectedAggregateTypes
+		)
+	}
+	val hasVisibleQuickFilters = remember(
+		appSettings.passwordListQuickFiltersEnabled,
+		configuredQuickFilterItems,
+		quickFilterVisibleTypes
+	) {
+		appSettings.passwordListQuickFiltersEnabled &&
+			configuredQuickFilterItems.any { item ->
+				takagi.ru.monica.ui.shouldShowQuickFilterItem(item, quickFilterVisibleTypes)
+			}
+	}
+	var manualStackGroupByEntryId by remember { mutableStateOf<Map<Long, String>>(emptyMap()) }
+	var noStackEntryIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+	var lastCustomFieldEntryIds by remember { mutableStateOf<List<Long>>(emptyList()) }
+	val shouldLoadManualStackMetadata = remember(
+		quickFilterManualStackOnly,
+		quickFilterNeverStack,
+		quickFilterUnstacked,
+		configuredQuickFilterItems
+	) {
+		(quickFilterManualStackOnly && PasswordListQuickFilterItem.MANUAL_STACK_ONLY in configuredQuickFilterItems) ||
+			(quickFilterNeverStack && PasswordListQuickFilterItem.NEVER_STACK in configuredQuickFilterItems) ||
+			(quickFilterUnstacked && PasswordListQuickFilterItem.UNSTACKED in configuredQuickFilterItems)
+	}
+	LaunchedEffect(visiblePasswordEntries, shouldLoadManualStackMetadata) {
+		if (!shouldLoadManualStackMetadata) {
+			manualStackGroupByEntryId = emptyMap()
+			noStackEntryIds = emptySet()
+			lastCustomFieldEntryIds = emptyList()
+			return@LaunchedEffect
+		}
+		val allIds = withContext(Dispatchers.Default) {
+			visiblePasswordEntries.asSequence().map(PasswordEntry::id).toList()
+		}
+		if (allIds.isEmpty()) {
+			manualStackGroupByEntryId = emptyMap()
+			noStackEntryIds = emptySet()
+			lastCustomFieldEntryIds = emptyList()
+			return@LaunchedEffect
+		}
+		if (allIds == lastCustomFieldEntryIds) return@LaunchedEffect
+		lastCustomFieldEntryIds = allIds
+		val fieldMap = withContext(Dispatchers.IO) {
+			passwordViewModel.getCustomFieldsByEntryIds(allIds)
+		}
+		val (manualStackMap, noStackIds) = withContext(Dispatchers.Default) {
+			val manualStack = fieldMap.mapNotNull { (entryId, fields) ->
+				val groupId = fields.firstOrNull {
+					it.title == MONICA_MANUAL_STACK_GROUP_FIELD_TITLE
+				}?.value?.takeIf(String::isNotBlank)
+				groupId?.let { entryId to it }
+			}.toMap()
+			val noStack = fieldMap.mapNotNull { (entryId, fields) ->
+				val hasNoStack = fields.any {
+					it.title == MONICA_NO_STACK_FIELD_TITLE && it.value != "0"
+				}
+				if (hasNoStack) entryId else null
+			}.toSet()
+			manualStack to noStack
+		}
+		manualStackGroupByEntryId = manualStackMap
+		noStackEntryIds = noStackIds
+	}
+	val baseQuickFolderPasswordCountByCategoryId = rememberVaultV2AsyncComputed(
+		visiblePasswordEntries,
+		categories,
+		initialValue = emptyMap<Long, Int>()
+	) {
+		buildLocalQuickFolderPasswordCountByCategoryId(
+			entries = visiblePasswordEntries,
+			categories = categories
+		)
+	}
+	val categoryMenuQuickFolderPasswordCountByCategoryId = remember(
+		baseQuickFolderPasswordCountByCategoryId,
+		categoryMenuFilter
+	) {
+		if (!categoryMenuFilter.supportsQuickFolders()) emptyMap() else baseQuickFolderPasswordCountByCategoryId
+	}
+	val categoryMenuQuickFolderShortcuts = rememberVaultV2AsyncComputed(
+		categoryMenuFilter,
+		quickFolderCurrentPath,
+		quickFolderNodes,
+		quickFolderNodeByPath,
+		categoryMenuQuickFolderPasswordCountByCategoryId,
+		visiblePasswordEntries,
+		searchQuery,
+		keepassDatabases,
+		selectedKeePassGroups,
+		bitwardenVaults,
+		selectedBitwardenFolders,
+		categories,
+		initialValue = emptyList()
+	) {
+		buildCategoryMenuFolderShortcuts(
+			context = context,
+			currentFilter = categoryMenuFilter,
+			quickFolderCurrentPath = quickFolderCurrentPath,
+			quickFolderNodes = quickFolderNodes,
+			quickFolderNodeByPath = quickFolderNodeByPath,
+			quickFolderPasswordCountByCategoryId = categoryMenuQuickFolderPasswordCountByCategoryId,
+			allPasswords = visiblePasswordEntries,
+			searchScopedPasswords = visiblePasswordEntries,
+			isSearchActive = searchQuery.isNotBlank(),
+			keepassDatabases = keepassDatabases,
+			keepassGroupsForSelectedDb = selectedKeePassGroups,
+			bitwardenVaults = bitwardenVaults,
+			selectedBitwardenFolders = selectedBitwardenFolders,
+			categories = categories
+		)
+	}
+	val quickFilterBindings = remember(
+		quickFilterFavorite,
+		quickFilter2fa,
+		quickFilterNotes,
+		quickFilterUncategorized,
+		quickFilterLocalOnly,
+		quickFilterManualStackOnly,
+		quickFilterNeverStack,
+		quickFilterUnstacked,
+		selectedAggregateTypes,
+		quickFilterVisibleTypes
+	) {
+		buildCategoryMenuQuickFilterBindings(
+			quickFilterFavorite = quickFilterFavorite,
+			onQuickFilterFavoriteChange = { quickFilterFavorite = it },
+			quickFilter2fa = quickFilter2fa,
+			onQuickFilter2faChange = { quickFilter2fa = it },
+			quickFilterNotes = quickFilterNotes,
+			onQuickFilterNotesChange = { quickFilterNotes = it },
+			quickFilterUncategorized = quickFilterUncategorized,
+			onQuickFilterUncategorizedChange = { quickFilterUncategorized = it },
+			quickFilterLocalOnly = quickFilterLocalOnly,
+			onQuickFilterLocalOnlyChange = { quickFilterLocalOnly = it },
+			quickFilterManualStackOnly = quickFilterManualStackOnly,
+			onQuickFilterManualStackOnlyChange = { quickFilterManualStackOnly = it },
+			quickFilterNeverStack = quickFilterNeverStack,
+			onQuickFilterNeverStackChange = { quickFilterNeverStack = it },
+			quickFilterUnstacked = quickFilterUnstacked,
+			onQuickFilterUnstackedChange = { quickFilterUnstacked = it },
+			aggregateSelectedTypes = selectedAggregateTypes,
+			aggregateVisibleTypes = quickFilterVisibleTypes,
+			onToggleAggregateType = { type ->
+				selectedAggregateTypes = toggleVaultV2ContentType(
+					currentTypes = selectedAggregateTypes,
+					toggledType = type,
+					visibleTypes = quickFilterVisibleTypes
+				)
+			}
+		)
+	}
 
-	val computedListState = rememberVaultV2AsyncComputed(
+	val computedListStateAsync = rememberVaultV2AsyncComputedValue(
 		visiblePasswordEntries,
 		visibleTotpItems,
 		visibleBankCardItems,
@@ -927,6 +1317,7 @@ fun VaultV2Pane(
 			passwordById = visiblePasswordEntries.associateBy { it.id },
 		)
 	}
+	val computedListState = computedListStateAsync.value
 	val allItemsRaw = computedListState.allItemsRaw
 	val passwordById = computedListState.passwordById
 
@@ -960,19 +1351,39 @@ fun VaultV2Pane(
 	val storageFilteredItems = remember(allItems, storageSelection) {
 		allItems.filter { item -> item.matchesStorageFilter(storageSelection) }
 	}
-	val filteredItems = remember(storageFilteredItems, filter, normalizedQuery) {
+	val filteredItems = remember(
+		storageFilteredItems,
+		displayedContentTypes,
+		configuredQuickFilterItems,
+		quickFilterFavorite,
+		quickFilter2fa,
+		quickFilterNotes,
+		quickFilterUncategorized,
+		quickFilterLocalOnly,
+		quickFilterManualStackOnly,
+		quickFilterNeverStack,
+		quickFilterUnstacked,
+		manualStackGroupByEntryId,
+		noStackEntryIds,
+		normalizedQuery
+	) {
 		storageFilteredItems.filter { item ->
-			val matchesFilter = when (filter) {
-				VaultV2Filter.ALL -> true
-				VaultV2Filter.PASSWORD -> item.type == VaultV2ItemType.PASSWORD
-				VaultV2Filter.AUTHENTICATOR -> item.type == VaultV2ItemType.AUTHENTICATOR
-				VaultV2Filter.NOTE -> item.type == VaultV2ItemType.NOTE
-				VaultV2Filter.PASSKEY -> item.type == VaultV2ItemType.PASSKEY
-				VaultV2Filter.CARD_WALLET -> {
-					item.type == VaultV2ItemType.BANK_CARD || item.type == VaultV2ItemType.DOCUMENT
-				}
-			}
-			if (!matchesFilter) return@filter false
+			if (!item.matchesDisplayedTypes(displayedContentTypes)) return@filter false
+			if (
+				!item.matchesPasswordQuickFilters(
+					configuredQuickFilterItems = configuredQuickFilterItems,
+					quickFilterFavorite = quickFilterFavorite,
+					quickFilter2fa = quickFilter2fa,
+					quickFilterNotes = quickFilterNotes,
+					quickFilterUncategorized = quickFilterUncategorized,
+					quickFilterLocalOnly = quickFilterLocalOnly,
+					quickFilterManualStackOnly = quickFilterManualStackOnly,
+					quickFilterNeverStack = quickFilterNeverStack,
+					quickFilterUnstacked = quickFilterUnstacked,
+					manualStackGroupByEntryId = manualStackGroupByEntryId,
+					noStackEntryIds = noStackEntryIds
+				)
+			) return@filter false
 
 			if (normalizedQuery.isBlank()) {
 				true
@@ -993,6 +1404,34 @@ fun VaultV2Pane(
 			.sortedWith(compareBy<String> { if (it == "#") 1 else 0 }.thenBy { it })
 			.map { section -> section to groupedItems[section].orEmpty() }
 	}
+	val isVaultListLoading = remember(
+		computedListStateAsync.isComputing,
+		pendingAllItems,
+		allItems,
+		normalizedQuery,
+	) {
+		normalizedQuery.isBlank() &&
+			allItems.isEmpty() &&
+			(computedListStateAsync.isComputing || pendingAllItems != null)
+	}
+	var showVaultEmptyState by remember { mutableStateOf(false) }
+	LaunchedEffect(sectionedItems, normalizedQuery, isVaultListLoading) {
+		if (sectionedItems.isNotEmpty()) {
+			showVaultEmptyState = false
+			return@LaunchedEffect
+		}
+		if (normalizedQuery.isNotBlank()) {
+			showVaultEmptyState = true
+			return@LaunchedEffect
+		}
+		if (isVaultListLoading) {
+			showVaultEmptyState = false
+			return@LaunchedEffect
+		}
+		delay(VAULT_V2_EMPTY_STATE_DEBOUNCE_MS)
+		showVaultEmptyState = true
+	}
+	val showVaultLoadingIndicator = sectionedItems.isEmpty() && !showVaultEmptyState
 	val sectionLayouts = remember(sectionedItems) {
 		var itemStartIndex = 0
 		var lazyIndex = 0
@@ -1163,18 +1602,112 @@ fun VaultV2Pane(
 								onDismissRequest = { isStorageFilterSheetVisible = false },
 								offset = UnifiedCategoryFilterChipMenuOffset
 							) {
-								UnifiedCategoryFilterChipMenu(
-									visible = isStorageFilterSheetVisible,
+								PasswordListCategoryChipMenu(
+									currentFilter = categoryMenuFilter,
+									keepassDatabases = keepassDatabases,
+									bitwardenVaults = bitwardenVaults,
+									configuredQuickFilterItems = configuredQuickFilterItems,
+									quickFilterFavorite = quickFilterFavorite,
+									onQuickFilterFavoriteChange = { quickFilterFavorite = it },
+									quickFilter2fa = quickFilter2fa,
+									onQuickFilter2faChange = { quickFilter2fa = it },
+									quickFilterNotes = quickFilterNotes,
+									onQuickFilterNotesChange = { quickFilterNotes = it },
+									quickFilterUncategorized = quickFilterUncategorized,
+									onQuickFilterUncategorizedChange = { quickFilterUncategorized = it },
+									quickFilterLocalOnly = quickFilterLocalOnly,
+									onQuickFilterLocalOnlyChange = { quickFilterLocalOnly = it },
+									quickFilterManualStackOnly = quickFilterManualStackOnly,
+									onQuickFilterManualStackOnlyChange = { quickFilterManualStackOnly = it },
+									quickFilterNeverStack = quickFilterNeverStack,
+									onQuickFilterNeverStackChange = { quickFilterNeverStack = it },
+									quickFilterUnstacked = quickFilterUnstacked,
+									onQuickFilterUnstackedChange = { quickFilterUnstacked = it },
+									aggregateSelectedTypes = selectedAggregateTypes,
+									aggregateVisibleTypes = quickFilterVisibleTypes,
+									onToggleAggregateType = { type ->
+										selectedAggregateTypes = toggleVaultV2ContentType(
+											currentTypes = selectedAggregateTypes,
+											toggledType = type,
+											visibleTypes = quickFilterVisibleTypes
+										)
+									},
+									quickFolderShortcuts = categoryMenuQuickFolderShortcuts,
+									topModulesOrder = appSettings.passwordListTopModulesOrder,
+									onTopModulesOrderChange = settingsViewModel::updatePasswordListTopModulesOrder,
+									onQuickFilterItemsOrderChange = settingsViewModel::updatePasswordListQuickFilterItems,
+									launchAnchorBounds = null,
 									onDismiss = { isStorageFilterSheetVisible = false },
-									selected = storageSelection,
-									onSelect = { selection ->
-										selectedKeys.clear()
-										state.updateStorageFilter(selection)
+									onSelectFilter = { filter ->
+										filter.toUnifiedCategoryFilterSelectionOrNull()?.let { selection ->
+											selectedKeys.clear()
+											state.updateStorageFilter(selection)
+										}
 										isStorageFilterSheetVisible = false
 									},
 									categories = categories,
-									keepassDatabases = keepassDatabases,
-									bitwardenVaults = bitwardenVaults,
+									onCreateCategory = {
+										isStorageFilterSheetVisible = false
+										showCreateCategoryDialog = true
+									},
+									onMoveCategory = { category, targetParentCategoryId ->
+										runCatching {
+											planLocalCategoryMove(
+												categories = categories,
+												sourceCategory = category,
+												targetParentCategory = categories.find { it.id == targetParentCategoryId }
+											)
+										}.onSuccess { plan ->
+											plan.updatedCategories.forEach(passwordViewModel::updateCategory)
+										}.onFailure { error ->
+											Toast.makeText(
+												context,
+												context.getString(R.string.save_failed_with_error, error.message ?: ""),
+												Toast.LENGTH_SHORT
+											).show()
+										}
+									},
+									onMoveCategoryToStorageTarget = { category, target ->
+										when (target) {
+											is StorageTarget.MonicaLocal -> {
+												runCatching {
+													planLocalCategoryMove(
+														categories = categories,
+														sourceCategory = category,
+														targetParentCategory = categories.find { it.id == target.categoryId }
+													)
+												}.onSuccess { plan ->
+													plan.updatedCategories.forEach(passwordViewModel::updateCategory)
+												}.onFailure { error ->
+													Toast.makeText(
+														context,
+														context.getString(R.string.save_failed_with_error, error.message ?: ""),
+														Toast.LENGTH_SHORT
+													).show()
+												}
+											}
+
+											is StorageTarget.Bitwarden -> {
+												passwordViewModel.updateCategory(
+													category.copy(
+														bitwardenVaultId = target.vaultId,
+														bitwardenFolderId = target.folderId.orEmpty()
+													)
+												)
+											}
+
+											is StorageTarget.KeePass -> {
+												Toast.makeText(
+													context,
+													context.getString(
+														R.string.save_failed_with_error,
+														"当前暂不支持将分类移动到 KeePass 数据库"
+													),
+													Toast.LENGTH_SHORT
+												).show()
+											}
+										}
+									},
 									getBitwardenFolders = passwordViewModel::getBitwardenFolders,
 									getKeePassGroups = localKeePassViewModel::getGroups,
 								)
@@ -1194,49 +1727,95 @@ fun VaultV2Pane(
 								contentDescription = stringResource(R.string.more_options),
 							)
 						}
-						DropdownMenu(
+						PasswordTopActionsDropdownMenu(
 							expanded = isTopActionsMenuExpanded,
 							onDismissRequest = { isTopActionsMenuExpanded = false }
 						) {
-							DropdownMenuItem(
-								text = { Text(stringResource(R.string.display_options_menu_title)) },
-								leadingIcon = { Icon(Icons.Default.DashboardCustomize, contentDescription = null) },
-								onClick = {
-									isTopActionsMenuExpanded = false
-									showDisplayOptionsSheet = true
-								}
-							)
-							DropdownMenuItem(
-								text = { Text(stringResource(R.string.common_account_title)) },
-								leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
-								onClick = {
-									isTopActionsMenuExpanded = false
-									onOpenCommonAccountTemplates()
-								}
-							)
-							DropdownMenuItem(
-								text = { Text(stringResource(R.string.timeline_title)) },
-								leadingIcon = { Icon(Icons.Default.History, contentDescription = null) },
-								onClick = {
-									isTopActionsMenuExpanded = false
-									onOpenHistory()
-								}
-							)
-							DropdownMenuItem(
-								text = { Text(stringResource(R.string.timeline_trash_title)) },
-								leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null) },
-								onClick = {
-									isTopActionsMenuExpanded = false
-									onOpenTrashPage()
-								}
-							)
-							DropdownMenuItem(
-								text = { Text(stringResource(R.string.archive_page_title)) },
-								leadingIcon = { Icon(Icons.Default.Archive, contentDescription = null) },
-								onClick = {
-									isTopActionsMenuExpanded = false
-									onOpenArchivePage()
-								}
+							if (selectedKeePassDatabaseId != null) {
+								KeepassRefreshTopActionsMenuItem(
+									onClick = {
+										isTopActionsMenuExpanded = false
+										passwordViewModel.refreshKeePassFromSourceForCurrentContext()
+									}
+								)
+							}
+							if (selectedBitwardenVaultId != null) {
+								BitwardenSyncTopActionsMenuItem(
+									isSyncing = isTopBarSyncing,
+									enabled = !isTopBarSyncing && !isBitwardenMaintenanceActionRunning,
+									onClick = {
+										val vaultId = selectedBitwardenVaultId
+										if (!isTopBarSyncing && !isBitwardenMaintenanceActionRunning && vaultId != null) {
+											isTopActionsMenuExpanded = false
+											bitwardenViewModel.requestManualSync(vaultId)
+										}
+									}
+								)
+								BitwardenReunlockTopActionsMenuItem(
+									onClick = {
+										isTopActionsMenuExpanded = false
+										showBitwardenUnlockDialog = true
+									}
+								)
+								BitwardenLockTopActionsMenuItem(
+									onClick = {
+										isTopActionsMenuExpanded = false
+										scope.launch {
+											runCatching {
+												bitwardenRepository.forceLock(selectedBitwardenVaultId)
+											}.onSuccess {
+												Toast.makeText(
+													context,
+													context.getString(R.string.current_database_locked),
+													Toast.LENGTH_SHORT
+												).show()
+											}.onFailure { error ->
+												Toast.makeText(
+													context,
+													context.getString(
+														R.string.save_failed_with_error,
+														error.message ?: ""
+													),
+													Toast.LENGTH_SHORT
+												).show()
+											}
+										}
+									}
+								)
+								BitwardenClearCacheTopActionsMenuItem(
+									enabled = !isBitwardenMaintenanceActionRunning,
+									onClick = {
+										val vaultId = selectedBitwardenVaultId
+										if (vaultId != null) {
+											isTopActionsMenuExpanded = false
+											scope.launch {
+												runCatching {
+													passwordViewModel.getBitwardenVaultCacheRiskSummary(vaultId)
+												}.onSuccess { summary ->
+													clearCacheRiskSummary = summary
+													showClearBitwardenCacheDialog = true
+												}.onFailure { error ->
+													Toast.makeText(
+														context,
+														context.getString(
+															R.string.bitwarden_clear_cache_failed,
+															error.message ?: ""
+														),
+														Toast.LENGTH_SHORT
+													).show()
+												}
+											}
+										}
+									}
+								)
+							}
+							CommonPasswordTopActionsMenuItems(
+								onDismissMenu = { isTopActionsMenuExpanded = false },
+								onShowDisplayOptions = { showDisplayOptionsSheet = true },
+								onOpenCommonAccountTemplates = onOpenCommonAccountTemplates,
+								onOpenHistory = onOpenHistory,
+								onOpenTrash = onOpenTrashPage,
+								onOpenArchive = onOpenArchivePage
 							)
 						}
 					}
@@ -1261,24 +1840,19 @@ fun VaultV2Pane(
 				)
 			}
 
-			if (pathBreadcrumbs.isNotEmpty() && breadcrumbCategoryFilter != null) {
-				PasswordQuickFolderBreadcrumbBanner(
-					breadcrumbs = pathBreadcrumbs,
-					currentFilter = breadcrumbCategoryFilter,
-					onNavigate = { filter ->
-						filter.toUnifiedCategoryFilterSelectionOrNull()?.let { selection ->
-							selectedKeys.clear()
-							state.updateStorageFilter(selection)
-						}
+			VaultV2NavigationBanner(
+				pathLabel = storageFilterLabel,
+				currentSectionLabel = currentSectionIndicatorLabel,
+				breadcrumbs = pathBreadcrumbs,
+				currentFilter = breadcrumbCategoryFilter,
+				onNavigate = { filter ->
+					filter.toUnifiedCategoryFilterSelectionOrNull()?.let { selection ->
+						selectedKeys.clear()
+						state.updateStorageFilter(selection)
 					}
-				)
-			} else {
-				VaultV2PathBanner(
-					pathLabel = storageFilterLabel,
-					currentSectionLabel = currentSectionIndicatorLabel,
-					onClick = { isStorageFilterSheetVisible = true },
-				)
-			}
+				},
+				onOpenStorageFilter = { isStorageFilterSheetVisible = true },
+			)
 
 			val contentPullOffset = pullAction.currentOffset.toInt()
 			val listInteractionModifier = Modifier
@@ -1301,9 +1875,13 @@ fun VaultV2Pane(
 				)
 
 			VaultV2List(
-				currentFilter = filter,
-				onFilterChange = { filter = it },
+				hasVisibleQuickFilters = hasVisibleQuickFilters,
+				configuredQuickFilterItems = configuredQuickFilterItems,
+				quickFilterChipState = quickFilterBindings.state,
+				quickFilterChipCallbacks = quickFilterBindings.callbacks,
 				sections = sectionedItems,
+				showLoadingIndicator = showVaultLoadingIndicator,
+				showEmptyState = showVaultEmptyState,
 				listState = listState,
 				passwordById = passwordById,
 				appSettings = appSettings,
@@ -1349,6 +1927,218 @@ fun VaultV2Pane(
 				bitwardenVaults = bitwardenVaults,
 				getBitwardenFolders = passwordViewModel::getBitwardenFolders,
 				getKeePassGroups = localKeePassViewModel::getGroups,
+				quickFilterContent = {
+					VaultV2QuickFilterFlow(
+						configuredQuickFilterItems = configuredQuickFilterItems,
+						chipState = quickFilterBindings.state,
+						chipCallbacks = quickFilterBindings.callbacks,
+					)
+				},
+			)
+		}
+
+		if (showCreateCategoryDialog) {
+			CreateCategoryDialog(
+				visible = true,
+				onDismiss = { showCreateCategoryDialog = false },
+				categories = categories,
+				keepassDatabases = keepassDatabases,
+				bitwardenVaults = bitwardenVaults,
+				getKeePassGroups = localKeePassViewModel::getGroups,
+				onCreateCategoryWithName = { name -> passwordViewModel.addCategory(name) },
+				onCreateBitwardenFolder = { vaultId, name ->
+					scope.launch {
+						val result = bitwardenRepository.createFolder(vaultId, name)
+						result.exceptionOrNull()?.let { error ->
+							Toast.makeText(
+								context,
+								context.getString(R.string.webdav_operation_failed, error.message ?: ""),
+								Toast.LENGTH_SHORT
+							).show()
+						}
+					}
+				},
+				onCreateKeePassGroup = { databaseId, parentPath, name ->
+					localKeePassViewModel.createGroup(
+						databaseId = databaseId,
+						groupName = name,
+						parentPath = parentPath
+					) { result ->
+						result.exceptionOrNull()?.let { error ->
+							Toast.makeText(
+								context,
+								context.getString(R.string.webdav_operation_failed, error.message ?: ""),
+								Toast.LENGTH_SHORT
+							).show()
+						}
+					}
+				}
+			)
+		}
+
+		if (showBitwardenUnlockDialog && selectedBitwardenVault != null) {
+			UnlockVaultDialog(
+				email = selectedBitwardenVault.email,
+				onUnlock = { masterPassword ->
+					showBitwardenUnlockDialog = false
+					scope.launch {
+						when (val result = bitwardenRepository.unlock(
+							selectedBitwardenVault.id,
+							masterPassword
+						)) {
+							is BitwardenRepository.UnlockResult.Success -> {
+								Toast.makeText(
+									context,
+									context.getString(R.string.current_database_unlocked),
+									Toast.LENGTH_SHORT
+								).show()
+							}
+
+							is BitwardenRepository.UnlockResult.Error -> {
+								Toast.makeText(
+									context,
+									result.message,
+									Toast.LENGTH_SHORT
+								).show()
+							}
+						}
+					}
+				},
+				onDismiss = { showBitwardenUnlockDialog = false }
+			)
+		}
+
+		if (showClearBitwardenCacheDialog && selectedBitwardenVaultId != null && clearCacheRiskSummary != null) {
+			val vaultId = selectedBitwardenVaultId
+			val riskSummary = clearCacheRiskSummary!!
+			val hasRisk = riskSummary.hasRisk
+			val resetDialogState: () -> Unit = {
+				showClearBitwardenCacheDialog = false
+				clearCacheRiskSummary = null
+			}
+
+			AlertDialog(
+				onDismissRequest = {
+					if (!isBitwardenMaintenanceActionRunning) {
+						resetDialogState()
+					}
+				},
+				title = { Text(stringResource(R.string.bitwarden_clear_cache_confirm_title)) },
+				text = {
+					Text(
+						if (hasRisk) {
+							context.getString(
+								R.string.bitwarden_clear_cache_confirm_message_with_risk,
+								riskSummary.pendingOperationCount,
+								riskSummary.passwordLocalModifiedCount,
+								riskSummary.secureItemLocalModifiedCount,
+								riskSummary.unresolvedConflictCount
+							)
+						} else {
+							context.getString(R.string.bitwarden_clear_cache_confirm_message)
+						}
+					)
+				},
+				confirmButton = {
+					TextButton(
+						enabled = !isBitwardenMaintenanceActionRunning,
+						onClick = {
+							scope.launch {
+								isBitwardenMaintenanceActionRunning = true
+								runCatching {
+									passwordViewModel.clearBitwardenVaultLocalCache(
+										vaultId = vaultId,
+										mode = if (hasRisk) {
+											BitwardenRepository.CacheClearMode.SAFE_ONLY_SYNCED
+										} else {
+											BitwardenRepository.CacheClearMode.FULL_FORCE
+										}
+									)
+								}.onSuccess { result ->
+									val message = if (hasRisk) {
+										context.getString(
+											R.string.bitwarden_clear_cache_success_safe,
+											result.totalClearedCount,
+											result.protectedCipherCount
+										)
+									} else {
+										context.getString(
+											R.string.bitwarden_clear_cache_success,
+											result.totalClearedCount
+										)
+									}
+									Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+									resetDialogState()
+								}.onFailure { error ->
+									Toast.makeText(
+										context,
+										context.getString(
+											R.string.bitwarden_clear_cache_failed,
+											error.message ?: ""
+										),
+										Toast.LENGTH_SHORT
+									).show()
+								}
+								isBitwardenMaintenanceActionRunning = false
+							}
+						}
+					) {
+						Text(
+							stringResource(
+								if (hasRisk) R.string.bitwarden_clear_cache_action_safe
+								else R.string.bitwarden_clear_cache_action
+							)
+						)
+					}
+				},
+				dismissButton = {
+					Row {
+						if (hasRisk) {
+							TextButton(
+								enabled = !isBitwardenMaintenanceActionRunning,
+								onClick = {
+									scope.launch {
+										isBitwardenMaintenanceActionRunning = true
+										runCatching {
+											passwordViewModel.clearBitwardenVaultLocalCache(
+												vaultId = vaultId,
+												mode = BitwardenRepository.CacheClearMode.FULL_FORCE
+											)
+										}.onSuccess { result ->
+											Toast.makeText(
+												context,
+												context.getString(
+													R.string.bitwarden_clear_cache_force_success,
+													result.totalClearedCount
+												),
+												Toast.LENGTH_SHORT
+											).show()
+											resetDialogState()
+										}.onFailure { error ->
+											Toast.makeText(
+												context,
+												context.getString(
+													R.string.bitwarden_clear_cache_failed,
+													error.message ?: ""
+												),
+												Toast.LENGTH_SHORT
+											).show()
+										}
+										isBitwardenMaintenanceActionRunning = false
+									}
+								}
+							) {
+								Text(stringResource(R.string.bitwarden_clear_cache_action_force))
+							}
+						}
+						TextButton(
+							enabled = !isBitwardenMaintenanceActionRunning,
+							onClick = { resetDialogState() }
+						) {
+							Text(stringResource(R.string.cancel))
+						}
+					}
+				}
 			)
 		}
 
@@ -1458,94 +2248,15 @@ fun VaultV2Pane(
 }
 
 @Composable
-private fun VaultV2FilterRow(
-	current: VaultV2Filter,
-	onChange: (VaultV2Filter) -> Unit,
-) {
-	LazyRow(
-		modifier = Modifier
-			.fillMaxWidth()
-			.padding(vertical = 6.dp),
-		contentPadding = PaddingValues(horizontal = 0.dp),
-		horizontalArrangement = Arrangement.spacedBy(8.dp),
-	) {
-		item {
-			VaultV2FilterChip(
-				text = stringResource(R.string.filter_all),
-				selected = current == VaultV2Filter.ALL,
-				onClick = { onChange(VaultV2Filter.ALL) },
-			)
-		}
-		item {
-			VaultV2FilterChip(
-				text = stringResource(R.string.nav_passwords),
-				selected = current == VaultV2Filter.PASSWORD,
-				onClick = { onChange(VaultV2Filter.PASSWORD) },
-			)
-		}
-		item {
-			VaultV2FilterChip(
-				text = stringResource(R.string.nav_authenticator),
-				selected = current == VaultV2Filter.AUTHENTICATOR,
-				onClick = { onChange(VaultV2Filter.AUTHENTICATOR) },
-			)
-		}
-		item {
-			VaultV2FilterChip(
-				text = stringResource(R.string.nav_notes),
-				selected = current == VaultV2Filter.NOTE,
-				onClick = { onChange(VaultV2Filter.NOTE) },
-			)
-		}
-		item {
-			VaultV2FilterChip(
-				text = stringResource(R.string.nav_passkey),
-				selected = current == VaultV2Filter.PASSKEY,
-				onClick = { onChange(VaultV2Filter.PASSKEY) },
-			)
-		}
-		item {
-			VaultV2FilterChip(
-				text = stringResource(R.string.nav_card_wallet),
-				selected = current == VaultV2Filter.CARD_WALLET,
-				onClick = { onChange(VaultV2Filter.CARD_WALLET) },
-			)
-		}
-	}
-}
-
-@Composable
-private fun VaultV2FilterChip(
-	text: String,
-	selected: Boolean,
-	onClick: () -> Unit,
-) {
-	AssistChip(
-		onClick = onClick,
-		label = {
-			Text(text = text)
-		},
-		colors = AssistChipDefaults.assistChipColors(
-			containerColor = if (selected) {
-				MaterialTheme.colorScheme.primaryContainer
-			} else {
-				MaterialTheme.colorScheme.surfaceContainerLow
-			},
-			labelColor = if (selected) {
-				MaterialTheme.colorScheme.onPrimaryContainer
-			} else {
-				MaterialTheme.colorScheme.onSurfaceVariant
-			},
-		),
-	)
-}
-
-@Composable
 @OptIn(ExperimentalFoundationApi::class)
 private fun VaultV2List(
-	currentFilter: VaultV2Filter,
-	onFilterChange: (VaultV2Filter) -> Unit,
+	hasVisibleQuickFilters: Boolean,
+	configuredQuickFilterItems: List<PasswordListQuickFilterItem>,
+	quickFilterChipState: PasswordQuickFilterChipState,
+	quickFilterChipCallbacks: PasswordQuickFilterChipCallbacks,
 	sections: List<Pair<String, List<VaultV2Item>>>,
+	showLoadingIndicator: Boolean,
+	showEmptyState: Boolean,
 	listState: LazyListState,
 	passwordById: Map<Long, PasswordEntry>,
 	appSettings: AppSettings,
@@ -1559,14 +2270,30 @@ private fun VaultV2List(
 		contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 96.dp),
 	verticalArrangement = Arrangement.spacedBy(6.dp),
 	) {
-		item(key = "filter_row") {
-			VaultV2FilterRow(
-				current = currentFilter,
-				onChange = onFilterChange,
-			)
+		if (hasVisibleQuickFilters) {
+			item(key = "filter_row") {
+				VaultV2QuickFilterRow(
+					configuredQuickFilterItems = configuredQuickFilterItems,
+					chipState = quickFilterChipState,
+					chipCallbacks = quickFilterChipCallbacks,
+				)
+			}
 		}
 
-		if (sections.isEmpty()) {
+		if (sections.isEmpty() && showLoadingIndicator) {
+			item(key = "loading") {
+				Box(
+					modifier = Modifier
+						.fillMaxWidth()
+						.padding(top = 56.dp),
+					contentAlignment = Alignment.Center,
+				) {
+					PasswordListInitialLoadingIndicator()
+				}
+			}
+		}
+
+		if (sections.isEmpty() && showEmptyState) {
 			item(key = "empty") {
 				Box(
 					modifier = Modifier
@@ -1633,10 +2360,13 @@ private fun VaultV2List(
 }
 
 @Composable
-private fun VaultV2PathBanner(
+private fun VaultV2NavigationBanner(
 	pathLabel: String,
 	currentSectionLabel: String,
-	onClick: () -> Unit,
+	breadcrumbs: List<PasswordQuickFolderBreadcrumb>,
+	currentFilter: CategoryFilter?,
+	onNavigate: (CategoryFilter) -> Unit,
+	onOpenStorageFilter: () -> Unit,
 ) {
 	Row(
 		modifier = Modifier
@@ -1667,25 +2397,73 @@ private fun VaultV2PathBanner(
 				.weight(1f)
 				.clip(RoundedCornerShape(14.dp))
 				.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
-				.clickable(onClick = onClick)
+				.then(
+					if (breadcrumbs.isEmpty()) {
+						Modifier.clickable(onClick = onOpenStorageFilter)
+					} else {
+						Modifier
+					}
+				)
 		) {
 			Row(
 				modifier = Modifier
 					.fillMaxWidth()
+					.horizontalScroll(rememberScrollState())
 					.padding(horizontal = 8.dp, vertical = 6.dp),
 				verticalAlignment = Alignment.CenterVertically,
 			) {
-				Box(
-					modifier = Modifier
-						.clip(RoundedCornerShape(10.dp))
-						.background(MaterialTheme.colorScheme.primaryContainer)
-						.padding(horizontal = 10.dp, vertical = 4.dp)
-				) {
-					Text(
-						text = pathLabel,
-						style = MaterialTheme.typography.labelMedium,
-						color = MaterialTheme.colorScheme.onPrimaryContainer,
-					)
+				if (breadcrumbs.isNotEmpty() && currentFilter != null) {
+					breadcrumbs.forEachIndexed { index, crumb ->
+						Box(
+							modifier = Modifier
+								.clip(RoundedCornerShape(10.dp))
+								.background(
+									if (crumb.isCurrent) {
+										MaterialTheme.colorScheme.primaryContainer
+									} else {
+										MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.68f)
+									}
+								)
+								.clickable(enabled = !crumb.isCurrent) {
+									if (currentFilter != crumb.targetFilter) {
+										onNavigate(crumb.targetFilter)
+									}
+								}
+								.padding(horizontal = 10.dp, vertical = 4.dp)
+						) {
+							Text(
+								text = crumb.title,
+								style = MaterialTheme.typography.labelMedium,
+								color = if (crumb.isCurrent) {
+									MaterialTheme.colorScheme.onPrimaryContainer
+								} else {
+									MaterialTheme.colorScheme.onSecondaryContainer
+								},
+							)
+						}
+
+						if (index != breadcrumbs.lastIndex) {
+							Text(
+								text = ">",
+								style = MaterialTheme.typography.labelMedium,
+								color = MaterialTheme.colorScheme.onSurfaceVariant,
+								modifier = Modifier.padding(horizontal = 6.dp)
+							)
+						}
+					}
+				} else {
+					Box(
+						modifier = Modifier
+							.clip(RoundedCornerShape(10.dp))
+							.background(MaterialTheme.colorScheme.primaryContainer)
+							.padding(horizontal = 10.dp, vertical = 4.dp)
+					) {
+						Text(
+							text = pathLabel,
+							style = MaterialTheme.typography.labelMedium,
+							color = MaterialTheme.colorScheme.onPrimaryContainer,
+						)
+					}
 				}
 			}
 		}
