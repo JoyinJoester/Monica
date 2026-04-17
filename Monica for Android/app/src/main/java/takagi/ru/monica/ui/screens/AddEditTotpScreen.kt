@@ -502,6 +502,7 @@ fun AddEditTotpScreen(
     }
     val inlinePreviewVisible = previewTotpData != null
     val inlinePreviewCurrentSeconds by produceState(initialValue = System.currentTimeMillis() / 1000, key1 = previewTotpData?.otpType) {
+        value = System.currentTimeMillis() / 1000
         while (true) {
             value = System.currentTimeMillis() / 1000
             kotlinx.coroutines.delay(1000)
@@ -512,6 +513,7 @@ fun AddEditTotpScreen(
         key1 = previewTotpData?.otpType,
         key2 = settings.validatorSmoothProgress
     ) {
+        value = System.currentTimeMillis()
         while (true) {
             val now = System.currentTimeMillis()
             value = now

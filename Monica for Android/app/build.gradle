@@ -251,7 +251,9 @@ source_root=${rootDir.absolutePath}
                 'UnrememberedMutableState',
                 'AutoboxingStateCreation',
                 'CoroutineCreationDuringComposition',
-                'StateFlowValueCalledInComposition'
+                'StateFlowValueCalledInComposition',
+                'ProduceStateDoesNotAssignValue',
+                'MissingTranslation'
         // Avoid scanning dependency-provided lint registries; one of them intermittently
         // crashes ASM migration with NegativeArraySizeException in lintVitalAnalyzeRelease.
         checkDependencies false

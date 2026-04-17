@@ -318,6 +318,7 @@ fun AddEditPasswordScreen(
         initialValue = System.currentTimeMillis() / 1000,
         key1 = authenticatorPreviewTotpData?.otpType
     ) {
+        value = System.currentTimeMillis() / 1000
         while (true) {
             value = System.currentTimeMillis() / 1000
             kotlinx.coroutines.delay(1000)
@@ -328,6 +329,7 @@ fun AddEditPasswordScreen(
         key1 = authenticatorPreviewTotpData?.otpType,
         key2 = settings.validatorSmoothProgress
     ) {
+        value = System.currentTimeMillis()
         while (true) {
             val now = System.currentTimeMillis()
             value = now
