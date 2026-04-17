@@ -18,6 +18,7 @@ import kotlinx.coroutines.launch
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.AddButtonBehaviorMode
 import takagi.ru.monica.data.AddButtonMenuAction
+import takagi.ru.monica.data.AppLauncherIcon
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.BottomNavVisibility
 import takagi.ru.monica.data.CategorySelectionUiMode
@@ -108,6 +109,7 @@ data class PageAdjustmentSettingsSnapshot(
     val validatorVibrationEnabled: Boolean = true,
     val copyNextCodeWhenExpiring: Boolean = false,
     val iconCardsEnabled: Boolean = false,
+    val appLauncherIcon: String = takagi.ru.monica.data.AppLauncherIcon.MODERN.name,
     val passwordPageIconEnabled: Boolean = false,
     val authenticatorPageIconEnabled: Boolean = false,
     val passkeyPageIconEnabled: Boolean = false,
@@ -182,6 +184,7 @@ class SettingsManager(private val context: Context) {
         private val TRASH_ENABLED_KEY = booleanPreferencesKey("trash_enabled") // 回收站功能开关
         private val TRASH_AUTO_DELETE_DAYS_KEY = intPreferencesKey("trash_auto_delete_days") // 回收站自动清空天数
         private val ICON_CARDS_ENABLED_KEY = booleanPreferencesKey("icon_cards_enabled") // 带图标卡片开关
+        private val APP_LAUNCHER_ICON_KEY = stringPreferencesKey("app_launcher_icon") // 主应用图标样式
         private val PASSWORD_PAGE_ICON_ENABLED_KEY = booleanPreferencesKey("password_page_icon_enabled") // 密码页图标开关
         private val AUTHENTICATOR_PAGE_ICON_ENABLED_KEY = booleanPreferencesKey("authenticator_page_icon_enabled") // 验证器页图标开关
         private val PASSKEY_PAGE_ICON_ENABLED_KEY = booleanPreferencesKey("passkey_page_icon_enabled") // 通行密钥页图标开关
@@ -227,8 +230,6 @@ class SettingsManager(private val context: Context) {
         
         // 减少动画 - 解决部分设备动画卡顿问题
         private val REDUCE_ANIMATIONS_KEY = booleanPreferencesKey("reduce_animations")
-        private val PREDICTIVE_BACK_FOR_PAGE_NAVIGATION_ENABLED_KEY =
-            booleanPreferencesKey("predictive_back_for_page_navigation_enabled")
 
         // 智能去重
         private val SMART_DEDUPLICATION_ENABLED_KEY = booleanPreferencesKey("smart_deduplication_enabled")
@@ -529,6 +530,11 @@ class SettingsManager(private val context: Context) {
             trashEnabled = preferences[TRASH_ENABLED_KEY] ?: true,
             trashAutoDeleteDays = preferences[TRASH_AUTO_DELETE_DAYS_KEY] ?: 30,
             iconCardsEnabled = preferences[ICON_CARDS_ENABLED_KEY] ?: false,
+            appLauncherIcon = runCatching {
+                AppLauncherIcon.valueOf(
+                    preferences[APP_LAUNCHER_ICON_KEY] ?: AppLauncherIcon.MODERN.name
+                )
+            }.getOrDefault(AppLauncherIcon.MODERN),
             passwordPageIconEnabled = preferences[PASSWORD_PAGE_ICON_ENABLED_KEY]
                 ?: (preferences[ICON_CARDS_ENABLED_KEY] ?: false),
             authenticatorPageIconEnabled = preferences[AUTHENTICATOR_PAGE_ICON_ENABLED_KEY]
@@ -613,8 +619,6 @@ class SettingsManager(private val context: Context) {
                 paymentInfo = preferences[FIELD_PAYMENT_INFO_KEY] ?: true
             ),
             reduceAnimations = preferences[REDUCE_ANIMATIONS_KEY] ?: false,
-            predictiveBackForPageNavigationEnabled =
-                preferences[PREDICTIVE_BACK_FOR_PAGE_NAVIGATION_ENABLED_KEY] ?: false,
             smartDeduplicationEnabled = preferences[SMART_DEDUPLICATION_ENABLED_KEY] ?: true,
             separateUsernameAccountEnabled = preferences[SEPARATE_USERNAME_ACCOUNT_ENABLED_KEY] ?: false,
             keepassDxLikeMutationEnabled = preferences[KEEPASS_DX_LIKE_MUTATION_ENABLED_KEY] ?: false,
@@ -881,6 +885,13 @@ class SettingsManager(private val context: Context) {
         }
     }
 
+    suspend fun updateAppLauncherIcon(icon: AppLauncherIcon) {
+        dataStore.edit { preferences ->
+            preferences[APP_LAUNCHER_ICON_KEY] = icon.name
+        }
+        AppLauncherIconManager.apply(this.context, icon)
+    }
+
     suspend fun updatePasswordPageIconEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[PASSWORD_PAGE_ICON_ENABLED_KEY] = enabled
@@ -1127,6 +1138,7 @@ class SettingsManager(private val context: Context) {
             validatorVibrationEnabled = settings.validatorVibrationEnabled,
             copyNextCodeWhenExpiring = settings.copyNextCodeWhenExpiring,
             iconCardsEnabled = settings.iconCardsEnabled,
+            appLauncherIcon = settings.appLauncherIcon.name,
             passwordPageIconEnabled = settings.passwordPageIconEnabled,
             authenticatorPageIconEnabled = settings.authenticatorPageIconEnabled,
             passkeyPageIconEnabled = settings.passkeyPageIconEnabled,
@@ -1291,6 +1303,10 @@ class SettingsManager(private val context: Context) {
             preferences[VALIDATOR_VIBRATION_ENABLED_KEY] = snapshot.validatorVibrationEnabled
             preferences[COPY_NEXT_CODE_WHEN_EXPIRING_KEY] = snapshot.copyNextCodeWhenExpiring
             preferences[ICON_CARDS_ENABLED_KEY] = snapshot.iconCardsEnabled
+            val parsedAppLauncherIcon = runCatching {
+                AppLauncherIcon.valueOf(snapshot.appLauncherIcon.trim())
+            }.getOrDefault(AppLauncherIcon.MODERN)
+            preferences[APP_LAUNCHER_ICON_KEY] = parsedAppLauncherIcon.name
             preferences[PASSWORD_PAGE_ICON_ENABLED_KEY] = snapshot.passwordPageIconEnabled
             preferences[AUTHENTICATOR_PAGE_ICON_ENABLED_KEY] = snapshot.authenticatorPageIconEnabled
             preferences[PASSKEY_PAGE_ICON_ENABLED_KEY] = snapshot.passkeyPageIconEnabled
@@ -1309,6 +1325,10 @@ class SettingsManager(private val context: Context) {
             preferences[FIELD_ADDRESS_INFO_KEY] = snapshot.passwordFieldVisibility.addressInfo
             preferences[FIELD_PAYMENT_INFO_KEY] = snapshot.passwordFieldVisibility.paymentInfo
         }
+        val appliedIcon = runCatching {
+            AppLauncherIcon.valueOf(snapshot.appLauncherIcon.trim())
+        }.getOrDefault(AppLauncherIcon.MODERN)
+        AppLauncherIconManager.apply(context, appliedIcon)
     }
     
     // ==================== 预设自定义字段管理 ====================
@@ -1397,12 +1417,6 @@ class SettingsManager(private val context: Context) {
     suspend fun updateReduceAnimations(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[REDUCE_ANIMATIONS_KEY] = enabled
-        }
-    }
-
-    suspend fun updatePredictiveBackForPageNavigationEnabled(enabled: Boolean) {
-        dataStore.edit { preferences ->
-            preferences[PREDICTIVE_BACK_FOR_PAGE_NAVIGATION_ENABLED_KEY] = enabled
         }
     }
 

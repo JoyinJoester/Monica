@@ -292,23 +292,23 @@ fun DocumentDetailScreen(
                             modifier = Modifier.padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            Text(text = "扩展字段", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            if (data.title.isNotBlank()) InfoField(label = "称谓", value = data.title)
-                            if (data.company.isNotBlank()) InfoField(label = "公司 / 机构", value = data.company)
+                            Text(text = stringResource(R.string.extended_fields_title), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            if (data.title.isNotBlank()) InfoField(label = stringResource(R.string.document_title_prefix_label), value = data.title)
+                            if (data.company.isNotBlank()) InfoField(label = stringResource(R.string.document_company_label), value = data.company)
                             if (data.email.isNotBlank()) InfoField(label = stringResource(R.string.email), value = data.email)
-                            if (data.phone.isNotBlank()) InfoField(label = "电话", value = data.phone)
+                            if (data.phone.isNotBlank()) InfoField(label = stringResource(R.string.document_phone_label), value = data.phone)
                             if (data.username.isNotBlank()) InfoField(label = stringResource(R.string.username), value = data.username)
-                            if (data.address1.isNotBlank()) InfoField(label = "地址 1", value = data.address1)
-                            if (data.address2.isNotBlank()) InfoField(label = "地址 2", value = data.address2)
-                            if (data.address3.isNotBlank()) InfoField(label = "地址 3", value = data.address3)
+                            if (data.address1.isNotBlank()) InfoField(label = stringResource(R.string.document_address_line_1), value = data.address1)
+                            if (data.address2.isNotBlank()) InfoField(label = stringResource(R.string.document_address_line_2), value = data.address2)
+                            if (data.address3.isNotBlank()) InfoField(label = stringResource(R.string.document_address_line_3), value = data.address3)
                             if (data.city.isNotBlank()) InfoField(label = stringResource(R.string.city), value = data.city)
                             if (data.stateProvince.isNotBlank()) InfoField(label = stringResource(R.string.state), value = data.stateProvince)
                             if (data.postalCode.isNotBlank()) InfoField(label = stringResource(R.string.postal_code), value = data.postalCode)
                             if (data.country.isNotBlank()) InfoField(label = stringResource(R.string.country), value = data.country)
-                            if (data.ssn.isNotBlank()) InfoField(label = "SSN / 身份号", value = data.ssn)
-                            if (data.passportNumber.isNotBlank()) InfoField(label = "护照号", value = data.passportNumber)
-                            if (data.licenseNumber.isNotBlank()) InfoField(label = "驾照号", value = data.licenseNumber)
-                            if (data.additionalInfo.isNotBlank()) InfoField(label = "附加信息", value = data.additionalInfo)
+                            if (data.ssn.isNotBlank()) InfoField(label = stringResource(R.string.document_ssn_label), value = data.ssn)
+                            if (data.passportNumber.isNotBlank()) InfoField(label = stringResource(R.string.document_passport_number_label), value = data.passportNumber)
+                            if (data.licenseNumber.isNotBlank()) InfoField(label = stringResource(R.string.document_license_number_label), value = data.licenseNumber)
+                            if (data.additionalInfo.isNotBlank()) InfoField(label = stringResource(R.string.document_additional_info_label), value = data.additionalInfo)
                         }
                     }
                 }
@@ -456,7 +456,7 @@ fun DocumentDetailScreen(
     
     if (showDeleteDialog) {
         val deleteMessage = if (replicaTargets.size > 1) {
-            "这只会删除当前这一个副本，其他 ${replicaTargets.size - 1} 个目标中的副本会保留。"
+            context.getString(R.string.delete_current_replica_only_message, replicaTargets.size - 1)
         } else {
             context.getString(R.string.delete_document_message)
         }

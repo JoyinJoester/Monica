@@ -842,12 +842,12 @@ fun AddEditBankCardScreen(
                 }
             }
 
-            InfoCard(title = "扩展字段") {
+            InfoCard(title = stringResource(R.string.extended_fields_title)) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedTextField(
                         value = brand,
                         onValueChange = { brand = it },
-                        label = { Text("卡组织 / Brand") },
+                        label = { Text(stringResource(R.string.bank_card_brand_label)) },
                         leadingIcon = { Icon(Icons.Default.Style, contentDescription = null) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
@@ -856,7 +856,7 @@ fun AddEditBankCardScreen(
                     OutlinedTextField(
                         value = nickname,
                         onValueChange = { nickname = it },
-                        label = { Text("卡片昵称") },
+                        label = { Text(stringResource(R.string.bank_card_nickname_label)) },
                         leadingIcon = { Icon(Icons.Default.Label, contentDescription = null) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
@@ -869,7 +869,7 @@ fun AddEditBankCardScreen(
                         OutlinedTextField(
                             value = validFromMonth,
                             onValueChange = { if (it.length <= 2 && it.all(Char::isDigit)) validFromMonth = it },
-                            label = { Text("起始月") },
+                            label = { Text(stringResource(R.string.bank_card_valid_from_month)) },
                             modifier = Modifier.weight(1f),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             singleLine = true,
@@ -878,7 +878,7 @@ fun AddEditBankCardScreen(
                         OutlinedTextField(
                             value = validFromYear,
                             onValueChange = { if (it.length <= 4 && it.all(Char::isDigit)) validFromYear = it },
-                            label = { Text("起始年") },
+                            label = { Text(stringResource(R.string.bank_card_valid_from_year)) },
                             modifier = Modifier.weight(1f),
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             singleLine = true,
@@ -908,7 +908,7 @@ fun AddEditBankCardScreen(
                         OutlinedTextField(
                             value = accountNumber,
                             onValueChange = { accountNumber = it },
-                            label = { Text("账户号") },
+                            label = { Text(stringResource(R.string.bank_card_account_number_label)) },
                             modifier = Modifier.weight(1f),
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp)
@@ -916,7 +916,7 @@ fun AddEditBankCardScreen(
                         OutlinedTextField(
                             value = routingNumber,
                             onValueChange = { routingNumber = it },
-                            label = { Text("Routing") },
+                            label = { Text(stringResource(R.string.bank_card_routing_number_label)) },
                             modifier = Modifier.weight(1f),
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp)
@@ -929,7 +929,7 @@ fun AddEditBankCardScreen(
                         OutlinedTextField(
                             value = branchCode,
                             onValueChange = { branchCode = it },
-                            label = { Text("分行代码") },
+                            label = { Text(stringResource(R.string.bank_card_branch_code_label)) },
                             modifier = Modifier.weight(1f),
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp)
@@ -937,7 +937,7 @@ fun AddEditBankCardScreen(
                         OutlinedTextField(
                             value = currency,
                             onValueChange = { currency = it },
-                            label = { Text("币种") },
+                            label = { Text(stringResource(R.string.bank_card_currency_label)) },
                             modifier = Modifier.weight(1f),
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp)
@@ -946,7 +946,7 @@ fun AddEditBankCardScreen(
                     OutlinedTextField(
                         value = customerServicePhone,
                         onValueChange = { customerServicePhone = it },
-                        label = { Text("客服电话") },
+                        label = { Text(stringResource(R.string.bank_card_customer_service_phone_label)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         shape = RoundedCornerShape(12.dp)
@@ -954,7 +954,7 @@ fun AddEditBankCardScreen(
                     OutlinedTextField(
                         value = pin,
                         onValueChange = { pin = it },
-                        label = { Text("PIN") },
+                        label = { Text(stringResource(R.string.bank_card_pin_label)) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
                         visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
@@ -963,7 +963,7 @@ fun AddEditBankCardScreen(
                 }
             }
 
-            InfoCard(title = "自定义字段") {
+            InfoCard(title = stringResource(R.string.custom_field_title)) {
                 CustomFieldEditorSection(
                     fields = customFields,
                     onFieldsChange = { customFields = it },

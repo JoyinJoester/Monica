@@ -64,7 +64,7 @@ fun PermissionCard(
                 .fillMaxWidth()
                 .padding(16.dp)
                 .heightIn(min = 48.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.Top
         ) {
             // 权限图标
             Icon(
@@ -97,8 +97,8 @@ fun PermissionCard(
                         modifier = Modifier
                             .weight(1f, fill = false)
                             .padding(end = 8.dp),
-                        maxLines = 1,
-                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        maxLines = 2,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Clip
                     )
                     // 重要性标签
                     PermissionImportanceChip(

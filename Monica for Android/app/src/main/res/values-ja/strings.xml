@@ -501,10 +501,14 @@
     <string name="nav_authenticator">認証器</string>
     <string name="nav_documents">証明書</string>
     <string name="nav_bank_cards">銀行カード</string>
+    <string name="nav_card_wallet">カードウォレット</string>
     <string name="nav_notes">メモ</string>
     <string name="nav_ledger">明細</string>
     <string name="nav_generator">生成器</string>
+    <string name="nav_passkey">パスキー</string>
     <string name="nav_settings">設定</string>
+    <string name="trash_bin">ゴミ箱</string>
+    <string name="trash_settings">ゴミ箱設定</string>
     <string name="add">追加</string>
     
     <!-- Main Screen Bottom Navigation (Short) -->
@@ -512,10 +516,18 @@
     <string name="nav_authenticator_short">認証</string>
     <string name="nav_documents_short">証明</string>
     <string name="nav_bank_cards_short">カード</string>
+    <string name="nav_card_wallet_short">財布</string>
     <string name="nav_notes_short">メモ</string>
     <string name="nav_ledger_short">明細</string>
     <string name="nav_generator_short">生成</string>
+    <string name="nav_passkey_short">パス</string>
     <string name="nav_settings_short">設定</string>
+
+    <!-- V2 Multi-Source Vault Navigation -->
+    <string name="nav_v2_vault">保管庫</string>
+    <string name="nav_v2_vault_short">保管庫</string>
+    <string name="nav_v2_send">送信</string>
+    <string name="nav_v2_send_short">送信</string>
     
     <!-- Notes -->
     <string name="add_note_title">メモを追加</string>
@@ -598,7 +610,7 @@
     <string name="settings_import_data_description">バックアップファイルから復元</string>
     <string name="settings_version_info">バージョン情報</string>
     <string name="version_info_full_version_label">完全版バージョン</string>
-    <string name="settings_version_number">V1.0.282</string>
+    <string name="settings_version_number">V1.0.283</string>
     <string name="settings_support_author">作者をサポート</string>
     <string name="settings_support_author_description">ご支援ありがとうございます</string>
     <string name="settings_privacy_policy">プライバシーポリシー</string>
@@ -1553,6 +1565,43 @@
     <string name="bank_card_default_title">銀行カード</string>
     <string name="bank_card_photo_front_label">銀行カード写真（表面）</string>
     <string name="bank_card_photo_back_label">銀行カード写真（裏面）</string>
+    <string name="extended_fields_title">拡張項目</string>
+    <string name="bank_card_brand_label">カードブランド</string>
+    <string name="bank_card_nickname_label">カード名</string>
+    <string name="bank_card_valid_from_month">開始月</string>
+    <string name="bank_card_valid_from_year">開始年</string>
+    <string name="bank_card_valid_from_date">開始日</string>
+    <string name="bank_card_account_number_label">口座番号</string>
+    <string name="bank_card_routing_number_label">ルーティング番号</string>
+    <string name="bank_card_branch_code_label">支店コード</string>
+    <string name="bank_card_currency_label">通貨</string>
+    <string name="bank_card_customer_service_phone_label">カスタマーサービス電話</string>
+    <string name="bank_card_pin_label">PIN</string>
+    <string name="document_identity_extended_title">本人情報の拡張</string>
+    <string name="document_address_extra_title">住所と追加情報</string>
+    <string name="document_title_prefix_label">敬称</string>
+    <string name="document_first_name_label">名</string>
+    <string name="document_middle_name_label">ミドルネーム</string>
+    <string name="document_last_name_label">姓</string>
+    <string name="document_company_label">会社 / 組織</string>
+    <string name="document_phone_label">電話</string>
+    <string name="document_address_line_1">住所 1</string>
+    <string name="document_address_line_2">住所 2</string>
+    <string name="document_address_line_3">住所 3</string>
+    <string name="document_passport_number_label">パスポート番号</string>
+    <string name="document_license_number_label">運転免許番号</string>
+    <string name="document_ssn_label">SSN / 身分番号</string>
+    <string name="document_additional_info_label">追加情報</string>
+    <string name="delete_current_replica_only_message">現在のコピーのみ削除します。ほかの %1$d 件のターゲットにあるコピーは保持されます。</string>
+    <string name="multi_storage_title">複数データベース保存</string>
+    <string name="multi_storage_uncategorized">未分類</string>
+    <string name="multi_storage_keepass_root">データベースのルート</string>
+    <string name="multi_storage_bitwarden_no_folder">フォルダなし</string>
+    <string name="multi_storage_empty_hint">Monica、KeePass、Bitwarden の保存先を選択</string>
+    <string name="multi_storage_selected_summary">%1$d 個の保存先を選択 · %2$s</string>
+    <string name="multi_storage_preserved_existing_suffix">既存の保存先を保持</string>
+    <string name="multi_storage_no_target">保存先未選択</string>
+    <string name="multi_storage_more_sources_suffix">さらに %1$d 個のデータベース</string>
     <string name="nationality_example">例: 日本</string>
     <string name="qr_camera_permission_title">カメラ権限が必要です</string>
     <string name="qr_not_found">QRコードが見つかりませんでした</string>

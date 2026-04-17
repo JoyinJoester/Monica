@@ -294,33 +294,33 @@ fun BankCardDetailScreen(
                                 verticalArrangement = Arrangement.spacedBy(12.dp)
                             ) {
                                 Text(
-                                    text = "扩展字段",
+                                    text = stringResource(R.string.extended_fields_title),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
                                 if (data.nickname.isNotBlank()) {
-                                    InfoFieldWithCopy(label = "昵称", value = data.nickname, context = context)
+                                    InfoFieldWithCopy(label = stringResource(R.string.bank_card_nickname_label), value = data.nickname, context = context)
                                 }
                                 if (data.brand.isNotBlank()) {
-                                    InfoFieldWithCopy(label = "卡组织 / Brand", value = data.brand, context = context)
+                                    InfoFieldWithCopy(label = stringResource(R.string.bank_card_brand_label), value = data.brand, context = context)
                                 }
                                 if (data.validFromMonth.isNotBlank() || data.validFromYear.isNotBlank()) {
                                     InfoFieldWithCopy(
-                                        label = "起始日期",
+                                        label = stringResource(R.string.bank_card_valid_from_date),
                                         value = listOf(data.validFromMonth, data.validFromYear).filter { it.isNotBlank() }.joinToString("/"),
                                         context = context
                                     )
                                 }
                                 if (data.iban.isNotBlank()) InfoFieldWithCopy(label = "IBAN", value = data.iban, context = context)
                                 if (data.swiftBic.isNotBlank()) InfoFieldWithCopy(label = "SWIFT / BIC", value = data.swiftBic, context = context)
-                                if (data.accountNumber.isNotBlank()) InfoFieldWithCopy(label = "账户号", value = data.accountNumber, context = context)
-                                if (data.routingNumber.isNotBlank()) InfoFieldWithCopy(label = "Routing", value = data.routingNumber, context = context)
-                                if (data.branchCode.isNotBlank()) InfoFieldWithCopy(label = "分行代码", value = data.branchCode, context = context)
-                                if (data.currency.isNotBlank()) InfoFieldWithCopy(label = "币种", value = data.currency, context = context)
-                                if (data.customerServicePhone.isNotBlank()) InfoFieldWithCopy(label = "客服电话", value = data.customerServicePhone, context = context)
+                                if (data.accountNumber.isNotBlank()) InfoFieldWithCopy(label = stringResource(R.string.bank_card_account_number_label), value = data.accountNumber, context = context)
+                                if (data.routingNumber.isNotBlank()) InfoFieldWithCopy(label = stringResource(R.string.bank_card_routing_number_label), value = data.routingNumber, context = context)
+                                if (data.branchCode.isNotBlank()) InfoFieldWithCopy(label = stringResource(R.string.bank_card_branch_code_label), value = data.branchCode, context = context)
+                                if (data.currency.isNotBlank()) InfoFieldWithCopy(label = stringResource(R.string.bank_card_currency_label), value = data.currency, context = context)
+                                if (data.customerServicePhone.isNotBlank()) InfoFieldWithCopy(label = stringResource(R.string.bank_card_customer_service_phone_label), value = data.customerServicePhone, context = context)
                                 if (data.pin.isNotBlank()) {
                                     PasswordField(
-                                        label = "PIN",
+                                        label = stringResource(R.string.bank_card_pin_label),
                                         value = data.pin,
                                         visible = cvvVisible,
                                         onToggleVisibility = { cvvVisible = !cvvVisible },
@@ -533,7 +533,7 @@ fun BankCardDetailScreen(
     
     if (showDeleteDialog) {
         val deleteMessage = if (replicaTargets.size > 1) {
-            "这只会删除当前这一个副本，其他 ${replicaTargets.size - 1} 个目标中的副本会保留。"
+            context.getString(R.string.delete_current_replica_only_message, replicaTargets.size - 1)
         } else {
             context.getString(R.string.delete_card_message)
         }

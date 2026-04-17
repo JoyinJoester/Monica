@@ -9,6 +9,7 @@ import kotlinx.coroutines.launch
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.AddButtonBehaviorMode
 import takagi.ru.monica.data.AddButtonMenuAction
+import takagi.ru.monica.data.AppLauncherIcon
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.CategorySelectionUiMode
 import takagi.ru.monica.data.ColorScheme
@@ -265,6 +266,12 @@ class SettingsViewModel(
         }
     }
 
+    fun updateAppLauncherIcon(icon: AppLauncherIcon) {
+        viewModelScope.launch {
+            settingsManager.updateAppLauncherIcon(icon)
+        }
+    }
+
     fun updatePasswordPageIconEnabled(enabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updatePasswordPageIconEnabled(enabled)
@@ -455,12 +462,6 @@ class SettingsViewModel(
     fun updateReduceAnimations(enabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updateReduceAnimations(enabled)
-        }
-    }
-
-    fun updatePredictiveBackForPageNavigationEnabled(enabled: Boolean) {
-        viewModelScope.launch {
-            settingsManager.updatePredictiveBackForPageNavigationEnabled(enabled)
         }
     }
 

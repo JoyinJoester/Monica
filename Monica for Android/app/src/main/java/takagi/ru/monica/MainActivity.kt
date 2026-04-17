@@ -13,9 +13,7 @@ import android.view.ViewGroup
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
-import androidx.activity.BackEventCompat
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
@@ -998,36 +996,31 @@ fun MonicaContent(
                     }
                 }
             }
-            PredictiveBackPageContainer(
-                enabled = settings.predictiveBackForPageNavigationEnabled,
+            AddEditPasswordScreen(
+                viewModel = viewModel,
+                totpViewModel = totpViewModel,
+                bankCardViewModel = bankCardViewModel,
+                noteViewModel = noteViewModel,
+                localKeePassViewModel = localKeePassViewModel,
+                passwordId = if (passwordId == -1L) null else passwordId,
+                initialCategoryId = pendingStorageDefaults?.categoryId,
+                initialKeePassDatabaseId = pendingStorageDefaults?.keepassDatabaseId,
+                initialKeePassGroupPath = pendingStorageDefaults?.keepassGroupPath,
+                initialBitwardenVaultId = pendingStorageDefaults?.bitwardenVaultId,
+                initialBitwardenFolderId = pendingStorageDefaults?.bitwardenFolderId,
+                pendingQrResult = qrResult,
+                onConsumePendingQrResult = {
+                    navController.currentBackStackEntry
+                        ?.savedStateHandle
+                        ?.remove<String>("qr_result")
+                },
+                onScanAuthenticatorQrCode = {
+                    navController.navigate(Screen.QrScanner.route) {
+                        launchSingleTop = true
+                    }
+                },
                 onNavigateBack = navigateBackFromAddEditPassword
-            ) {
-                AddEditPasswordScreen(
-                    viewModel = viewModel,
-                    totpViewModel = totpViewModel,
-                    bankCardViewModel = bankCardViewModel,
-                    noteViewModel = noteViewModel,
-                    localKeePassViewModel = localKeePassViewModel,
-                    passwordId = if (passwordId == -1L) null else passwordId,
-                    initialCategoryId = pendingStorageDefaults?.categoryId,
-                    initialKeePassDatabaseId = pendingStorageDefaults?.keepassDatabaseId,
-                    initialKeePassGroupPath = pendingStorageDefaults?.keepassGroupPath,
-                    initialBitwardenVaultId = pendingStorageDefaults?.bitwardenVaultId,
-                    initialBitwardenFolderId = pendingStorageDefaults?.bitwardenFolderId,
-                    pendingQrResult = qrResult,
-                    onConsumePendingQrResult = {
-                        navController.currentBackStackEntry
-                            ?.savedStateHandle
-                            ?.remove<String>("qr_result")
-                    },
-                    onScanAuthenticatorQrCode = {
-                        navController.navigate(Screen.QrScanner.route) {
-                            launchSingleTop = true
-                        }
-                    },
-                    onNavigateBack = navigateBackFromAddEditPassword
-                )
-            }
+            )
         }
 
         composable(
@@ -1471,36 +1464,31 @@ fun MonicaContent(
                 androidx.compose.runtime.CompositionLocalProvider(
                     takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
                 ) {
-                    PredictiveBackPageContainer(
-                        enabled = settings.predictiveBackForPageNavigationEnabled,
-                        onNavigateBack = navigateBackFromPasswordDetail
-                    ) {
-                        takagi.ru.monica.ui.screens.PasswordDetailScreen(
-                            viewModel = viewModel,
-                            passkeyViewModel = passkeyViewModel,
-                            noteViewModel = noteViewModel,
-                            passwordId = passwordId,
-                            biometricEnabled = settings.biometricEnabled,
-                            iconCardsEnabled = settings.iconCardsEnabled && settings.passwordPageIconEnabled,
-                            unmatchedIconHandlingStrategy = settings.unmatchedIconHandlingStrategy,
-                            enableSharedBounds = false,
-                            onNavigateBack = navigateBackFromPasswordDetail,
-                            onOpenBoundNote = { noteId ->
-                                scope.launch {
-                                    navController.navigate(Screen.NoteDetail.createRoute(noteId)) {
-                                        launchSingleTop = true
-                                    }
-                                }
-                            },
-                            onEditPassword = { id ->
-                                scope.launch {
-                                    navController.navigate(Screen.AddEditPassword.createRoute(id)) {
-                                        launchSingleTop = true
-                                    }
+                    takagi.ru.monica.ui.screens.PasswordDetailScreen(
+                        viewModel = viewModel,
+                        passkeyViewModel = passkeyViewModel,
+                        noteViewModel = noteViewModel,
+                        passwordId = passwordId,
+                        biometricEnabled = settings.biometricEnabled,
+                        iconCardsEnabled = settings.iconCardsEnabled && settings.passwordPageIconEnabled,
+                        unmatchedIconHandlingStrategy = settings.unmatchedIconHandlingStrategy,
+                        enableSharedBounds = false,
+                        onNavigateBack = navigateBackFromPasswordDetail,
+                        onOpenBoundNote = { noteId ->
+                            scope.launch {
+                                navController.navigate(Screen.NoteDetail.createRoute(noteId)) {
+                                    launchSingleTop = true
                                 }
                             }
-                        )
-                    }
+                        },
+                        onEditPassword = { id ->
+                            scope.launch {
+                                navController.navigate(Screen.AddEditPassword.createRoute(id)) {
+                                    launchSingleTop = true
+                                }
+                            }
+                        }
+                    )
                 }
             }
         }
@@ -2816,56 +2804,6 @@ fun MonicaContent(
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun PredictiveBackPageContainer(
-    enabled: Boolean,
-    onNavigateBack: () -> Unit,
-    content: @Composable () -> Unit
-) {
-    var progress by remember { mutableFloatStateOf(0f) }
-    var swipeEdge by remember { mutableStateOf(BackEventCompat.EDGE_LEFT) }
-
-    PredictiveBackHandler(enabled = enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { events ->
-        try {
-            events.collect { event ->
-                swipeEdge = event.swipeEdge
-                progress = event.progress.coerceIn(0f, 1f)
-            }
-            onNavigateBack()
-        } catch (_: CancellationException) {
-            // Gesture canceled: just reset visual state.
-        } finally {
-            progress = 0f
-        }
-    }
-
-    BackHandler(enabled = enabled && Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-        onNavigateBack()
-    }
-
-    val edgeDirection = if (swipeEdge == BackEventCompat.EDGE_RIGHT) -1f else 1f
-    val scale = 1f - (0.08f * progress)
-    val alpha = 1f - (0.08f * progress)
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .graphicsLayer {
-                val translationPx = 24.dp.toPx() * progress * edgeDirection
-                translationX = translationPx
-                scaleX = scale
-                scaleY = scale
-                this.alpha = alpha
-                transformOrigin = TransformOrigin(
-                    pivotFractionX = if (edgeDirection > 0f) 0f else 1f,
-                    pivotFractionY = 0.5f
-                )
-            }
-    ) {
-        content()
     }
 }
 

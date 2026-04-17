@@ -351,8 +351,8 @@ fun DraggableBottomNavScaffold(
                                         } else {
                                             MaterialTheme.colorScheme.onSurfaceVariant
                                         },
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Clip,
                                         modifier = Modifier.graphicsLayer {
                                             alpha = 1f - expansionProgress * 2f
                                         }

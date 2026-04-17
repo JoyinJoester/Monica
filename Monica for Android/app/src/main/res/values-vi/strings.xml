@@ -503,10 +503,14 @@
     <string name="nav_authenticator">Xác thực</string>
     <string name="nav_documents">Giấy tờ</string>
     <string name="nav_bank_cards">Thẻ ngân hàng</string>
+    <string name="nav_card_wallet">Vi the</string>
     <string name="nav_notes">Ghi chú</string>
     <string name="nav_ledger">Sổ kế toán</string>
     <string name="nav_generator">Trình tạo</string>
+    <string name="nav_passkey">Passkey</string>
     <string name="nav_settings">Cài đặt</string>
+    <string name="trash_bin">Thung rac</string>
+    <string name="trash_settings">Cai dat thung rac</string>
     <string name="add">Thêm</string>
     
     <!-- Main Screen Bottom Navigation (Short) -->
@@ -514,10 +518,18 @@
     <string name="nav_authenticator_short">XT</string>
     <string name="nav_documents_short">GT</string>
     <string name="nav_bank_cards_short">Thẻ</string>
+    <string name="nav_card_wallet_short">Vi</string>
     <string name="nav_notes_short">Note</string>
     <string name="nav_ledger_short">Sổ</string>
     <string name="nav_generator_short">Tạo</string>
+    <string name="nav_passkey_short">Key</string>
     <string name="nav_settings_short">CĐ</string>
+
+    <!-- V2 Multi-Source Vault Navigation -->
+    <string name="nav_v2_vault">Kho mat khau</string>
+    <string name="nav_v2_vault_short">Kho</string>
+    <string name="nav_v2_send">Gui</string>
+    <string name="nav_v2_send_short">Gui</string>
 
     <!-- Notes -->
     <string name="add_note_title">Thêm ghi chú</string>
@@ -572,7 +584,7 @@
     <string name="settings_import_data_description">Khôi phục từ file sao lưu</string>
     <string name="settings_version_info">Thông tin phiên bản</string>
     <string name="version_info_full_version_label">Phiên bản đầy đủ</string>
-    <string name="settings_version_number">V1.0.282</string>
+    <string name="settings_version_number">V1.0.283</string>
     <string name="settings_support_author">Ủng hộ tác giả</string>
     <string name="settings_support_author_description">Cảm ơn sự ủng hộ của bạn</string>
     <string name="settings_privacy_policy">Chính sách bảo mật</string>
@@ -1559,6 +1571,43 @@
     <string name="bank_card_default_title">The ngan hang</string>
     <string name="bank_card_photo_front_label">Anh the ngan hang (mat truoc)</string>
     <string name="bank_card_photo_back_label">Anh the ngan hang (mat sau)</string>
+    <string name="extended_fields_title">Truong mo rong</string>
+    <string name="bank_card_brand_label">Thuong hieu the</string>
+    <string name="bank_card_nickname_label">Biet danh the</string>
+    <string name="bank_card_valid_from_month">Thang bat dau</string>
+    <string name="bank_card_valid_from_year">Nam bat dau</string>
+    <string name="bank_card_valid_from_date">Ngay bat dau</string>
+    <string name="bank_card_account_number_label">So tai khoan</string>
+    <string name="bank_card_routing_number_label">So dinh tuyen</string>
+    <string name="bank_card_branch_code_label">Ma chi nhanh</string>
+    <string name="bank_card_currency_label">Tien te</string>
+    <string name="bank_card_customer_service_phone_label">So CSKH</string>
+    <string name="bank_card_pin_label">PIN</string>
+    <string name="document_identity_extended_title">Mo rong danh tinh</string>
+    <string name="document_address_extra_title">Dia chi va thong tin bo sung</string>
+    <string name="document_title_prefix_label">Xung ho</string>
+    <string name="document_first_name_label">Ten</string>
+    <string name="document_middle_name_label">Ten dem</string>
+    <string name="document_last_name_label">Ho</string>
+    <string name="document_company_label">Cong ty / To chuc</string>
+    <string name="document_phone_label">Dien thoai</string>
+    <string name="document_address_line_1">Dia chi 1</string>
+    <string name="document_address_line_2">Dia chi 2</string>
+    <string name="document_address_line_3">Dia chi 3</string>
+    <string name="document_passport_number_label">So ho chieu</string>
+    <string name="document_license_number_label">So bang lai xe</string>
+    <string name="document_ssn_label">SSN / So dinh danh</string>
+    <string name="document_additional_info_label">Thong tin bo sung</string>
+    <string name="delete_current_replica_only_message">Chi xoa ban sao hien tai. %1$d ban sao o cac dich khac van duoc giu lai.</string>
+    <string name="multi_storage_title">Luu tru da co so du lieu</string>
+    <string name="multi_storage_uncategorized">Khong danh muc</string>
+    <string name="multi_storage_keepass_root">Goc co so du lieu</string>
+    <string name="multi_storage_bitwarden_no_folder">Khong thu muc</string>
+    <string name="multi_storage_empty_hint">Nhan de chon dich Monica, KeePass hoac Bitwarden</string>
+    <string name="multi_storage_selected_summary">Da chon %1$d vi tri luu · %2$s</string>
+    <string name="multi_storage_preserved_existing_suffix">Da giu muc tieu goc</string>
+    <string name="multi_storage_no_target">Chua chon muc tieu</string>
+    <string name="multi_storage_more_sources_suffix">them %1$d co so du lieu</string>
     <string name="nationality_example">VD: Viet Nam</string>
     <string name="qr_camera_permission_title">Can quyen camera</string>
     <string name="qr_not_found">Khong tim thay ma QR</string>

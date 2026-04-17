@@ -219,7 +219,7 @@ object AutofillDatasetBuilder {
          */
         @RequiresApi(Build.VERSION_CODES.R)
         private fun createDefaultIcon(context: Context): Icon {
-            return Icon.createWithResource(context, R.mipmap.ic_launcher).apply {
+            return Icon.createWithResource(context, R.drawable.monica_launcher).apply {
                 setTintBlendMode(BlendMode.DST)
             }
         }

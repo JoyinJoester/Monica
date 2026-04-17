@@ -56,9 +56,9 @@
         android:allowBackup="false"
         android:enableOnBackInvokedCallback="true"
         android:usesCleartextTraffic="true"
-        android:icon="@mipmap/ic_launcher"
+        android:icon="@drawable/monica_launcher"
         android:label="@string/app_name"
-        android:roundIcon="@mipmap/ic_launcher_round"
+        android:roundIcon="@drawable/monica_launcher"
         android:supportsRtl="true"
         android:theme="@style/Theme.Monica"
         tools:targetApi="31">
@@ -68,13 +68,63 @@
             android:label="@string/app_name"
             android:theme="@style/Theme.Monica"
             android:windowSoftInputMode="adjustResize"
-            tools:targetApi="33">
+            tools:targetApi="33" />
+
+        <activity-alias
+            android:name=".ModernLauncherAlias"
+            android:enabled="true"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity" />
+
+        <activity-alias
+            android:name=".LockLauncherAlias"
+            android:enabled="true"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity" />
+
+        <activity-alias
+            android:name=".ModernHomeLauncherAlias"
+            android:enabled="true"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity" />
+
+        <activity-alias
+            android:name=".ClassicHomeLauncherAlias"
+            android:enabled="true"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity" />
+
+        <activity-alias
+            android:name=".ModernVisibleLauncherAlias"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@drawable/monica_launcher"
+            android:roundIcon="@drawable/monica_launcher"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
+
+        <activity-alias
+            android:name=".ClassicVisibleLauncherAlias"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_classic"
+            android:roundIcon="@mipmap/ic_launcher_classic_round"
+            android:label="@string/app_name"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
         
         <!-- Autofill Service (Bitwarden engine) -->
         <service
@@ -94,7 +144,7 @@
         <service
             android:name=".passkey.MonicaCredentialProviderService"
             android:label="@string/app_name"
-            android:icon="@mipmap/ic_launcher"
+            android:icon="@drawable/monica_launcher"
             android:enabled="true"
             android:exported="true"
             android:permission="android.permission.BIND_CREDENTIAL_PROVIDER_SERVICE"
@@ -117,6 +167,14 @@
             <intent-filter>
                 <action android:name="android.intent.action.PACKAGE_REPLACED" />
                 <data android:scheme="package" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".receiver.LauncherEntryRepairReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
         

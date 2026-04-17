@@ -679,6 +679,8 @@
     <string name="nav_timeline">时间线</string>
     <string name="nav_passkey">通行密钥</string>
     <string name="nav_settings">设置</string>
+    <string name="trash_bin">回收站</string>
+    <string name="trash_settings">回收站设置</string>
     <string name="add">添加</string>
     
     <!-- Main Screen Bottom Navigation (Short) -->
@@ -696,7 +698,7 @@
     
     <!-- V2 多源密码库导航 -->
     <string name="nav_v2_vault">密码库（测试功能）</string>
-    <string name="nav_v2_vault_short">测试</string>
+    <string name="nav_v2_vault_short">密码库</string>
     <string name="nav_v2_send">发送</string>
     <string name="nav_v2_send_short">发送</string>
     <string name="nav_v2_sync">同步</string>
@@ -860,6 +862,7 @@
     <string name="card_number">卡号</string>
     <string name="delete_card_title">删除银行卡</string>
     <string name="delete_card_message">确定要删除这张银行卡吗？</string>
+    <string name="delete_current_replica_only_message">这只会删除当前这一个副本，其他 %1$d 个目标中的副本会保留。</string>
     <string name="document_details">证件详情</string>
     <string name="document_number">证件号码</string>
     <string name="full_name">姓名</string>
@@ -913,7 +916,7 @@
     <string name="custom_icon_load_more">加载更多图标（剩余 %1$d 个）</string>
     <string name="custom_icon_upload_success">图标上传成功</string>
     <string name="custom_icon_upload_failed">上传失败：%1$s</string>
-    <string name="settings_version_number">V1.0.282</string>
+    <string name="settings_version_number">V1.0.283</string>
     <string name="settings_support_author">支持作者</string>
     <string name="settings_support_author_description">感谢您的支持</string>
     <string name="settings_privacy_policy">隐私政策</string>
@@ -1082,8 +1085,6 @@
     <string name="experimental_features_section">实验功能</string>
     <string name="hide_fab_on_scroll_title">滚动时隐藏悬浮按钮</string>
     <string name="hide_fab_on_scroll_description">向下滑动列表时隐藏右下角的添加按钮</string>
-    <string name="predictive_back_for_pages_title">页面预见式返回</string>
-    <string name="predictive_back_for_pages_description">为有上级页面的详情/编辑页启用系统预见式返回动画</string>
     <string name="keepass_dx_like_mutation_title">KeePass DX 类引擎</string>
     <string name="keepass_dx_like_mutation_description">实验功能：KeePass 操作使用内存变更 + 异步落盘（默认关闭）</string>
     
@@ -2421,6 +2422,15 @@
     <string name="create_target_local">Monica 本地</string>
     <string name="create_target_bitwarden">Bitwarden</string>
     <string name="create_target_keepass">KeePass</string>
+    <string name="multi_storage_title">多数据库存储</string>
+    <string name="multi_storage_uncategorized">未分类</string>
+    <string name="multi_storage_keepass_root">数据库根目录</string>
+    <string name="multi_storage_bitwarden_no_folder">无文件夹</string>
+    <string name="multi_storage_empty_hint">点击选择 Monica、KeePass 或 Bitwarden 目标</string>
+    <string name="multi_storage_selected_summary">已选 %1$d 个保存位置 · %2$s</string>
+    <string name="multi_storage_preserved_existing_suffix">已保留原目标</string>
+    <string name="multi_storage_no_target">未选择目标</string>
+    <string name="multi_storage_more_sources_suffix">另外 %1$d 个数据库</string>
     <string name="create_select_bitwarden_vault">选择 Bitwarden 账户</string>
     <string name="create_select_keepass_database">选择 KeePass 数据库</string>
     <string name="create_target_section_title">目标位置</string>
@@ -2442,6 +2452,33 @@
     <string name="bank_card_default_title">银行卡</string>
     <string name="bank_card_photo_front_label">银行卡照片（正面）</string>
     <string name="bank_card_photo_back_label">银行卡照片（背面）</string>
+    <string name="extended_fields_title">扩展字段</string>
+    <string name="bank_card_brand_label">卡组织 / Brand</string>
+    <string name="bank_card_nickname_label">卡片昵称</string>
+    <string name="bank_card_valid_from_month">起始月</string>
+    <string name="bank_card_valid_from_year">起始年</string>
+    <string name="bank_card_valid_from_date">起始日期</string>
+    <string name="bank_card_account_number_label">账户号</string>
+    <string name="bank_card_routing_number_label">路由号</string>
+    <string name="bank_card_branch_code_label">分行代码</string>
+    <string name="bank_card_currency_label">币种</string>
+    <string name="bank_card_customer_service_phone_label">客服电话</string>
+    <string name="bank_card_pin_label">PIN</string>
+    <string name="document_identity_extended_title">身份扩展</string>
+    <string name="document_address_extra_title">地址和附加信息</string>
+    <string name="document_title_prefix_label">称谓</string>
+    <string name="document_first_name_label">名</string>
+    <string name="document_middle_name_label">中间名</string>
+    <string name="document_last_name_label">姓</string>
+    <string name="document_company_label">公司 / 机构</string>
+    <string name="document_phone_label">电话</string>
+    <string name="document_address_line_1">地址 1</string>
+    <string name="document_address_line_2">地址 2</string>
+    <string name="document_address_line_3">地址 3</string>
+    <string name="document_passport_number_label">护照号码</string>
+    <string name="document_license_number_label">驾照号码</string>
+    <string name="document_ssn_label">社保号 / 身份号</string>
+    <string name="document_additional_info_label">附加信息</string>
     <string name="nationality_example">例如：中国</string>
     <string name="qr_camera_permission_title">需要相机权限</string>
     <string name="qr_not_found">未发现二维码</string>
@@ -2968,6 +3005,11 @@
     <string name="icon_settings_master_title">图标功能总开关</string>
     <string name="icon_settings_master_desc">关闭后会隐藏全部卡片图标；开启后可继续使用下方页面级开关。</string>
     <string name="icon_settings_master_switch">启用图标卡片</string>
+    <string name="icon_settings_app_icon_title">主应用图标</string>
+    <string name="icon_settings_app_icon_modern_title">新图标</string>
+    <string name="icon_settings_app_icon_modern_subtitle">使用当前这套 Monica 彩色图标作为桌面主应用图标。</string>
+    <string name="icon_settings_app_icon_classic_title">经典</string>
+    <string name="icon_settings_app_icon_classic_subtitle">切换回之前的 Monica 经典桌面图标。</string>
     <string name="icon_settings_page_switches_title">页面级图标开关</string>
     <string name="icon_settings_page_switches_desc">按页面分别控制图标显示，不影响其他页面。</string>
     <string name="icon_settings_password_page_title">密码页面</string>

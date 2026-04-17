@@ -372,6 +372,7 @@ private data class PageAdjustmentSettingsBackupEntry(
     val validatorVibrationEnabled: Boolean = true,
     val copyNextCodeWhenExpiring: Boolean = false,
     val iconCardsEnabled: Boolean = false,
+    val appLauncherIcon: String = "MODERN",
     val passwordPageIconEnabled: Boolean = false,
     val authenticatorPageIconEnabled: Boolean = false,
     val passkeyPageIconEnabled: Boolean = false,
@@ -1836,6 +1837,7 @@ class WebDavHelper(
                                 copyNextCodeWhenExpiring =
                                     pageAdjustmentSettingsSnapshot.copyNextCodeWhenExpiring,
                                 iconCardsEnabled = pageAdjustmentSettingsSnapshot.iconCardsEnabled,
+                                appLauncherIcon = pageAdjustmentSettingsSnapshot.appLauncherIcon,
                                 passwordPageIconEnabled = pageAdjustmentSettingsSnapshot.passwordPageIconEnabled,
                                 authenticatorPageIconEnabled =
                                     pageAdjustmentSettingsSnapshot.authenticatorPageIconEnabled,
@@ -3025,11 +3027,12 @@ class WebDavHelper(
                                                     pageAdjustmentBackup.validatorSmoothProgress,
                                                 validatorVibrationEnabled =
                                                     pageAdjustmentBackup.validatorVibrationEnabled,
-                                                copyNextCodeWhenExpiring =
-                                                    pageAdjustmentBackup.copyNextCodeWhenExpiring,
-                                                iconCardsEnabled = pageAdjustmentBackup.iconCardsEnabled,
-                                                passwordPageIconEnabled =
-                                                    pageAdjustmentBackup.passwordPageIconEnabled,
+                                            copyNextCodeWhenExpiring =
+                                                pageAdjustmentBackup.copyNextCodeWhenExpiring,
+                                            iconCardsEnabled = pageAdjustmentBackup.iconCardsEnabled,
+                                            appLauncherIcon = pageAdjustmentBackup.appLauncherIcon,
+                                            passwordPageIconEnabled =
+                                                pageAdjustmentBackup.passwordPageIconEnabled,
                                                 authenticatorPageIconEnabled =
                                                     pageAdjustmentBackup.authenticatorPageIconEnabled,
                                                 passkeyPageIconEnabled =

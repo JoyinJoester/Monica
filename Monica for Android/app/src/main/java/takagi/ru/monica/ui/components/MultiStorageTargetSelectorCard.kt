@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -65,41 +66,54 @@ fun MultiStorageTargetSelectorCard(
         }
     }
     val bitwardenFolderName by folderNameFlow.collectAsState(initial = null)
-    val sourceLabels = remember(selectedTargets, keepassDatabases, bitwardenVaults) {
-        selectedTargets
-            .map { target ->
-                when (target) {
-                    is StorageTarget.MonicaLocal -> "Monica"
-                    is StorageTarget.KeePass -> keepassDatabases.firstOrNull { it.id == target.databaseId }?.name
-                        ?: "KeePass"
-                    is StorageTarget.Bitwarden -> bitwardenVaults.firstOrNull { it.id == target.vaultId }?.displayName
-                        ?: bitwardenVaults.firstOrNull { it.id == target.vaultId }?.email
-                        ?: "Bitwarden"
-                }
+
+    val monicaLabel = stringResource(R.string.app_name)
+    val keepassLabel = stringResource(R.string.create_target_keepass)
+    val bitwardenLabel = stringResource(R.string.create_target_bitwarden)
+    val uncategorizedLabel = stringResource(R.string.multi_storage_uncategorized)
+    val keepassRootLabel = stringResource(R.string.multi_storage_keepass_root)
+    val noFolderLabel = stringResource(R.string.multi_storage_bitwarden_no_folder)
+    val emptyHint = stringResource(R.string.multi_storage_empty_hint)
+    val selectedSummaryFormat = stringResource(R.string.multi_storage_selected_summary)
+    val keepOriginalSuffix = stringResource(R.string.multi_storage_preserved_existing_suffix)
+    val noTargetLabel = stringResource(R.string.multi_storage_no_target)
+    val moreSourcesFormat = stringResource(R.string.multi_storage_more_sources_suffix)
+
+    val sourceLabels = selectedTargets
+        .map { target ->
+            when (target) {
+                is StorageTarget.MonicaLocal -> monicaLabel
+                is StorageTarget.KeePass -> keepassDatabases.firstOrNull { it.id == target.databaseId }?.name
+                    ?: keepassLabel
+                is StorageTarget.Bitwarden -> bitwardenVaults.firstOrNull { it.id == target.vaultId }?.displayName
+                    ?: bitwardenVaults.firstOrNull { it.id == target.vaultId }?.email
+                    ?: bitwardenLabel
             }
-            .distinct()
-    }
+        }
+        .distinct()
+
     val previewTitle = when (primaryTarget) {
-        is StorageTarget.MonicaLocal -> "Monica"
+        is StorageTarget.MonicaLocal -> monicaLabel
         is StorageTarget.KeePass -> keepassDatabases.firstOrNull { it.id == primaryTarget.databaseId }?.name
-            ?: "KeePass"
+            ?: keepassLabel
         is StorageTarget.Bitwarden -> bitwardenVaults.firstOrNull { it.id == primaryTarget.vaultId }?.displayName
             ?: bitwardenVaults.firstOrNull { it.id == primaryTarget.vaultId }?.email
-            ?: "Bitwarden"
+            ?: bitwardenLabel
     }
     val previewFolder = when (primaryTarget) {
         is StorageTarget.MonicaLocal -> categories.firstOrNull { it.id == primaryTarget.categoryId }?.name
-            ?: "未分类"
+            ?: uncategorizedLabel
         is StorageTarget.KeePass -> primaryTarget.groupPath
             ?.takeIf { it.isNotBlank() }
             ?.let(::decodeKeePassPathForDisplay)
-            ?: "数据库根目录"
-        is StorageTarget.Bitwarden -> bitwardenFolderName ?: "无文件夹"
+            ?: keepassRootLabel
+        is StorageTarget.Bitwarden -> bitwardenFolderName ?: noFolderLabel
     }
+    val summarizedSources = summarizeStorageSources(sourceLabels, noTargetLabel, moreSourcesFormat)
     val subtitle = when {
-        selectedTargets.isEmpty() -> "点击选择 Monica、KeePass 或 Bitwarden 目标"
+        selectedTargets.isEmpty() -> emptyHint
         selectedTargets.size == 1 -> "$previewTitle · $previewFolder"
-        else -> "已选 ${selectedTargets.size} 个保存位置 · ${summarizeStorageSources(sourceLabels)}"
+        else -> selectedSummaryFormat.format(selectedTargets.size, summarizedSources)
     }
     val visuals = storageCardVisuals(primaryTarget, multipleSources = sourceLabels.size > 1)
 
@@ -137,14 +151,14 @@ fun MultiStorageTargetSelectorCard(
                     .padding(start = 12.dp, end = 12.dp)
             ) {
                 Text(
-                    text = "多数据库存储",
+                    text = stringResource(R.string.multi_storage_title),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = visuals.contentColor
                 )
                 Text(
                     text = if (isEditing && existingTargetKeys.isNotEmpty() && selectedTargets.size > existingTargetKeys.size) {
-                        "$subtitle · 已保留原目标"
+                        "$subtitle · $keepOriginalSuffix"
                     } else {
                         subtitle
                     },
@@ -212,10 +226,14 @@ private fun storageCardVisuals(
     }
 }
 
-private fun summarizeStorageSources(labels: List<String>): String {
-    if (labels.isEmpty()) return "未选择目标"
-    if (labels.size <= 2) return labels.joinToString("、")
-    return labels.take(2).joinToString("、") + " + ${labels.size - 2} 个数据库"
+private fun summarizeStorageSources(
+    labels: List<String>,
+    noTargetLabel: String,
+    moreSourcesFormat: String
+): String {
+    if (labels.isEmpty()) return noTargetLabel
+    if (labels.size <= 2) return labels.joinToString(" / ")
+    return labels.take(2).joinToString(" / ") + " + " + moreSourcesFormat.format(labels.size - 2)
 }
 
 fun buildMultiStorageTarget(

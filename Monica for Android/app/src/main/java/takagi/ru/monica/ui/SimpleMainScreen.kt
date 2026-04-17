@@ -2028,8 +2028,8 @@ fun SimpleMainScreen(
                                 label = {
                                     Text(
                                         text = label,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Clip
                                     )
                                 },
                                 selected = item.key == currentTab.key,
@@ -2372,8 +2372,8 @@ fun SimpleMainScreen(
                                 label = {
                                     Text(
                                         text = label,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Clip
                                     )
                                 },
                                 alwaysShowLabel = true

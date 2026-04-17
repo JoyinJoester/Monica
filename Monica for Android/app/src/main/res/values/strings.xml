@@ -689,8 +689,8 @@
     <string name="nav_timeline">Timeline</string>
     <string name="nav_passkey">Passkey</string>
     <string name="nav_settings">Settings</string>
-    <string name="trash_bin">回收站</string>
-    <string name="trash_settings">回收站设置</string>
+    <string name="trash_bin">Recycle Bin</string>
+    <string name="trash_settings">Recycle Bin Settings</string>
     <string name="add">Add</string>
     
     <!-- Main Screen Bottom Navigation (Short) -->
@@ -698,7 +698,7 @@
     <string name="nav_authenticator_short">Auth</string>
     <string name="nav_documents_short">ID</string>
     <string name="nav_bank_cards_short">Card</string>
-    <string name="nav_card_wallet_short">Wallet</string>
+    <string name="nav_card_wallet_short">Card</string>
     <string name="nav_notes_short">Note</string>
     <string name="nav_ledger_short">Ledger</string>
     <string name="nav_generator_short">Gen</string>  <!-- 添加生成器导航短标签 -->
@@ -708,7 +708,7 @@
     
     <!-- V2 Multi-Source Vault Navigation -->
     <string name="nav_v2_vault">Vault (Test Feature)</string>
-    <string name="nav_v2_vault_short">Test</string>
+    <string name="nav_v2_vault_short">Vault</string>
     <string name="nav_v2_send">Send</string>
     <string name="nav_v2_send_short">Send</string>
     <string name="nav_v2_sync">Sync</string>
@@ -842,6 +842,7 @@
     <string name="card_number">Card Number</string>
     <string name="delete_card_title">Delete Card</string>
     <string name="delete_card_message">Are you sure you want to delete this card?</string>
+    <string name="delete_current_replica_only_message">This only deletes the current copy. The other %1$d copies in other targets will be kept.</string>
     <string name="document_details">Document Details</string>
     <string name="document_number">Document Number</string>
     <string name="full_name">Full Name</string>
@@ -954,7 +955,7 @@
     <string name="all_navigation_items">All Navigation Items</string>
     <string name="category_all">All</string>
     <string name="hidden">Hidden</string>
-    <string name="settings_version_number">V1.0.282</string>
+    <string name="settings_version_number">V1.0.283</string>
     <string name="settings_support_author">Support Author</string>
     <string name="settings_support_author_description">Thank you for your support</string>
     <string name="settings_privacy_policy">Privacy Policy</string>
@@ -1110,8 +1111,6 @@
     <string name="experimental_features_section">Experimental Features</string>
     <string name="hide_fab_on_scroll_title">Hide FAB on scroll</string>
     <string name="hide_fab_on_scroll_description">Hide the floating action button when scrolling down</string>
-    <string name="predictive_back_for_pages_title">Predictive back for pages</string>
-    <string name="predictive_back_for_pages_description">Enable system predictive back animation on detail/edit pages with parent navigation</string>
     <string name="keepass_dx_like_mutation_title">KeePass DX-like engine</string>
     <string name="keepass_dx_like_mutation_description">Experimental: use in-memory mutation + async persist for KeePass operations (off by default)</string>
     <string name="bitwarden_bottom_status_bar_title">Bitwarden bottom status bar</string>
@@ -2593,6 +2592,15 @@
     <string name="create_target_local">Monica Local</string>
     <string name="create_target_bitwarden">Bitwarden</string>
     <string name="create_target_keepass">KeePass</string>
+    <string name="multi_storage_title">Multi-database storage</string>
+    <string name="multi_storage_uncategorized">No category</string>
+    <string name="multi_storage_keepass_root">Database root</string>
+    <string name="multi_storage_bitwarden_no_folder">No folder</string>
+    <string name="multi_storage_empty_hint">Tap to choose Monica, KeePass, or Bitwarden targets</string>
+    <string name="multi_storage_selected_summary">Selected %1$d targets · %2$s</string>
+    <string name="multi_storage_preserved_existing_suffix">Original targets kept</string>
+    <string name="multi_storage_no_target">No target selected</string>
+    <string name="multi_storage_more_sources_suffix">%1$d more databases</string>
     <string name="create_select_bitwarden_vault">Choose Bitwarden account</string>
     <string name="create_select_keepass_database">Choose KeePass database</string>
     <string name="create_target_section_title">Target</string>
@@ -2614,6 +2622,33 @@
     <string name="bank_card_default_title">Bank Card</string>
     <string name="bank_card_photo_front_label">Bank card photo (front)</string>
     <string name="bank_card_photo_back_label">Bank card photo (back)</string>
+    <string name="extended_fields_title">Extended fields</string>
+    <string name="bank_card_brand_label">Card brand</string>
+    <string name="bank_card_nickname_label">Card nickname</string>
+    <string name="bank_card_valid_from_month">Valid from month</string>
+    <string name="bank_card_valid_from_year">Valid from year</string>
+    <string name="bank_card_valid_from_date">Valid from</string>
+    <string name="bank_card_account_number_label">Account number</string>
+    <string name="bank_card_routing_number_label">Routing number</string>
+    <string name="bank_card_branch_code_label">Branch code</string>
+    <string name="bank_card_currency_label">Currency</string>
+    <string name="bank_card_customer_service_phone_label">Customer service phone</string>
+    <string name="bank_card_pin_label">PIN</string>
+    <string name="document_identity_extended_title">Identity details</string>
+    <string name="document_address_extra_title">Address and additional info</string>
+    <string name="document_title_prefix_label">Title</string>
+    <string name="document_first_name_label">First name</string>
+    <string name="document_middle_name_label">Middle name</string>
+    <string name="document_last_name_label">Last name</string>
+    <string name="document_company_label">Company / Organization</string>
+    <string name="document_phone_label">Phone</string>
+    <string name="document_address_line_1">Address line 1</string>
+    <string name="document_address_line_2">Address line 2</string>
+    <string name="document_address_line_3">Address line 3</string>
+    <string name="document_passport_number_label">Passport number</string>
+    <string name="document_license_number_label">Driver license number</string>
+    <string name="document_ssn_label">SSN / Identity number</string>
+    <string name="document_additional_info_label">Additional information</string>
     <string name="nationality_example">e.g. China</string>
     <string name="qr_camera_permission_title">Camera permission required</string>
     <string name="qr_not_found">No QR code found</string>
@@ -3133,6 +3168,11 @@
     <string name="icon_settings_master_title">Icon feature</string>
     <string name="icon_settings_master_desc">Turn this off to hide all card icons. Keep it on to apply page-specific switches below.</string>
     <string name="icon_settings_master_switch">Enable icon cards</string>
+    <string name="icon_settings_app_icon_title">Main app icon</string>
+    <string name="icon_settings_app_icon_modern_title">New icon</string>
+    <string name="icon_settings_app_icon_modern_subtitle">Use the current Monica colorful icon as the launcher icon.</string>
+    <string name="icon_settings_app_icon_classic_title">Classic</string>
+    <string name="icon_settings_app_icon_classic_subtitle">Switch back to the previous Monica classic launcher icon.</string>
     <string name="icon_settings_page_switches_title">Page-level icon switches</string>
     <string name="icon_settings_page_switches_desc">Configure icon visibility for each page independently.</string>
     <string name="icon_settings_password_page_title">Password page</string>

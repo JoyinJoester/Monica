@@ -1198,43 +1198,6 @@ fun SettingsScreen(
                         )
                     }
 
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable {
-                                viewModel.updatePredictiveBackForPageNavigationEnabled(
-                                    !settings.predictiveBackForPageNavigationEnabled
-                                )
-                            }
-                            .padding(vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.ArrowBack,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.secondary,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = stringResource(R.string.predictive_back_for_pages_title),
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                            Text(
-                                text = stringResource(R.string.predictive_back_for_pages_description),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(
-                            checked = settings.predictiveBackForPageNavigationEnabled,
-                            onCheckedChange = { viewModel.updatePredictiveBackForPageNavigationEnabled(it) }
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
                 }
             },
             confirmButton = {

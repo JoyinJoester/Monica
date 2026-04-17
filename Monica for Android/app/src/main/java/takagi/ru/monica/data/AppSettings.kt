@@ -504,6 +504,7 @@ data class AppSettings(
     val trashEnabled: Boolean = true, // 回收站功能是否启用
     val trashAutoDeleteDays: Int = 30, // 回收站自动清空天数（0=不自动清空，-1=禁用回收站）
     val iconCardsEnabled: Boolean = false, // 是否启用带图标卡片
+    val appLauncherIcon: AppLauncherIcon = AppLauncherIcon.MODERN, // 主应用图标样式
     val passwordPageIconEnabled: Boolean = false, // 密码页图标开关
     val authenticatorPageIconEnabled: Boolean = false, // 验证器页图标开关
     val passkeyPageIconEnabled: Boolean = false, // 通行密钥页图标开关
@@ -533,7 +534,6 @@ data class AppSettings(
     val autofillAuthRequired: Boolean = true, // 自动填充验证 - 默认开启
     val passwordFieldVisibility: PasswordFieldVisibility = PasswordFieldVisibility(), // 添加密码页面字段定制
     val reduceAnimations: Boolean = false, // 减少动画 - 解决部分设备（如 HyperOS 2/Android 15）动画卡顿问题
-    val predictiveBackForPageNavigationEnabled: Boolean = false, // 页面级预见式返回（实验）
     val smartDeduplicationEnabled: Boolean = true, // 智能去重（在“所有”视图中合并显示相同密码）
     val separateUsernameAccountEnabled: Boolean = false, // 用户名/账号分离（实验）
     val keepassDxLikeMutationEnabled: Boolean = false, // KeePass DX-like 写入管线（实验）
@@ -547,6 +547,11 @@ data class AppSettings(
     val autofillSources: Set<AutofillSource> = setOf(AutofillSource.V1_LOCAL), // 自动填充数据源
     val autofillPriority: List<AutofillSource> = listOf(AutofillSource.V1_LOCAL) // 自动填充优先级
 )
+
+enum class AppLauncherIcon {
+    MODERN,
+    LOCK_CLASSIC
+}
 
 /**
  * 密码卡片显示模式

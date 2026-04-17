@@ -966,7 +966,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         }
         val timeoutMs = durationSeconds.coerceAtLeast(1) * 1000L
         val notification = builder
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.monica_launcher)
             .setContentTitle("Code: $code")
             .setContentText(label)
             .setAutoCancel(true)

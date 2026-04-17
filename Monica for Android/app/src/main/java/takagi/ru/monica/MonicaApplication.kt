@@ -2,6 +2,8 @@ package takagi.ru.monica
 
 import android.app.Application
 import android.util.Log
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.runBlocking
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
@@ -9,8 +11,11 @@ import org.koin.core.logger.Level
 import takagi.ru.monica.bitwarden.sync.NetworkMonitor
 import takagi.ru.monica.bitwarden.sync.SyncQueueManager
 import takagi.ru.monica.bitwarden.sync.SyncQueueManagerHolder
+import takagi.ru.monica.data.AppLauncherIcon
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.security.AppUpdateSecurityGuard
+import takagi.ru.monica.utils.AppLauncherIconManager
+import takagi.ru.monica.utils.SettingsManager
 
 /**
  * Monica 应用程序入口
@@ -37,6 +42,7 @@ class MonicaApplication : Application() {
         )
         
         initKoin()
+        syncLauncherEntryPointsWithSettings()
         initBitwardenSyncInfrastructure()
     }
     
@@ -68,6 +74,28 @@ class MonicaApplication : Application() {
             SyncQueueManagerHolder.instance = queueManager
         }.onFailure { error ->
             Log.w(TAG, "Failed to init Bitwarden sync infrastructure", error)
+        }
+    }
+
+    private fun syncLauncherEntryPointsWithSettings() {
+        runCatching {
+            val selectedIcon = runBlocking {
+                SettingsManager(this@MonicaApplication).settingsFlow.first().appLauncherIcon
+            }
+            AppLauncherIconManager.repairLaunchEntryPointsAfterUpgrade(
+                this,
+                selectedIcon
+            )
+        }.onFailure { error ->
+            Log.w(TAG, "Failed to sync launcher entry points with settings", error)
+            runCatching {
+                AppLauncherIconManager.repairLaunchEntryPointsAfterUpgrade(
+                    this,
+                    AppLauncherIcon.MODERN
+                )
+            }.onFailure { fallbackError ->
+                Log.w(TAG, "Failed to apply fallback launcher entry points", fallbackError)
+            }
         }
     }
 

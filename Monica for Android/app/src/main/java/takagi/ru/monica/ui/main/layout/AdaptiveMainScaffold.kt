@@ -43,8 +43,8 @@ fun AdaptiveMainScaffold(
                             label = {
                                 Text(
                                     text = label,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Clip
                                 )
                             }
                         )
@@ -80,8 +80,8 @@ fun AdaptiveMainScaffold(
                                 label = {
                                     Text(
                                         text = label,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Clip
                                     )
                                 },
                                 alwaysShowLabel = true

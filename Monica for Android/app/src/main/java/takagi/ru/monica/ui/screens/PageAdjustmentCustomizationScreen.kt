@@ -106,6 +106,7 @@ import kotlinx.serialization.json.Json
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AddButtonBehaviorMode
 import takagi.ru.monica.data.AddButtonMenuAction
+import takagi.ru.monica.data.AppLauncherIcon
 import takagi.ru.monica.data.AuthenticatorCardDisplayField
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordCardDisplayField
@@ -2807,6 +2808,13 @@ private data class IconSettingOption(
     val onCheckedChange: (Boolean) -> Unit
 )
 
+private data class AppLauncherIconOption(
+    val value: AppLauncherIcon,
+    val title: String,
+    val subtitle: String,
+    val icon: ImageVector
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun IconSettingsScreen(
@@ -2814,8 +2822,28 @@ fun IconSettingsScreen(
     onNavigateBack: () -> Unit
 ) {
     val settings by viewModel.settings.collectAsState()
+    var appLauncherExpanded by rememberSaveable { mutableStateOf(true) }
     var pageToggleExpanded by rememberSaveable { mutableStateOf(true) }
     var unmatchedStrategyExpanded by rememberSaveable { mutableStateOf(true) }
+
+    val appLauncherOptions = listOf(
+        AppLauncherIconOption(
+            value = AppLauncherIcon.MODERN,
+            title = stringResource(R.string.icon_settings_app_icon_modern_title),
+            subtitle = stringResource(R.string.icon_settings_app_icon_modern_subtitle),
+            icon = Icons.Default.Apps
+        ),
+        AppLauncherIconOption(
+            value = AppLauncherIcon.LOCK_CLASSIC,
+            title = stringResource(R.string.icon_settings_app_icon_classic_title),
+            subtitle = stringResource(R.string.icon_settings_app_icon_classic_subtitle),
+            icon = Icons.Default.Lock
+        )
+    )
+    val selectedAppLauncherLabel = appLauncherOptions
+        .firstOrNull { it.value == settings.appLauncherIcon }
+        ?.title
+        ?: appLauncherOptions.first().title
 
     val unmatchedStrategyOptions = listOf(
         UnmatchedIconHandlingStrategy.DEFAULT_ICON to stringResource(R.string.icon_settings_unmatched_strategy_default),
@@ -2907,6 +2935,50 @@ fun IconSettingsScreen(
                         Switch(
                             checked = settings.iconCardsEnabled,
                             onCheckedChange = viewModel::updateIconCardsEnabled
+                        )
+                    }
+                }
+            }
+
+            ExpandableSettingsCard(
+                title = stringResource(R.string.icon_settings_app_icon_title),
+                subtitle = selectedAppLauncherLabel,
+                expanded = appLauncherExpanded,
+                onExpandedChange = { appLauncherExpanded = it }
+            ) {
+                appLauncherOptions.forEachIndexed { index, option ->
+                    ListItem(
+                        headlineContent = { Text(option.title) },
+                        supportingContent = {
+                            Text(
+                                text = option.subtitle,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        },
+                        leadingContent = {
+                            Icon(
+                                imageVector = option.icon,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(32.dp)
+                            )
+                        },
+                        trailingContent = {
+                            RadioButton(
+                                selected = settings.appLauncherIcon == option.value,
+                                onClick = null
+                            )
+                        },
+                        modifier = Modifier.clickable {
+                            viewModel.updateAppLauncherIcon(option.value)
+                        },
+                        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                    )
+                    if (index != appLauncherOptions.lastIndex) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(horizontal = 16.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
                         )
                     }
                 }
