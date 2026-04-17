@@ -33,6 +33,7 @@ import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.util.TotpGenerator
+import takagi.ru.monica.utils.AppLauncherIconManager
 import takagi.ru.monica.utils.SettingsManager
 
 class NotificationValidatorService : Service() {
@@ -279,7 +280,7 @@ class NotificationValidatorService : Service() {
         val notification = NotificationCompat.Builder(this@NotificationValidatorService, CHANNEL_ID)
             .setContentTitle("$title ($remaining s)")
             .setContentText(spannableCode)
-            .setSmallIcon(R.drawable.monica_launcher)
+            .setSmallIcon(AppLauncherIconManager.resolveBrandingIconRes(this))
             .setOnlyAlertOnce(true)
             .setOngoing(true)
             .setContentIntent(pendingIntent)
@@ -296,7 +297,7 @@ class NotificationValidatorService : Service() {
             val notification = NotificationCompat.Builder(this@NotificationValidatorService, CHANNEL_ID)
                 .setContentTitle(getString(R.string.app_name))
                 .setContentText(getString(R.string.notification_validator_ready))
-                .setSmallIcon(R.drawable.monica_launcher)
+                .setSmallIcon(AppLauncherIconManager.resolveBrandingIconRes(this@NotificationValidatorService))
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .setOngoing(true)
                 .build()
@@ -315,7 +316,7 @@ class NotificationValidatorService : Service() {
             val notification = NotificationCompat.Builder(this@NotificationValidatorService, CHANNEL_ID)
                 .setContentTitle(getString(R.string.app_name))
                 .setContentText(getString(R.string.notification_validator_no_match))
-                .setSmallIcon(R.drawable.monica_launcher)
+                .setSmallIcon(AppLauncherIconManager.resolveBrandingIconRes(this@NotificationValidatorService))
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .setOngoing(true)
                 .build()

@@ -106,6 +106,7 @@ import takagi.ru.monica.ui.screens.AddEditPasswordScreen
 import takagi.ru.monica.security.SessionManager
 import takagi.ru.monica.util.TotpDataResolver
 import takagi.ru.monica.util.TotpGenerator
+import takagi.ru.monica.utils.AppLauncherIconManager
 import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
@@ -966,7 +967,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         }
         val timeoutMs = durationSeconds.coerceAtLeast(1) * 1000L
         val notification = builder
-            .setSmallIcon(R.drawable.monica_launcher)
+            .setSmallIcon(AppLauncherIconManager.resolveBrandingIconRes(this))
             .setContentTitle("Code: $code")
             .setContentText(label)
             .setAutoCancel(true)

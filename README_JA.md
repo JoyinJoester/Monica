@@ -4,7 +4,7 @@
 
 [中文](README.md) | [English](README_EN.md) | **日本語** | [Tiếng Việt](README_VI.md)
 
-<img src="documentation/website/public/images/app_icon_android.svg" alt="Monica App Icon" width="112" />
+<img src="documentation\image\Monicaico.png" alt="Monica App Icon" width="112" />
 
 <p><strong>Bitwarden と KeePass をつなぐローカル優先のパスワード保管庫</strong></p>
 <p>Android / Browser · Local Vault · TOTP · WebDAV Backup</p>

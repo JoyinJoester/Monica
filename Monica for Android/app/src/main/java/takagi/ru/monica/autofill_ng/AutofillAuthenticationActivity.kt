@@ -65,6 +65,7 @@ import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.ui.components.MonicaPasswordDialogAuthScreen
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.theme.MonicaTheme
+import takagi.ru.monica.utils.AppLauncherIconManager
 import takagi.ru.monica.utils.BiometricAuthHelper
 import takagi.ru.monica.utils.SettingsManager
 
@@ -157,15 +158,12 @@ class AutofillAuthenticationActivity : AppCompatActivity() {
                     
                     when (errorCode) {
                         BiometricPrompt.ERROR_NEGATIVE_BUTTON -> {
-                            // 用户点击"使用密码"
                             showPasswordAuthentication()
                         }
                         BiometricPrompt.ERROR_USER_CANCELED -> {
-                            // 用户取消
                             onAuthenticationCancelled()
                         }
                         else -> {
-                            // 其他错误,降级到密码验证
                             showPasswordAuthentication()
                         }
                     }
@@ -178,14 +176,15 @@ class AutofillAuthenticationActivity : AppCompatActivity() {
             }
         )
         
-        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+        val promptInfoBuilder = BiometricPrompt.PromptInfo.Builder()
             .setTitle(getString(R.string.autofill_auth_title))
             .setSubtitle(getString(R.string.autofill_auth_subtitle))
             .setDescription(getString(R.string.autofill_auth_description))
             .setNegativeButtonText(getString(R.string.use_password))
             .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
             .setConfirmationRequired(false)
-            .build()
+        AppLauncherIconManager.applyBiometricPromptBranding(this, promptInfoBuilder)
+        val promptInfo = promptInfoBuilder.build()
         
         biometricPrompt.authenticate(promptInfo)
     }

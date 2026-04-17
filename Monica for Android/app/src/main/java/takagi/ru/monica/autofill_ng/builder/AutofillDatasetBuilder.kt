@@ -18,6 +18,7 @@ import androidx.annotation.RequiresApi
 import androidx.autofill.inline.UiVersions
 import androidx.autofill.inline.v1.InlineSuggestionUi
 import takagi.ru.monica.R
+import takagi.ru.monica.utils.AppLauncherIconManager
 
 /**
  * Dataset 构建工具类
@@ -217,12 +218,15 @@ object AutofillDatasetBuilder {
         /**
          * 创建默认图标
          */
-        @RequiresApi(Build.VERSION_CODES.R)
-        private fun createDefaultIcon(context: Context): Icon {
-            return Icon.createWithResource(context, R.drawable.monica_launcher).apply {
-                setTintBlendMode(BlendMode.DST)
-            }
+    @RequiresApi(Build.VERSION_CODES.R)
+    private fun createDefaultIcon(context: Context): Icon {
+        return Icon.createWithResource(
+            context,
+            AppLauncherIconManager.resolveBrandingIconRes(context)
+        ).apply {
+            setTintBlendMode(BlendMode.DST)
         }
+    }
     }
     
     /**

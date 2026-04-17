@@ -192,6 +192,7 @@ class BiometricAuthHelper(
             .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
             .setConfirmationRequired(false)
 
+        AppLauncherIconManager.applyBiometricPromptBranding(context, promptInfoBuilder)
         promptInfoBuilder.setNegativeButtonText(negativeButtonText)
         
         val promptInfo = promptInfoBuilder.build()

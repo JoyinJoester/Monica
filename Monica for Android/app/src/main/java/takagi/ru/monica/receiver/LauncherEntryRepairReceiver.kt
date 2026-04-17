@@ -30,7 +30,7 @@ class LauncherEntryRepairReceiver : BroadcastReceiver() {
             runCatching {
                 AppLauncherIconManager.repairLaunchEntryPointsAfterUpgrade(
                     context,
-                    AppLauncherIcon.MODERN
+                    AppLauncherIcon.LOCK_CLASSIC
                 )
             }
         }

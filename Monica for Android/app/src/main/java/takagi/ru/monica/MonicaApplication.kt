@@ -91,7 +91,7 @@ class MonicaApplication : Application() {
             runCatching {
                 AppLauncherIconManager.repairLaunchEntryPointsAfterUpgrade(
                     this,
-                    AppLauncherIcon.MODERN
+                    AppLauncherIcon.LOCK_CLASSIC
                 )
             }.onFailure { fallbackError ->
                 Log.w(TAG, "Failed to apply fallback launcher entry points", fallbackError)

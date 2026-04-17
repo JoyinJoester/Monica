@@ -372,7 +372,7 @@ private data class PageAdjustmentSettingsBackupEntry(
     val validatorVibrationEnabled: Boolean = true,
     val copyNextCodeWhenExpiring: Boolean = false,
     val iconCardsEnabled: Boolean = false,
-    val appLauncherIcon: String = "MODERN",
+    val appLauncherIcon: String = "LOCK_CLASSIC",
     val passwordPageIconEnabled: Boolean = false,
     val authenticatorPageIconEnabled: Boolean = false,
     val passkeyPageIconEnabled: Boolean = false,

@@ -141,7 +141,7 @@ class BiometricHelper(private val context: Context) {
         }
 
         // 创建认证提示
-        val promptInfo = BiometricPrompt.PromptInfo.Builder()
+        val promptInfoBuilder = BiometricPrompt.PromptInfo.Builder()
             .setTitle(title)
             .apply {
                 if (subtitle != null) setSubtitle(subtitle)
@@ -149,7 +149,8 @@ class BiometricHelper(private val context: Context) {
             }
             .setNegativeButtonText(negativeButtonText)
             .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-            .build()
+        AppLauncherIconManager.applyBiometricPromptBranding(context, promptInfoBuilder)
+        val promptInfo = promptInfoBuilder.build()
 
         // 创建认证回调
         val executor = ContextCompat.getMainExecutor(context)

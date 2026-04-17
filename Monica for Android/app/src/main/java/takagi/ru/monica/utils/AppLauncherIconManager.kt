@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import takagi.ru.monica.MainActivity
+import takagi.ru.monica.R
 import takagi.ru.monica.data.AppLauncherIcon
 
 object AppLauncherIconManager {
@@ -27,6 +28,54 @@ object AppLauncherIconManager {
     fun repairLaunchEntryPointsAfterUpgrade(context: Context, icon: AppLauncherIcon) {
         repairCompatibilityLaunchTargets(context)
         applyHomeLauncherSelection(context, icon)
+    }
+
+    fun getCurrentSelection(context: Context): AppLauncherIcon {
+        val packageManager = context.packageManager
+        val classicHome = ComponentName(context, VISIBLE_CLASSIC_ALIAS)
+        val modernHome = ComponentName(context, VISIBLE_MODERN_ALIAS)
+
+        if (packageManager.getComponentEnabledSetting(classicHome) ==
+            PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+        ) {
+            return AppLauncherIcon.LOCK_CLASSIC
+        }
+
+        if (packageManager.getComponentEnabledSetting(modernHome) ==
+            PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+        ) {
+            return AppLauncherIcon.MODERN
+        }
+
+        return AppLauncherIcon.LOCK_CLASSIC
+    }
+
+    fun resolveBrandingIconRes(context: Context): Int {
+        return when (getCurrentSelection(context)) {
+            AppLauncherIcon.MODERN -> R.drawable.monica_launcher
+            AppLauncherIcon.LOCK_CLASSIC -> R.mipmap.ic_launcher_lock
+        }
+    }
+
+    fun applyBiometricPromptBranding(context: Context, promptInfoBuilder: Any) {
+        val builderClass = promptInfoBuilder.javaClass
+        val iconRes = resolveBrandingIconRes(context)
+
+        runCatching {
+            builderClass.methods.firstOrNull { method ->
+                method.name == "setLogoRes" &&
+                    method.parameterTypes.size == 1 &&
+                    method.parameterTypes[0] == Int::class.javaPrimitiveType
+            }?.invoke(promptInfoBuilder, iconRes)
+        }
+
+        runCatching {
+            builderClass.methods.firstOrNull { method ->
+                method.name == "setLogoDescription" &&
+                    method.parameterTypes.size == 1 &&
+                    CharSequence::class.java.isAssignableFrom(method.parameterTypes[0])
+            }?.invoke(promptInfoBuilder, context.getString(R.string.app_name))
+        }
     }
 
     private fun repairCompatibilityLaunchTargets(context: Context) {

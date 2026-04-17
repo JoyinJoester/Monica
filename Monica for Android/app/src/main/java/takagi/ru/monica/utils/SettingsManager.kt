@@ -109,7 +109,7 @@ data class PageAdjustmentSettingsSnapshot(
     val validatorVibrationEnabled: Boolean = true,
     val copyNextCodeWhenExpiring: Boolean = false,
     val iconCardsEnabled: Boolean = false,
-    val appLauncherIcon: String = takagi.ru.monica.data.AppLauncherIcon.MODERN.name,
+        val appLauncherIcon: String = takagi.ru.monica.data.AppLauncherIcon.LOCK_CLASSIC.name,
     val passwordPageIconEnabled: Boolean = false,
     val authenticatorPageIconEnabled: Boolean = false,
     val passkeyPageIconEnabled: Boolean = false,
@@ -532,9 +532,9 @@ class SettingsManager(private val context: Context) {
             iconCardsEnabled = preferences[ICON_CARDS_ENABLED_KEY] ?: false,
             appLauncherIcon = runCatching {
                 AppLauncherIcon.valueOf(
-                    preferences[APP_LAUNCHER_ICON_KEY] ?: AppLauncherIcon.MODERN.name
+                    preferences[APP_LAUNCHER_ICON_KEY] ?: AppLauncherIcon.LOCK_CLASSIC.name
                 )
-            }.getOrDefault(AppLauncherIcon.MODERN),
+            }.getOrDefault(AppLauncherIcon.LOCK_CLASSIC),
             passwordPageIconEnabled = preferences[PASSWORD_PAGE_ICON_ENABLED_KEY]
                 ?: (preferences[ICON_CARDS_ENABLED_KEY] ?: false),
             authenticatorPageIconEnabled = preferences[AUTHENTICATOR_PAGE_ICON_ENABLED_KEY]
@@ -1305,7 +1305,7 @@ class SettingsManager(private val context: Context) {
             preferences[ICON_CARDS_ENABLED_KEY] = snapshot.iconCardsEnabled
             val parsedAppLauncherIcon = runCatching {
                 AppLauncherIcon.valueOf(snapshot.appLauncherIcon.trim())
-            }.getOrDefault(AppLauncherIcon.MODERN)
+            }.getOrDefault(AppLauncherIcon.LOCK_CLASSIC)
             preferences[APP_LAUNCHER_ICON_KEY] = parsedAppLauncherIcon.name
             preferences[PASSWORD_PAGE_ICON_ENABLED_KEY] = snapshot.passwordPageIconEnabled
             preferences[AUTHENTICATOR_PAGE_ICON_ENABLED_KEY] = snapshot.authenticatorPageIconEnabled
@@ -1327,7 +1327,7 @@ class SettingsManager(private val context: Context) {
         }
         val appliedIcon = runCatching {
             AppLauncherIcon.valueOf(snapshot.appLauncherIcon.trim())
-        }.getOrDefault(AppLauncherIcon.MODERN)
+        }.getOrDefault(AppLauncherIcon.LOCK_CLASSIC)
         AppLauncherIconManager.apply(context, appliedIcon)
     }
     

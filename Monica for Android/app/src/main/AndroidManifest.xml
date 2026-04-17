@@ -56,9 +56,9 @@
         android:allowBackup="false"
         android:enableOnBackInvokedCallback="true"
         android:usesCleartextTraffic="true"
-        android:icon="@drawable/monica_launcher"
+        android:icon="@mipmap/ic_launcher_classic"
         android:label="@string/app_name"
-        android:roundIcon="@drawable/monica_launcher"
+        android:roundIcon="@mipmap/ic_launcher_classic_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Monica"
         tools:targetApi="31">
@@ -72,7 +72,7 @@
 
         <activity-alias
             android:name=".ModernLauncherAlias"
-            android:enabled="true"
+            android:enabled="false"
             android:exported="true"
             android:label="@string/app_name"
             android:targetActivity=".MainActivity" />
@@ -114,7 +114,7 @@
 
         <activity-alias
             android:name=".ClassicVisibleLauncherAlias"
-            android:enabled="false"
+            android:enabled="true"
             android:exported="true"
             android:icon="@mipmap/ic_launcher_classic"
             android:roundIcon="@mipmap/ic_launcher_classic_round"
@@ -125,7 +125,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity-alias>
-        
+
         <!-- Autofill Service (Bitwarden engine) -->
         <service
             android:name=".autofill_ng.MonicaAutofillServiceNg"
@@ -144,7 +144,7 @@
         <service
             android:name=".passkey.MonicaCredentialProviderService"
             android:label="@string/app_name"
-            android:icon="@drawable/monica_launcher"
+            android:icon="@mipmap/ic_launcher_classic"
             android:enabled="true"
             android:exported="true"
             android:permission="android.permission.BIND_CREDENTIAL_PROVIDER_SERVICE"

@@ -296,11 +296,16 @@ fun rememberPullActionState(
 
     LaunchedEffect(isSearchExpanded) {
         if (isSearchExpanded) {
-            interruptCollapseAnimation()
-            currentOffset = 0f
             hasVibrated = false
             hasSyncStageVibrated = false
             syncHintArmed = false
+            if (!lockPullUntilSyncFinished && currentOffset > 0.5f) {
+                collapsePullOffsetSmoothly()
+            } else {
+                interruptCollapseAnimation()
+                currentOffset = 0f
+                isSettlingBack = false
+            }
         }
     }
 
