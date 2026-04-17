@@ -12,6 +12,10 @@ android {
     compileSdk 35
 
     def previewVersionSuffix = project.findProperty('previewVersionSuffix')?.toString()?.trim()
+    def appVersionCode = 10
+    def baseVersionName = previewVersionSuffix ? "1.0.282-${previewVersionSuffix}" : "1.0.282"
+    def workspaceRootDir = rootDir?.parentFile ?: rootDir
+    def buildBakRootDir = new File(workspaceRootDir, 'Build bak')
 
     def normalizeTwoDigits = { raw ->
         def value = raw?.toString()?.trim()?.replaceAll('\\D', '')
@@ -55,24 +59,19 @@ android {
         'universal'
     }
 
-    // Key: apkPrefix-dateVersionPrefix, Value: next sequence in current Gradle session.
-    def allocatedDailySeqByPrefix = [:]
-
-    def findNextDailySeq = { String namePrefix ->
-        if (allocatedDailySeqByPrefix.containsKey(namePrefix)) {
-            allocatedDailySeqByPrefix[namePrefix] = allocatedDailySeqByPrefix[namePrefix] + 1
-            return allocatedDailySeqByPrefix[namePrefix]
-        }
+    def findNextDailySeqForVersion = { String versionNameTag, String dateTag, String versionTag ->
+        def versionPrefix = "${versionNameTag}-${dateTag}${versionTag}"
+        def apkNamePattern = java.util.regex.Pattern.compile('^Monica-Android-.+-' + java.util.regex.Pattern.quote(versionPrefix) + '-(\\d{2})\\.[aA][pP][kK]$')
+        def snapshotNamePattern = java.util.regex.Pattern.compile('^Monica-Android-.+-' + java.util.regex.Pattern.quote(versionPrefix) + '-(\\d{2})$')
+        def maxSeq = 0
 
         def outputsDir = file("$buildDir/outputs/apk")
-        def maxSeq = 0
         if (outputsDir.exists()) {
-            def fileNamePattern = java.util.regex.Pattern.compile('^' + java.util.regex.Pattern.quote(namePrefix) + '-(\\d{2})\\.[aA][pP][kK]$')
             outputsDir.eachFileRecurse { outputFile ->
                 if (!outputFile.isFile()) {
                     return
                 }
-                def matcher = fileNamePattern.matcher(outputFile.name)
+                def matcher = apkNamePattern.matcher(outputFile.name)
                 if (matcher.matches()) {
                     def seq = matcher.group(1).toInteger()
                     if (seq > maxSeq) {
@@ -82,17 +81,38 @@ android {
             }
         }
 
-        def nextSeq = maxSeq + 1
-        allocatedDailySeqByPrefix[namePrefix] = nextSeq
-        nextSeq
+        if (buildBakRootDir.exists()) {
+            buildBakRootDir.eachFile { snapshotDir ->
+                if (!snapshotDir.isDirectory()) {
+                    return
+                }
+                def matcher = snapshotNamePattern.matcher(snapshotDir.name)
+                if (matcher.matches()) {
+                    def seq = matcher.group(1).toInteger()
+                    if (seq > maxSeq) {
+                        maxSeq = seq
+                    }
+                }
+            }
+        }
+
+        maxSeq + 1
     }
+
+    def buildDateTag = new Date().format('yyMMdd', java.util.TimeZone.getTimeZone('Asia/Shanghai'))
+    def buildVersionTag = normalizeTwoDigits(project.findProperty('apkVersionTag') ?: appVersionCode)
+    def manualDailySeq = project.findProperty('dailySeq')
+    def buildDailySeq = manualDailySeq != null
+            ? normalizeTwoDigits(manualDailySeq)
+            : normalizeTwoDigits(findNextDailySeqForVersion(baseVersionName, buildDateTag, buildVersionTag))
+    def fullVersionName = "${baseVersionName}-${buildDateTag}${buildVersionTag}-${buildDailySeq}"
 
     defaultConfig {
         applicationId "takagi.ru.monica"
         minSdk 26
         targetSdk 34
-        versionCode 10
-        versionName previewVersionSuffix ? "1.0.282-${previewVersionSuffix}" : "1.0.282"
+        versionCode appVersionCode
+        versionName baseVersionName
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -105,6 +125,8 @@ android {
         } catch (ignored) {}
         buildConfigField 'String', 'GIT_SHA', "\"${gitSha}\""
         buildConfigField 'String', 'BUILD_TIME', "\"${new Date().format('yyyy-MM-dd HH:mm:ss z')}\""
+        buildConfigField 'String', 'FULL_VERSION_NAME', "\"${fullVersionName}\""
+        buildConfigField 'String', 'BUILD_DETAIL_TAG', "\"${buildDateTag}${buildVersionTag}-${buildDailySeq}\""
         buildConfigField 'int', 'BW_DIAG_SCHEMA', '1'
         
         // NDK 架构优化 - 只保留常用架构
@@ -142,14 +164,71 @@ android {
             def apkPrefix = 'Monica'
             def archTag = resolveArchTag(output)
             def versionNameTag = sanitizeTag(project.findProperty('apkVersionName') ?: variant.versionName ?: defaultConfig.versionName, '0.0.0')
-            def dateTag = new Date().format('yyMMdd', java.util.TimeZone.getTimeZone('Asia/Shanghai'))
-            def versionTag = normalizeTwoDigits(project.findProperty('apkVersionTag') ?: defaultConfig.versionCode)
-            def namePrefix = "${apkPrefix}-Android-${archTag}-${versionNameTag}-${dateTag}${versionTag}"
-            def manualDailySeq = project.findProperty('dailySeq')
-            def dailySeq = manualDailySeq != null
-                    ? normalizeTwoDigits(manualDailySeq)
-                    : normalizeTwoDigits(findNextDailySeq(namePrefix))
-            outputFileName = "${namePrefix}-${dailySeq}.APK"
+            def namePrefix = "${apkPrefix}-Android-${archTag}-${versionNameTag}-${buildDateTag}${buildVersionTag}"
+            outputFileName = "${namePrefix}-${buildDailySeq}.APK"
+        }
+
+        def variantCap = variant.name.capitalize()
+        def backupTaskName = "backup${variantCap}CodeToBuildBak"
+        tasks.register(backupTaskName) {
+            group = 'build'
+            description = "Copy Monica Android source snapshot to Build bak after ${variant.name} build"
+            doLast {
+                buildBakRootDir.mkdirs()
+                def apkOutputDir = file("$buildDir/outputs/apk/${variant.dirName}")
+                if (!apkOutputDir.exists()) {
+                    println "[Build bak] Skip ${variant.name}: APK output directory not found -> ${apkOutputDir}"
+                    return
+                }
+
+                def apkFiles = apkOutputDir.listFiles()?.findAll {
+                    it.isFile() && it.name ==~ /(?i).*\.apk$/
+                }?.sort { a, b -> a.name <=> b.name } ?: []
+
+                if (apkFiles.isEmpty()) {
+                    println "[Build bak] Skip ${variant.name}: no APK found in ${apkOutputDir}"
+                    return
+                }
+
+                apkFiles.each { apkFile ->
+                    def snapshotName = apkFile.name.replaceFirst('(?i)\\.apk$', '')
+                    def snapshotDir = new File(buildBakRootDir, snapshotName)
+                    if (snapshotDir.exists()) {
+                        snapshotDir.deleteDir()
+                    }
+                    snapshotDir.mkdirs()
+
+                    copy {
+                        from rootDir
+                        into snapshotDir
+                        exclude '.gradle/**',
+                                '.kotlin/**',
+                                '.idea/**',
+                                'build/**',
+                                'app/build/**',
+                                '**/*.iml',
+                                'local.properties',
+                                '**/*.apk',
+                                '**/*.APK',
+                                '**/*.aab',
+                                '**/*.jks',
+                                '**/*.keystore'
+                    }
+
+                    def metaFile = new File(snapshotDir, 'BUILD_SNAPSHOT_INFO.txt')
+                    metaFile.text = """snapshot_name=${snapshotName}
+full_version=${fullVersionName}
+display_version=${baseVersionName}
+captured_at=${new Date().format('yyyy-MM-dd HH:mm:ss', java.util.TimeZone.getTimeZone('Asia/Shanghai'))}
+source_root=${rootDir.absolutePath}
+"""
+                    println "[Build bak] Snapshot created: ${snapshotDir}"
+                }
+            }
+        }
+
+        tasks.matching { it.name == "assemble${variantCap}" }.configureEach {
+            finalizedBy(backupTaskName)
         }
     }
 

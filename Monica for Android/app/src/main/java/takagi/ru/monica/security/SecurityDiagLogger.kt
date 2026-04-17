@@ -38,7 +38,8 @@ object SecurityDiagLogger {
                 val header = buildString {
                     appendLine("=== Monica Security Diag Session ===")
                     appendLine("session_start=$time")
-                    appendLine("app_version=${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+                    appendLine("app_version=${BuildConfig.FULL_VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+                    appendLine("app_display_version=${BuildConfig.VERSION_NAME}")
                     appendLine("build_time=${BuildConfig.BUILD_TIME}")
                     appendLine("git_sha=${BuildConfig.GIT_SHA}")
                     appendLine("android_api=${Build.VERSION.SDK_INT}")

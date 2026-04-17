@@ -16,6 +16,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -829,7 +830,7 @@ fun TotpListContent(
         }
         val revealHeight by animateDpAsState(
             targetValue = revealHeightTarget,
-            animationSpec = tween(durationMillis = 220),
+            animationSpec = if (pullAction.isSettlingBack) snap() else tween(durationMillis = 220),
             label = "totp_pull_reveal_height"
         )
         val showPullIndicator = revealHeight > 0.5.dp && (

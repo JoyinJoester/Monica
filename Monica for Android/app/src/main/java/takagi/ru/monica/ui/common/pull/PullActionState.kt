@@ -27,6 +27,7 @@ import takagi.ru.monica.util.VibrationPatterns
 @Stable
 data class PullActionStateHandle(
     val currentOffset: Float,
+    val isSettlingBack: Boolean,
     val syncHintArmed: Boolean,
     val isBitwardenSyncing: Boolean,
     val showSyncFeedback: Boolean,
@@ -54,6 +55,7 @@ fun rememberPullActionState(
     val syncHoldMillis = 500L
 
     var currentOffset by remember { mutableFloatStateOf(0f) }
+    var isSettlingBack by remember { mutableStateOf(false) }
     var hasVibrated by remember { mutableStateOf(false) }
     var hasSyncStageVibrated by remember { mutableStateOf(false) }
     var syncHintArmed by remember { mutableStateOf(false) }
@@ -63,6 +65,7 @@ fun rememberPullActionState(
     var showSyncFeedback by remember { mutableStateOf(false) }
     var syncFeedbackMessage by remember { mutableStateOf("") }
     var syncFeedbackIsSuccess by remember { mutableStateOf(false) }
+    val collapseAnimatable = remember { Animatable(0f) }
 
     val vibrator = remember {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
@@ -122,19 +125,38 @@ fun rememberPullActionState(
         }
     }
 
+    fun interruptCollapseAnimation() {
+        if (!collapseAnimatable.isRunning && !isSettlingBack) return
+        isSettlingBack = false
+        scope.launch {
+            collapseAnimatable.stop()
+            collapseAnimatable.snapTo(currentOffset)
+        }
+    }
+
     suspend fun collapsePullOffsetSmoothly() {
         if (currentOffset <= 0.5f) {
             currentOffset = 0f
+            isSettlingBack = false
             return
         }
-        Animatable(currentOffset).animateTo(
-            targetValue = 0f,
-            animationSpec = tween(
-                durationMillis = 180,
-                easing = androidx.compose.animation.core.LinearOutSlowInEasing
-            )
-        ) {
-            currentOffset = value
+        if (collapseAnimatable.isRunning) return
+        isSettlingBack = true
+        collapseAnimatable.snapTo(currentOffset)
+        try {
+            collapseAnimatable.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(
+                    durationMillis = 140,
+                    easing = androidx.compose.animation.core.FastOutLinearInEasing
+                )
+            ) {
+                currentOffset = value
+            }
+        } finally {
+            currentOffset = 0f
+            collapseAnimatable.snapTo(0f)
+            isSettlingBack = false
         }
     }
 
@@ -213,6 +235,7 @@ fun rememberPullActionState(
 
     fun onVerticalDrag(dragAmount: Float) {
         if (lockPullUntilSyncFinished || dragAmount <= 0f) return
+        interruptCollapseAnimation()
         val newOffset = calculateDampedPullOffset(
             currentOffset = currentOffset,
             dragDelta = dragAmount,
@@ -242,6 +265,7 @@ fun rememberPullActionState(
         if (isBitwardenDatabaseView) {
             resolveSyncableVaultId()
         } else {
+            interruptCollapseAnimation()
             canRunBitwardenSync = false
             syncHintArmed = false
             isBitwardenSyncing = false
@@ -272,6 +296,7 @@ fun rememberPullActionState(
 
     LaunchedEffect(isSearchExpanded) {
         if (isSearchExpanded) {
+            interruptCollapseAnimation()
             currentOffset = 0f
             hasVibrated = false
             hasSyncStageVibrated = false
@@ -286,6 +311,7 @@ fun rememberPullActionState(
                     return available
                 }
                 if (currentOffset > 0 && available.y < 0) {
+                    interruptCollapseAnimation()
                     val newOffset = (currentOffset + available.y).coerceAtLeast(0f)
                     val consumed = currentOffset - newOffset
                     currentOffset = newOffset
@@ -299,6 +325,7 @@ fun rememberPullActionState(
                     return available
                 }
                 if (available.y > 0 && source == NestedScrollSource.UserInput) {
+                    interruptCollapseAnimation()
                     val newOffset = calculateDampedPullOffset(
                         currentOffset = currentOffset,
                         dragDelta = available.y,
@@ -334,6 +361,7 @@ fun rememberPullActionState(
 
     return PullActionStateHandle(
         currentOffset = currentOffset,
+        isSettlingBack = isSettlingBack,
         syncHintArmed = syncHintArmed,
         isBitwardenSyncing = isBitwardenSyncing,
         showSyncFeedback = showSyncFeedback,

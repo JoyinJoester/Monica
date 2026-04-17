@@ -39,6 +39,7 @@ import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
 import androidx.fragment.app.FragmentActivity
+import takagi.ru.monica.BuildConfig
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.BottomNavContentTab
@@ -945,6 +946,19 @@ fun SettingsScreen(
                     val websiteUrl = "https://joyinjoester.github.io/Monica/"
                     val iconSourceUrl = "https://github.com/stratumauth/app/tree/v1.4.0/icons"
                     val iconReleaseUrl = "https://github.com/stratumauth/app/releases/tag/v1.4.0"
+                    val fullVersion = BuildConfig.FULL_VERSION_NAME.ifBlank { BuildConfig.VERSION_NAME }
+
+                    Text(
+                        text = stringResource(R.string.version_info_full_version_label),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = fullVersion,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     Text(
                         text = stringResource(R.string.version_info_github_label),

@@ -40,7 +40,8 @@ object BitwardenDiagLogger {
                 val header = buildString {
                     appendLine("=== Monica Bitwarden Diag Session ===")
                     appendLine("session_start=$time")
-                    appendLine("app_version=${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+                    appendLine("app_version=${BuildConfig.FULL_VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+                    appendLine("app_display_version=${BuildConfig.VERSION_NAME}")
                     appendLine("build_time=${BuildConfig.BUILD_TIME}")
                     appendLine("git_sha=${BuildConfig.GIT_SHA}")
                     appendLine("bw_diag_schema=${BuildConfig.BW_DIAG_SCHEMA}")

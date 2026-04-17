@@ -789,6 +789,8 @@ private object DeveloperLogDebugHelper {
             appendLine("=== Monica Developer Log Report ===")
             appendLine("exportedAt=${timeFormatter.format(Date())}")
             appendLine("package=${context.packageName}")
+            appendLine("appVersion=${BuildConfig.FULL_VERSION_NAME}")
+            appendLine("displayVersion=${BuildConfig.VERSION_NAME}")
             appendLine("android=${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
             appendLine()
             appendLine("=== System Logcat ===")

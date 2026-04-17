@@ -45,7 +45,10 @@ keyguard-app-master/
 stratumauthapp/
 
 # Android build caches
+.gradle-user-home/
+.android-user-home/
 Monica for Android/.gradle-user-home/
+Monica for Android/.android-user-home/
 Monica for Android/.kotlin/
 Monica for Android/.gradle/
 Monica for Android/app/build/
@@ -61,6 +64,7 @@ task_plan_bottom_sheet_nav.md
 密码库V2-任务清单.md
 # Local backups - never commit
 monica_backup_*/
+Build bak/
 # Ignore external project
 SteamTools-develop/
 EasyNotes-master/

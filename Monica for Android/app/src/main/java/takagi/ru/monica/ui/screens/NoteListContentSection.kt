@@ -2,6 +2,7 @@ package takagi.ru.monica.ui.screens
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -86,6 +87,7 @@ fun NoteListContent(
     val syncTriggerDistance = remember(density) { with(density) { 72.dp.toPx() } }
     val maxDragDistance = remember(density) { with(density) { 100.dp.toPx() } }
     val syncHoldMillis = 500L
+    var isSettlingBack by remember { mutableStateOf(false) }
     var hasVibrated by remember { mutableStateOf(false) }
     var hasSyncStageVibrated by remember { mutableStateOf(false) }
     var syncHintArmed by remember { mutableStateOf(false) }
@@ -96,6 +98,7 @@ fun NoteListContent(
     var syncFeedbackMessage by remember { mutableStateOf("") }
     var syncFeedbackIsSuccess by remember { mutableStateOf(false) }
     var canTriggerPullToSearch by remember { mutableStateOf(false) }
+    val collapseAnimatable = remember { Animatable(0f) }
     val vibrator = remember {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
             val vibratorManager = context.getSystemService(android.content.Context.VIBRATOR_MANAGER_SERVICE) as? android.os.VibratorManager
@@ -152,19 +155,38 @@ fun NoteListContent(
         }
     }
 
+    fun interruptCollapseAnimation() {
+        if (!collapseAnimatable.isRunning && !isSettlingBack) return
+        isSettlingBack = false
+        scope.launch {
+            collapseAnimatable.stop()
+            collapseAnimatable.snapTo(currentOffset)
+        }
+    }
+
     suspend fun collapsePullOffsetSmoothly() {
         if (currentOffset <= 0.5f) {
             currentOffset = 0f
+            isSettlingBack = false
             return
         }
-        Animatable(currentOffset).animateTo(
-            targetValue = 0f,
-            animationSpec = tween(
-                durationMillis = 180,
-                easing = androidx.compose.animation.core.LinearOutSlowInEasing
-            )
-        ) {
-            currentOffset = value
+        if (collapseAnimatable.isRunning) return
+        isSettlingBack = true
+        collapseAnimatable.snapTo(currentOffset)
+        try {
+            collapseAnimatable.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(
+                    durationMillis = 140,
+                    easing = androidx.compose.animation.core.FastOutLinearInEasing
+                )
+            ) {
+                currentOffset = value
+            }
+        } finally {
+            currentOffset = 0f
+            collapseAnimatable.snapTo(0f)
+            isSettlingBack = false
         }
     }
 
@@ -245,6 +267,7 @@ fun NoteListContent(
         if (isBitwardenDatabaseView) {
             resolveSyncableVaultId()
         } else {
+            interruptCollapseAnimation()
             canRunBitwardenSync = false
             syncHintArmed = false
             isBitwardenSyncing = false
@@ -278,6 +301,7 @@ fun NoteListContent(
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 if (lockPullUntilSyncFinished) return available
                 if (currentOffset > 0 && available.y < 0) {
+                    interruptCollapseAnimation()
                     val newOffset = (currentOffset + available.y).coerceAtLeast(0f)
                     val consumed = currentOffset - newOffset
                     currentOffset = newOffset
@@ -290,6 +314,7 @@ fun NoteListContent(
                 if (lockPullUntilSyncFinished) return available
                 if (!isSearchExpanded && available.y > 0 && canTriggerPullToSearch) {
                     if (source == NestedScrollSource.UserInput) {
+                        interruptCollapseAnimation()
                         val newOffset = calculateDampedPullOffset(
                             currentOffset = currentOffset,
                             dragDelta = available.y,
@@ -382,7 +407,7 @@ fun NoteListContent(
     }
     val revealHeight by animateDpAsState(
         targetValue = revealHeightTarget,
-        animationSpec = tween(durationMillis = 220),
+        animationSpec = if (isSettlingBack) snap() else tween(durationMillis = 220),
         label = "note_pull_reveal_height"
     )
     val showPullIndicator = revealHeight > 0.5.dp && (

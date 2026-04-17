@@ -51,13 +51,26 @@ jobs:
       - name: Generate checksums
         run: |
           cd app/build/outputs/apk/release
-          sha256sum *.apk > checksums.txt
+          apk_list="$(find . -maxdepth 1 -type f \( -iname '*.apk' \) -printf '%f\n' | sort)"
+          apk_count="$(printf '%s\n' "$apk_list" | sed '/^$/d' | wc -l | tr -d ' ')"
+
+          if [ "$apk_count" = "0" ]; then
+            echo "No release APK found for checksums"
+            ls -la
+            exit 1
+          fi
+
+          : > checksums.txt
+          printf '%s\n' "$apk_list" | sed '/^$/d' | while IFS= read -r apk_name; do
+            sha256sum "$apk_name" >> checksums.txt
+          done
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: release-apk-obfuscated
           path: |
             ${{ github.workspace }}/Monica for Android/app/build/outputs/apk/release/*.apk
+            ${{ github.workspace }}/Monica for Android/app/build/outputs/apk/release/*.APK
             ${{ github.workspace }}/Monica for Android/app/build/outputs/apk/release/checksums.txt
           retention-days: 14
           if-no-files-found: error

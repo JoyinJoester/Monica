@@ -97,7 +97,12 @@ jobs:
           GITHUB_WORKSPACE: ${{ github.workspace }}
 
       - name: Generate preview version suffix
-        run: echo "PREVIEW_VERSION_SUFFIX=build.$(date -u +%Y%m%d%H%M)" >> $GITHUB_ENV
+        id: preview_meta
+        shell: bash
+        run: |
+          suffix="build.$(date -u +%Y%m%d%H%M)"
+          echo "PREVIEW_VERSION_SUFFIX=$suffix" >> "$GITHUB_ENV"
+          echo "preview_version_suffix=$suffix" >> "$GITHUB_OUTPUT"
 
       - name: Build Debug APK for PR validation
         if: github.event_name == 'pull_request'
@@ -132,39 +137,30 @@ jobs:
           path: ${{ runner.temp }}/preview-build.log
           if-no-files-found: ignore
 
-      - name: Rename APK
+      - name: Collect generated APK metadata
+        id: preview_apk_meta
         if: github.event_name != 'pull_request'
         shell: bash
         run: |
           cd app/build/outputs/apk/release
 
-          mapfile -t apk_files < <(find . -maxdepth 1 -type f \( -iname '*.apk' \) -printf '%f\n' | sort)
-          if [ "${#apk_files[@]}" -eq 0 ]; then
+          apk_list="$(find . -maxdepth 1 -type f \( -iname '*.apk' \) -printf '%f\n' | sort)"
+          apk_count="$(printf '%s\n' "$apk_list" | sed '/^$/d' | wc -l | tr -d ' ')"
+
+          if [ "$apk_count" = "0" ]; then
             echo "No release APK found"
             ls -la
             exit 1
           fi
 
-          preview_apk="Monica-Android-Preview-${PREVIEW_VERSION_SUFFIX}.apk"
-          src_apk=""
+          first_apk="$(printf '%s\n' "$apk_list" | sed '/^$/d' | head -n 1)"
 
-          if [ -f app-release.apk ]; then
-            src_apk="app-release.apk"
-          elif [ -f app-release-unsigned.apk ]; then
-            src_apk="app-release-unsigned.apk"
-          else
-            src_apk="${apk_files[0]}"
-          fi
-
-          if [ "$src_apk" = "$preview_apk" ]; then
-            echo "Preview APK already named: $preview_apk"
-          else
-            mv "$src_apk" "$preview_apk"
-            echo "Renamed $src_apk -> $preview_apk"
-          fi
-
-          echo "Release APKs after rename:"
-          ls -la
+          echo "Detected release APKs:"
+          printf '%s\n' "$apk_list" | sed '/^$/d' | sed 's/^/ - /'
+          echo "PREVIEW_APK_NAME=${first_apk}" >> "$GITHUB_ENV"
+          echo "PREVIEW_APK_COUNT=${apk_count}" >> "$GITHUB_ENV"
+          echo "preview_apk_name=${first_apk}" >> "$GITHUB_OUTPUT"
+          echo "preview_apk_count=${apk_count}" >> "$GITHUB_OUTPUT"
 
       - name: Delete existing preview release
         if: github.event_name != 'pull_request'
@@ -199,7 +195,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: preview
-          name: "⚠️ Development Preview (${{ env.PREVIEW_VERSION_SUFFIX }})"
+          name: "⚠️ Development Preview (${{ steps.preview_meta.outputs.preview_version_suffix }})"
           body: |
             > **⚠️ 注意：这是一个自动构建的开发预览版本 (Development Preview)**
             > 
@@ -209,7 +205,8 @@ jobs:
             > 预览版本可能会更快地包含最新的功能和修复，但也可能更不稳定。
             > ---
             > **构建信息：**
-            > *   **Build Suffix**: `${{ env.PREVIEW_VERSION_SUFFIX }}`
+            > *   **Build Suffix**: `${{ steps.preview_meta.outputs.preview_version_suffix }}`
+            > *   **Generated APK**: `${{ steps.preview_apk_meta.outputs.preview_apk_name }}`
             > *   **Commit SHA**: `${{ github.sha }}`
             > *   **Ref**: `${{ github.ref }}`
           files: |

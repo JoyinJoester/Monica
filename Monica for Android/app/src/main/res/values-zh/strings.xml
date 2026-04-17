@@ -899,6 +899,7 @@
     <string name="version_info_dialog_title">版本与链接</string>
     <string name="version_info_github_label">GitHub</string>
     <string name="version_info_website_label">官方网站</string>
+    <string name="version_info_full_version_label">完整版本</string>
     <string name="version_info_icon_source_label">图标来源</string>
     <string name="version_info_icon_release_label">图标版本</string>
     <string name="version_info_simple_icons_note">图标资源已本地打包，来源于 Stratum Auth app（v1.4.0，GPL-3.0）。品牌名称与 Logo 的商标权归各自权利人所有。</string>

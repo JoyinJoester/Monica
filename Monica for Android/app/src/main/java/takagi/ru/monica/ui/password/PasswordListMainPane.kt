@@ -1,6 +1,7 @@
 package takagi.ru.monica.ui
 
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -127,7 +128,7 @@ internal fun PasswordListMainPane(
         }
         val revealHeight by animateDpAsState(
             targetValue = revealHeightTarget,
-            animationSpec = tween(durationMillis = 220),
+            animationSpec = if (pullAction.isSettlingBack) snap() else tween(durationMillis = 220),
             label = "pull_reveal_height"
         )
         val showPullIndicator = pullHintText != null && revealHeight > 0.5.dp
