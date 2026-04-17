@@ -24,6 +24,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: android-preview-release
+  cancel-in-progress: true
+
 jobs:
   build-preview:
     name: Build & Publish Preview
@@ -162,26 +166,6 @@ jobs:
           echo "preview_apk_name=${first_apk}" >> "$GITHUB_OUTPUT"
           echo "preview_apk_count=${apk_count}" >> "$GITHUB_OUTPUT"
 
-      - name: Delete existing preview release
-        if: github.event_name != 'pull_request'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
-        run: |
-          set +e
-          check_output=$(gh api repos/${{ github.repository }}/releases/tags/preview 2>&1)
-          check_rc=$?
-          set -e
-
-          if [ "$check_rc" -eq 0 ]; then
-            gh release delete preview --yes --cleanup-tag
-          elif echo "$check_output" | grep -qi "404"; then
-            echo "No existing preview release to delete"
-          else
-            echo "::error title=Failed to query preview release::${check_output}"
-            exit 1
-          fi
-
       - name: Move preview tag to current commit
         if: github.event_name != 'pull_request'
         run: |
@@ -190,11 +174,30 @@ jobs:
           git tag -fa preview ${{ github.sha }} -m "Development Preview"
           git push origin refs/tags/preview --force
 
+      - name: Cleanup duplicate preview draft releases
+        if: github.event_name != 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          draft_ids=$(gh api repos/${{ github.repository }}/releases --paginate --jq '.[] | select(.tag_name == "preview" and .draft == true) | .id')
+          if [ -z "$draft_ids" ]; then
+            echo "No duplicate preview draft releases to clean"
+            exit 0
+          fi
+
+          while IFS= read -r release_id; do
+            [ -z "$release_id" ] && continue
+            echo "Deleting duplicate preview draft release id=${release_id}"
+            gh api -X DELETE repos/${{ github.repository }}/releases/${release_id}
+          done <<< "$draft_ids"
+
       - name: Publish Preview to Release
         if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: preview
+          target_commitish: ${{ github.sha }}
           name: "⚠️ Development Preview (${{ steps.preview_meta.outputs.preview_version_suffix }})"
           body: |
             > **⚠️ 注意：这是一个自动构建的开发预览版本 (Development Preview)**
@@ -210,7 +213,6 @@ jobs:
             > *   **Commit SHA**: `${{ github.sha }}`
             > *   **Ref**: `${{ github.ref }}`
           files: |
-            Monica for Android/app/build/outputs/apk/release/*.apk
             Monica for Android/app/build/outputs/apk/release/*.APK
           draft: false
           prerelease: true
