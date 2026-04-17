@@ -166,8 +166,6 @@ import takagi.ru.monica.ui.common.dialog.DeleteConfirmDialog
 import takagi.ru.monica.ui.common.layout.DetailPane
 import takagi.ru.monica.ui.common.layout.InspectorRow
 import takagi.ru.monica.ui.common.layout.ListPane
-import takagi.ru.monica.ui.common.pull.PullActionVisualState
-import takagi.ru.monica.ui.common.pull.PullGestureIndicator
 import takagi.ru.monica.ui.common.pull.rememberPullActionState
 import takagi.ru.monica.ui.common.state.rememberSaveableLazyListState
 import takagi.ru.monica.ui.common.selection.CategoryListItem
@@ -792,74 +790,7 @@ fun TotpListContent(
             )
         }
 
-        val searchProgress = (pullAction.currentOffset / searchTriggerDistance).coerceIn(0f, 1f)
-        val syncProgress = ((pullAction.currentOffset - searchTriggerDistance) / (syncTriggerDistance - searchTriggerDistance))
-            .coerceIn(0f, 1f)
-        val pullVisualState = when {
-            enableBitwardenPullSync && pullAction.isBitwardenSyncing -> PullActionVisualState.SYNCING
-            enableBitwardenPullSync && pullAction.showSyncFeedback -> PullActionVisualState.SYNC_DONE
-            enableBitwardenPullSync && pullAction.syncHintArmed -> PullActionVisualState.SYNC_READY
-            pullAction.currentOffset >= searchTriggerDistance -> PullActionVisualState.SEARCH_READY
-            else -> PullActionVisualState.IDLE
-        }
-        val pullHintText = when (pullVisualState) {
-            PullActionVisualState.SYNCING -> stringResource(R.string.pull_syncing_bitwarden)
-            PullActionVisualState.SYNC_DONE -> pullAction.syncFeedbackMessage.ifBlank {
-                if (pullAction.syncFeedbackIsSuccess) {
-                    stringResource(R.string.pull_sync_success)
-                } else {
-                    stringResource(R.string.sync_status_failed_full)
-                }
-            }
-            PullActionVisualState.SYNC_READY -> stringResource(R.string.pull_release_to_sync_bitwarden)
-            PullActionVisualState.SEARCH_READY,
-            PullActionVisualState.IDLE -> null
-        }
-        val shouldPinIndicator = enableBitwardenPullSync && (
-            pullAction.syncHintArmed || pullAction.isBitwardenSyncing || pullAction.showSyncFeedback
-        )
-        val revealHeightTarget = with(density) {
-            val pullHeight = pullAction.currentOffset.toDp().coerceIn(0.dp, 72.dp)
-            if (shouldPinIndicator) {
-                maxOf(pullHeight, 52.dp)
-            } else if (pullAction.currentOffset > 0.5f) {
-                maxOf(pullHeight, 36.dp)
-            } else {
-                0.dp
-            }
-        }
-        val revealHeight by animateDpAsState(
-            targetValue = revealHeightTarget,
-            animationSpec = if (pullAction.isSettlingBack) snap() else tween(durationMillis = 220),
-            label = "totp_pull_reveal_height"
-        )
-        val showPullIndicator = revealHeight > 0.5.dp && (
-            pullAction.currentOffset > 0.5f || shouldPinIndicator
-        )
         val contentPullOffset = if (enableBitwardenPullSync) 0 else pullAction.currentOffset.toInt()
-
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(revealHeight),
-            contentAlignment = Alignment.BottomCenter
-        ) {
-            if (showPullIndicator) {
-                PullGestureIndicator(
-                    state = pullVisualState,
-                    searchProgress = searchProgress,
-                    syncProgress = syncProgress,
-                    text = pullHintText ?: "",
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 24.dp)
-                        .padding(bottom = 8.dp)
-                )
-            }
-        }
-        if (showPullIndicator) {
-            Spacer(modifier = Modifier.height(4.dp))
-        }
 
         // TOTP列表
         if (filteredTotpItems.isEmpty()) {

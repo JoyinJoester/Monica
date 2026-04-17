@@ -77,7 +77,6 @@ import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.components.PullActionVisualState
-import takagi.ru.monica.ui.components.PullGestureIndicator
 import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import takagi.ru.monica.ui.components.SyncStatusBadge
 import takagi.ru.monica.ui.components.SyncStatusIcon
@@ -618,8 +617,13 @@ fun PasskeyListScreen(
 
     LaunchedEffect(isSearchExpanded) {
         if (isSearchExpanded) {
-            interruptCollapseAnimation()
-            currentOffset = 0f
+            if (!lockPullUntilSyncFinished && currentOffset > 0.5f) {
+                collapsePullOffsetSmoothly()
+            } else {
+                interruptCollapseAnimation()
+                currentOffset = 0f
+                isSettlingBack = false
+            }
             hasVibrated = false
             hasSyncStageVibrated = false
             syncHintArmed = false
@@ -992,50 +996,6 @@ fun PasskeyListScreen(
         
         // 主内容 + 左下角胶囊多选栏
         Box(modifier = Modifier.fillMaxSize()) {
-            val searchProgress = (currentOffset / searchTriggerDistance).coerceIn(0f, 1f)
-            val syncProgress = ((currentOffset - searchTriggerDistance) / (syncTriggerDistance - searchTriggerDistance))
-                .coerceIn(0f, 1f)
-            val pullVisualState = when {
-                isBitwardenDatabaseView && isBitwardenSyncing -> PullActionVisualState.SYNCING
-                isBitwardenDatabaseView && showSyncFeedback -> PullActionVisualState.SYNC_DONE
-                isBitwardenDatabaseView && syncHintArmed -> PullActionVisualState.SYNC_READY
-                currentOffset >= searchTriggerDistance -> PullActionVisualState.SEARCH_READY
-                else -> PullActionVisualState.IDLE
-            }
-            val pullHintText = when (pullVisualState) {
-                PullActionVisualState.SYNCING -> stringResource(R.string.pull_syncing_bitwarden)
-                PullActionVisualState.SYNC_DONE -> syncFeedbackMessage.ifBlank {
-                    if (syncFeedbackIsSuccess) {
-                        stringResource(R.string.pull_sync_success)
-                    } else {
-                        stringResource(R.string.sync_status_failed_full)
-                    }
-                }
-                PullActionVisualState.SYNC_READY -> stringResource(R.string.pull_release_to_sync_bitwarden)
-                PullActionVisualState.SEARCH_READY,
-                PullActionVisualState.IDLE -> null
-            }
-            val shouldPinIndicator = isBitwardenDatabaseView && (
-                syncHintArmed || isBitwardenSyncing || showSyncFeedback
-            )
-            val revealHeightTarget = with(density) {
-                val pullHeight = currentOffset.toDp().coerceIn(0.dp, 72.dp)
-                if (shouldPinIndicator) {
-                    maxOf(pullHeight, 52.dp)
-                } else if (currentOffset > 0.5f) {
-                    maxOf(pullHeight, 36.dp)
-                } else {
-                    0.dp
-                }
-            }
-            val revealHeight by animateDpAsState(
-                targetValue = revealHeightTarget,
-                animationSpec = if (isSettlingBack) snap() else tween(durationMillis = 220),
-                label = "passkey_pull_reveal_height"
-            )
-            val showPullIndicator = revealHeight > 0.5.dp && (
-                currentOffset > 0.5f || shouldPinIndicator
-            )
             val contentPullOffset = if (isBitwardenDatabaseView) {
                 (currentOffset * 0.28f).toInt()
             } else {
@@ -1043,29 +1003,6 @@ fun PasskeyListScreen(
             }
 
             Column(modifier = Modifier.fillMaxSize()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(revealHeight),
-                    contentAlignment = Alignment.BottomCenter
-                ) {
-                    if (showPullIndicator) {
-                        PullGestureIndicator(
-                            state = pullVisualState,
-                            searchProgress = searchProgress,
-                            syncProgress = syncProgress,
-                            text = pullHintText ?: "",
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 24.dp)
-                                .padding(bottom = 8.dp)
-                        )
-                    }
-                }
-                if (showPullIndicator) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                }
-
                 Box(modifier = Modifier.fillMaxSize()) {
                     if (isLoading) {
                         Box(
