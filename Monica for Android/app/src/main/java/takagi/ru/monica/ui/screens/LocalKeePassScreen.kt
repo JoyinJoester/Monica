@@ -49,6 +49,8 @@ import java.util.*
 import kotlinx.coroutines.launch
 import takagi.ru.monica.ui.components.OutlinedTextField
 
+private const val GOOGLE_DRIVE_ENTRY_ENABLED = false
+
 /**
  * 本地 KeePass 数据库管理页面
  * M3 Expressive Design
@@ -71,6 +73,8 @@ fun LocalKeePassScreen(
     var showCreateDialog by remember { mutableStateOf(false) }
     var showImportDialog by remember { mutableStateOf(false) }
     var showWebDavAttachSheet by remember { mutableStateOf(false) }
+    var showOneDriveAttachSheet by remember { mutableStateOf(false) }
+    var showGoogleDriveAttachSheet by remember { mutableStateOf(false) }
     var selectedDatabase by remember { mutableStateOf<LocalKeePassDatabase?>(null) }
     var showDatabaseDetailSheet by remember { mutableStateOf(false) }
     var databaseToTransferExternal by remember { mutableStateOf<LocalKeePassDatabase?>(null) }
@@ -162,7 +166,9 @@ fun LocalKeePassScreen(
                 EmptyKeePassState(
                     onCreateClick = { showCreateDialog = true },
                     onImportClick = { filePickerLauncher.launch(arrayOf("*/*")) },
-                    onAttachWebDavClick = { showWebDavAttachSheet = true }
+                    onAttachWebDavClick = { showWebDavAttachSheet = true },
+                    onAttachOneDriveClick = { showOneDriveAttachSheet = true },
+                    onAttachGoogleDriveClick = { showGoogleDriveAttachSheet = true }
                 )
             } else {
                 // 数据库列表
@@ -264,7 +270,9 @@ fun LocalKeePassScreen(
                         Spacer(modifier = Modifier.height(16.dp))
                         QuickActionsCard(
                             onImportClick = { filePickerLauncher.launch(arrayOf("*/*")) },
-                            onAttachWebDavClick = { showWebDavAttachSheet = true }
+                            onAttachWebDavClick = { showWebDavAttachSheet = true },
+                            onAttachOneDriveClick = { showOneDriveAttachSheet = true },
+                            onAttachGoogleDriveClick = { showGoogleDriveAttachSheet = true }
                         )
                     }
                 }
@@ -318,6 +326,20 @@ fun LocalKeePassScreen(
             onDismiss = { showWebDavAttachSheet = false },
         )
     }
+
+    if (showOneDriveAttachSheet) {
+        AttachOneDriveDatabaseBottomSheet(
+            viewModel = viewModel,
+            onDismiss = { showOneDriveAttachSheet = false },
+        )
+    }
+
+    if (GOOGLE_DRIVE_ENTRY_ENABLED && showGoogleDriveAttachSheet) {
+        AttachGoogleDriveDatabaseBottomSheet(
+            viewModel = viewModel,
+            onDismiss = { showGoogleDriveAttachSheet = false },
+        )
+    }
     
     // 数据库详情底部弹窗
     if (showDatabaseDetailSheet && selectedDatabase != null) {
@@ -356,7 +378,9 @@ fun LocalKeePassScreen(
 private fun EmptyKeePassState(
     onCreateClick: () -> Unit,
     onImportClick: () -> Unit,
-    onAttachWebDavClick: () -> Unit
+    onAttachWebDavClick: () -> Unit,
+    onAttachOneDriveClick: () -> Unit,
+    onAttachGoogleDriveClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -424,6 +448,26 @@ private fun EmptyKeePassState(
                 Icon(Icons.Default.CloudSync, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(stringResource(R.string.keepass_webdav_attach_action))
+            }
+
+            OutlinedButton(
+                onClick = onAttachOneDriveClick,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Cloud, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(stringResource(R.string.keepass_onedrive_attach_action))
+            }
+
+            if (GOOGLE_DRIVE_ENTRY_ENABLED) {
+                OutlinedButton(
+                    onClick = onAttachGoogleDriveClick,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.CloudQueue, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.keepass_gdrive_attach_action))
+                }
             }
 
             OutlinedButton(
@@ -511,18 +555,21 @@ private fun KeePassDatabaseCard(
         KeePassDatabaseSourceType.LOCAL_DOCUMENT_URI -> MaterialTheme.colorScheme.secondary
         KeePassDatabaseSourceType.REMOTE_WEBDAV -> MaterialTheme.colorScheme.tertiary
         KeePassDatabaseSourceType.REMOTE_ONEDRIVE -> MaterialTheme.colorScheme.tertiary
+        KeePassDatabaseSourceType.REMOTE_GOOGLE_DRIVE -> MaterialTheme.colorScheme.tertiary
     }
     val sourceLabel = when (database.sourceType) {
         KeePassDatabaseSourceType.LOCAL_INTERNAL -> stringResource(R.string.internal_storage)
         KeePassDatabaseSourceType.LOCAL_DOCUMENT_URI -> stringResource(R.string.external_storage)
         KeePassDatabaseSourceType.REMOTE_WEBDAV -> stringResource(R.string.keepass_webdav_database_badge)
-        KeePassDatabaseSourceType.REMOTE_ONEDRIVE -> stringResource(R.string.remote_storage)
+        KeePassDatabaseSourceType.REMOTE_ONEDRIVE -> stringResource(R.string.keepass_onedrive_database_badge)
+        KeePassDatabaseSourceType.REMOTE_GOOGLE_DRIVE -> stringResource(R.string.keepass_gdrive_database_badge)
     }
     val sourceIcon = when (database.sourceType) {
         KeePassDatabaseSourceType.LOCAL_INTERNAL -> Icons.Filled.Lock
         KeePassDatabaseSourceType.LOCAL_DOCUMENT_URI -> Icons.Filled.LockOpen
         KeePassDatabaseSourceType.REMOTE_WEBDAV -> Icons.Filled.CloudSync
         KeePassDatabaseSourceType.REMOTE_ONEDRIVE -> Icons.Filled.Cloud
+        KeePassDatabaseSourceType.REMOTE_GOOGLE_DRIVE -> Icons.Filled.CloudQueue
     }
     
     Card(
@@ -662,12 +709,32 @@ private fun KeePassDatabaseCard(
 @Composable
 private fun QuickActionsCard(
     onImportClick: () -> Unit,
-    onAttachWebDavClick: () -> Unit
+    onAttachWebDavClick: () -> Unit,
+    onAttachOneDriveClick: () -> Unit,
+    onAttachGoogleDriveClick: () -> Unit
 ) {
     OutlinedCard(
         modifier = Modifier.fillMaxWidth()
     ) {
         Column {
+            if (GOOGLE_DRIVE_ENTRY_ENABLED) {
+                QuickActionRow(
+                    icon = Icons.Default.CloudQueue,
+                    title = stringResource(R.string.keepass_gdrive_attach_action),
+                    description = stringResource(R.string.keepass_gdrive_attach_card_description),
+                    accentColor = MaterialTheme.colorScheme.tertiary,
+                    onClick = onAttachGoogleDriveClick
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            }
+            QuickActionRow(
+                icon = Icons.Default.Cloud,
+                title = stringResource(R.string.keepass_onedrive_attach_action),
+                description = stringResource(R.string.keepass_onedrive_attach_card_description),
+                accentColor = MaterialTheme.colorScheme.tertiary,
+                onClick = onAttachOneDriveClick
+            )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
             QuickActionRow(
                 icon = Icons.Default.CloudSync,
                 title = stringResource(R.string.keepass_webdav_attach_action),
@@ -1356,6 +1423,30 @@ private fun AttachWebDavDatabaseBottomSheet(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AttachOneDriveDatabaseBottomSheet(
+    viewModel: LocalKeePassViewModel,
+    onDismiss: () -> Unit
+) {
+    KeepassOneDriveBrowserBottomSheet(
+        viewModel = viewModel,
+        onDismiss = onDismiss
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AttachGoogleDriveDatabaseBottomSheet(
+    viewModel: LocalKeePassViewModel,
+    onDismiss: () -> Unit
+) {
+    KeepassGoogleDriveBrowserBottomSheet(
+        viewModel = viewModel,
+        onDismiss = onDismiss
+    )
+}
+
 /**
  * KeePass 参数下拉框
  */
@@ -1716,18 +1807,21 @@ private fun DatabaseDetailBottomSheet(
     val dateFormat = remember { SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()) }
     val creationOptions = database.toCreationOptions()
     val isRemoteDatabase = database.sourceType == KeePassDatabaseSourceType.REMOTE_WEBDAV ||
-        database.sourceType == KeePassDatabaseSourceType.REMOTE_ONEDRIVE
+        database.sourceType == KeePassDatabaseSourceType.REMOTE_ONEDRIVE ||
+        database.sourceType == KeePassDatabaseSourceType.REMOTE_GOOGLE_DRIVE
     val sourceChipText = when (database.sourceType) {
         KeePassDatabaseSourceType.LOCAL_INTERNAL -> stringResource(R.string.internal_storage)
         KeePassDatabaseSourceType.LOCAL_DOCUMENT_URI -> stringResource(R.string.external_storage)
         KeePassDatabaseSourceType.REMOTE_WEBDAV -> stringResource(R.string.keepass_webdav_database_badge)
-        KeePassDatabaseSourceType.REMOTE_ONEDRIVE -> stringResource(R.string.remote_storage)
+        KeePassDatabaseSourceType.REMOTE_ONEDRIVE -> stringResource(R.string.keepass_onedrive_database_badge)
+        KeePassDatabaseSourceType.REMOTE_GOOGLE_DRIVE -> stringResource(R.string.keepass_gdrive_database_badge)
     }
     val sourceChipColor = when (database.sourceType) {
         KeePassDatabaseSourceType.LOCAL_INTERNAL -> MaterialTheme.colorScheme.primary
         KeePassDatabaseSourceType.LOCAL_DOCUMENT_URI -> MaterialTheme.colorScheme.secondary
         KeePassDatabaseSourceType.REMOTE_WEBDAV -> MaterialTheme.colorScheme.tertiary
         KeePassDatabaseSourceType.REMOTE_ONEDRIVE -> MaterialTheme.colorScheme.tertiary
+        KeePassDatabaseSourceType.REMOTE_GOOGLE_DRIVE -> MaterialTheme.colorScheme.tertiary
     }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     var showVerifyDialog by remember { mutableStateOf(false) }

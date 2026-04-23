@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
@@ -136,6 +137,8 @@ fun CardWalletScreen(
     onTabSelected: (CardWalletTab) -> Unit,
     onSelectionModeChange: (Boolean, Int, () -> Unit, () -> Unit, () -> Unit, () -> Unit) -> Unit,
     onBankCardSelectionModeChange: (Boolean, Int, () -> Unit, () -> Unit, () -> Unit, () -> Unit, () -> Unit) -> Unit,
+    showStandaloneSettingsEntry: Boolean = false,
+    onOpenStandaloneSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -954,6 +957,16 @@ fun CardWalletScreen(
                                     shape = RoundedCornerShape(20.dp)
                                 )
                         ) {
+                            if (showStandaloneSettingsEntry) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.nav_settings)) },
+                                    leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                                    onClick = {
+                                        showTopActionsMenu = false
+                                        onOpenStandaloneSettings()
+                                    }
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text(stringResource(R.string.filter_all)) },
                                 leadingIcon = { Icon(Icons.Default.FilterList, contentDescription = null) },

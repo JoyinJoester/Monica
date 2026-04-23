@@ -3,6 +3,7 @@ package takagi.ru.monica.autofill_ng.parser
 import android.os.Build
 import android.view.View
 import android.view.inputmethod.InlineSuggestionsRequest
+import takagi.ru.monica.autofill_ng.AutofillInteractionContextResolver
 import takagi.ru.monica.autofill_ng.EnhancedAutofillStructureParserV2.FieldHint
 import takagi.ru.monica.autofill_ng.EnhancedAutofillStructureParserV2.ParsedItem
 import takagi.ru.monica.autofill_ng.model.AutofillPartition
@@ -18,6 +19,7 @@ class AutofillParserNg {
         inlineRequest: InlineSuggestionsRequest?,
         fieldSignatureKey: String? = null,
         isCompatMode: Boolean = false,
+        preferDirectAutoFill: Boolean = false,
     ): AutofillRequest {
         val normalizedUri = uri?.trim().takeUnless { it.isNullOrBlank() } ?: "androidapp://$packageName"
         val views = buildViews(
@@ -31,6 +33,10 @@ class AutofillParserNg {
         } else {
             null
         }
+        val interactionContext = AutofillInteractionContextResolver.build(
+            packageName = packageName,
+            webDomain = extractWebDomain(normalizedUri)
+        )
 
         val partition = if (views.any { it !is AutofillView.Login }) {
             AutofillPartition.Generic(views)
@@ -47,6 +53,9 @@ class AutofillParserNg {
             partition = partition,
             uri = normalizedUri,
             fieldSignatureKey = fieldSignatureKey,
+            interactionIdentifier = interactionContext.primaryIdentifier,
+            interactionIdentifierAliases = interactionContext.aliasIdentifiers,
+            preferDirectAutoFill = preferDirectAutoFill,
         )
     }
 
@@ -163,5 +172,20 @@ class AutofillParserNg {
             is AutofillView.Field -> 2
         }
     }
-}
 
+    private fun extractWebDomain(uri: String?): String? {
+        val raw = uri?.trim().orEmpty()
+        if (raw.isBlank() || raw.startsWith("androidapp://")) return null
+        val host = runCatching { java.net.URI(raw).host }.getOrNull()
+            ?: runCatching {
+                val normalized = if (raw.contains("://")) raw else "https://$raw"
+                java.net.URI(normalized).host
+            }.getOrNull()
+        return host
+            ?.trim()
+            ?.lowercase()
+            ?.removePrefix("www.")
+            ?.trim('.')
+            ?.takeIf { it.isNotBlank() }
+    }
+}

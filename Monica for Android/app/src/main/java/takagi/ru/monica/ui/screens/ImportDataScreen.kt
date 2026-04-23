@@ -303,9 +303,9 @@ fun ImportDataScreen(
     onClearSteamLoginImportSession: (String) -> Unit = {}, // 清理 Steam 登录会话
     onImportZip: suspend (Uri, String?) -> Result<Int>,  // Monica ZIP导入
     onImportKdbx: suspend (Uri, String, Uri?) -> Result<Int> = { _, _, _ -> Result.failure(Exception("Not implemented")) },  // KDBX导入
-    onImportKeePassCsv: suspend (Uri) -> Result<Int> = { _ -> Result.failure(Exception("Not implemented")) },  // KeePass CSV导入
-    onImportBitwardenCsv: suspend (Uri) -> Result<Int> = { _ -> Result.failure(Exception("Not implemented")) },  // Bitwarden CSV导入
-    onImportChromeCsv: suspend (Uri) -> Result<Int> = { _ -> Result.failure(Exception("Not implemented")) },  // Chrome CSV导入
+    onImportKeePassCsv: suspend (Uri) -> Result<Int> = onImport,  // KeePass CSV导入
+    onImportBitwardenCsv: suspend (Uri) -> Result<Int> = onImport,  // Bitwarden CSV导入
+    onImportChromeCsv: suspend (Uri) -> Result<Int> = onImport,  // Chrome CSV导入
     onImportPasswordKeyboardCsv: suspend (
         Uri,
         DataExportImportManager.PasswordKeyboardTagHandling

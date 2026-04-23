@@ -78,6 +78,7 @@ import kotlinx.serialization.json.Json
 import androidx.compose.ui.unit.dp
 import kotlinx.parcelize.Parcelize
 import takagi.ru.monica.R
+import takagi.ru.monica.autofill_ng.builder.AutofillDatasetBuilder
 import takagi.ru.monica.autofill_ng.core.AutofillLogger
 import takagi.ru.monica.autofill_ng.ui.*
 import takagi.ru.monica.autofill_ng.utils.SmartCopyNotificationHelper
@@ -588,7 +589,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             return
         }
 
-        val datasetBuilder = Dataset.Builder()
+        val filledValues = linkedMapOf<AutofillId, String>()
 
         val normalizedHints = hints.orEmpty().map { it.trim().lowercase() }
         val hasUsernameHint = normalizedHints.any {
@@ -628,7 +629,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                 else -> null
             }
             if (value != null) {
-                datasetBuilder.setValue(autofillId, AutofillValue.forText(value))
+                filledValues[autofillId] = value
                 filledCount++
                 strictFilledCount++
             } else if (unmatchedHintPreview.size < 6) {
@@ -669,7 +670,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                     else -> null
                 }
                 if (!fallbackValue.isNullOrBlank()) {
-                    datasetBuilder.setValue(autofillId, AutofillValue.forText(fallbackValue))
+                    filledValues[autofillId] = fallbackValue
                     filledCount++
                     fallbackFilledCount++
                 }
@@ -704,7 +705,15 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             "Auth result prepared: filled=$filledCount, ids=${autofillIds.size}, passwordId=${password.id}, hints=${hints?.joinToString(",") ?: "none"}"
         )
         
-        val dataset = datasetBuilder.build()
+        val dataset = buildResultDataset(
+            title = password.title.ifBlank { getString(R.string.autofill_manual_entry_title) },
+            subtitle = accountValue.ifBlank {
+                args.webDomain
+                    ?: args.applicationId
+                    ?: getString(R.string.app_name)
+            },
+            filledValues = filledValues,
+        )
         val authResult: Parcelable = if (args.responseAuthMode) {
             FillResponse.Builder().addDataset(dataset).build()
         } else {
@@ -737,6 +746,31 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         finish()
     }
 
+    private fun buildResultDataset(
+        title: String,
+        subtitle: String,
+        filledValues: Map<AutofillId, String>,
+    ): Dataset {
+        val menuPresentation = AutofillDatasetBuilder.RemoteViewsFactory.createPasswordEntry(
+            context = this,
+            title = title.ifBlank { getString(R.string.autofill_manual_entry_title) },
+            username = subtitle.ifBlank { getString(R.string.app_name) }
+        )
+        val fields = linkedMapOf<AutofillId, AutofillDatasetBuilder.FieldData?>()
+        filledValues.forEach { (autofillId, value) ->
+            if (value.isNotBlank()) {
+                fields[autofillId] = AutofillDatasetBuilder.FieldData(
+                    value = AutofillValue.forText(value),
+                    presentation = menuPresentation
+                )
+            }
+        }
+        return AutofillDatasetBuilder.create(
+            menuPresentation = menuPresentation,
+            fields = fields
+        ) { null }.build()
+    }
+
     private fun handleBankCardAutofill(item: SecureItem) {
         val (_, data) = parseBankCardCandidate(item) ?: run {
             setResult(Activity.RESULT_CANCELED)
@@ -760,13 +794,13 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             return
         }
 
-        val datasetBuilder = Dataset.Builder()
+        val filledValues = linkedMapOf<AutofillId, String>()
         val hints = args.autofillHints
         var filledCount = 0
         autofillIds.forEachIndexed { index, autofillId ->
             val value = mapBankCardAutofillValue(hints?.getOrNull(index), data)
             if (!value.isNullOrBlank()) {
-                datasetBuilder.setValue(autofillId, AutofillValue.forText(value))
+                filledValues[autofillId] = value
                 filledCount++
             }
         }
@@ -774,7 +808,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         if (filledCount == 0 && autofillIds.size == 1) {
             val fallbackValue = data.cardNumber.ifBlank { data.cardholderName }
             if (fallbackValue.isNotBlank()) {
-                datasetBuilder.setValue(autofillIds.first(), AutofillValue.forText(fallbackValue))
+                filledValues[autofillIds.first()] = fallbackValue
                 filledCount = 1
             }
         }
@@ -785,7 +819,11 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             return
         }
 
-        val dataset = datasetBuilder.build()
+        val dataset = buildResultDataset(
+            title = bankCardDisplayTitle(item, data),
+            subtitle = bankCardDisplaySubtitle(data),
+            filledValues = filledValues,
+        )
         val authResult: Parcelable = if (args.responseAuthMode) {
             FillResponse.Builder().addDataset(dataset).build()
         } else {
@@ -829,13 +867,13 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             return
         }
 
-        val datasetBuilder = Dataset.Builder()
+        val filledValues = linkedMapOf<AutofillId, String>()
         val hints = args.autofillHints
         var filledCount = 0
         autofillIds.forEachIndexed { index, autofillId ->
             val value = mapDocumentAutofillValue(hints?.getOrNull(index), data)
             if (!value.isNullOrBlank()) {
-                datasetBuilder.setValue(autofillId, AutofillValue.forText(value))
+                filledValues[autofillId] = value
                 filledCount++
             }
         }
@@ -848,7 +886,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             val fallbackValue = data.documentNumber
                 .ifBlank { displayName }
             if (fallbackValue.isNotBlank()) {
-                datasetBuilder.setValue(autofillIds.first(), AutofillValue.forText(fallbackValue))
+                filledValues[autofillIds.first()] = fallbackValue
                 filledCount = 1
             }
         }
@@ -859,7 +897,11 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             return
         }
 
-        val dataset = datasetBuilder.build()
+        val dataset = buildResultDataset(
+            title = documentDisplayTitle(item, data),
+            subtitle = documentDisplaySubtitle(data),
+            filledValues = filledValues,
+        )
         val authResult: Parcelable = if (args.responseAuthMode) {
             FillResponse.Builder().addDataset(dataset).build()
         } else {
@@ -1045,15 +1087,19 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
     }
 
     private fun rememberLastFilledCredential(passwordId: Long) {
-        val primaryIdentifier = args.interactionIdentifier
-            ?.trim()
-            ?.lowercase()
-            ?.takeIf { it.isNotBlank() }
-            ?: args.interactionIdentifierAliases
+        val normalizedIdentifiers = buildList {
+            args.interactionIdentifier
+                ?.trim()
+                ?.lowercase()
+                ?.takeIf { it.isNotBlank() }
+                ?.let(::add)
+            args.interactionIdentifierAliases
                 ?.asSequence()
                 ?.map { it.trim().lowercase() }
-                ?.firstOrNull { it.isNotBlank() }
-            ?: return
+                ?.filter { it.isNotBlank() }
+                ?.forEach(::add)
+        }.distinct()
+        val primaryIdentifier = normalizedIdentifiers.firstOrNull() ?: return
         try {
             android.util.Log.i(
                 "AutofillPickerV2",
@@ -1065,7 +1111,9 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             )
             runBlocking(Dispatchers.IO) {
                 val preferences = AutofillPreferences(applicationContext)
-                preferences.completeAutofillInteraction(primaryIdentifier, passwordId)
+                normalizedIdentifiers.forEach { identifier ->
+                    preferences.completeAutofillInteraction(identifier, passwordId)
+                }
             }
         } catch (e: Exception) {
             android.util.Log.e("AutofillPickerV2", "Failed to persist last filled credential", e)

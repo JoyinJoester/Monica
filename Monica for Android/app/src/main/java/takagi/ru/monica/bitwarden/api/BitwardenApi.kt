@@ -471,6 +471,9 @@ data class CipherApiResponse(
     @JsonNames("reprompt")
     @SerialName("Reprompt")
     val reprompt: Int = 0,
+    @JsonNames("key")
+    @SerialName("Key")
+    val key: String? = null,
     @JsonNames("revisionDate")
     @SerialName("RevisionDate")
     val revisionDate: String = "",

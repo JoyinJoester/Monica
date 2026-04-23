@@ -100,6 +100,11 @@ data class KeePassRestoreTarget(
     val groupUuid: String?
 )
 
+data class KeePassConflictResolutionResult(
+    val mergedBytes: ByteArray,
+    val conflictCopyCount: Int
+)
+
 private data class EntryTraversalContext(
     val entry: Entry,
     val groupPath: String?,
@@ -116,6 +121,25 @@ private data class GroupTraversalContext(
 private data class RemovedEntryContext(
     val entry: Entry,
     val previousParentUuid: UUID
+)
+
+private data class RemoteConflictEntrySnapshot(
+    val entry: Entry,
+    val groupPath: String?,
+    val signature: String
+)
+
+private data class InternalConflictResolutionResult(
+    val mergedDatabase: KeePassDatabase,
+    val mergedBytes: ByteArray,
+    val conflictCopyCount: Int
+)
+
+private data class RemoteSyncOutcome(
+    val writeResult: FileSourceWriteResult,
+    val finalBytes: ByteArray,
+    val finalDatabase: KeePassDatabase,
+    val conflictCopyCount: Int = 0
 )
 
 class KeePassKdbxService(
@@ -145,6 +169,7 @@ class KeePassKdbxService(
         private const val FIELD_MONICA_SSH_PRIVATE_KEY = "MonicaSshPrivateKey"
         private const val FIELD_MONICA_SSH_FINGERPRINT = "MonicaSshFingerprint"
         private const val FIELD_MONICA_SSH_COMMENT = "MonicaSshComment"
+        private const val REMOTE_CONFLICT_TITLE_SUFFIX = "[远端冲突副本]"
         private const val FIELD_MONICA_SSH_FORMAT = "MonicaSshFormat"
         private const val FIELD_KEEPASS_XC_TEMPLATE = "_etm_template"
         // kotpass decode 在并发下可能触发 native 崩溃，必须跨实例串行化。
@@ -2896,17 +2921,24 @@ class KeePassKdbxService(
         }
         var resolvedSourceEtag = sourceEtag
         var resolvedSourceLastModified = sourceLastModified
+        var resolvedDatabase = keePassDatabase
         if (database.isRemoteSource()) {
-            val syncResult = syncRemoteWorkingCopy(database, bytes)
-            resolvedSourceEtag = syncResult?.etag ?: resolvedSourceEtag
-            resolvedSourceLastModified = syncResult?.lastModified?.toString() ?: resolvedSourceLastModified
+            val syncResult = syncRemoteWorkingCopy(
+                database = database,
+                credentials = credentials,
+                localDatabase = keePassDatabase,
+                bytes = bytes
+            )
+            resolvedSourceEtag = syncResult?.writeResult?.etag ?: resolvedSourceEtag
+            resolvedSourceLastModified = syncResult?.writeResult?.lastModified?.toString() ?: resolvedSourceLastModified
+            resolvedDatabase = syncResult?.finalDatabase ?: resolvedDatabase
         }
         val updatedSignature = currentSourceSignature(database)
         cacheLoadedDatabase(
             LoadedDatabase(
                 database = database,
                 credentials = credentials,
-                keePassDatabase = keePassDatabase,
+                keePassDatabase = resolvedDatabase,
                 sourceEtag = resolvedSourceEtag,
                 sourceLastModified = resolvedSourceLastModified,
                 sourceSignature = updatedSignature
@@ -2916,8 +2948,10 @@ class KeePassKdbxService(
 
     private suspend fun syncRemoteWorkingCopy(
         database: LocalKeePassDatabase,
+        credentials: Credentials,
+        localDatabase: KeePassDatabase,
         bytes: ByteArray
-    ): FileSourceWriteResult? {
+    ): RemoteSyncOutcome? {
         if (!database.isRemoteSource() || database.sourceId == null) {
             return null
         }
@@ -2928,7 +2962,8 @@ class KeePassKdbxService(
             remoteSourceDao = remoteDb.keepassRemoteSourceDao(),
             syncStateDao = remoteDb.keepassRemoteSyncStateDao()
         )
-        val workingHash = WebDavKeePassSupport.sha256Hex(bytes)
+        val syncStateDao = remoteDb.keepassRemoteSyncStateDao()
+        val workingHash = GoogleDriveKeePassSupport.sha256Hex(bytes)
 
         return try {
             when (database.sourceType) {
@@ -2947,7 +2982,101 @@ class KeePassKdbxService(
                         baseHash = workingHash,
                         workingHash = workingHash
                     )
-                    writeResult
+                    RemoteSyncOutcome(
+                        writeResult = writeResult,
+                        finalBytes = bytes,
+                        finalDatabase = localDatabase
+                    )
+                }
+                KeePassDatabaseSourceType.REMOTE_ONEDRIVE -> {
+                    val remoteSourceDao = remoteDb.keepassRemoteSourceDao()
+                    val remoteSource = remoteSourceDao.getSourceById(database.sourceId)
+                        ?: throw IllegalStateException("远端来源不存在")
+                    val expectedRemoteVersion = syncStateDao.getState(database.id)?.let { state ->
+                        state.remoteEtag ?: state.remoteVersionToken
+                    }
+                    val fileSource = OneDriveKeePassSupport.createFileSource(context, remoteSource)
+                    val syncOutcome = try {
+                        val writeResult = fileSource.write(bytes, expectedVersion = expectedRemoteVersion)
+                        RemoteSyncOutcome(
+                            writeResult = writeResult,
+                            finalBytes = bytes,
+                            finalDatabase = localDatabase
+                        )
+                    } catch (error: Exception) {
+                        if (!isRemoteVersionConflict(error)) {
+                            throw error
+                        }
+                        val remoteStat = runCatching { fileSource.stat() }.getOrDefault(FileSourceStat())
+                        val currentRemoteVersion = remoteStat.etag ?: remoteStat.versionToken
+                        if (currentRemoteVersion.isNullOrBlank()) {
+                            throw error
+                        }
+                        val remoteBytes = fileSource.read()
+                        val mergeResult = resolveRemoteConflictInternal(
+                            database = database,
+                            credentials = credentials,
+                            localDatabase = localDatabase,
+                            remoteBytes = remoteBytes
+                        )
+                        val retriedWrite = fileSource.write(
+                            mergeResult.mergedBytes,
+                            expectedVersion = currentRemoteVersion
+                        )
+                        database.workingCopyPath?.let { workingCopyPath ->
+                            writeInternalRelative(workingCopyPath, mergeResult.mergedBytes)
+                        }
+                        RemoteSyncOutcome(
+                            writeResult = retriedWrite,
+                            finalBytes = mergeResult.mergedBytes,
+                            finalDatabase = mergeResult.mergedDatabase,
+                            conflictCopyCount = mergeResult.conflictCopyCount
+                        )
+                    }
+                    if ((remoteSource.itemId.isNullOrBlank() || remoteSource.driveId.isNullOrBlank()) &&
+                        (!syncOutcome.writeResult.remoteId.isNullOrBlank() || !syncOutcome.writeResult.driveId.isNullOrBlank())
+                    ) {
+                        remoteSourceDao.updateSource(
+                            remoteSource.copy(
+                                itemId = syncOutcome.writeResult.remoteId ?: remoteSource.itemId,
+                                driveId = syncOutcome.writeResult.driveId ?: remoteSource.driveId,
+                                updatedAt = System.currentTimeMillis()
+                            )
+                        )
+                    }
+                    database.cacheCopyPath?.let { cachePath ->
+                        writeInternalRelative(cachePath, syncOutcome.finalBytes)
+                    }
+                    val finalWorkingHash = GoogleDriveKeePassSupport.sha256Hex(syncOutcome.finalBytes)
+                    syncService.markSynchronized(
+                        databaseId = database.id,
+                        versionToken = syncOutcome.writeResult.versionToken,
+                        etag = syncOutcome.writeResult.etag,
+                        baseHash = finalWorkingHash,
+                        workingHash = finalWorkingHash
+                    )
+                    syncOutcome
+                }
+                KeePassDatabaseSourceType.REMOTE_GOOGLE_DRIVE -> {
+                    val remoteSource = remoteDb.keepassRemoteSourceDao().getSourceById(database.sourceId)
+                        ?: throw IllegalStateException("远端来源不存在")
+                    val fileSource = GoogleDriveKeePassSupport.createFileSource(context, remoteSource)
+                    val writeResult = fileSource.write(bytes)
+                    database.cacheCopyPath?.let { cachePath ->
+                        writeInternalRelative(cachePath, bytes)
+                    }
+                    syncService.markSynchronized(
+                        databaseId = database.id,
+                        versionToken = writeResult.versionToken,
+                        etag = writeResult.etag,
+                        baseHash = workingHash,
+                        workingHash = workingHash
+                    )
+                    RemoteSyncOutcome(
+                        writeResult = writeResult,
+                        finalBytes = bytes,
+                        finalDatabase = localDatabase
+                    )
                 }
                 else -> null
             }
@@ -3123,6 +3252,244 @@ class KeePassKdbxService(
             Log.w(TAG, "openOutputStream wt failed, retry with rwt: $uri", e)
             context.contentResolver.openOutputStream(uri, "rwt")
         }
+
+    suspend fun resolveRemoteConflict(
+        databaseId: Long,
+        remoteBytes: ByteArray
+    ): Result<KeePassConflictResolutionResult> = withContext(Dispatchers.IO) {
+        try {
+            val loaded = loadDatabase(databaseId)
+            val resolved = resolveRemoteConflictInternal(
+                database = loaded.database,
+                credentials = loaded.credentials,
+                localDatabase = loaded.keePassDatabase,
+                remoteBytes = remoteBytes
+            )
+            Result.success(
+                KeePassConflictResolutionResult(
+                    mergedBytes = resolved.mergedBytes,
+                    conflictCopyCount = resolved.conflictCopyCount
+                )
+            )
+        } catch (error: Exception) {
+            Result.failure(normalizeError(error))
+        }
+    }
+
+    private fun isRemoteVersionConflict(error: Throwable): Boolean {
+        return error.message?.contains("远端文件已变化", ignoreCase = true) == true
+    }
+
+    private suspend fun resolveRemoteConflictInternal(
+        database: LocalKeePassDatabase,
+        credentials: Credentials,
+        localDatabase: KeePassDatabase,
+        remoteBytes: ByteArray
+    ): InternalConflictResolutionResult {
+        val cachePath = database.cacheCopyPath
+            ?: throw IllegalStateException("缺少用于冲突处理的缓存副本")
+        val cacheFile = File(context.filesDir, cachePath)
+        if (!cacheFile.exists()) {
+            throw IllegalStateException("缺少用于冲突处理的缓存副本")
+        }
+
+        val remoteDatabase = decodeDatabase(
+            bytes = remoteBytes,
+            credentials = credentials,
+            sourceName = "databaseId=${database.id}:remote-conflict"
+        )
+        val baseDatabase = decodeDatabase(
+            bytes = cacheFile.readBytes(),
+            credentials = credentials,
+            sourceName = "databaseId=${database.id}:base-conflict",
+            logFailure = false
+        )
+        val mergedResult = mergeDatabasesForConflictResolution(
+            baseDatabase = baseDatabase,
+            localDatabase = localDatabase,
+            remoteDatabase = remoteDatabase
+        )
+        return InternalConflictResolutionResult(
+            mergedDatabase = mergedResult.first,
+            mergedBytes = encodeDatabase(mergedResult.first),
+            conflictCopyCount = mergedResult.second
+        )
+    }
+
+    private fun mergeDatabasesForConflictResolution(
+        baseDatabase: KeePassDatabase,
+        localDatabase: KeePassDatabase,
+        remoteDatabase: KeePassDatabase
+    ): Pair<KeePassDatabase, Int> {
+        val baseEntries = buildConflictEntrySnapshotMap(baseDatabase)
+        val localEntries = buildConflictEntrySnapshotMap(localDatabase)
+        val remoteEntries = buildConflictEntrySnapshotMap(remoteDatabase)
+
+        var mergedRoot = remoteDatabase.content.group
+        var conflictCopyCount = 0
+
+        val candidateUuids = (baseEntries.keys + localEntries.keys).toSet()
+        candidateUuids.forEach { uuid ->
+            val baseSnapshot = baseEntries[uuid]
+            val localSnapshot = localEntries[uuid]
+            val remoteSnapshot = remoteEntries[uuid]
+
+            val localChanged = hasConflictSnapshotChanged(baseSnapshot, localSnapshot)
+            if (!localChanged) {
+                return@forEach
+            }
+
+            val remoteChanged = hasConflictSnapshotChanged(baseSnapshot, remoteSnapshot)
+            if (localSnapshot == null) {
+                if (!remoteChanged) {
+                    mergedRoot = removeEntryInGroup(mergedRoot) { it.uuid == uuid }.first
+                }
+                return@forEach
+            }
+
+            if (remoteChanged && remoteSnapshot != null && hasConflictSnapshotChanged(localSnapshot, remoteSnapshot)) {
+                val conflictCopy = buildRemoteConflictCopy(remoteSnapshot.entry)
+                if (!containsConflictCopyInGroupPath(
+                        rootGroup = mergedRoot,
+                        groupPath = remoteSnapshot.groupPath,
+                        candidate = conflictCopy
+                    )
+                ) {
+                    mergedRoot = addEntryToGroupPath(
+                        rootGroup = mergedRoot,
+                        groupPath = remoteSnapshot.groupPath,
+                        entry = conflictCopy
+                    )
+                    conflictCopyCount++
+                }
+            }
+
+            val withoutExisting = removeEntryInGroup(mergedRoot) { it.uuid == uuid }.first
+            mergedRoot = addEntryToGroupPath(
+                rootGroup = withoutExisting,
+                groupPath = localSnapshot.groupPath,
+                entry = localSnapshot.entry
+            )
+        }
+
+        return remoteDatabase.modifyParentGroup { mergedRoot } to conflictCopyCount
+    }
+
+    private fun buildConflictEntrySnapshotMap(
+        keePassDatabase: KeePassDatabase
+    ): Map<UUID, RemoteConflictEntrySnapshot> {
+        return collectEntryContexts(keePassDatabase)
+            .first
+            .associate { context ->
+                context.entry.uuid to RemoteConflictEntrySnapshot(
+                    entry = context.entry,
+                    groupPath = context.groupPath,
+                    signature = buildConflictEntrySignature(context.entry)
+                )
+            }
+    }
+
+    private fun hasConflictSnapshotChanged(
+        base: RemoteConflictEntrySnapshot?,
+        candidate: RemoteConflictEntrySnapshot?
+    ): Boolean {
+        return when {
+            base == null -> candidate != null
+            candidate == null -> true
+            else -> base.groupPath != candidate.groupPath || base.signature != candidate.signature
+        }
+    }
+
+    private fun buildRemoteConflictCopy(entry: Entry): Entry {
+        val currentTitle = getFieldValue(entry, "Title").ifBlank { "Untitled" }
+        val normalizedConflictTitle = normalizeRemoteConflictTitle(currentTitle)
+        val updatedFields = entry.fields
+            .mapNotNull { (key, value) ->
+                if (key == FIELD_MONICA_LOCAL_ID || key == FIELD_MONICA_ITEM_ID) {
+                    return@mapNotNull null
+                }
+                if (key == "Title") {
+                    key to EntryValue.Plain(normalizedConflictTitle)
+                } else {
+                    key to value
+                }
+            }
+            .toMutableList()
+        if (updatedFields.none { it.first == "Title" }) {
+            updatedFields += "Title" to EntryValue.Plain(normalizedConflictTitle)
+        }
+        return entry.copy(
+            uuid = UUID.randomUUID(),
+            fields = EntryFields.of(*updatedFields.toTypedArray())
+        )
+    }
+
+    private fun containsConflictCopyInGroupPath(
+        rootGroup: Group,
+        groupPath: String?,
+        candidate: Entry
+    ): Boolean {
+        val targetSignature = buildConflictEntrySignature(candidate)
+        return collectEntriesInGroupPath(rootGroup, groupPath)
+            .any { existing -> buildConflictEntrySignature(existing) == targetSignature }
+    }
+
+    private fun collectEntriesInGroupPath(
+        rootGroup: Group,
+        groupPath: String?
+    ): List<Entry> {
+        val collected = mutableListOf<Entry>()
+        fun walk(group: Group, currentPath: String?) {
+            if (currentPath == groupPath) {
+                collected += group.entries
+            }
+            group.groups.forEach { child ->
+                val nextPath = buildKeePassPathKey(currentPath, child.name)
+                walk(child, nextPath)
+            }
+        }
+        walk(rootGroup, null)
+        return collected
+    }
+
+    private fun buildConflictEntrySignature(entry: Entry): String {
+        val normalizedFieldPairs = entry.fields
+            .map { (key, value) ->
+                val normalizedValue = if (key == "Title") {
+                    normalizeRemoteConflictTitleForSignature(getFieldValue(entry, key))
+                } else {
+                    getFieldValue(entry, key)
+                }
+                key.lowercase(Locale.ROOT) to normalizedValue
+            }
+            .sortedBy { it.first }
+        return normalizedFieldPairs.joinToString("\u001F") { (key, value) -> "$key=$value" }
+    }
+
+    private fun normalizeRemoteConflictTitle(title: String): String {
+        val normalized = normalizeRemoteConflictTitleForSignature(title)
+        val hasSuffix = normalized.endsWith(" $REMOTE_CONFLICT_TITLE_SUFFIX") ||
+            normalized == REMOTE_CONFLICT_TITLE_SUFFIX
+        if (hasSuffix) {
+            return normalized
+        }
+        val baseTitle = normalized.ifBlank { "Untitled" }
+        return "$baseTitle $REMOTE_CONFLICT_TITLE_SUFFIX"
+    }
+
+    private fun normalizeRemoteConflictTitleForSignature(title: String): String {
+        val suffixPattern = Regex("\\s*\\Q$REMOTE_CONFLICT_TITLE_SUFFIX\\E(?:\\s*\\Q$REMOTE_CONFLICT_TITLE_SUFFIX\\E)*\\s*$")
+        val baseTitle = title
+            .replace(suffixPattern, "")
+            .trim()
+        val hadSuffix = suffixPattern.containsMatchIn(title)
+        return if (hadSuffix) {
+            val normalizedBase = baseTitle.ifBlank { "Untitled" }
+            "$normalizedBase $REMOTE_CONFLICT_TITLE_SUFFIX"
+        } else {
+            baseTitle
+        }
+    }
 
     private fun normalizeError(throwable: Throwable): Throwable {
         if (throwable is KeePassOperationException || throwable is IllegalArgumentException) {

@@ -42,6 +42,7 @@ import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Note
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Sync
@@ -122,6 +123,8 @@ fun NoteListScreen(
     onNavigateToAddNote: (Long?) -> Unit,
     securityManager: SecurityManager,
     onSelectionModeChange: (Boolean) -> Unit = {},
+    showStandaloneSettingsEntry: Boolean = false,
+    onOpenStandaloneSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -590,6 +593,16 @@ fun NoteListScreen(
                                         shape = RoundedCornerShape(20.dp)
                                     )
                             ) {
+                                if (showStandaloneSettingsEntry) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.nav_settings)) },
+                                        leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                                        onClick = {
+                                            showTopActionsMenu = false
+                                            onOpenStandaloneSettings()
+                                        }
+                                    )
+                                }
                                 DropdownMenuItem(
                                     text = {
                                         Text(

@@ -390,7 +390,7 @@ fun CustomFieldEditCard(
                 
                 // 字段值（敏感时隐藏）
                 Text(
-                    text = if (field.isProtected && !valueVisible) "••••••••" else field.value.ifEmpty { "-" },
+                    text = if (field.isProtected && !valueVisible) "••••••••" else field.value,
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 2
@@ -609,7 +609,7 @@ fun CustomFieldDetailCard(
             // 字段值
             Text(
                 text = if (valueVisible || !field.isProtected) {
-                    field.value.ifEmpty { "-" }
+                    field.value
                 } else {
                     "••••••••"
                 },

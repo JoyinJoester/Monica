@@ -29,6 +29,7 @@ fun SyncBackupScreen(
     onNavigateToExportData: () -> Unit = {},
     onNavigateToImportData: () -> Unit = {},
     onNavigateToWebDav: () -> Unit = {},
+    onNavigateToOneDrive: () -> Unit = {},
     onNavigateToDedupEngine: () -> Unit = {},
     onNavigateToLocalKeePass: () -> Unit = {},  // 本地 KeePass 数据库管理
     onNavigateToBitwarden: () -> Unit = {},  // Bitwarden 集成入口
@@ -116,6 +117,20 @@ fun SyncBackupScreen(
                     title = stringResource(R.string.webdav_backup),
                     description = stringResource(R.string.webdav_backup_description),
                     onClick = onNavigateToWebDav,
+                    enabled = true,
+                    badge = null
+                )
+
+                HorizontalDivider(
+                    modifier = Modifier.padding(start = 72.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
+
+                SyncBackupItem(
+                    icon = Icons.Default.CloudSync,
+                    title = stringResource(R.string.onedrive_backup_title),
+                    description = stringResource(R.string.onedrive_backup_description),
+                    onClick = onNavigateToOneDrive,
                     enabled = true,
                     badge = null
                 )

@@ -14,7 +14,8 @@ import kotlinx.coroutines.flow.Flow
 
 enum class KeePassRemoteProviderType {
     WEBDAV,
-    ONEDRIVE
+    ONEDRIVE,
+    GOOGLE_DRIVE
 }
 
 @Entity(

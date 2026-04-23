@@ -13,6 +13,7 @@ import takagi.ru.monica.viewmodel.BitwardenSyncSnapshotPreviewStatus
 class BitwardenSyncSnapshotPreviewParser {
 
     companion object {
+        private const val TAG = "BwSyncSnapshotPreview"
         private val cipherStringPattern =
             Regex("^[0-9]+\\.[A-Za-z0-9+/_=-]+\\|[A-Za-z0-9+/_=-]+(?:\\|[A-Za-z0-9+/_=-]+)?$")
     }
@@ -47,12 +48,18 @@ class BitwardenSyncSnapshotPreviewParser {
             )
         }
 
+        val effectiveKey = if (symmetricKey != null) {
+            BitwardenCipherKeyResolver.resolveCipherKey(cipher, symmetricKey, TAG)
+        } else {
+            null
+        }
+
         return try {
             when (cipher.type) {
-                1 -> parseLoginCipher(cipher, symmetricKey)
-                2 -> parseSecureNoteCipher(cipher, symmetricKey)
-                3 -> parseCardCipher(cipher, symmetricKey)
-                4 -> parseIdentityCipher(cipher, symmetricKey)
+                1 -> parseLoginCipher(cipher, effectiveKey)
+                2 -> parseSecureNoteCipher(cipher, effectiveKey)
+                3 -> parseCardCipher(cipher, effectiveKey)
+                4 -> parseIdentityCipher(cipher, effectiveKey)
                 else -> BitwardenSyncSnapshotPreview(
                     status = BitwardenSyncSnapshotPreviewStatus.UNSUPPORTED_TYPE,
                     cipherType = cipher.type,
@@ -66,6 +73,7 @@ class BitwardenSyncSnapshotPreviewParser {
                 metadataFields = parseMetadataFields(cipher)
             )
         } finally {
+            BitwardenCipherKeyResolver.clearIfDerived(effectiveKey, symmetricKey)
             symmetricKey?.clear()
         }
     }

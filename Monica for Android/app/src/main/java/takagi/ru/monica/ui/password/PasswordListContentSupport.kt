@@ -39,6 +39,7 @@ import takagi.ru.monica.ui.password.buildPasswordAggregateItems
 import takagi.ru.monica.ui.password.getGroupKeyForMode
 import takagi.ru.monica.ui.password.getPasswordInfoKey
 import takagi.ru.monica.ui.password.passwordSelectionKey
+import takagi.ru.monica.ui.password.resolveNonEmptyAggregateContentTypes
 import takagi.ru.monica.ui.password.resolvePasswordPageDisplayedTypes
 import takagi.ru.monica.ui.password.resolvePasswordPageQuickFilterTypes
 import takagi.ru.monica.ui.password.toPasswordPageContentTypeOrNull
@@ -141,7 +142,25 @@ internal fun rememberPasswordAggregateUiState(
     val aggregateDocuments by aggregateDocumentsState
     val aggregateNotes by aggregateNotesState
     val aggregatePasskeys by aggregatePasskeysState
-    val aggregateVisibleContentTypes = aggregateConfig?.visibleContentTypes ?: emptyList()
+    val aggregateVisibleContentTypes = remember(
+        aggregateConfig?.visibleContentTypes,
+        aggregateBankCards,
+        aggregateDocuments,
+        aggregateNotes,
+        aggregateTotpItems,
+        aggregatePasskeys,
+        currentFilter
+    ) {
+        resolveNonEmptyAggregateContentTypes(
+            configuredTypes = aggregateConfig?.visibleContentTypes ?: emptyList(),
+            bankCards = aggregateBankCards,
+            documents = aggregateDocuments,
+            notes = aggregateNotes,
+            totpItems = aggregateTotpItems,
+            passkeys = aggregatePasskeys,
+            categoryFilter = currentFilter
+        )
+    }
     val aggregateSelectedContentTypes = aggregateConfig?.selectedContentTypes ?: emptySet()
     val effectiveQuickFilterItems = remember(
         appSettings.passwordListQuickFilterItems,

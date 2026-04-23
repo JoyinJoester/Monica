@@ -55,9 +55,11 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
@@ -65,6 +67,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -131,6 +135,8 @@ fun SendScreen(
     onSendClick: (BitwardenSend) -> Unit = {},
     selectedSendId: String? = null,
     showTopBar: Boolean = true,
+    showStandaloneSettingsEntry: Boolean = false,
+    onOpenStandaloneSettings: () -> Unit = {},
     bitwardenViewModel: BitwardenViewModel = viewModel(),
     onBitwardenEvent: ((BitwardenViewModel.BitwardenEvent) -> Boolean)? = null
 ) {
@@ -148,6 +154,7 @@ fun SendScreen(
     var deletingSend by remember { mutableStateOf<BitwardenSend?>(null) }
     var searchQuery by remember { mutableStateOf("") }
     var isSearchExpanded by remember { mutableStateOf(false) }
+    var showTopActionsMenu by remember { mutableStateOf(false) }
     var currentOffset by remember { mutableFloatStateOf(0f) }
     val triggerDistance = with(LocalDensity.current) { 72.dp.toPx() }
     var hasVibrated by remember { mutableStateOf(false) }
@@ -233,6 +240,29 @@ fun SendScreen(
                         }
                         IconButton(onClick = { isSearchExpanded = true }) {
                             Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search))
+                        }
+                        if (showStandaloneSettingsEntry) {
+                            Box {
+                                IconButton(onClick = { showTopActionsMenu = true }) {
+                                    Icon(
+                                        Icons.Default.MoreVert,
+                                        contentDescription = stringResource(R.string.more_options)
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = showTopActionsMenu,
+                                    onDismissRequest = { showTopActionsMenu = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.nav_settings)) },
+                                        leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                                        onClick = {
+                                            showTopActionsMenu = false
+                                            onOpenStandaloneSettings()
+                                        }
+                                    )
+                                }
+                            }
                         }
                     }
                 )

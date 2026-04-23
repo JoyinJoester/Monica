@@ -330,6 +330,8 @@ fun PasswordListContent(
     onOpenHistory: () -> Unit = {},
     onOpenTrash: () -> Unit = {},
     onOpenCommonAccountTemplates: () -> Unit = {},
+    showStandaloneSettingsEntry: Boolean = false,
+    onOpenStandaloneSettings: () -> Unit = {},
     aggregateConfig: PasswordListAggregateConfig? = null
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -397,9 +399,12 @@ fun PasswordListContent(
     } == true
     val isArchiveView = currentFilter is CategoryFilter.Archived
     val effectiveGroupMode = if (isLocalOnlyView) "none" else groupMode
-    val effectiveStackCardMode = if (isLocalOnlyView) StackCardMode.ALWAYS_EXPANDED else stackCardMode
-    val quickFoldersEnabledForCurrentFilter =
-        appSettings.passwordListQuickFoldersEnabled && !isAllView
+    val effectiveStackCardMode = if (isLocalOnlyView) {
+        StackCardMode.ALWAYS_EXPANDED
+    } else {
+        stackCardMode
+    }
+    val quickFoldersEnabledForCurrentFilter = false
     val quickFolderPathBannerEnabledForCurrentFilter =
         appSettings.passwordListQuickFolderPathBannerEnabled && !isAllView
     
@@ -787,12 +792,19 @@ fun PasswordListContent(
     val emptyStateMessage = remember(
         currentFilter,
         quickFoldersEnabledForCurrentFilter,
-        quickFolderShortcuts
+        quickFolderShortcuts,
+        appSettings.passwordListCategoryQuickFiltersEnabled,
+        categoryMenuQuickFolderShortcuts
     ) {
         resolvePasswordListEmptyStateMessage(
             currentFilter = currentFilter,
             quickFoldersEnabledForCurrentFilter = quickFoldersEnabledForCurrentFilter,
-            hasQuickFolderShortcuts = quickFolderShortcuts.isNotEmpty()
+            hasQuickFolderShortcuts =
+                quickFolderShortcuts.isNotEmpty() ||
+                    (
+                        appSettings.passwordListCategoryQuickFiltersEnabled &&
+                            categoryMenuQuickFolderShortcuts.isNotEmpty()
+                        )
         )
     }
     val effectiveManualStackGroupByEntryId =
@@ -1131,6 +1143,33 @@ fun PasswordListContent(
     ) {
         if (shouldGateInitialPasswordFirstFrame) emptyList() else quickFolderShortcuts
     }
+    val effectiveCategoryQuickFilterShortcuts = remember(
+        shouldGateInitialPasswordFirstFrame,
+        appSettings.passwordListCategoryQuickFiltersEnabled,
+        currentFilter,
+        categoryMenuQuickFolderShortcuts
+    ) {
+        if (shouldGateInitialPasswordFirstFrame || !appSettings.passwordListCategoryQuickFiltersEnabled) {
+            emptyList()
+        } else {
+            when (currentFilter) {
+                is CategoryFilter.BitwardenVault,
+                is CategoryFilter.BitwardenFolderFilter ->
+                    categoryMenuQuickFolderShortcuts.filterNot { it.isBack }
+                else -> categoryMenuQuickFolderShortcuts
+            }
+        }
+    }
+    val effectiveQuickFolderCardShortcuts = remember(
+        appSettings.passwordListCategoryQuickFiltersEnabled,
+        effectiveQuickFolderShortcuts
+    ) {
+        if (appSettings.passwordListCategoryQuickFiltersEnabled) {
+            emptyList()
+        } else {
+            effectiveQuickFolderShortcuts
+        }
+    }
     val effectiveQuickFolderBreadcrumbs = remember(
         shouldGateInitialPasswordFirstFrame,
         quickFolderBreadcrumbs
@@ -1193,14 +1232,21 @@ fun PasswordListContent(
                 shouldShowQuickFilterItem(item, aggregateUiState.visibleContentTypes)
             }
     }
+    val hasVisibleCategoryQuickFilters = remember(
+        effectiveCategoryQuickFilterShortcuts
+    ) {
+        effectiveCategoryQuickFilterShortcuts.isNotEmpty()
+    }
     val showPinnedQuickFolderPathBanner = effectiveQuickFolderBreadcrumbs.isNotEmpty()
     val hasScrollableHeaderContent = remember(
         hasVisibleQuickFilters,
-        effectiveQuickFolderShortcuts,
+        hasVisibleCategoryQuickFilters,
+        effectiveQuickFolderCardShortcuts,
         showPinnedQuickFolderPathBanner
     ) {
         hasVisibleQuickFilters ||
-            effectiveQuickFolderShortcuts.isNotEmpty() ||
+            hasVisibleCategoryQuickFilters ||
+            effectiveQuickFolderCardShortcuts.isNotEmpty() ||
             showPinnedQuickFolderPathBanner
     }
     val hasVisibleListItems = passwordPageListItems.isNotEmpty()
@@ -1257,6 +1303,42 @@ fun PasswordListContent(
                 !shouldGateInitialPasswordFirstFrame,
         onBackToTopVisibilityChange = onBackToTopVisibilityChange
     )
+    var lastHandledFilterForScrollReset by remember {
+        mutableStateOf<CategoryFilter?>(null)
+    }
+    LaunchedEffect(currentFilter, usesLazyColumn) {
+        val previousFilter = lastHandledFilterForScrollReset
+        if (previousFilter == null) {
+            lastHandledFilterForScrollReset = currentFilter
+            return@LaunchedEffect
+        }
+        if (previousFilter == currentFilter) {
+            return@LaunchedEffect
+        }
+        lastHandledFilterForScrollReset = currentFilter
+        Log.d(
+            PASSWORD_SCROLL_LOG_TAG,
+            "source=v1_filter_change_force_top from=$previousFilter to=$currentFilter usesLazyColumn=$usesLazyColumn"
+        )
+        if (usesLazyColumn) {
+            runCatching {
+                listState.scrollToItem(0, 0)
+            }.onFailure { throwable ->
+                if (throwable is CancellationException) return@onFailure
+                Log.w(
+                    PASSWORD_SCROLL_LOG_TAG,
+                    "source=v1_filter_change_force_top_failed to=$currentFilter",
+                    throwable
+                )
+            }
+        }
+        viewModel.updatePasswordListScrollPosition(
+            0,
+            0,
+            null,
+            source = "v1_filter_change_force_top"
+        )
+    }
 
     val selectionHandlers = rememberPasswordListSelectionHandlers(
         context = context,
@@ -1334,6 +1416,8 @@ fun PasswordListContent(
         onSearchQueryChange = viewModel::updateSearchQuery,
         topActionsMenuExpanded = topActionsMenuExpanded,
         onTopActionsMenuExpandedChange = { topActionsMenuExpanded = it },
+        showStandaloneSettingsEntry = showStandaloneSettingsEntry,
+        onOpenStandaloneSettings = onOpenStandaloneSettings,
         isCategorySheetVisible = isCategorySheetVisible,
         onCategorySheetVisibleChange = { isCategorySheetVisible = it },
         categoryPillBoundsInWindow = categoryPillBoundsInWindow,
@@ -1399,6 +1483,7 @@ fun PasswordListContent(
         showEmptyState = showEmptyStateWithHeaders,
         hasScrollableHeaderContent = hasScrollableHeaderContent,
         hasVisibleQuickFilters = hasVisibleQuickFilters,
+        hasVisibleCategoryQuickFilters = hasVisibleCategoryQuickFilters,
         aggregateUiState = aggregateUiState,
         emptyStateMessage = emptyStateMessage,
         listState = listState,
@@ -1421,7 +1506,8 @@ fun PasswordListContent(
         quickFilterUnstacked = quickFilterUnstacked,
         onQuickFilterUnstackedChange = { quickFilterUnstacked = it },
         onToggleAggregateType = aggregateConfig?.onToggleContentType,
-        quickFolderShortcuts = effectiveQuickFolderShortcuts,
+        categoryQuickFilterShortcuts = effectiveCategoryQuickFilterShortcuts,
+        quickFolderShortcuts = effectiveQuickFolderCardShortcuts,
         quickFolderStyle = quickFolderStyle,
         renderPasswordRows = {
             passwordPageListRows(
@@ -1494,14 +1580,23 @@ fun PasswordListContent(
         viewModel = viewModel,
         context = context,
         coroutineScope = coroutineScope,
-        onDeleteSelection = {
+        enableBatchDeleteProgress = selectedPasswords.any { id ->
+            passwordEntries.any { it.id == id && it.keepassDatabaseId != null }
+        } || selectedSupplementaryItems.any { it.entry.keepassDatabaseId != null },
+        onDeleteSelection = { onProgress ->
             val selectedPasswordEntries = passwordEntries.filter { it.id in selectedPasswords }
+            val totalToProcess = selectedPasswordEntries.size + selectedSupplementaryItems.size
+            var processedCount = 0
+            onProgress(processedCount, totalToProcess.coerceAtLeast(1))
             if (selectedItemKeys.isNotEmpty()) {
                 coroutineScope.launch {
                     aggregateStackRepository.clearManualStack(selectedItemKeys.toList())
                 }
             }
-            selectedPasswordEntries.forEach(viewModel::deletePasswordEntry)
+            val deletedPasswordCount = viewModel.deletePasswordEntriesBatch(selectedPasswordEntries) { processed, _ ->
+                processedCount = processed.coerceIn(0, selectedPasswordEntries.size)
+                onProgress(processedCount, totalToProcess.coerceAtLeast(1))
+            }
 
             selectedSupplementaryItems.forEach { item ->
                 when (item.type) {
@@ -1535,9 +1630,11 @@ fun PasswordListContent(
 
                     PasswordPageContentType.PASSWORD -> Unit
                 }
+                processedCount = (processedCount + 1).coerceAtMost(totalToProcess.coerceAtLeast(1))
+                onProgress(processedCount, totalToProcess.coerceAtLeast(1))
             }
 
-            selectedItemKeys.size
+            deletedPasswordCount + selectedSupplementaryItems.size
         },
         onSelectionCleared = {
             isSelectionMode = false

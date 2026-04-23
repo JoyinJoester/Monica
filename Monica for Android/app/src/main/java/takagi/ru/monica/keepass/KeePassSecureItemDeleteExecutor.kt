@@ -29,8 +29,16 @@ class KeePassSecureItemDeleteExecutor(
             databaseId = databaseId,
             items = listOf(item)
         )
-        if (moveToRecycleBin.isSuccess) {
+        val movedCount = moveToRecycleBin.getOrNull()
+        if (movedCount != null && movedCount > 0) {
             return true
+        }
+
+        if (movedCount != null) {
+            Log.w(
+                TAG,
+                "KeePass move to recycle bin affected 0 entries for db=$databaseId, fallback to direct delete"
+            )
         }
 
         val failureMessage = moveToRecycleBin.exceptionOrNull()?.message.orEmpty()
@@ -55,6 +63,11 @@ class KeePassSecureItemDeleteExecutor(
         )
         if (directDelete.isFailure) {
             Log.e(TAG, "KeePass delete failed: ${directDelete.exceptionOrNull()?.message}")
+            return false
+        }
+        val deletedCount = directDelete.getOrNull() ?: 0
+        if (deletedCount <= 0) {
+            Log.e(TAG, "KeePass delete affected 0 entries for db=$databaseId")
             return false
         }
         return true

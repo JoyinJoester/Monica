@@ -481,6 +481,7 @@ data class AppSettings(
     val bottomNavVisibility: BottomNavVisibility = BottomNavVisibility(),
     val bottomNavOrder: List<BottomNavContentTab> = BottomNavContentTab.DEFAULT_ORDER,
     val useDraggableBottomNav: Boolean = false, // 使用可拖拽底部导航栏
+    val autoHideBottomNavWhenSingleTab: Boolean = false, // 仅启用一个底栏项时自动隐藏导航栏
     val disablePasswordVerification: Boolean = false, // 开发者选项：关闭密码验证
     val bitwardenSyncForensicsEnabled: Boolean = false, // 开发者选项：Bitwarden 同步脱敏取证
     val bitwardenSyncForensicsDirectoryUri: String? = null, // 取证日志外部镜像目录（SAF tree uri）
@@ -516,6 +517,7 @@ data class AppSettings(
     val authenticatorCardDisplayFields: List<AuthenticatorCardDisplayField> = AuthenticatorCardDisplayField.DEFAULT_ORDER, // 验证器卡片显示字段（顺序即展示顺序）
     val passwordListQuickFiltersEnabled: Boolean = false, // 密码列表快捷筛选开关
     val passwordListQuickFilterItems: List<PasswordListQuickFilterItem> = PasswordListQuickFilterItem.DEFAULT_ORDER, // 密码列表快捷筛选显示内容
+    val passwordListCategoryQuickFiltersEnabled: Boolean = false, // 密码列表分类快捷筛选开关
     val passwordListQuickFoldersEnabled: Boolean = false, // 密码列表快捷文件夹开关
     val passwordListQuickFolderStyle: PasswordListQuickFolderStyle = PasswordListQuickFolderStyle.CLASSIC, // 密码列表快捷文件夹展示样式
     val passwordListQuickFolderPathBannerEnabled: Boolean = false, // 密码列表路径横幅开关

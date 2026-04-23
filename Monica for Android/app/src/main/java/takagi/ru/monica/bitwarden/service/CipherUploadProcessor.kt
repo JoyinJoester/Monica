@@ -23,13 +23,12 @@ import takagi.ru.monica.data.model.SecureCustomFieldType
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.notes.domain.NoteContentCodec
+import takagi.ru.monica.passkey.PasskeyPrivateKeySupport
 import takagi.ru.monica.utils.FieldChange
 import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.util.TotpDataResolver
 import java.util.Date
-import java.security.KeyFactory
 import java.security.KeyStore
-import java.security.spec.PKCS8EncodedKeySpec
 import java.security.MessageDigest
 
 /**
@@ -494,43 +493,13 @@ class CipherUploadProcessor(
     }
 
     private fun normalizePasskeyForUpload(passkey: PasskeyEntry): PasskeyEntry {
-        if (isPkcs8PrivateKeyBase64(passkey.privateKeyAlias)) return passkey
-
-        val alias = passkey.privateKeyAlias
-        if (alias.isBlank()) return passkey
-
-        return try {
-            val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER)
-            keyStore.load(null)
-            val entry = keyStore.getEntry(alias, null) as? KeyStore.PrivateKeyEntry
-            val encoded = entry?.privateKey?.encoded
-            if (encoded == null || encoded.isEmpty()) {
-                passkey
-            } else {
-                passkey.copy(privateKeyAlias = Base64.encodeToString(encoded, Base64.NO_WRAP))
-            }
-        } catch (_: Exception) {
+        val normalizedKey = PasskeyPrivateKeySupport.normalizeForBitwardenUpload(passkey.privateKeyAlias)
+            ?: return passkey
+        return if (normalizedKey == passkey.privateKeyAlias) {
             passkey
+        } else {
+            passkey.copy(privateKeyAlias = normalizedKey)
         }
-    }
-
-    private fun isPkcs8PrivateKeyBase64(value: String): Boolean {
-        if (value.isBlank()) return false
-        val decoded = runCatching { Base64.decode(value, Base64.NO_WRAP) }.getOrNull()
-            ?: runCatching {
-                Base64.decode(value, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
-            }.getOrNull()
-            ?: return false
-        val keySpec = PKCS8EncodedKeySpec(decoded)
-        val ecValid = runCatching {
-            KeyFactory.getInstance("EC").generatePrivate(keySpec)
-            true
-        }.getOrDefault(false)
-        if (ecValid) return true
-        return runCatching {
-            KeyFactory.getInstance("RSA").generatePrivate(keySpec)
-            true
-        }.getOrDefault(false)
     }
     
     /**

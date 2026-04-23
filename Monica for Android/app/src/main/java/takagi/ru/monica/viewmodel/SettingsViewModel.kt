@@ -2,6 +2,7 @@ package takagi.ru.monica.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.SharingStarted
@@ -20,6 +21,7 @@ import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.repository.SecureItemRepository
+import takagi.ru.monica.utils.SavedCategoryFilterState
 import takagi.ru.monica.utils.SettingsManager
 
 /**
@@ -240,10 +242,22 @@ class SettingsViewModel(
             settingsManager.updatePlusActivated(activated)
         }
     }
+
+    fun clearPlusLicenseData() {
+        viewModelScope.launch {
+            settingsManager.clearPlusLicenseData()
+        }
+    }
     
     fun updateUseDraggableBottomNav(enabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updateUseDraggableBottomNav(enabled)
+        }
+    }
+
+    fun updateAutoHideBottomNavWhenSingleTab(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateAutoHideBottomNavWhenSingleTab(enabled)
         }
     }
     
@@ -335,6 +349,12 @@ class SettingsViewModel(
     fun updatePasswordListQuickFilterItems(items: List<takagi.ru.monica.data.PasswordListQuickFilterItem>) {
         viewModelScope.launch {
             settingsManager.updatePasswordListQuickFilterItems(items)
+        }
+    }
+
+    fun updatePasswordListCategoryQuickFiltersEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updatePasswordListCategoryQuickFiltersEnabled(enabled)
         }
     }
 
@@ -480,6 +500,16 @@ class SettingsViewModel(
     fun updateKeepassDxLikeMutationEnabled(enabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updateKeepassDxLikeMutationEnabled(enabled)
+        }
+    }
+
+    fun categoryFilterStateFlow(scope: String): Flow<SavedCategoryFilterState> {
+        return settingsManager.categoryFilterStateFlow(scope)
+    }
+
+    fun updateCategoryFilterState(scope: String, state: SavedCategoryFilterState) {
+        viewModelScope.launch {
+            settingsManager.updateCategoryFilterState(scope, state)
         }
     }
 

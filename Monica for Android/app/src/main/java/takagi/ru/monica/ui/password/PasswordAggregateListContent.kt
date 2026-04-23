@@ -80,6 +80,39 @@ internal fun buildPasswordAggregateItems(
     return items.sortedByDescending(PasswordAggregateListItemUi::sortTime)
 }
 
+internal fun resolveNonEmptyAggregateContentTypes(
+    configuredTypes: List<PasswordPageContentType>,
+    bankCards: List<SecureItem>,
+    documents: List<SecureItem>,
+    notes: List<SecureItem>,
+    totpItems: List<SecureItem>,
+    passkeys: List<PasskeyEntry>,
+    categoryFilter: CategoryFilter
+): List<PasswordPageContentType> {
+    return configuredTypes.filter { type ->
+        when (type) {
+            PasswordPageContentType.PASSWORD -> true
+            PasswordPageContentType.CARD_WALLET ->
+                bankCards.any { it.matchesAggregateCategory(categoryFilter) } ||
+                    documents.any { it.matchesAggregateCategory(categoryFilter) }
+            PasswordPageContentType.NOTE ->
+                notes.any { it.matchesAggregateCategory(categoryFilter) }
+            PasswordPageContentType.AUTHENTICATOR ->
+                totpItems.any { item ->
+                    val data = decodeJson<TotpData>(item.itemData) ?: return@any false
+                    !item.isDeleted &&
+                        data.boundPasswordId == null &&
+                        item.matchesAggregateCategory(categoryFilter, data.categoryId)
+                }
+            PasswordPageContentType.PASSKEY ->
+                passkeys.any { passkey ->
+                    passkey.boundPasswordId == null &&
+                        passkey.matchesAggregateCategory(categoryFilter)
+                }
+        }
+    }
+}
+
 internal fun filterPasswordAggregateItemsByQuickFilters(
     items: List<PasswordAggregateListItemUi>,
     configuredQuickFilterItems: List<PasswordListQuickFilterItem>,

@@ -1,7 +1,6 @@
 package takagi.ru.monica.ui.screens
 
 import android.os.Build
-import android.util.Base64
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
@@ -105,11 +104,9 @@ import takagi.ru.monica.ui.icons.UnmatchedIconFallback
 import takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon
 import takagi.ru.monica.ui.icons.shouldShowFallbackSlot
 import takagi.ru.monica.bitwarden.sync.SyncStatus
+import takagi.ru.monica.passkey.PasskeyPrivateKeySupport
 import takagi.ru.monica.passkey.managementKey
 import takagi.ru.monica.passkey.managementRecordIdOrNull
-import java.security.KeyFactory
-import java.security.KeyStore
-import java.security.spec.PKCS8EncodedKeySpec
 
 /**
  * Passkey 列表屏幕
@@ -128,6 +125,8 @@ fun PasskeyListScreen(
     passwordViewModel: PasswordViewModel? = null,
     onNavigateToPasswordDetail: (Long) -> Unit = {},
     hideTopBar: Boolean = false,
+    showStandaloneSettingsEntry: Boolean = false,
+    onOpenStandaloneSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -253,6 +252,7 @@ fun PasskeyListScreen(
     var pendingDeletePasskey by remember { mutableStateOf<PasskeyEntry?>(null) }
     var selectedCategoryFilter by remember { mutableStateOf<UnifiedCategoryFilterSelection>(UnifiedCategoryFilterSelection.All) }
     var showCategoryFilterDialog by remember { mutableStateOf(false) }
+    var showTopActionsMenu by remember { mutableStateOf(false) }
     var categoryPillBoundsInWindow by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     var showBatchMoveCategoryDialog by remember { mutableStateOf(false) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
@@ -958,6 +958,15 @@ fun PasskeyListScreen(
                                 tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                        if (showStandaloneSettingsEntry) {
+                            IconButton(onClick = { showTopActionsMenu = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = stringResource(R.string.more_options),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                         if (appSettings.categorySelectionUiMode == takagi.ru.monica.data.CategorySelectionUiMode.CHIP_MENU) {
                             UnifiedCategoryFilterChipMenuDropdown(
                                 expanded = showCategoryFilterDialog,
@@ -976,6 +985,19 @@ fun PasskeyListScreen(
                                     quickFilterContent = {}
                                 )
                             }
+                        }
+                        DropdownMenu(
+                            expanded = showTopActionsMenu,
+                            onDismissRequest = { showTopActionsMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.nav_settings)) },
+                                leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                                onClick = {
+                                    showTopActionsMenu = false
+                                    onOpenStandaloneSettings()
+                                }
+                            )
                         }
                     }
                 }
@@ -2346,34 +2368,6 @@ private class PasskeyBitwardenMoveBlockedException :
 private fun isPasskeyMigratableToBitwarden(passkey: PasskeyEntry): Boolean {
     if (passkey.passkeyMode != PasskeyEntry.MODE_BW_COMPAT) return false
     if (passkey.syncStatus == "REFERENCE") return false
-    val keyMaterial = passkey.privateKeyAlias
-    if (keyMaterial.isBlank()) return false
-    if (isPkcs8PrivateKeyBase64(keyMaterial)) return true
-
-    return try {
-        val keyStore = KeyStore.getInstance("AndroidKeyStore")
-        keyStore.load(null)
-        val entry = keyStore.getEntry(keyMaterial, null) as? KeyStore.PrivateKeyEntry
-        val encoded = entry?.privateKey?.encoded
-        encoded != null && encoded.isNotEmpty()
-    } catch (_: Exception) {
-        false
-    }
-}
-
-private fun isPkcs8PrivateKeyBase64(value: String): Boolean {
-    if (value.isBlank()) return false
-    val decoded = runCatching { Base64.decode(value, Base64.NO_WRAP) }.getOrNull() ?: return false
-    val keySpec = PKCS8EncodedKeySpec(decoded)
-    val ecValid = runCatching {
-        KeyFactory.getInstance("EC").generatePrivate(keySpec)
-        true
-    }.getOrDefault(false)
-    if (ecValid) return true
-
-    return runCatching {
-        KeyFactory.getInstance("RSA").generatePrivate(keySpec)
-        true
-    }.getOrDefault(false)
+    return PasskeyPrivateKeySupport.hasBitwardenCompatiblePrivateKey(passkey.privateKeyAlias)
 }
 

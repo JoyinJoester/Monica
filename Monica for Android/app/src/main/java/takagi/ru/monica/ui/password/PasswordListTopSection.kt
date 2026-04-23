@@ -89,6 +89,8 @@ internal fun PasswordListTopSection(
     onSearchQueryChange: (String) -> Unit,
     topActionsMenuExpanded: Boolean,
     onTopActionsMenuExpandedChange: (Boolean) -> Unit,
+    showStandaloneSettingsEntry: Boolean,
+    onOpenStandaloneSettings: () -> Unit,
     isCategorySheetVisible: Boolean,
     onCategorySheetVisibleChange: (Boolean) -> Unit,
     categoryPillBoundsInWindow: androidx.compose.ui.geometry.Rect?,
@@ -408,7 +410,9 @@ internal fun PasswordListTopSection(
                                 onOpenCommonAccountTemplates = onOpenCommonAccountTemplates,
                                 onOpenHistory = onOpenHistory,
                                 onOpenTrash = onOpenTrash,
-                                onOpenArchive = { viewModel.setCategoryFilter(CategoryFilter.Archived) }
+                                onOpenArchive = { viewModel.setCategoryFilter(CategoryFilter.Archived) },
+                                showSettingsEntry = showStandaloneSettingsEntry,
+                                onOpenSettings = onOpenStandaloneSettings
                             )
                         }
                 }

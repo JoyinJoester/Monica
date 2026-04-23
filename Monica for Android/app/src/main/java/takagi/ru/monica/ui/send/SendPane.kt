@@ -38,12 +38,16 @@ internal fun SendPane(
         hiddenText: Boolean,
         expireInDays: Int
     ) -> Unit,
-    onBitwardenEvent: ((BitwardenViewModel.BitwardenEvent) -> Boolean)? = null
+    onBitwardenEvent: ((BitwardenViewModel.BitwardenEvent) -> Boolean)? = null,
+    showStandaloneSettingsEntry: Boolean = false,
+    onOpenStandaloneSettings: () -> Unit = {}
 ) {
     if (isCompactWidth) {
         SendScreen(
             bitwardenViewModel = bitwardenViewModel,
-            onBitwardenEvent = onBitwardenEvent
+            onBitwardenEvent = onBitwardenEvent,
+            showStandaloneSettingsEntry = showStandaloneSettingsEntry,
+            onOpenStandaloneSettings = onOpenStandaloneSettings
         )
     } else {
         Row(modifier = Modifier.fillMaxSize()) {
@@ -56,7 +60,9 @@ internal fun SendPane(
                     onSendClick = onSendClick,
                     selectedSendId = selectedSend?.bitwardenSendId,
                     bitwardenViewModel = bitwardenViewModel,
-                    onBitwardenEvent = onBitwardenEvent
+                    onBitwardenEvent = onBitwardenEvent,
+                    showStandaloneSettingsEntry = showStandaloneSettingsEntry,
+                    onOpenStandaloneSettings = onOpenStandaloneSettings
                 )
             }
             DetailPane(

@@ -30,6 +30,7 @@ class AutofillProcessorNg(
         isCompatMode: Boolean,
         passwords: List<PasswordEntry>,
         fieldSignatureKey: String? = null,
+        preferDirectAutoFill: Boolean = false,
     ): FillResponse? {
         val request = parser.parse(
             packageName = packageName,
@@ -38,6 +39,7 @@ class AutofillProcessorNg(
             inlineRequest = inlineRequest,
             fieldSignatureKey = fieldSignatureKey,
             isCompatMode = isCompatMode,
+            preferDirectAutoFill = preferDirectAutoFill,
         )
 
         if (request !is AutofillRequest.Fillable) return null

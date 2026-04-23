@@ -143,6 +143,7 @@ class BitwardenRepository(private val context: Context) {
     private val sendDao = database.bitwardenSendDao()
     private val conflictDao = database.bitwardenConflictBackupDao()
     private val pendingOpDao = database.bitwardenPendingOperationDao()
+    private val rawEntryRecordDao = database.bitwardenSyncRawEntryRecordDao()
     private val passwordEntryDao = database.passwordEntryDao()
     private val secureItemDao = database.secureItemDao()
     private val passkeyDao = database.passkeyDao()
@@ -604,17 +605,7 @@ class BitwardenRepository(private val context: Context) {
             clearVaultSyncMutex(vaultId)
 
             database.withTransaction {
-                // 先清理所有引用 vault_id 的表，避免外键约束导致登出失败。
-                pendingOpDao.deleteByVault(vaultId)
-                conflictDao.deleteByVault(vaultId)
-                sendDao.deleteByVault(vaultId)
-                folderDao.deleteByVault(vaultId)
-
-                // 清理本地业务数据
-                passwordEntryDao.deleteAllByBitwardenVaultId(vaultId)
-                secureItemDao.deleteAllByBitwardenVaultId(vaultId)
-                passkeyDao.deleteAllByBitwardenVaultId(vaultId)
-                categoryDao.unlinkByVaultId(vaultId)
+                clearVaultLocalReferences(vaultId)
 
                 // 最后删除 Vault 本体
                 vaultDao.deleteById(vaultId)
@@ -631,6 +622,21 @@ class BitwardenRepository(private val context: Context) {
             Log.e(TAG, "登出失败", e)
             false
         }
+    }
+
+    private suspend fun clearVaultLocalReferences(vaultId: Long) {
+        // 先清理所有直接引用 vault_id 的表，避免删除 vault 主记录时触发外键异常。
+        pendingOpDao.deleteByVault(vaultId)
+        conflictDao.deleteByVault(vaultId)
+        sendDao.deleteByVault(vaultId)
+        folderDao.deleteByVault(vaultId)
+        rawEntryRecordDao.deleteByVault(vaultId)
+
+        // 再清理业务数据与文件夹映射。
+        passwordEntryDao.deleteAllByBitwardenVaultId(vaultId)
+        secureItemDao.deleteAllByBitwardenVaultId(vaultId)
+        passkeyDao.deleteAllByBitwardenVaultId(vaultId)
+        categoryDao.unlinkByVaultId(vaultId)
     }
     
     // ==================== 同步 ====================
@@ -795,13 +801,7 @@ class BitwardenRepository(private val context: Context) {
                 }
 
                 CacheClearMode.FULL_FORCE -> {
-                    passwordEntryDao.deleteAllByBitwardenVaultId(vaultId)
-                    secureItemDao.deleteAllByBitwardenVaultId(vaultId)
-                    passkeyDao.deleteAllByBitwardenVaultId(vaultId)
-                    folderDao.deleteByVault(vaultId)
-                    sendDao.deleteByVault(vaultId)
-                    conflictDao.deleteByVault(vaultId)
-                    pendingOpDao.deleteByVault(vaultId)
+                    clearVaultLocalReferences(vaultId)
                 }
             }
         }

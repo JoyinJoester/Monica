@@ -28,14 +28,18 @@ internal fun PasskeyPane(
     resolvePasswordTitle: (Long) -> String?,
     onOpenPasswordDetail: (Long) -> Unit,
     onUnbindPasskey: (PasskeyEntry) -> Unit,
-    onDeletePasskey: (PasskeyEntry) -> Unit
+    onDeletePasskey: (PasskeyEntry) -> Unit,
+    showStandaloneSettingsEntry: Boolean = false,
+    onOpenStandaloneSettings: () -> Unit = {}
 ) {
     if (isCompactWidth) {
         PasskeyListScreen(
             viewModel = passkeyViewModel,
             passwordViewModel = passwordViewModel,
             onNavigateToPasswordDetail = onNavigateToPasswordDetail,
-            onPasskeyClick = {}
+            onPasskeyClick = {},
+            showStandaloneSettingsEntry = showStandaloneSettingsEntry,
+            onOpenStandaloneSettings = onOpenStandaloneSettings
         )
     } else {
         Row(modifier = Modifier.fillMaxSize()) {
@@ -48,7 +52,9 @@ internal fun PasskeyPane(
                     viewModel = passkeyViewModel,
                     passwordViewModel = passwordViewModel,
                     onNavigateToPasswordDetail = onNavigateToPasswordDetail,
-                    onPasskeyClick = onPasskeyOpen
+                    onPasskeyClick = onPasskeyOpen,
+                    showStandaloneSettingsEntry = showStandaloneSettingsEntry,
+                    onOpenStandaloneSettings = onOpenStandaloneSettings
                 )
             }
             DetailPane(

@@ -21,7 +21,9 @@ internal fun CardWalletContent(
     saveableStateHolder: SaveableStateHolder,
     bankCardViewModel: BankCardViewModel,
     documentViewModel: DocumentViewModel,
-    state: CardWalletContentState
+    state: CardWalletContentState,
+    showStandaloneSettingsEntry: Boolean = false,
+    onOpenStandaloneSettings: () -> Unit = {}
 ) {
     saveableStateHolder.SaveableStateProvider("card_wallet") {
         CardWalletScreen(
@@ -32,7 +34,9 @@ internal fun CardWalletContent(
             onCardClick = state.onCardClick,
             onDocumentClick = state.onDocumentClick,
             onSelectionModeChange = state.onDocumentSelectionModeChange,
-            onBankCardSelectionModeChange = state.onBankCardSelectionModeChange
+            onBankCardSelectionModeChange = state.onBankCardSelectionModeChange,
+            showStandaloneSettingsEntry = showStandaloneSettingsEntry,
+            onOpenStandaloneSettings = onOpenStandaloneSettings
         )
     }
 }

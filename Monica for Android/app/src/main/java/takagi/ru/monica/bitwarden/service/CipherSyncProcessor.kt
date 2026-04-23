@@ -69,36 +69,37 @@ class CipherSyncProcessor(
         symmetricKey: SymmetricCryptoKey,
         forensicsCollector: ((BitwardenSyncForensicsSummary) -> Unit)? = null
     ): CipherSyncResult {
-        val serverDeletedAt = parseBitwardenDeletedAt(cipher.deletedDate)
-        val serverArchivedAt = parseBitwardenArchivedAt(cipher.archivedDate)
-        val metrics = if (forensicsCollector != null) {
-            collectForensicsMetrics(cipher, symmetricKey)
-        } else {
-            emptyMap()
-        }
+        return BitwardenCipherKeyResolver.withCipherKey(cipher, symmetricKey, TAG) { effectiveKey ->
+            val serverDeletedAt = parseBitwardenDeletedAt(cipher.deletedDate)
+            val serverArchivedAt = parseBitwardenArchivedAt(cipher.archivedDate)
+            val metrics = if (forensicsCollector != null) {
+                collectForensicsMetrics(cipher, effectiveKey)
+            } else {
+                emptyMap()
+            }
 
-        val syncResult = when (cipher.type) {
-            1 -> syncLoginCipher(vault, cipher, symmetricKey, serverDeletedAt, serverArchivedAt)
-            2 -> syncSecureNoteCipher(vault, cipher, symmetricKey, serverDeletedAt)
-            3 -> syncCardCipher(vault, cipher, symmetricKey, serverDeletedAt)
-            4 -> syncIdentityCipher(vault, cipher, symmetricKey, serverDeletedAt)
-            else -> CipherSyncResult.Skipped("Unknown cipher type: ${cipher.type}")
-        }
-        val outcome = mapCipherSyncOutcome(syncResult)
-        forensicsCollector?.invoke(
-            BitwardenSyncForensicsSummary(
-                cipherId = cipher.id,
-                cipherType = cipher.type,
-                syncOutcome = outcome.first,
-                deleted = cipher.deletedDate != null,
-                revisionMillis = parseRevisionMillis(cipher.revisionDate),
-                customFieldCount = cipher.fields?.size ?: 0,
-                fieldMetrics = metrics,
-                message = outcome.second?.take(200)
+            val syncResult = when (cipher.type) {
+                1 -> syncLoginCipher(vault, cipher, effectiveKey, serverDeletedAt, serverArchivedAt)
+                2 -> syncSecureNoteCipher(vault, cipher, effectiveKey, serverDeletedAt)
+                3 -> syncCardCipher(vault, cipher, effectiveKey, serverDeletedAt)
+                4 -> syncIdentityCipher(vault, cipher, effectiveKey, serverDeletedAt)
+                else -> CipherSyncResult.Skipped("Unknown cipher type: ${cipher.type}")
+            }
+            val outcome = mapCipherSyncOutcome(syncResult)
+            forensicsCollector?.invoke(
+                BitwardenSyncForensicsSummary(
+                    cipherId = cipher.id,
+                    cipherType = cipher.type,
+                    syncOutcome = outcome.first,
+                    deleted = cipher.deletedDate != null,
+                    revisionMillis = parseRevisionMillis(cipher.revisionDate),
+                    customFieldCount = cipher.fields?.size ?: 0,
+                    fieldMetrics = metrics,
+                    message = outcome.second?.take(200)
+                )
             )
-        )
-
-        return syncResult
+            syncResult
+        }
     }
     
     /**

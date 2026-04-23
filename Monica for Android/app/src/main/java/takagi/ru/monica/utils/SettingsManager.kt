@@ -64,6 +64,7 @@ data class PageAdjustmentPasswordFieldVisibilitySnapshot(
 data class PageAdjustmentSettingsSnapshot(
     val passwordListQuickFiltersEnabled: Boolean = false,
     val passwordListQuickFilterItems: List<String> = emptyList(),
+    val passwordListCategoryQuickFiltersEnabled: Boolean = false,
     val passwordListQuickFoldersEnabled: Boolean = false,
     val passwordListQuickFolderStyle: String = takagi.ru.monica.data.PasswordListQuickFolderStyle.CLASSIC.name,
     val passwordListQuickFolderPathBannerEnabled: Boolean = false,
@@ -93,6 +94,7 @@ data class PageAdjustmentSettingsSnapshot(
     val bottomNavVisibilitySend: Boolean = false,
     val bottomNavVisibilityPasskey: Boolean = true,
     val useDraggableBottomNav: Boolean = false,
+    val autoHideBottomNavWhenSingleTab: Boolean = false,
     val passwordListQuickAccessEnabled: Boolean = true,
     val passwordListTopModulesOrder: List<String> = emptyList(),
     val passwordCardDisplayMode: String = takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL.name,
@@ -159,6 +161,8 @@ class SettingsManager(private val context: Context) {
         private val DYNAMIC_COLOR_ENABLED_KEY = booleanPreferencesKey("dynamic_color_enabled")
         private val BOTTOM_NAV_ORDER_KEY = stringPreferencesKey("bottom_nav_order")
         private val USE_DRAGGABLE_BOTTOM_NAV_KEY = booleanPreferencesKey("use_draggable_bottom_nav")
+        private val AUTO_HIDE_BOTTOM_NAV_WHEN_SINGLE_TAB_KEY =
+            booleanPreferencesKey("auto_hide_bottom_nav_when_single_tab")
         private val DISABLE_PASSWORD_VERIFICATION_KEY = booleanPreferencesKey("disable_password_verification")
         private val BITWARDEN_SYNC_FORENSICS_ENABLED_KEY =
             booleanPreferencesKey("bitwarden_sync_forensics_enabled")
@@ -176,6 +180,11 @@ class SettingsManager(private val context: Context) {
         private val NOTIFICATION_VALIDATOR_AUTO_MATCH_KEY = booleanPreferencesKey("notification_validator_auto_match")
         private val NOTIFICATION_VALIDATOR_ID_KEY = longPreferencesKey("notification_validator_id")
         private val IS_PLUS_ACTIVATED_KEY = booleanPreferencesKey("is_plus_activated")
+        private val PLUS_LICENSE_CDK_KEY = stringPreferencesKey("plus_license_cdk")
+        private val PLUS_LICENSE_DEVICE_FINGERPRINT_KEY =
+            stringPreferencesKey("plus_license_device_fingerprint")
+        private val PLUS_LICENSE_LAST_VERIFIED_AT_KEY =
+            longPreferencesKey("plus_license_last_verified_at")
         private val STACK_CARD_MODE_KEY = stringPreferencesKey("stack_card_mode")
         private val PASSWORD_GROUP_MODE_KEY = stringPreferencesKey("password_group_mode")
         private val PASSWORD_WEBSITE_STACK_MATCH_MODE_KEY =
@@ -196,6 +205,7 @@ class SettingsManager(private val context: Context) {
         private val AUTHENTICATOR_CARD_DISPLAY_FIELDS_KEY = stringPreferencesKey("authenticator_card_display_fields") // 验证器卡片显示字段
         private val PASSWORD_LIST_QUICK_FILTERS_ENABLED_KEY = booleanPreferencesKey("password_list_quick_filters_enabled") // 密码列表快捷筛选开关
         private val PASSWORD_LIST_QUICK_FILTER_ITEMS_KEY = stringPreferencesKey("password_list_quick_filter_items") // 密码列表快捷筛选显示内容
+        private val PASSWORD_LIST_CATEGORY_QUICK_FILTERS_ENABLED_KEY = booleanPreferencesKey("password_list_category_quick_filters_enabled") // 密码列表分类快捷筛选开关
         private val PASSWORD_LIST_QUICK_FOLDERS_ENABLED_KEY = booleanPreferencesKey("password_list_quick_folders_enabled") // 密码列表快捷文件夹开关
         private val PASSWORD_LIST_QUICK_FOLDER_STYLE_KEY = stringPreferencesKey("password_list_quick_folder_style") // 密码列表快捷文件夹展示样式
         private val PASSWORD_LIST_QUICK_FOLDER_PATH_BANNER_ENABLED_KEY = booleanPreferencesKey("password_list_quick_folder_path_banner_enabled") // 密码列表路径横幅开关
@@ -494,6 +504,8 @@ class SettingsManager(private val context: Context) {
             ),
             bottomNavOrder = sanitizedOrder,
             useDraggableBottomNav = preferences[USE_DRAGGABLE_BOTTOM_NAV_KEY] ?: false,
+            autoHideBottomNavWhenSingleTab =
+                preferences[AUTO_HIDE_BOTTOM_NAV_WHEN_SINGLE_TAB_KEY] ?: false,
             disablePasswordVerification = preferences[DISABLE_PASSWORD_VERIFICATION_KEY] ?: false,
             bitwardenSyncForensicsEnabled =
                 preferences[BITWARDEN_SYNC_FORENSICS_ENABLED_KEY] ?: false,
@@ -566,6 +578,8 @@ class SettingsManager(private val context: Context) {
                 ?: takagi.ru.monica.data.AuthenticatorCardDisplayField.DEFAULT_ORDER,
             passwordListQuickFiltersEnabled = preferences[PASSWORD_LIST_QUICK_FILTERS_ENABLED_KEY] ?: false,
             passwordListQuickFilterItems = parsedQuickFilterItems,
+            passwordListCategoryQuickFiltersEnabled =
+                preferences[PASSWORD_LIST_CATEGORY_QUICK_FILTERS_ENABLED_KEY] ?: false,
             passwordListQuickFoldersEnabled = preferences[PASSWORD_LIST_QUICK_FOLDERS_ENABLED_KEY] ?: false,
             passwordListQuickFolderStyle = runCatching {
                 PasswordListQuickFolderStyle.valueOf(
@@ -725,6 +739,12 @@ class SettingsManager(private val context: Context) {
         }
     }
 
+    suspend fun updateAutoHideBottomNavWhenSingleTab(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[AUTO_HIDE_BOTTOM_NAV_WHEN_SINGLE_TAB_KEY] = enabled
+        }
+    }
+
     suspend fun updateCustomColors(
         primary: Long,
         secondary: Long,
@@ -828,6 +848,67 @@ class SettingsManager(private val context: Context) {
     suspend fun updatePlusActivated(activated: Boolean) {
         dataStore.edit { preferences ->
             preferences[IS_PLUS_ACTIVATED_KEY] = activated
+        }
+    }
+
+    suspend fun updatePlusLicenseCdk(cdk: String?) {
+        dataStore.edit { preferences ->
+            val normalized = cdk?.trim()?.takeIf { it.isNotBlank() }
+            if (normalized == null) {
+                preferences.remove(PLUS_LICENSE_CDK_KEY)
+            } else {
+                preferences[PLUS_LICENSE_CDK_KEY] = normalized
+            }
+        }
+    }
+
+    suspend fun updatePlusLicenseDeviceFingerprint(fingerprint: String?) {
+        dataStore.edit { preferences ->
+            val normalized = fingerprint?.trim()?.takeIf { it.isNotBlank() }
+            if (normalized == null) {
+                preferences.remove(PLUS_LICENSE_DEVICE_FINGERPRINT_KEY)
+            } else {
+                preferences[PLUS_LICENSE_DEVICE_FINGERPRINT_KEY] = normalized
+            }
+        }
+    }
+
+    suspend fun updatePlusLicenseLastVerifiedAt(epochSeconds: Long) {
+        dataStore.edit { preferences ->
+            if (epochSeconds <= 0L) {
+                preferences.remove(PLUS_LICENSE_LAST_VERIFIED_AT_KEY)
+            } else {
+                preferences[PLUS_LICENSE_LAST_VERIFIED_AT_KEY] = epochSeconds
+            }
+        }
+    }
+
+    suspend fun getPlusLicenseCdk(): String? {
+        return dataStore.data
+            .map { it[PLUS_LICENSE_CDK_KEY] }
+            .first()
+            ?.takeIf { value -> value.isNotBlank() }
+    }
+
+    suspend fun getPlusLicenseDeviceFingerprint(): String? {
+        return dataStore.data
+            .map { it[PLUS_LICENSE_DEVICE_FINGERPRINT_KEY] }
+            .first()
+            ?.takeIf { value -> value.isNotBlank() }
+    }
+
+    suspend fun getPlusLicenseLastVerifiedAt(): Long {
+        return dataStore.data
+            .map { it[PLUS_LICENSE_LAST_VERIFIED_AT_KEY] ?: 0L }
+            .first()
+    }
+
+    suspend fun clearPlusLicenseData() {
+        dataStore.edit { preferences ->
+            preferences[IS_PLUS_ACTIVATED_KEY] = false
+            preferences.remove(PLUS_LICENSE_CDK_KEY)
+            preferences.remove(PLUS_LICENSE_DEVICE_FINGERPRINT_KEY)
+            preferences.remove(PLUS_LICENSE_LAST_VERIFIED_AT_KEY)
         }
     }
 
@@ -968,6 +1049,12 @@ class SettingsManager(private val context: Context) {
         }
     }
 
+    suspend fun updatePasswordListCategoryQuickFiltersEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PASSWORD_LIST_CATEGORY_QUICK_FILTERS_ENABLED_KEY] = enabled
+        }
+    }
+
     suspend fun updatePasswordListQuickFoldersEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[PASSWORD_LIST_QUICK_FOLDERS_ENABLED_KEY] = enabled
@@ -1091,6 +1178,7 @@ class SettingsManager(private val context: Context) {
         return PageAdjustmentSettingsSnapshot(
             passwordListQuickFiltersEnabled = settings.passwordListQuickFiltersEnabled,
             passwordListQuickFilterItems = settings.passwordListQuickFilterItems.map { it.name },
+            passwordListCategoryQuickFiltersEnabled = settings.passwordListCategoryQuickFiltersEnabled,
             passwordListQuickFoldersEnabled = settings.passwordListQuickFoldersEnabled,
             passwordListQuickFolderStyle = settings.passwordListQuickFolderStyle.name,
             passwordListQuickFolderPathBannerEnabled = settings.passwordListQuickFolderPathBannerEnabled,
@@ -1121,6 +1209,7 @@ class SettingsManager(private val context: Context) {
             bottomNavVisibilitySend = settings.bottomNavVisibility.send,
             bottomNavVisibilityPasskey = settings.bottomNavVisibility.passkey,
             useDraggableBottomNav = settings.useDraggableBottomNav,
+            autoHideBottomNavWhenSingleTab = settings.autoHideBottomNavWhenSingleTab,
             passwordListQuickAccessEnabled = settings.passwordListQuickAccessEnabled,
             passwordListTopModulesOrder = settings.passwordListTopModulesOrder.map { it.name },
             passwordCardDisplayMode = settings.passwordCardDisplayMode.name,
@@ -1245,6 +1334,8 @@ class SettingsManager(private val context: Context) {
             preferences[PASSWORD_LIST_QUICK_FILTERS_ENABLED_KEY] = snapshot.passwordListQuickFiltersEnabled
             preferences[PASSWORD_LIST_QUICK_FILTER_ITEMS_KEY] =
                 parsedQuickFilterItems.joinToString(",") { it.name }
+            preferences[PASSWORD_LIST_CATEGORY_QUICK_FILTERS_ENABLED_KEY] =
+                snapshot.passwordListCategoryQuickFiltersEnabled
             preferences[PASSWORD_LIST_QUICK_FOLDERS_ENABLED_KEY] = snapshot.passwordListQuickFoldersEnabled
             preferences[PASSWORD_LIST_QUICK_FOLDER_STYLE_KEY] = parsedQuickFolderStyle.name
             preferences[PASSWORD_LIST_QUICK_FOLDER_PATH_BANNER_ENABLED_KEY] =
@@ -1281,6 +1372,8 @@ class SettingsManager(private val context: Context) {
                 preferences[SHOW_SEND_TAB_KEY] = snapshot.bottomNavVisibilitySend
                 preferences[SHOW_PASSKEY_TAB_KEY] = snapshot.bottomNavVisibilityPasskey
                 preferences[USE_DRAGGABLE_BOTTOM_NAV_KEY] = snapshot.useDraggableBottomNav
+                preferences[AUTO_HIDE_BOTTOM_NAV_WHEN_SINGLE_TAB_KEY] =
+                    snapshot.autoHideBottomNavWhenSingleTab
             }
             preferences[PASSWORD_LIST_QUICK_ACCESS_ENABLED_KEY] = snapshot.passwordListQuickAccessEnabled
             preferences[PASSWORD_LIST_TOP_MODULES_ORDER_KEY] =

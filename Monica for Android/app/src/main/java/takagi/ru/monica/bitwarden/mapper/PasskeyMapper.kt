@@ -3,9 +3,7 @@ package takagi.ru.monica.bitwarden.mapper
 import takagi.ru.monica.bitwarden.api.*
 import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.passkey.PasskeyCredentialIdCodec
-import java.security.KeyFactory
-import java.security.spec.PKCS8EncodedKeySpec
-import android.util.Base64
+import takagi.ru.monica.passkey.PasskeyPrivateKeySupport
 
 /**
  * Passkey 数据映射器
@@ -286,21 +284,7 @@ class PasskeyMapper : BitwardenMapper<PasskeyEntry> {
     }
 
     private fun canUseAsBitwardenKeyValue(value: String): Boolean {
-        if (value.isBlank()) return false
-
-        val decoded = runCatching { Base64.decode(value, Base64.NO_WRAP) }.getOrNull() ?: return false
-        val keySpec = PKCS8EncodedKeySpec(decoded)
-
-        val ecValid = runCatching {
-            KeyFactory.getInstance("EC").generatePrivate(keySpec)
-            true
-        }.getOrDefault(false)
-        if (ecValid) return true
-
-        return runCatching {
-            KeyFactory.getInstance("RSA").generatePrivate(keySpec)
-            true
-        }.getOrDefault(false)
+        return PasskeyPrivateKeySupport.exportPkcs8Base64(value) != null
     }
 
     private fun buildReferenceCredentialId(cipherId: String): String {

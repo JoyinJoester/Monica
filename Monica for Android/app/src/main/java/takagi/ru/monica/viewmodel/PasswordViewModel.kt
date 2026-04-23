@@ -137,6 +137,7 @@ class PasswordViewModel(
         private const val MONICA_KEEPASS_ARCHIVE_ROOT_GROUP_NAME = ".Monica"
         private const val MONICA_KEEPASS_ARCHIVE_GROUP_NAME = "Archive"
         private const val PASSWORD_HISTORY_LIMIT = 10
+        private const val KEEPASS_BATCH_DELETE_CHUNK_SIZE = 40
     }
 
     enum class ManualStackMode {
@@ -439,17 +440,26 @@ class PasswordViewModel(
                 
                 // Smart dedupe is only for non-search "All" view and does not mutate source data.
                 val shouldDedupe = query.isBlank() && !isExplicitSourceView && smartDedupe && filter is CategoryFilter.All
+                val shouldKeepRawDisplay = query.isNotBlank() || isExplicitSourceView
                 
                 val filtered = if (shouldDedupe) {
                     dedupeSmart(entries)
                 } else {
                     entries
                 }
-                val exactDeduped = dedupeExactEntries(filtered)
+                val exactDeduped = if (shouldKeepRawDisplay) {
+                    filtered
+                } else {
+                    dedupeExactEntries(filtered)
+                }
                 val decrypted = exactDeduped.map { entry ->
                     entry.copy(password = inspectSecretState(entry).plainValueOrEmpty())
                 }
-                filterGhostEntriesForDisplay(decrypted)
+                if (shouldKeepRawDisplay) {
+                    decrypted
+                } else {
+                    filterGhostEntriesForDisplay(decrypted)
+                }
             }
         }
         .flowOn(kotlinx.coroutines.Dispatchers.Default)
@@ -1144,13 +1154,20 @@ class PasswordViewModel(
             .toSet()
 
         incomingEntries.forEach { item ->
+            val hasStableKeePassUuid = !item.entryUuid.isNullOrBlank()
+            val isRemoteConflictReplica = isRemoteConflictReplicaTitle(item.title)
             val existingByUuid = item.entryUuid
                 ?.takeIf { it.isNotBlank() }
                 ?.let { repository.getPasswordEntryByKeePassUuid(databaseId, it) }
-            val existingById = item.monicaLocalId?.let { repository.getPasswordEntryById(it) }
+            val existingById = if (isRemoteConflictReplica) {
+                null
+            } else {
+                item.monicaLocalId?.let { repository.getPasswordEntryById(it) }
+            }
             val existing = when {
                 existingByUuid != null -> existingByUuid
                 existingById != null && existingById.keepassDatabaseId == databaseId -> existingById
+                hasStableKeePassUuid -> null
                 else -> repository.getDuplicateEntryInKeePass(
                     databaseId = databaseId,
                     title = item.title,
@@ -1286,6 +1303,10 @@ class PasswordViewModel(
             item.password.isNotBlank() ||
             item.url.isNotBlank() ||
             item.notes.isNotBlank()
+    }
+
+    private fun isRemoteConflictReplicaTitle(title: String): Boolean {
+        return title.contains("[远端冲突副本]")
     }
 
     private fun buildKeePassSyncKey(
@@ -2079,12 +2100,118 @@ class PasswordViewModel(
         }
     }
 
+    suspend fun deletePasswordEntriesBatch(
+        entries: List<PasswordEntry>,
+        onProgress: ((processed: Int, total: Int) -> Unit)? = null
+    ): Int {
+        if (entries.isEmpty()) return 0
+
+        val trashEnabled = trashSettings?.value?.first ?: true
+        var deletedCount = 0
+        var processedCount = 0
+        val totalCount = entries.size
+        onProgress?.invoke(processedCount, totalCount)
+        val keepassTargets = mutableListOf<
+            Pair<PasswordEntry, takagi.ru.monica.domain.provider.PasswordCommandPolicy>
+        >()
+
+        entries.forEach { entry ->
+            val commandPolicy = passwordProviderRegistry.commandPolicy(entry)
+            val bitwardenVaultId = entry.bitwardenVaultId
+            val bitwardenCipherId = entry.bitwardenCipherId
+            val isBitwardenCipher = bitwardenVaultId != null && commandPolicy.usesRemoteDeleteQueue
+
+            if (entry.keepassDatabaseId != null && !isBitwardenCipher) {
+                keepassTargets += entry to commandPolicy
+            } else {
+                val deleted = if (isBitwardenCipher) {
+                    if (!bitwardenCipherId.isNullOrBlank()) {
+                        handleBitwardenQueuedDelete(
+                            entry = entry,
+                            vaultId = bitwardenVaultId!!,
+                            cipherId = bitwardenCipherId,
+                            commandPolicy = commandPolicy
+                        )
+                    } else {
+                        false
+                    }
+                } else {
+                    if (trashEnabled) {
+                        moveEntryToTrashLocalOnly(entry, commandPolicy)
+                    } else {
+                        permanentlyDeleteEntryLocalOnly(entry)
+                    }
+                    true
+                }
+                if (deleted) {
+                    deletedCount++
+                }
+                processedCount++
+                onProgress?.invoke(processedCount, totalCount)
+            }
+        }
+
+        if (keepassTargets.isEmpty()) return deletedCount
+
+        keepassTargets
+            .groupBy { it.first.keepassDatabaseId }
+            .values
+            .forEach { groupedEntries ->
+                groupedEntries
+                    .chunked(KEEPASS_BATCH_DELETE_CHUNK_SIZE)
+                    .forEach { chunk ->
+                        val chunkEntries = chunk.map { it.first }
+                        val remoteDeleted = keepassPasswordDeleteExecutor.deleteBatch(
+                            entries = chunkEntries,
+                            useRecycleBin = trashEnabled
+                        )
+                        if (!remoteDeleted) {
+                            Log.e(
+                                "PasswordViewModel",
+                                "KeePass batch delete failed: trash=$trashEnabled, ids=${chunkEntries.map { it.id }}"
+                            )
+                            // 批量路径失败时退回逐条删除，尽可能提升成功率并输出真实进度。
+                            chunk.forEach { (entry, commandPolicy) ->
+                                val singleDeleted = keepassPasswordDeleteExecutor.delete(
+                                    entry = entry,
+                                    useRecycleBin = trashEnabled
+                                )
+                                if (singleDeleted) {
+                                    if (trashEnabled) {
+                                        moveEntryToTrashLocalOnly(entry, commandPolicy)
+                                    } else {
+                                        permanentlyDeleteEntryLocalOnly(entry)
+                                    }
+                                    deletedCount++
+                                }
+                                processedCount++
+                                onProgress?.invoke(processedCount, totalCount)
+                            }
+                            return@forEach
+                        }
+
+                        chunk.forEach { (entry, commandPolicy) ->
+                            if (trashEnabled) {
+                                moveEntryToTrashLocalOnly(entry, commandPolicy)
+                            } else {
+                                permanentlyDeleteEntryLocalOnly(entry)
+                            }
+                            deletedCount++
+                            processedCount++
+                            onProgress?.invoke(processedCount, totalCount)
+                        }
+                    }
+            }
+
+        return deletedCount
+    }
+
     private suspend fun handleBitwardenQueuedDelete(
         entry: PasswordEntry,
         vaultId: Long,
         cipherId: String,
         commandPolicy: takagi.ru.monica.domain.provider.PasswordCommandPolicy
-    ) {
+    ): Boolean {
         val queueResult = bitwardenRepository?.queueCipherDelete(
             vaultId = vaultId,
             cipherId = cipherId,
@@ -2095,9 +2222,9 @@ class PasswordViewModel(
                 "PasswordViewModel",
                 "Queue Bitwarden delete failed: ${queueResult.exceptionOrNull()?.message}"
             )
-            return
+            return false
         }
-        if (!keepassPasswordDeleteExecutor.delete(entry, useRecycleBin = true)) return
+        if (!keepassPasswordDeleteExecutor.delete(entry, useRecycleBin = true)) return false
 
         val tombstone = passwordCommandStateFactory.createQueuedDeleteTombstone(
             entry = entry,
@@ -2113,11 +2240,23 @@ class PasswordViewModel(
             detail = "移入回收站（待同步删除）"
         )
         Log.i("PasswordViewModel", "Delete queued as tombstone: id=${entry.id}")
+        return true
     }
 
     private suspend fun moveEntryToTrash(
         entry: PasswordEntry,
         keepassId: Long?,
+        commandPolicy: takagi.ru.monica.domain.provider.PasswordCommandPolicy
+    ) {
+        moveEntryToTrashLocalOnly(entry, commandPolicy)
+
+        if (keepassId != null) {
+            syncKeePassTrashDelete(entry)
+        }
+    }
+
+    private suspend fun moveEntryToTrashLocalOnly(
+        entry: PasswordEntry,
         commandPolicy: takagi.ru.monica.domain.provider.PasswordCommandPolicy
     ) {
         val softDeletedEntry = passwordCommandStateFactory.createSoftDeletedEntry(
@@ -2134,10 +2273,6 @@ class PasswordViewModel(
             detail = "移入回收站"
         )
         Log.i("PasswordViewModel", "Delete moved to trash: id=${entry.id}")
-
-        if (keepassId != null) {
-            syncKeePassTrashDelete(entry)
-        }
     }
 
     private fun syncKeePassTrashDelete(entry: PasswordEntry) {
@@ -2160,6 +2295,10 @@ class PasswordViewModel(
     private suspend fun permanentlyDeleteEntry(entry: PasswordEntry) {
         if (!keepassPasswordDeleteExecutor.delete(entry, useRecycleBin = false)) return
 
+        permanentlyDeleteEntryLocalOnly(entry)
+    }
+
+    private suspend fun permanentlyDeleteEntryLocalOnly(entry: PasswordEntry) {
         repository.deletePasswordEntry(entry)
         repository.deleteArchiveSyncMeta(entry.id)
         takagi.ru.monica.utils.OperationLogger.logDelete(

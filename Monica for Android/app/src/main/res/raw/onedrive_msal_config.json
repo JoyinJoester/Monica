@@ -1,0 +1,21 @@
+{
+  "client_id": "2aaf8c2c-b817-4085-9517-586a4a113dfc",
+  "authorization_user_agent": "DEFAULT",
+  "redirect_uri": "msauth://takagi.ru.monica/FwPDMDAjg96%2B0gxjMKKmnQS%2FdQA%3D",
+  "account_mode": "MULTIPLE",
+  "broker_redirect_uri_registered": false,
+  "authorities": [
+    {
+      "type": "AAD",
+      "audience": {
+        "type": "AzureADandPersonalMicrosoftAccount"
+      },
+      "default": true
+    }
+  ],
+  "logging": {
+    "pii_enabled": false,
+    "log_level": "WARNING",
+    "logcat_enabled": false
+  }
+}

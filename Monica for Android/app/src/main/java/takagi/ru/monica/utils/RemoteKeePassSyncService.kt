@@ -80,6 +80,32 @@ class RemoteKeePassSyncService(
         )
     }
 
+    suspend fun markConflict(
+        databaseId: Long,
+        workingHash: String?,
+        failureMessage: String
+    ) {
+        val current = ensureSyncState(databaseId)
+        syncStateDao.insertState(
+            current.copy(
+                workingHash = workingHash,
+                hasLocalChanges = true,
+                hasRemoteChanges = true,
+                syncPhase = KeePassSyncPhase.CONFLICT,
+                lastFailureAt = System.currentTimeMillis(),
+                failureCode = "REMOTE_CONFLICT",
+                failureMessage = failureMessage,
+                retryCount = current.retryCount + 1
+            )
+        )
+        databaseDao.updateSyncStatus(
+            id = databaseId,
+            status = KeePassSyncStatus.CONFLICT,
+            error = failureMessage,
+            syncedAt = null
+        )
+    }
+
     suspend fun markSynchronized(
         databaseId: Long,
         versionToken: String?,

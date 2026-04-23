@@ -333,17 +333,32 @@ class DataExportImportManager(private val context: Context) {
     private fun detectCsvFormat(firstLine: String): CsvFormat {
         val lowerLine = firstLine.lowercase()
         val firstLineFields = parseCsvLine(firstLine)
+        val normalizedHeaders = firstLineFields.map { it.trim().lowercase() }
+        val headerSet = normalizedHeaders.toSet()
         return when {
             // 密码键盘软件格式（签名行）: SecretInputExportFile,password|normal,ver4
             isPasswordKeyboardSignature(firstLineFields) ->
                 CsvFormat.PASSWORD_KEYBOARD
 
+            // 支付宝格式检测
+            lowerLine.contains("交易时间") && lowerLine.contains("收/支") &&
+            lowerLine.contains("金额") ->
+                CsvFormat.ALIPAY_TRANSACTION
+
+            // Chrome 标准导出头：name,url,username,password,note
+            // 需要在密码键盘表头检测之前判断，避免被误识别为 password_keyboard
+            headerSet.contains("name") &&
+            headerSet.contains("url") &&
+            headerSet.contains("username") &&
+            headerSet.contains("password") ->
+                CsvFormat.CHROME_PASSWORD
+
             // 密码键盘软件格式（表头行）
             // password: username,password,title,remarks,url,tag,custom
             // normal: title,remarks,tag,custom
             // card: cardNo,title,password,date,remarks,tag
-            firstLineFields.map { it.trim().lowercase() }.toSet().let { headers ->
-                val hasTitle = headers.contains("title") || headers.contains("name")
+            headerSet.let { headers ->
+                val hasTitle = headers.contains("title")
                 val hasRemarks =
                     headers.contains("remarks") || headers.contains("remark") || headers.contains("notes") || headers.contains("note")
                 val hasCardShape =
@@ -358,15 +373,6 @@ class DataExportImportManager(private val context: Context) {
                 val hasNormalShape = hasTitle && hasRemarks && !headers.contains("password")
                 hasPasswordShape || hasNormalShape || hasCardShape
             } -> CsvFormat.PASSWORD_KEYBOARD
-
-            // 支付宝格式检测
-            lowerLine.contains("交易时间") && lowerLine.contains("收/支") && 
-            lowerLine.contains("金额") -> 
-                CsvFormat.ALIPAY_TRANSACTION
-            
-            lowerLine.contains("name") && lowerLine.contains("url") && 
-            lowerLine.contains("username") && lowerLine.contains("password") -> 
-                CsvFormat.CHROME_PASSWORD
 
             lowerLine.contains("login_username") &&
             lowerLine.contains("login_password") ->
@@ -702,10 +708,13 @@ class DataExportImportManager(private val context: Context) {
             CsvFormat.APP_EXPORT -> firstLine.contains("Type") &&
                 firstLine.contains("Title") &&
                 firstLine.contains("Data")
-            CsvFormat.CHROME_PASSWORD -> firstLine.contains("name") &&
-                firstLine.contains("url") &&
-                firstLine.contains("username") &&
-                firstLine.contains("password")
+            CsvFormat.CHROME_PASSWORD -> {
+                val headers = parseCsvLine(firstLine).map { it.trim().lowercase() }.toSet()
+                headers.contains("name") &&
+                    headers.contains("url") &&
+                    headers.contains("username") &&
+                    headers.contains("password")
+            }
             CsvFormat.KEEPASS_PASSWORD -> {
                 val headers = parseCsvLine(firstLine).map { it.trim().lowercase() }.toSet()
                 val knownHeaders = setOf("title", "user name", "username", "password", "url", "notes", "name", "account")

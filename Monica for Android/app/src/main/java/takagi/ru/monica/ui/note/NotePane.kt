@@ -35,7 +35,9 @@ internal fun NotePane(
     initialKeePassDatabaseId: Long? = null,
     initialKeePassGroupPath: String? = null,
     initialBitwardenVaultId: Long? = null,
-    initialBitwardenFolderId: String? = null
+    initialBitwardenFolderId: String? = null,
+    showStandaloneSettingsEntry: Boolean = false,
+    onOpenStandaloneSettings: () -> Unit = {}
 ) {
     if (isCompactWidth) {
         NoteListScreen(
@@ -43,7 +45,9 @@ internal fun NotePane(
             settingsViewModel = settingsViewModel,
             onNavigateToAddNote = onNavigateToAddNote,
             securityManager = securityManager,
-            onSelectionModeChange = onSelectionModeChange
+            onSelectionModeChange = onSelectionModeChange,
+            showStandaloneSettingsEntry = showStandaloneSettingsEntry,
+            onOpenStandaloneSettings = onOpenStandaloneSettings
         )
     } else {
         Row(modifier = Modifier.fillMaxSize()) {
@@ -57,7 +61,9 @@ internal fun NotePane(
                     settingsViewModel = settingsViewModel,
                     onNavigateToAddNote = onNavigateToAddNote,
                     securityManager = securityManager,
-                    onSelectionModeChange = onSelectionModeChange
+                    onSelectionModeChange = onSelectionModeChange,
+                    showStandaloneSettingsEntry = showStandaloneSettingsEntry,
+                    onOpenStandaloneSettings = onOpenStandaloneSettings
                 )
             }
 

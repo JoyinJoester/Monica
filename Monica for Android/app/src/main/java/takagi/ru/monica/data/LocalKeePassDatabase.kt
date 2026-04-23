@@ -15,7 +15,8 @@ enum class KeePassDatabaseSourceType {
     LOCAL_INTERNAL,
     LOCAL_DOCUMENT_URI,
     REMOTE_WEBDAV,
-    REMOTE_ONEDRIVE
+    REMOTE_ONEDRIVE,
+    REMOTE_GOOGLE_DRIVE
 }
 
 enum class KeePassOpenMode {
@@ -232,7 +233,8 @@ fun LocalKeePassDatabase.toCreationOptions(): KeePassDatabaseCreationOptions {
 
 fun LocalKeePassDatabase.isRemoteSource(): Boolean = when (sourceType) {
     KeePassDatabaseSourceType.REMOTE_WEBDAV,
-    KeePassDatabaseSourceType.REMOTE_ONEDRIVE -> true
+    KeePassDatabaseSourceType.REMOTE_ONEDRIVE,
+    KeePassDatabaseSourceType.REMOTE_GOOGLE_DRIVE -> true
     else -> false
 }
 
@@ -268,7 +270,7 @@ interface LocalKeePassDatabaseDao {
     @Query("SELECT * FROM local_keepass_databases WHERE source_type = :sourceType ORDER BY sort_order ASC, created_at DESC")
     fun getDatabasesBySourceType(sourceType: KeePassDatabaseSourceType): Flow<List<LocalKeePassDatabase>>
 
-    @Query("SELECT * FROM local_keepass_databases WHERE source_type IN ('REMOTE_WEBDAV', 'REMOTE_ONEDRIVE') ORDER BY sort_order ASC, created_at DESC")
+    @Query("SELECT * FROM local_keepass_databases WHERE source_type IN ('REMOTE_WEBDAV', 'REMOTE_ONEDRIVE', 'REMOTE_GOOGLE_DRIVE') ORDER BY sort_order ASC, created_at DESC")
     fun getRemoteDatabases(): Flow<List<LocalKeePassDatabase>>
     
     @Insert(onConflict = OnConflictStrategy.REPLACE)

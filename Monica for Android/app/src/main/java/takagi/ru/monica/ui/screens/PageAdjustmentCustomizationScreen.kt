@@ -70,15 +70,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.Switch
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -113,7 +109,6 @@ import takagi.ru.monica.data.PasswordCardDisplayField
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordPageContentType
 import takagi.ru.monica.data.PasswordListQuickFilterItem
-import takagi.ru.monica.data.PasswordListQuickFolderStyle
 import takagi.ru.monica.data.ProgressBarStyle
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.UnifiedProgressBarMode
@@ -566,53 +561,69 @@ fun PasswordListCustomizationScreen(
             icon = type.toIcon()
         )
     }
-    val supportedAddButtonActions = remember {
-        listOf(
-            AddButtonMenuAction.PASSWORD,
-            AddButtonMenuAction.NOTE,
-            AddButtonMenuAction.AUTHENTICATOR,
-            AddButtonMenuAction.BANK_CARD
-        )
+    val allAddButtonActions = remember {
+        AddButtonMenuAction.values().toList()
     }
-    val selectedAddButtonActions = remember(
-        settings.addButtonMenuEnabledActions,
-        settings.addButtonMenuOrder
+
+    fun syncAddButtonMenuFromContent(
+        order: List<PasswordPageContentType>,
+        enabledTypes: List<PasswordPageContentType>
     ) {
-        mutableStateListOf<AddButtonMenuAction>().apply {
-            addAll(
-                AddButtonMenuAction.normalizeEnabledActions(
-                    settings.addButtonMenuEnabledActions,
-                    settings.addButtonMenuOrder
-                ).filter { supportedAddButtonActions.contains(it) }
-            )
+        val mappedOrder = order
+            .mapNotNull { it.toAddButtonMenuActionOrNull() }
+            .distinct()
+        val targetOrder = buildList {
+            addAll(mappedOrder)
+            allAddButtonActions.forEach { action ->
+                if (action !in this) {
+                    add(action)
+                }
+            }
         }
-    }
-    LaunchedEffect(settings.addButtonMenuEnabledActions, settings.addButtonMenuOrder) {
-        val normalized = AddButtonMenuAction.normalizeEnabledActions(
+
+        val mappedEnabled = enabledTypes
+            .mapNotNull { it.toAddButtonMenuActionOrNull() }
+            .distinct()
+
+        val normalizedCurrentOrder = AddButtonMenuAction.sanitizeOrder(settings.addButtonMenuOrder)
+        if (targetOrder != normalizedCurrentOrder) {
+            viewModel.updateAddButtonMenuOrder(targetOrder)
+        }
+
+        val normalizedCurrentEnabled = AddButtonMenuAction.normalizeEnabledActions(
             settings.addButtonMenuEnabledActions,
             settings.addButtonMenuOrder
-        ).filter { supportedAddButtonActions.contains(it) }
-        if (normalized != settings.addButtonMenuEnabledActions) {
-            viewModel.updateAddButtonMenuEnabledActions(normalized)
+        )
+        if (mappedEnabled != normalizedCurrentEnabled) {
+            viewModel.updateAddButtonMenuEnabledActions(mappedEnabled)
         }
-        selectedAddButtonActions.clear()
-        selectedAddButtonActions.addAll(normalized)
     }
-    var addButtonActionOrder by remember(settings.addButtonMenuOrder) {
-        mutableStateOf(
-            buildList {
-                settings.addButtonMenuOrder
-                    .filter { supportedAddButtonActions.contains(it) }
-                    .forEach { add(it) }
-                supportedAddButtonActions
-                    .filter { !contains(it) }
-                    .forEach { add(it) }
-            }
+
+    LaunchedEffect(
+        settings.passwordPageVisibleContentTypes,
+        settings.addButtonMenuOrder,
+        settings.addButtonMenuEnabledActions
+    ) {
+        val normalizedTypes = PasswordPageContentType.normalizeEnabledTypes(
+            settings.passwordPageVisibleContentTypes
+        ).filter { supportedContentTypes.contains(it) }
+        syncAddButtonMenuFromContent(
+            order = normalizedTypes,
+            enabledTypes = normalizedTypes
         )
     }
-    val previewAddButtonActions = remember(addButtonActionOrder, selectedAddButtonActions) {
-        addButtonActionOrder.filter { selectedAddButtonActions.contains(it) }
+
+    LaunchedEffect(settings.passwordPageAggregateEnabled, settings.addButtonBehaviorMode) {
+        val expectedMode = if (settings.passwordPageAggregateEnabled) {
+            AddButtonBehaviorMode.EXPANDABLE_MENU
+        } else {
+            AddButtonBehaviorMode.DIRECT_PASSWORD
+        }
+        if (settings.addButtonBehaviorMode != expectedMode) {
+            viewModel.updateAddButtonBehaviorMode(expectedMode)
+        }
     }
+
     val supportedQuickFilterItems = remember {
         listOf(
             PasswordListQuickFilterItem.FAVORITE,
@@ -730,6 +741,41 @@ fun PasswordListCustomizationScreen(
         )
     )
 
+    var previewAggregateEnabled by remember(settings.passwordPageAggregateEnabled) {
+        mutableStateOf(settings.passwordPageAggregateEnabled)
+    }
+    var previewQuickFiltersEnabled by remember(settings.passwordListQuickFiltersEnabled) {
+        mutableStateOf(settings.passwordListQuickFiltersEnabled)
+    }
+    var previewCategoryQuickFiltersEnabled by remember(settings.passwordListCategoryQuickFiltersEnabled) {
+        mutableStateOf(settings.passwordListCategoryQuickFiltersEnabled)
+    }
+    var previewQuickFolderPathBannerEnabled by remember(settings.passwordListQuickFolderPathBannerEnabled) {
+        mutableStateOf(settings.passwordListQuickFolderPathBannerEnabled)
+    }
+    var previewSystemBackToParentFolderEnabled by remember(settings.passwordListSystemBackToParentFolderEnabled) {
+        mutableStateOf(settings.passwordListSystemBackToParentFolderEnabled)
+    }
+    var previewQuickAccessEnabled by remember(settings.passwordListQuickAccessEnabled) {
+        mutableStateOf(settings.passwordListQuickAccessEnabled)
+    }
+
+    var aggregateSectionExpanded by rememberSaveable { mutableStateOf(false) }
+    var quickFiltersSectionExpanded by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(
+        previewAggregateEnabled,
+        previewQuickFiltersEnabled,
+        previewQuickAccessEnabled
+    ) {
+        if (!previewAggregateEnabled) {
+            aggregateSectionExpanded = false
+        }
+        if (!previewQuickFiltersEnabled) {
+            quickFiltersSectionExpanded = false
+        }
+    }
+
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
@@ -762,7 +808,7 @@ fun PasswordListCustomizationScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f)
                 )
             ) {
                 Column {
@@ -773,36 +819,14 @@ fun PasswordListCustomizationScreen(
                         Text(
                             text = stringResource(R.string.password_list_preview_title),
                             style = MaterialTheme.typography.titleMedium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
                             text = stringResource(R.string.password_list_preview_desc),
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.86f)
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        if (settings.passwordPageAggregateEnabled && selectedContentTypes.size > 1) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                selectedContentTypes.forEach { type ->
-                                    FilterChip(
-                                        selected = type == PasswordPageContentType.PASSWORD,
-                                        onClick = {},
-                                        label = { Text(text = stringResource(type.toLabelRes())) },
-                                        leadingIcon = {
-                                            Icon(
-                                                imageVector = type.toIcon(),
-                                                contentDescription = null
-                                            )
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                        if (settings.passwordListQuickFiltersEnabled && selectedQuickFilterItems.isNotEmpty()) {
+                        if (previewQuickFiltersEnabled && selectedQuickFilterItems.isNotEmpty()) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -902,8 +926,8 @@ fun PasswordListCustomizationScreen(
                                                 PasswordListQuickFilterItem.NOTE -> PasswordPageContentType.NOTE
                                                 else -> PasswordPageContentType.PASSWORD
                                             }
-                                            if (settings.passwordPageAggregateEnabled &&
-                                                settings.passwordPageVisibleContentTypes.contains(type)
+                                            if (previewAggregateEnabled &&
+                                                selectedContentTypes.contains(type)
                                             ) {
                                                 FilterChip(
                                                     selected = false,
@@ -925,7 +949,50 @@ fun PasswordListCustomizationScreen(
                             }
                         }
 
-                        if (settings.passwordListQuickFolderPathBannerEnabled) {
+                        if (previewCategoryQuickFiltersEnabled) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                FilterChip(
+                                    selected = false,
+                                    onClick = {},
+                                    label = { Text(text = stringResource(R.string.password_list_quick_folder_back)) },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                            contentDescription = null
+                                        )
+                                    }
+                                )
+                                FilterChip(
+                                    selected = true,
+                                    onClick = {},
+                                    label = { Text(text = "QQ") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Folder,
+                                            contentDescription = null
+                                        )
+                                    }
+                                )
+                                FilterChip(
+                                    selected = false,
+                                    onClick = {},
+                                    label = { Text(text = "游戏") },
+                                    leadingIcon = {
+                                        Icon(
+                                            imageVector = Icons.Default.Folder,
+                                            contentDescription = null
+                                        )
+                                    }
+                                )
+                            }
+                        }
+
+                        if (previewQuickFolderPathBannerEnabled) {
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -991,119 +1058,7 @@ fun PasswordListCustomizationScreen(
                             }
                         }
 
-                        if (settings.passwordListQuickFoldersEnabled) {
-                            val previewM3Style =
-                                settings.passwordListQuickFolderStyle == PasswordListQuickFolderStyle.M3_CARD
-                            if (previewM3Style) {
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = if (settings.passwordListQuickFolderPathBannerEnabled) 8.dp else 0.dp),
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f)
-                                    )
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Folder,
-                                            contentDescription = null
-                                        )
-                                        Spacer(modifier = Modifier.width(12.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = stringResource(R.string.password_list_preview_folder_name),
-                                                style = MaterialTheme.typography.titleMedium
-                                            )
-                                            Text(
-                                                text = stringResource(R.string.password_list_preview_folder_count),
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                        }
-                                        Icon(
-                                            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                }
-                            } else {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    Card(
-                                        modifier = Modifier.size(width = 172.dp, height = 74.dp),
-                                        colors = CardDefaults.cardColors(
-                                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)
-                                        )
-                                    ) {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.Folder,
-                                                contentDescription = null
-                                            )
-                                            Spacer(modifier = Modifier.width(10.dp))
-                                            Column {
-                                                Text(
-                                                    text = stringResource(R.string.password_list_preview_folder_count),
-                                                    style = MaterialTheme.typography.labelMedium,
-                                                    color = MaterialTheme.colorScheme.primary
-                                                )
-                                                Text(
-                                                    text = stringResource(R.string.password_list_preview_folder_name),
-                                                    style = MaterialTheme.typography.titleSmall
-                                                )
-                                            }
-                                        }
-                                    }
-                                    Card(
-                                        modifier = Modifier.size(width = 172.dp, height = 74.dp),
-                                        colors = CardDefaults.cardColors(
-                                            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.8f)
-                                        )
-                                    ) {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .padding(horizontal = 12.dp, vertical = 10.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                                                contentDescription = null
-                                            )
-                                            Spacer(modifier = Modifier.width(10.dp))
-                                            Column {
-                                                Text(
-                                                    text = stringResource(R.string.password_list_preview_back_to_parent),
-                                                    style = MaterialTheme.typography.titleSmall
-                                                )
-                                                Text(
-                                                    text = stringResource(R.string.password_list_preview_current_folder),
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        if (settings.passwordListQuickAccessEnabled) {
+                        if (previewQuickAccessEnabled) {
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = CardDefaults.cardColors(
@@ -1131,47 +1086,47 @@ fun PasswordListCustomizationScreen(
                             }
                         }
 
-                        if ((!settings.passwordPageAggregateEnabled || selectedContentTypes.size <= 1) &&
-                            (!settings.passwordListQuickFiltersEnabled || selectedQuickFilterItems.isEmpty()) &&
-                            !settings.passwordListQuickFoldersEnabled &&
-                            !settings.passwordListQuickAccessEnabled
+                        if ((!previewQuickFiltersEnabled || selectedQuickFilterItems.isEmpty()) &&
+                            !previewCategoryQuickFiltersEnabled &&
+                            !previewQuickAccessEnabled
                         ) {
                             Text(
                                 text = stringResource(R.string.password_list_preview_empty),
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
                 }
             }
 
-            Card(modifier = Modifier.fillMaxWidth()) {
+            ExpandableSettingsCard(
+                title = stringResource(R.string.password_page_aggregate_switch_title),
+                subtitle = stringResource(R.string.password_page_aggregate_switch_desc),
+                expanded = aggregateSectionExpanded,
+                onExpandedChange = { aggregateSectionExpanded = it },
+                expansionEnabled = previewAggregateEnabled,
+                headerTrailing = {
+                    Switch(
+                        checked = previewAggregateEnabled,
+                        onCheckedChange = { checked ->
+                            previewAggregateEnabled = checked
+                            if (!checked) {
+                                aggregateSectionExpanded = false
+                            }
+                            viewModel.updatePasswordPageAggregateEnabled(checked)
+                            viewModel.updateAddButtonBehaviorMode(
+                                if (checked) AddButtonBehaviorMode.EXPANDABLE_MENU
+                                else AddButtonBehaviorMode.DIRECT_PASSWORD
+                            )
+                        }
+                    )
+                }
+            ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.Apps, contentDescription = null)
-                        Spacer(modifier = Modifier.size(10.dp))
-                        Text(
-                            text = stringResource(R.string.password_page_aggregate_switch_title),
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Switch(
-                            checked = settings.passwordPageAggregateEnabled,
-                            onCheckedChange = viewModel::updatePasswordPageAggregateEnabled
-                        )
-                    }
-                    Text(
-                        text = stringResource(R.string.password_page_aggregate_switch_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                     HorizontalDivider(
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                     )
@@ -1195,6 +1150,10 @@ fun PasswordListCustomizationScreen(
                             selectedContentTypes.clear()
                             selectedContentTypes.addAll(newSelected)
                             viewModel.updatePasswordPageVisibleContentTypes(newSelected)
+                            syncAddButtonMenuFromContent(
+                                order = contentTypeOrder,
+                                enabledTypes = newSelected
+                            )
                         }
 
                     LazyColumn(
@@ -1278,6 +1237,10 @@ fun PasswordListCustomizationScreen(
                                                 selectedContentTypes.clear()
                                                 selectedContentTypes.addAll(newSelected)
                                                 viewModel.updatePasswordPageVisibleContentTypes(newSelected)
+                                                syncAddButtonMenuFromContent(
+                                                    order = contentTypeOrder,
+                                                    enabledTypes = newSelected
+                                                )
                                             }
                                         )
                                     }
@@ -1286,212 +1249,32 @@ fun PasswordListCustomizationScreen(
                         }
                     }
 
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                    )
-                    Text(
-                        text = stringResource(R.string.add_button_mode_title),
-                        style = MaterialTheme.typography.titleSmall
-                    )
-                    Text(
-                        text = stringResource(R.string.add_button_mode_subtitle),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                        listOf(
-                            AddButtonBehaviorMode.DIRECT_PASSWORD to stringResource(R.string.add_button_mode_direct),
-                            AddButtonBehaviorMode.EXPANDABLE_MENU to stringResource(R.string.add_button_mode_expand)
-                        ).forEachIndexed { index, (mode, label) ->
-                            SegmentedButton(
-                                selected = settings.addButtonBehaviorMode == mode,
-                                onClick = { viewModel.updateAddButtonBehaviorMode(mode) },
-                                shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(
-                                    index = index,
-                                    count = 2
-                                ),
-                                label = { Text(text = label) }
-                            )
-                        }
-                    }
-
-                    if (settings.addButtonBehaviorMode == AddButtonBehaviorMode.DIRECT_PASSWORD) {
-                        Surface(
-                            shape = RoundedCornerShape(14.dp),
-                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = AddButtonMenuAction.PASSWORD.toIcon(),
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Text(
-                                    text = stringResource(AddButtonMenuAction.PASSWORD.toLabelRes()),
-                                    style = MaterialTheme.typography.labelLarge
-                                )
-                                Spacer(modifier = Modifier.weight(1f))
-                                Text(
-                                    text = stringResource(R.string.add_button_mode_direct_desc),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    } else {
-                        val addButtonActionListState = rememberLazyListState()
-                        val addButtonActionReorderableState =
-                            rememberReorderableLazyListState(addButtonActionListState) { from, to ->
-                                addButtonActionOrder = addButtonActionOrder.toMutableList().apply {
-                                    add(to.index, removeAt(from.index))
-                                }
-                                viewModel.updateAddButtonMenuOrder(addButtonActionOrder)
-                            }
-
-                        Text(
-                            text = stringResource(R.string.add_button_actions_title),
-                            style = MaterialTheme.typography.titleSmall
-                        )
-                        Text(
-                            text = stringResource(R.string.add_button_actions_desc),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-
-                        LazyColumn(
-                            state = addButtonActionListState,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height((addButtonActionOrder.size * 92).dp),
-                            userScrollEnabled = false,
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            items(addButtonActionOrder, key = { it.name }) { action ->
-                                val enabled = selectedAddButtonActions.contains(action)
-                                val selectedIndex = previewAddButtonActions.indexOf(action)
-                                val switchEnabled = action != AddButtonMenuAction.PASSWORD
-
-                                ReorderableItem(
-                                    addButtonActionReorderableState,
-                                    key = action.name,
-                                    enabled = true
-                                ) { isDragging ->
-                                    val elevation by animateDpAsState(
-                                        if (isDragging) 6.dp else 0.dp,
-                                        label = "password_list_add_button_drag_elevation"
-                                    )
-
-                                    Card(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .graphicsLayer { shadowElevation = elevation.toPx() },
-                                        colors = CardDefaults.cardColors(
-                                            containerColor = if (enabled) {
-                                                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)
-                                            } else {
-                                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                                            }
-                                        )
-                                    ) {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(12.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(action.toIcon(), contentDescription = null)
-                                            Spacer(modifier = Modifier.size(10.dp))
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = stringResource(action.toLabelRes()),
-                                                    style = MaterialTheme.typography.bodyMedium
-                                                )
-                                                Text(
-                                                    text = if (action == AddButtonMenuAction.PASSWORD) {
-                                                        stringResource(R.string.add_button_password_required)
-                                                    } else {
-                                                        stringResource(R.string.add_button_action_toggle_hint)
-                                                    },
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                            Text(
-                                                text = if (enabled && selectedIndex >= 0) {
-                                                    "${selectedIndex + 1}"
-                                                } else {
-                                                    stringResource(R.string.hide)
-                                                },
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(36.dp)
-                                                    .longPressDraggableHandle(),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Icon(Icons.Default.DragIndicator, contentDescription = null)
-                                            }
-                                            Switch(
-                                                checked = enabled,
-                                                enabled = switchEnabled,
-                                                onCheckedChange = { checked ->
-                                                    if (switchEnabled) {
-                                                        val newEnabled = addButtonActionOrder.filter { current ->
-                                                            if (current == action) {
-                                                                checked
-                                                            } else {
-                                                                selectedAddButtonActions.contains(current)
-                                                            }
-                                                        }
-                                                        selectedAddButtonActions.clear()
-                                                        selectedAddButtonActions.addAll(newEnabled)
-                                                        viewModel.updateAddButtonMenuEnabledActions(newEnabled)
-                                                    }
-                                                }
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
             }
 
-            Card(modifier = Modifier.fillMaxWidth()) {
+            ExpandableSettingsCard(
+                title = stringResource(R.string.password_list_quick_filters_switch_title),
+                subtitle = stringResource(R.string.password_list_quick_filters_switch_desc),
+                expanded = quickFiltersSectionExpanded,
+                onExpandedChange = { quickFiltersSectionExpanded = it },
+                expansionEnabled = previewQuickFiltersEnabled,
+                headerTrailing = {
+                    Switch(
+                        checked = previewQuickFiltersEnabled,
+                        onCheckedChange = { checked ->
+                            previewQuickFiltersEnabled = checked
+                            if (!checked) {
+                                quickFiltersSectionExpanded = false
+                            }
+                            viewModel.updatePasswordListQuickFiltersEnabled(checked)
+                        }
+                    )
+                }
+            ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.FilterList, contentDescription = null)
-                        Spacer(modifier = Modifier.size(10.dp))
-                        Text(
-                            text = stringResource(R.string.password_list_quick_filters_switch_title),
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Switch(
-                            checked = settings.passwordListQuickFiltersEnabled,
-                            onCheckedChange = viewModel::updatePasswordListQuickFiltersEnabled
-                        )
-                    }
-                    Text(
-                        text = stringResource(R.string.password_list_quick_filters_switch_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                     HorizontalDivider(
                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                     )
@@ -1593,136 +1376,45 @@ fun PasswordListCustomizationScreen(
                 }
             }
 
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(imageVector = Icons.Default.Folder, contentDescription = null)
-                        Spacer(modifier = Modifier.size(10.dp))
-                        Text(
-                            text = stringResource(R.string.password_list_quick_folders_switch_title),
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Switch(
-                            checked = settings.passwordListQuickFoldersEnabled,
-                            onCheckedChange = viewModel::updatePasswordListQuickFoldersEnabled
-                        )
-                    }
-                    Text(
-                        text = stringResource(R.string.password_list_quick_folders_switch_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = stringResource(R.string.password_list_quick_folder_path_banner_switch_title),
-                            style = MaterialTheme.typography.titleSmall,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Switch(
-                            checked = settings.passwordListQuickFolderPathBannerEnabled,
-                            onCheckedChange = viewModel::updatePasswordListQuickFolderPathBannerEnabled
-                        )
-                    }
-                    Text(
-                        text = stringResource(R.string.password_list_quick_folder_path_banner_switch_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = stringResource(R.string.password_list_system_back_to_parent_folder_switch_title),
-                            style = MaterialTheme.typography.titleSmall,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Switch(
-                            checked = settings.passwordListSystemBackToParentFolderEnabled,
-                            onCheckedChange =
-                                viewModel::updatePasswordListSystemBackToParentFolderEnabled
-                        )
-                    }
-                    Text(
-                        text = stringResource(
-                            R.string.password_list_system_back_to_parent_folder_switch_desc
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (settings.passwordListQuickFoldersEnabled) {
-                        HorizontalDivider(
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                        )
-                        Text(
-                            text = stringResource(R.string.password_list_quick_folders_style_title),
-                            style = MaterialTheme.typography.titleSmall
-                        )
-                        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                            val style = settings.passwordListQuickFolderStyle
-                            listOf(
-                                PasswordListQuickFolderStyle.CLASSIC to stringResource(R.string.password_list_quick_folders_style_classic),
-                                PasswordListQuickFolderStyle.M3_CARD to stringResource(R.string.password_list_quick_folders_style_m3)
-                            ).forEachIndexed { index, (targetStyle, label) ->
-                                SegmentedButton(
-                                    selected = style == targetStyle,
-                                    onClick = { viewModel.updatePasswordListQuickFolderStyle(targetStyle) },
-                                    shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(
-                                        index = index,
-                                        count = 2
-                                    ),
-                                    label = { Text(text = label) }
-                                )
-                            }
-                        }
-                    }
+            SwitchSettingsCard(
+                title = stringResource(R.string.password_list_category_quick_filters_switch_title),
+                subtitle = stringResource(R.string.password_list_category_quick_filters_switch_desc),
+                checked = previewCategoryQuickFiltersEnabled,
+                onCheckedChange = { checked ->
+                    previewCategoryQuickFiltersEnabled = checked
+                    viewModel.updatePasswordListCategoryQuickFiltersEnabled(checked)
                 }
-            }
+            )
 
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(imageVector = Icons.Default.History, contentDescription = null)
-                        Spacer(modifier = Modifier.size(10.dp))
-                        Text(
-                            text = stringResource(R.string.password_list_quick_access_switch_title),
-                            style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Switch(
-                            checked = settings.passwordListQuickAccessEnabled,
-                            onCheckedChange = viewModel::updatePasswordListQuickAccessEnabled
-                        )
-                    }
-                    Text(
-                        text = stringResource(R.string.password_list_quick_access_switch_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+            SwitchSettingsCard(
+                title = stringResource(R.string.password_list_quick_folder_path_banner_switch_title),
+                subtitle = stringResource(R.string.password_list_quick_folder_path_banner_switch_desc),
+                checked = previewQuickFolderPathBannerEnabled,
+                onCheckedChange = { checked ->
+                    previewQuickFolderPathBannerEnabled = checked
+                    viewModel.updatePasswordListQuickFolderPathBannerEnabled(checked)
                 }
-            }
+            )
+
+            SwitchSettingsCard(
+                title = stringResource(R.string.password_list_system_back_to_parent_folder_switch_title),
+                subtitle = stringResource(R.string.password_list_system_back_to_parent_folder_switch_desc),
+                checked = previewSystemBackToParentFolderEnabled,
+                onCheckedChange = { checked ->
+                    previewSystemBackToParentFolderEnabled = checked
+                    viewModel.updatePasswordListSystemBackToParentFolderEnabled(checked)
+                }
+            )
+
+            SwitchSettingsCard(
+                title = stringResource(R.string.password_list_quick_access_switch_title),
+                subtitle = stringResource(R.string.password_list_quick_access_switch_desc),
+                checked = previewQuickAccessEnabled,
+                onCheckedChange = { checked ->
+                    previewQuickAccessEnabled = checked
+                    viewModel.updatePasswordListQuickAccessEnabled(checked)
+                }
+            )
         }
     }
 }
@@ -1817,6 +1509,14 @@ private fun PasswordPageContentType.toIcon(): ImageVector = when (this) {
     PasswordPageContentType.NOTE -> Icons.Default.Description
     PasswordPageContentType.AUTHENTICATOR -> Icons.Default.Security
     PasswordPageContentType.PASSKEY -> Icons.Default.VpnKey
+}
+
+private fun PasswordPageContentType.toAddButtonMenuActionOrNull(): AddButtonMenuAction? = when (this) {
+    PasswordPageContentType.PASSWORD -> AddButtonMenuAction.PASSWORD
+    PasswordPageContentType.CARD_WALLET -> AddButtonMenuAction.BANK_CARD
+    PasswordPageContentType.NOTE -> AddButtonMenuAction.NOTE
+    PasswordPageContentType.AUTHENTICATOR -> AddButtonMenuAction.AUTHENTICATOR
+    PasswordPageContentType.PASSKEY -> null
 }
 
 private fun AddButtonMenuAction.toLabelRes(): Int = when (this) {
@@ -3098,28 +2798,56 @@ fun IconSettingsScreen(
 }
 
 @Composable
+private fun SwitchSettingsCard(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Spacer(modifier = Modifier.size(8.dp))
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange
+            )
+        }
+    }
+}
+
+@Composable
 private fun ExpandableSettingsCard(
     title: String,
     subtitle: String,
     expanded: Boolean,
     onExpandedChange: (Boolean) -> Unit,
+    expansionEnabled: Boolean = true,
+    headerTrailing: (@Composable () -> Unit)? = null,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
 ) {
-    val rotation by animateFloatAsState(
-        targetValue = if (expanded) 180f else 0f,
-        animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
-        label = "expand_card_rotation"
-    )
-
     Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .animateContentSize(
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow
-                )
-            ),
+        modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f)
         )
@@ -3128,7 +2856,7 @@ private fun ExpandableSettingsCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { onExpandedChange(!expanded) }
+                    .clickable(enabled = expansionEnabled) { onExpandedChange(!expanded) }
                     .padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -3143,28 +2871,19 @@ private fun ExpandableSettingsCard(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                Icon(
-                    imageVector = Icons.Default.ExpandMore,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.graphicsLayer { rotationZ = rotation }
-                )
+                if (headerTrailing != null) {
+                    headerTrailing()
+                }
             }
 
             AnimatedVisibility(
                 visible = expanded,
                 enter = expandVertically(
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioNoBouncy,
-                        stiffness = Spring.StiffnessLow
-                    )
-                ) + fadeIn(animationSpec = tween(180)),
+                    animationSpec = tween(durationMillis = 260, easing = FastOutSlowInEasing)
+                ) + fadeIn(animationSpec = tween(durationMillis = 200)),
                 exit = shrinkVertically(
-                    animationSpec = spring(
-                        dampingRatio = Spring.DampingRatioNoBouncy,
-                        stiffness = Spring.StiffnessMedium
-                    )
-                ) + fadeOut(animationSpec = tween(120))
+                    animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
+                ) + fadeOut(animationSpec = tween(durationMillis = 160))
             ) {
                 Column(
                     modifier = Modifier

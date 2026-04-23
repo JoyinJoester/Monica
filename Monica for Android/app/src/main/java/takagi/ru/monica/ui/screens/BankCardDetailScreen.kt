@@ -623,7 +623,7 @@ private fun BankCardCustomFieldsCard(
                 } else {
                     InfoFieldWithCopy(
                         label = label,
-                        value = field.value.ifBlank { "-" },
+                        value = field.value,
                         context = context
                     )
                 }

@@ -70,6 +70,20 @@
             android:windowSoftInputMode="adjustResize"
             tools:targetApi="33" />
 
+        <activity
+            android:name="com.microsoft.identity.client.BrowserTabActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="msauth"
+                    android:host="takagi.ru.monica"
+                    android:path="/FwPDMDAjg96+0gxjMKKmnQS/dQA=" />
+            </intent-filter>
+        </activity>
+
         <activity-alias
             android:name=".ModernLauncherAlias"
             android:enabled="false"
@@ -100,7 +114,7 @@
 
         <activity-alias
             android:name=".ModernVisibleLauncherAlias"
-            android:enabled="true"
+            android:enabled="false"
             android:exported="true"
             android:icon="@drawable/monica_launcher"
             android:roundIcon="@drawable/monica_launcher"
@@ -313,6 +327,14 @@
             android:theme="@style/Theme.TransparentDialog"
             android:excludeFromRecents="true"
             android:launchMode="singleTop" />
+
+        <activity
+            android:name=".autofill_ng.AutofillCipherCallbackActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Monica.AutofillCallback"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:launchMode="singleTop" />
         
         <!-- Autofill Picker Activity (UI Improvement) -->
         <activity
@@ -328,6 +350,14 @@
             android:exported="false"
             android:theme="@style/Theme.Monica"
             android:excludeFromRecents="true"
+            android:launchMode="singleTop" />
+
+        <activity
+            android:name=".autofill_ng.AutofillInlinePlaceholderActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Transparent"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
             android:launchMode="singleTop" />
         
 

@@ -35,6 +35,11 @@ android {
         cleaned ?: fallback
     }
 
+    def escapeForBuildConfig = { raw ->
+        def value = raw?.toString() ?: ''
+        value.replace('\\', '\\\\').replace('"', '\\"')
+    }
+
     def resolveArchTag = { output ->
         def manualArch = project.findProperty('apkArch')
         if (manualArch?.toString()?.trim()) {
@@ -114,6 +119,10 @@ android {
         versionCode appVersionCode
         versionName baseVersionName
 
+        def cfLicenseBaseUrl = project.findProperty('cfLicenseBaseUrl')?.toString()?.trim() ?: 'https://license.609780.xyz'
+        def cfLicenseVerifyIntervalSeconds =
+                project.findProperty('cfLicenseVerifyIntervalSeconds')?.toString()?.trim() ?: '21600'
+
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary true
@@ -128,6 +137,8 @@ android {
         buildConfigField 'String', 'FULL_VERSION_NAME', "\"${fullVersionName}\""
         buildConfigField 'String', 'BUILD_DETAIL_TAG', "\"${buildDateTag}${buildVersionTag}-${buildDailySeq}\""
         buildConfigField 'int', 'BW_DIAG_SCHEMA', '1'
+        buildConfigField 'String', 'CF_LICENSE_BASE_URL', "\"${escapeForBuildConfig(cfLicenseBaseUrl)}\""
+        buildConfigField 'long', 'CF_LICENSE_VERIFY_INTERVAL_SECONDS', "${cfLicenseVerifyIntervalSeconds}L"
         
         // NDK 架构优化 - 只保留常用架构
         ndk {
@@ -405,6 +416,10 @@ dependencies {
     // OkHttp for networking
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'com.squareup.okhttp3:logging-interceptor:4.12.0'
+    implementation 'com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0'
+
+    // Microsoft identity platform / OneDrive auth
+    implementation 'com.microsoft.identity.client:msal:8.+'
     
     // BouncyCastle for Argon2 (Bitwarden KDF support)
     implementation 'org.bouncycastle:bcprov-jdk18on:1.78.1'

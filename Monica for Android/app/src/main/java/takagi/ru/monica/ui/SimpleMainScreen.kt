@@ -841,6 +841,7 @@ fun SimpleMainScreen(
     onNavigateToExtensions: () -> Unit = {},
     onNavigateToCommonAccountTemplates: () -> Unit = {},
     onNavigateToPageCustomization: () -> Unit = {},
+    onNavigateToStandaloneSettings: () -> Unit = {},
     onNavigateToBitwardenLogin: () -> Unit = {},
     onClearAllData: (Boolean, Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit,
     initialTab: Int = 0
@@ -979,10 +980,13 @@ fun SimpleMainScreen(
             val tab = item.contentTab
             tab == null || bottomNavVisibility.isVisible(tab)
         }
+    val shouldHideBottomNavigation = appSettings.autoHideBottomNavWhenSingleTab && dataTabItems.size == 1
 
     val tabs = buildList {
         addAll(dataTabItems)
-        add(BottomNavItem.Settings)
+        if (!shouldHideBottomNavigation) {
+            add(BottomNavItem.Settings)
+        }
     }
 
     val defaultTabKey = remember(initialTab, tabs) { 
@@ -1818,7 +1822,7 @@ fun SimpleMainScreen(
             .fillMaxSize()
             .nestedScroll(nestedScrollConnection)
     ) {
-        if (useDraggableNav && isCompactWidth) {
+        if (useDraggableNav && isCompactWidth && !shouldHideBottomNavigation) {
         // 使用可拖拽底部导航栏
         DraggableBottomNavScaffold(
             navItems = draggableNavItems,
@@ -1843,6 +1847,8 @@ fun SimpleMainScreen(
                 CompactDraggableTabContent(
                     paddingValues = paddingValues,
                     currentTab = currentTab,
+                    showStandaloneSettingsEntry = shouldHideBottomNavigation,
+                    onOpenStandaloneSettings = onNavigateToStandaloneSettings,
                     passwordViewModel = passwordViewModel,
                     settingsViewModel = settingsViewModel,
                     securityManager = securityManager,
@@ -1981,7 +1987,7 @@ fun SimpleMainScreen(
             WindowInsets(0, 0, 0, 0)
         },
         bottomBar = {
-            if (isCompactWidth) {
+            if (isCompactWidth && !shouldHideBottomNavigation) {
                 Column {
                     androidx.compose.animation.AnimatedVisibility(
                         visible = shouldShowBitwardenSyncIndicator,
@@ -2077,6 +2083,8 @@ fun SimpleMainScreen(
                         passwordViewModel.setCategoryFilter(CategoryFilter.Archived)
                     },
                     onOpenCommonAccountTemplates = onNavigateToCommonAccountTemplates,
+                    onOpenStandaloneSettings = onNavigateToStandaloneSettings,
+                    showStandaloneSettingsEntry = shouldHideBottomNavigation,
                     appSettings = appSettings,
                     modifier = Modifier.fillMaxSize(),
                 )
@@ -2146,6 +2154,9 @@ fun SimpleMainScreen(
                         unmatchedIconHandlingStrategy = appSettings.unmatchedIconHandlingStrategy,
                         onClearSelectedPassword = clearSelectedPasswordPaneItem,
                         onEditPassword = handlePasswordEditOpen
+                        ,
+                        showStandaloneSettingsEntry = shouldHideBottomNavigation,
+                        onOpenStandaloneSettings = onNavigateToStandaloneSettings
                     )
                 }
                 BottomNavItem.Authenticator -> {
@@ -2168,7 +2179,9 @@ fun SimpleMainScreen(
                         isAddingTotpInline = isAddingTotpInline,
                         selectedTotpId = selectedTotpId,
                         totpNewItemDefaults = pendingInlineTotpAddStorageDefaults ?: totpNewItemDefaults,
-                        onInlineTotpEditorBack = handleInlineTotpEditorBack
+                        onInlineTotpEditorBack = handleInlineTotpEditorBack,
+                        showStandaloneSettingsEntry = shouldHideBottomNavigation,
+                        onOpenStandaloneSettings = onNavigateToStandaloneSettings
                     )
                 }
                 BottomNavItem.CardWallet -> {
@@ -2195,7 +2208,9 @@ fun SimpleMainScreen(
                         initialKeePassDatabaseId = pendingInlineWalletAddStorageDefaults?.keepassDatabaseId,
                         initialKeePassGroupPath = pendingInlineWalletAddStorageDefaults?.keepassGroupPath,
                         initialBitwardenVaultId = pendingInlineWalletAddStorageDefaults?.bitwardenVaultId,
-                        initialBitwardenFolderId = pendingInlineWalletAddStorageDefaults?.bitwardenFolderId
+                        initialBitwardenFolderId = pendingInlineWalletAddStorageDefaults?.bitwardenFolderId,
+                        showStandaloneSettingsEntry = shouldHideBottomNavigation,
+                        onOpenStandaloneSettings = onNavigateToStandaloneSettings
                     )
                 }
                 BottomNavItem.Generator -> {
@@ -2207,7 +2222,9 @@ fun SimpleMainScreen(
                         externalRefreshRequestKey = generatorRefreshRequestKey,
                         onRefreshRequestConsumed = { generatorRefreshRequestKey = 0 },
                         selectedGenerator = selectedGeneratorType,
-                        generatedValue = currentGeneratorResult
+                        generatedValue = currentGeneratorResult,
+                        showStandaloneSettingsEntry = shouldHideBottomNavigation,
+                        onOpenStandaloneSettings = onNavigateToStandaloneSettings
                     )
                 }
                 BottomNavItem.Notes -> {
@@ -2228,7 +2245,9 @@ fun SimpleMainScreen(
                         initialKeePassDatabaseId = pendingInlineNoteAddStorageDefaults?.keepassDatabaseId,
                         initialKeePassGroupPath = pendingInlineNoteAddStorageDefaults?.keepassGroupPath,
                         initialBitwardenVaultId = pendingInlineNoteAddStorageDefaults?.bitwardenVaultId,
-                        initialBitwardenFolderId = pendingInlineNoteAddStorageDefaults?.bitwardenFolderId
+                        initialBitwardenFolderId = pendingInlineNoteAddStorageDefaults?.bitwardenFolderId,
+                        showStandaloneSettingsEntry = shouldHideBottomNavigation,
+                        onOpenStandaloneSettings = onNavigateToStandaloneSettings
                     )
                 }
                 BottomNavItem.Passkey -> {
@@ -2245,7 +2264,9 @@ fun SimpleMainScreen(
                         resolvePasswordTitle = { passwordId -> passwordById[passwordId]?.title },
                         onOpenPasswordDetail = handlePasswordDetailOpen,
                         onUnbindPasskey = handlePasskeyUnbind,
-                        onDeletePasskey = { passkey -> pendingPasskeyDelete = passkey }
+                        onDeletePasskey = { passkey -> pendingPasskeyDelete = passkey },
+                        showStandaloneSettingsEntry = shouldHideBottomNavigation,
+                        onOpenStandaloneSettings = onNavigateToStandaloneSettings
                     )
                 }
                 BottomNavItem.Send -> {
@@ -2271,7 +2292,9 @@ fun SimpleMainScreen(
                             )
                             handleInlineSendEditorBack()
                         },
-                        onBitwardenEvent = handleSendBitwardenEvent
+                        onBitwardenEvent = handleSendBitwardenEvent,
+                        showStandaloneSettingsEntry = shouldHideBottomNavigation,
+                        onOpenStandaloneSettings = onNavigateToStandaloneSettings
                     )
                 }
                 BottomNavItem.Settings -> {
@@ -2347,37 +2370,39 @@ fun SimpleMainScreen(
                     .fillMaxSize()
                     .padding(paddingValues)
             ) {
-                NavigationRail(
-                    modifier = Modifier
-                        .fillMaxHeight()
-                        .width(wideNavigationRailWidth),
-                    windowInsets = WindowInsets(0, 0, 0, 0),
-                    containerColor = MaterialTheme.colorScheme.surface
-                ) {
-                    Column(
+                if (!shouldHideBottomNavigation) {
+                    NavigationRail(
                         modifier = Modifier
-                            .verticalScroll(rememberScrollState())
-                            .padding(
-                                top = railTopInset + 8.dp,
-                                bottom = railBottomInset + 8.dp
-                            ),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                            .fillMaxHeight()
+                            .width(wideNavigationRailWidth),
+                        windowInsets = WindowInsets(0, 0, 0, 0),
+                        containerColor = MaterialTheme.colorScheme.surface
                     ) {
-                        tabs.forEach { item ->
-                            val label = stringResource(item.shortLabelRes())
-                            NavigationRailItem(
-                                selected = item.key == currentTab.key,
-                                onClick = { selectedTabKey = item.key },
-                                icon = { Icon(item.icon, contentDescription = label) },
-                                label = {
-                                    Text(
-                                        text = label,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Clip
-                                    )
-                                },
-                                alwaysShowLabel = true
-                            )
+                        Column(
+                            modifier = Modifier
+                                .verticalScroll(rememberScrollState())
+                                .padding(
+                                    top = railTopInset + 8.dp,
+                                    bottom = railBottomInset + 8.dp
+                                ),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            tabs.forEach { item ->
+                                val label = stringResource(item.shortLabelRes())
+                                NavigationRailItem(
+                                    selected = item.key == currentTab.key,
+                                    onClick = { selectedTabKey = item.key },
+                                    icon = { Icon(item.icon, contentDescription = label) },
+                                    label = {
+                                        Text(
+                                            text = label,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Clip
+                                        )
+                                    },
+                                    alwaysShowLabel = true
+                                )
+                            }
                         }
                     }
                 }
@@ -2454,6 +2479,7 @@ fun SimpleMainScreen(
     MainScreenFabOverlay(
         currentTab = currentTab,
         isCompactWidth = isCompactWidth,
+        shouldHideBottomNavigation = shouldHideBottomNavigation,
         wideFabHostWidth = wideFabHostWidth,
         appSettings = appSettings,
         passwordHistoryPageMode = passwordHistoryPageMode,
@@ -2517,7 +2543,8 @@ fun SimpleMainScreen(
         onBankCardAddOpen = handleBankCardAddOpen,
         onWalletAddOpen = handleWalletAddOpen,
         onNavigateToWalletAdd = onNavigateToWalletAdd,
-        passwordPageAggregateEnabled = appSettings.passwordPageAggregateEnabled,
+        passwordPageAggregateEnabled =
+            if (currentTab == BottomNavItem.VaultV2) true else appSettings.passwordPageAggregateEnabled,
         passwordNewItemDefaults = passwordNewItemDefaults,
         onPreparePasswordAddStorageDefaults = preparePasswordAddStorageDefaults,
         onPrepareTotpAddStorageDefaults = prepareTotpAddStorageDefaults,
@@ -2683,7 +2710,9 @@ private fun PasswordTabPane(
     iconCardsEnabled: Boolean,
     unmatchedIconHandlingStrategy: takagi.ru.monica.data.UnmatchedIconHandlingStrategy,
     onClearSelectedPassword: () -> Unit,
-    onEditPassword: (Long) -> Unit
+    onEditPassword: (Long) -> Unit,
+    showStandaloneSettingsEntry: Boolean,
+    onOpenStandaloneSettings: () -> Unit
 ) {
     val appSettings by settingsViewModel.settings.collectAsState()
 
@@ -2712,6 +2741,8 @@ private fun PasswordTabPane(
             onOpenHistory = onOpenHistoryPage,
             onOpenTrash = onOpenTrashPage,
             onOpenCommonAccountTemplates = onOpenCommonAccountTemplatesPage,
+            showStandaloneSettingsEntry = showStandaloneSettingsEntry,
+            onOpenStandaloneSettings = onOpenStandaloneSettings,
             aggregateConfig = PasswordListAggregateConfig(
                 visibleContentTypes = visibleContentTypes,
                 selectedContentTypes = selectedContentTypes,
@@ -2834,7 +2865,9 @@ private fun AuthenticatorTabPane(
     isAddingTotpInline: Boolean,
     selectedTotpId: Long?,
     totpNewItemDefaults: NewItemStorageDefaults,
-    onInlineTotpEditorBack: () -> Unit
+    onInlineTotpEditorBack: () -> Unit,
+    showStandaloneSettingsEntry: Boolean,
+    onOpenStandaloneSettings: () -> Unit
 ) {
     val listPaneContent: @Composable ColumnScope.() -> Unit = {
         TotpListContent(
@@ -2845,7 +2878,9 @@ private fun AuthenticatorTabPane(
                 totpViewModel.deleteTotpItem(totp)
             },
             onQuickScanTotp = onNavigateToQuickTotpScan,
-            onSelectionModeChange = onSelectionModeChange
+            onSelectionModeChange = onSelectionModeChange,
+            showStandaloneSettingsEntry = showStandaloneSettingsEntry,
+            onOpenStandaloneSettings = onOpenStandaloneSettings
         )
     }
 
@@ -2972,6 +3007,8 @@ private fun AuthenticatorTabPane(
 private fun CompactDraggableTabContent(
     paddingValues: PaddingValues,
     currentTab: BottomNavItem,
+    showStandaloneSettingsEntry: Boolean,
+    onOpenStandaloneSettings: () -> Unit,
     passwordViewModel: PasswordViewModel,
     settingsViewModel: SettingsViewModel,
     securityManager: SecurityManager,
@@ -3135,6 +3172,8 @@ private fun CompactDraggableTabContent(
                     onOpenTrashPage = onOpenVaultV2TrashPage,
                     onOpenArchivePage = onOpenVaultV2ArchivePage,
                     onOpenCommonAccountTemplates = onNavigateToCommonAccountTemplates,
+                    onOpenStandaloneSettings = onOpenStandaloneSettings,
+                    showStandaloneSettingsEntry = showStandaloneSettingsEntry,
                     appSettings = appSettings,
                     modifier = Modifier.fillMaxSize()
                 )
@@ -3192,7 +3231,9 @@ private fun CompactDraggableTabContent(
                     iconCardsEnabled = appSettings.iconCardsEnabled && appSettings.passwordPageIconEnabled,
                     unmatchedIconHandlingStrategy = appSettings.unmatchedIconHandlingStrategy,
                     onClearSelectedPassword = {},
-                    onEditPassword = {}
+                    onEditPassword = {},
+                    showStandaloneSettingsEntry = showStandaloneSettingsEntry,
+                    onOpenStandaloneSettings = onOpenStandaloneSettings
                 )
             }
             BottomNavItem.Authenticator -> {
@@ -3204,7 +3245,9 @@ private fun CompactDraggableTabContent(
                         totpViewModel.deleteTotpItem(totp)
                     },
                     onQuickScanTotp = onNavigateToQuickTotpScan,
-                    onSelectionModeChange = onTotpSelectionModeChange
+                    onSelectionModeChange = onTotpSelectionModeChange,
+                    showStandaloneSettingsEntry = showStandaloneSettingsEntry,
+                    onOpenStandaloneSettings = onOpenStandaloneSettings
                 )
             }
             BottomNavItem.CardWallet -> {
@@ -3212,7 +3255,9 @@ private fun CompactDraggableTabContent(
                     saveableStateHolder = cardWalletSaveableStateHolder,
                     bankCardViewModel = bankCardViewModel,
                     documentViewModel = documentViewModel,
-                    state = cardWalletContentState
+                    state = cardWalletContentState,
+                    showStandaloneSettingsEntry = showStandaloneSettingsEntry,
+                    onOpenStandaloneSettings = onOpenStandaloneSettings
                 )
             }
             BottomNavItem.Generator -> {
@@ -3222,7 +3267,9 @@ private fun CompactDraggableTabContent(
                     passwordViewModel = passwordViewModel,
                     externalRefreshRequestKey = generatorRefreshRequestKey,
                     onRefreshRequestConsumed = onGeneratorRefreshRequestConsumed,
-                    useExternalRefreshFab = true
+                    useExternalRefreshFab = true,
+                    showStandaloneSettingsEntry = showStandaloneSettingsEntry,
+                    onOpenStandaloneSettings = onOpenStandaloneSettings
                 )
             }
             BottomNavItem.Notes -> {
@@ -3231,7 +3278,9 @@ private fun CompactDraggableTabContent(
                     settingsViewModel = settingsViewModel,
                     onNavigateToAddNote = onNavigateToAddNote,
                     securityManager = securityManager,
-                    onSelectionModeChange = onNoteSelectionModeChange
+                    onSelectionModeChange = onNoteSelectionModeChange,
+                    showStandaloneSettingsEntry = showStandaloneSettingsEntry,
+                    onOpenStandaloneSettings = onOpenStandaloneSettings
                 )
             }
             BottomNavItem.Passkey -> {
@@ -3239,13 +3288,17 @@ private fun CompactDraggableTabContent(
                     viewModel = passkeyViewModel,
                     passwordViewModel = passwordViewModel,
                     onNavigateToPasswordDetail = onNavigateToPasswordDetail,
-                    onPasskeyClick = {}
+                    onPasskeyClick = {},
+                    showStandaloneSettingsEntry = showStandaloneSettingsEntry,
+                    onOpenStandaloneSettings = onOpenStandaloneSettings
                 )
             }
             BottomNavItem.Send -> {
                 SendScreen(
                     bitwardenViewModel = bitwardenViewModel,
-                    onBitwardenEvent = onSendBitwardenEvent
+                    onBitwardenEvent = onSendBitwardenEvent,
+                    showStandaloneSettingsEntry = showStandaloneSettingsEntry,
+                    onOpenStandaloneSettings = onOpenStandaloneSettings
                 )
             }
             BottomNavItem.Settings -> {
@@ -3383,6 +3436,7 @@ private fun MainScreenTabResetEffects(
 private fun BoxScope.MainScreenFabOverlay(
     currentTab: BottomNavItem,
     isCompactWidth: Boolean,
+    shouldHideBottomNavigation: Boolean,
     wideFabHostWidth: Dp,
     appSettings: takagi.ru.monica.data.AppSettings,
     passwordHistoryPageMode: PasswordHistoryPageMode,
@@ -3492,7 +3546,12 @@ private fun BoxScope.MainScreenFabOverlay(
         BottomNavItem.CardWallet -> MaterialTheme.colorScheme.onPrimary
         else -> MaterialTheme.colorScheme.onPrimaryContainer
     }
-    val fabBottomOffset = if (isCompactWidth) 116.dp else 24.dp
+    val navBarInsetBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val fabBottomOffset = when {
+        !isCompactWidth -> 24.dp
+        shouldHideBottomNavigation -> 24.dp + navBarInsetBottom
+        else -> 116.dp
+    }
     val shouldShowBackToTopFab =
         showFab &&
             isFabVisible &&
@@ -4037,6 +4096,12 @@ private fun MainScreenAddFab(
     bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel
 ) {
     var showVaultWalletAddScreen by rememberSaveable(currentTab.key) { mutableStateOf(false) }
+    val effectiveAddButtonBehaviorMode =
+        if (currentTab == BottomNavItem.VaultV2) {
+            AddButtonBehaviorMode.EXPANDABLE_MENU
+        } else {
+            addButtonBehaviorMode
+        }
     val compactWalletAddType = when (cardWalletSubTab) {
         CardWalletTab.DOCUMENTS -> CardWalletTab.DOCUMENTS
         CardWalletTab.BANK_CARDS -> CardWalletTab.BANK_CARDS
@@ -4184,7 +4249,7 @@ private fun MainScreenAddFab(
                         initialBitwardenFolderId = aggregateStorageDefaults?.bitwardenFolderId
                     )
                 }
-            } else if (addButtonBehaviorMode == AddButtonBehaviorMode.EXPANDABLE_MENU) {
+            } else if (effectiveAddButtonBehaviorMode == AddButtonBehaviorMode.EXPANDABLE_MENU) {
                 VaultV2FabMenu(
                     fabBottomOffset = fabBottomOffset,
                     fabContainerColor = fabContainerColor,

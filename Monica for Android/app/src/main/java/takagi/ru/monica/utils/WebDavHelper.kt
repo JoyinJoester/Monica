@@ -328,6 +328,7 @@ private data class PageAdjustmentPasswordFieldVisibilityBackupEntry(
 private data class PageAdjustmentSettingsBackupEntry(
     val passwordListQuickFiltersEnabled: Boolean = false,
     val passwordListQuickFilterItems: List<String> = emptyList(),
+    val passwordListCategoryQuickFiltersEnabled: Boolean = false,
     val passwordListQuickFoldersEnabled: Boolean = false,
     val passwordListQuickFolderStyle: String = "CLASSIC",
     val passwordListQuickFolderPathBannerEnabled: Boolean = false,
@@ -1763,6 +1764,8 @@ class WebDavHelper(
                             val pageAdjustmentSettingsBackup = PageAdjustmentSettingsBackupEntry(
                                 passwordListQuickFiltersEnabled = pageAdjustmentSettingsSnapshot.passwordListQuickFiltersEnabled,
                                 passwordListQuickFilterItems = pageAdjustmentSettingsSnapshot.passwordListQuickFilterItems,
+                                passwordListCategoryQuickFiltersEnabled =
+                                    pageAdjustmentSettingsSnapshot.passwordListCategoryQuickFiltersEnabled,
                                 passwordListQuickFoldersEnabled = pageAdjustmentSettingsSnapshot.passwordListQuickFoldersEnabled,
                                 passwordListQuickFolderStyle = pageAdjustmentSettingsSnapshot.passwordListQuickFolderStyle,
                                 passwordListQuickFolderPathBannerEnabled =
@@ -2945,6 +2948,8 @@ class WebDavHelper(
                                                     pageAdjustmentBackup.passwordListQuickFiltersEnabled,
                                                 passwordListQuickFilterItems =
                                                     pageAdjustmentBackup.passwordListQuickFilterItems,
+                                                passwordListCategoryQuickFiltersEnabled =
+                                                    pageAdjustmentBackup.passwordListCategoryQuickFiltersEnabled,
                                                 passwordListQuickFoldersEnabled =
                                                     pageAdjustmentBackup.passwordListQuickFoldersEnabled,
                                                 passwordListQuickFolderStyle =

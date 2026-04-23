@@ -23,15 +23,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import takagi.ru.monica.plus.PlusActivationUiResult
 import takagi.ru.monica.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PaymentScreen(
     onNavigateBack: () -> Unit,
-    onActivatePlus: () -> Unit
+    onActivatePlus: suspend () -> PlusActivationUiResult
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     var isActivating by remember { mutableStateOf(false) }
     var isFreeDonation by remember { mutableStateOf(false) }
@@ -192,7 +194,20 @@ fun PaymentScreen(
                     Button(
                         onClick = {
                             isActivating = true
-                            onActivatePlus()
+                            scope.launch {
+                                try {
+                                    val result = onActivatePlus()
+                                    snackbarHostState.showSnackbar(
+                                        message = result.message,
+                                        duration = SnackbarDuration.Short
+                                    )
+                                    if (result.success) {
+                                        onNavigateBack()
+                                    }
+                                } finally {
+                                    isActivating = false
+                                }
+                            }
                         },
                         modifier = Modifier.fillMaxWidth(),
                         enabled = !isActivating
@@ -204,7 +219,7 @@ fun PaymentScreen(
                                 color = MaterialTheme.colorScheme.onPrimary
                             )
                         } else {
-                            Text(stringResource(R.string.payment_paid_button))
+                            Text(stringResource(R.string.plus_activation_verify_button))
                         }
                     }
                 }

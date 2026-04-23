@@ -35,6 +35,7 @@ import takagi.ru.monica.autofill_ng.BitwardenLikeAutofillMatcherNg
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.repository.PasswordRepository
+import takagi.ru.monica.service.BrowserAutofillContextStore
 import takagi.ru.monica.utils.DeviceUtils
 import java.security.MessageDigest
 import kotlin.math.abs
@@ -50,6 +51,7 @@ class MonicaAutofillServiceNg : AutofillService() {
         private val PACKAGE_NAME_REGEX =
             Regex("^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+$")
         private const val PARSED_ITEM_ACCURACY_THRESHOLD = 1.5f
+        private const val PASSWORD_ONLY_DIRECT_FILL_WINDOW_MS = 120_000L
     }
 
     private data class StructuredConfidenceDecision(
@@ -184,7 +186,13 @@ class MonicaAutofillServiceNg : AutofillService() {
             )
             return null
         }
-        val webDomain = parsed.webDomain?.takeIf { it.isNotBlank() }
+        val parsedWebDomain = parsed.webDomain?.takeIf { it.isNotBlank() }
+        val browserFallbackDomain = if (parsedWebDomain == null) {
+            BrowserAutofillContextStore.getRecentDomain(packageName)
+        } else {
+            null
+        }
+        val webDomain = parsedWebDomain ?: browserFallbackDomain
         val loginTargetCount = fillableTargets.count { isLoginHint(it.hint) }
         val structuredTargetCount = fillableTargets.size - loginTargetCount
         val structuredDecision = evaluateStructuredConfidence(fillableTargets)
@@ -219,6 +227,11 @@ class MonicaAutofillServiceNg : AutofillService() {
             metadata = mapOf(
                 "packageName" to packageName,
                 "webDomain" to (webDomain ?: "none"),
+                "domainSource" to when {
+                    parsedWebDomain != null -> "assist_structure"
+                    browserFallbackDomain != null -> "accessibility_browser_context"
+                    else -> "none"
+                },
                 "targetCount" to fillableTargets.size,
                 "loginTargetCount" to loginTargetCount,
                 "structuredTargetCount" to structuredTargetCount,
@@ -252,8 +265,17 @@ class MonicaAutofillServiceNg : AutofillService() {
         }
         val requestUri = webDomain?.let { "https://$it" } ?: "androidapp://$packageName"
         val appDisplayName = resolveAppDisplayName(packageName)
+        val interactionContext = AutofillInteractionContextResolver.build(
+            packageName = packageName,
+            webDomain = webDomain,
+        )
+        val primaryInteractionIdentifier = interactionContext.primaryIdentifier
+        if (!primaryInteractionIdentifier.isNullOrBlank()) {
+            autofillPreferences.touchAutofillInteraction(primaryInteractionIdentifier)
+        }
 
         val hasLoginTargets = fillableTargets.any { isLoginHint(it.hint) }
+        val isPasswordOnlyLogin = AutofillInteractionContextResolver.isPasswordOnlyLogin(fillableTargets)
         var candidatePasswordCount = 0
         val matchedPasswords = if (hasLoginTargets) {
             val allPasswords = passwordRepository.getAllPasswordEntries().first()
@@ -274,7 +296,7 @@ class MonicaAutofillServiceNg : AutofillService() {
             if (uriConfig.disableMatch) {
                 emptyList()
             } else {
-                matcher.match(
+                val rankedMatches = matcher.match(
                     entries = scopedPasswords,
                     packageName = packageName,
                     webDomain = webDomain,
@@ -287,6 +309,31 @@ class MonicaAutofillServiceNg : AutofillService() {
                         maxSuggestions = 20,
                     ),
                 )
+                val passwordOnlyLastFilledEntry = if (isPasswordOnlyLogin) {
+                    resolveLastFilledEntry(
+                        entries = scopedPasswords,
+                        interactionContext = interactionContext,
+                    )
+                } else {
+                    null
+                }
+                val directFillEntry = if (isPasswordOnlyLogin) {
+                    resolvePasswordOnlyDirectFillEntry(
+                        rankedMatches = rankedMatches,
+                        lastFilled = passwordOnlyLastFilledEntry,
+                        interactionContext = interactionContext,
+                    )
+                } else {
+                    null
+                }
+                if (directFillEntry != null) {
+                    listOf(directFillEntry)
+                } else {
+                    AutofillInteractionContextResolver.prioritizeLastFilled(
+                        entries = rankedMatches,
+                        lastFilled = passwordOnlyLastFilledEntry,
+                    )
+                }
             }
         } else {
             emptyList()
@@ -295,7 +342,12 @@ class MonicaAutofillServiceNg : AutofillService() {
         diagnostics.logPasswordMatching(
             packageName = packageName,
             domain = webDomain,
-            matchStrategy = if (hasLoginTargets) "bitwarden_v2_hybrid" else "structured_manual_picker",
+            matchStrategy = if (hasLoginTargets) {
+                if (isPasswordOnlyLogin) "bitwarden_v2_hybrid_password_only"
+                else "bitwarden_v2_hybrid"
+            } else {
+                "structured_manual_picker"
+            },
             totalPasswords = candidatePasswordCount,
             matchedPasswords = matchedPasswords.size,
         )
@@ -309,6 +361,7 @@ class MonicaAutofillServiceNg : AutofillService() {
             isCompatMode = isCompatMode,
             passwords = matchedPasswords,
             fieldSignatureKey = fieldSignatureKey,
+            preferDirectAutoFill = isPasswordOnlyLogin && matchedPasswords.size == 1,
         )
 
         if (response == null) {
@@ -320,6 +373,48 @@ class MonicaAutofillServiceNg : AutofillService() {
             )
         }
         return response
+    }
+
+    private suspend fun resolveLastFilledEntry(
+        entries: List<PasswordEntry>,
+        interactionContext: AutofillInteractionContext,
+    ): PasswordEntry? {
+        var lastFilledPasswordId: Long? = null
+        for (identifier in interactionContext.allIdentifiers) {
+            lastFilledPasswordId = autofillPreferences.getLastFilledCredential(identifier)?.passwordId
+            if (lastFilledPasswordId != null) break
+        }
+        val resolvedPasswordId = lastFilledPasswordId ?: return null
+        return entries.firstOrNull { it.id == resolvedPasswordId }
+    }
+
+    private suspend fun resolvePasswordOnlyDirectFillEntry(
+        rankedMatches: List<PasswordEntry>,
+        lastFilled: PasswordEntry?,
+        interactionContext: AutofillInteractionContext,
+    ): PasswordEntry? {
+        val candidate = lastFilled ?: return null
+        if (rankedMatches.none { it.id == candidate.id }) return null
+
+        val now = System.currentTimeMillis()
+        val recentInteraction = interactionContext.allIdentifiers.firstNotNullOfOrNull { identifier ->
+            autofillPreferences.getAutofillInteractionState(identifier)
+        } ?: return null
+        if (!recentInteraction.completed) return null
+        if (recentInteraction.lastFilledPasswordId != candidate.id) return null
+        if (recentInteraction.lastFilledAt <= 0L) return null
+        if (now - recentInteraction.lastFilledAt > PASSWORD_ONLY_DIRECT_FILL_WINDOW_MS) return null
+
+        AutofillLogger.i(
+            "AF",
+            "Using password-only direct autofill continuation",
+            metadata = mapOf(
+                "passwordId" to candidate.id,
+                "interactionId" to recentInteraction.identifier,
+                "elapsedMs" to (now - recentInteraction.lastFilledAt),
+            )
+        )
+        return candidate
     }
 
     private data class UriStrategyConfig(
@@ -802,5 +897,3 @@ class MonicaAutofillServiceNg : AutofillService() {
         return packageName.equals(applicationContext.packageName, ignoreCase = true)
     }
 }
-
-

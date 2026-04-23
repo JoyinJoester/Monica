@@ -48,6 +48,11 @@ import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.ui.components.TrashSettingsSheet
 import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
+import takagi.ru.monica.ui.components.UnifiedMoveAction
+import takagi.ru.monica.ui.password.PasswordBatchDeleteGlobalProgressState
+import takagi.ru.monica.ui.password.PasswordBatchDeleteProgressTracker
+import takagi.ru.monica.ui.password.PasswordBatchTransferGlobalProgressState
+import takagi.ru.monica.ui.password.PasswordBatchTransferProgressTracker
 import takagi.ru.monica.utils.BiometricAuthHelper
 import takagi.ru.monica.viewmodel.SettingsViewModel
 import kotlinx.coroutines.delay
@@ -105,6 +110,8 @@ fun SettingsScreen(
     val activity = context as? FragmentActivity
     
     val settings by viewModel.settings.collectAsState()
+    val batchDeleteProgress by PasswordBatchDeleteProgressTracker.progress.collectAsState()
+    val batchTransferProgress by PasswordBatchTransferProgressTracker.progress.collectAsState()
     val totpItems by viewModel.totpItems.collectAsState()
     val scrollState = rememberScrollState()
     val coroutineScope = rememberCoroutineScope()
@@ -229,6 +236,201 @@ fun SettingsScreen(
     val colorSchemeSubtitle = getColorSchemeDisplayName(settings.colorScheme, context)
     val languageSubtitle = getLanguageDisplayName(settings.language, context)
 
+    fun searchTexts(vararg resIds: Int): Array<String> = resIds.map(context::getString).toTypedArray()
+
+    val themeSearchTexts = buildList {
+        ThemeMode.values().forEach { theme ->
+            add(getThemeDisplayName(theme, context))
+        }
+        add(context.getString(R.string.oled_pure_black))
+        add(context.getString(R.string.oled_pure_black_description))
+        add(context.getString(R.string.oled_pure_black_dark_mode_hint))
+    }.toTypedArray()
+
+    val colorSchemeSearchTexts = buildList {
+        add(context.getString(R.string.color_scheme_description))
+        takagi.ru.monica.data.ColorScheme.values().forEach { scheme ->
+            add(getColorSchemeDisplayName(scheme, context))
+        }
+    }.toTypedArray()
+
+    val languageSearchTexts = Language.values().map { language ->
+        getLanguageDisplayName(language, context)
+    }.toTypedArray()
+
+    val syncBackupSubSettingsSearchTexts = searchTexts(
+        R.string.sync_backup_common_sync,
+        R.string.webdav_backup,
+        R.string.webdav_backup_description,
+        R.string.sync_backup_bitwarden_sync_title,
+        R.string.sync_backup_bitwarden_sync_desc,
+        R.string.sync_backup_database_tools,
+        R.string.dedup_engine_title,
+        R.string.dedup_engine_entry_desc,
+        R.string.sync_backup_keepass_tools,
+        R.string.local_keepass_database,
+        R.string.local_keepass_database_description,
+        R.string.sync_backup_import_export_low_freq,
+        R.string.export_data,
+        R.string.export_data_description,
+        R.string.import_data,
+        R.string.import_data_description
+    )
+
+    val autofillSubSettingsSearchTexts = searchTexts(
+        R.string.autofill_v2_title,
+        R.string.autofill_system_settings_title,
+        R.string.autofill_fill_behavior_title,
+        R.string.autofill_v2_set_system_service,
+        R.string.autofill_v2_set_system_service_desc,
+        R.string.autofill_system_passkey_settings,
+        R.string.autofill_system_passkey_settings_desc,
+        R.string.autofill_v2_enable_service,
+        R.string.autofill_v2_enable_service_desc,
+        R.string.autofill_v2_default_scope_title,
+        R.string.autofill_v2_default_scope_desc,
+        R.string.autofill_v2_default_keepass_title,
+        R.string.autofill_v2_default_keepass_desc,
+        R.string.autofill_v2_default_bitwarden_title,
+        R.string.autofill_v2_default_bitwarden_desc,
+        R.string.autofill_v2_strict_match,
+        R.string.autofill_v2_strict_match_desc,
+        R.string.autofill_v2_subdomain_match,
+        R.string.autofill_v2_subdomain_match_desc,
+        R.string.autofill_domain_strategy_title,
+        R.string.autofill_v2_respect_off,
+        R.string.autofill_v2_respect_off_desc,
+        R.string.autofill_save_enable,
+        R.string.autofill_save_enable_desc,
+        R.string.autofill_save_update_duplicate,
+        R.string.autofill_save_update_duplicate_desc,
+        R.string.autofill_save_show_notification,
+        R.string.autofill_save_show_notification_desc,
+        R.string.autofill_save_smart_title,
+        R.string.autofill_save_smart_title_desc,
+        R.string.autofill_save_app_info,
+        R.string.autofill_save_app_info_desc,
+        R.string.autofill_save_website_info,
+        R.string.autofill_save_website_info_desc,
+        R.string.autofill_otp_settings_title,
+        R.string.autofill_show_otp_notification,
+        R.string.autofill_show_otp_notification_desc,
+        R.string.autofill_otp_notification_duration,
+        R.string.autofill_otp_notification_duration_desc,
+        R.string.autofill_auto_copy_otp,
+        R.string.autofill_auto_copy_otp_desc,
+        R.string.autofill_save_blocked_targets_title,
+        R.string.autofill_save_blocked_targets_manage,
+        R.string.autofill_blacklist_title,
+        R.string.autofill_blacklist_manage,
+        R.string.autofill_blocked_fields_title,
+        R.string.autofill_blocked_fields_manage
+    )
+
+    val bottomNavSubSettingsSearchTexts = buildList {
+        add(context.getString(R.string.bottom_nav_reorder_hint))
+        add(context.getString(R.string.bottom_nav_toggle_subtitle))
+        BottomNavContentTab.values().forEach { tab ->
+            add(context.getString(tab.toLabelRes()))
+        }
+    }.toTypedArray()
+
+    val extensionsSubSettingsSearchTexts = searchTexts(
+        R.string.display_options_menu_title,
+        R.string.password_card_display_mode_title,
+        R.string.display_mode_all,
+        R.string.display_mode_title_username,
+        R.string.display_mode_title_only,
+        R.string.smart_deduplication,
+        R.string.smart_deduplication_desc,
+        R.string.extensions_totp_settings,
+        R.string.validator_vibration,
+        R.string.validator_vibration_description,
+        R.string.copy_next_code_when_expiring,
+        R.string.copy_next_code_when_expiring_description,
+        R.string.notification_validator_title,
+        R.string.select_validator_to_display,
+        R.string.no_validators_available
+    )
+
+    val developerSubSettingsSearchTexts = searchTexts(
+        R.string.developer_log_debugging,
+        R.string.developer_view_logs,
+        R.string.developer_view_logs_desc,
+        R.string.developer_clear_log_buffer,
+        R.string.developer_clear_log_buffer_desc,
+        R.string.developer_share_logs,
+        R.string.developer_share_logs_desc,
+        R.string.developer_functions,
+        R.string.developer_disable_password_verification,
+        R.string.developer_disable_password_verification_desc,
+        R.string.developer_bitwarden_forensics_toggle,
+        R.string.developer_bitwarden_forensics_toggle_desc,
+        R.string.developer_bitwarden_forensics_raw_toggle,
+        R.string.developer_bitwarden_forensics_raw_toggle_desc,
+        R.string.developer_bitwarden_forensics_dir,
+        R.string.developer_bitwarden_forensics_clear_dir,
+        R.string.developer_bitwarden_forensics_clear_dir_desc,
+        R.string.developer_autofill_debug,
+        R.string.developer_launch_autofill_v2_test,
+        R.string.developer_launch_autofill_v2_desc,
+        R.string.developer_session_status,
+        R.string.developer_system_logs,
+        R.string.developer_filter_all,
+        R.string.developer_filter_errors,
+        R.string.developer_filter_warnings
+    )
+
+    val pageCustomizationSubSettingsSearchTexts = searchTexts(
+        R.string.password_list_customization_title,
+        R.string.password_list_customization_subtitle,
+        R.string.password_card_adjust_title,
+        R.string.password_card_adjust_subtitle,
+        R.string.authenticator_card_adjust_title,
+        R.string.authenticator_card_adjust_subtitle,
+        R.string.password_field_customization_title,
+        R.string.extensions_password_field_customization_desc,
+        R.string.icon_settings_title,
+        R.string.icon_settings_subtitle,
+        R.string.add_button_customization_title,
+        R.string.add_button_customization_desc,
+        R.string.add_button_mode_title,
+        R.string.add_button_mode_subtitle,
+        R.string.add_button_actions_title,
+        R.string.add_button_actions_desc,
+        R.string.password_page_aggregate_switch_title,
+        R.string.password_page_aggregate_switch_desc,
+        R.string.password_list_quick_filters_switch_title,
+        R.string.password_list_quick_filters_switch_desc,
+        R.string.password_list_quick_folder_path_banner_switch_title,
+        R.string.password_list_quick_folder_path_banner_switch_desc,
+        R.string.password_list_system_back_to_parent_folder_switch_title,
+        R.string.password_list_system_back_to_parent_folder_switch_desc,
+        R.string.password_card_show_authenticator_title,
+        R.string.password_card_show_authenticator_desc,
+        R.string.password_card_hide_other_content_when_authenticator_title,
+        R.string.password_card_hide_other_content_when_authenticator_desc,
+        R.string.stack_mode_menu_title,
+        R.string.group_mode_menu_title,
+        R.string.website_stack_match_mode_title,
+        R.string.website_stack_match_mode_desc,
+        R.string.authenticator_card_display_content_title,
+        R.string.authenticator_card_display_field_desc,
+        R.string.unified_progress_bar_title,
+        R.string.unified_progress_bar_description,
+        R.string.validator_progress_bar_style,
+        R.string.smooth_progress_bar_title,
+        R.string.smooth_progress_bar_description,
+        R.string.icon_settings_page_switches_title,
+        R.string.icon_settings_page_switches_desc,
+        R.string.icon_settings_app_icon_title,
+        R.string.icon_settings_unmatched_strategy_title,
+        R.string.icon_settings_source_title,
+        R.string.icon_settings_source_desc,
+        R.string.icon_settings_priority_title,
+        R.string.icon_settings_priority_desc
+    )
+
     fun matchesSettingsItem(
         sectionTitle: String,
         title: String,
@@ -286,12 +488,14 @@ fun SettingsScreen(
     val showSyncBackupItem = matchesSettingsItem(
         dataManagementTitle,
         context.getString(R.string.sync_backup_title),
-        context.getString(R.string.sync_backup_description)
+        context.getString(R.string.sync_backup_description),
+        *syncBackupSubSettingsSearchTexts
     )
     val showAutofillItem = matchesSettingsItem(
         dataManagementTitle,
         context.getString(R.string.autofill),
-        context.getString(R.string.autofill_subtitle)
+        context.getString(R.string.autofill_subtitle),
+        *autofillSubSettingsSearchTexts
     )
     val showTrashItem = matchesSettingsItem(
         dataManagementTitle,
@@ -313,32 +517,38 @@ fun SettingsScreen(
     val showThemeItem = matchesSettingsItem(
         appearanceTitle,
         context.getString(R.string.theme),
-        themeSubtitle
+        themeSubtitle,
+        *themeSearchTexts
     )
     val showColorSchemeItem = matchesSettingsItem(
         appearanceTitle,
         context.getString(R.string.color_scheme),
-        colorSchemeSubtitle
+        colorSchemeSubtitle,
+        *colorSchemeSearchTexts
     )
     val showLanguageItem = matchesSettingsItem(
         appearanceTitle,
         context.getString(R.string.language),
-        languageSubtitle
+        languageSubtitle,
+        *languageSearchTexts
     )
     val showBottomNavItem = matchesSettingsItem(
         appearanceTitle,
         context.getString(R.string.bottom_nav_settings),
-        context.getString(R.string.bottom_nav_settings_entry_subtitle)
+        context.getString(R.string.bottom_nav_settings_entry_subtitle),
+        *bottomNavSubSettingsSearchTexts
     )
     val showExtensionsItem = matchesSettingsItem(
         appearanceTitle,
         context.getString(R.string.extensions_title),
-        context.getString(R.string.extensions_description)
+        context.getString(R.string.extensions_description),
+        *extensionsSubSettingsSearchTexts
     )
     val showPageCustomizationItem = matchesSettingsItem(
         appearanceTitle,
         context.getString(R.string.page_adjust_custom_title),
-        context.getString(R.string.page_adjust_custom_subtitle)
+        context.getString(R.string.page_adjust_custom_subtitle),
+        *pageCustomizationSubSettingsSearchTexts
     )
     val showAppearanceSection = listOf(
         showThemeItem,
@@ -362,7 +572,8 @@ fun SettingsScreen(
     val showDeveloperSettingsItem = matchesSettingsItem(
         developerTitle,
         context.getString(R.string.developer_settings),
-        context.getString(R.string.developer_settings_subtitle)
+        context.getString(R.string.developer_settings_subtitle),
+        *developerSubSettingsSearchTexts
     )
     val hasVisibleResults = listOf(
         showMonicaPlusCard,
@@ -430,6 +641,14 @@ fun SettingsScreen(
                 query = settingsSearchQuery,
                 onQueryChange = { settingsSearchQuery = it }
             )
+
+            batchDeleteProgress?.let { progress ->
+                PasswordBatchDeleteProgressCard(progress = progress)
+            }
+
+            batchTransferProgress?.let { progress ->
+                PasswordBatchTransferProgressCard(progress = progress)
+            }
 
             // Monica Plus card is moved to Extensions page after activation.
             if (showMonicaPlusCard) {
@@ -1468,6 +1687,103 @@ fun SettingsScreen(
 }
 
 @Composable
+private fun PasswordBatchDeleteProgressCard(
+    progress: PasswordBatchDeleteGlobalProgressState
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.batch_delete_settings_card_title),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onTertiaryContainer
+            )
+            LinearProgressIndicator(
+                progress = { progress.progressFraction.coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Text(
+                text = if (progress.processed <= 0) {
+                    stringResource(R.string.batch_delete_in_progress_preparing)
+                } else {
+                    stringResource(
+                        R.string.batch_delete_in_progress_count,
+                        progress.processed,
+                        progress.total
+                    )
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.85f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun PasswordBatchTransferProgressCard(
+    progress: PasswordBatchTransferGlobalProgressState
+) {
+    val actionTitleRes = when (progress.action) {
+        UnifiedMoveAction.COPY -> R.string.password_batch_transfer_progress_title_copy
+        UnifiedMoveAction.MOVE -> R.string.password_batch_transfer_progress_title_move
+    }
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.password_batch_transfer_settings_card_title),
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            Text(
+                text = stringResource(actionTitleRes),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSecondaryContainer
+            )
+            Text(
+                text = stringResource(
+                    R.string.password_batch_transfer_target,
+                    progress.targetLabel
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f)
+            )
+            LinearProgressIndicator(
+                progress = { progress.progressFraction.coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Text(
+                text = stringResource(
+                    R.string.password_batch_transfer_notification_progress,
+                    progress.processed,
+                    progress.total
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.85f)
+            )
+        }
+    }
+}
+
+@Composable
 fun SettingsSection(
     title: String,
     content: @Composable () -> Unit
@@ -1649,6 +1965,7 @@ private fun BottomNavConfigRow(
     checked: Boolean,
     switchEnabled: Boolean,
     onCheckedChange: (Boolean) -> Unit,
+    showDragHandle: Boolean = true,
     dragHandleModifier: Modifier = Modifier,
     modifier: Modifier = Modifier
 ) {
@@ -1687,20 +2004,22 @@ private fun BottomNavConfigRow(
                 )
             }
 
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .then(dragHandleModifier),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.DragIndicator,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            if (showDragHandle) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .then(dragHandleModifier),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.DragIndicator,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
 
-            Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(8.dp))
+            }
 
             Switch(
                 checked = checked,
@@ -2120,7 +2439,9 @@ fun BottomNavSettingsScreen(
 
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
                 userScrollEnabled = !reorderableState.isAnyItemDragging,
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -2153,6 +2474,18 @@ fun BottomNavSettingsScreen(
                             modifier = Modifier.shadow(elevation)
                         )
                     }
+                }
+
+                item(key = "bottom_nav_auto_hide_single_tab") {
+                    BottomNavConfigRow(
+                        icon = Icons.Default.VisibilityOff,
+                        title = context.getString(R.string.bottom_nav_auto_hide_single_tab_title),
+                        subtitle = context.getString(R.string.bottom_nav_auto_hide_single_tab_subtitle),
+                        checked = settings.autoHideBottomNavWhenSingleTab,
+                        switchEnabled = true,
+                        onCheckedChange = viewModel::updateAutoHideBottomNavWhenSingleTab,
+                        showDragHandle = false,
+                    )
                 }
             }
         }

@@ -112,6 +112,7 @@ import takagi.ru.monica.ui.screens.PermissionManagementScreen
 import takagi.ru.monica.ui.screens.MonicaPlusScreen
 import takagi.ru.monica.ui.screens.PaymentScreen
 import takagi.ru.monica.ui.screens.SupportAuthorScreen
+import takagi.ru.monica.ui.screens.OneDriveBackupScreen
 import takagi.ru.monica.ui.screens.WebDavBackupScreen
 import takagi.ru.monica.ui.screens.KeePassKdbxViewModel
 import takagi.ru.monica.ui.theme.MonicaTheme
@@ -134,6 +135,8 @@ import androidx.compose.runtime.collectAsState
 import takagi.ru.monica.util.FileOperationHelper
 import takagi.ru.monica.util.PhotoPickerHelper
 import takagi.ru.monica.utils.SettingsManager
+import takagi.ru.monica.plus.PlusLicenseManager
+import takagi.ru.monica.plus.PlusActivationUiResult
 import takagi.ru.monica.utils.AutoBackupManager
 
 private data class PendingAddStorageDefaults(
@@ -771,6 +774,9 @@ fun MonicaContent(
                 passkeyViewModel = passkeyViewModel,
                 localKeePassViewModel = localKeePassViewModel,
                 securityManager = securityManager,
+                onNavigateToStandaloneSettings = {
+                    navController.navigate(Screen.Settings.route)
+                },
                 onNavigateToAddPassword = { passwordId ->
                     navController.navigate(Screen.AddEditPassword.createRoute(passwordId)) {
                         launchSingleTop = true
@@ -2092,6 +2098,22 @@ fun MonicaContent(
         }
 
         composable(
+            route = Screen.OneDriveBackup.route,
+            enterTransition = { rightSlideEnterTransition() },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { rightSlidePopExitTransition() }
+        ) {
+            OneDriveBackupScreen(
+                passwordRepository = repository,
+                secureItemRepository = secureItemRepository,
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(
             route = Screen.AutofillSettings.route,
             enterTransition = { rightSlideEnterTransition() },
             exitTransition = { ExitTransition.None },
@@ -2480,6 +2502,9 @@ fun MonicaContent(
                 onNavigateToWebDav = {
                     navController.navigate(Screen.WebDavBackup.route)
                 },
+                onNavigateToOneDrive = {
+                    navController.navigate(Screen.OneDriveBackup.route)
+                },
                 onNavigateToDedupEngine = {
                     navController.navigate(Screen.DedupEngine.route)
                 },
@@ -2692,13 +2717,17 @@ fun MonicaContent(
             popEnterTransition = { EnterTransition.None },
             popExitTransition = { rightSlidePopExitTransition() }
         ) {
+
             PaymentScreen(
                 onNavigateBack = {
                     navController.popBackStack()
                 },
                 onActivatePlus = {
                     settingsViewModel.updatePlusActivated(true)
-                    navController.popBackStack()
+                    PlusActivationUiResult(
+                        success = true,
+                        message = "Plus 激活成功"
+                    )
                 }
             )
         }

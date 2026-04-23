@@ -219,7 +219,9 @@ fun TotpListContent(
         onSelectAll: () -> Unit,
         onMoveToCategory: () -> Unit,
         onDelete: () -> Unit
-    ) -> Unit
+    ) -> Unit,
+    showStandaloneSettingsEntry: Boolean = false,
+    onOpenStandaloneSettings: () -> Unit = {}
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val bitwardenRepository = remember { takagi.ru.monica.bitwarden.repository.BitwardenRepository.getInstance(context) }
@@ -674,6 +676,16 @@ fun TotpListContent(
                                     onQuickScanTotp()
                                 }
                             )
+                            if (showStandaloneSettingsEntry) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.nav_settings)) },
+                                    leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                                    onClick = {
+                                        showTopActionsMenu = false
+                                        onOpenStandaloneSettings()
+                                    }
+                                )
+                            }
                             if (selectedBitwardenVaultId != null) {
                                 DropdownMenuItem(
                                     text = {

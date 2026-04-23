@@ -38,14 +38,18 @@ internal fun CardWalletPane(
     initialKeePassDatabaseId: Long? = null,
     initialKeePassGroupPath: String? = null,
     initialBitwardenVaultId: Long? = null,
-    initialBitwardenFolderId: String? = null
+    initialBitwardenFolderId: String? = null,
+    showStandaloneSettingsEntry: Boolean = false,
+    onOpenStandaloneSettings: () -> Unit = {}
 ) {
     val listPaneContent: @Composable ColumnScope.() -> Unit = {
         CardWalletContent(
             saveableStateHolder = saveableStateHolder,
             bankCardViewModel = bankCardViewModel,
             documentViewModel = documentViewModel,
-            state = contentState
+            state = contentState,
+            showStandaloneSettingsEntry = showStandaloneSettingsEntry,
+            onOpenStandaloneSettings = onOpenStandaloneSettings
         )
     }
 

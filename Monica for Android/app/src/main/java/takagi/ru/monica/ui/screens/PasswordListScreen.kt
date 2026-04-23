@@ -721,19 +721,20 @@ fun PasswordListScreen(
                     title = context.getString(R.string.verify_identity),
                     subtitle = context.getString(R.string.verify_to_delete),
                     onSuccess = {
-                        val deleteCount = selectedItems.size
-                        passwordEntries.filter { selectedItems.contains(it.id) }
-                            .forEach { viewModel.deletePasswordEntry(it) }
-                        showDeleteConfirmDialog = false
-                        selectionMode = false
-                        selectedItems = setOf()
-                        batchPasswordInput = ""
-                        batchPasswordError = false
-                        android.widget.Toast.makeText(
-                            context,
-                            context.getString(R.string.deleted_items, deleteCount),
-                            android.widget.Toast.LENGTH_SHORT
-                        ).show()
+                        val selectedEntries = passwordEntries.filter { selectedItems.contains(it.id) }
+                        scope.launch {
+                            val deleteCount = viewModel.deletePasswordEntriesBatch(selectedEntries)
+                            showDeleteConfirmDialog = false
+                            selectionMode = false
+                            selectedItems = setOf()
+                            batchPasswordInput = ""
+                            batchPasswordError = false
+                            android.widget.Toast.makeText(
+                                context,
+                                context.getString(R.string.deleted_items, deleteCount),
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                        }
                     },
                     onError = { error ->
                         android.widget.Toast.makeText(
@@ -764,19 +765,20 @@ fun PasswordListScreen(
             onConfirm = {
                 val securityManager = takagi.ru.monica.security.SecurityManager(context)
                 if (securityManager.verifyMasterPassword(batchPasswordInput)) {
-                    val deleteCount = selectedItems.size
-                    passwordEntries.filter { selectedItems.contains(it.id) }
-                        .forEach { viewModel.deletePasswordEntry(it) }
-                    showDeleteConfirmDialog = false
-                    selectionMode = false
-                    selectedItems = setOf()
-                    batchPasswordInput = ""
-                    batchPasswordError = false
-                    android.widget.Toast.makeText(
-                        context,
-                        context.getString(R.string.deleted_items, deleteCount),
-                        android.widget.Toast.LENGTH_SHORT
-                    ).show()
+                    val selectedEntries = passwordEntries.filter { selectedItems.contains(it.id) }
+                    scope.launch {
+                        val deleteCount = viewModel.deletePasswordEntriesBatch(selectedEntries)
+                        showDeleteConfirmDialog = false
+                        selectionMode = false
+                        selectedItems = setOf()
+                        batchPasswordInput = ""
+                        batchPasswordError = false
+                        android.widget.Toast.makeText(
+                            context,
+                            context.getString(R.string.deleted_items, deleteCount),
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                    }
                 } else {
                     batchPasswordError = true
                 }

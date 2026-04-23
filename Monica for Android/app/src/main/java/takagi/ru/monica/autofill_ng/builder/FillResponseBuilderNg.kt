@@ -11,6 +11,8 @@ import android.service.autofill.SaveInfo
 import android.view.autofill.AutofillId
 import android.view.autofill.AutofillValue
 import takagi.ru.monica.R
+import takagi.ru.monica.autofill_ng.AutofillCipherCallbackActivity
+import takagi.ru.monica.autofill_ng.AutofillInlinePlaceholderActivity
 import takagi.ru.monica.autofill_ng.AutofillPickerActivityV2
 import takagi.ru.monica.autofill_ng.builder.AutofillDatasetBuilder
 import takagi.ru.monica.autofill_ng.model.AutofillRequest
@@ -51,13 +53,15 @@ class FillResponseBuilderNg(
             cipherDatasetCount++
         }
 
-        responseBuilder.addDataset(
-            buildVaultItemDataset(
-                request = request,
-                filledData = filledData,
-                fillableAutofillIds = fillableAutofillIds
+        if (!request.preferDirectAutoFill || filledData.filledPartitions.size != 1) {
+            responseBuilder.addDataset(
+                buildVaultItemDataset(
+                    request = request,
+                    filledData = filledData,
+                    fillableAutofillIds = fillableAutofillIds
+                )
             )
-        )
+        }
 
         if (filledData.ignoreAutofillIds.isNotEmpty()) {
             responseBuilder.setIgnoredIds(*filledData.ignoreAutofillIds.toTypedArray())
@@ -88,10 +92,23 @@ class FillResponseBuilderNg(
             username = partition.autofillCipher.subtitle
         )
 
+        val authPendingIntent = if (request.preferDirectAutoFill) {
+            null
+        } else {
+            createCipherAuthPendingIntent(
+                request = request,
+                partition = partition,
+            )
+        }
+
         val fields = linkedMapOf<AutofillId, AutofillDatasetBuilder.FieldData?>()
         partition.filledItems.forEach { filledItem ->
             fields[filledItem.autofillId] = AutofillDatasetBuilder.FieldData(
-                value = filledItem.value,
+                value = if (authPendingIntent != null) {
+                    AutofillValue.forText(MANUAL_PLACEHOLDER_VALUE)
+                } else {
+                    filledItem.value
+                },
                 presentation = menuPresentation
             )
         }
@@ -107,7 +124,7 @@ class FillResponseBuilderNg(
                     spec = spec,
                     specs = request.inlinePresentationSpecs,
                     index = index,
-                    pendingIntent = createNoopPendingIntent(seed = index),
+                    pendingIntent = authPendingIntent ?: createNoopPendingIntent(seed = index),
                     title = partition.autofillCipher.name,
                     subtitle = partition.autofillCipher.subtitle,
                     icon = AutofillDatasetBuilder.InlinePresentationBuilder.createAppIcon(
@@ -121,7 +138,40 @@ class FillResponseBuilderNg(
             }
         }
 
+        authPendingIntent?.let { datasetBuilder.setAuthentication(it.intentSender) }
         return datasetBuilder.build()
+    }
+
+    private fun createCipherAuthPendingIntent(
+        request: AutofillRequest.Fillable,
+        partition: FilledPartition,
+    ): PendingIntent? {
+        val passwordId = partition.autofillCipher.cipherId?.toLongOrNull() ?: return null
+        val targetIds = partition.filledItems.map { it.autofillId }.distinct()
+        if (targetIds.isEmpty()) return null
+
+        val args = AutofillCipherCallbackActivity.Args(
+            passwordId = passwordId,
+            applicationId = request.packageName,
+            webDomain = extractWebDomain(request.uri),
+            interactionIdentifier = request.interactionIdentifier,
+            interactionIdentifierAliases = ArrayList(request.interactionIdentifierAliases),
+            autofillIds = ArrayList(targetIds),
+            autofillHints = ArrayList(buildAutofillHintNames(request.partition.views)),
+            fieldSignatureKey = request.fieldSignatureKey,
+            rememberLastFilled = true,
+        )
+        val pickerIntent = AutofillCipherCallbackActivity.getIntent(context, args)
+        return PendingIntent.getActivity(
+            context,
+            Random.nextInt(),
+            pickerIntent,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_MUTABLE
+            } else {
+                PendingIntent.FLAG_CANCEL_CURRENT
+            }
+        )
     }
 
     private fun buildVaultItemDataset(
@@ -159,13 +209,7 @@ class FillResponseBuilderNg(
         fillableAutofillIds: List<AutofillId>,
     ): ManualEntryArtifacts {
         val webDomain = extractWebDomain(request.uri)
-        val autofillHints = request.partition.views.map { view ->
-            when (view) {
-                is AutofillView.Login.Username -> "USERNAME"
-                is AutofillView.Login.Password -> "PASSWORD"
-                is AutofillView.Field -> view.hint.name
-            }
-        }
+        val autofillHints = buildAutofillHintNames(request.partition.views)
         val suggestedPasswordIds = filledData.filledPartitions
             .mapNotNull { it.autofillCipher.cipherId?.toLongOrNull() }
             .distinct()
@@ -173,13 +217,15 @@ class FillResponseBuilderNg(
         val args = AutofillPickerActivityV2.Args(
             applicationId = request.packageName,
             webDomain = webDomain,
+            interactionIdentifier = request.interactionIdentifier,
+            interactionIdentifierAliases = ArrayList(request.interactionIdentifierAliases),
             autofillIds = ArrayList(fillableAutofillIds),
             autofillHints = ArrayList(autofillHints),
             suggestedPasswordIds = suggestedPasswordIds,
             isSaveMode = false,
             fieldSignatureKey = request.fieldSignatureKey,
             responseAuthMode = false,
-            rememberLastFilled = false,
+            rememberLastFilled = true,
         )
         val pickerIntent = AutofillPickerActivityV2.getIntent(context, args)
         val pendingIntent = PendingIntent.getActivity(
@@ -236,12 +282,16 @@ class FillResponseBuilderNg(
 
     private fun createNoopPendingIntent(seed: Int): PendingIntent {
         val requestCode = (System.currentTimeMillis().toInt() and 0x7FFFFFFF) + seed
+        val intent = Intent(context, AutofillInlinePlaceholderActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
+            addFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION)
+        }
         val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         } else {
             PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_UPDATE_CURRENT
         }
-        return PendingIntent.getService(context, requestCode, Intent(), flags)
+        return PendingIntent.getActivity(context, requestCode, intent, flags)
     }
 
     private fun extractWebDomain(uri: String?): String? =
@@ -278,6 +328,16 @@ private data class ManualEntryArtifacts(
     val menuPresentation: android.widget.RemoteViews,
     val inlinePresentation: InlinePresentation?,
 )
+
+private fun buildAutofillHintNames(views: List<AutofillView>): List<String> {
+    return views.map { view ->
+        when (view) {
+            is AutofillView.Login.Username -> "USERNAME"
+            is AutofillView.Login.Password -> "PASSWORD"
+            is AutofillView.Field -> view.hint.name
+        }
+    }
+}
 
 private val FilledData.fillableAutofillIds: List<AutofillId>
     get() = originalPartition.views.map { it.data.autofillId }

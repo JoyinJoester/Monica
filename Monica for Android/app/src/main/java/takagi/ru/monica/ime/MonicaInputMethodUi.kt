@@ -3,7 +3,8 @@ package takagi.ru.monica.ime
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.sizeIn
@@ -27,6 +29,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -35,41 +38,41 @@ import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Badge
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.SpaceBar
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.ToggleButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -80,8 +83,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import takagi.ru.monica.R
+import takagi.ru.monica.autofill_ng.ui.rememberAppIcon
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.ThemeMode
+import takagi.ru.monica.ui.components.MonicaExpressiveFilterChip
 import takagi.ru.monica.ui.theme.MonicaTheme
 
 internal data class MonicaImePasswordEntry(
@@ -161,13 +166,14 @@ private enum class MonicaToolbarSelection {
     DOCUMENTS
 }
 
+private val MonicaImeContentAreaHeight = 240.dp
+
 @Composable
 internal fun MonicaImeContent(
     settings: AppSettings,
     uiState: MonicaImeUiState,
     onQueryChanged: (String) -> Unit,
     onDatabaseScopeSelected: (MonicaImeDatabaseScope) -> Unit,
-    onFillEntry: (MonicaImePasswordEntry) -> Unit,
     onInsertPassword: (MonicaImePasswordEntry) -> Unit,
     onInsertUsername: (MonicaImePasswordEntry) -> Unit,
     onKeyPressed: (String) -> Unit,
@@ -219,59 +225,70 @@ internal fun MonicaImeContent(
                         onDismiss = onDismiss
                     )
 
-                    if (showPanelContent) {
-                        when (uiState.activePanel) {
-                            MonicaImePanel.PASSWORDS -> {
-                                UnlockedVaultPane(
-                                    uiState = uiState,
-                                    onQueryChanged = onQueryChanged,
-                                    onDatabaseScopeSelected = onDatabaseScopeSelected,
-                                    onFillEntry = onFillEntry,
-                                    onInsertPassword = onInsertPassword,
-                                    onInsertUsername = onInsertUsername
-                                )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(MonicaImeContentAreaHeight)
+                    ) {
+                        if (showPanelContent) {
+                            when (uiState.activePanel) {
+                                MonicaImePanel.PASSWORDS -> {
+                                    UnlockedVaultPane(
+                                        modifier = Modifier.fillMaxSize(),
+                                        uiState = uiState,
+                                        onQueryChanged = onQueryChanged,
+                                        onDatabaseScopeSelected = onDatabaseScopeSelected,
+                                        onInsertPassword = onInsertPassword,
+                                        onInsertUsername = onInsertUsername
+                                    )
+                                }
+                                MonicaImePanel.AUTHENTICATORS -> {
+                                    ImeFeaturePlaceholderPane(
+                                        modifier = Modifier.fillMaxSize(),
+                                        icon = Icons.Default.VerifiedUser,
+                                        title = stringResource(R.string.authenticator),
+                                        message = stringResource(R.string.ime_authenticator_panel_placeholder)
+                                    )
+                                }
+                                MonicaImePanel.DOCUMENTS -> {
+                                    ImeFeaturePlaceholderPane(
+                                        modifier = Modifier.fillMaxSize(),
+                                        icon = Icons.Default.Badge,
+                                        title = stringResource(R.string.documents),
+                                        message = stringResource(R.string.ime_documents_panel_placeholder)
+                                    )
+                                }
+                                MonicaImePanel.KEYBOARD -> Unit
                             }
-                            MonicaImePanel.AUTHENTICATORS -> {
-                                ImeFeaturePlaceholderPane(
-                                    icon = Icons.Default.VerifiedUser,
-                                    title = stringResource(R.string.authenticator),
-                                    message = stringResource(R.string.ime_authenticator_panel_placeholder)
-                                )
-                            }
-                            MonicaImePanel.DOCUMENTS -> {
-                                ImeFeaturePlaceholderPane(
-                                    icon = Icons.Default.Badge,
-                                    title = stringResource(R.string.documents),
-                                    message = stringResource(R.string.ime_documents_panel_placeholder)
-                                )
-                            }
-                            MonicaImePanel.KEYBOARD -> Unit
                         }
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
+
+                        if (showUnlockPanel) {
+                            ImeUnlockFloatingPanel(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                errorMessage = uiState.errorMessage,
+                                onOpenUnlockApp = onOpenUnlockApp
+                            )
+                        }
+
+                        if (!showPanelContent && !showUnlockPanel) {
+                            MonicaKeyboard(
+                                modifier = Modifier.fillMaxSize(),
+                                mode = uiState.keyboardMode,
+                                isUppercase = uiState.isUppercase,
+                                onKeyPressed = onKeyPressed,
+                                onBackspace = onBackspace,
+                                onEnter = onEnter,
+                                onSpace = onSpace,
+                                onShiftToggle = onShiftToggle,
+                                onKeyboardModeChange = onKeyboardModeChange,
+                                onSwitchInputMethod = onSwitchInputMethod
+                            )
+                        }
                     }
 
-                    if (showUnlockPanel) {
-                        ImeUnlockFloatingPanel(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                            errorMessage = uiState.errorMessage,
-                            onOpenUnlockApp = onOpenUnlockApp
-                        )
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
-                    }
-
-                    if (!showPanelContent && !showUnlockPanel) {
-                        MonicaKeyboard(
-                            mode = uiState.keyboardMode,
-                            isUppercase = uiState.isUppercase,
-                            onKeyPressed = onKeyPressed,
-                            onBackspace = onBackspace,
-                            onEnter = onEnter,
-                            onSpace = onSpace,
-                            onShiftToggle = onShiftToggle,
-                            onKeyboardModeChange = onKeyboardModeChange,
-                            onSwitchInputMethod = onSwitchInputMethod
-                        )
-                    }
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.65f))
                 }
             }
         }
@@ -408,15 +425,15 @@ private fun RowScope.ConnectedToolbarButton(
 
 @Composable
 private fun UnlockedVaultPane(
+    modifier: Modifier = Modifier,
     uiState: MonicaImeUiState,
     onQueryChanged: (String) -> Unit,
     onDatabaseScopeSelected: (MonicaImeDatabaseScope) -> Unit,
-    onFillEntry: (MonicaImePasswordEntry) -> Unit,
     onInsertPassword: (MonicaImePasswordEntry) -> Unit,
     onInsertUsername: (MonicaImePasswordEntry) -> Unit
 ) {
     ElevatedCard(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 10.dp, vertical = 8.dp),
         shape = RoundedCornerShape(30.dp),
@@ -425,108 +442,83 @@ private fun UnlockedVaultPane(
         )
     ) {
         Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 286.dp)
-                .padding(horizontal = 14.dp, vertical = 14.dp),
+            modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.ime_picker_title),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = stringResource(R.string.ime_picker_subtitle),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Surface(
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                    shape = RoundedCornerShape(18.dp)
-                ) {
-                    Text(
-                        text = stringResource(R.string.password_picker_results_count, uiState.entries.size),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                    )
-                }
-            }
-
-            TextField(
-                value = uiState.query,
-                onValueChange = onQueryChanged,
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                shape = RoundedCornerShape(30.dp),
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                placeholder = { Text(stringResource(R.string.ime_search_accounts)) },
-                colors = TextFieldDefaults.colors(
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    disabledContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                    focusedIndicatorColor = Color.Transparent,
-                    unfocusedIndicatorColor = Color.Transparent,
-                    disabledIndicatorColor = Color.Transparent
-                )
-            )
-
-            if (uiState.databaseOptions.isNotEmpty()) {
-                LazyRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(horizontal = 2.dp)
-                ) {
-                    items(uiState.databaseOptions, key = { it.label }) { option ->
-                        FilterChip(
-                            selected = uiState.selectedDatabaseScope == option.scope,
-                            onClick = { onDatabaseScopeSelected(option.scope) },
-                            label = { Text(option.label) },
-                            leadingIcon = if (uiState.selectedDatabaseScope == option.scope) {
-                                {
-                                    Icon(
-                                        imageVector = Icons.Default.Key,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            } else {
-                                null
-                            }
-                        )
-                    }
-                }
-            }
-
             uiState.errorMessage?.let { message ->
                 Text(
                     text = message,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error
+                    color = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp)
                 )
             }
 
             if (uiState.entries.isEmpty()) {
-                EmptyVaultState(query = uiState.query)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = true)
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    if (uiState.databaseOptions.isNotEmpty()) {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            contentPadding = PaddingValues(horizontal = 2.dp)
+                        ) {
+                            items(uiState.databaseOptions, key = { it.label }) { option ->
+                                MonicaExpressiveFilterChip(
+                                    selected = uiState.selectedDatabaseScope == option.scope,
+                                    onClick = { onDatabaseScopeSelected(option.scope) },
+                                    label = option.label,
+                                    leadingIcon = option.scope.icon()
+                                )
+                            }
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f, fill = true),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        EmptyVaultState(query = uiState.query)
+                    }
+                }
             } else {
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 148.dp, max = 360.dp),
-                    contentPadding = PaddingValues(bottom = 6.dp),
+                        .weight(1f, fill = true),
+                    contentPadding = PaddingValues(
+                        start = 14.dp,
+                        top = 8.dp,
+                        end = 14.dp,
+                        bottom = 10.dp
+                    ),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    if (uiState.databaseOptions.isNotEmpty()) {
+                        item(key = "database_filters") {
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                contentPadding = PaddingValues(horizontal = 2.dp)
+                            ) {
+                                items(uiState.databaseOptions, key = { it.label }) { option ->
+                                    MonicaExpressiveFilterChip(
+                                        selected = uiState.selectedDatabaseScope == option.scope,
+                                        onClick = { onDatabaseScopeSelected(option.scope) },
+                                        label = option.label,
+                                        leadingIcon = option.scope.icon()
+                                    )
+                                }
+                            }
+                        }
+                    }
                     items(uiState.entries, key = { it.id }) { entry ->
                         PasswordEntryCard(
                             entry = entry,
-                            onFillEntry = { onFillEntry(entry) },
                             onInsertPassword = { onInsertPassword(entry) },
                             onInsertUsername = { onInsertUsername(entry) }
                         )
@@ -534,6 +526,15 @@ private fun UnlockedVaultPane(
                 }
             }
         }
+    }
+}
+
+private fun MonicaImeDatabaseScope.icon(): androidx.compose.ui.graphics.vector.ImageVector {
+    return when (this) {
+        MonicaImeDatabaseScope.All -> Icons.AutoMirrored.Filled.List
+        MonicaImeDatabaseScope.Local -> Icons.Default.Smartphone
+        is MonicaImeDatabaseScope.KeePass -> Icons.Default.Key
+        is MonicaImeDatabaseScope.Bitwarden -> Icons.Default.CloudSync
     }
 }
 
@@ -575,12 +576,13 @@ private fun EmptyVaultState(query: String) {
 
 @Composable
 private fun ImeFeaturePlaceholderPane(
+    modifier: Modifier = Modifier,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     title: String,
     message: String
 ) {
     ElevatedCard(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 10.dp, vertical = 8.dp),
         shape = RoundedCornerShape(30.dp),
@@ -590,8 +592,7 @@ private fun ImeFeaturePlaceholderPane(
     ) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 286.dp)
+                .fillMaxSize()
                 .padding(horizontal = 18.dp, vertical = 18.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
@@ -630,108 +631,114 @@ private fun ImeFeaturePlaceholderPane(
 @Composable
 private fun PasswordEntryCard(
     entry: MonicaImePasswordEntry,
-    onFillEntry: () -> Unit,
     onInsertPassword: () -> Unit,
     onInsertUsername: () -> Unit
 ) {
-    ElevatedCard(
-        shape = RoundedCornerShape(26.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-        ),
-        modifier = Modifier
-            .fillMaxWidth()
-            .combinedClickable(
-                onClick = onFillEntry,
-                onLongClick = onInsertUsername
-            )
-    ) {
-        Column(
+    var expanded by rememberSaveable(entry.id) { mutableStateOf(false) }
+    val appIcon = entry.packageName
+        .takeIf { it.isNotBlank() }
+        ?.let { rememberAppIcon(it) }
+    val cardShape = RoundedCornerShape(22.dp)
+    val interactionSource = remember(entry.id) { MutableInteractionSource() }
+
+    Box(modifier = Modifier.fillMaxWidth()) {
+        ElevatedCard(
+            shape = cardShape,
+            colors = CardDefaults.elevatedCardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            ),
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .animateContentSize()
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(cardShape)
+                    .clickable(
+                        interactionSource = interactionSource,
+                        indication = null
+                    ) {
+                        expanded = !expanded
+                    }
             ) {
-                Box(
+                Row(
                     modifier = Modifier
-                        .size(46.dp)
-                        .clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primaryContainer),
-                    contentAlignment = Alignment.Center
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Key,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = entry.title.ifBlank {
-                            entry.website.ifBlank { stringResource(R.string.ime_untitled_account) }
-                        },
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    if (entry.username.isNotBlank()) {
-                        Text(
-                            text = entry.username,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                    Text(
-                        text = entry.sourceLabel,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    val meta = listOf(entry.website, entry.packageName)
-                        .filter { it.isNotBlank() }
-                        .joinToString(" • ")
-                    if (meta.isNotBlank()) {
-                        Text(
-                            text = meta,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-                }
-                if (entry.isFavorite) {
                     Box(
                         modifier = Modifier
+                            .size(46.dp)
                             .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.primaryContainer)
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center
                     ) {
+                        if (appIcon != null) {
+                            Image(
+                                bitmap = appIcon,
+                                contentDescription = null,
+                                modifier = Modifier.size(28.dp)
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Key,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            )
+                        }
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = stringResource(R.string.ime_favorite_badge),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                            text = entry.title.ifBlank {
+                                entry.website.ifBlank { stringResource(R.string.ime_untitled_account) }
+                            },
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
+                        if (entry.username.isNotBlank()) {
+                            Text(
+                                text = entry.username,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
                 }
-            }
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                AssistChip(onClick = onFillEntry, label = { Text(stringResource(R.string.ime_quick_fill)) })
-                AssistChip(onClick = onInsertPassword, label = { Text(stringResource(R.string.password)) })
-                if (entry.username.isNotBlank()) {
-                    AssistChip(onClick = onInsertUsername, label = { Text(stringResource(R.string.username)) })
+
+                if (expanded) {
+                    FlowRow(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 14.dp, end = 14.dp, bottom = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                expanded = false
+                                onInsertPassword()
+                            }
+                        ) {
+                            Text(stringResource(R.string.password))
+                        }
+                        if (entry.username.isNotBlank()) {
+                            OutlinedButton(
+                                onClick = {
+                                    expanded = false
+                                    onInsertUsername()
+                                }
+                            ) {
+                                Text(stringResource(R.string.username))
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -740,6 +747,7 @@ private fun PasswordEntryCard(
 
 @Composable
 private fun MonicaKeyboard(
+    modifier: Modifier = Modifier,
     mode: MonicaKeyboardMode,
     isUppercase: Boolean,
     onKeyPressed: (String) -> Unit,
@@ -751,7 +759,7 @@ private fun MonicaKeyboard(
     onSwitchInputMethod: () -> Unit
 ) {
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 8.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)

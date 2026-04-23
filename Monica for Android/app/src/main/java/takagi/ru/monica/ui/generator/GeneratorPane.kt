@@ -23,7 +23,9 @@ internal fun GeneratorPane(
     externalRefreshRequestKey: Int,
     onRefreshRequestConsumed: () -> Unit,
     selectedGenerator: GeneratorType,
-    generatedValue: String
+    generatedValue: String,
+    showStandaloneSettingsEntry: Boolean = false,
+    onOpenStandaloneSettings: () -> Unit = {}
 ) {
     if (isCompactWidth) {
         GeneratorScreen(
@@ -32,7 +34,9 @@ internal fun GeneratorPane(
             passwordViewModel = passwordViewModel,
             externalRefreshRequestKey = externalRefreshRequestKey,
             onRefreshRequestConsumed = onRefreshRequestConsumed,
-            useExternalRefreshFab = true
+            useExternalRefreshFab = true,
+            showStandaloneSettingsEntry = showStandaloneSettingsEntry,
+            onOpenStandaloneSettings = onOpenStandaloneSettings
         )
     } else {
         Row(modifier = Modifier.fillMaxSize()) {
@@ -47,7 +51,9 @@ internal fun GeneratorPane(
                     passwordViewModel = passwordViewModel,
                     externalRefreshRequestKey = externalRefreshRequestKey,
                     onRefreshRequestConsumed = onRefreshRequestConsumed,
-                    useExternalRefreshFab = true
+                    useExternalRefreshFab = true,
+                    showStandaloneSettingsEntry = showStandaloneSettingsEntry,
+                    onOpenStandaloneSettings = onOpenStandaloneSettings
                 )
             }
             DetailPane(

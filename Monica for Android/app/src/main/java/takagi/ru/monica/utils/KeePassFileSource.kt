@@ -5,6 +5,8 @@ data class FileSourceStat(
     val etag: String? = null,
     val lastModified: Long? = null,
     val sizeBytes: Long? = null,
+    val remoteId: String? = null,
+    val driveId: String? = null,
     val isDirectory: Boolean = false,
     val displayName: String? = null
 )
@@ -22,7 +24,9 @@ data class FileSourceEntry(
 data class FileSourceWriteResult(
     val versionToken: String? = null,
     val etag: String? = null,
-    val lastModified: Long? = null
+    val lastModified: Long? = null,
+    val remoteId: String? = null,
+    val driveId: String? = null
 )
 
 interface KeePassFileSource {

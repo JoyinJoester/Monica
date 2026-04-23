@@ -1,6 +1,5 @@
 package takagi.ru.monica.ui.screens
 
-import android.util.Base64
 import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -40,6 +39,7 @@ import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
 import takagi.ru.monica.data.model.PasskeyBinding
 import takagi.ru.monica.data.model.PasskeyBindingCodec
+import takagi.ru.monica.passkey.PasskeyPrivateKeySupport
 import takagi.ru.monica.passkey.managementRecordIdOrNull
 import takagi.ru.monica.ui.PasskeyDetailPane
 import takagi.ru.monica.ui.components.ActionStrip
@@ -47,9 +47,6 @@ import takagi.ru.monica.ui.components.ActionStripItem
 import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import takagi.ru.monica.viewmodel.PasskeyViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
-import java.security.KeyFactory
-import java.security.KeyStore
-import java.security.spec.PKCS8EncodedKeySpec
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -392,33 +389,5 @@ private fun unbindPasskey(
 private fun isPasskeyMigratableToBitwarden(passkey: PasskeyEntry): Boolean {
     if (passkey.passkeyMode != PasskeyEntry.MODE_BW_COMPAT) return false
     if (passkey.syncStatus == "REFERENCE") return false
-    val keyMaterial = passkey.privateKeyAlias
-    if (keyMaterial.isBlank()) return false
-    if (isPkcs8PrivateKeyBase64(keyMaterial)) return true
-
-    return try {
-        val keyStore = KeyStore.getInstance("AndroidKeyStore")
-        keyStore.load(null)
-        val entry = keyStore.getEntry(keyMaterial, null) as? KeyStore.PrivateKeyEntry
-        val encoded = entry?.privateKey?.encoded
-        encoded != null && encoded.isNotEmpty()
-    } catch (_: Exception) {
-        false
-    }
-}
-
-private fun isPkcs8PrivateKeyBase64(value: String): Boolean {
-    if (value.isBlank()) return false
-    val decoded = runCatching { Base64.decode(value, Base64.NO_WRAP) }.getOrNull() ?: return false
-    val keySpec = PKCS8EncodedKeySpec(decoded)
-    val ecValid = runCatching {
-        KeyFactory.getInstance("EC").generatePrivate(keySpec)
-        true
-    }.getOrDefault(false)
-    if (ecValid) return true
-
-    return runCatching {
-        KeyFactory.getInstance("RSA").generatePrivate(keySpec)
-        true
-    }.getOrDefault(false)
+    return PasskeyPrivateKeySupport.hasBitwardenCompatiblePrivateKey(passkey.privateKeyAlias)
 }

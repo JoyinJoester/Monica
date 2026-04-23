@@ -9,6 +9,7 @@ import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.KeePassDatabaseDiagnostics
+import takagi.ru.monica.utils.KeePassConflictResolutionResult
 import takagi.ru.monica.utils.KeePassEntryData
 import takagi.ru.monica.utils.KeePassGroupInfo
 import takagi.ru.monica.utils.KeePassKdbxService
@@ -101,6 +102,16 @@ class KeePassWorkspaceRepository(
             fileUri = fileUri,
             password = password,
             keyFileUri = keyFileUri
+        )
+    }
+
+    suspend fun resolveRemoteConflict(
+        databaseId: Long,
+        remoteBytes: ByteArray
+    ): Result<KeePassConflictResolutionResult> {
+        return service.resolveRemoteConflict(
+            databaseId = databaseId,
+            remoteBytes = remoteBytes
         )
     }
 

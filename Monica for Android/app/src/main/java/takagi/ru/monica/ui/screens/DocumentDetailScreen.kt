@@ -543,7 +543,7 @@ private fun DocumentCustomFieldsCard(
                 } else {
                     InfoFieldWithCopy(
                         label = label,
-                        value = field.value.ifBlank { "-" },
+                        value = field.value,
                         context = context
                     )
                 }

@@ -6,7 +6,6 @@ import android.content.IntentFilter
 import android.content.Intent
 import android.graphics.Color
 import android.inputmethodservice.InputMethodService
-import android.text.InputType
 import android.os.Build
 import android.view.View
 import android.view.inputmethod.EditorInfo
@@ -151,7 +150,6 @@ class MonicaInputMethodService : InputMethodService() {
                             uiState.update { it.copy(selectedDatabaseScope = scope) }
                             requestRefreshVaultEntries(force = true)
                         },
-                        onFillEntry = ::fillCurrentField,
                         onInsertPassword = { commitExternalText(it.password) },
                         onInsertUsername = { commitExternalText(it.username) },
                         onKeyPressed = ::handleKeyPress,
@@ -174,6 +172,8 @@ class MonicaInputMethodService : InputMethodService() {
         }
         return composeView!!
     }
+
+    override fun onEvaluateFullscreenMode(): Boolean = false
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
@@ -336,6 +336,7 @@ class MonicaInputMethodService : InputMethodService() {
                     activePanel = panel,
                     isAutofillPanelVisible = true,
                     errorMessage = null,
+                    query = if (panel == MonicaImePanel.PASSWORDS) "" else it.query,
                     selectedDatabaseScope = if (panel == MonicaImePanel.PASSWORDS) {
                         it.selectedDatabaseScope
                     } else {
@@ -373,7 +374,11 @@ class MonicaInputMethodService : InputMethodService() {
 
         val currentState = uiState.value
         val activePackage = currentState.activePackageName
-        val query = currentState.query.trim()
+        val query = if (currentState.activePanel == MonicaImePanel.PASSWORDS) {
+            ""
+        } else {
+            currentState.query.trim()
+        }
         val localLabel = getString(takagi.ru.monica.R.string.filter_monica)
         val keepassLabel = getString(takagi.ru.monica.R.string.filter_keepass)
         val bitwardenLabel = getString(takagi.ru.monica.R.string.filter_bitwarden)
@@ -595,39 +600,6 @@ class MonicaInputMethodService : InputMethodService() {
                         )
                     )
                 }
-        }
-    }
-
-    private fun fillCurrentField(entry: MonicaImePasswordEntry) {
-        val textToCommit = when {
-            isPasswordField() -> entry.password
-            entry.username.isNotBlank() -> entry.username
-            else -> entry.password
-        }
-        commitExternalText(textToCommit)
-        uiState.update {
-            it.copy(
-                activePanel = MonicaImePanel.KEYBOARD,
-                isAutofillPanelVisible = false,
-                query = "",
-                selectedDatabaseScope = MonicaImeDatabaseScope.All,
-                errorMessage = null
-            )
-        }
-    }
-
-    private fun isPasswordField(): Boolean {
-        val inputType = currentInputEditorInfo?.inputType ?: return true
-        val inputClass = inputType and InputType.TYPE_MASK_CLASS
-        val variation = inputType and InputType.TYPE_MASK_VARIATION
-        return when (inputClass) {
-            InputType.TYPE_CLASS_TEXT -> {
-                variation == InputType.TYPE_TEXT_VARIATION_PASSWORD ||
-                    variation == InputType.TYPE_TEXT_VARIATION_WEB_PASSWORD ||
-                    variation == InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
-            }
-            InputType.TYPE_CLASS_NUMBER -> variation == InputType.TYPE_NUMBER_VARIATION_PASSWORD
-            else -> false
         }
     }
 

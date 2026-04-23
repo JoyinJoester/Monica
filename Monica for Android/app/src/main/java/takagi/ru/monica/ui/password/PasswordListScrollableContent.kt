@@ -35,6 +35,7 @@ internal fun PasswordListScrollableContent(
     modifier: Modifier,
     isPasswordPageListModelReady: Boolean,
     hasVisibleQuickFilters: Boolean,
+    hasVisibleCategoryQuickFilters: Boolean,
     appSettings: AppSettings,
     configuredQuickFilterItems: List<PasswordListQuickFilterItem>,
     aggregateUiState: PasswordListAggregateUiState,
@@ -55,6 +56,7 @@ internal fun PasswordListScrollableContent(
     quickFilterUnstacked: Boolean,
     onQuickFilterUnstackedChange: (Boolean) -> Unit,
     onToggleAggregateType: ((PasswordPageContentType) -> Unit)?,
+    categoryQuickFilterShortcuts: List<PasswordQuickFolderShortcut>,
     quickFolderShortcuts: List<PasswordQuickFolderShortcut>,
     quickFolderStyle: PasswordListQuickFolderStyle,
     currentFilter: CategoryFilter,
@@ -70,42 +72,66 @@ internal fun PasswordListScrollableContent(
         modifier = modifier,
         contentPadding = PaddingValues(horizontal = 16.dp)
     ) {
-        if (hasVisibleQuickFilters) {
+        if (hasVisibleQuickFilters || hasVisibleCategoryQuickFilters) {
             item(key = PASSWORD_LIST_QUICK_FILTERS_KEY) {
-                Row(
+                val filterSectionSpacing =
+                    if (hasVisibleQuickFilters && hasVisibleCategoryQuickFilters) 0.dp else 0.dp
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState())
-                        .padding(top = 2.dp, bottom = 10.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        .padding(top = 0.dp, bottom = 4.dp)
                 ) {
-                    if (appSettings.passwordListQuickFiltersEnabled) {
-                        configuredQuickFilterItems.forEach { item ->
-                            if (shouldShowQuickFilterItem(item, aggregateUiState.visibleContentTypes)) {
-                                PasswordQuickFilterChipItem(
-                                    item = item,
-                                    categoryEditMode = false,
-                                    quickFilterFavorite = quickFilterFavorite,
-                                    onQuickFilterFavoriteChange = onQuickFilterFavoriteChange,
-                                    quickFilter2fa = quickFilter2fa,
-                                    onQuickFilter2faChange = onQuickFilter2faChange,
-                                    quickFilterNotes = quickFilterNotes,
-                                    onQuickFilterNotesChange = onQuickFilterNotesChange,
-                                    quickFilterUncategorized = quickFilterUncategorized,
-                                    onQuickFilterUncategorizedChange = onQuickFilterUncategorizedChange,
-                                    quickFilterLocalOnly = quickFilterLocalOnly,
-                                    onQuickFilterLocalOnlyChange = onQuickFilterLocalOnlyChange,
-                                    quickFilterManualStackOnly = quickFilterManualStackOnly,
-                                    onQuickFilterManualStackOnlyChange = onQuickFilterManualStackOnlyChange,
-                                    quickFilterNeverStack = quickFilterNeverStack,
-                                    onQuickFilterNeverStackChange = onQuickFilterNeverStackChange,
-                                    quickFilterUnstacked = quickFilterUnstacked,
-                                    onQuickFilterUnstackedChange = onQuickFilterUnstackedChange,
-                                    aggregateSelectedTypes = aggregateUiState.selectedContentTypes,
-                                    aggregateVisibleTypes = aggregateUiState.visibleContentTypes,
-                                    onToggleAggregateType = onToggleAggregateType
-                                )
+                    androidx.compose.foundation.layout.Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(filterSectionSpacing)
+                    ) {
+                        if (hasVisibleQuickFilters) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                if (appSettings.passwordListQuickFiltersEnabled) {
+                                    configuredQuickFilterItems.forEach { item ->
+                                        if (shouldShowQuickFilterItem(item, aggregateUiState.visibleContentTypes)) {
+                                            PasswordQuickFilterChipItem(
+                                                item = item,
+                                                categoryEditMode = false,
+                                                quickFilterFavorite = quickFilterFavorite,
+                                                onQuickFilterFavoriteChange = onQuickFilterFavoriteChange,
+                                                quickFilter2fa = quickFilter2fa,
+                                                onQuickFilter2faChange = onQuickFilter2faChange,
+                                                quickFilterNotes = quickFilterNotes,
+                                                onQuickFilterNotesChange = onQuickFilterNotesChange,
+                                                quickFilterUncategorized = quickFilterUncategorized,
+                                                onQuickFilterUncategorizedChange = onQuickFilterUncategorizedChange,
+                                                quickFilterLocalOnly = quickFilterLocalOnly,
+                                                onQuickFilterLocalOnlyChange = onQuickFilterLocalOnlyChange,
+                                                quickFilterManualStackOnly = quickFilterManualStackOnly,
+                                                onQuickFilterManualStackOnlyChange = onQuickFilterManualStackOnlyChange,
+                                                quickFilterNeverStack = quickFilterNeverStack,
+                                                onQuickFilterNeverStackChange = onQuickFilterNeverStackChange,
+                                                quickFilterUnstacked = quickFilterUnstacked,
+                                                onQuickFilterUnstackedChange = onQuickFilterUnstackedChange,
+                                                aggregateSelectedTypes = aggregateUiState.selectedContentTypes,
+                                                aggregateVisibleTypes = aggregateUiState.visibleContentTypes,
+                                                onToggleAggregateType = onToggleAggregateType
+                                            )
+                                        }
+                                    }
+                                }
                             }
+                        }
+
+                        if (hasVisibleCategoryQuickFilters) {
+                            PasswordQuickFolderChipRow(
+                                params = PasswordQuickFolderChipRowParams(
+                                    currentFilter = currentFilter,
+                                    quickFolderShortcuts = categoryQuickFilterShortcuts,
+                                    onSelectFilter = onNavigateFilter
+                                )
+                            )
                         }
                     }
                 }

@@ -779,17 +779,19 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
         return when (data) {
             is PasswordEntry -> {
                 val keepassId = data.keepassDatabaseId ?: return true
-                keepassBridge.deleteLegacyPasswordEntries(
+                val result = keepassBridge.deleteLegacyPasswordEntries(
                     databaseId = keepassId,
                     entries = listOf(data.copy(keepassDatabaseId = keepassId))
-                ).isSuccess
+                )
+                result.getOrNull()?.let { it > 0 } ?: false
             }
             is SecureItem -> {
                 val keepassId = data.keepassDatabaseId ?: return true
-                keepassBridge.deleteLegacySecureItems(
+                val result = keepassBridge.deleteLegacySecureItems(
                     databaseId = keepassId,
                     items = listOf(data.copy(keepassDatabaseId = keepassId))
-                ).isSuccess
+                )
+                result.getOrNull()?.let { it > 0 } ?: false
             }
             else -> true
         }

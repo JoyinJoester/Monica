@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -72,15 +73,20 @@ internal fun CommonPasswordTopActionsMenuItems(
     onOpenHistory: () -> Unit,
     onOpenTrash: () -> Unit,
     onOpenArchive: () -> Unit,
+    showDisplayOptionsEntry: Boolean = true,
+    showSettingsEntry: Boolean = false,
+    onOpenSettings: (() -> Unit)? = null,
 ) {
-    DropdownMenuItem(
-        text = { Text(stringResource(R.string.display_options_menu_title)) },
-        leadingIcon = { Icon(Icons.Default.DashboardCustomize, contentDescription = null) },
-        onClick = {
-            onDismissMenu()
-            onShowDisplayOptions()
-        }
-    )
+    if (showDisplayOptionsEntry) {
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.display_options_menu_title)) },
+            leadingIcon = { Icon(Icons.Default.DashboardCustomize, contentDescription = null) },
+            onClick = {
+                onDismissMenu()
+                onShowDisplayOptions()
+            }
+        )
+    }
     DropdownMenuItem(
         text = { Text(stringResource(R.string.common_account_title)) },
         leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
@@ -113,6 +119,16 @@ internal fun CommonPasswordTopActionsMenuItems(
             onOpenArchive()
         }
     )
+    if (showSettingsEntry && onOpenSettings != null) {
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.nav_settings)) },
+            leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
+            onClick = {
+                onDismissMenu()
+                onOpenSettings()
+            }
+        )
+    }
 }
 
 @Composable

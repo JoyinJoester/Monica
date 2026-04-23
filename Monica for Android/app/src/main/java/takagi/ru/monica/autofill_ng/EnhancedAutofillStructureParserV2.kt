@@ -644,22 +644,22 @@ class EnhancedAutofillStructureParserV2 {
         }
 
         val out = mutableListOf<RawParsedItem>()
-        if (node.visibility == View.VISIBLE) {
-            webView = node.className == "android.webkit.WebView"
-            val webViewNodeId = node.id.takeIf { webView } ?: parentWebViewNodeId
+        webView = node.className == "android.webkit.WebView"
+        val webViewNodeId = node.id.takeIf { webView } ?: parentWebViewNodeId
 
-            if (node.autofillId != null) {
-                val outBuilders = mutableListOf<ParsedItemBuilder>()
-                val hints = node.autofillHints
-                if (!hints.isNullOrEmpty()) {
-                    outBuilders += parseNodeByAutofillHint(node)
-                }
+        if (node.autofillId != null) {
+            val outBuilders = mutableListOf<ParsedItemBuilder>()
+            val hints = node.autofillHints
+            if (!hints.isNullOrEmpty()) {
+                outBuilders += parseNodeByAutofillHint(node)
+            }
 
-                outBuilders += parseNodeByHtmlAttributes(node)
-                val inputOut = parseNodeByAndroidInput(node)
-                val labelOut = parseNodeByLabel(node)
-                outBuilders += inputOut + labelOut
+            outBuilders += parseNodeByHtmlAttributes(node)
+            val inputOut = parseNodeByAndroidInput(node)
+            val labelOut = parseNodeByLabel(node)
+            outBuilders += inputOut + labelOut
 
+            if (node.visibility == View.VISIBLE || shouldIncludeHiddenCredentialNode(outBuilders)) {
                 out += outBuilders.map { builder ->
                     context.traversalIndex += 1
                     RawParsedItem(
@@ -678,20 +678,20 @@ class EnhancedAutofillStructureParserV2 {
                     )
                 }
             }
+        }
 
-            for (i in 0 until node.childCount) {
-                val childStructure = parseViewNode(
-                    node = node.getChildAt(i),
-                    parentWebViewNodeId = webViewNodeId,
-                    context = context,
-                )
-                if (childStructure.webView) {
-                    webView = true
-                }
-                webDomain = webDomain ?: childStructure.webDomain
-                webScheme = webScheme ?: childStructure.webScheme
-                out += childStructure.items
+        for (i in 0 until node.childCount) {
+            val childStructure = parseViewNode(
+                node = node.getChildAt(i),
+                parentWebViewNodeId = webViewNodeId,
+                context = context,
+            )
+            if (childStructure.webView) {
+                webView = true
             }
+            webDomain = webDomain ?: childStructure.webDomain
+            webScheme = webScheme ?: childStructure.webScheme
+            out += childStructure.items
         }
 
         return RawParsedStructure(
@@ -1187,6 +1187,18 @@ class EnhancedAutofillStructureParserV2 {
         }
 
         return out
+    }
+
+    private fun shouldIncludeHiddenCredentialNode(
+        builders: List<ParsedItemBuilder>,
+    ): Boolean {
+        return builders.any { builder ->
+            builder.hint == InternalHint.USERNAME ||
+                builder.hint == InternalHint.EMAIL_ADDRESS ||
+                builder.hint == InternalHint.PHONE_NUMBER ||
+                builder.hint == InternalHint.PASSWORD ||
+                builder.hint == InternalHint.NEW_PASSWORD
+        }
     }
 
     private fun isEditableTextLikeNode(node: AssistStructure.ViewNode): Boolean {

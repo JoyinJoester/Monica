@@ -41,10 +41,14 @@ import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.FieldChange
 import takagi.ru.monica.utils.FileSourceEntry
+import takagi.ru.monica.utils.GoogleDriveKeePassFileSource
+import takagi.ru.monica.utils.GoogleDriveKeePassSupport
 import takagi.ru.monica.utils.KeePassCodecSupport
 import takagi.ru.monica.utils.KeePassOperationException
 import takagi.ru.monica.utils.KeePassGroupInfo
 import takagi.ru.monica.utils.KeePassKdbxService
+import takagi.ru.monica.utils.OneDriveKeePassFileSource
+import takagi.ru.monica.utils.OneDriveKeePassSupport
 import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.utils.RemoteKeePassSyncService
 import takagi.ru.monica.utils.WebDavKeePassFileSource
@@ -112,8 +116,23 @@ class LocalKeePassViewModel(
         )
     }
 
+    init {
+        autoResolveWebDavConflictDatabases()
+    }
+
     data class WebDavDirectoryListing(
         val currentPath: String,
+        val entries: List<FileSourceEntry>
+    )
+
+    data class OneDriveDirectoryListing(
+        val currentPath: String,
+        val entries: List<FileSourceEntry>
+    )
+
+    data class GoogleDriveDirectoryListing(
+        val currentPath: String,
+        val currentFolderId: String?,
         val entries: List<FileSourceEntry>
     )
 
@@ -121,6 +140,23 @@ class LocalKeePassViewModel(
         val databaseId: Long,
         val databaseName: String,
         val entryCount: Int
+    )
+
+    private data class OneDriveAttachResult(
+        val databaseId: Long,
+        val databaseName: String,
+        val entryCount: Int
+    )
+
+    private data class GoogleDriveAttachResult(
+        val databaseId: Long,
+        val databaseName: String,
+        val entryCount: Int
+    )
+
+    private data class RemoteSyncResult(
+        val databaseName: String,
+        val message: String
     )
 
     fun getGroups(databaseId: Long): Flow<List<KeePassGroupInfo>> {
@@ -823,6 +859,234 @@ class LocalKeePassViewModel(
         }
     }
 
+    fun addOneDriveDatabase(
+        name: String,
+        accountId: String,
+        accountLabel: String,
+        remotePath: String,
+        databasePassword: String,
+        keyFileUri: Uri? = null,
+        description: String? = null
+    ) {
+        viewModelScope.launch {
+            _operationState.value = OperationState.Loading("正在接入 OneDrive 数据库...")
+
+            try {
+                val attachResult = withContext(Dispatchers.IO) {
+                    attachOneDriveDatabaseBlocking(
+                        name = name,
+                        accountId = accountId,
+                        accountLabel = accountLabel,
+                        remotePath = remotePath,
+                        databasePassword = databasePassword,
+                        keyFileUri = keyFileUri,
+                        description = description
+                    )
+                }
+
+                _operationState.value = OperationState.Success("OneDrive 数据库接入成功")
+                logKeepassDatabaseCreate(
+                    databaseId = attachResult.databaseId,
+                    databaseName = attachResult.databaseName,
+                    details = listOf(
+                        FieldChange("来源", "", "OneDrive"),
+                        FieldChange("打开方式", "", "工作副本"),
+                        FieldChange("条目数量", "", attachResult.entryCount.toString())
+                    )
+                )
+            } catch (e: Exception) {
+                _operationState.value = OperationState.Error("接入失败: ${formatOperationError(e)}")
+            }
+        }
+    }
+
+    fun createOneDriveDatabase(
+        directoryPath: String?,
+        name: String,
+        accountId: String,
+        accountLabel: String,
+        databasePassword: String,
+        keyFileUri: Uri? = null,
+        creationOptions: KeePassDatabaseCreationOptions = KeePassDatabaseCreationOptions(),
+        description: String? = null
+    ) {
+        viewModelScope.launch {
+            _operationState.value = OperationState.Loading("正在创建 OneDrive 远端数据库...")
+
+            try {
+                val attachResult = withContext(Dispatchers.IO) {
+                    val normalizedDirectoryPath = OneDriveKeePassFileSource.normalizeOptionalRemotePath(directoryPath)
+                    val fileSource = OneDriveKeePassFileSource(
+                        context = context,
+                        accountIdentifier = accountId
+                    )
+                    fileSource.testConnection().getOrThrow()
+
+                    val displayName = name.trim()
+                        .removeSuffix(".kdbx")
+                        .ifBlank { throw IllegalArgumentException("数据库名称不能为空") }
+                    val remoteFileName = if (name.trim().endsWith(".kdbx", ignoreCase = true)) {
+                        name.trim()
+                    } else {
+                        "$displayName.kdbx"
+                    }
+                    val keyFileBytes = readKeyFileBytes(keyFileUri)
+                    val bytes = createEmptyKdbxContent(
+                        password = databasePassword,
+                        keyFileBytes = keyFileBytes,
+                        options = creationOptions,
+                        databaseName = displayName
+                    )
+                    fileSource.createFileInDirectory(
+                        parentPath = normalizedDirectoryPath,
+                        name = remoteFileName,
+                        bytes = bytes
+                    )
+                    attachOneDriveDatabaseBlocking(
+                        name = displayName,
+                        accountId = accountId,
+                        accountLabel = accountLabel,
+                        remotePath = OneDriveKeePassFileSource.buildChildPath(
+                            normalizedDirectoryPath,
+                            remoteFileName
+                        ),
+                        databasePassword = databasePassword,
+                        keyFileUri = keyFileUri,
+                        description = description
+                    )
+                }
+
+                _operationState.value = OperationState.Success("OneDrive 远端数据库创建并接入成功")
+                logKeepassDatabaseCreate(
+                    databaseId = attachResult.databaseId,
+                    databaseName = attachResult.databaseName,
+                    details = listOf(
+                        FieldChange("来源", "", "OneDrive"),
+                        FieldChange("创建方式", "", "远端新建"),
+                        FieldChange("条目数量", "", attachResult.entryCount.toString())
+                    )
+                )
+            } catch (e: Exception) {
+                _operationState.value = OperationState.Error("创建失败: ${formatOperationError(e)}")
+            }
+        }
+    }
+
+    fun addGoogleDriveDatabase(
+        name: String,
+        accountId: String,
+        accountLabel: String,
+        remotePath: String,
+        fileId: String,
+        databasePassword: String,
+        keyFileUri: Uri? = null,
+        description: String? = null
+    ) {
+        viewModelScope.launch {
+            _operationState.value = OperationState.Loading("正在接入 Google Drive 数据库...")
+
+            try {
+                val attachResult = withContext(Dispatchers.IO) {
+                    attachGoogleDriveDatabaseBlocking(
+                        name = name,
+                        accountId = accountId,
+                        accountLabel = accountLabel,
+                        remotePath = remotePath,
+                        fileId = fileId,
+                        databasePassword = databasePassword,
+                        keyFileUri = keyFileUri,
+                        description = description
+                    )
+                }
+
+                _operationState.value = OperationState.Success("Google Drive 数据库接入成功")
+                logKeepassDatabaseCreate(
+                    databaseId = attachResult.databaseId,
+                    databaseName = attachResult.databaseName,
+                    details = listOf(
+                        FieldChange("来源", "", "Google Drive"),
+                        FieldChange("打开方式", "", "工作副本"),
+                        FieldChange("条目数量", "", attachResult.entryCount.toString())
+                    )
+                )
+            } catch (e: Exception) {
+                _operationState.value = OperationState.Error("接入失败: ${formatOperationError(e)}")
+            }
+        }
+    }
+
+    fun createGoogleDriveDatabase(
+        directoryPath: String?,
+        folderId: String?,
+        name: String,
+        accountId: String,
+        accountLabel: String,
+        databasePassword: String,
+        keyFileUri: Uri? = null,
+        creationOptions: KeePassDatabaseCreationOptions = KeePassDatabaseCreationOptions(),
+        description: String? = null
+    ) {
+        viewModelScope.launch {
+            _operationState.value = OperationState.Loading("正在创建 Google Drive 远端数据库...")
+
+            try {
+                val attachResult = withContext(Dispatchers.IO) {
+                    val normalizedDirectoryPath = GoogleDriveKeePassFileSource.normalizeOptionalRemotePath(directoryPath)
+                    val fileSource = GoogleDriveKeePassFileSource(
+                        context = context,
+                        accountIdentifier = accountId
+                    )
+                    fileSource.testConnection().getOrThrow()
+
+                    val displayName = name.trim()
+                        .removeSuffix(".kdbx")
+                        .ifBlank { throw IllegalArgumentException("数据库名称不能为空") }
+                    val remoteFileName = if (name.trim().endsWith(".kdbx", ignoreCase = true)) {
+                        name.trim()
+                    } else {
+                        "$displayName.kdbx"
+                    }
+                    val keyFileBytes = readKeyFileBytes(keyFileUri)
+                    val bytes = createEmptyKdbxContent(
+                        password = databasePassword,
+                        keyFileBytes = keyFileBytes,
+                        options = creationOptions,
+                        databaseName = displayName
+                    )
+                    val createdFile = fileSource.createFileInDirectory(
+                        parentPath = normalizedDirectoryPath,
+                        parentId = folderId,
+                        name = remoteFileName,
+                        bytes = bytes
+                    )
+                    attachGoogleDriveDatabaseBlocking(
+                        name = displayName,
+                        accountId = accountId,
+                        accountLabel = accountLabel,
+                        remotePath = createdFile.path,
+                        fileId = createdFile.id ?: throw IllegalStateException("Google Drive 文件标识为空"),
+                        databasePassword = databasePassword,
+                        keyFileUri = keyFileUri,
+                        description = description
+                    )
+                }
+
+                _operationState.value = OperationState.Success("Google Drive 远端数据库创建并接入成功")
+                logKeepassDatabaseCreate(
+                    databaseId = attachResult.databaseId,
+                    databaseName = attachResult.databaseName,
+                    details = listOf(
+                        FieldChange("来源", "", "Google Drive"),
+                        FieldChange("创建方式", "", "远端新建"),
+                        FieldChange("条目数量", "", attachResult.entryCount.toString())
+                    )
+                )
+            } catch (e: Exception) {
+                _operationState.value = OperationState.Error("创建失败: ${formatOperationError(e)}")
+            }
+        }
+    }
+
     suspend fun testWebDavConnection(
         serverUrl: String,
         username: String,
@@ -858,6 +1122,46 @@ class LocalKeePassViewModel(
         }
     }
 
+    suspend fun listOneDriveDirectory(
+        accountId: String,
+        currentPath: String?
+    ): Result<OneDriveDirectoryListing> = withContext(Dispatchers.IO) {
+        runCatching {
+            val normalizedPath = OneDriveKeePassFileSource.normalizeOptionalRemotePath(currentPath)
+            val entries = OneDriveKeePassFileSource(
+                context = context,
+                accountIdentifier = accountId
+            ).listDirectory(normalizedPath)
+                .filter { it.isDirectory || it.name.endsWith(".kdbx", ignoreCase = true) }
+            OneDriveDirectoryListing(
+                currentPath = normalizedPath,
+                entries = entries
+            )
+        }
+    }
+
+    suspend fun listGoogleDriveDirectory(
+        accountId: String,
+        currentPath: String?,
+        currentFolderId: String?
+    ): Result<GoogleDriveDirectoryListing> = withContext(Dispatchers.IO) {
+        runCatching {
+            val normalizedPath = GoogleDriveKeePassFileSource.normalizeOptionalRemotePath(currentPath)
+            val entries = GoogleDriveKeePassFileSource(
+                context = context,
+                accountIdentifier = accountId
+            ).listDirectory(
+                directoryPath = normalizedPath,
+                directoryId = currentFolderId
+            ).filter { it.isDirectory || it.name.endsWith(".kdbx", ignoreCase = true) }
+            GoogleDriveDirectoryListing(
+                currentPath = normalizedPath,
+                currentFolderId = currentFolderId,
+                entries = entries
+            )
+        }
+    }
+
     suspend fun createWebDavFolder(
         serverUrl: String,
         username: String,
@@ -882,73 +1186,267 @@ class LocalKeePassViewModel(
         }
     }
 
-    fun syncRemoteDatabase(databaseId: Long) {
+    suspend fun createOneDriveFolder(
+        accountId: String,
+        currentPath: String?,
+        folderName: String
+    ): Result<OneDriveDirectoryListing> = withContext(Dispatchers.IO) {
+        runCatching {
+            val normalizedPath = OneDriveKeePassFileSource.normalizeOptionalRemotePath(currentPath)
+            val fileSource = OneDriveKeePassFileSource(
+                context = context,
+                accountIdentifier = accountId
+            )
+            fileSource.createDirectory(normalizedPath, folderName)
+            val entries = fileSource.listDirectory(normalizedPath)
+                .filter { it.isDirectory || it.name.endsWith(".kdbx", ignoreCase = true) }
+            OneDriveDirectoryListing(
+                currentPath = normalizedPath,
+                entries = entries
+            )
+        }
+    }
+
+    suspend fun createGoogleDriveFolder(
+        accountId: String,
+        currentPath: String?,
+        currentFolderId: String?,
+        folderName: String
+    ): Result<GoogleDriveDirectoryListing> = withContext(Dispatchers.IO) {
+        runCatching {
+            val normalizedPath = GoogleDriveKeePassFileSource.normalizeOptionalRemotePath(currentPath)
+            val fileSource = GoogleDriveKeePassFileSource(
+                context = context,
+                accountIdentifier = accountId
+            )
+            val createdFolder = fileSource.createDirectory(
+                parentPath = normalizedPath,
+                parentId = currentFolderId,
+                name = folderName
+            )
+            val entries = fileSource.listDirectory(
+                directoryPath = normalizedPath,
+                directoryId = currentFolderId
+            ).filter { it.isDirectory || it.name.endsWith(".kdbx", ignoreCase = true) }
+            GoogleDriveDirectoryListing(
+                currentPath = normalizedPath,
+                currentFolderId = currentFolderId,
+                entries = entries
+            )
+        }
+    }
+
+    private fun autoResolveWebDavConflictDatabases() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val conflictDatabaseIds = dao.getAllDatabasesSync()
+                .asSequence()
+                .filter { it.sourceType == KeePassDatabaseSourceType.REMOTE_WEBDAV }
+                .filter { it.lastSyncStatus == KeePassSyncStatus.CONFLICT }
+                .map { it.id }
+                .toList()
+
+            if (conflictDatabaseIds.isEmpty()) {
+                return@launch
+            }
+
+            Log.i(TAG, "Detected ${conflictDatabaseIds.size} WebDAV conflict database(s), start silent auto-resolve")
+            conflictDatabaseIds.forEach { databaseId ->
+                syncRemoteDatabase(databaseId, silent = true)
+            }
+        }
+    }
+
+    fun syncRemoteDatabase(databaseId: Long, silent: Boolean = false) {
         viewModelScope.launch {
-            _operationState.value = OperationState.Loading("正在同步远端数据库...")
+            if (!silent) {
+                _operationState.value = OperationState.Loading("正在同步远端数据库...")
+            }
 
             try {
-                var syncedDatabaseName = ""
-                withContext(Dispatchers.IO) {
-                    val database = dao.getDatabaseById(databaseId)
-                        ?: throw Exception("数据库不存在")
-                    syncedDatabaseName = database.name
-                    if (database.sourceType != KeePassDatabaseSourceType.REMOTE_WEBDAV || database.sourceId == null) {
-                        throw IllegalArgumentException("当前数据库不是 WebDAV 远端来源")
-                    }
-
-                    val source = appDatabase.keepassRemoteSourceDao().getSourceById(database.sourceId)
-                        ?: throw IllegalStateException("远端来源不存在")
-                    val fileSource = WebDavKeePassSupport.createFileSource(source, securityManager)
-                    val workingPath = database.workingCopyPath ?: throw IllegalStateException("本地工作副本不存在")
-                    val workingFile = File(context.filesDir, workingPath)
-                    if (!workingFile.exists()) {
-                        throw IllegalStateException("本地工作副本不存在")
-                    }
-                    val bytes = workingFile.readBytes()
-                    val hash = WebDavKeePassSupport.sha256Hex(bytes)
-                    remoteSyncService.markLocalChanges(databaseId, hash)
-                    val writeResult = fileSource.write(bytes)
-                    database.cacheCopyPath?.let { cachePath ->
-                        WebDavKeePassSupport.writeRelativeFile(context, cachePath, bytes)
-                    }
-                    remoteSyncService.markSynchronized(
-                        databaseId = databaseId,
-                        versionToken = writeResult.versionToken,
-                        etag = writeResult.etag,
-                        baseHash = hash,
-                        workingHash = hash
-                    )
-                    KeePassKdbxService.invalidateProcessCache(databaseId)
+                val result = withContext(Dispatchers.IO) {
+                    syncRemoteDatabaseInternal(databaseId)
                 }
 
-                _operationState.value = OperationState.Success("远端同步成功")
-                logKeepassDatabaseUpdate(
-                    databaseId = databaseId,
-                    databaseName = syncedDatabaseName,
-                    changes = listOf(
-                        FieldChange("远端同步", "待同步", "已同步")
+                if (!silent) {
+                    _operationState.value = OperationState.Success(result.message)
+                    logKeepassDatabaseUpdate(
+                        databaseId = databaseId,
+                        databaseName = result.databaseName,
+                        changes = listOf(
+                            FieldChange("远端同步", "待同步", result.message)
+                        )
                     )
-                )
+                } else {
+                    Log.i(TAG, "Silent remote sync success: databaseId=$databaseId, message=${result.message}")
+                }
             } catch (e: Exception) {
                 withContext(Dispatchers.IO) {
-                    val database = dao.getDatabaseById(databaseId)
-                    if (database != null && database.sourceType == KeePassDatabaseSourceType.REMOTE_WEBDAV) {
-                        val workingHash = database.workingCopyPath
-                            ?.let { path -> File(context.filesDir, path) }
-                            ?.takeIf { it.exists() }
-                            ?.readBytes()
-                            ?.let(WebDavKeePassSupport::sha256Hex)
-                        if (workingHash != null) {
-                            remoteSyncService.markLocalChanges(databaseId, workingHash)
-                        }
-                        remoteSyncService.markSyncFailure(
-                            databaseId = databaseId,
-                            failureCode = "WEBDAV_MANUAL_SYNC_FAILED",
-                            failureMessage = e.message ?: "远端同步失败"
-                        )
-                    }
+                    handleSyncRemoteFailure(databaseId, e)
                 }
-                _operationState.value = OperationState.Error("同步失败: ${formatOperationError(e)}")
+                if (!silent) {
+                    _operationState.value = OperationState.Error("同步失败: ${formatOperationError(e)}")
+                } else {
+                    Log.w(TAG, "Silent remote sync failed: databaseId=$databaseId, reason=${e.message}")
+                }
+            }
+        }
+    }
+
+    private suspend fun syncRemoteDatabaseInternal(databaseId: Long): RemoteSyncResult {
+        val database = dao.getDatabaseById(databaseId)
+            ?: throw Exception("数据库不存在")
+        val syncedDatabaseName = database.name
+        var syncMessage = "远端同步成功"
+
+        if (!database.isRemoteSource() || database.sourceId == null) {
+            throw IllegalArgumentException("当前数据库不是远端来源")
+        }
+
+        val source = appDatabase.keepassRemoteSourceDao().getSourceById(database.sourceId)
+            ?: throw IllegalStateException("远端来源不存在")
+        val syncState = appDatabase.keepassRemoteSyncStateDao().getState(databaseId)
+        val fileSource = when (database.sourceType) {
+            KeePassDatabaseSourceType.REMOTE_WEBDAV -> WebDavKeePassSupport.createFileSource(source, securityManager)
+            KeePassDatabaseSourceType.REMOTE_ONEDRIVE -> OneDriveKeePassSupport.createFileSource(context, source)
+            KeePassDatabaseSourceType.REMOTE_GOOGLE_DRIVE -> GoogleDriveKeePassSupport.createFileSource(context, source)
+            else -> throw IllegalArgumentException("当前数据库不是可同步的远端来源")
+        }
+        val workingPath = database.workingCopyPath ?: throw IllegalStateException("本地工作副本不存在")
+        val workingFile = File(context.filesDir, workingPath)
+        if (!workingFile.exists()) {
+            throw IllegalStateException("本地工作副本不存在")
+        }
+        val bytes = workingFile.readBytes()
+        val hash = GoogleDriveKeePassSupport.sha256Hex(bytes)
+        val baseHash = syncState?.baseHash
+        val localHasChanges = baseHash == null || baseHash != hash
+        val remoteStat = runCatching { fileSource.stat() }.getOrDefault(takagi.ru.monica.utils.FileSourceStat())
+        val knownRemoteVersion = syncState?.remoteEtag ?: syncState?.remoteVersionToken
+        val currentRemoteVersion = remoteStat.etag ?: remoteStat.versionToken
+
+        if (!knownRemoteVersion.isNullOrBlank() &&
+            !currentRemoteVersion.isNullOrBlank() &&
+            knownRemoteVersion != currentRemoteVersion
+        ) {
+            val remoteBytes = fileSource.read()
+            if (!localHasChanges) {
+                val remoteHash = GoogleDriveKeePassSupport.sha256Hex(remoteBytes)
+                OneDriveKeePassSupport.writeRelativeFile(context, workingPath, remoteBytes)
+                database.cacheCopyPath?.let { cachePath ->
+                    OneDriveKeePassSupport.writeRelativeFile(context, cachePath, remoteBytes)
+                }
+                remoteSyncService.markSynchronized(
+                    databaseId = databaseId,
+                    versionToken = remoteStat.versionToken,
+                    etag = remoteStat.etag,
+                    baseHash = remoteHash,
+                    workingHash = remoteHash
+                )
+                KeePassKdbxService.invalidateProcessCache(databaseId)
+                syncMessage = "已拉取远端最新版本"
+                return RemoteSyncResult(syncedDatabaseName, syncMessage)
+            }
+
+            if (database.sourceType == KeePassDatabaseSourceType.REMOTE_ONEDRIVE ||
+                database.sourceType == KeePassDatabaseSourceType.REMOTE_WEBDAV
+            ) {
+                val mergeResult = workspaceRepository.resolveRemoteConflict(
+                    databaseId = databaseId,
+                    remoteBytes = remoteBytes
+                ).getOrElse { throw it }
+                val mergedHash = GoogleDriveKeePassSupport.sha256Hex(mergeResult.mergedBytes)
+                remoteSyncService.markLocalChanges(databaseId, mergedHash)
+                val writeResult = when (database.sourceType) {
+                    KeePassDatabaseSourceType.REMOTE_ONEDRIVE -> fileSource.write(
+                        mergeResult.mergedBytes,
+                        expectedVersion = currentRemoteVersion
+                    )
+                    else -> fileSource.write(mergeResult.mergedBytes)
+                }
+                OneDriveKeePassSupport.writeRelativeFile(context, workingPath, mergeResult.mergedBytes)
+                database.cacheCopyPath?.let { cachePath ->
+                    OneDriveKeePassSupport.writeRelativeFile(context, cachePath, mergeResult.mergedBytes)
+                }
+                remoteSyncService.markSynchronized(
+                    databaseId = databaseId,
+                    versionToken = writeResult.versionToken,
+                    etag = writeResult.etag,
+                    baseHash = mergedHash,
+                    workingHash = mergedHash
+                )
+                KeePassKdbxService.invalidateProcessCache(databaseId)
+                syncMessage = if (mergeResult.conflictCopyCount > 0) {
+                    "已合并本地与远端修改，并保留 ${mergeResult.conflictCopyCount} 个远端冲突副本"
+                } else {
+                    "已合并本地与远端修改"
+                }
+                return RemoteSyncResult(syncedDatabaseName, syncMessage)
+            }
+
+            val conflictMessage = "远端文件已变化，且本地工作副本也有修改，请先处理冲突"
+            remoteSyncService.markConflict(
+                databaseId = databaseId,
+                workingHash = hash,
+                failureMessage = conflictMessage
+            )
+            throw IllegalStateException(conflictMessage)
+        }
+
+        if (!localHasChanges) {
+            remoteSyncService.markSynchronized(
+                databaseId = databaseId,
+                versionToken = remoteStat.versionToken,
+                etag = remoteStat.etag,
+                baseHash = hash,
+                workingHash = hash
+            )
+            syncMessage = "远端已是最新状态"
+            return RemoteSyncResult(syncedDatabaseName, syncMessage)
+        }
+
+        remoteSyncService.markLocalChanges(databaseId, hash)
+        val writeResult = when (database.sourceType) {
+            KeePassDatabaseSourceType.REMOTE_ONEDRIVE -> fileSource.write(
+                bytes,
+                expectedVersion = syncState?.remoteEtag ?: syncState?.remoteVersionToken
+            )
+            else -> fileSource.write(bytes)
+        }
+        database.cacheCopyPath?.let { cachePath ->
+            GoogleDriveKeePassSupport.writeRelativeFile(context, cachePath, bytes)
+        }
+        remoteSyncService.markSynchronized(
+            databaseId = databaseId,
+            versionToken = writeResult.versionToken,
+            etag = writeResult.etag,
+            baseHash = hash,
+            workingHash = hash
+        )
+        KeePassKdbxService.invalidateProcessCache(databaseId)
+        return RemoteSyncResult(syncedDatabaseName, syncMessage)
+    }
+
+    private suspend fun handleSyncRemoteFailure(databaseId: Long, error: Exception) {
+        val database = dao.getDatabaseById(databaseId)
+        if (database != null && database.isRemoteSource()) {
+            val workingHash = database.workingCopyPath
+                ?.let { path -> File(context.filesDir, path) }
+                ?.takeIf { it.exists() }
+                ?.readBytes()
+                ?.let(GoogleDriveKeePassSupport::sha256Hex)
+            if (workingHash != null && database.lastSyncStatus != KeePassSyncStatus.CONFLICT) {
+                remoteSyncService.markLocalChanges(databaseId, workingHash)
+            }
+            if (database.lastSyncStatus != KeePassSyncStatus.CONFLICT) {
+                remoteSyncService.markSyncFailure(
+                    databaseId = databaseId,
+                    failureCode = when (database.sourceType) {
+                        KeePassDatabaseSourceType.REMOTE_GOOGLE_DRIVE -> "GDRIVE_MANUAL_SYNC_FAILED"
+                        KeePassDatabaseSourceType.REMOTE_ONEDRIVE -> "ONEDRIVE_MANUAL_SYNC_FAILED"
+                        else -> "WEBDAV_MANUAL_SYNC_FAILED"
+                    },
+                    failureMessage = error.message ?: "远端同步失败"
+                )
             }
         }
     }
@@ -1324,31 +1822,69 @@ class LocalKeePassViewModel(
     suspend fun addPasswordEntriesToKdbx(
         databaseId: Long,
         entries: List<PasswordEntry>,
-        decryptPassword: (String) -> String
+        decryptPassword: (String) -> String,
+        onItemProcessed: ((Int, Int) -> Unit)? = null
     ): Result<Int> = withContext(Dispatchers.IO) {
-        compatibilityBridge.upsertLegacyPasswordEntries(
-            databaseId = databaseId,
-            entries = entries,
-            resolvePassword = { entry ->
-                try {
-                    decryptPassword(entry.password)
-                } catch (e: Exception) {
-                    entry.password
-                }
+        try {
+            val total = entries.size
+            if (total <= 0) {
+                onItemProcessed?.invoke(0, 0)
+                return@withContext Result.success(0)
             }
-        )
+
+            onItemProcessed?.invoke(0, total)
+            if (total > 1) {
+                onItemProcessed?.invoke(1, total)
+            }
+
+            val result = compatibilityBridge.upsertLegacyPasswordEntries(
+                databaseId = databaseId,
+                entries = entries,
+                resolvePassword = { entry ->
+                    try {
+                        decryptPassword(entry.password)
+                    } catch (e: Exception) {
+                        entry.password
+                    }
+                }
+            )
+
+            if (result.isSuccess) {
+                onItemProcessed?.invoke(total, total)
+            }
+            result
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
     }
 
     suspend fun movePasswordEntriesToKdbx(
         databaseId: Long,
         groupPath: String?,
         entries: List<PasswordEntry>,
-        decryptPassword: (String) -> String
+        decryptPassword: (String) -> String,
+        onItemProcessed: ((Int, Int) -> Unit)? = null
     ): Result<Int> = withContext(Dispatchers.IO) {
         try {
-            entries.forEach { entry ->
-                val sourceDatabaseId = entry.keepassDatabaseId
-                val targetEntry = entry.copy(
+            val total = entries.size
+            if (total <= 0) {
+                onItemProcessed?.invoke(0, 0)
+                return@withContext Result.success(0)
+            }
+
+            var processed = 0
+            onItemProcessed?.invoke(0, total)
+
+            val resolvePassword: (PasswordEntry) -> String = { item ->
+                try {
+                    decryptPassword(item.password)
+                } catch (_: Exception) {
+                    item.password
+                }
+            }
+
+            fun normalizeForTarget(entry: PasswordEntry): PasswordEntry {
+                return entry.copy(
                     keepassDatabaseId = databaseId,
                     keepassGroupPath = groupPath,
                     bitwardenVaultId = null,
@@ -1357,58 +1893,74 @@ class LocalKeePassViewModel(
                     bitwardenRevisionDate = null,
                     bitwardenLocalModified = false
                 )
+            }
 
-                when {
-                    sourceDatabaseId == null -> {
-                        compatibilityBridge.upsertLegacyPasswordEntries(
-                            databaseId = databaseId,
-                            entries = listOf(targetEntry),
-                            resolvePassword = { item ->
-                                try {
-                                    decryptPassword(item.password)
-                                } catch (_: Exception) {
-                                    item.password
-                                }
-                            },
-                            forceSyncWrite = true
-                        ).getOrThrow()
+            fun reportProcessed(delta: Int) {
+                if (delta <= 0) return
+                processed = (processed + delta).coerceAtMost(total)
+                onItemProcessed?.invoke(processed, total)
+            }
+
+            val externalEntries = entries.filter { it.keepassDatabaseId == null }
+            if (externalEntries.isNotEmpty()) {
+                if (processed <= 0 && total > 1) {
+                    onItemProcessed?.invoke(1, total)
+                }
+                compatibilityBridge.upsertLegacyPasswordEntries(
+                    databaseId = databaseId,
+                    entries = externalEntries.map(::normalizeForTarget),
+                    resolvePassword = resolvePassword,
+                    forceSyncWrite = true
+                ).getOrThrow()
+                reportProcessed(externalEntries.size)
+            }
+
+            val sameDatabaseEntries = entries.filter { it.keepassDatabaseId == databaseId }
+            if (sameDatabaseEntries.isNotEmpty()) {
+                if (processed <= 0 && total > 1) {
+                    onItemProcessed?.invoke(1, total)
+                }
+                compatibilityBridge.upsertLegacyPasswordEntries(
+                    databaseId = databaseId,
+                    entries = sameDatabaseEntries.map(::normalizeForTarget),
+                    resolvePassword = resolvePassword
+                ).getOrThrow()
+                reportProcessed(sameDatabaseEntries.size)
+            }
+
+            val crossDatabaseEntriesBySource = entries
+                .filter { it.keepassDatabaseId != null && it.keepassDatabaseId != databaseId }
+                .groupBy { it.keepassDatabaseId!! }
+            if (crossDatabaseEntriesBySource.isNotEmpty()) {
+                if (processed <= 0 && total > 1) {
+                    onItemProcessed?.invoke(1, total)
+                }
+                val targetEntries = crossDatabaseEntriesBySource
+                    .values
+                    .flatten()
+                    .map { entry ->
+                        normalizeForTarget(entry).copy(
+                            keepassEntryUuid = null,
+                            keepassGroupUuid = null
+                        )
                     }
-                    sourceDatabaseId == databaseId -> {
-                        compatibilityBridge.updateLegacyPasswordEntry(
-                            databaseId = databaseId,
-                            entry = targetEntry,
-                            resolvePassword = { item ->
-                                try {
-                                    decryptPassword(item.password)
-                                } catch (_: Exception) {
-                                    item.password
-                                }
-                            }
-                        ).getOrThrow()
-                    }
-                    else -> {
-                        compatibilityBridge.upsertLegacyPasswordEntries(
-                            databaseId = databaseId,
-                            entries = listOf(targetEntry.copy(
-                                keepassEntryUuid = null,
-                                keepassGroupUuid = null
-                            )),
-                            resolvePassword = { item ->
-                                try {
-                                    decryptPassword(item.password)
-                                } catch (_: Exception) {
-                                    item.password
-                                }
-                            },
-                            forceSyncWrite = true
-                        ).getOrThrow()
-                        compatibilityBridge.deleteLegacyPasswordEntries(
-                            databaseId = sourceDatabaseId,
-                            entries = listOf(entry)
-                        ).getOrThrow()
-                    }
+
+                compatibilityBridge.upsertLegacyPasswordEntries(
+                    databaseId = databaseId,
+                    entries = targetEntries,
+                    resolvePassword = resolvePassword,
+                    forceSyncWrite = true
+                ).getOrThrow()
+
+                crossDatabaseEntriesBySource.forEach { (sourceDatabaseId, sourceEntries) ->
+                    compatibilityBridge.deleteLegacyPasswordEntries(
+                        databaseId = sourceDatabaseId,
+                        entries = sourceEntries
+                    ).getOrThrow()
+                    reportProcessed(sourceEntries.size)
                 }
             }
+
             Result.success(entries.size)
         } catch (e: Exception) {
             Result.failure(e)
@@ -1605,6 +2157,341 @@ class LocalKeePassViewModel(
         } ?: throw Exception("无法访问密钥文件")
     }
 
+    private suspend fun attachOneDriveDatabaseBlocking(
+        name: String,
+        accountId: String,
+        accountLabel: String,
+        remotePath: String,
+        databasePassword: String,
+        keyFileUri: Uri?,
+        description: String?
+    ): OneDriveAttachResult {
+        val normalizedRemotePath = OneDriveKeePassFileSource.normalizeRemotePath(remotePath)
+        val displayName = name.ifBlank {
+            OneDriveKeePassSupport.displayNameFromRemotePath(normalizedRemotePath)
+                .removeSuffix(".kdbx")
+        }
+        val remoteSourceDao = appDatabase.keepassRemoteSourceDao()
+        val syncStateDao = appDatabase.keepassRemoteSyncStateDao()
+
+        readKeyFileBytes(keyFileUri)
+
+        val existingSource = remoteSourceDao
+            .getAllSourcesSync()
+            .firstOrNull {
+                it.providerType == KeePassRemoteProviderType.ONEDRIVE &&
+                    it.tokenRef == accountId &&
+                    it.remotePath == normalizedRemotePath
+            }
+        if (existingSource != null) {
+            val duplicate = dao.getAllDatabasesSync().firstOrNull { it.sourceId == existingSource.id }
+            if (duplicate != null) {
+                throw IllegalArgumentException("该 OneDrive 数据库已接入")
+            }
+        }
+
+        var createdRemoteSourceId: Long? = null
+        var createdWorkingCopyPath: String? = null
+        var createdCacheCopyPath: String? = null
+
+        try {
+            val sourceToSave = (existingSource ?: KeepassRemoteSource(
+                providerType = KeePassRemoteProviderType.ONEDRIVE,
+                displayName = displayName,
+                remotePath = normalizedRemotePath,
+                remoteParentPath = OneDriveKeePassFileSource.parentPathOf(normalizedRemotePath),
+                accountId = accountLabel,
+                tokenRef = accountId,
+                autoSyncEnabled = true,
+                allowMeteredNetwork = true
+            )).copy(
+                displayName = displayName,
+                remotePath = normalizedRemotePath,
+                remoteParentPath = OneDriveKeePassFileSource.parentPathOf(normalizedRemotePath),
+                accountId = accountLabel,
+                tokenRef = accountId,
+                autoSyncEnabled = true,
+                allowMeteredNetwork = true,
+                updatedAt = System.currentTimeMillis()
+            )
+
+            val remoteSourceId = if (existingSource == null) {
+                remoteSourceDao.insertSource(sourceToSave).also { createdRemoteSourceId = it }
+            } else {
+                remoteSourceDao.updateSource(sourceToSave)
+                existingSource.id
+            }
+
+            val remoteSource = remoteSourceDao.getSourceById(remoteSourceId)
+                ?: throw IllegalStateException("远端来源创建失败")
+            val fileSource = OneDriveKeePassSupport.createFileSource(context, remoteSource)
+            fileSource.testConnection().getOrThrow()
+
+            val remoteBytes = fileSource.read()
+            val remoteStat = runCatching { fileSource.stat() }.getOrDefault(takagi.ru.monica.utils.FileSourceStat())
+            if ((remoteSource.itemId.isNullOrBlank() || remoteSource.driveId.isNullOrBlank()) &&
+                (!remoteStat.remoteId.isNullOrBlank() || !remoteStat.driveId.isNullOrBlank())
+            ) {
+                remoteSourceDao.updateSource(
+                    remoteSource.copy(
+                        itemId = remoteStat.remoteId ?: remoteSource.itemId,
+                        driveId = remoteStat.driveId ?: remoteSource.driveId,
+                        updatedAt = System.currentTimeMillis()
+                    )
+                )
+            }
+            val mirrorPaths = OneDriveKeePassSupport.buildLocalMirrorPaths(
+                sourceId = remoteSourceId,
+                remotePath = normalizedRemotePath
+            )
+            createdWorkingCopyPath = mirrorPaths.workingCopyPath
+            createdCacheCopyPath = mirrorPaths.cacheCopyPath
+            OneDriveKeePassSupport.writeRelativeFile(context, mirrorPaths.workingCopyPath, remoteBytes)
+            OneDriveKeePassSupport.writeRelativeFile(context, mirrorPaths.cacheCopyPath, remoteBytes)
+
+            val encryptedPassword = if (databasePassword.isNotBlank()) {
+                securityManager.encryptData(databasePassword)
+            } else {
+                null
+            }
+
+            val localDatabase = LocalKeePassDatabase(
+                name = displayName,
+                filePath = normalizedRemotePath,
+                keyFileUri = keyFileUri?.toString(),
+                storageLocation = KeePassStorageLocation.INTERNAL,
+                sourceType = KeePassDatabaseSourceType.REMOTE_ONEDRIVE,
+                sourceId = remoteSourceId,
+                openMode = KeePassOpenMode.WORKING_COPY,
+                workingCopyPath = mirrorPaths.workingCopyPath,
+                cacheCopyPath = mirrorPaths.cacheCopyPath,
+                isOfflineAvailable = true,
+                encryptedPassword = encryptedPassword,
+                description = description,
+                isDefault = allDatabases.value.isEmpty(),
+                lastSyncStatus = KeePassSyncStatus.SYNCING
+            )
+            val databaseId = dao.insertDatabase(localDatabase)
+
+            try {
+                val diagnostics = workspaceRepository.inspectDatabase(
+                    databaseId = databaseId,
+                    passwordOverride = databasePassword,
+                    keyFileUriOverride = keyFileUri
+                ).getOrElse { throw it }
+                val now = System.currentTimeMillis()
+                dao.updateDatabase(
+                    localDatabase.copy(
+                        id = databaseId,
+                        entryCount = diagnostics.entryCount,
+                        kdbxMajorVersion = diagnostics.creationOptions.formatVersion.majorVersion,
+                        cipherAlgorithm = diagnostics.creationOptions.cipherAlgorithm.name,
+                        kdfAlgorithm = diagnostics.creationOptions.kdfAlgorithm.name,
+                        kdfTransformRounds = diagnostics.creationOptions.transformRounds,
+                        kdfMemoryBytes = diagnostics.creationOptions.memoryBytes,
+                        kdfParallelism = diagnostics.creationOptions.parallelism,
+                        lastAccessedAt = now,
+                        lastSyncedAt = now,
+                        lastSyncStatus = KeePassSyncStatus.IN_SYNC,
+                        lastSyncError = null
+                    )
+                )
+                remoteSyncService.markSynchronized(
+                    databaseId = databaseId,
+                    versionToken = remoteStat.versionToken,
+                    etag = remoteStat.etag,
+                    baseHash = OneDriveKeePassSupport.sha256Hex(remoteBytes),
+                    workingHash = OneDriveKeePassSupport.sha256Hex(remoteBytes)
+                )
+                KeePassKdbxService.invalidateProcessCache(databaseId)
+                return OneDriveAttachResult(
+                    databaseId = databaseId,
+                    databaseName = displayName,
+                    entryCount = diagnostics.entryCount
+                )
+            } catch (error: Exception) {
+                dao.deleteDatabaseById(databaseId)
+                syncStateDao.deleteState(databaseId)
+                if (createdRemoteSourceId != null) {
+                    remoteSourceDao.deleteSourceById(remoteSourceId)
+                }
+                cleanupRemoteLocalCopies(mirrorPaths.workingCopyPath, mirrorPaths.cacheCopyPath)
+                throw error
+            }
+        } catch (error: Exception) {
+            if (createdRemoteSourceId != null) {
+                remoteSourceDao.deleteSourceById(createdRemoteSourceId!!)
+            }
+            cleanupRemoteLocalCopies(createdWorkingCopyPath, createdCacheCopyPath)
+            throw error
+        }
+    }
+
+    private suspend fun attachGoogleDriveDatabaseBlocking(
+        name: String,
+        accountId: String,
+        accountLabel: String,
+        remotePath: String,
+        fileId: String,
+        databasePassword: String,
+        keyFileUri: Uri?,
+        description: String?
+    ): GoogleDriveAttachResult {
+        val normalizedRemotePath = GoogleDriveKeePassFileSource.normalizeRemotePath(remotePath)
+        val normalizedFileId = fileId.trim().ifBlank {
+            throw IllegalArgumentException("Google Drive 文件标识不能为空")
+        }
+        val displayName = name.ifBlank {
+            GoogleDriveKeePassSupport.displayNameFromRemotePath(normalizedRemotePath)
+                .removeSuffix(".kdbx")
+        }
+        val remoteSourceDao = appDatabase.keepassRemoteSourceDao()
+        val syncStateDao = appDatabase.keepassRemoteSyncStateDao()
+
+        readKeyFileBytes(keyFileUri)
+
+        val existingSource = remoteSourceDao
+            .getAllSourcesSync()
+            .firstOrNull {
+                it.providerType == KeePassRemoteProviderType.GOOGLE_DRIVE &&
+                    it.tokenRef == accountId &&
+                    (it.itemId == normalizedFileId || it.remotePath == normalizedRemotePath)
+            }
+        if (existingSource != null) {
+            val duplicate = dao.getAllDatabasesSync().firstOrNull { it.sourceId == existingSource.id }
+            if (duplicate != null) {
+                throw IllegalArgumentException("该 Google Drive 数据库已接入")
+            }
+        }
+
+        var createdRemoteSourceId: Long? = null
+        var createdWorkingCopyPath: String? = null
+        var createdCacheCopyPath: String? = null
+
+        try {
+            val sourceToSave = (existingSource ?: KeepassRemoteSource(
+                providerType = KeePassRemoteProviderType.GOOGLE_DRIVE,
+                displayName = displayName,
+                remotePath = normalizedRemotePath,
+                remoteParentPath = GoogleDriveKeePassFileSource.parentPathOf(normalizedRemotePath),
+                accountId = accountLabel,
+                itemId = normalizedFileId,
+                tokenRef = accountId,
+                autoSyncEnabled = true,
+                allowMeteredNetwork = true
+            )).copy(
+                displayName = displayName,
+                remotePath = normalizedRemotePath,
+                remoteParentPath = GoogleDriveKeePassFileSource.parentPathOf(normalizedRemotePath),
+                accountId = accountLabel,
+                itemId = normalizedFileId,
+                tokenRef = accountId,
+                autoSyncEnabled = true,
+                allowMeteredNetwork = true,
+                updatedAt = System.currentTimeMillis()
+            )
+
+            val remoteSourceId = if (existingSource == null) {
+                remoteSourceDao.insertSource(sourceToSave).also { createdRemoteSourceId = it }
+            } else {
+                remoteSourceDao.updateSource(sourceToSave)
+                existingSource.id
+            }
+
+            val remoteSource = remoteSourceDao.getSourceById(remoteSourceId)
+                ?: throw IllegalStateException("远端来源创建失败")
+            val fileSource = GoogleDriveKeePassSupport.createFileSource(context, remoteSource)
+            fileSource.testConnection().getOrThrow()
+
+            val remoteBytes = fileSource.read()
+            val remoteStat = runCatching { fileSource.stat() }.getOrDefault(takagi.ru.monica.utils.FileSourceStat())
+            val mirrorPaths = GoogleDriveKeePassSupport.buildLocalMirrorPaths(
+                sourceId = remoteSourceId,
+                remotePath = normalizedRemotePath
+            )
+            createdWorkingCopyPath = mirrorPaths.workingCopyPath
+            createdCacheCopyPath = mirrorPaths.cacheCopyPath
+            GoogleDriveKeePassSupport.writeRelativeFile(context, mirrorPaths.workingCopyPath, remoteBytes)
+            GoogleDriveKeePassSupport.writeRelativeFile(context, mirrorPaths.cacheCopyPath, remoteBytes)
+
+            val encryptedPassword = if (databasePassword.isNotBlank()) {
+                securityManager.encryptData(databasePassword)
+            } else {
+                null
+            }
+
+            val localDatabase = LocalKeePassDatabase(
+                name = displayName,
+                filePath = normalizedRemotePath,
+                keyFileUri = keyFileUri?.toString(),
+                storageLocation = KeePassStorageLocation.INTERNAL,
+                sourceType = KeePassDatabaseSourceType.REMOTE_GOOGLE_DRIVE,
+                sourceId = remoteSourceId,
+                openMode = KeePassOpenMode.WORKING_COPY,
+                workingCopyPath = mirrorPaths.workingCopyPath,
+                cacheCopyPath = mirrorPaths.cacheCopyPath,
+                isOfflineAvailable = true,
+                encryptedPassword = encryptedPassword,
+                description = description,
+                isDefault = allDatabases.value.isEmpty(),
+                lastSyncStatus = KeePassSyncStatus.SYNCING
+            )
+            val databaseId = dao.insertDatabase(localDatabase)
+
+            try {
+                val diagnostics = workspaceRepository.inspectDatabase(
+                    databaseId = databaseId,
+                    passwordOverride = databasePassword,
+                    keyFileUriOverride = keyFileUri
+                ).getOrElse { throw it }
+                val now = System.currentTimeMillis()
+                dao.updateDatabase(
+                    localDatabase.copy(
+                        id = databaseId,
+                        entryCount = diagnostics.entryCount,
+                        kdbxMajorVersion = diagnostics.creationOptions.formatVersion.majorVersion,
+                        cipherAlgorithm = diagnostics.creationOptions.cipherAlgorithm.name,
+                        kdfAlgorithm = diagnostics.creationOptions.kdfAlgorithm.name,
+                        kdfTransformRounds = diagnostics.creationOptions.transformRounds,
+                        kdfMemoryBytes = diagnostics.creationOptions.memoryBytes,
+                        kdfParallelism = diagnostics.creationOptions.parallelism,
+                        lastAccessedAt = now,
+                        lastSyncedAt = now,
+                        lastSyncStatus = KeePassSyncStatus.IN_SYNC,
+                        lastSyncError = null
+                    )
+                )
+                remoteSyncService.markSynchronized(
+                    databaseId = databaseId,
+                    versionToken = remoteStat.versionToken,
+                    etag = remoteStat.etag,
+                    baseHash = GoogleDriveKeePassSupport.sha256Hex(remoteBytes),
+                    workingHash = GoogleDriveKeePassSupport.sha256Hex(remoteBytes)
+                )
+                KeePassKdbxService.invalidateProcessCache(databaseId)
+                return GoogleDriveAttachResult(
+                    databaseId = databaseId,
+                    databaseName = displayName,
+                    entryCount = diagnostics.entryCount
+                )
+            } catch (error: Exception) {
+                dao.deleteDatabaseById(databaseId)
+                syncStateDao.deleteState(databaseId)
+                if (createdRemoteSourceId != null) {
+                    remoteSourceDao.deleteSourceById(remoteSourceId)
+                }
+                cleanupRemoteLocalCopies(mirrorPaths.workingCopyPath, mirrorPaths.cacheCopyPath)
+                throw error
+            }
+        } catch (error: Exception) {
+            if (createdRemoteSourceId != null) {
+                remoteSourceDao.deleteSourceById(createdRemoteSourceId!!)
+            }
+            cleanupRemoteLocalCopies(createdWorkingCopyPath, createdCacheCopyPath)
+            throw error
+        }
+    }
+
     private suspend fun attachWebDavDatabaseBlocking(
         name: String,
         serverUrl: String,
@@ -1772,8 +2659,8 @@ class LocalKeePassViewModel(
         workingCopyPath: String?,
         cacheCopyPath: String?
     ) {
-        WebDavKeePassSupport.deleteRelativeFile(context, workingCopyPath)
-        WebDavKeePassSupport.deleteRelativeFile(context, cacheCopyPath)
+        OneDriveKeePassSupport.deleteRelativeFile(context, workingCopyPath)
+        OneDriveKeePassSupport.deleteRelativeFile(context, cacheCopyPath)
     }
 
     private fun formatOperationError(error: Throwable): String {

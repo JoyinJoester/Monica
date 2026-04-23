@@ -3,6 +3,7 @@ package takagi.ru.monica.passkey
 import android.util.Base64
 import takagi.ru.monica.data.PasskeyEntry
 import java.security.KeyFactory
+import java.security.KeyStore
 import java.security.PrivateKey
 import java.security.Signature
 import java.security.spec.MGF1ParameterSpec
@@ -12,6 +13,7 @@ import java.security.spec.PSSParameterSpec
 object PasskeyPrivateKeySupport {
     private const val PEM_BEGIN_PRIVATE_KEY = "-----BEGIN PRIVATE KEY-----"
     private const val PEM_END_PRIVATE_KEY = "-----END PRIVATE KEY-----"
+    private const val KEYSTORE_PROVIDER = "AndroidKeyStore"
 
     data class DecodedPrivateKey(
         val privateKey: PrivateKey,
@@ -30,6 +32,41 @@ object PasskeyPrivateKeySupport {
     fun exportPem(keyMaterial: String?): String? {
         val decoded = decodeFlexiblePrivateKey(keyMaterial) ?: return null
         return pkcs8ToPem(decoded.pkcs8Bytes)
+    }
+
+    fun exportPkcs8Base64(keyMaterial: String?): String? {
+        val decoded = decodeFlexiblePrivateKey(keyMaterial) ?: return null
+        return Base64.encodeToString(decoded.pkcs8Bytes, Base64.NO_WRAP)
+    }
+
+    fun hasBitwardenCompatiblePrivateKey(keyMaterial: String?): Boolean {
+        val normalized = keyMaterial?.trim().orEmpty()
+        if (normalized.isBlank()) return false
+        if (decodeFlexiblePrivateKey(normalized) != null) return true
+
+        return runCatching {
+            val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER)
+            keyStore.load(null)
+            val entry = keyStore.getEntry(normalized, null) as? KeyStore.PrivateKeyEntry
+            val encoded = entry?.privateKey?.encoded
+            encoded != null && encoded.isNotEmpty()
+        }.getOrDefault(false)
+    }
+
+    fun normalizeForBitwardenUpload(keyMaterial: String?): String? {
+        val normalized = keyMaterial?.trim().orEmpty()
+        if (normalized.isBlank()) return null
+        exportPkcs8Base64(normalized)?.let { return it }
+
+        return runCatching {
+            val keyStore = KeyStore.getInstance(KEYSTORE_PROVIDER)
+            keyStore.load(null)
+            val entry = keyStore.getEntry(normalized, null) as? KeyStore.PrivateKeyEntry
+            val encoded = entry?.privateKey?.encoded
+            encoded?.takeIf { it.isNotEmpty() }?.let {
+                Base64.encodeToString(it, Base64.NO_WRAP)
+            }
+        }.getOrNull()
     }
 
     fun createSignature(

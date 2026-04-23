@@ -21,10 +21,12 @@ import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.*
@@ -104,6 +106,8 @@ fun GeneratorScreen(
     externalRefreshRequestKey: Int = 0,
     onRefreshRequestConsumed: () -> Unit = {},
     useExternalRefreshFab: Boolean = false,
+    showStandaloneSettingsEntry: Boolean = false,
+    onOpenStandaloneSettings: () -> Unit = {},
     viewModel: GeneratorViewModel = viewModel()
 ) {
     val context = LocalContext.current
@@ -113,6 +117,7 @@ fun GeneratorScreen(
     // 历史记录状态
     var showHistorySheet by remember { mutableStateOf(false) }
     var showFilterSheet by remember { mutableStateOf(false) }
+    var showTopActionsMenu by remember { mutableStateOf(false) }
     val historyManager = remember { PasswordHistoryManager(context) }
     val historyList by historyManager.historyFlow.collectAsState(initial = emptyList())
     
@@ -439,6 +444,30 @@ fun GeneratorScreen(
                             contentDescription = stringResource(R.string.history),
                             tint = MaterialTheme.colorScheme.primary
                         )
+                    }
+                    if (showStandaloneSettingsEntry) {
+                        Box {
+                            IconButton(onClick = { showTopActionsMenu = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = stringResource(R.string.more_options),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showTopActionsMenu,
+                                onDismissRequest = { showTopActionsMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.nav_settings)) },
+                                    leadingIcon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                                    onClick = {
+                                        showTopActionsMenu = false
+                                        onOpenStandaloneSettings()
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
