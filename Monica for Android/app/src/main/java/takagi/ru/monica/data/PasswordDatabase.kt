@@ -33,7 +33,7 @@ import takagi.ru.monica.data.bitwarden.*
         BitwardenPendingOperation::class,
         BitwardenSyncRawEntryRecord::class
     ],
-    version = 58,
+    version = 59,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -1741,6 +1741,45 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_58_59 = object : androidx.room.migration.Migration(58, 59) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 58→59: KeePass passkey duplicate guard")
+
+                    database.execSQL(
+                        """
+                        DELETE FROM passkeys
+                        WHERE id IN (
+                            SELECT duplicate.id
+                            FROM passkeys duplicate
+                            JOIN passkeys keeper
+                              ON duplicate.keepass_database_id = keeper.keepass_database_id
+                             AND duplicate.passkey_mode = keeper.passkey_mode
+                             AND duplicate.credential_id = keeper.credential_id
+                             AND duplicate.id < keeper.id
+                            WHERE duplicate.keepass_database_id IS NOT NULL
+                              AND duplicate.passkey_mode = 'KEEPASS_COMPAT'
+                        )
+                        """
+                        .trimIndent()
+                    )
+                    database.execSQL("DROP INDEX IF EXISTS index_passkeys_keepass_scope_credential")
+                    database.execSQL(
+                        """
+                        CREATE UNIQUE INDEX IF NOT EXISTS index_passkeys_keepass_scope_credential
+                        ON passkeys(keepass_database_id, passkey_mode, credential_id)
+                        """
+                        .trimIndent()
+                    )
+
+                    android.util.Log.i("PasswordDatabase", "Migration 58→59 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 58→59 failed: ${e.message}")
+                    throw e
+                }
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -1805,7 +1844,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_54_55,  // Bitwarden 条目原始同步快照
                         MIGRATION_55_56,  // Passkey 内部记录 ID
                         MIGRATION_56_57,  // KeePass 远端来源与同步骨架
-                        MIGRATION_57_58   // Bitwarden Vault 身份稳定化
+                        MIGRATION_57_58,  // Bitwarden Vault 身份稳定化
+                        MIGRATION_58_59   // KeePass Passkey 去重与唯一约束
                     )
                     .build()
                 INSTANCE = instance

@@ -11,6 +11,7 @@ import takagi.ru.monica.data.PredefinedSecurityQuestions
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.SecureRandom
+import java.security.UnrecoverableKeyException
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -186,6 +187,10 @@ class SecurityManager(private val context: Context) {
         }
 
         return try {
+            // A previous failed keystore read can set a short cooldown. Once the
+            // user has just passed biometric auth, retry immediately instead of
+            // reporting that the vault key is still unavailable.
+            mdkAuthUnavailableUntilMillis = 0L
             ensureMdkKeystoreWrapper()
             val mdk = getMdkForCrypto()
             mdk != null && mdk.isNotEmpty()
@@ -688,6 +693,19 @@ class SecurityManager(private val context: Context) {
         }.getOrDefault(false)
     }
 
+    private fun deleteSecureKeyAlias(alias: String) {
+        runCatching {
+            val keyStore = KeyStore.getInstance("AndroidKeyStore")
+            keyStore.load(null)
+            if (keyStore.containsAlias(alias)) {
+                keyStore.deleteEntry(alias)
+            }
+        }.onFailure { e ->
+            android.util.Log.w(logTag, "deleteSecureKeyAlias failed for $alias: ${e.javaClass.simpleName}")
+            SecurityDiagLogger.append("W/$logTag deleteSecureKeyAlias failed alias=$alias type=${e.javaClass.simpleName}")
+        }
+    }
+
     private fun parseWrappedMdkBlob(rawBlob: String): WrappedMdkBlob {
         return when {
             rawBlob.startsWith(WRAPPER_PREFIX_COMPAT) -> WrappedMdkBlob(
@@ -753,6 +771,18 @@ class SecurityManager(private val context: Context) {
             android.util.Log.w(logTag, "persistKeystoreWrappedMdk: user not authenticated")
             SecurityDiagLogger.append("W/$logTag persistKeystoreWrappedMdk: user not authenticated")
             persistCompatKeystoreWrappedMdk(mdk)
+        } catch (e: android.security.keystore.KeyPermanentlyInvalidatedException) {
+            android.util.Log.w(logTag, "persistKeystoreWrappedMdk: secure key invalidated; rebuilding with compatibility wrapper")
+            SecurityDiagLogger.append("W/$logTag persistKeystoreWrappedMdk: secure key invalidated")
+            deleteSecureKeyAlias(KEY_ALIAS_DATA)
+            clearKeystoreWrappedMdk("secure key permanently invalidated while rebuilding wrapper")
+            persistCompatKeystoreWrappedMdk(mdk)
+        } catch (e: UnrecoverableKeyException) {
+            android.util.Log.w(logTag, "persistKeystoreWrappedMdk: secure key unrecoverable; rebuilding with compatibility wrapper")
+            SecurityDiagLogger.append("W/$logTag persistKeystoreWrappedMdk: secure key unrecoverable")
+            deleteSecureKeyAlias(KEY_ALIAS_DATA)
+            clearKeystoreWrappedMdk("secure key unrecoverable while rebuilding wrapper")
+            persistCompatKeystoreWrappedMdk(mdk)
         } catch (e: Exception) {
             android.util.Log.w(logTag, "persistKeystoreWrappedMdk failed: ${e.javaClass.simpleName}, message=${e.message}")
             SecurityDiagLogger.append("W/$logTag persistKeystoreWrappedMdk failed: ${e.javaClass.simpleName}")
@@ -816,13 +846,14 @@ class SecurityManager(private val context: Context) {
 
     private fun ensureMdkInitializedWithPassword(password: String, forceUpdate: Boolean = false) {
         val hasPasswordBlob = sharedPreferences.contains(MDK_PASSWORD_BLOB_KEY)
-        val hasKeystoreBlob = sharedPreferences.contains(MDK_KEYSTORE_BLOB_KEY)
+        var hasKeystoreBlob = sharedPreferences.contains(MDK_KEYSTORE_BLOB_KEY)
         android.util.Log.d(
             logTag,
             "ensureMdkInitializedWithPassword: forceUpdate=$forceUpdate, hasPasswordBlob=$hasPasswordBlob, hasKeystoreBlob=$hasKeystoreBlob"
         )
         if (hasKeystoreBlob && !hasRequiredAliasForStoredWrapper()) {
             clearKeystoreWrappedMdk("secure key alias missing; likely app clone or restored app data")
+            hasKeystoreBlob = false
         }
         var mdk: ByteArray? = null
         if (!hasPasswordBlob && !hasKeystoreBlob) {
@@ -856,13 +887,19 @@ class SecurityManager(private val context: Context) {
         } else {
             sharedPreferences.edit().putBoolean(MDK_READY_KEY, true).apply()
         }
-        if (!sharedPreferences.contains(MDK_KEYSTORE_BLOB_KEY)) {
-            val persisted = persistKeystoreWrappedMdk(actualMdk)
-            android.util.Log.d(
-                logTag,
-                "ensureMdkInitializedWithPassword: wrapper rebuild after password unlock success=$persisted"
-            )
-        }
+        // Password unlock has the real MDK in hand, so refresh the keystore
+        // wrapper even when an old blob exists. Write the compatibility wrapper
+        // directly here: if the user recently passed biometric auth, Android may
+        // otherwise allow writing a fresh AUTH wrapper that still fails on some
+        // devices on the next biometric-only app unlock.
+        val persisted = persistCompatKeystoreWrappedMdk(actualMdk)
+        android.util.Log.d(
+            logTag,
+            "ensureMdkInitializedWithPassword: compatibility wrapper refresh after password unlock success=$persisted"
+        )
+        mdkAuthUnavailableUntilMillis = 0L
+        hasLoggedMdkAuthExpiredWarning = false
+        hasLoggedMdkFallbackEncryption = false
     }
 
     private fun ensureMdkKeystoreWrapper() {

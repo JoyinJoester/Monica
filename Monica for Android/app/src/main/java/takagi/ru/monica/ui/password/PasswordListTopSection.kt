@@ -704,6 +704,9 @@ internal fun PasswordListTopSection(
         }
 
         if (showCreateCategoryDialog) {
+            val initialLocalParentPath = (currentFilter as? CategoryFilter.Custom)?.let { filter ->
+                categories.firstOrNull { it.id == filter.categoryId }?.name
+            }
             CreateCategoryDialog(
                 visible = true,
                 onDismiss = { showCreateCategoryDialog = false },
@@ -712,6 +715,7 @@ internal fun PasswordListTopSection(
                 bitwardenVaults = bitwardenVaults,
                 getKeePassGroups = localKeePassViewModel::getGroups,
                 onCreateCategoryWithName = { name -> viewModel.addCategory(name) },
+                initialLocalParentPath = initialLocalParentPath,
                 onCreateBitwardenFolder = { vaultId, name ->
                     coroutineScope.launch {
                         val result = bitwardenRepository.createFolder(vaultId, name)

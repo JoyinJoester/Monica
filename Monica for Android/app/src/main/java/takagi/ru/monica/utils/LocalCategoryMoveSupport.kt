@@ -7,6 +7,15 @@ data class LocalCategoryMovePlan(
     val destinationPath: String
 )
 
+data class LocalCategoryPathOption(
+    val path: String,
+    val displayName: String,
+    val parentPath: String?,
+    val parentPathLabel: String?,
+    val depth: Int,
+    val category: Category?
+)
+
 fun planLocalCategoryMove(
     categories: List<Category>,
     sourceCategory: Category,
@@ -119,4 +128,56 @@ fun isLocalCategoryDescendantPath(parentPath: String, candidatePath: String): Bo
     val normalizedCandidate = normalizeLocalCategoryPath(candidatePath)
     return normalizedCandidate.equals(normalizedParent, ignoreCase = true) ||
         normalizedCandidate.startsWith("$normalizedParent/", ignoreCase = true)
+}
+
+fun buildLocalCategoryPathOptions(
+    categories: List<Category>,
+    includeVirtualParents: Boolean = true
+): List<LocalCategoryPathOption> {
+    val categoryByPath = categories
+        .mapNotNull { category ->
+            val path = normalizeLocalCategoryPath(category.name)
+            if (path.isBlank()) null else path to category
+        }
+        .toMap()
+
+    val paths = if (includeVirtualParents) {
+        categoryByPath.keys.flatMap { path ->
+            val segments = path.split('/')
+            segments.indices.map { index ->
+                segments.take(index + 1).joinToString("/")
+            }
+        }
+    } else {
+        categoryByPath.keys
+    }
+
+    return paths
+        .distinct()
+        .filter { it.isNotBlank() }
+        .map { path ->
+            val segments = path.split('/')
+            LocalCategoryPathOption(
+                path = path,
+                displayName = segments.lastOrNull().orEmpty(),
+                parentPath = getLocalCategoryParentPath(path),
+                parentPathLabel = segments.dropLast(1).joinToString("/").ifBlank { null },
+                depth = (segments.size - 1).coerceAtLeast(0),
+                category = categoryByPath[path]
+            )
+        }
+        .sortedWith(
+            compareBy<LocalCategoryPathOption> { option ->
+                option.path.split('/').joinToString("\u0000") { segment -> segment.lowercase() }
+            }.thenBy { it.path }
+        )
+}
+
+fun localCategoryHierarchyLabel(path: String): String {
+    val normalized = normalizeLocalCategoryPath(path)
+    if (normalized.isBlank()) return ""
+    val segments = normalized.split('/')
+    val leaf = segments.last()
+    val depth = (segments.size - 1).coerceAtLeast(0)
+    return if (depth == 0) leaf else "${"  ".repeat(depth - 1)}|- $leaf"
 }

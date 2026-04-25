@@ -4,6 +4,7 @@ import android.util.Log
 import kotlinx.coroutines.flow.Flow
 import takagi.ru.monica.data.PasskeyDao
 import takagi.ru.monica.data.PasskeyEntry
+import takagi.ru.monica.passkey.PasskeyCredentialIdCodec
 import java.security.KeyStore
 
 /**
@@ -145,28 +146,21 @@ class PasskeyRepository(private val passkeyDao: PasskeyDao) {
         databaseId: Long,
         importedPasskeys: List<PasskeyEntry>
     ) {
-        val existingByCredentialId = passkeyDao
-            .getKeePassCompatPasskeysByDatabaseId(databaseId)
-            .associateBy { it.credentialId }
-
-        val mergedPasskeys = importedPasskeys.map { imported ->
-            val existing = existingByCredentialId[imported.credentialId]
-            if (existing == null) {
-                imported
-            } else {
-                imported.copy(
-                    boundPasswordId = existing.boundPasswordId,
-                    categoryId = existing.categoryId,
-                    isBackedUp = existing.isBackedUp || imported.isBackedUp
-                )
-            }
+        val existingPasskeys = passkeyDao.getKeePassCompatPasskeysByDatabaseId(databaseId)
+        val mergeResult = mergeKeePassImportedPasskeys(
+            databaseId = databaseId,
+            importedPasskeys = importedPasskeys,
+            existingPasskeys = existingPasskeys
+        )
+        if (mergeResult.staleRecordIds.isNotEmpty()) {
+            passkeyDao.deleteByRecordIds(mergeResult.staleRecordIds)
         }
 
-        if (mergedPasskeys.isNotEmpty()) {
-            passkeyDao.insertAll(mergedPasskeys)
+        if (mergeResult.mergedPasskeys.isNotEmpty()) {
+            passkeyDao.insertAll(mergeResult.mergedPasskeys)
             passkeyDao.deleteKeePassCompatPasskeysNotIn(
                 databaseId = databaseId,
-                credentialIds = mergedPasskeys.map { it.credentialId }
+                credentialIds = mergeResult.mergedPasskeys.map { it.credentialId }
             )
         } else {
             passkeyDao.deleteAllKeePassCompatPasskeysByDatabaseId(databaseId)
@@ -355,4 +349,68 @@ class PasskeyRepository(private val passkeyDao: PasskeyDao) {
             }
         }
     }
+}
+
+data class KeePassPasskeySyncMergeResult(
+    val mergedPasskeys: List<PasskeyEntry>,
+    val staleRecordIds: List<Long>
+)
+
+fun mergeKeePassImportedPasskeys(
+    databaseId: Long,
+    importedPasskeys: List<PasskeyEntry>,
+    existingPasskeys: List<PasskeyEntry>
+): KeePassPasskeySyncMergeResult {
+    val existingGroups = existingPasskeys
+        .filter { it.keepassDatabaseId == databaseId && it.passkeyMode == PasskeyEntry.MODE_KEEPASS_COMPAT }
+        .groupBy { it.keepassCredentialKey() }
+        .filterKeys { it != null }
+
+    val canonicalExistingByKey = existingGroups.mapValues { (_, entries) ->
+        entries.maxWith(compareBy<PasskeyEntry> { it.lastUsedAt }.thenBy { it.id })
+    }
+    val staleRecordIds = existingGroups.values.flatMap { entries ->
+        val canonicalId = entries.maxWith(compareBy<PasskeyEntry> { it.lastUsedAt }.thenBy { it.id }).id
+        entries.mapNotNull { entry ->
+            entry.id.takeIf { it > 0L && it != canonicalId }
+        }
+    }
+
+    val importedByKey = importedPasskeys
+        .filter { it.passkeyMode == PasskeyEntry.MODE_KEEPASS_COMPAT }
+        .groupBy { it.keepassCredentialKey() }
+        .filterKeys { it != null }
+        .mapValues { (_, entries) ->
+            entries.maxWith(compareBy<PasskeyEntry> { it.lastUsedAt }.thenBy { it.id })
+        }
+
+    val merged = importedByKey.mapNotNull { (key, imported) ->
+        key ?: return@mapNotNull null
+        val existing = canonicalExistingByKey[key]
+        if (existing == null) {
+            imported.copy(
+                id = 0L,
+                keepassDatabaseId = databaseId,
+                passkeyMode = PasskeyEntry.MODE_KEEPASS_COMPAT
+            )
+        } else {
+            imported.copy(
+                id = existing.id,
+                boundPasswordId = existing.boundPasswordId,
+                categoryId = existing.categoryId,
+                isBackedUp = existing.isBackedUp || imported.isBackedUp,
+                keepassDatabaseId = databaseId,
+                passkeyMode = PasskeyEntry.MODE_KEEPASS_COMPAT
+            )
+        }
+    }
+
+    return KeePassPasskeySyncMergeResult(
+        mergedPasskeys = merged,
+        staleRecordIds = staleRecordIds
+    )
+}
+
+private fun PasskeyEntry.keepassCredentialKey(): String? {
+    return PasskeyCredentialIdCodec.normalize(credentialId)?.ifBlank { null }
 }

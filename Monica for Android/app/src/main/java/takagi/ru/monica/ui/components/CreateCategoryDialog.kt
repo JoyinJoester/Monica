@@ -70,6 +70,7 @@ import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.utils.KEEPASS_DISPLAY_PATH_SEPARATOR
 import takagi.ru.monica.utils.KeePassGroupInfo
+import takagi.ru.monica.utils.buildLocalCategoryPathOptions
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -136,7 +137,6 @@ internal fun CreateCategoryDialog(
 
     val createTargetScroll = rememberScrollState()
     val createVaultScroll = rememberScrollState()
-    val createLocalParentScroll = rememberScrollState()
     val createKeePassDbScroll = rememberScrollState()
     val createKeePassParentScroll = rememberScrollState()
 
@@ -244,348 +244,191 @@ internal fun CreateCategoryDialog(
                         )
                     }
                 }
-                Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = targetTint.copy(alpha = 0.14f),
-                    border = BorderStroke(
-                        width = 1.dp,
-                        color = targetTint.copy(alpha = 0.25f)
-                    )
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = stringResource(R.string.create_target_section_title),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Icon(
-                                imageVector = targetIcon,
-                                contentDescription = null,
-                                tint = targetTint,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = targetLabel,
-                                style = MaterialTheme.typography.labelLarge,
-                                color = targetTint
-                            )
-                        }
-                    }
-                }
             }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Surface(
-                    shape = RoundedCornerShape(18.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerLow,
-                    border = BorderStroke(
-                        width = 1.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
-                    )
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = stringResource(R.string.create_target_section_title),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(createTargetScroll),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.create_target_section_title),
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary
+                    if (canCreateLocal) {
+                        FilterChip(
+                            selected = createTarget == CreateDialogTarget.Local,
+                            onClick = {
+                                createTarget = CreateDialogTarget.Local
+                                createKeePassParentPath = null
+                            },
+                            colors = createChipColors,
+                            label = { Text(stringResource(R.string.create_target_local)) },
+                            leadingIcon = { Icon(Icons.Default.Smartphone, contentDescription = null) }
                         )
+                    }
+                    if (canCreateBitwarden) {
+                        FilterChip(
+                            selected = createTarget == CreateDialogTarget.Bitwarden,
+                            onClick = {
+                                createTarget = CreateDialogTarget.Bitwarden
+                                createLocalParentPath = null
+                                createKeePassParentPath = null
+                            },
+                            colors = createChipColors,
+                            label = { Text(stringResource(R.string.create_target_bitwarden)) },
+                            leadingIcon = { Icon(Icons.Default.CloudSync, contentDescription = null) }
+                        )
+                    }
+                    if (canCreateKeePass) {
+                        FilterChip(
+                            selected = createTarget == CreateDialogTarget.KeePass,
+                            onClick = {
+                                createTarget = CreateDialogTarget.KeePass
+                                createLocalParentPath = null
+                            },
+                            colors = createChipColors,
+                            label = { Text(stringResource(R.string.create_target_keepass)) },
+                            leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) }
+                        )
+                    }
+                }
+
+                Text(
+                    text = when (createTarget) {
+                        CreateDialogTarget.Local -> stringResource(R.string.create_select_local_parent)
+                        CreateDialogTarget.Bitwarden -> stringResource(R.string.create_select_bitwarden_vault)
+                        CreateDialogTarget.KeePass -> stringResource(R.string.create_select_keepass_database)
+                    },
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                when (createTarget) {
+                    CreateDialogTarget.Local -> {
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = createLocalParentPath.isNullOrBlank(),
+                                onClick = { createLocalParentPath = null },
+                                colors = createChipColors,
+                                label = { Text(stringResource(R.string.folder_no_folder_root)) },
+                                leadingIcon = { Icon(Icons.Default.FolderOff, contentDescription = null) }
+                            )
+                            localCategoryNodes.forEach { node ->
+                                FilterChip(
+                                    selected = createLocalParentPath == node.fullPath,
+                                    onClick = { createLocalParentPath = node.fullPath },
+                                    colors = createChipColors,
+                                    label = {
+                                        Text(
+                                            text = node.fullPath,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.widthIn(max = 210.dp)
+                                        )
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null) }
+                                )
+                            }
+                        }
+                    }
+
+                    CreateDialogTarget.Bitwarden -> {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .horizontalScroll(createTargetScroll),
+                                .horizontalScroll(createVaultScroll),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            if (canCreateLocal) {
+                            bitwardenVaults.forEach { vault ->
                                 FilterChip(
-                                    selected = createTarget == CreateDialogTarget.Local,
-                                    onClick = {
-                                        createTarget = CreateDialogTarget.Local
-                                        createKeePassParentPath = null
-                                    },
-                                    modifier = Modifier.height(38.dp),
+                                    selected = selectedCreateVaultId == vault.id,
+                                    onClick = { selectedCreateVaultId = vault.id },
                                     colors = createChipColors,
-                                    label = { Text(stringResource(R.string.create_target_local)) },
-                                    leadingIcon = { Icon(Icons.Default.Smartphone, contentDescription = null) }
+                                    label = {
+                                        Text(
+                                            text = vault.email,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.widthIn(max = 200.dp)
+                                        )
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Inventory2, contentDescription = null) }
                                 )
                             }
-                            if (canCreateBitwarden) {
+                        }
+                    }
+
+                    CreateDialogTarget.KeePass -> {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(createKeePassDbScroll),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            keepassDatabases.forEach { db ->
                                 FilterChip(
-                                    selected = createTarget == CreateDialogTarget.Bitwarden,
+                                    selected = selectedCreateKeePassDbId == db.id,
                                     onClick = {
-                                        createTarget = CreateDialogTarget.Bitwarden
-                                        createLocalParentPath = null
+                                        selectedCreateKeePassDbId = db.id
                                         createKeePassParentPath = null
                                     },
-                                    modifier = Modifier.height(38.dp),
                                     colors = createChipColors,
-                                    label = { Text(stringResource(R.string.create_target_bitwarden)) },
-                                    leadingIcon = { Icon(Icons.Default.CloudSync, contentDescription = null) }
-                                )
-                            }
-                            if (canCreateKeePass) {
-                                FilterChip(
-                                    selected = createTarget == CreateDialogTarget.KeePass,
-                                    onClick = {
-                                        createTarget = CreateDialogTarget.KeePass
-                                        createLocalParentPath = null
+                                    label = {
+                                        Text(
+                                            text = db.name,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.widthIn(max = 180.dp)
+                                        )
                                     },
-                                    modifier = Modifier.height(38.dp),
-                                    colors = createChipColors,
-                                    label = { Text(stringResource(R.string.create_target_keepass)) },
                                     leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) }
                                 )
                             }
                         }
-                    }
-                }
 
-                Surface(
-                    shape = RoundedCornerShape(18.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerLow,
-                    border = BorderStroke(
-                        width = 1.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
-                    )
-                ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
+                        Text(
+                            text = stringResource(R.string.create_select_keepass_parent_group),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable { createOptionsExpanded = !createOptionsExpanded }
-                                .padding(horizontal = 6.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
+                                .horizontalScroll(createKeePassParentScroll),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text(
-                                text = stringResource(R.string.create_nested_section_title),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary
+                            FilterChip(
+                                selected = createKeePassParentPath.isNullOrBlank(),
+                                onClick = { createKeePassParentPath = null },
+                                colors = createChipColors,
+                                label = { Text(stringResource(R.string.folder_no_folder_root)) },
+                                leadingIcon = { Icon(Icons.Default.FolderOff, contentDescription = null) }
                             )
-                            Icon(
-                                imageVector = if (createOptionsExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        CreateDialogAnimatedVisibility(
-                            visible = createOptionsExpanded,
-                            enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = expandCollapseSpec),
-                            exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)
-                        ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                when (createTarget) {
-                                    CreateDialogTarget.Local -> {
+                            sortedCreateKeePassGroups.forEach { group ->
+                                FilterChip(
+                                    selected = createKeePassParentPath == group.path,
+                                    onClick = { createKeePassParentPath = group.path },
+                                    colors = createChipColors,
+                                    label = {
                                         Text(
-                                            text = stringResource(R.string.create_select_local_parent),
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            text = group.displayPath,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.widthIn(max = 220.dp)
                                         )
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .horizontalScroll(createLocalParentScroll),
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            FilterChip(
-                                                selected = createLocalParentPath.isNullOrBlank(),
-                                                onClick = { createLocalParentPath = null },
-                                                colors = createChipColors,
-                                                label = { Text(stringResource(R.string.folder_no_folder_root)) },
-                                                leadingIcon = { Icon(Icons.Default.FolderOff, contentDescription = null) }
-                                            )
-                                            localCategoryNodes.forEach { node ->
-                                                FilterChip(
-                                                    selected = createLocalParentPath == node.fullPath,
-                                                    onClick = { createLocalParentPath = node.fullPath },
-                                                    colors = createChipColors,
-                                                    label = {
-                                                        Text(
-                                                            text = node.fullPath,
-                                                            maxLines = 1,
-                                                            overflow = TextOverflow.Ellipsis,
-                                                            modifier = Modifier.widthIn(max = 180.dp)
-                                                        )
-                                                    },
-                                                    leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null) }
-                                                )
-                                            }
-                                        }
-                                        if (!createLocalParentPath.isNullOrBlank()) {
-                                            Text(
-                                                text = stringResource(
-                                                    R.string.category_parent_path_hint,
-                                                    createLocalParentPath.orEmpty()
-                                                ),
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                        }
-                                    }
-
-                                    CreateDialogTarget.Bitwarden -> {
-                                        if (canCreateBitwarden) {
-                                            Text(
-                                                text = stringResource(R.string.create_select_bitwarden_vault),
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .horizontalScroll(createVaultScroll),
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                bitwardenVaults.forEach { vault ->
-                                                    FilterChip(
-                                                        selected = selectedCreateVaultId == vault.id,
-                                                        onClick = { selectedCreateVaultId = vault.id },
-                                                        colors = createChipColors,
-                                                        label = {
-                                                            Text(
-                                                                text = vault.email,
-                                                                maxLines = 1,
-                                                                overflow = TextOverflow.Ellipsis,
-                                                                modifier = Modifier.widthIn(max = 200.dp)
-                                                            )
-                                                        },
-                                                        leadingIcon = {
-                                                            Icon(Icons.Default.Inventory2, contentDescription = null)
-                                                        }
-                                                    )
-                                                }
-                                            }
-                                            Text(
-                                                text = stringResource(R.string.bitwarden_folder_flat_hint),
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    }
-
-                                    CreateDialogTarget.KeePass -> {
-                                        if (canCreateKeePass) {
-                                            Text(
-                                                text = stringResource(R.string.create_select_keepass_database),
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .horizontalScroll(createKeePassDbScroll),
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                keepassDatabases.forEach { db ->
-                                                    FilterChip(
-                                                        selected = selectedCreateKeePassDbId == db.id,
-                                                        onClick = {
-                                                            selectedCreateKeePassDbId = db.id
-                                                            createKeePassParentPath = null
-                                                        },
-                                                        colors = createChipColors,
-                                                        label = {
-                                                            Text(
-                                                                text = db.name,
-                                                                maxLines = 1,
-                                                                overflow = TextOverflow.Ellipsis,
-                                                                modifier = Modifier.widthIn(max = 180.dp)
-                                                            )
-                                                        },
-                                                        leadingIcon = {
-                                                            Icon(Icons.Default.Key, contentDescription = null)
-                                                        }
-                                                    )
-                                                }
-                                            }
-
-                                            Text(
-                                                text = stringResource(R.string.create_select_keepass_parent_group),
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .horizontalScroll(createKeePassParentScroll),
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                FilterChip(
-                                                    selected = createKeePassParentPath.isNullOrBlank(),
-                                                    onClick = { createKeePassParentPath = null },
-                                                    colors = createChipColors,
-                                                    label = { Text(stringResource(R.string.folder_no_folder_root)) },
-                                                    leadingIcon = {
-                                                        Icon(Icons.Default.FolderOff, contentDescription = null)
-                                                    }
-                                                )
-                                                sortedCreateKeePassGroups.forEach { group ->
-                                                    FilterChip(
-                                                        selected = createKeePassParentPath == group.path,
-                                                        onClick = { createKeePassParentPath = group.path },
-                                                        colors = createChipColors,
-                                                        label = {
-                                                            Text(
-                                                                text = group.displayPath,
-                                                                maxLines = 1,
-                                                                overflow = TextOverflow.Ellipsis,
-                                                                modifier = Modifier.widthIn(max = 220.dp)
-                                                            )
-                                                        },
-                                                        leadingIcon = {
-                                                            Icon(Icons.Default.Folder, contentDescription = null)
-                                                        }
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null) }
+                                )
                             }
-                        }
-                    }
-                }
-
-                if (previewPath.isNotBlank()) {
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f),
-                        border = BorderStroke(
-                            width = 1.dp,
-                            color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.24f)
-                        )
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text(
-                                text = stringResource(R.string.create_preview_path_label),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
-                            Text(
-                                text = previewPath,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
                         }
                     }
                 }
@@ -656,18 +499,8 @@ private data class CreateDialogLocalCategoryNode(
 )
 
 private fun buildCreateDialogLocalCategoryNodes(categories: List<Category>): List<CreateDialogLocalCategoryNode> {
-    return categories
-        .map { category ->
-            val segments = category.name
-                .split("/")
-                .map { it.trim() }
-                .filter { it.isNotBlank() }
-            val fullPath = if (segments.isEmpty()) category.name.trim() else segments.joinToString("/")
-            CreateDialogLocalCategoryNode(fullPath = fullPath)
-        }
-        .filter { it.fullPath.isNotBlank() }
-        .distinctBy { it.fullPath }
-        .sortedBy { it.fullPath.lowercase() }
+    return buildLocalCategoryPathOptions(categories)
+        .map { option -> CreateDialogLocalCategoryNode(fullPath = option.path) }
 }
 
 private fun buildCreateDialogNestedLocalPath(parentPath: String?, name: String): String {

@@ -1730,7 +1730,7 @@ class PasswordViewModel(
     }
     
     fun authenticate(password: String): Boolean {
-        val isValid = securityManager.verifyMasterPassword(password)
+        val isValid = securityManager.unlockVaultWithPassword(password)
         _isAuthenticated.value = isValid
         if (isValid) {
             securityManager.markVaultAuthenticated()

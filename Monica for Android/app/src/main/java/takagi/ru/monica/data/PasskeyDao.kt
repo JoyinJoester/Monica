@@ -217,6 +217,9 @@ interface PasskeyDao {
 
     @Query("DELETE FROM passkeys WHERE id = :recordId")
     suspend fun deleteByRecordId(recordId: Long)
+
+    @Query("DELETE FROM passkeys WHERE id IN (:recordIds)")
+    suspend fun deleteByRecordIds(recordIds: List<Long>)
     
     /**
      * 删除指定域名的所有 Passkeys

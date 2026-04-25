@@ -45,6 +45,11 @@ import androidx.room.PrimaryKey
         Index(
             value = ["bitwarden_vault_id", "bitwarden_cipher_id", "credential_id"],
             name = "index_passkeys_bitwarden_scope_credential"
+        ),
+        Index(
+            value = ["keepass_database_id", "passkey_mode", "credential_id"],
+            name = "index_passkeys_keepass_scope_credential",
+            unique = true
         )
     ]
 )

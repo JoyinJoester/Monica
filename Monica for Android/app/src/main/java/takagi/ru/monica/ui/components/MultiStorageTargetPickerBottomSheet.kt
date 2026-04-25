@@ -56,7 +56,9 @@ import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.StorageTarget
 import takagi.ru.monica.utils.KeePassGroupInfo
+import takagi.ru.monica.utils.buildLocalCategoryPathOptions
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
+import takagi.ru.monica.utils.localCategoryHierarchyLabel
 import takagi.ru.monica.R
 
 private enum class StoragePickerSelectionMode {
@@ -204,11 +206,12 @@ fun MultiStorageTargetPickerBottomSheet(
                         sourceKey = source.key
                     )
                 )
-                categories.forEach { category ->
+                buildLocalCategoryPathOptions(categories, includeVirtualParents = false).forEach { option ->
+                    val category = option.category ?: return@forEach
                     add(
                         StorageTargetChip(
                             target = StorageTarget.MonicaLocal(category.id),
-                            label = category.name,
+                            label = localCategoryHierarchyLabel(option.path),
                             icon = Icons.Default.Folder,
                             sourceKey = source.key
                         )
