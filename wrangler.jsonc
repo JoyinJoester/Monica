@@ -1,0 +1,14 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "monica",
+  "compatibility_date": "2026-04-26",
+  "observability": {
+    "enabled": true
+  },
+  "assets": {
+    "directory": "Monica for Browser"
+  },
+  "compatibility_flags": [
+    "nodejs_compat"
+  ]
+}
