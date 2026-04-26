@@ -133,7 +133,8 @@ internal fun PasswordListTopSection(
     onDeleteCategory: (Category) -> Unit,
     onOpenCommonAccountTemplates: () -> Unit,
     onOpenHistory: () -> Unit,
-    onOpenTrash: () -> Unit
+    onOpenTrash: () -> Unit,
+    onScanFidoQr: () -> Unit
 ) {
     val appSettings by settingsViewModel.settings.collectAsState()
     var showCreateCategoryDialog by remember { mutableStateOf(false) }
@@ -412,7 +413,8 @@ internal fun PasswordListTopSection(
                                 onOpenTrash = onOpenTrash,
                                 onOpenArchive = { viewModel.setCategoryFilter(CategoryFilter.Archived) },
                                 showSettingsEntry = showStandaloneSettingsEntry,
-                                onOpenSettings = onOpenStandaloneSettings
+                                onOpenSettings = onOpenStandaloneSettings,
+                                onScanFidoQr = onScanFidoQr
                             )
                         }
                 }

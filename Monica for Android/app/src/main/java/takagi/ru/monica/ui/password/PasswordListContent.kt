@@ -330,6 +330,7 @@ fun PasswordListContent(
     onOpenHistory: () -> Unit = {},
     onOpenTrash: () -> Unit = {},
     onOpenCommonAccountTemplates: () -> Unit = {},
+    onScanFidoQr: () -> Unit = {},
     showStandaloneSettingsEntry: Boolean = false,
     onOpenStandaloneSettings: () -> Unit = {},
     aggregateConfig: PasswordListAggregateConfig? = null
@@ -1460,7 +1461,8 @@ fun PasswordListContent(
         onDeleteCategory = onDeleteCategory,
         onOpenCommonAccountTemplates = onOpenCommonAccountTemplates,
         onOpenHistory = onOpenHistory,
-        onOpenTrash = onOpenTrash
+        onOpenTrash = onOpenTrash,
+        onScanFidoQr = onScanFidoQr
     )
 
     PasswordListMainPane(

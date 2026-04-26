@@ -762,6 +762,9 @@
     <string name="passkey_auth_title">使用通行密钥登录</string>
     <string name="passkey_auth_message">使用您的通行密钥登录 %1$s</string>
     <string name="passkey_auth_confirm">登录</string>
+    <string name="passkey_scan_qr_menu_title">扫描通行密钥二维码</string>
+    <string name="passkey_qr_invalid">无效的通行密钥二维码</string>
+    <string name="passkey_qr_open_failed">当前系统无法处理此通行密钥二维码</string>
     
     <!-- Passkey Management -->
     <string name="passkey">通行密钥</string>

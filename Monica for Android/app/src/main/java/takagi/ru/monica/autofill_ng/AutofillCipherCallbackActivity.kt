@@ -17,6 +17,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import takagi.ru.monica.R
 import takagi.ru.monica.autofill_ng.EnhancedAutofillStructureParserV2.FieldHint
 import takagi.ru.monica.autofill_ng.EnhancedAutofillStructureParserV2.ParsedItem
@@ -30,10 +32,23 @@ class AutofillCipherCallbackActivity : ComponentActivity() {
 
     companion object {
         private const val EXTRA_ARGS = "extra_args"
+        private const val EXTRA_ARGS_BUNDLE = "extra_args_bundle"
+        private const val EXTRA_ARGS_TOKEN = "extra_args_token"
         private const val TAG = "AutofillCipherCallback"
+        private val pendingArgsByToken = ConcurrentHashMap<String, Args>()
 
         fun getIntent(context: Context, args: Args): Intent {
+            val token = UUID.randomUUID().toString()
+            pendingArgsByToken[token] = args
             return Intent(context, AutofillCipherCallbackActivity::class.java).apply {
+                putExtra(EXTRA_ARGS_TOKEN, token)
+                putExtra(
+                    EXTRA_ARGS_BUNDLE,
+                    Bundle().apply {
+                        classLoader = Args::class.java.classLoader
+                        putParcelable(EXTRA_ARGS, args)
+                    }
+                )
                 putExtra(EXTRA_ARGS, args)
             }
         }
@@ -52,26 +67,27 @@ class AutofillCipherCallbackActivity : ComponentActivity() {
         val rememberLastFilled: Boolean = true,
     ) : Parcelable
 
-    private val args: Args? by lazy {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            intent.getParcelableExtra(EXTRA_ARGS, Args::class.java)
-        } else {
-            @Suppress("DEPRECATION")
-            intent.getParcelableExtra(EXTRA_ARGS)
-        }
-    }
+    private var callbackArgs: Args? = null
+    private var callbackArgsToken: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         overridePendingTransition(0, 0)
+        callbackArgs = resolveArgsFromIntent(intent)
 
         lifecycleScope.launch {
             completeCipherAutofill()
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        callbackArgs = resolveArgsFromIntent(intent)
+    }
+
     private suspend fun completeCipherAutofill() {
-        val callbackArgs = args ?: run {
+        val callbackArgs = callbackArgs ?: run {
             cancelAndFinish("missing_args")
             return
         }
@@ -163,6 +179,33 @@ class AutofillCipherCallbackActivity : ComponentActivity() {
             }
         )
         finishWithoutAnimation()
+    }
+
+    private fun resolveArgsFromIntent(intent: Intent?): Args? {
+        if (intent == null) return null
+        callbackArgsToken = intent.getStringExtra(EXTRA_ARGS_TOKEN)
+        callbackArgsToken
+            ?.let { pendingArgsByToken[it] }
+            ?.let { return it }
+
+        intent.getBundleExtra(EXTRA_ARGS_BUNDLE)
+            ?.apply { classLoader = Args::class.java.classLoader }
+            ?.let { bundle ->
+                val args = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    bundle.getParcelable(EXTRA_ARGS, Args::class.java)
+                } else {
+                    @Suppress("DEPRECATION")
+                    bundle.getParcelable(EXTRA_ARGS)
+                }
+                if (args != null) return args
+            }
+
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            intent.getParcelableExtra(EXTRA_ARGS, Args::class.java)
+        } else {
+            @Suppress("DEPRECATION")
+            intent.getParcelableExtra(EXTRA_ARGS)
+        }
     }
 
     private data class ResolvedAutofillTargets(
@@ -364,6 +407,7 @@ class AutofillCipherCallbackActivity : ComponentActivity() {
     }
 
     private fun finishWithoutAnimation() {
+        callbackArgsToken?.let { pendingArgsByToken.remove(it) }
         finish()
         overridePendingTransition(0, 0)
     }

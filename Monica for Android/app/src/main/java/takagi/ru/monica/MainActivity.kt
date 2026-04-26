@@ -788,6 +788,9 @@ fun MonicaContent(
                 onNavigateToQuickTotpScan = {
                     navController.navigate(Screen.QuickTotpScan.route)
                 },
+                onNavigateToFidoQrScan = {
+                    navController.navigate(Screen.FidoQrScan.route)
+                },
                 onNavigateToAddBankCard = { cardId ->
                     navController.navigate(Screen.AddEditBankCard.createRoute(cardId))
                 },
@@ -1506,6 +1509,22 @@ fun MonicaContent(
                     navController.previousBackStackEntry
                         ?.savedStateHandle
                         ?.set("qr_result", qrData)
+                    navController.popBackStack()
+                },
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(Screen.FidoQrScan.route) {
+            val context = LocalContext.current
+            takagi.ru.monica.ui.screens.QrScannerScreen(
+                onQrCodeScanned = { qrData ->
+                    val messageRes = launchSystemFidoQrIntent(context, qrData)
+                    if (messageRes != null) {
+                        Toast.makeText(context, context.getString(messageRes), Toast.LENGTH_SHORT).show()
+                    }
                     navController.popBackStack()
                 },
                 onNavigateBack = {
@@ -2845,6 +2864,27 @@ private fun rightSlidePopExitTransition() = slideOutHorizontally(
     targetOffsetX = { fullWidth -> fullWidth },
     animationSpec = tween(200)
 )
+
+private fun launchSystemFidoQrIntent(context: Context, rawQrData: String): Int? {
+    val qrData = rawQrData.trim()
+    if (qrData.isBlank()) return R.string.passkey_qr_invalid
+    val uri = runCatching { Uri.parse(qrData) }.getOrNull()
+        ?: return R.string.passkey_qr_invalid
+    val scheme = uri.scheme.orEmpty()
+    if (scheme.isBlank()) return R.string.passkey_qr_invalid
+
+    val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+        addCategory(Intent.CATEGORY_BROWSABLE)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    return runCatching {
+        context.startActivity(intent)
+    }.fold(
+        onSuccess = { null },
+        onFailure = { R.string.passkey_qr_open_failed }
+    )
+}
+
 /**
  * 安全的视图填充函数，添加错误处理和降级方案
  */

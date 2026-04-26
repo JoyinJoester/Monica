@@ -813,6 +813,7 @@ fun SimpleMainScreen(
     onNavigateToAddPassword: (Long?) -> Unit,
     onNavigateToAddTotp: (Long?) -> Unit,
     onNavigateToQuickTotpScan: () -> Unit,
+    onNavigateToFidoQrScan: () -> Unit,
     onNavigateToAddBankCard: (Long?) -> Unit,
     onNavigateToAddDocument: (Long?) -> Unit,
     onNavigateToWalletAdd: (CardWalletTab) -> Unit,
@@ -1880,6 +1881,7 @@ fun SimpleMainScreen(
                     onTotpOpen = handleTotpOpen,
                     onNavigateToAddTotp = onNavigateToAddTotp,
                     onNavigateToQuickTotpScan = onNavigateToQuickTotpScan,
+                    onNavigateToFidoQrScan = onNavigateToFidoQrScan,
                     onTotpSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onMoveToCategory, onDelete ->
                         isTotpSelectionMode = isSelectionMode
                         selectedTotpCount = count
@@ -2083,6 +2085,7 @@ fun SimpleMainScreen(
                         passwordViewModel.setCategoryFilter(CategoryFilter.Archived)
                     },
                     onOpenCommonAccountTemplates = onNavigateToCommonAccountTemplates,
+                    onScanFidoQr = onNavigateToFidoQrScan,
                     onOpenStandaloneSettings = onNavigateToStandaloneSettings,
                     showStandaloneSettingsEntry = shouldHideBottomNavigation,
                     appSettings = appSettings,
@@ -2121,6 +2124,7 @@ fun SimpleMainScreen(
                         onOpenHistoryPage = openHistoryPage,
                         onOpenTrashPage = openTrashPage,
                         onOpenCommonAccountTemplatesPage = onNavigateToCommonAccountTemplates,
+                        onScanFidoQr = onNavigateToFidoQrScan,
                         onCloseHistoryPage = closeHistoryPage,
                         passwordHistoryPageMode = passwordHistoryPageMode,
                         passwordHistoryInitialTrashScopeKey = passwordHistoryInitialTrashScopeKey,
@@ -2680,6 +2684,7 @@ private fun PasswordTabPane(
     onOpenHistoryPage: () -> Unit,
     onOpenTrashPage: () -> Unit,
     onOpenCommonAccountTemplatesPage: () -> Unit,
+    onScanFidoQr: () -> Unit,
     onCloseHistoryPage: () -> Unit,
     passwordHistoryPageMode: PasswordHistoryPageMode,
     passwordHistoryInitialTrashScopeKey: String?,
@@ -2741,6 +2746,7 @@ private fun PasswordTabPane(
             onOpenHistory = onOpenHistoryPage,
             onOpenTrash = onOpenTrashPage,
             onOpenCommonAccountTemplates = onOpenCommonAccountTemplatesPage,
+            onScanFidoQr = onScanFidoQr,
             showStandaloneSettingsEntry = showStandaloneSettingsEntry,
             onOpenStandaloneSettings = onOpenStandaloneSettings,
             aggregateConfig = PasswordListAggregateConfig(
@@ -3041,6 +3047,7 @@ private fun CompactDraggableTabContent(
     totpViewModel: takagi.ru.monica.viewmodel.TotpViewModel,
     onTotpOpen: (Long) -> Unit,
     onNavigateToQuickTotpScan: () -> Unit,
+    onNavigateToFidoQrScan: () -> Unit,
     onTotpSelectionModeChange: (
         Boolean,
         Int,
@@ -3172,6 +3179,7 @@ private fun CompactDraggableTabContent(
                     onOpenTrashPage = onOpenVaultV2TrashPage,
                     onOpenArchivePage = onOpenVaultV2ArchivePage,
                     onOpenCommonAccountTemplates = onNavigateToCommonAccountTemplates,
+                    onScanFidoQr = onNavigateToFidoQrScan,
                     onOpenStandaloneSettings = onOpenStandaloneSettings,
                     showStandaloneSettingsEntry = showStandaloneSettingsEntry,
                     appSettings = appSettings,
@@ -3210,6 +3218,7 @@ private fun CompactDraggableTabContent(
                     onOpenHistoryPage = onOpenHistoryPage,
                     onOpenTrashPage = onOpenTrashPage,
                     onOpenCommonAccountTemplatesPage = onNavigateToCommonAccountTemplates,
+                    onScanFidoQr = onNavigateToFidoQrScan,
                     onCloseHistoryPage = onCloseHistoryPage,
                     passwordHistoryPageMode = passwordHistoryPageMode,
                     passwordHistoryInitialTrashScopeKey = passwordHistoryInitialTrashScopeKey,

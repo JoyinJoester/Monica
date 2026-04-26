@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.DropdownMenu
@@ -76,6 +77,7 @@ internal fun CommonPasswordTopActionsMenuItems(
     showDisplayOptionsEntry: Boolean = true,
     showSettingsEntry: Boolean = false,
     onOpenSettings: (() -> Unit)? = null,
+    onScanFidoQr: (() -> Unit)? = null,
 ) {
     if (showDisplayOptionsEntry) {
         DropdownMenuItem(
@@ -84,6 +86,16 @@ internal fun CommonPasswordTopActionsMenuItems(
             onClick = {
                 onDismissMenu()
                 onShowDisplayOptions()
+            }
+        )
+    }
+    if (onScanFidoQr != null) {
+        DropdownMenuItem(
+            text = { Text(stringResource(R.string.passkey_scan_qr_menu_title)) },
+            leadingIcon = { Icon(Icons.Default.QrCodeScanner, contentDescription = null) },
+            onClick = {
+                onDismissMenu()
+                onScanFidoQr()
             }
         )
     }

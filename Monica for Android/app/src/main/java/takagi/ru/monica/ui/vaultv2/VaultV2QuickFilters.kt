@@ -28,7 +28,7 @@ internal fun VaultV2QuickFilterRow(
         modifier = modifier
             .fillMaxWidth()
             .horizontalScroll(rememberScrollState())
-            .padding(top = 2.dp, bottom = 10.dp),
+            .padding(top = 2.dp, bottom = 0.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         VaultV2QuickFilterChips(

@@ -140,6 +140,9 @@ import takagi.ru.monica.ui.icons.rememberSimpleIconBitmap
 import takagi.ru.monica.ui.icons.rememberUploadedPasswordIcon
 import takagi.ru.monica.ui.icons.shouldShowFallbackSlot
 import takagi.ru.monica.ui.PasswordQuickFolderBreadcrumb
+import takagi.ru.monica.ui.PasswordQuickFolderChipRow
+import takagi.ru.monica.ui.PasswordQuickFolderChipRowParams
+import takagi.ru.monica.ui.PasswordQuickFolderShortcut
 import takagi.ru.monica.ui.PasswordListInitialLoadingIndicator
 import takagi.ru.monica.ui.buildPasswordQuickFolderNodes
 import takagi.ru.monica.ui.buildCategoryMenuFolderShortcuts
@@ -945,6 +948,7 @@ fun VaultV2Pane(
 	onOpenTrashPage: () -> Unit,
 	onOpenArchivePage: () -> Unit,
 	onOpenCommonAccountTemplates: () -> Unit,
+	onScanFidoQr: () -> Unit = {},
 	onOpenStandaloneSettings: () -> Unit = {},
 	showStandaloneSettingsEntry: Boolean = false,
 	showOnlyLocalData: Boolean = false,
@@ -1926,6 +1930,7 @@ fun VaultV2Pane(
 								onDismissMenu = { isTopActionsMenuExpanded = false },
 								onShowDisplayOptions = {},
 								onOpenCommonAccountTemplates = onOpenCommonAccountTemplates,
+								onScanFidoQr = onScanFidoQr,
 								onOpenHistory = onOpenHistory,
 								onOpenTrash = onOpenTrashPage,
 								onOpenArchive = onOpenArchivePage,
@@ -1974,9 +1979,18 @@ fun VaultV2Pane(
 
 			VaultV2List(
 				hasVisibleQuickFilters = hasVisibleQuickFilters,
+				hasVisibleCategoryQuickFilters = categoryMenuQuickFolderShortcuts.isNotEmpty(),
 				configuredQuickFilterItems = configuredQuickFilterItems,
 				quickFilterChipState = quickFilterBindings.state,
 				quickFilterChipCallbacks = quickFilterBindings.callbacks,
+				categoryQuickFilterShortcuts = categoryMenuQuickFolderShortcuts,
+				currentFilter = categoryMenuFilter,
+				onNavigateFilter = { filter ->
+					filter.toUnifiedCategoryFilterSelectionOrNull()?.let { selection ->
+						selectedKeys.clear()
+						state.updateStorageFilter(selection)
+					}
+				},
 				sections = sectionedItems,
 				showLoadingIndicator = showVaultLoadingIndicator,
 				showEmptyState = showVaultEmptyState,
@@ -2310,9 +2324,13 @@ fun VaultV2Pane(
 @OptIn(ExperimentalFoundationApi::class)
 private fun VaultV2List(
 	hasVisibleQuickFilters: Boolean,
+	hasVisibleCategoryQuickFilters: Boolean,
 	configuredQuickFilterItems: List<PasswordListQuickFilterItem>,
 	quickFilterChipState: PasswordQuickFilterChipState,
 	quickFilterChipCallbacks: PasswordQuickFilterChipCallbacks,
+	categoryQuickFilterShortcuts: List<PasswordQuickFolderShortcut>,
+	currentFilter: CategoryFilter,
+	onNavigateFilter: (CategoryFilter) -> Unit,
 	sections: List<Pair<String, List<VaultV2Item>>>,
 	showLoadingIndicator: Boolean,
 	showEmptyState: Boolean,
@@ -2329,13 +2347,32 @@ private fun VaultV2List(
 		contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 96.dp),
 	verticalArrangement = Arrangement.spacedBy(6.dp),
 	) {
-		if (hasVisibleQuickFilters) {
+		if (hasVisibleQuickFilters || hasVisibleCategoryQuickFilters) {
 			item(key = "filter_row") {
-				VaultV2QuickFilterRow(
-					configuredQuickFilterItems = configuredQuickFilterItems,
-					chipState = quickFilterChipState,
-					chipCallbacks = quickFilterChipCallbacks,
-				)
+				Column(
+					modifier = Modifier
+						.fillMaxWidth()
+						.padding(bottom = 4.dp),
+					verticalArrangement = Arrangement.spacedBy(0.dp)
+				) {
+					if (hasVisibleQuickFilters) {
+						VaultV2QuickFilterRow(
+							configuredQuickFilterItems = configuredQuickFilterItems,
+							chipState = quickFilterChipState,
+							chipCallbacks = quickFilterChipCallbacks,
+						)
+					}
+
+					if (hasVisibleCategoryQuickFilters) {
+						PasswordQuickFolderChipRow(
+							params = PasswordQuickFolderChipRowParams(
+								currentFilter = currentFilter,
+								quickFolderShortcuts = categoryQuickFilterShortcuts,
+								onSelectFilter = onNavigateFilter,
+							)
+						)
+					}
+				}
 			}
 		}
 

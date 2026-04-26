@@ -762,6 +762,9 @@
     <string name="passkey_auth_title">Sign In with Passkey</string>
     <string name="passkey_auth_message">Use your passkey to sign in to %1$s</string>
     <string name="passkey_auth_confirm">Sign In</string>
+    <string name="passkey_scan_qr_menu_title">Scan passkey QR</string>
+    <string name="passkey_qr_invalid">Invalid passkey QR code.</string>
+    <string name="passkey_qr_open_failed">This system cannot handle this passkey QR code.</string>
     
     <!-- Passkey Management -->
     <string name="passkey">Passkey</string>
