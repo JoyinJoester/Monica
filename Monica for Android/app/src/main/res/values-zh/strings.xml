@@ -100,6 +100,11 @@
     <string name="ime_quick_fill">立即填充</string>
     <string name="ime_authenticator_panel_placeholder">这里已经预留成验证器页签了，下一步我可以继续把真实 TOTP 列表接进来。</string>
     <string name="ime_documents_panel_placeholder">这里已经预留成证件页签了，下一步我可以继续把真实证件选择器接进来。</string>
+    <string name="ime_empty_authenticator_title">暂无验证器</string>
+    <string name="ime_empty_authenticator_message">解锁后，这里会显示已保存的 TOTP 验证码。</string>
+    <string name="ime_empty_card_wallet_title">暂无卡包条目</string>
+    <string name="ime_empty_card_wallet_message">解锁后，这里会显示银行卡和证件信息。</string>
+    <string name="ime_totp_seconds_remaining">%1$d 秒</string>
     <string name="ime_empty_title">暂无自动填充条目</string>
     <string name="ime_empty_message">打开自动填充后，这里会显示匹配当前应用的账号。</string>
     <string name="ime_no_matches_title">没有匹配结果</string>
@@ -109,6 +114,7 @@
     <string name="ime_key_shift">大写切换</string>
     <string name="ime_key_delete">删除</string>
     <string name="ime_key_mode">键盘模式</string>
+    <string name="ime_clear_all_undo_action">撤销</string>
     <string name="ime_key_space">空格</string>
     <string name="ime_key_enter">换行</string>
     <string name="ime_show">显示</string>
@@ -921,7 +927,7 @@
     <string name="custom_icon_load_more">加载更多图标（剩余 %1$d 个）</string>
     <string name="custom_icon_upload_success">图标上传成功</string>
     <string name="custom_icon_upload_failed">上传失败：%1$s</string>
-    <string name="settings_version_number">V1.0.283</string>
+    <string name="settings_version_number">V1.0.285</string>
     <string name="settings_support_author">支持作者</string>
     <string name="settings_support_author_description">感谢您的支持</string>
     <string name="settings_privacy_policy">隐私政策</string>

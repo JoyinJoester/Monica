@@ -3,6 +3,8 @@ package takagi.ru.monica.ime
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -19,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -39,6 +42,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -46,6 +50,7 @@ import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.SpaceBar
@@ -68,12 +73,14 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
@@ -82,6 +89,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.autofill_ng.ui.rememberAppIcon
 import takagi.ru.monica.data.AppSettings
@@ -102,19 +111,52 @@ internal data class MonicaImePasswordEntry(
     val bitwardenVaultId: Long? = null
 )
 
+internal data class MonicaImeAuthenticatorEntry(
+    val id: Long,
+    val title: String,
+    val issuer: String,
+    val accountName: String,
+    val code: String,
+    val remainingSeconds: Int,
+    val isFavorite: Boolean,
+    val sourceLabel: String,
+    val keepassDatabaseId: Long? = null,
+    val bitwardenVaultId: Long? = null
+)
+
+internal data class MonicaImeCardWalletField(
+    val label: String,
+    val value: String
+)
+
+internal data class MonicaImeCardWalletEntry(
+    val id: Long,
+    val title: String,
+    val subtitle: String,
+    val typeLabel: String,
+    val isFavorite: Boolean,
+    val sourceLabel: String,
+    val fields: List<MonicaImeCardWalletField>,
+    val keepassDatabaseId: Long? = null,
+    val bitwardenVaultId: Long? = null
+)
+
 internal data class MonicaImeUiState(
     val unlocked: Boolean = false,
     val activePackageName: String = "",
     val activePanel: MonicaImePanel = MonicaImePanel.KEYBOARD,
     val query: String = "",
     val entries: List<MonicaImePasswordEntry> = emptyList(),
+    val authenticatorEntries: List<MonicaImeAuthenticatorEntry> = emptyList(),
+    val cardWalletEntries: List<MonicaImeCardWalletEntry> = emptyList(),
     val databaseOptions: List<MonicaImeDatabaseOption> = emptyList(),
     val selectedDatabaseScope: MonicaImeDatabaseScope = MonicaImeDatabaseScope.All,
     val errorMessage: String? = null,
     val keyboardMode: MonicaKeyboardMode = MonicaKeyboardMode.LETTERS,
     val isUppercase: Boolean = false,
     val autoLockMinutes: Int = 5,
-    val isAutofillPanelVisible: Boolean = false
+    val isAutofillPanelVisible: Boolean = false,
+    val pendingClearedInput: String? = null
 )
 
 internal enum class MonicaKeyboardMode {
@@ -176,13 +218,20 @@ internal fun MonicaImeContent(
     onDatabaseScopeSelected: (MonicaImeDatabaseScope) -> Unit,
     onInsertPassword: (MonicaImePasswordEntry) -> Unit,
     onInsertUsername: (MonicaImePasswordEntry) -> Unit,
+    onSmartFillPassword: (MonicaImePasswordEntry) -> Unit,
+    onInsertAuthenticatorCode: (MonicaImeAuthenticatorEntry) -> Unit,
+    onInsertCardWalletValue: (MonicaImeCardWalletField) -> Unit,
+    onSmartFillCardWallet: (MonicaImeCardWalletEntry) -> Unit,
     onKeyPressed: (String) -> Unit,
     onBackspace: () -> Unit,
+    onDeleteAll: () -> Unit,
+    onUndoDeleteAll: () -> Unit,
     onEnter: () -> Unit,
     onSpace: () -> Unit,
     onShiftToggle: () -> Unit,
     onKeyboardModeChange: (MonicaKeyboardMode) -> Unit,
     onOpenUnlockApp: () -> Unit,
+    onOpenAutofillSettings: () -> Unit,
     onPanelSelected: (MonicaImePanel) -> Unit,
     onSwitchInputMethod: () -> Unit,
     onDismiss: () -> Unit
@@ -220,8 +269,11 @@ internal fun MonicaImeContent(
                         .background(MaterialTheme.colorScheme.surface)
                 ) {
                     MonicaImeToolbar(
+                        modifier = Modifier.zIndex(0f),
                         uiState = uiState,
                         onPanelSelected = onPanelSelected,
+                        onUndoDeleteAll = onUndoDeleteAll,
+                        onOpenAutofillSettings = onOpenAutofillSettings,
                         onDismiss = onDismiss
                     )
 
@@ -229,6 +281,7 @@ internal fun MonicaImeContent(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(MonicaImeContentAreaHeight)
+                            .zIndex(30f)
                     ) {
                         if (showPanelContent) {
                             when (uiState.activePanel) {
@@ -239,23 +292,25 @@ internal fun MonicaImeContent(
                                         onQueryChanged = onQueryChanged,
                                         onDatabaseScopeSelected = onDatabaseScopeSelected,
                                         onInsertPassword = onInsertPassword,
-                                        onInsertUsername = onInsertUsername
+                                        onInsertUsername = onInsertUsername,
+                                        onSmartFillPassword = onSmartFillPassword
                                     )
                                 }
                                 MonicaImePanel.AUTHENTICATORS -> {
-                                    ImeFeaturePlaceholderPane(
+                                    AuthenticatorPane(
                                         modifier = Modifier.fillMaxSize(),
-                                        icon = Icons.Default.VerifiedUser,
-                                        title = stringResource(R.string.authenticator),
-                                        message = stringResource(R.string.ime_authenticator_panel_placeholder)
+                                        uiState = uiState,
+                                        onDatabaseScopeSelected = onDatabaseScopeSelected,
+                                        onInsertCode = onInsertAuthenticatorCode
                                     )
                                 }
                                 MonicaImePanel.DOCUMENTS -> {
-                                    ImeFeaturePlaceholderPane(
+                                    CardWalletPane(
                                         modifier = Modifier.fillMaxSize(),
-                                        icon = Icons.Default.Badge,
-                                        title = stringResource(R.string.documents),
-                                        message = stringResource(R.string.ime_documents_panel_placeholder)
+                                        uiState = uiState,
+                                        onDatabaseScopeSelected = onDatabaseScopeSelected,
+                                        onInsertField = onInsertCardWalletValue,
+                                        onSmartFill = onSmartFillCardWallet
                                     )
                                 }
                                 MonicaImePanel.KEYBOARD -> Unit
@@ -279,6 +334,7 @@ internal fun MonicaImeContent(
                                 isUppercase = uiState.isUppercase,
                                 onKeyPressed = onKeyPressed,
                                 onBackspace = onBackspace,
+                                onDeleteAll = onDeleteAll,
                                 onEnter = onEnter,
                                 onSpace = onSpace,
                                 onShiftToggle = onShiftToggle,
@@ -298,8 +354,11 @@ internal fun MonicaImeContent(
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 private fun MonicaImeToolbar(
+    modifier: Modifier = Modifier,
     uiState: MonicaImeUiState,
     onPanelSelected: (MonicaImePanel) -> Unit,
+    onUndoDeleteAll: () -> Unit,
+    onOpenAutofillSettings: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val selected = when (uiState.activePanel) {
@@ -316,7 +375,7 @@ private fun MonicaImeToolbar(
     )
 
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 8.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -338,7 +397,7 @@ private fun MonicaImeToolbar(
                         MonicaToolbarSelection.MONICA -> stringResource(R.string.ime_toolbar_keyboard)
                         MonicaToolbarSelection.PASSWORDS -> stringResource(R.string.ime_toolbar_autofill)
                         MonicaToolbarSelection.AUTHENTICATORS -> stringResource(R.string.authenticator)
-                        MonicaToolbarSelection.DOCUMENTS -> stringResource(R.string.documents)
+                        MonicaToolbarSelection.DOCUMENTS -> stringResource(R.string.nav_card_wallet)
                     },
                     imageVector = when (item) {
                         MonicaToolbarSelection.MONICA -> Icons.Default.Keyboard
@@ -360,12 +419,25 @@ private fun MonicaImeToolbar(
 
         Spacer(modifier = Modifier.weight(1f))
 
-        ToolbarCircleButton(
-            selected = false,
-            onClick = { },
-            contentDescription = null
-        ) {
-            Icon(Icons.Default.MoreHoriz, contentDescription = null)
+        if (uiState.pendingClearedInput != null) {
+            ToolbarCircleButton(
+                selected = true,
+                onClick = onUndoDeleteAll,
+                contentDescription = stringResource(R.string.ime_clear_all_undo_action)
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.Undo,
+                    contentDescription = null
+                )
+            }
+        } else {
+            ToolbarCircleButton(
+                selected = false,
+                onClick = onOpenAutofillSettings,
+                contentDescription = stringResource(R.string.autofill)
+            ) {
+                Icon(Icons.Default.MoreHoriz, contentDescription = null)
+            }
         }
 
         ToolbarCircleButton(
@@ -430,7 +502,8 @@ private fun UnlockedVaultPane(
     onQueryChanged: (String) -> Unit,
     onDatabaseScopeSelected: (MonicaImeDatabaseScope) -> Unit,
     onInsertPassword: (MonicaImePasswordEntry) -> Unit,
-    onInsertUsername: (MonicaImePasswordEntry) -> Unit
+    onInsertUsername: (MonicaImePasswordEntry) -> Unit,
+    onSmartFillPassword: (MonicaImePasswordEntry) -> Unit
 ) {
     ElevatedCard(
         modifier = modifier
@@ -519,6 +592,7 @@ private fun UnlockedVaultPane(
                     items(uiState.entries, key = { it.id }) { entry ->
                         PasswordEntryCard(
                             entry = entry,
+                            onSmartFill = { onSmartFillPassword(entry) },
                             onInsertPassword = { onInsertPassword(entry) },
                             onInsertUsername = { onInsertUsername(entry) }
                         )
@@ -575,11 +649,11 @@ private fun EmptyVaultState(query: String) {
 }
 
 @Composable
-private fun ImeFeaturePlaceholderPane(
+private fun AuthenticatorPane(
     modifier: Modifier = Modifier,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    message: String
+    uiState: MonicaImeUiState,
+    onDatabaseScopeSelected: (MonicaImeDatabaseScope) -> Unit,
+    onInsertCode: (MonicaImeAuthenticatorEntry) -> Unit
 ) {
     ElevatedCard(
         modifier = modifier
@@ -590,39 +664,364 @@ private fun ImeFeaturePlaceholderPane(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         )
     ) {
-        Column(
+        Column(modifier = Modifier.fillMaxSize()) {
+            DatabaseScopeFilterRow(
+                uiState = uiState,
+                onDatabaseScopeSelected = onDatabaseScopeSelected
+            )
+            if (uiState.authenticatorEntries.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = true)
+                        .padding(14.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    ImeEmptyState(
+                        icon = Icons.Default.VerifiedUser,
+                        title = stringResource(R.string.ime_empty_authenticator_title),
+                        message = stringResource(R.string.ime_empty_authenticator_message)
+                    )
+                }
+            } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = true),
+                contentPadding = PaddingValues(
+                    start = 14.dp,
+                    top = 0.dp,
+                    end = 14.dp,
+                    bottom = 10.dp
+                ),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(uiState.authenticatorEntries, key = { it.id }) { entry ->
+                    AuthenticatorEntryCard(
+                        entry = entry,
+                        onInsertCode = { onInsertCode(entry) }
+                    )
+                }
+            }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CardWalletPane(
+    modifier: Modifier = Modifier,
+    uiState: MonicaImeUiState,
+    onDatabaseScopeSelected: (MonicaImeDatabaseScope) -> Unit,
+    onInsertField: (MonicaImeCardWalletField) -> Unit,
+    onSmartFill: (MonicaImeCardWalletEntry) -> Unit
+) {
+    ElevatedCard(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(30.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        )
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            DatabaseScopeFilterRow(
+                uiState = uiState,
+                onDatabaseScopeSelected = onDatabaseScopeSelected
+            )
+            if (uiState.cardWalletEntries.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = true)
+                        .padding(14.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    ImeEmptyState(
+                        icon = Icons.Default.CreditCard,
+                        title = stringResource(R.string.ime_empty_card_wallet_title),
+                        message = stringResource(R.string.ime_empty_card_wallet_message)
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = true),
+                    contentPadding = PaddingValues(
+                        start = 14.dp,
+                        top = 0.dp,
+                        end = 14.dp,
+                        bottom = 10.dp
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(uiState.cardWalletEntries, key = { it.id }) { entry ->
+                        CardWalletEntryCard(
+                            entry = entry,
+                            onSmartFill = { onSmartFill(entry) },
+                            onInsertField = onInsertField
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DatabaseScopeFilterRow(
+    uiState: MonicaImeUiState,
+    onDatabaseScopeSelected: (MonicaImeDatabaseScope) -> Unit
+) {
+    if (uiState.databaseOptions.isEmpty()) return
+    LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(start = 16.dp, top = 10.dp, end = 16.dp, bottom = 8.dp)
+    ) {
+        items(uiState.databaseOptions, key = { it.label }) { option ->
+            MonicaExpressiveFilterChip(
+                selected = uiState.selectedDatabaseScope == option.scope,
+                onClick = { onDatabaseScopeSelected(option.scope) },
+                label = option.label,
+                leadingIcon = option.scope.icon()
+            )
+        }
+    }
+}
+
+@Composable
+private fun ImeEmptyState(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    title: String,
+    message: String
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 18.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 18.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
+                .size(56.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primaryContainer),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.size(26.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = message,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun AuthenticatorEntryCard(
+    entry: MonicaImeAuthenticatorEntry,
+    onInsertCode: () -> Unit
+) {
+    ElevatedCard(
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onInsertCode)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(64.dp)
+                    .size(46.dp)
                     .clip(CircleShape)
                     .background(MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = icon,
+                    imageVector = Icons.Default.VerifiedUser,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                    modifier = Modifier.size(28.dp)
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer
                 )
             }
-            Spacer(modifier = Modifier.height(14.dp))
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = message,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = entry.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                val subtitle = listOf(entry.issuer, entry.accountName)
+                    .filter { it.isNotBlank() }
+                    .joinToString(" · ")
+                    .ifBlank { entry.sourceLabel }
+                if (subtitle.isNotBlank()) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = entry.code,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                if (entry.remainingSeconds > 0) {
+                    Text(
+                        text = stringResource(R.string.ime_totp_seconds_remaining, entry.remainingSeconds),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CardWalletEntryCard(
+    entry: MonicaImeCardWalletEntry,
+    onSmartFill: () -> Unit,
+    onInsertField: (MonicaImeCardWalletField) -> Unit
+) {
+    var expanded by rememberSaveable(entry.id) { mutableStateOf(false) }
+    val cardShape = RoundedCornerShape(22.dp)
+    val interactionSource = remember(entry.id) { MutableInteractionSource() }
+
+    ElevatedCard(
+        shape = cardShape,
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(cardShape)
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = null
+                ) {
+                    expanded = !expanded
+                }
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(46.dp)
+                        .clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.primaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CreditCard,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = entry.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = entry.subtitle.ifBlank { entry.typeLabel },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Text(
+                    text = entry.typeLabel,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .clickable { expanded = !expanded }
+                        .padding(6.dp)
+                )
+            }
+
+            if (expanded) {
+                FlowRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 14.dp, end = 14.dp, bottom = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            expanded = false
+                            onSmartFill()
+                        }
+                    ) {
+                        Text(stringResource(R.string.ime_quick_fill))
+                    }
+                    entry.fields.forEach { field ->
+                        OutlinedButton(
+                            onClick = {
+                                expanded = false
+                                onInsertField(field)
+                            }
+                        ) {
+                            Text(field.label)
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -631,6 +1030,7 @@ private fun ImeFeaturePlaceholderPane(
 @Composable
 private fun PasswordEntryCard(
     entry: MonicaImePasswordEntry,
+    onSmartFill: () -> Unit,
     onInsertPassword: () -> Unit,
     onInsertUsername: () -> Unit
 ) {
@@ -710,6 +1110,16 @@ private fun PasswordEntryCard(
                             )
                         }
                     }
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowDown,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .clickable { expanded = !expanded }
+                            .padding(6.dp)
+                    )
                 }
 
                 if (expanded) {
@@ -720,6 +1130,14 @@ private fun PasswordEntryCard(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        OutlinedButton(
+                            onClick = {
+                                expanded = false
+                                onSmartFill()
+                            }
+                        ) {
+                            Text(stringResource(R.string.ime_quick_fill))
+                        }
                         OutlinedButton(
                             onClick = {
                                 expanded = false
@@ -752,6 +1170,7 @@ private fun MonicaKeyboard(
     isUppercase: Boolean,
     onKeyPressed: (String) -> Unit,
     onBackspace: () -> Unit,
+    onDeleteAll: () -> Unit,
     onEnter: () -> Unit,
     onSpace: () -> Unit,
     onShiftToggle: () -> Unit,
@@ -769,6 +1188,7 @@ private fun MonicaKeyboard(
                 isUppercase = isUppercase,
                 onKeyPressed = onKeyPressed,
                 onBackspace = onBackspace,
+                onDeleteAll = onDeleteAll,
                 onEnter = onEnter,
                 onSpace = onSpace,
                 onShiftToggle = onShiftToggle,
@@ -781,6 +1201,7 @@ private fun MonicaKeyboard(
             MonicaNumberKeyboard(
                 onKeyPressed = onKeyPressed,
                 onBackspace = onBackspace,
+                onDeleteAll = onDeleteAll,
                 onEnter = onEnter,
                 onKeyboardModeChange = onKeyboardModeChange
             )
@@ -790,6 +1211,7 @@ private fun MonicaKeyboard(
             MonicaSymbolKeyboard(
                 onKeyPressed = onKeyPressed,
                 onBackspace = onBackspace,
+                onDeleteAll = onDeleteAll,
                 onEnter = onEnter,
                 onKeyboardModeChange = onKeyboardModeChange
             )
@@ -802,6 +1224,7 @@ private fun MonicaLetterKeyboard(
     isUppercase: Boolean,
     onKeyPressed: (String) -> Unit,
     onBackspace: () -> Unit,
+    onDeleteAll: () -> Unit,
     onEnter: () -> Unit,
     onSpace: () -> Unit,
     onShiftToggle: () -> Unit,
@@ -826,7 +1249,7 @@ private fun MonicaLetterKeyboard(
                     weight = 1.35f,
                     active = isUppercase,
                     style = MonicaKeyStyle.ACCENT,
-                    cornerRadius = 14.dp,
+                    cornerRadius = 8.dp,
                     onClick = onShiftToggle
                 )
             }
@@ -840,7 +1263,7 @@ private fun MonicaLetterKeyboard(
                 MonicaKeyButton(
                     label = char.uppercaseChar().toString(),
                     weight = 1f,
-                    cornerRadius = 12.dp,
+                    cornerRadius = 8.dp,
                     onClick = { onKeyPressed(output) }
                 )
             }
@@ -851,8 +1274,10 @@ private fun MonicaLetterKeyboard(
                     icon = { Icon(Icons.AutoMirrored.Filled.Backspace, contentDescription = stringResource(R.string.ime_key_delete)) },
                     weight = 1.35f,
                     style = MonicaKeyStyle.ACCENT,
-                    cornerRadius = 14.dp,
-                    onClick = onBackspace
+                    cornerRadius = 8.dp,
+                    onClick = onBackspace,
+                    onLongPressRepeat = onBackspace,
+                    onSwipeUp = onDeleteAll
                 )
             }
         }
@@ -871,20 +1296,21 @@ private fun MonicaLetterKeyboard(
             icon = { Icon(Icons.Default.Keyboard, contentDescription = stringResource(R.string.ime_key_mode)) },
             weight = 1.05f,
             style = MonicaKeyStyle.ACCENT,
-            cornerRadius = 14.dp,
+            cornerRadius = 8.dp,
             onClick = onSwitchInputMethod
         )
         MonicaKeyButton(
             label = "",
             icon = { Icon(Icons.Default.SpaceBar, contentDescription = stringResource(R.string.ime_key_space)) },
             weight = 3.9f,
-            cornerRadius = 18.dp,
-            onClick = onSpace
+            cornerRadius = 8.dp,
+            onClick = onSpace,
+            onLongPressRepeat = onSpace
         )
         MonicaKeyButton(
             label = ".",
             weight = 0.95f,
-            cornerRadius = 12.dp,
+            cornerRadius = 8.dp,
             onClick = { onKeyPressed(".") }
         )
         MonicaKeyButton(
@@ -892,7 +1318,7 @@ private fun MonicaLetterKeyboard(
             icon = { Icon(Icons.AutoMirrored.Filled.KeyboardReturn, contentDescription = stringResource(R.string.ime_key_enter)) },
             weight = 1.8f,
             style = MonicaKeyStyle.PRIMARY,
-            cornerRadius = 20.dp,
+            cornerRadius = 8.dp,
             onClick = onEnter
         )
     }
@@ -902,6 +1328,7 @@ private fun MonicaLetterKeyboard(
 private fun MonicaNumberKeyboard(
     onKeyPressed: (String) -> Unit,
     onBackspace: () -> Unit,
+    onDeleteAll: () -> Unit,
     onEnter: () -> Unit,
     onKeyboardModeChange: (MonicaKeyboardMode) -> Unit
 ) {
@@ -931,7 +1358,7 @@ private fun MonicaNumberKeyboard(
                             MonicaKeyButton(
                                 label = key,
                                 weight = 1f,
-                                cornerRadius = 10.dp,
+                                cornerRadius = 8.dp,
                                 onClick = { onKeyPressed(key) }
                             )
                         }
@@ -950,13 +1377,13 @@ private fun MonicaNumberKeyboard(
                     MonicaKeyButton(
                         label = "0",
                         weight = 1f,
-                        cornerRadius = 10.dp,
+                        cornerRadius = 8.dp,
                         onClick = { onKeyPressed("0") }
                     )
                     MonicaKeyButton(
                         label = ".",
                         weight = 1f,
-                        cornerRadius = 10.dp,
+                        cornerRadius = 8.dp,
                         onClick = { onKeyPressed(".") }
                     )
                 }
@@ -971,15 +1398,17 @@ private fun MonicaNumberKeyboard(
                     label = "",
                     icon = { Icon(Icons.AutoMirrored.Filled.Backspace, contentDescription = stringResource(R.string.ime_key_delete)) },
                     style = MonicaKeyStyle.ACCENT,
-                    cornerRadius = 10.dp,
-                    onClick = onBackspace
+                    cornerRadius = 8.dp,
+                    onClick = onBackspace,
+                    onLongPressRepeat = onBackspace,
+                    onSwipeUp = onDeleteAll
                 )
                 MonicaKeyButtonBase(
                     modifier = Modifier.fillMaxWidth(),
                     label = "",
                     icon = { Icon(Icons.AutoMirrored.Filled.KeyboardReturn, contentDescription = stringResource(R.string.ime_key_enter)) },
                     style = MonicaKeyStyle.PRIMARY,
-                    cornerRadius = 10.dp,
+                    cornerRadius = 8.dp,
                     height = 162.dp,
                     onClick = onEnter
                 )
@@ -992,6 +1421,7 @@ private fun MonicaNumberKeyboard(
 private fun MonicaSymbolKeyboard(
     onKeyPressed: (String) -> Unit,
     onBackspace: () -> Unit,
+    onDeleteAll: () -> Unit,
     onEnter: () -> Unit,
     onKeyboardModeChange: (MonicaKeyboardMode) -> Unit
 ) {
@@ -1009,7 +1439,7 @@ private fun MonicaSymbolKeyboard(
                 MonicaKeyButton(
                     label = key,
                     weight = 1f,
-                    cornerRadius = 12.dp,
+                    cornerRadius = 8.dp,
                     onClick = { onKeyPressed(key) }
                 )
             }
@@ -1024,7 +1454,7 @@ private fun MonicaSymbolKeyboard(
             MonicaKeyButton(
                 label = key,
                 weight = 1f,
-                cornerRadius = 12.dp,
+                cornerRadius = 8.dp,
                 onClick = { onKeyPressed(key) }
             )
         }
@@ -1033,8 +1463,10 @@ private fun MonicaSymbolKeyboard(
             icon = { Icon(Icons.AutoMirrored.Filled.Backspace, contentDescription = stringResource(R.string.ime_key_delete)) },
             weight = 2f,
             style = MonicaKeyStyle.ACCENT,
-            cornerRadius = 12.dp,
-            onClick = onBackspace
+            cornerRadius = 8.dp,
+            onClick = onBackspace,
+            onLongPressRepeat = onBackspace,
+            onSwipeUp = onDeleteAll
         )
     }
 
@@ -1049,20 +1481,21 @@ private fun MonicaSymbolKeyboard(
         MonicaKeyButton(
             label = ",",
             weight = 1.05f,
-            cornerRadius = 14.dp,
+            cornerRadius = 8.dp,
             onClick = { onKeyPressed(",") }
         )
         MonicaKeyButton(
             label = "",
             icon = { Icon(Icons.Default.SpaceBar, contentDescription = stringResource(R.string.ime_key_space)) },
             weight = 3.9f,
-            cornerRadius = 18.dp,
-            onClick = { onKeyPressed(" ") }
+            cornerRadius = 8.dp,
+            onClick = { onKeyPressed(" ") },
+            onLongPressRepeat = { onKeyPressed(" ") }
         )
         MonicaKeyButton(
             label = ".",
             weight = 0.95f,
-            cornerRadius = 12.dp,
+            cornerRadius = 8.dp,
             onClick = { onKeyPressed(".") }
         )
         MonicaKeyButton(
@@ -1070,7 +1503,7 @@ private fun MonicaSymbolKeyboard(
             icon = { Icon(Icons.AutoMirrored.Filled.KeyboardReturn, contentDescription = stringResource(R.string.ime_key_enter)) },
             weight = 1.8f,
             style = MonicaKeyStyle.PRIMARY,
-            cornerRadius = 20.dp,
+            cornerRadius = 8.dp,
             onClick = onEnter
         )
     }
@@ -1094,7 +1527,7 @@ private fun RowScope.KeyboardModeKey(
         label = "",
         weight = weight,
         style = MonicaKeyStyle.ACCENT,
-        cornerRadius = 20.dp,
+        cornerRadius = 8.dp,
         onClick = onClick
     ) {
         KeyboardModeLabel(activeMode = activeMode)
@@ -1164,8 +1597,12 @@ private fun MonicaKeyButtonBase(
     cornerRadius: androidx.compose.ui.unit.Dp = 12.dp,
     style: MonicaKeyStyle = MonicaKeyStyle.STANDARD,
     height: androidx.compose.ui.unit.Dp = 50.dp,
+    onLongPressRepeat: (() -> Unit)? = null,
+    onSwipeUp: (() -> Unit)? = null,
     content: @Composable (() -> Unit)? = null
 ) {
+    var pressed by remember { mutableStateOf(false) }
+    val coroutineScope = rememberCoroutineScope()
     val containerColor = when {
         active -> MaterialTheme.colorScheme.primaryContainer
         style == MonicaKeyStyle.PRIMARY -> MaterialTheme.colorScheme.primaryContainer
@@ -1179,27 +1616,109 @@ private fun MonicaKeyButtonBase(
         else -> MaterialTheme.colorScheme.onSurface
     }
 
-    Surface(
+    Box(
         modifier = modifier
             .height(height)
-            .clip(RoundedCornerShape(cornerRadius))
-            .clickable(onClick = onClick),
-        color = containerColor,
-        shadowElevation = 2.dp,
-        tonalElevation = 2.dp
+            .zIndex(if (pressed) 2f else 0f)
+            .pointerInput(onClick, onLongPressRepeat, onSwipeUp) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    pressed = true
+                    var lastY = down.position.y
+                    var didRepeat = false
+                    val repeatJob = onLongPressRepeat?.let { repeatAction ->
+                        coroutineScope.launch {
+                            delay(360)
+                            while (true) {
+                                didRepeat = true
+                                repeatAction()
+                                delay(58)
+                            }
+                        }
+                    }
+
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id } ?: continue
+                        lastY = change.position.y
+                        if (!change.pressed) {
+                            break
+                        }
+                    }
+
+                    repeatJob?.cancel()
+                    pressed = false
+                    val swipeUpDistance = down.position.y - lastY
+                    when {
+                        onSwipeUp != null && swipeUpDistance > 32.dp.toPx() -> onSwipeUp()
+                        !didRepeat -> onClick()
+                    }
+                }
+            }
+    ) {
+        if (pressed) {
+            KeyPressPreview(
+                label = label,
+                icon = icon,
+                contentColor = contentColor,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .offset(y = (-62).dp)
+            )
+        }
+
+        Surface(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(cornerRadius)),
+            color = containerColor,
+            shadowElevation = 2.dp,
+            tonalElevation = 2.dp
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                if (content != null) {
+                    content()
+                } else if (icon != null) {
+                    CompositionLocalProvider(LocalContentColor provides contentColor) {
+                        icon()
+                    }
+                } else {
+                    Text(
+                        text = label,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = contentColor
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun KeyPressPreview(
+    label: String,
+    icon: @Composable (() -> Unit)?,
+    contentColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.size(width = 64.dp, height = 70.dp),
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        shadowElevation = 8.dp,
+        tonalElevation = 6.dp
     ) {
         Box(contentAlignment = Alignment.Center) {
-            if (content != null) {
-                content()
-            } else if (icon != null) {
+            if (icon != null) {
                 CompositionLocalProvider(LocalContentColor provides contentColor) {
                     icon()
                 }
             } else {
                 Text(
                     text = label,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.SemiBold,
                     color = contentColor
                 )
             }
@@ -1217,6 +1736,8 @@ private fun RowScope.MonicaKeyButton(
     cornerRadius: androidx.compose.ui.unit.Dp = 12.dp,
     style: MonicaKeyStyle = MonicaKeyStyle.STANDARD,
     height: androidx.compose.ui.unit.Dp = 50.dp,
+    onLongPressRepeat: (() -> Unit)? = null,
+    onSwipeUp: (() -> Unit)? = null,
     content: @Composable (() -> Unit)? = null
 ) {
     MonicaKeyButtonBase(
@@ -1229,6 +1750,8 @@ private fun RowScope.MonicaKeyButton(
         cornerRadius = cornerRadius,
         style = style,
         height = height,
+        onLongPressRepeat = onLongPressRepeat,
+        onSwipeUp = onSwipeUp,
         content = content
     )
 }

@@ -127,6 +127,8 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
     
     companion object {
         private const val EXTRA_ARGS = "extra_args"
+        const val EXTRA_MANUAL_MODE = "extra_manual_mode"
+        const val EXTRA_IME_MODE = "extra_ime_mode"
         private const val DUPLICATE_LAUNCH_WINDOW_MS = 1500L
         private const val AUTOFILL_OTP_NOTIFICATION_ID = 12001
         @Volatile
@@ -237,7 +239,11 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
     }
     
     private val explicitManualMode by lazy {
-        intent.getBooleanExtra("extra_manual_mode", false)
+        intent.getBooleanExtra(EXTRA_MANUAL_MODE, false)
+    }
+
+    private val imeMode by lazy {
+        intent.getBooleanExtra(EXTRA_IME_MODE, false)
     }
 
     private val manualModeReason by lazy {
@@ -391,6 +397,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                     biometricEnabled = settings.biometricEnabled,
                     iconCardsEnabled = settings.iconCardsEnabled,
                     isManualMode = isManualMode,
+                    showTargetContextInManualMode = imeMode,
                     manualModeReason = manualModeReason,
                     onAutofill = { password, forceAddUri ->
                         handleAutofill(password, forceAddUri)
@@ -592,6 +599,12 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         val filledValues = linkedMapOf<AutofillId, String>()
 
         val normalizedHints = hints.orEmpty().map { it.trim().lowercase() }
+        val hasOtpHint = normalizedHints.any { isOtpHint(it) }
+        val selectedOtpCode = if (hasOtpHint) {
+            generateOtpCodeForPassword(password)
+        } else {
+            null
+        }
         val hasUsernameHint = normalizedHints.any {
             it == EnhancedAutofillStructureParserV2.FieldHint.USERNAME.name.lowercase() || it.contains("username")
         }
@@ -614,6 +627,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         autofillIds.forEachIndexed { index, autofillId ->
             val normalizedHint = hints?.getOrNull(index)?.trim()?.lowercase().orEmpty()
             val value = when {
+                isOtpHint(normalizedHint) -> selectedOtpCode
                 normalizedHint == EnhancedAutofillStructureParserV2.FieldHint.USERNAME.name.lowercase() ||
                     normalizedHint.contains("username") -> accountValue
                 normalizedHint == EnhancedAutofillStructureParserV2.FieldHint.PHONE_NUMBER.name.lowercase() ||
@@ -644,6 +658,8 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                 "idCount" to autofillIds.size,
                 "hintCount" to (hints?.size ?: 0),
                 "strictFilledCount" to strictFilledCount,
+                "hasOtpHint" to hasOtpHint,
+                "otpResolved" to !selectedOtpCode.isNullOrBlank(),
                 "allowAccountInEmailField" to allowAccountInEmailField,
                 "unmatchedHintPreview" to if (unmatchedHintPreview.isEmpty()) "none" else unmatchedHintPreview.joinToString(","),
             )
@@ -654,6 +670,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             autofillIds.forEachIndexed { index, autofillId ->
                 val normalizedHint = hints?.getOrNull(index)?.lowercase().orEmpty()
                 val fallbackValue = when {
+                    isOtpHint(normalizedHint) -> selectedOtpCode
                     normalizedHint.contains("pass") -> decryptedPassword
                     normalizedHint.contains("user") ||
                         normalizedHint.contains("email") ||
@@ -918,12 +935,24 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         finish()
     }
 
-    private fun processSelectedOtpActions(password: PasswordEntry) {
-        val authenticatorKey = password.authenticatorKey.trim()
-        if (authenticatorKey.isBlank()) return
+    private fun isOtpHint(normalizedHint: String): Boolean {
+        if (normalizedHint.isBlank()) return false
+        return normalizedHint == EnhancedAutofillStructureParserV2.FieldHint.OTP_CODE.name.lowercase() ||
+            normalizedHint.contains("totp") ||
+            normalizedHint.contains("otp") ||
+            normalizedHint.contains("2fa") ||
+            normalizedHint.contains("twofactor") ||
+            normalizedHint.contains("two_factor") ||
+            normalizedHint.contains("verification") ||
+            normalizedHint.contains("验证码") ||
+            normalizedHint.contains("驗證碼") ||
+            normalizedHint.contains("一次性")
+    }
 
+    private fun processSelectedOtpActions(password: PasswordEntry) {
         val isOtpTarget = args.autofillHints
-            ?.contains(EnhancedAutofillStructureParserV2.FieldHint.OTP_CODE.name) == true
+            ?.map { it.trim().lowercase() }
+            ?.any(::isOtpHint) == true
         if (isOtpTarget) {
             AutofillLogger.d("OTP", "Skip OTP auto action for OTP-target fill request")
             return
@@ -939,12 +968,11 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
             }
             if (!showNotification && !autoCopy) return
 
-            val passwordTotpData = parsePasswordAuthenticatorTotpData(authenticatorKey)
-            val totpData = resolveOtpFromExistingValidators(password, passwordTotpData)
+            val totpData = resolveOtpDataForPassword(password)
             if (totpData == null) {
                 AutofillLogger.w(
                     "OTP",
-                    "Skip OTP notify/copy: no matching validator entry found for passwordId=${password.id}"
+                    "Skip OTP notify/copy: no authenticator key or bound validator entry found for passwordId=${password.id}"
                 )
                 return
             }
@@ -972,6 +1000,28 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         }.onFailure { e ->
             AutofillLogger.e("OTP", "Failed selected OTP action", e)
         }
+    }
+
+    private fun generateOtpCodeForPassword(password: PasswordEntry): String? {
+        val totpData = resolveOtpDataForPassword(password)
+        if (totpData == null) {
+            AutofillLogger.w(
+                "OTP",
+                "Skip OTP fill: no authenticator key or bound validator entry found for passwordId=${password.id}"
+            )
+            return null
+        }
+        return runCatching {
+            val resolvedTotpData = resolveTotpDataForGeneration(totpData)
+            val code = TotpGenerator.generateOtp(resolvedTotpData)
+            AutofillLogger.i(
+                "OTP",
+                "Generated OTP for fill: passwordId=${password.id}, type=${resolvedTotpData.otpType}, codeLen=${code.length}"
+            )
+            code.takeIf { it.isNotBlank() }
+        }.onFailure { e ->
+            AutofillLogger.e("OTP", "Failed OTP fill generation", e)
+        }.getOrNull()
     }
 
     private fun showSelectedOtpNotification(code: String, label: String, durationSeconds: Int) {
@@ -1028,6 +1078,14 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
 
     private fun parsePasswordAuthenticatorTotpData(authenticatorKey: String): TotpData? {
         return TotpDataResolver.fromAuthenticatorKey(authenticatorKey)
+    }
+
+    private fun resolveOtpDataForPassword(password: PasswordEntry): TotpData? {
+        val passwordTotpData = password.authenticatorKey
+            .trim()
+            .takeIf { it.isNotBlank() }
+            ?.let(::parsePasswordAuthenticatorTotpData)
+        return resolveOtpFromExistingValidators(password, passwordTotpData) ?: passwordTotpData
     }
 
     private fun resolveOtpFromExistingValidators(
@@ -1197,6 +1255,7 @@ private fun AutofillPickerContent(
     biometricEnabled: Boolean = false,
     iconCardsEnabled: Boolean = false,
     isManualMode: Boolean = false,
+    showTargetContextInManualMode: Boolean = false,
     manualModeReason: String = "unknown",
     onAutofill: (PasswordEntry, Boolean) -> Unit,
     onAutofillBankCard: (SecureItem) -> Unit,
@@ -1918,9 +1977,10 @@ private fun AutofillPickerContent(
         when (screen) {
         "list" -> {
             // 根据模式显示不同标题
+            val showTargetContext = !isManualMode || showTargetContextInManualMode
             val title = when {
                 args.isSaveMode -> stringResource(R.string.autofill_save_form_data)
-                isManualMode -> stringResource(R.string.autofill_manual_quick_copy)
+                isManualMode && !showTargetContextInManualMode -> stringResource(R.string.autofill_manual_quick_copy)
                 else -> stringResource(R.string.autofill_with_monica)
             }
             
@@ -1928,12 +1988,12 @@ private fun AutofillPickerContent(
                 topBar = {
                     AutofillHeader(
                         title = title,
-                        username = if (isManualMode) null else args.capturedUsername,
-                        password = if (isManualMode) null else args.capturedPassword,
-                        applicationId = if (isManualMode) null else args.applicationId,
-                        webDomain = if (isManualMode) null else args.webDomain,
-                        appIcon = if (isManualMode) null else appIcon,
-                        appName = if (isManualMode) stringResource(R.string.autofill_select_password_and_copy) else appName,
+                        username = if (showTargetContext) args.capturedUsername else null,
+                        password = if (showTargetContext) args.capturedPassword else null,
+                        applicationId = if (showTargetContext) args.applicationId else null,
+                        webDomain = if (showTargetContext) args.webDomain else null,
+                        appIcon = if (showTargetContext) appIcon else null,
+                        appName = if (showTargetContext) appName else stringResource(R.string.autofill_select_password_and_copy),
                         onClose = onClose
                     )
                 }

@@ -71,6 +71,11 @@
     <string name="ime_quick_fill">Quick fill</string>
     <string name="ime_authenticator_panel_placeholder">Authenticator view is reserved here. I can wire the real TOTP list in next.</string>
     <string name="ime_documents_panel_placeholder">Document view is reserved here. I can wire the real document picker in next.</string>
+    <string name="ime_empty_authenticator_title">No authenticators yet</string>
+    <string name="ime_empty_authenticator_message">Saved TOTP codes will appear here after unlock.</string>
+    <string name="ime_empty_card_wallet_title">No card wallet items yet</string>
+    <string name="ime_empty_card_wallet_message">Saved bank cards and documents will appear here after unlock.</string>
+    <string name="ime_totp_seconds_remaining">%1$ds</string>
     <string name="ime_empty_title">No autofill entries yet</string>
     <string name="ime_empty_message">Open Autofill to show accounts that match the current app.</string>
     <string name="ime_no_matches_title">No matches</string>
@@ -80,6 +85,7 @@
     <string name="ime_key_shift">Shift</string>
     <string name="ime_key_delete">Delete</string>
     <string name="ime_key_mode">Keyboard mode</string>
+    <string name="ime_clear_all_undo_action">Undo</string>
     <string name="ime_key_space">Space</string>
     <string name="ime_key_enter">Enter</string>
     <string name="ime_show">Show</string>
@@ -960,7 +966,7 @@
     <string name="all_navigation_items">All Navigation Items</string>
     <string name="category_all">All</string>
     <string name="hidden">Hidden</string>
-    <string name="settings_version_number">V1.0.283</string>
+    <string name="settings_version_number">V1.0.285</string>
     <string name="settings_support_author">Support Author</string>
     <string name="settings_support_author_description">Thank you for your support</string>
     <string name="settings_privacy_policy">Privacy Policy</string>
