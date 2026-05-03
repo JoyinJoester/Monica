@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordCardDisplayField
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.primaryLinkedAppPackageName
 import takagi.ru.monica.data.UnmatchedIconHandlingStrategy
 import takagi.ru.monica.ui.icons.UnmatchedIconFallback
 import takagi.ru.monica.ui.icons.shouldShowFallbackSlot
@@ -100,13 +101,14 @@ fun MultiPasswordEntryCard(
                     } else {
                         null
                     }
-                    val appIcon = if (!firstEntry.appPackageName.isNullOrBlank()) {
-                        takagi.ru.monica.autofill_ng.ui.rememberAppIcon(firstEntry.appPackageName)
+                    val primaryAppPackageName = firstEntry.primaryLinkedAppPackageName()
+                    val appIcon = if (primaryAppPackageName.isNotBlank()) {
+                        takagi.ru.monica.autofill_ng.ui.rememberAppIcon(primaryAppPackageName)
                     } else null
                     val autoMatchedSimpleIcon = takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon(
                         website = firstEntry.website,
                         title = firstEntry.title,
-                        appPackageName = firstEntry.appPackageName,
+                        appPackageName = primaryAppPackageName,
                         tintColor = MaterialTheme.colorScheme.primary,
                         enabled = firstEntry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
                     )
@@ -443,4 +445,3 @@ private fun MultiPasswordAuthenticatorInlineRow(
         }
     }
 }
-

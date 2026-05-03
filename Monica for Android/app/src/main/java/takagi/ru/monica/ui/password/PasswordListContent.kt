@@ -412,6 +412,7 @@ fun PasswordListContent(
     // 选择模式状态
     var isSelectionMode by remember { mutableStateOf(false) }
     var selectedItemKeys by remember { mutableStateOf(setOf<String>()) }
+    var swipeSelectionAnchorKey by remember { mutableStateOf<String?>(null) }
     var showBatchDeleteDialog by remember { mutableStateOf(false) }
     var showMoveToCategoryDialog by remember { mutableStateOf(false) }
     var showManualStackConfirmDialog by remember { mutableStateOf(false) }
@@ -455,6 +456,7 @@ fun PasswordListContent(
     BackHandler(enabled = isSelectionMode) {
         isSelectionMode = false
         selectedItemKeys = emptySet()
+        swipeSelectionAnchorKey = null
     }
 
     // 在归档页按返回键时，先退出归档回到密码主列表
@@ -975,6 +977,9 @@ fun PasswordListContent(
         if (isSelectionMode && selectedItemKeys.isEmpty()) {
             isSelectionMode = false
         }
+        if (selectedItemKeys.isEmpty()) {
+            swipeSelectionAnchorKey = null
+        }
     }
 
     LaunchedEffect(passwordEntries, deletedItemIds, shouldLoadManualStackMetadata) {
@@ -1354,8 +1359,12 @@ fun PasswordListContent(
         onClearSelection = {
             isSelectionMode = false
             selectedItemKeys = emptySet()
+            swipeSelectionAnchorKey = null
         },
-        onSelectedItemKeysChange = { selectedItemKeys = it },
+        onSelectedItemKeysChange = {
+            selectedItemKeys = it
+            if (it.isEmpty()) swipeSelectionAnchorKey = null
+        },
         onShowMoveToCategoryDialog = { showMoveToCategoryDialog = true },
         onShowManualStackConfirmDialog = {
             selectedManualStackMode = ManualStackDialogMode.STACK
@@ -1395,6 +1404,7 @@ fun PasswordListContent(
         onSelectionCleared = {
             isSelectionMode = false
             selectedItemKeys = emptySet()
+            swipeSelectionAnchorKey = null
         }
     )
 
@@ -1522,6 +1532,8 @@ fun PasswordListContent(
                 onSelectionModeChange = { isSelectionMode = it },
                 selectedItemKeys = selectedItemKeys,
                 onSelectedItemKeysChange = { selectedItemKeys = it },
+                swipeSelectionAnchorKey = swipeSelectionAnchorKey,
+                onSwipeSelectionAnchorKeyChange = { swipeSelectionAnchorKey = it },
                 selectedPasswords = selectedPasswords,
                 showBatchDeleteDialog = showBatchDeleteDialog,
                 onShowBatchDeleteDialogChange = { showBatchDeleteDialog = it },
@@ -1641,6 +1653,7 @@ fun PasswordListContent(
         onSelectionCleared = {
             isSelectionMode = false
             selectedItemKeys = emptySet()
+            swipeSelectionAnchorKey = null
         },
         showBatchDeleteDialog = showBatchDeleteDialog,
         onShowBatchDeleteDialogChange = { showBatchDeleteDialog = it },

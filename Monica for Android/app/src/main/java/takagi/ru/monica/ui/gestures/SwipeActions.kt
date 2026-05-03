@@ -60,8 +60,10 @@ fun SwipeActions(
     // 仅用于回弹动画的 Animatable
     val animatableOffset = remember { Animatable(0f) }
     
-    // 追踪最新的 isSwiped 状态供回调使用
+    // 追踪最新状态和回调，避免 pointerInput 协程持有旧的选择集合。
     val currentIsSwiped by rememberUpdatedState(isSwiped)
+    val currentOnSwipeLeft by rememberUpdatedState(onSwipeLeft)
+    val currentOnSwipeRight by rememberUpdatedState(onSwipeRight)
     
     // 监听 isSwiped 状态变化 (主要用于取消删除后的复位)
     LaunchedEffect(isSwiped) {
@@ -219,7 +221,7 @@ fun SwipeActions(
                                     if (animatableOffset.value < -dynamicThreshold) {
                                         // 触发左滑（删除）
                                         // 先触发回调，给父组件响应时间
-                                        onSwipeLeft()
+                                        currentOnSwipeLeft()
                                         // 执行展开动画
                                         animatableOffset.animateTo(-cardWidth, tween(300, easing = FastOutSlowInEasing))
                                         
@@ -231,7 +233,7 @@ fun SwipeActions(
                                     } else if (animatableOffset.value > dynamicThreshold) {
                                         // 触发右滑（选择）
                                         animatableOffset.animateTo(0f, springSpec)
-                                        onSwipeRight()
+                                        currentOnSwipeRight()
                                     } else {
                                         // 未达到阈值，回弹
                                         animatableOffset.animateTo(0f, quickSpringSpec)

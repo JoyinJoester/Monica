@@ -12,6 +12,7 @@ import takagi.ru.monica.bitwarden.sync.NetworkMonitor
 import takagi.ru.monica.bitwarden.sync.SyncQueueManager
 import takagi.ru.monica.bitwarden.sync.SyncQueueManagerHolder
 import takagi.ru.monica.data.AppLauncherIcon
+import takagi.ru.monica.data.AppLauncherLabel
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.security.AppUpdateSecurityGuard
 import takagi.ru.monica.utils.AppLauncherIconManager
@@ -79,19 +80,21 @@ class MonicaApplication : Application() {
 
     private fun syncLauncherEntryPointsWithSettings() {
         runCatching {
-            val selectedIcon = runBlocking {
-                SettingsManager(this@MonicaApplication).settingsFlow.first().appLauncherIcon
+            val settings = runBlocking {
+                SettingsManager(this@MonicaApplication).settingsFlow.first()
             }
             AppLauncherIconManager.repairLaunchEntryPointsAfterUpgrade(
                 this,
-                selectedIcon
+                settings.appLauncherIcon,
+                settings.appLauncherLabel
             )
         }.onFailure { error ->
             Log.w(TAG, "Failed to sync launcher entry points with settings", error)
             runCatching {
                 AppLauncherIconManager.repairLaunchEntryPointsAfterUpgrade(
                     this,
-                    AppLauncherIcon.LOCK_CLASSIC
+                    AppLauncherIcon.LOCK_CLASSIC,
+                    AppLauncherLabel.MONICA_PASS
                 )
             }.onFailure { fallbackError ->
                 Log.w(TAG, "Failed to apply fallback launcher entry points", fallbackError)

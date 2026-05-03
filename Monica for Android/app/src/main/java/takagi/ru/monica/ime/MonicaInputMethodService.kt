@@ -90,6 +90,7 @@ class MonicaInputMethodService : InputMethodService() {
                 suppressAutoUnlockUntilNextAttempt = false
                 uiState.update {
                     it.copy(
+                        unlocked = true,
                         activePanel = targetPanel,
                         isAutofillPanelVisible = targetPanel != MonicaImePanel.KEYBOARD,
                         errorMessage = null
@@ -210,6 +211,11 @@ class MonicaInputMethodService : InputMethodService() {
             incomingPackageName == null || previousState.activePackageName == incomingPackageName
         val preserveAutofillPanel =
             previousState.activePanel != MonicaImePanel.KEYBOARD && packageUnchanged
+        val shouldRefreshForCurrentView = previousState.unlocked ||
+            !preserveAutofillPanel ||
+            previousState.entries.isNotEmpty() ||
+            previousState.authenticatorEntries.isNotEmpty() ||
+            previousState.cardWalletEntries.isNotEmpty()
         uiState.update {
             it.copy(
                 activePackageName = effectivePackageName,
@@ -224,7 +230,9 @@ class MonicaInputMethodService : InputMethodService() {
                 errorMessage = null
             )
         }
-        requestRefreshVaultEntries(force = true)
+        if (shouldRefreshForCurrentView) {
+            requestRefreshVaultEntries(force = true)
+        }
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
@@ -420,16 +428,6 @@ class MonicaInputMethodService : InputMethodService() {
         val isUnlocked = updateUnlockState(settings.autoLockMinutes)
         if (!isUnlocked) {
             val currentState = uiState.value
-            if (
-                force &&
-                currentState.activePanel != MonicaImePanel.KEYBOARD &&
-                currentState.isAutofillPanelVisible &&
-                !unlockFlowInProgress &&
-                !suppressAutoUnlockUntilNextAttempt
-            ) {
-                pendingUnlockPanel = currentState.activePanel
-                openMonicaAppForUnlock()
-            }
             uiState.update {
                 it.copy(
                     entries = emptyList(),
@@ -552,6 +550,7 @@ class MonicaInputMethodService : InputMethodService() {
             uiState.update { it.copy(unlocked = true, errorMessage = null) }
         } else {
             uiState.update {
+                val panelStillVisible = it.activePanel != MonicaImePanel.KEYBOARD && it.isAutofillPanelVisible
                 it.copy(
                     unlocked = false,
                     entries = emptyList(),
@@ -559,7 +558,11 @@ class MonicaInputMethodService : InputMethodService() {
                     cardWalletEntries = emptyList(),
                     databaseOptions = emptyList(),
                     selectedDatabaseScope = MonicaImeDatabaseScope.All,
-                    errorMessage = getString(takagi.ru.monica.R.string.ime_unlock_required)
+                    errorMessage = if (panelStillVisible) {
+                        getString(takagi.ru.monica.R.string.ime_unlock_required)
+                    } else {
+                        null
+                    }
                 )
             }
         }

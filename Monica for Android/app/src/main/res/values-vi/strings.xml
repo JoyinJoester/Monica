@@ -1,5 +1,6 @@
 <resources>
     <string name="app_name">Monica</string>
+    <string name="app_label">Monica Pass</string>
     
     <!-- General -->
     <string name="accessibility_service_description">Dịch vụ trợ năng Monica giúp cải thiện chức năng tự động điền bằng cách phát hiện trường mật khẩu chính xác hơn.</string>
@@ -1109,6 +1110,8 @@
     <string name="developer_functions">Chức năng nhà phát triển</string>
     <string name="developer_disable_password_verification">Tắt xác minh mật khẩu</string>
     <string name="developer_disable_password_verification_desc">Bỏ qua xác minh mật khẩu khi khởi động ứng dụng (chỉ dành cho kiểm thử phát triển)</string>
+    <string name="developer_launcher_name_use_pass">Dùng Monica Pass làm tên ngoài màn hình chính</string>
+    <string name="developer_launcher_name_use_pass_desc">Bật: Monica Pass. Tắt: Monica. Chỉ đổi tên lối vào chính trên launcher.</string>
     <string name="developer_bitwarden_forensics_toggle">Bật forensics đồng bộ Bitwarden</string>
     <string name="developer_bitwarden_forensics_toggle_desc">Ghi lại ảnh chụp đồng bộ đã ẩn danh (chỉ độ dài và số lượng, không lưu văn bản thuần)</string>
     <string name="developer_bitwarden_forensics_raw_toggle">Ghi nhận request/response thô của Bitwarden</string>

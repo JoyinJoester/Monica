@@ -420,6 +420,7 @@ dependencies {
 
     // Microsoft identity platform / OneDrive auth
     implementation 'com.microsoft.identity.client:msal:8.+'
+    implementation 'com.squareup.moshi:moshi-adapters:1.15.1'
     
     // BouncyCastle for Argon2 (Bitwarden KDF support)
     implementation 'org.bouncycastle:bcprov-jdk18on:1.78.1'

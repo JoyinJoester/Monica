@@ -47,6 +47,7 @@ import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.primaryLinkedAppPackageName
 import takagi.ru.monica.ui.haptic.rememberHapticFeedback
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.ClipboardUtils
@@ -936,11 +937,12 @@ fun PasswordEntryCard(
                         } else {
                             null
                         }
-                        val appIcon = rememberAppIcon(context, entry.appPackageName)
+                        val primaryAppPackageName = entry.primaryLinkedAppPackageName()
+                        val appIcon = rememberAppIcon(context, primaryAppPackageName)
                         val autoMatchedSimpleIcon = takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon(
                             website = entry.website,
                             title = entry.title,
-                            appPackageName = entry.appPackageName,
+                            appPackageName = primaryAppPackageName,
                             tintColor = MaterialTheme.colorScheme.primary,
                             enabled = entry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
                         )

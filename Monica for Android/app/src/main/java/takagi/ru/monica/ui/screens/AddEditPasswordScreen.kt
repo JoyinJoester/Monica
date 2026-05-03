@@ -75,6 +75,9 @@ import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PresetCustomField
 import takagi.ru.monica.data.SecureItem
+import takagi.ru.monica.data.addOrReplaceLinkedAppBinding
+import takagi.ru.monica.data.parseLinkedAppBindings
+import takagi.ru.monica.data.removeLinkedAppBinding
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.model.StorageTarget
 import takagi.ru.monica.data.model.toStorageTarget
@@ -207,6 +210,9 @@ fun AddEditPasswordScreen(
 
     var title by rememberSaveable { mutableStateOf("") }
     var website by rememberSaveable { mutableStateOf("") }
+    val websiteUrls = rememberSaveable(saver = takagi.ru.monica.utils.StringListSaver) {
+        mutableStateListOf("")
+    }
     var username by rememberSaveable { mutableStateOf("") }
     // CHANGE: Support multiple passwords
     val passwords = rememberSaveable(saver = takagi.ru.monica.utils.StringListSaver) { mutableStateListOf("") }
@@ -233,6 +239,16 @@ fun AddEditPasswordScreen(
 
     var appPackageName by rememberSaveable { mutableStateOf("") }
     var appName by rememberSaveable { mutableStateOf("") }
+
+    fun replaceWebsiteUrlsFromRaw(rawValue: String) {
+        websiteUrls.clear()
+        websiteUrls.addAll(parsePasswordWebsiteUrls(rawValue))
+        website = encodePasswordWebsiteUrls(websiteUrls)
+    }
+
+    fun syncWebsiteFromUrlRows() {
+        website = encodePasswordWebsiteUrls(websiteUrls)
+    }
 
     // 绑定选项状态
     var bindTitle by rememberSaveable { mutableStateOf(false) }
@@ -369,10 +385,14 @@ fun AddEditPasswordScreen(
     val selectedUploadedIconBitmap = rememberUploadedPasswordIcon(
         value = if (customIconType == PASSWORD_ICON_TYPE_UPLOADED) customIconValue else null
     )
+    val linkedAppBindings = remember(appPackageName, appName) {
+        parseLinkedAppBindings(appPackageName, appName)
+    }
+    val primaryAppPackageName = linkedAppBindings.firstOrNull()?.packageName.orEmpty()
     val autoMatchedSimpleIcon = rememberAutoMatchedSimpleIcon(
         website = website,
         title = title,
-        appPackageName = appPackageName,
+        appPackageName = primaryAppPackageName,
         tintColor = MaterialTheme.colorScheme.primary,
         enabled = settings.iconCardsEnabled && customIconType == PASSWORD_ICON_TYPE_NONE
     )
@@ -958,7 +978,7 @@ fun AddEditPasswordScreen(
                         password = secretState.plainValueOrEmpty()
                     )
                     title = entry.title
-                    website = entry.website
+                    replaceWebsiteUrlsFromRaw(entry.website)
                     username = entry.username
                     notes = entry.notes
                     boundNoteId = entry.boundNoteId
@@ -1164,7 +1184,7 @@ fun AddEditPasswordScreen(
              if (passwords.isEmpty()) passwords.add("")
              if (!initialDraftApplied && initialDraft != null) {
                  if (title.isBlank()) title = initialDraft.title
-                 if (website.isBlank()) website = initialDraft.website
+                 if (website.isBlank()) replaceWebsiteUrlsFromRaw(initialDraft.website)
                  if (username.isBlank()) username = initialDraft.username
                  if (appPackageName.isBlank()) appPackageName = initialDraft.appPackageName
                  if (appName.isBlank()) appName = initialDraft.appName
@@ -1600,59 +1620,183 @@ fun AddEditPasswordScreen(
                             )
                         }
 
-                        // Website + App Binding (inline)
+                        // Website URLs + App Binding (inline)
                         var showAppSelectorFromWebsite by remember { mutableStateOf(false) }
-                        OutlinedTextField(
-                            value = website,
-                            onValueChange = { website = it },
-                            label = { Text(stringResource(R.string.website_url)) },
-                            leadingIcon = { Icon(Icons.Default.Language, null) },
-                            trailingIcon = {
-                                IconButton(onClick = { showAppSelectorFromWebsite = true }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Apps,
-                                        contentDescription = stringResource(R.string.linked_app),
-                                        tint = if (appPackageName.isNotEmpty()) MaterialTheme.colorScheme.primary else LocalContentColor.current
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            websiteUrls.forEachIndexed { index, url ->
+                                key("website_url_$index") {
+                                    var urlMenuExpanded by remember { mutableStateOf(false) }
+                                    OutlinedTextField(
+                                        value = url,
+                                        onValueChange = { value ->
+                                            websiteUrls[index] = value
+                                            syncWebsiteFromUrlRows()
+                                        },
+                                        label = {
+                                            Text(
+                                                if (websiteUrls.size == 1) {
+                                                    stringResource(R.string.website_url)
+                                                } else {
+                                                    "${stringResource(R.string.website_url)} ${index + 1}"
+                                                }
+                                            )
+                                        },
+                                        leadingIcon = { Icon(Icons.Default.Language, null) },
+                                        trailingIcon = {
+                                            Box {
+                                                IconButton(onClick = { urlMenuExpanded = true }) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.MoreVert,
+                                                        contentDescription = "URL 菜单"
+                                                    )
+                                                }
+                                                DropdownMenu(
+                                                    expanded = urlMenuExpanded,
+                                                    onDismissRequest = { urlMenuExpanded = false }
+                                                ) {
+                                                    if (index > 0) {
+                                                        DropdownMenuItem(
+                                                            text = { Text("上移") },
+                                                            leadingIcon = { Icon(Icons.Default.KeyboardArrowUp, null) },
+                                                            onClick = {
+                                                                val previous = websiteUrls[index - 1]
+                                                                websiteUrls[index - 1] = websiteUrls[index]
+                                                                websiteUrls[index] = previous
+                                                                syncWebsiteFromUrlRows()
+                                                                urlMenuExpanded = false
+                                                            }
+                                                        )
+                                                    }
+                                                    if (index < websiteUrls.lastIndex) {
+                                                        DropdownMenuItem(
+                                                            text = { Text("下移") },
+                                                            leadingIcon = { Icon(Icons.Default.KeyboardArrowDown, null) },
+                                                            onClick = {
+                                                                val next = websiteUrls[index + 1]
+                                                                websiteUrls[index + 1] = websiteUrls[index]
+                                                                websiteUrls[index] = next
+                                                                syncWebsiteFromUrlRows()
+                                                                urlMenuExpanded = false
+                                                            }
+                                                        )
+                                                    }
+                                                    DropdownMenuItem(
+                                                        text = { Text("删除") },
+                                                        leadingIcon = { Icon(Icons.Default.Delete, null) },
+                                                        onClick = {
+                                                            if (websiteUrls.size == 1) {
+                                                                websiteUrls[0] = ""
+                                                            } else {
+                                                                websiteUrls.removeAt(index)
+                                                            }
+                                                            syncWebsiteFromUrlRows()
+                                                            urlMenuExpanded = false
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(
+                                            keyboardType = KeyboardType.Uri,
+                                            imeAction = ImeAction.Next
+                                        ),
+                                        shape = RoundedCornerShape(12.dp)
                                     )
                                 }
-                            },
-                            supportingText = if (appPackageName.isNotEmpty()) { {
-                                InputChip(
-                                    selected = true,
-                                    onClick = { showAppSelectorFromWebsite = true },
-                                    label = { Text(appName) },
-                                    leadingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Default.Apps,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp)
-                                        )
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        websiteUrls.add("")
+                                        syncWebsiteFromUrlRows()
                                     },
-                                    trailingIcon = {
-                                        Icon(
-                                            imageVector = Icons.Default.Close,
-                                            contentDescription = stringResource(R.string.clear_app_selection),
-                                            modifier = Modifier
-                                                .size(16.dp)
-                                                .clickable {
-                                                    appPackageName = ""
-                                                    appName = ""
-                                                }
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("添加URL")
+                                }
+                                OutlinedButton(
+                                    onClick = { showAppSelectorFromWebsite = true },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Apps,
+                                        contentDescription = null,
+                                        tint = if (linkedAppBindings.isNotEmpty()) {
+                                            MaterialTheme.colorScheme.primary
+                                        } else {
+                                            LocalContentColor.current
+                                        }
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("绑定应用")
+                                }
+                            }
+
+                            if (linkedAppBindings.isNotEmpty()) {
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    linkedAppBindings.forEach { binding ->
+                                        InputChip(
+                                            selected = true,
+                                            onClick = { showAppSelectorFromWebsite = true },
+                                            label = {
+                                                Text(
+                                                    text = binding.appName.ifBlank { binding.packageName },
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            },
+                                            leadingIcon = {
+                                                Icon(
+                                                    imageVector = Icons.Default.Apps,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            },
+                                            trailingIcon = {
+                                                Icon(
+                                                    imageVector = Icons.Default.Close,
+                                                    contentDescription = stringResource(R.string.clear_app_selection),
+                                                    modifier = Modifier
+                                                        .size(16.dp)
+                                                        .clickable {
+                                                            val updated = removeLinkedAppBinding(
+                                                                appPackageName,
+                                                                appName,
+                                                                binding.packageName
+                                                            )
+                                                            appPackageName = updated.first
+                                                            appName = updated.second
+                                                        }
+                                                )
+                                            }
                                         )
                                     }
-                                )
-                            } } else null,
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Next),
-                            shape = RoundedCornerShape(12.dp)
-                        )
+                                }
+                            }
+                        }
                         if (showAppSelectorFromWebsite) {
                             AppSelectorDialog(
                                 onDismiss = { showAppSelectorFromWebsite = false },
                                 onAppSelected = { packageName, name ->
-                                    appPackageName = packageName
-                                    appName = name
+                                    val updated = addOrReplaceLinkedAppBinding(
+                                        appPackageName,
+                                        appName,
+                                        packageName,
+                                        name
+                                    )
+                                    appPackageName = updated.first
+                                    appName = updated.second
                                     showAppSelectorFromWebsite = false
                                 }
                             )
@@ -3669,6 +3813,22 @@ private fun buildPasswordSiblingGroupKey(entry: PasswordEntry): String {
     val website = normalizeWebsiteForSiblingGroupKey(entry.website)
 
     return "$sourceKey|$title|$website|$username"
+}
+
+private fun parsePasswordWebsiteUrls(rawValue: String): List<String> {
+    val urls = rawValue
+        .split(',')
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+    return urls.ifEmpty { listOf("") }
+}
+
+private fun encodePasswordWebsiteUrls(urls: List<String>): String {
+    return urls
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .distinctBy { it.lowercase(Locale.ROOT) }
+        .joinToString(", ")
 }
 
 private fun normalizeWebsiteForSiblingGroupKey(value: String): String {

@@ -103,6 +103,7 @@ import takagi.ru.monica.ui.screens.ImportDataScreen
 import takagi.ru.monica.ui.screens.LoginScreen
 import takagi.ru.monica.ui.screens.MasterPasswordLockingSettingsScreen
 import takagi.ru.monica.ui.screens.QrScannerScreen
+import takagi.ru.monica.ui.screens.QuickSetupScreen
 import takagi.ru.monica.ui.screens.ResetPasswordScreen
 import takagi.ru.monica.ui.screens.SecurityAnalysisScreen
 import takagi.ru.monica.ui.screens.SecurityQuestionsSetupScreen
@@ -578,6 +579,7 @@ fun MonicaContent(
 
     val isFirstTime = initialAuthState.isFirstTime
     val currentRoute = navBackStackEntry?.destination?.route
+    var quickSetupDismissedThisSession by remember { mutableStateOf(false) }
     val authRouteSet = remember {
         setOf(
             Screen.Login.route,
@@ -712,6 +714,20 @@ fun MonicaContent(
                     launchSingleTop = true
                     popUpTo(0) { inclusive = true }
                 }
+            }
+        }
+    }
+
+    LaunchedEffect(settings.quickSetupCompleted, shouldRequireAuthentication, currentRoute) {
+        if (
+            !settings.quickSetupCompleted &&
+            isFirstTime &&
+            !quickSetupDismissedThisSession &&
+            !shouldRequireAuthentication &&
+            currentRoute == Screen.Main.routePattern
+        ) {
+            navController.navigate(Screen.QuickSetup.route) {
+                launchSingleTop = true
             }
         }
     }
@@ -2284,6 +2300,59 @@ fun MonicaContent(
         }
         
         composable(
+            route = Screen.QuickSetup.route,
+            enterTransition = { rightSlideEnterTransition() },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { rightSlidePopExitTransition() }
+        ) {
+            val closeQuickSetup = {
+                quickSetupDismissedThisSession = true
+                if (!navController.popBackStack()) {
+                    navController.navigate(Screen.Main.createRoute()) {
+                        launchSingleTop = true
+                    }
+                }
+            }
+            QuickSetupScreen(
+                settingsViewModel = settingsViewModel,
+                securityManager = securityManager,
+                onSkip = closeQuickSetup,
+                onFinish = closeQuickSetup,
+                onOpenMasterPassword = {
+                    navController.navigate(
+                        if (securityManager.isMasterPasswordSet()) {
+                            Screen.ChangePassword.route
+                        } else {
+                            Screen.ResetPassword.createRoute(skipCurrentPassword = true)
+                        }
+                    )
+                },
+                onOpenSecurityQuestions = {
+                    navController.navigate(Screen.SecurityQuestionsSetup.route)
+                },
+                onOpenAutofillSettings = {
+                    navController.navigate(Screen.AutofillSettings.route)
+                },
+                onOpenBitwardenSettings = {
+                    navController.navigate(Screen.BitwardenSettings.route)
+                },
+                onOpenWebDavBackup = {
+                    navController.navigate(Screen.WebDavBackup.route)
+                },
+                onOpenLocalKeePass = {
+                    navController.navigate(Screen.LocalKeePass.route)
+                },
+                onOpenImportData = {
+                    navController.navigate(Screen.ImportData.route)
+                },
+                onOpenMonicaPlus = {
+                    navController.navigate(Screen.MonicaPlus.route)
+                }
+            )
+        }
+
+        composable(
             route = Screen.DeveloperSettings.route,
             enterTransition = { rightSlideEnterTransition() },
             exitTransition = { ExitTransition.None },
@@ -2321,6 +2390,9 @@ fun MonicaContent(
                 onNavigateToMonicaPlus = {
                     navController.navigate(Screen.MonicaPlus.route)
                 },
+                onNavigateToQuickSetup = {
+                    navController.navigate(Screen.QuickSetup.route)
+                },
                 isPlusActivated = settings.isPlusActivated,
                 validatorVibrationEnabled = settings.validatorVibrationEnabled,
                 onValidatorVibrationChange = { enabled ->
@@ -2333,6 +2405,10 @@ fun MonicaContent(
                 smartDeduplicationEnabled = settings.smartDeduplicationEnabled,
                 onSmartDeduplicationEnabledChange = { enabled ->
                     settingsViewModel.updateSmartDeduplicationEnabled(enabled)
+                },
+                passwordSwipeSelectionMode = settings.passwordSwipeSelectionMode,
+                onPasswordSwipeSelectionModeChange = { mode ->
+                    settingsViewModel.updatePasswordSwipeSelectionMode(mode)
                 },
                 passwordCardDisplayMode = settings.passwordCardDisplayMode,
                 onPasswordCardDisplayModeChange = { mode ->

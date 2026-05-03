@@ -7,6 +7,7 @@ import android.util.Log
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import takagi.ru.monica.data.AppLauncherIcon
+import takagi.ru.monica.data.AppLauncherLabel
 import takagi.ru.monica.utils.AppLauncherIconManager
 import takagi.ru.monica.utils.SettingsManager
 
@@ -18,19 +19,21 @@ class LauncherEntryRepairReceiver : BroadcastReceiver() {
         }
 
         runCatching {
-            val selectedIcon = runBlocking {
-                SettingsManager(context).settingsFlow.first().appLauncherIcon
+            val settings = runBlocking {
+                SettingsManager(context).settingsFlow.first()
             }
             AppLauncherIconManager.repairLaunchEntryPointsAfterUpgrade(
                 context,
-                selectedIcon
+                settings.appLauncherIcon,
+                settings.appLauncherLabel
             )
         }.onFailure { error ->
             Log.w(TAG, "Failed to repair launcher entry points after package replace", error)
             runCatching {
                 AppLauncherIconManager.repairLaunchEntryPointsAfterUpgrade(
                     context,
-                    AppLauncherIcon.LOCK_CLASSIC
+                    AppLauncherIcon.LOCK_CLASSIC,
+                    AppLauncherLabel.MONICA_PASS
                 )
             }
         }

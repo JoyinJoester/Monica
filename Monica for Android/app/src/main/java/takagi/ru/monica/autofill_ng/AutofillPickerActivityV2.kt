@@ -87,6 +87,7 @@ import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.isLocalPasswordOwnership
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.addOrReplaceLinkedAppBinding
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenVault
@@ -1204,8 +1205,18 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                 val database = PasswordDatabase.getDatabase(applicationContext)
                 val repository = PasswordRepository(database.passwordEntryDao())
                 
+                val updatedAppBinding = applicationId?.let { packageName ->
+                    addOrReplaceLinkedAppBinding(
+                        password.appPackageName,
+                        password.appName,
+                        packageName,
+                        packageName
+                    )
+                }
+
                 val updatedEntry = password.copy(
-                    appPackageName = applicationId ?: password.appPackageName,
+                    appPackageName = updatedAppBinding?.first ?: password.appPackageName,
+                    appName = updatedAppBinding?.second ?: password.appName,
                     website = if (!webDomain.isNullOrEmpty() && !password.website.contains(webDomain)) {
                         if (password.website.isNotEmpty()) "${password.website}, $webDomain"
                         else webDomain

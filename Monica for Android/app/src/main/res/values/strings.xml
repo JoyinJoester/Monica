@@ -1,5 +1,6 @@
 <resources>
     <string name="app_name">Monica</string>
+    <string name="app_label">Monica Pass</string>
     
     <!-- General -->
     <string name="press_back_again_to_exit">Press back again to exit</string>
@@ -1709,6 +1710,8 @@
     <string name="developer_functions">Developer Functions</string>
     <string name="developer_disable_password_verification">Disable Password Verification</string>
     <string name="developer_disable_password_verification_desc">Skip password verification on app startup (for development testing only)</string>
+    <string name="developer_launcher_name_use_pass">Use Monica Pass as launcher name</string>
+    <string name="developer_launcher_name_use_pass_desc">On: Monica Pass. Off: Monica. This only changes the main launcher entry name.</string>
     <string name="developer_bitwarden_forensics_toggle">Enable Bitwarden Sync Forensics</string>
     <string name="developer_bitwarden_forensics_toggle_desc">Record redacted sync snapshots (lengths and counters only, no plaintext)</string>
     <string name="developer_bitwarden_forensics_raw_toggle">Capture Raw Bitwarden Request/Response</string>
@@ -1721,6 +1724,11 @@
     <string name="developer_bitwarden_forensics_clear_dir">Clear Forensics Output Folder</string>
     <string name="developer_bitwarden_forensics_clear_dir_desc">Stop mirroring logs to external storage and keep internal logs only</string>
     <string name="developer_bitwarden_forensics_dir_cleared">Forensics output folder cleared</string>
+    <string name="developer_mndx_create_demo_onedrive">Create MNDX Demo Vault in OneDrive</string>
+    <string name="developer_mndx_create_demo_onedrive_desc">Experimental: creates a readable .mndx fixture in the configured OneDrive backup folder. Not encrypted and not for real secrets.</string>
+    <string name="developer_mndx_create_demo_running">Creating MNDX demo vault in OneDrive...</string>
+    <string name="developer_mndx_create_demo_success">Created %1$s with %2$d files</string>
+    <string name="developer_mndx_create_demo_failed">MNDX demo creation failed: %1$s</string>
     <string name="developer_warning">⚠️ Developer functions are for testing only, do not enable in production environment</string>
     <string name="developer_log_buffer_cleared">Log buffer cleared</string>
     <string name="developer_clear_failed">Clear failed: %s</string>

@@ -464,6 +464,15 @@ enum class CategorySelectionUiMode {
     }
 }
 
+enum class PasswordSwipeSelectionMode {
+    SINGLE,
+    CONTINUOUS;
+
+    companion object {
+        val DEFAULT = SINGLE
+    }
+}
+
 data class AppSettings(
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val oledPureBlackEnabled: Boolean = false,
@@ -478,6 +487,7 @@ data class AppSettings(
     val autoLockMinutes: Int = 5, // Auto lock after X minutes of inactivity
     val screenshotProtectionEnabled: Boolean = false, // Prevent screenshots by default
     val dynamicColorEnabled: Boolean = true, // 动态颜色默认开启
+    val quickSetupCompleted: Boolean = false, // 首次快速初始化是否已完成/跳过
     val bottomNavVisibility: BottomNavVisibility = BottomNavVisibility(),
     val bottomNavOrder: List<BottomNavContentTab> = BottomNavContentTab.DEFAULT_ORDER,
     val useDraggableBottomNav: Boolean = false, // 使用可拖拽底部导航栏
@@ -504,11 +514,12 @@ data class AppSettings(
     val totpTimeOffset: Int = 0, // TOTP时间偏移（秒），用于校正系统时间误差
     val trashEnabled: Boolean = true, // 回收站功能是否启用
     val trashAutoDeleteDays: Int = 30, // 回收站自动清空天数（0=不自动清空，-1=禁用回收站）
-    val iconCardsEnabled: Boolean = false, // 是否启用带图标卡片
+    val iconCardsEnabled: Boolean = true, // 是否启用带图标卡片
     val appLauncherIcon: AppLauncherIcon = AppLauncherIcon.LOCK_CLASSIC, // 主应用图标样式
-    val passwordPageIconEnabled: Boolean = false, // 密码页图标开关
-    val authenticatorPageIconEnabled: Boolean = false, // 验证器页图标开关
-    val passkeyPageIconEnabled: Boolean = false, // 通行密钥页图标开关
+    val appLauncherLabel: AppLauncherLabel = AppLauncherLabel.MONICA_PASS, // 主应用桌面名称
+    val passwordPageIconEnabled: Boolean = true, // 密码页图标开关
+    val authenticatorPageIconEnabled: Boolean = true, // 验证器页图标开关
+    val passkeyPageIconEnabled: Boolean = true, // 通行密钥页图标开关
     val unmatchedIconHandlingStrategy: UnmatchedIconHandlingStrategy = UnmatchedIconHandlingStrategy.DEFAULT_ICON, // 无匹配图标处理策略
     val passwordCardDisplayMode: PasswordCardDisplayMode = PasswordCardDisplayMode.SHOW_ALL, // 卡片显示模式
     val passwordCardDisplayFields: List<PasswordCardDisplayField> = PasswordCardDisplayField.DEFAULT_ORDER, // 卡片显示字段（顺序即展示顺序）
@@ -531,6 +542,7 @@ data class AppSettings(
     val categorySelectionUiMode: CategorySelectionUiMode = CategorySelectionUiMode.DEFAULT, // 分类选择 UI 形式
     val passwordListQuickAccessEnabled: Boolean = true, // 密码列表“最近打开/经常打开”快捷入口开关
     val passwordListTopModulesOrder: List<PasswordListTopModule> = PasswordListTopModule.DEFAULT_ORDER, // 密码列表顶部模块顺序
+    val passwordSwipeSelectionMode: PasswordSwipeSelectionMode = PasswordSwipeSelectionMode.DEFAULT, // 右滑选中模式
     val noteGridLayout: Boolean = true, // 笔记列表使用网格布局 (true = 网格, false = 列表)
     val noteCodeBlockCollapseMode: NoteCodeBlockCollapseMode = NoteCodeBlockCollapseMode.BALANCED, // 笔记代码块折叠模式
     val autofillAuthRequired: Boolean = true, // 自动填充验证 - 默认开启
@@ -553,6 +565,11 @@ data class AppSettings(
 enum class AppLauncherIcon {
     MODERN,
     LOCK_CLASSIC
+}
+
+enum class AppLauncherLabel {
+    MONICA,
+    MONICA_PASS
 }
 
 /**

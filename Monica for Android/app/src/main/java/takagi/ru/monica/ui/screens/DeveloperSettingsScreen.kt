@@ -82,9 +82,11 @@ import takagi.ru.monica.autofill_ng.AutofillPickerActivityV2
 import takagi.ru.monica.autofill_ng.core.AutofillLogger
 import takagi.ru.monica.bitwarden.service.BitwardenDiagLogger
 import takagi.ru.monica.bitwarden.service.BitwardenSyncForensicsLogger
+import takagi.ru.monica.data.AppLauncherLabel
 import takagi.ru.monica.passkey.PasskeyValidationDiagnostics
 import takagi.ru.monica.security.SecurityDiagLogger
 import takagi.ru.monica.security.SessionManager
+import takagi.ru.monica.utils.MndxDeveloperVaultHelper
 import takagi.ru.monica.viewmodel.SettingsViewModel
 
 /**
@@ -113,17 +115,23 @@ fun DeveloperSettingsScreen(
     var bitwardenSyncForensicsRawCaptureEnabled by remember {
         mutableStateOf(settings.bitwardenSyncForensicsRawCaptureEnabled)
     }
+    var appLauncherLabel by remember {
+        mutableStateOf(settings.appLauncherLabel)
+    }
+    var isCreatingMndxDemo by remember { mutableStateOf(false) }
 
     LaunchedEffect(
         settings.disablePasswordVerification,
         settings.bitwardenSyncForensicsEnabled,
         settings.bitwardenSyncForensicsDirectoryUri,
-        settings.bitwardenSyncForensicsRawCaptureEnabled
+        settings.bitwardenSyncForensicsRawCaptureEnabled,
+        settings.appLauncherLabel
     ) {
         disablePasswordVerification = settings.disablePasswordVerification
         bitwardenSyncForensicsEnabled = settings.bitwardenSyncForensicsEnabled
         bitwardenSyncForensicsDirectoryUri = settings.bitwardenSyncForensicsDirectoryUri
         bitwardenSyncForensicsRawCaptureEnabled = settings.bitwardenSyncForensicsRawCaptureEnabled
+        appLauncherLabel = settings.appLauncherLabel
     }
 
     val forensicsDirectoryPickerLauncher = rememberLauncherForActivityResult(
@@ -275,6 +283,24 @@ fun DeveloperSettingsScreen(
                 )
 
                 SettingsItemWithSwitch(
+                    icon = Icons.Default.AutoAwesome,
+                    title = stringResource(R.string.developer_launcher_name_use_pass),
+                    subtitle = stringResource(R.string.developer_launcher_name_use_pass_desc),
+                    checked = appLauncherLabel == AppLauncherLabel.MONICA_PASS,
+                    onCheckedChange = { enabled ->
+                        val nextLabel = if (enabled) {
+                            AppLauncherLabel.MONICA_PASS
+                        } else {
+                            AppLauncherLabel.MONICA
+                        }
+                        appLauncherLabel = nextLabel
+                        scope.launch {
+                            viewModel.updateAppLauncherLabel(nextLabel)
+                        }
+                    }
+                )
+
+                SettingsItemWithSwitch(
                     icon = Icons.Default.BugReport,
                     title = stringResource(R.string.developer_bitwarden_forensics_toggle),
                     subtitle = stringResource(R.string.developer_bitwarden_forensics_toggle_desc),
@@ -336,6 +362,48 @@ fun DeveloperSettingsScreen(
                             context.getString(R.string.developer_bitwarden_forensics_dir_cleared),
                             Toast.LENGTH_SHORT
                         ).show()
+                    }
+                )
+
+                SettingsItem(
+                    icon = Icons.Default.AutoAwesome,
+                    title = stringResource(R.string.developer_mndx_create_demo_onedrive),
+                    subtitle = if (isCreatingMndxDemo) {
+                        stringResource(R.string.developer_mndx_create_demo_running)
+                    } else {
+                        stringResource(R.string.developer_mndx_create_demo_onedrive_desc)
+                    },
+                    onClick = {
+                        if (isCreatingMndxDemo) return@SettingsItem
+                        isCreatingMndxDemo = true
+                        scope.launch {
+                            val result = MndxDeveloperVaultHelper(context)
+                                .createDemoVaultInOneDrive()
+                            isCreatingMndxDemo = false
+                            result.fold(
+                                onSuccess = { created ->
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(
+                                            R.string.developer_mndx_create_demo_success,
+                                            created.vaultName,
+                                            created.fileCount
+                                        ),
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                },
+                                onFailure = { error ->
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(
+                                            R.string.developer_mndx_create_demo_failed,
+                                            error.message ?: "unknown"
+                                        ),
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            )
+                        }
                     }
                 )
             }

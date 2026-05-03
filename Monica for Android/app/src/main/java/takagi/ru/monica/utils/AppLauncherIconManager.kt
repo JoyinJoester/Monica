@@ -7,42 +7,61 @@ import android.os.Build
 import takagi.ru.monica.MainActivity
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppLauncherIcon
+import takagi.ru.monica.data.AppLauncherLabel
 
 object AppLauncherIconManager {
     private const val COMPAT_MODERN_ALIAS = "takagi.ru.monica.ModernLauncherAlias"
     private const val COMPAT_CLASSIC_ALIAS = "takagi.ru.monica.LockLauncherAlias"
     private const val HOME_MODERN_ALIAS = "takagi.ru.monica.ModernHomeLauncherAlias"
     private const val HOME_CLASSIC_ALIAS = "takagi.ru.monica.ClassicHomeLauncherAlias"
-    private const val VISIBLE_MODERN_ALIAS = "takagi.ru.monica.ModernVisibleLauncherAlias"
-    private const val VISIBLE_CLASSIC_ALIAS = "takagi.ru.monica.ClassicVisibleLauncherAlias"
+    private const val VISIBLE_MODERN_PASS_ALIAS = "takagi.ru.monica.ModernVisibleLauncherAlias"
+    private const val VISIBLE_CLASSIC_PASS_ALIAS = "takagi.ru.monica.ClassicVisibleLauncherAlias"
+    private const val VISIBLE_MODERN_MONICA_ALIAS =
+        "takagi.ru.monica.ModernVisibleLauncherAliasMonica"
+    private const val VISIBLE_CLASSIC_MONICA_ALIAS =
+        "takagi.ru.monica.ClassicVisibleLauncherAliasMonica"
 
-    fun apply(context: Context, icon: AppLauncherIcon) {
+    fun apply(context: Context, icon: AppLauncherIcon, label: AppLauncherLabel) {
         repairCompatibilityLaunchTargets(context)
-        applyHomeLauncherSelection(context, icon)
+        applyVisibleLauncherSelection(context, icon, label)
     }
 
     fun repairLegacyDisabledComponents(context: Context) {
         repairCompatibilityLaunchTargets(context)
     }
 
-    fun repairLaunchEntryPointsAfterUpgrade(context: Context, icon: AppLauncherIcon) {
+    fun repairLaunchEntryPointsAfterUpgrade(
+        context: Context,
+        icon: AppLauncherIcon,
+        label: AppLauncherLabel
+    ) {
         repairCompatibilityLaunchTargets(context)
-        applyHomeLauncherSelection(context, icon)
+        applyVisibleLauncherSelection(context, icon, label)
     }
 
     fun getCurrentSelection(context: Context): AppLauncherIcon {
         val packageManager = context.packageManager
-        val classicHome = ComponentName(context, VISIBLE_CLASSIC_ALIAS)
-        val modernHome = ComponentName(context, VISIBLE_MODERN_ALIAS)
+        val classicHomes = listOf(
+            ComponentName(context, VISIBLE_CLASSIC_PASS_ALIAS),
+            ComponentName(context, VISIBLE_CLASSIC_MONICA_ALIAS)
+        )
+        val modernHomes = listOf(
+            ComponentName(context, VISIBLE_MODERN_PASS_ALIAS),
+            ComponentName(context, VISIBLE_MODERN_MONICA_ALIAS)
+        )
 
-        if (packageManager.getComponentEnabledSetting(classicHome) ==
-            PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+        if (classicHomes.any { component ->
+                packageManager.getComponentEnabledSetting(component) ==
+                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            }
         ) {
             return AppLauncherIcon.LOCK_CLASSIC
         }
 
-        if (packageManager.getComponentEnabledSetting(modernHome) ==
-            PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+        if (modernHomes.any { component ->
+                packageManager.getComponentEnabledSetting(component) ==
+                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+            }
         ) {
             return AppLauncherIcon.MODERN
         }
@@ -97,49 +116,54 @@ object AppLauncherIconManager {
         }
     }
 
-    private fun applyHomeLauncherSelection(context: Context, icon: AppLauncherIcon) {
+    private fun applyVisibleLauncherSelection(
+        context: Context,
+        icon: AppLauncherIcon,
+        label: AppLauncherLabel
+    ) {
         val packageManager = context.packageManager
-        val modernHome = ComponentName(context, VISIBLE_MODERN_ALIAS)
-        val classicHome = ComponentName(context, VISIBLE_CLASSIC_ALIAS)
-
-        val modernState = if (icon == AppLauncherIcon.MODERN) {
-            PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-        } else {
-            PackageManager.COMPONENT_ENABLED_STATE_DISABLED
-        }
-        val classicState = if (icon == AppLauncherIcon.LOCK_CLASSIC) {
-            PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-        } else {
-            PackageManager.COMPONENT_ENABLED_STATE_DISABLED
-        }
+        val states = mapOf(
+            ComponentName(context, VISIBLE_MODERN_PASS_ALIAS) to componentStateFor(
+                icon == AppLauncherIcon.MODERN && label == AppLauncherLabel.MONICA_PASS
+            ),
+            ComponentName(context, VISIBLE_CLASSIC_PASS_ALIAS) to componentStateFor(
+                icon == AppLauncherIcon.LOCK_CLASSIC && label == AppLauncherLabel.MONICA_PASS
+            ),
+            ComponentName(context, VISIBLE_MODERN_MONICA_ALIAS) to componentStateFor(
+                icon == AppLauncherIcon.MODERN && label == AppLauncherLabel.MONICA
+            ),
+            ComponentName(context, VISIBLE_CLASSIC_MONICA_ALIAS) to componentStateFor(
+                icon == AppLauncherIcon.LOCK_CLASSIC && label == AppLauncherLabel.MONICA
+            )
+        )
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             packageManager.setComponentEnabledSettings(
-                listOf(
+                states.map { (component, state) ->
                     PackageManager.ComponentEnabledSetting(
-                        modernHome,
-                        modernState,
-                        PackageManager.DONT_KILL_APP
-                    ),
-                    PackageManager.ComponentEnabledSetting(
-                        classicHome,
-                        classicState,
+                        component,
+                        state,
                         PackageManager.DONT_KILL_APP
                     )
-                )
+                }
             )
             return
         }
 
-        packageManager.setComponentEnabledSetting(
-            modernHome,
-            modernState,
-            PackageManager.DONT_KILL_APP
-        )
-        packageManager.setComponentEnabledSetting(
-            classicHome,
-            classicState,
-            PackageManager.DONT_KILL_APP
-        )
+        states.forEach { (component, state) ->
+            packageManager.setComponentEnabledSetting(
+                component,
+                state,
+                PackageManager.DONT_KILL_APP
+            )
+        }
+    }
+
+    private fun componentStateFor(shouldEnable: Boolean): Int {
+        return if (shouldEnable) {
+            PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+        } else {
+            PackageManager.COMPONENT_ENABLED_STATE_DISABLED
+        }
     }
 }

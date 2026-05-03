@@ -557,41 +557,46 @@ private fun ManualInputDialog(
 private suspend fun loadInstalledApps(context: Context): List<AppInfo> = withContext(Dispatchers.IO) {
     val packageManager = context.packageManager
     val appList = mutableListOf<AppInfo>()
-    val maxApps = 500 // 限制最多500个应用（与 AppListScreen 保持一致）
-    
+    val maxApps = 1000 // 去重后的上限
+
     try {
         android.util.Log.d("AppSelector", "开始加载应用列表...")
-        
-        // 创建Intent，查询所有有启动器图标的应用（与 AppListScreen 逻辑一致）
+
+        // 创建Intent，查询所有有启动器图标的应用
         val intent = android.content.Intent(android.content.Intent.ACTION_MAIN, null).apply {
             addCategory(android.content.Intent.CATEGORY_LAUNCHER)
         }
-        
+
         // 查询所有匹配的Activity
         val startTime = System.currentTimeMillis()
         val resolveInfoList = packageManager.queryIntentActivities(intent, 0)
         val queryTime = System.currentTimeMillis() - startTime
-        
+
         android.util.Log.d("AppSelector", "查询到 ${resolveInfoList.size} 个应用入口，耗时 ${queryTime}ms")
-        
-        // 使用 Set 去重（同一个包名只保留第一个入口）
+
+        // 先去重（同一个包名只保留第一个入口），再限制数量
         val seenPackages = mutableSetOf<String>()
-        val limitedList = resolveInfoList.take(maxApps)
-        
-        for ((index, resolveInfo) in limitedList.withIndex()) {
+
+        for (resolveInfo in resolveInfoList) {
             try {
                 val activityInfo = resolveInfo.activityInfo
                 val packageName = activityInfo.packageName
-                
+
                 // 跳过重复的包名（只保留第一个入口）
-                if (seenPackages.contains(packageName)) {
-                    android.util.Log.d("AppSelector", "跳过重复应用: $packageName")
+                if (!seenPackages.add(packageName)) {
                     continue
                 }
-                seenPackages.add(packageName)
+
+                // 跳过隐藏的系统组件
+                if (isSystemComponentToHide(packageName)) {
+                    continue
+                }
                 
+                // 达到上限时停止
+                if (appList.size >= maxApps) break
+
                 val appName = activityInfo.loadLabel(packageManager).toString()
-                
+
                 // 安全加载图标（可能失败）
                 val icon = try {
                     activityInfo.loadIcon(packageManager)
@@ -599,13 +604,8 @@ private suspend fun loadInstalledApps(context: Context): List<AppInfo> = withCon
                     android.util.Log.w("AppSelector", "无法加载图标: $packageName", e)
                     packageManager.defaultActivityIcon // 使用默认图标
                 }
-                
+
                 appList.add(AppInfo(packageName, appName, icon))
-                
-                // 每100个输出一次日志
-                if ((index + 1) % 100 == 0) {
-                    android.util.Log.d("AppSelector", "已加载 ${index + 1} 个应用...")
-                }
                 
             } catch (e: Exception) {
                 android.util.Log.w("AppSelector", "跳过无效应用: ${e.message}")

@@ -25,6 +25,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.primaryLinkedAppPackageName
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_SIMPLE
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_UPLOADED
@@ -295,10 +296,11 @@ private fun AppIconOrFallback(
                 null
             }
 
+            val primaryAppPackageName = password.primaryLinkedAppPackageName()
             val autoMatchedSimpleIcon = rememberAutoMatchedSimpleIcon(
                 website = password.website,
                 title = password.title,
-                appPackageName = password.appPackageName,
+                appPackageName = primaryAppPackageName,
                 tintColor = MaterialTheme.colorScheme.primary,
                 enabled = password.customIconType == PASSWORD_ICON_TYPE_NONE
             )
@@ -312,8 +314,8 @@ private fun AppIconOrFallback(
                 null
             }
 
-            val appIcon = if (password.appPackageName.isNotBlank()) {
-                rememberAppIcon(password.appPackageName)
+            val appIcon = if (primaryAppPackageName.isNotBlank()) {
+                rememberAppIcon(primaryAppPackageName)
             } else {
                 null
             }

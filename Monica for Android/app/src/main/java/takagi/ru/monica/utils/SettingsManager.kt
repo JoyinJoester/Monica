@@ -19,6 +19,7 @@ import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.AddButtonBehaviorMode
 import takagi.ru.monica.data.AddButtonMenuAction
 import takagi.ru.monica.data.AppLauncherIcon
+import takagi.ru.monica.data.AppLauncherLabel
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.BottomNavVisibility
 import takagi.ru.monica.data.CategorySelectionUiMode
@@ -27,6 +28,7 @@ import takagi.ru.monica.data.Language
 import takagi.ru.monica.data.PasswordPageContentType
 import takagi.ru.monica.data.PasswordListQuickFilterItem
 import takagi.ru.monica.data.PasswordListQuickFolderStyle
+import takagi.ru.monica.data.PasswordSwipeSelectionMode
 import takagi.ru.monica.data.PasswordListTopModule
 import takagi.ru.monica.data.PresetCustomField
 import takagi.ru.monica.data.NoteCodeBlockCollapseMode
@@ -110,11 +112,12 @@ data class PageAdjustmentSettingsSnapshot(
     val validatorSmoothProgress: Boolean = true,
     val validatorVibrationEnabled: Boolean = true,
     val copyNextCodeWhenExpiring: Boolean = false,
-    val iconCardsEnabled: Boolean = false,
-        val appLauncherIcon: String = takagi.ru.monica.data.AppLauncherIcon.LOCK_CLASSIC.name,
-    val passwordPageIconEnabled: Boolean = false,
-    val authenticatorPageIconEnabled: Boolean = false,
-    val passkeyPageIconEnabled: Boolean = false,
+    val iconCardsEnabled: Boolean = true,
+    val appLauncherIcon: String = takagi.ru.monica.data.AppLauncherIcon.LOCK_CLASSIC.name,
+    val appLauncherLabel: String = takagi.ru.monica.data.AppLauncherLabel.MONICA_PASS.name,
+    val passwordPageIconEnabled: Boolean = true,
+    val authenticatorPageIconEnabled: Boolean = true,
+    val passkeyPageIconEnabled: Boolean = true,
     val unmatchedIconHandlingStrategy: String = takagi.ru.monica.data.UnmatchedIconHandlingStrategy.DEFAULT_ICON.name,
     val passwordFieldSettingsVersion: Int = 0,
     val separateUsernameAccountEnabled: Boolean = false,
@@ -147,6 +150,7 @@ class SettingsManager(private val context: Context) {
         private val CUSTOM_NEUTRAL_VARIANT_COLOR_KEY = longPreferencesKey("custom_neutral_variant_color")
         private val LANGUAGE_KEY = stringPreferencesKey("language")
         private val BIOMETRIC_ENABLED_KEY = booleanPreferencesKey("biometric_enabled")
+        private val QUICK_SETUP_COMPLETED_KEY = booleanPreferencesKey("quick_setup_completed")
         private val AUTO_LOCK_MINUTES_KEY = intPreferencesKey("auto_lock_minutes")
         private val SCREENSHOT_PROTECTION_KEY = booleanPreferencesKey("screenshot_protection_enabled")
         private val SHOW_PASSWORDS_TAB_KEY = booleanPreferencesKey("show_passwords_tab")
@@ -194,6 +198,7 @@ class SettingsManager(private val context: Context) {
         private val TRASH_AUTO_DELETE_DAYS_KEY = intPreferencesKey("trash_auto_delete_days") // 回收站自动清空天数
         private val ICON_CARDS_ENABLED_KEY = booleanPreferencesKey("icon_cards_enabled") // 带图标卡片开关
         private val APP_LAUNCHER_ICON_KEY = stringPreferencesKey("app_launcher_icon") // 主应用图标样式
+        private val APP_LAUNCHER_LABEL_KEY = stringPreferencesKey("app_launcher_label") // 主应用桌面名称
         private val PASSWORD_PAGE_ICON_ENABLED_KEY = booleanPreferencesKey("password_page_icon_enabled") // 密码页图标开关
         private val AUTHENTICATOR_PAGE_ICON_ENABLED_KEY = booleanPreferencesKey("authenticator_page_icon_enabled") // 验证器页图标开关
         private val PASSKEY_PAGE_ICON_ENABLED_KEY = booleanPreferencesKey("passkey_page_icon_enabled") // 通行密钥页图标开关
@@ -221,6 +226,7 @@ class SettingsManager(private val context: Context) {
         private val CATEGORY_SELECTION_UI_MODE_KEY = stringPreferencesKey("category_selection_ui_mode") // 分类选择 UI 形式
         private val PASSWORD_LIST_QUICK_ACCESS_ENABLED_KEY = booleanPreferencesKey("password_list_quick_access_enabled") // 密码列表“最近/常用”快捷入口开关
         private val PASSWORD_LIST_TOP_MODULES_ORDER_KEY = stringPreferencesKey("password_list_top_modules_order") // 密码列表顶部模块顺序
+        private val PASSWORD_SWIPE_SELECTION_MODE_KEY = stringPreferencesKey("password_swipe_selection_mode") // 密码列表右滑选中模式
         private val HIDE_FAB_ON_SCROLL_KEY = booleanPreferencesKey("hide_fab_on_scroll") // 滚动隐藏 FAB
         private val SECURITY_ANALYSIS_AUTO_ENABLED_KEY = booleanPreferencesKey("security_analysis_auto_enabled") // 安全分析自动分析
         private val NOTE_GRID_LAYOUT_KEY = booleanPreferencesKey("note_grid_layout") // 笔记网格布局
@@ -489,6 +495,7 @@ class SettingsManager(private val context: Context) {
                 preferences[LANGUAGE_KEY] ?: Language.SYSTEM.name
             ),
             biometricEnabled = preferences[BIOMETRIC_ENABLED_KEY] ?: false,
+            quickSetupCompleted = preferences[QUICK_SETUP_COMPLETED_KEY] ?: false,
             autoLockMinutes = preferences[AUTO_LOCK_MINUTES_KEY] ?: 5,
             screenshotProtectionEnabled = preferences[SCREENSHOT_PROTECTION_KEY] ?: true,
             dynamicColorEnabled = preferences[DYNAMIC_COLOR_ENABLED_KEY] ?: true,
@@ -541,18 +548,23 @@ class SettingsManager(private val context: Context) {
             totpTimeOffset = preferences[TOTP_TIME_OFFSET_KEY] ?: 0,
             trashEnabled = preferences[TRASH_ENABLED_KEY] ?: true,
             trashAutoDeleteDays = preferences[TRASH_AUTO_DELETE_DAYS_KEY] ?: 30,
-            iconCardsEnabled = preferences[ICON_CARDS_ENABLED_KEY] ?: false,
+            iconCardsEnabled = preferences[ICON_CARDS_ENABLED_KEY] ?: true,
             appLauncherIcon = runCatching {
                 AppLauncherIcon.valueOf(
                     preferences[APP_LAUNCHER_ICON_KEY] ?: AppLauncherIcon.LOCK_CLASSIC.name
                 )
             }.getOrDefault(AppLauncherIcon.LOCK_CLASSIC),
+            appLauncherLabel = runCatching {
+                AppLauncherLabel.valueOf(
+                    preferences[APP_LAUNCHER_LABEL_KEY] ?: AppLauncherLabel.MONICA_PASS.name
+                )
+            }.getOrDefault(AppLauncherLabel.MONICA_PASS),
             passwordPageIconEnabled = preferences[PASSWORD_PAGE_ICON_ENABLED_KEY]
-                ?: (preferences[ICON_CARDS_ENABLED_KEY] ?: false),
+                ?: (preferences[ICON_CARDS_ENABLED_KEY] ?: true),
             authenticatorPageIconEnabled = preferences[AUTHENTICATOR_PAGE_ICON_ENABLED_KEY]
-                ?: (preferences[ICON_CARDS_ENABLED_KEY] ?: false),
+                ?: (preferences[ICON_CARDS_ENABLED_KEY] ?: true),
             passkeyPageIconEnabled = preferences[PASSKEY_PAGE_ICON_ENABLED_KEY]
-                ?: (preferences[ICON_CARDS_ENABLED_KEY] ?: false),
+                ?: (preferences[ICON_CARDS_ENABLED_KEY] ?: true),
             unmatchedIconHandlingStrategy = runCatching {
                 takagi.ru.monica.data.UnmatchedIconHandlingStrategy.valueOf(
                     preferences[UNMATCHED_ICON_HANDLING_STRATEGY_KEY]
@@ -616,6 +628,12 @@ class SettingsManager(private val context: Context) {
             ),
             passwordListQuickAccessEnabled = preferences[PASSWORD_LIST_QUICK_ACCESS_ENABLED_KEY] ?: true,
             passwordListTopModulesOrder = parsedTopModulesOrder,
+            passwordSwipeSelectionMode = runCatching {
+                PasswordSwipeSelectionMode.valueOf(
+                    preferences[PASSWORD_SWIPE_SELECTION_MODE_KEY]
+                        ?: PasswordSwipeSelectionMode.DEFAULT.name
+                )
+            }.getOrDefault(PasswordSwipeSelectionMode.DEFAULT),
             noteGridLayout = preferences[NOTE_GRID_LAYOUT_KEY] ?: true,
             noteCodeBlockCollapseMode = runCatching {
                 NoteCodeBlockCollapseMode.valueOf(
@@ -689,6 +707,12 @@ class SettingsManager(private val context: Context) {
     suspend fun updateBiometricEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[BIOMETRIC_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun updateQuickSetupCompleted(completed: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[QUICK_SETUP_COMPLETED_KEY] = completed
         }
     }
     
@@ -970,7 +994,16 @@ class SettingsManager(private val context: Context) {
         dataStore.edit { preferences ->
             preferences[APP_LAUNCHER_ICON_KEY] = icon.name
         }
-        AppLauncherIconManager.apply(this.context, icon)
+        val label = settingsFlow.first().appLauncherLabel
+        AppLauncherIconManager.apply(this.context, icon, label)
+    }
+
+    suspend fun updateAppLauncherLabel(label: AppLauncherLabel) {
+        dataStore.edit { preferences ->
+            preferences[APP_LAUNCHER_LABEL_KEY] = label.name
+        }
+        val icon = settingsFlow.first().appLauncherIcon
+        AppLauncherIconManager.apply(this.context, icon, label)
     }
 
     suspend fun updatePasswordPageIconEnabled(enabled: Boolean) {
@@ -1138,6 +1171,12 @@ class SettingsManager(private val context: Context) {
         }
     }
 
+    suspend fun updatePasswordSwipeSelectionMode(mode: PasswordSwipeSelectionMode) {
+        dataStore.edit { preferences ->
+            preferences[PASSWORD_SWIPE_SELECTION_MODE_KEY] = mode.name
+        }
+    }
+
     suspend fun updateNoteGridLayout(isGrid: Boolean) {
         dataStore.edit { preferences ->
             preferences[NOTE_GRID_LAYOUT_KEY] = isGrid
@@ -1228,6 +1267,7 @@ class SettingsManager(private val context: Context) {
             copyNextCodeWhenExpiring = settings.copyNextCodeWhenExpiring,
             iconCardsEnabled = settings.iconCardsEnabled,
             appLauncherIcon = settings.appLauncherIcon.name,
+            appLauncherLabel = settings.appLauncherLabel.name,
             passwordPageIconEnabled = settings.passwordPageIconEnabled,
             authenticatorPageIconEnabled = settings.authenticatorPageIconEnabled,
             passkeyPageIconEnabled = settings.passkeyPageIconEnabled,
@@ -1400,6 +1440,10 @@ class SettingsManager(private val context: Context) {
                 AppLauncherIcon.valueOf(snapshot.appLauncherIcon.trim())
             }.getOrDefault(AppLauncherIcon.LOCK_CLASSIC)
             preferences[APP_LAUNCHER_ICON_KEY] = parsedAppLauncherIcon.name
+            val parsedAppLauncherLabel = runCatching {
+                AppLauncherLabel.valueOf(snapshot.appLauncherLabel.trim())
+            }.getOrDefault(AppLauncherLabel.MONICA_PASS)
+            preferences[APP_LAUNCHER_LABEL_KEY] = parsedAppLauncherLabel.name
             preferences[PASSWORD_PAGE_ICON_ENABLED_KEY] = snapshot.passwordPageIconEnabled
             preferences[AUTHENTICATOR_PAGE_ICON_ENABLED_KEY] = snapshot.authenticatorPageIconEnabled
             preferences[PASSKEY_PAGE_ICON_ENABLED_KEY] = snapshot.passkeyPageIconEnabled
@@ -1421,7 +1465,10 @@ class SettingsManager(private val context: Context) {
         val appliedIcon = runCatching {
             AppLauncherIcon.valueOf(snapshot.appLauncherIcon.trim())
         }.getOrDefault(AppLauncherIcon.LOCK_CLASSIC)
-        AppLauncherIconManager.apply(context, appliedIcon)
+        val appliedLabel = runCatching {
+            AppLauncherLabel.valueOf(snapshot.appLauncherLabel.trim())
+        }.getOrDefault(AppLauncherLabel.MONICA_PASS)
+        AppLauncherIconManager.apply(context, appliedIcon, appliedLabel)
     }
     
     // ==================== 预设自定义字段管理 ====================

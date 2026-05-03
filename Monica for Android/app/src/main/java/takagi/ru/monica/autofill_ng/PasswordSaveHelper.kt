@@ -4,6 +4,7 @@ import android.app.assist.AssistStructure
 import android.content.Context
 import android.content.pm.PackageManager
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.isLinkedToApp
 import takagi.ru.monica.autofill_ng.core.AutofillLogger
 import java.net.URL
 import java.util.Date
@@ -313,7 +314,7 @@ object PasswordSaveHelper {
                 isSameDomain(entry.website, saveData.webDomain)
             } else {
                 // 应用场景:比较包名
-                entry.appPackageName == saveData.packageName
+                entry.isLinkedToApp(saveData.packageName)
             }
         }
         

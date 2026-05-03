@@ -318,7 +318,19 @@ interface PasswordEntryDao {
      * 按包名和用户名查询密码
      * 用于自动填充保存时检测重复
      */
-    @Query("SELECT * FROM password_entries WHERE appPackageName = :packageName AND LOWER(username) = LOWER(:username) AND isDeleted = 0 AND isArchived = 0 LIMIT 1")
+    @Query(
+        """
+        SELECT * FROM password_entries
+        WHERE LOWER(username) = LOWER(:username)
+          AND isDeleted = 0
+          AND isArchived = 0
+          AND instr(
+            '|' || LOWER(REPLACE(REPLACE(appPackageName, ',', '|'), ';', '|')) || '|',
+            '|' || LOWER(:packageName) || '|'
+          ) > 0
+        LIMIT 1
+        """
+    )
     suspend fun findByPackageAndUsername(packageName: String, username: String): PasswordEntry?
     
     /**
@@ -332,7 +344,18 @@ interface PasswordEntryDao {
      * 按包名查询所有密码
      * 用于检测同一应用的多个账号
      */
-    @Query("SELECT * FROM password_entries WHERE appPackageName = :packageName AND isDeleted = 0 AND isArchived = 0 ORDER BY updatedAt DESC")
+    @Query(
+        """
+        SELECT * FROM password_entries
+        WHERE isDeleted = 0
+          AND isArchived = 0
+          AND instr(
+            '|' || LOWER(REPLACE(REPLACE(appPackageName, ',', '|'), ';', '|')) || '|',
+            '|' || LOWER(:packageName) || '|'
+          ) > 0
+        ORDER BY updatedAt DESC
+        """
+    )
     suspend fun findByPackageName(packageName: String): List<PasswordEntry>
     
     /**
@@ -346,7 +369,20 @@ interface PasswordEntryDao {
      * 检查是否存在完全相同的密码(包名+用户名+密码)
      * 用于避免重复保存
      */
-    @Query("SELECT * FROM password_entries WHERE appPackageName = :packageName AND LOWER(username) = LOWER(:username) AND password = :encryptedPassword AND isDeleted = 0 AND isArchived = 0 LIMIT 1")
+    @Query(
+        """
+        SELECT * FROM password_entries
+        WHERE LOWER(username) = LOWER(:username)
+          AND password = :encryptedPassword
+          AND isDeleted = 0
+          AND isArchived = 0
+          AND instr(
+            '|' || LOWER(REPLACE(REPLACE(appPackageName, ',', '|'), ';', '|')) || '|',
+            '|' || LOWER(:packageName) || '|'
+          ) > 0
+        LIMIT 1
+        """
+    )
     suspend fun findExactMatch(packageName: String, username: String, encryptedPassword: String): PasswordEntry?
     
     // =============== 回收站相关方法 ===============

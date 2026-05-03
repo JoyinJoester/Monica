@@ -24,6 +24,7 @@ import takagi.ru.monica.data.PasswordCardDisplayField
 import takagi.ru.monica.data.UnmatchedIconHandlingStrategy
 import takagi.ru.monica.bitwarden.sync.SyncStatus
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.primaryLinkedAppPackageName
 import takagi.ru.monica.ui.components.SyncStatusIcon
 import takagi.ru.monica.ui.icons.UnmatchedIconFallback
 import takagi.ru.monica.ui.icons.shouldShowFallbackSlot
@@ -110,13 +111,14 @@ fun PasswordEntryCard(
                     val uploadedIcon = if (entry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_UPLOADED) {
                         takagi.ru.monica.ui.icons.rememberUploadedPasswordIcon(entry.customIconValue)
                     } else null
-                    val appIcon = if (!entry.appPackageName.isNullOrBlank()) {
-                        takagi.ru.monica.autofill_ng.ui.rememberAppIcon(entry.appPackageName)
+                    val primaryAppPackageName = entry.primaryLinkedAppPackageName()
+                    val appIcon = if (primaryAppPackageName.isNotBlank()) {
+                        takagi.ru.monica.autofill_ng.ui.rememberAppIcon(primaryAppPackageName)
                     } else null
                     val autoMatchedSimpleIcon = takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon(
                         website = entry.website,
                         title = entry.title,
-                        appPackageName = entry.appPackageName,
+                        appPackageName = primaryAppPackageName,
                         tintColor = MaterialTheme.colorScheme.primary,
                         enabled = entry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
                     )
@@ -383,4 +385,3 @@ private fun PasswordAuthenticatorInlineRow(
         }
     }
 }
-

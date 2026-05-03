@@ -372,11 +372,12 @@ private data class PageAdjustmentSettingsBackupEntry(
     val validatorSmoothProgress: Boolean = true,
     val validatorVibrationEnabled: Boolean = true,
     val copyNextCodeWhenExpiring: Boolean = false,
-    val iconCardsEnabled: Boolean = false,
+    val iconCardsEnabled: Boolean = true,
     val appLauncherIcon: String = "LOCK_CLASSIC",
-    val passwordPageIconEnabled: Boolean = false,
-    val authenticatorPageIconEnabled: Boolean = false,
-    val passkeyPageIconEnabled: Boolean = false,
+    val appLauncherLabel: String = "MONICA_PASS",
+    val passwordPageIconEnabled: Boolean = true,
+    val authenticatorPageIconEnabled: Boolean = true,
+    val passkeyPageIconEnabled: Boolean = true,
     val unmatchedIconHandlingStrategy: String = "DEFAULT_ICON",
     val passwordFieldSettingsVersion: Int = 0,
     val separateUsernameAccountEnabled: Boolean = false,
@@ -1841,6 +1842,7 @@ class WebDavHelper(
                                     pageAdjustmentSettingsSnapshot.copyNextCodeWhenExpiring,
                                 iconCardsEnabled = pageAdjustmentSettingsSnapshot.iconCardsEnabled,
                                 appLauncherIcon = pageAdjustmentSettingsSnapshot.appLauncherIcon,
+                                appLauncherLabel = pageAdjustmentSettingsSnapshot.appLauncherLabel,
                                 passwordPageIconEnabled = pageAdjustmentSettingsSnapshot.passwordPageIconEnabled,
                                 authenticatorPageIconEnabled =
                                     pageAdjustmentSettingsSnapshot.authenticatorPageIconEnabled,
@@ -3036,6 +3038,7 @@ class WebDavHelper(
                                                 pageAdjustmentBackup.copyNextCodeWhenExpiring,
                                             iconCardsEnabled = pageAdjustmentBackup.iconCardsEnabled,
                                             appLauncherIcon = pageAdjustmentBackup.appLauncherIcon,
+                                            appLauncherLabel = pageAdjustmentBackup.appLauncherLabel,
                                             passwordPageIconEnabled =
                                                 pageAdjustmentBackup.passwordPageIconEnabled,
                                                 authenticatorPageIconEnabled =

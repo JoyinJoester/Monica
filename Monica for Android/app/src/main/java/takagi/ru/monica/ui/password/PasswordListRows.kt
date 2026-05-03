@@ -14,6 +14,7 @@ import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordPageContentType
+import takagi.ru.monica.data.PasswordSwipeSelectionMode
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.ui.password.PasswordGroupListItemUi
 import takagi.ru.monica.ui.password.PasswordListAggregateConfig
@@ -41,6 +42,8 @@ internal fun LazyListScope.passwordPageListRows(
     onSelectionModeChange: (Boolean) -> Unit,
     selectedItemKeys: Set<String>,
     onSelectedItemKeysChange: (Set<String>) -> Unit,
+    swipeSelectionAnchorKey: String?,
+    onSwipeSelectionAnchorKeyChange: (String?) -> Unit,
     selectedPasswords: Set<Long>,
     showBatchDeleteDialog: Boolean,
     onShowBatchDeleteDialogChange: (Boolean) -> Unit,
@@ -54,6 +57,17 @@ internal fun LazyListScope.passwordPageListRows(
     aggregateConfig: PasswordListAggregateConfig?,
     aggregateUiState: PasswordListAggregateUiState
 ) {
+    val orderedSelectionKeys = passwordPageListItems.flatMap { item ->
+        when (item) {
+            is PasswordGroupListItemUi ->
+                selectionKeysForPasswords(item.passwords.map(PasswordEntry::id)).toList()
+            is PasswordManualStackGroupListItemUi ->
+                item.cards.map(PasswordPageCardItemUi::key)
+            is PasswordSupplementaryListItemUi ->
+                listOf(item.key)
+        }
+    }
+
     fun toggleSelectionForKey(key: String) {
         onSelectedItemKeysChange(
             if (key in selectedItemKeys) {
@@ -62,6 +76,7 @@ internal fun LazyListScope.passwordPageListRows(
                 selectedItemKeys + key
             }
         )
+        onSwipeSelectionAnchorKeyChange(key)
     }
 
     fun toggleSelectionForCards(cards: List<PasswordPageCardItemUi>) {
@@ -74,6 +89,32 @@ internal fun LazyListScope.passwordPageListRows(
                 selectedItemKeys + cardKeys
             }
         )
+        if (!allSelected) {
+            cardKeys.firstOrNull()?.let(onSwipeSelectionAnchorKeyChange)
+        }
+    }
+
+    fun selectSwipeRangeTo(targetKey: String) {
+        if (appSettings.passwordSwipeSelectionMode != PasswordSwipeSelectionMode.CONTINUOUS) {
+            toggleSelectionForKey(targetKey)
+            return
+        }
+
+        val anchorKey = swipeSelectionAnchorKey
+        val anchorIndex = orderedSelectionKeys.indexOf(anchorKey)
+        val targetIndex = orderedSelectionKeys.indexOf(targetKey)
+        if (anchorKey == null || anchorIndex == -1 || targetIndex == -1) {
+            onSelectedItemKeysChange(setOf(targetKey))
+            onSwipeSelectionAnchorKeyChange(targetKey)
+            return
+        }
+
+        val range = if (anchorIndex <= targetIndex) {
+            orderedSelectionKeys.subList(anchorIndex, targetIndex + 1)
+        } else {
+            orderedSelectionKeys.subList(targetIndex, anchorIndex + 1)
+        }
+        onSelectedItemKeysChange(range.toSet())
     }
 
     fun openCard(card: PasswordPageCardItemUi) {
@@ -187,14 +228,7 @@ internal fun LazyListScope.passwordPageListRows(
                     },
                     onPasswordClick = { password ->
                         if (isSelectionMode) {
-                            val selectionKey = passwordSelectionKey(password.id)
-                            onSelectedItemKeysChange(
-                                if (selectionKey in selectedItemKeys) {
-                                    selectedItemKeys - selectionKey
-                                } else {
-                                    selectedItemKeys + selectionKey
-                                }
-                            )
+                            toggleSelectionForKey(passwordSelectionKey(password.id))
                         } else {
                             onPasswordClick(password)
                         }
@@ -210,14 +244,7 @@ internal fun LazyListScope.passwordPageListRows(
                         if (!isSelectionMode) {
                             onSelectionModeChange(true)
                         }
-                        val selectionKey = passwordSelectionKey(password.id)
-                        onSelectedItemKeysChange(
-                            if (selectionKey in selectedItemKeys) {
-                                selectedItemKeys - selectionKey
-                            } else {
-                                selectedItemKeys + selectionKey
-                            }
-                        )
+                        selectSwipeRangeTo(passwordSelectionKey(password.id))
                     },
                     onGroupSwipeRight = { groupPasswords ->
                         haptic.performSuccess()
@@ -227,14 +254,19 @@ internal fun LazyListScope.passwordPageListRows(
                         val groupSelectionKeys = selectionKeysForPasswords(
                             groupPasswords.map(PasswordEntry::id)
                         )
-                        val allSelected = groupSelectionKeys.all { it in selectedItemKeys }
-                        onSelectedItemKeysChange(
-                            if (allSelected) {
-                                selectedItemKeys - groupSelectionKeys
-                            } else {
-                                selectedItemKeys + groupSelectionKeys
-                            }
-                        )
+                        if (appSettings.passwordSwipeSelectionMode == PasswordSwipeSelectionMode.CONTINUOUS) {
+                            groupSelectionKeys.lastOrNull()?.let(::selectSwipeRangeTo)
+                        } else {
+                            val allSelected = groupSelectionKeys.all { it in selectedItemKeys }
+                            onSelectedItemKeysChange(
+                                if (allSelected) {
+                                    selectedItemKeys - groupSelectionKeys
+                                } else {
+                                    onSwipeSelectionAnchorKeyChange(groupSelectionKeys.firstOrNull())
+                                    selectedItemKeys + groupSelectionKeys
+                                }
+                            )
+                        }
                     },
                     onToggleFavorite = { password ->
                         viewModel.toggleFavorite(password.id, !password.isFavorite)
@@ -289,14 +321,7 @@ internal fun LazyListScope.passwordPageListRows(
                     isSelectionMode = isSelectionMode,
                     selectedPasswords = selectedPasswords,
                     onToggleSelection = { id ->
-                        val selectionKey = passwordSelectionKey(id)
-                        onSelectedItemKeysChange(
-                            if (selectionKey in selectedItemKeys) {
-                                selectedItemKeys - selectionKey
-                            } else {
-                                selectedItemKeys + selectionKey
-                            }
-                        )
+                        toggleSelectionForKey(passwordSelectionKey(id))
                     },
                     onOpenMultiPasswordDialog = { passwords ->
                         onPasswordClick(passwords.first())
@@ -305,7 +330,9 @@ internal fun LazyListScope.passwordPageListRows(
                         haptic.performLongPress()
                         if (!isSelectionMode) {
                             onSelectionModeChange(true)
-                            onSelectedItemKeysChange(setOf(passwordSelectionKey(password.id)))
+                            val selectionKey = passwordSelectionKey(password.id)
+                            onSelectedItemKeysChange(setOf(selectionKey))
+                            onSwipeSelectionAnchorKeyChange(selectionKey)
                         }
                     },
                     iconCardsEnabled = appSettings.iconCardsEnabled && appSettings.passwordPageIconEnabled,
@@ -370,6 +397,7 @@ internal fun LazyListScope.passwordPageListRows(
                         if (!isSelectionMode) {
                             onSelectionModeChange(true)
                             onSelectedItemKeysChange(setOf(item.key))
+                            onSwipeSelectionAnchorKeyChange(item.key)
                         }
                     },
                     onSwipeLeft = { requestDeleteForCards(listOf(card)) },
@@ -378,7 +406,7 @@ internal fun LazyListScope.passwordPageListRows(
                         if (!isSelectionMode) {
                             onSelectionModeChange(true)
                         }
-                        toggleSelectionForKey(item.key)
+                        selectSwipeRangeTo(item.key)
                     },
                     isSwiped = false,
                     isSelectionMode = isSelectionMode,

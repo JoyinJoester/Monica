@@ -29,6 +29,8 @@ import takagi.ru.monica.autofill_ng.ui.AutofillScaffold
 import takagi.ru.monica.autofill_ng.ui.colorizePasswordString
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.addOrReplaceLinkedAppBinding
+import takagi.ru.monica.data.isLinkedToApp
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.theme.MonicaTheme
@@ -119,7 +121,7 @@ class AutofillSaveActivity : ComponentActivity() {
                 val encryptedPassword = securityManager.encryptData(password)
                 val existing = existingPasswords.firstOrNull { entry ->
                     // 优先匹配包名
-                    if (packageName.isNotBlank() && entry.appPackageName == packageName && 
+                    if (packageName.isNotBlank() && entry.isLinkedToApp(packageName) && 
                         entry.username.equals(username, ignoreCase = true)) {
                         true
                     }
@@ -135,8 +137,26 @@ class AutofillSaveActivity : ComponentActivity() {
                     val updated = existing.copy(
                         password = encryptedPassword,
                         notes = notes,
-                        appPackageName = packageName.ifBlank { existing.appPackageName },
-                        appName = appName.ifBlank { existing.appName },
+                        appPackageName = if (packageName.isNotBlank()) {
+                            addOrReplaceLinkedAppBinding(
+                                existing.appPackageName,
+                                existing.appName,
+                                packageName,
+                                appName
+                            ).first
+                        } else {
+                            existing.appPackageName
+                        },
+                        appName = if (packageName.isNotBlank()) {
+                            addOrReplaceLinkedAppBinding(
+                                existing.appPackageName,
+                                existing.appName,
+                                packageName,
+                                appName
+                            ).second
+                        } else {
+                            existing.appName
+                        },
                         updatedAt = Date()
                     )
                     passwordRepository.updatePasswordEntry(updated)

@@ -52,6 +52,8 @@ import takagi.ru.monica.ui.components.ActionStripItem
 import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.linkedAppBindings
+import takagi.ru.monica.data.primaryLinkedAppPackageName
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordHistoryEntry
 import takagi.ru.monica.data.UnmatchedIconHandlingStrategy
@@ -1488,13 +1490,14 @@ private fun PasswordDetailIcon(
     val uploadedIcon = if (entry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_UPLOADED) {
         rememberUploadedPasswordIcon(entry.customIconValue)
     } else null
-    val appIcon = if (!entry.appPackageName.isNullOrBlank()) {
-        rememberAppIcon(entry.appPackageName)
+    val primaryAppPackageName = entry.primaryLinkedAppPackageName()
+    val appIcon = if (primaryAppPackageName.isNotBlank()) {
+        rememberAppIcon(primaryAppPackageName)
     } else null
     val autoMatchedSimpleIcon = rememberAutoMatchedSimpleIcon(
         website = entry.website,
         title = entry.title,
-        appPackageName = entry.appPackageName,
+        appPackageName = primaryAppPackageName,
         tintColor = MaterialTheme.colorScheme.primary,
         enabled = entry.customIconType == takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
     )
@@ -2074,7 +2077,8 @@ private fun TotpCard(
             }
             
             // 显示关联应用信息
-            if (entry.appName.isNotEmpty() || entry.appPackageName.isNotEmpty()) {
+            val linkedApps = entry.linkedAppBindings()
+            if (linkedApps.isNotEmpty()) {
                 if (totpData != null) {
                     HorizontalDivider(
                         color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f),
@@ -2082,18 +2086,15 @@ private fun TotpCard(
                     )
                 }
                 
-                Column {
-                   if (entry.appName.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    linkedApps.forEach { app ->
                         Text(
-                            text = entry.appName,
+                            text = app.appName.ifBlank { app.packageName },
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
-                    }
-                    
-                    if (entry.appPackageName.isNotEmpty()) {
                         Text(
-                            text = entry.appPackageName,
+                            text = app.packageName,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
                         )

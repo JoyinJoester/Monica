@@ -118,6 +118,7 @@ sealed class Screen(val route: String) {
     object Generator : Screen("generator")  // 添加生成器页面路由
     object DeveloperSettings : Screen("developer_settings")  // 添加开发者设置页面路由
     object PermissionManagement : Screen("permission_management")  // 权限管理页面路由
+    object QuickSetup : Screen("quick_setup")  // 快速初始化引导
     object Extensions : Screen("extensions")  // 功能拓展页面路由
     object CommonAccountTemplates : Screen("common_account_templates") // 常用账号信息模板管理
     object PageAdjustmentCustomization : Screen("page_adjustment_customization") // 页面调整自定义

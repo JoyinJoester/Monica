@@ -20,6 +20,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
+import takagi.ru.monica.data.PasswordSwipeSelectionMode
 import takagi.ru.monica.data.SecureItem
 
 /**
@@ -31,6 +32,7 @@ import takagi.ru.monica.data.SecureItem
 fun ExtensionsScreen(
     onNavigateBack: () -> Unit,
     onNavigateToMonicaPlus: () -> Unit = {},
+    onNavigateToQuickSetup: () -> Unit = {},
     isPlusActivated: Boolean = false,
     validatorVibrationEnabled: Boolean = false,
     onValidatorVibrationChange: (Boolean) -> Unit = {},
@@ -38,6 +40,8 @@ fun ExtensionsScreen(
     onCopyNextCodeWhenExpiringChange: (Boolean) -> Unit = {},
     smartDeduplicationEnabled: Boolean = false,
     onSmartDeduplicationEnabledChange: (Boolean) -> Unit = {},
+    passwordSwipeSelectionMode: PasswordSwipeSelectionMode = PasswordSwipeSelectionMode.DEFAULT,
+    onPasswordSwipeSelectionModeChange: (PasswordSwipeSelectionMode) -> Unit = {},
     passwordCardDisplayMode: takagi.ru.monica.data.PasswordCardDisplayMode = takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL,
     onPasswordCardDisplayModeChange: (takagi.ru.monica.data.PasswordCardDisplayMode) -> Unit = {},
     validatorUnifiedProgressBar: takagi.ru.monica.data.UnifiedProgressBarMode = takagi.ru.monica.data.UnifiedProgressBarMode.DISABLED,
@@ -182,6 +186,15 @@ fun ExtensionsScreen(
                     }
                 }
             }
+
+            ExtensionSection(title = "快速初始化") {
+                ExtensionClickableItem(
+                    icon = Icons.Default.SettingsSuggest,
+                    title = "重新进行快速初始化",
+                    description = "重新走一遍主密码、自动填充、外观、底栏和页面习惯设置",
+                    onClick = onNavigateToQuickSetup
+                )
+            }
             
             ExtensionSection(title = stringResource(R.string.display_options_menu_title)) {
                 Row(
@@ -229,6 +242,14 @@ fun ExtensionsScreen(
                     description = stringResource(R.string.smart_deduplication_desc),
                     checked = smartDeduplicationEnabled,
                     onCheckedChange = onSmartDeduplicationEnabledChange
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                ExtensionSegmentedItem(
+                    icon = Icons.Default.Swipe,
+                    title = "滑动选中模式",
+                    description = "连续模式下，右滑会从最近一次选中的项目连续选到当前项目",
+                    selectedMode = passwordSwipeSelectionMode,
+                    onModeChange = onPasswordSwipeSelectionModeChange
                 )
             }
              
@@ -380,6 +401,78 @@ private fun ExtensionClickableItem(
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ExtensionSegmentedItem(
+    icon: ImageVector,
+    title: String,
+    description: String,
+    selectedMode: PasswordSwipeSelectionMode,
+    onModeChange: (PasswordSwipeSelectionMode) -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.size(48.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        icon,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        val modes = PasswordSwipeSelectionMode.values()
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            modes.forEachIndexed { index, mode ->
+                SegmentedButton(
+                    selected = selectedMode == mode,
+                    onClick = { onModeChange(mode) },
+                    shape = SegmentedButtonDefaults.itemShape(
+                        index = index,
+                        count = modes.size
+                    ),
+                    label = {
+                        Text(
+                            when (mode) {
+                                PasswordSwipeSelectionMode.SINGLE -> "单选"
+                                PasswordSwipeSelectionMode.CONTINUOUS -> "连续"
+                            }
+                        )
+                    }
+                )
+            }
+        }
     }
 }
 

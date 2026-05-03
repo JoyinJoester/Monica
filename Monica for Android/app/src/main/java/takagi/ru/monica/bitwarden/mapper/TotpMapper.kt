@@ -118,7 +118,10 @@ class TotpMapper : BitwardenMapper<SecureItem> {
             MergePreference.LOCAL -> local.copy(
                 bitwardenRevisionDate = remote.revisionDate
             )
-            MergePreference.REMOTE -> fromCipherResponse(remote, local.bitwardenVaultId ?: 0).copy(
+            MergePreference.REMOTE -> preserveLocalIcons(
+                fromCipherResponse(remote, local.bitwardenVaultId ?: 0),
+                local
+            ).copy(
                 id = local.id,
                 createdAt = local.createdAt
             )
@@ -128,13 +131,33 @@ class TotpMapper : BitwardenMapper<SecureItem> {
                 if (localTime > remoteTime) {
                     local
                 } else {
-                    fromCipherResponse(remote, local.bitwardenVaultId ?: 0).copy(
+                    preserveLocalIcons(
+                        fromCipherResponse(remote, local.bitwardenVaultId ?: 0),
+                        local
+                    ).copy(
                         id = local.id,
                         createdAt = local.createdAt
                     )
                 }
             }
         }
+    }
+
+    /**
+     * 将本地条目的自定义图标字段保留到远程同步结果中，
+     * 防止同步覆盖用户手动设置的图标。
+     */
+    private fun preserveLocalIcons(remoteItem: SecureItem, local: SecureItem): SecureItem {
+        val localIcon = parseTotpData(local.itemData)
+        if (localIcon.customIconType == "NONE") return remoteItem
+
+        val remoteTotpData = parseTotpData(remoteItem.itemData)
+        val merged = remoteTotpData.copy(
+            customIconType = localIcon.customIconType,
+            customIconValue = localIcon.customIconValue,
+            customIconUpdatedAt = localIcon.customIconUpdatedAt
+        )
+        return remoteItem.copy(itemData = json.encodeToString(TotpData.serializer(), merged))
     }
     
     /**

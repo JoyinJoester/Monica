@@ -1,5 +1,6 @@
     <resources>
     <string name="app_name">Monica</string>
+    <string name="app_label">Monica Pass</string>
     
     <!-- General -->
     <string name="press_back_again_to_exit">再按一次退出应用</string>
@@ -1556,6 +1557,8 @@
     <string name="developer_functions">开发者功能</string>
     <string name="developer_disable_password_verification">关闭密码验证</string>
     <string name="developer_disable_password_verification_desc">跳过应用启动时的密码验证（仅用于开发测试）</string>
+    <string name="developer_launcher_name_use_pass">主应用名称显示 Monica Pass</string>
+    <string name="developer_launcher_name_use_pass_desc">开启后桌面主入口显示 Monica Pass，关闭后显示 Monica。只影响主入口名称。</string>
     <string name="developer_bitwarden_forensics_toggle">启用 Bitwarden 同步取证</string>
     <string name="developer_bitwarden_forensics_toggle_desc">记录脱敏同步快照（仅长度与计数，不记录明文）</string>
     <string name="developer_bitwarden_forensics_raw_toggle">记录 Bitwarden 原始请求/响应</string>
@@ -1568,6 +1571,11 @@
     <string name="developer_bitwarden_forensics_clear_dir">清除取证输出目录</string>
     <string name="developer_bitwarden_forensics_clear_dir_desc">停止镜像到外部存储，仅保留应用内部日志</string>
     <string name="developer_bitwarden_forensics_dir_cleared">取证输出目录已清除</string>
+    <string name="developer_mndx_create_demo_onedrive">在 OneDrive 创建 MNDX 演示库</string>
+    <string name="developer_mndx_create_demo_onedrive_desc">实验功能：在已配置的 OneDrive 备份目录创建可读 .mndx 样例。未加密，不能存放真实秘密。</string>
+    <string name="developer_mndx_create_demo_running">正在 OneDrive 创建 MNDX 演示库...</string>
+    <string name="developer_mndx_create_demo_success">已创建 %1$s，共 %2$d 个文件</string>
+    <string name="developer_mndx_create_demo_failed">MNDX 演示库创建失败：%1$s</string>
     <string name="developer_warning">⚠️ 开发者功能仅供测试使用，请勿在生产环境中启用</string>
     <string name="developer_log_buffer_cleared">日志缓冲区已清除</string>
     <string name="developer_clear_failed">清除失败: %s</string>

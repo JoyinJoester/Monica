@@ -431,9 +431,16 @@ class CipherSyncProcessor(
         val existing = secureItemDao.getByBitwardenCipherIdInVault(vault.id, cipher.id)
         
         // 构建 TOTP 数据
+        // 从已有条目解析图标字段，同步时保留用户手动设置的图标
+        val existingIconFields = existing?.itemData?.let {
+            TotpDataResolver.parseStoredItemData(it)
+        }
         val totpData = resolvedTotpData.copy(
             issuer = resolvedTotpData.issuer.ifBlank { name },
-            accountName = resolvedTotpData.accountName.ifBlank { account }
+            accountName = resolvedTotpData.accountName.ifBlank { account },
+            customIconType = existingIconFields?.customIconType ?: "NONE",
+            customIconValue = existingIconFields?.customIconValue,
+            customIconUpdatedAt = existingIconFields?.customIconUpdatedAt ?: 0L
         )
         val itemData = json.encodeToString(totpData)
         

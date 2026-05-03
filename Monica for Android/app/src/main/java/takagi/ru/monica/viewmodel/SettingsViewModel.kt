@@ -11,11 +11,13 @@ import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.AddButtonBehaviorMode
 import takagi.ru.monica.data.AddButtonMenuAction
 import takagi.ru.monica.data.AppLauncherIcon
+import takagi.ru.monica.data.AppLauncherLabel
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.CategorySelectionUiMode
 import takagi.ru.monica.data.ColorScheme
 import takagi.ru.monica.data.Language
 import takagi.ru.monica.data.PasswordPageContentType
+import takagi.ru.monica.data.PasswordSwipeSelectionMode
 import takagi.ru.monica.data.PresetCustomField
 import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.data.SecureItem
@@ -84,6 +86,12 @@ class SettingsViewModel(
             settingsManager.updateBiometricEnabled(enabled)
         }
     }
+
+    fun updateQuickSetupCompleted(completed: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updateQuickSetupCompleted(completed)
+        }
+    }
     
     fun updateAutoLockMinutes(minutes: Int) {
         viewModelScope.launch {
@@ -142,6 +150,12 @@ class SettingsViewModel(
     fun updatePasswordWebsiteStackMatchMode(mode: String) {
         viewModelScope.launch {
             settingsManager.updatePasswordWebsiteStackMatchMode(mode)
+        }
+    }
+
+    fun updatePasswordSwipeSelectionMode(mode: PasswordSwipeSelectionMode) {
+        viewModelScope.launch {
+            settingsManager.updatePasswordSwipeSelectionMode(mode)
         }
     }
 
@@ -283,6 +297,12 @@ class SettingsViewModel(
     fun updateAppLauncherIcon(icon: AppLauncherIcon) {
         viewModelScope.launch {
             settingsManager.updateAppLauncherIcon(icon)
+        }
+    }
+
+    fun updateAppLauncherLabel(label: AppLauncherLabel) {
+        viewModelScope.launch {
+            settingsManager.updateAppLauncherLabel(label)
         }
     }
 
