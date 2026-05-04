@@ -155,8 +155,12 @@ private fun handlePermissionClick(context: Context, permission: PermissionInfo) 
     // 所有权限点击都跳转到系统设置
     if (permission.status != PermissionStatus.UNAVAILABLE) {
         try {
-            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                data = Uri.fromParts("package", context.packageName, null)
+            val intent = if (permission.id == "ACCESSIBILITY") {
+                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            } else {
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.fromParts("package", context.packageName, null)
+                }
             }
             context.startActivity(intent)
         } catch (e: ActivityNotFoundException) {

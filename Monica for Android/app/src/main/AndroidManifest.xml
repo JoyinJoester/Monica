@@ -320,7 +320,8 @@
             android:theme="@style/Theme.TransparentDialog"
             android:excludeFromRecents="true"
             android:noHistory="true"
-            android:launchMode="singleTop" />
+            android:taskAffinity=":ime_unlock"
+            android:launchMode="singleTask" />
         
         <!-- Autofill Save Activity (旧版全屏) -->
         <activity

@@ -78,35 +78,39 @@ class MonicaInputMethodService : InputMethodService() {
     private var suppressAutoUnlockUntilNextAttempt = false
     private val imeUnlockResultReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action != ACTION_IME_BIOMETRIC_RESULT) return
+            if (intent?.action == ACTION_IME_BIOMETRIC_RESULT) {
+                handleImeBiometricResult(intent)
+            }
+        }
+    }
 
-            val success = intent.getBooleanExtra(EXTRA_IME_BIOMETRIC_SUCCESS, false)
-            val errorMessage = intent.getStringExtra(EXTRA_IME_BIOMETRIC_ERROR)
-            val targetPanel = pendingUnlockPanel ?: MonicaImePanel.PASSWORDS
-            unlockFlowInProgress = false
-            pendingUnlockPanel = null
+    private fun handleImeBiometricResult(intent: Intent) {
+        val success = intent.getBooleanExtra(EXTRA_IME_BIOMETRIC_SUCCESS, false)
+        val errorMessage = intent.getStringExtra(EXTRA_IME_BIOMETRIC_ERROR)
+        val targetPanel = pendingUnlockPanel ?: MonicaImePanel.PASSWORDS
+        unlockFlowInProgress = false
+        pendingUnlockPanel = null
 
-            if (success) {
-                suppressAutoUnlockUntilNextAttempt = false
-                uiState.update {
-                    it.copy(
-                        unlocked = true,
-                        activePanel = targetPanel,
-                        isAutofillPanelVisible = targetPanel != MonicaImePanel.KEYBOARD,
-                        errorMessage = null
-                    )
-                }
-                requestRefreshVaultEntries(force = true)
-            } else {
-                suppressAutoUnlockUntilNextAttempt = true
-                uiState.update {
-                    it.copy(
-                        unlocked = false,
-                        activePanel = targetPanel,
-                        isAutofillPanelVisible = targetPanel != MonicaImePanel.KEYBOARD,
-                        errorMessage = errorMessage ?: getString(takagi.ru.monica.R.string.ime_unlock_required)
-                    )
-                }
+        if (success) {
+            suppressAutoUnlockUntilNextAttempt = false
+            uiState.update {
+                it.copy(
+                    unlocked = true,
+                    activePanel = targetPanel,
+                    isAutofillPanelVisible = targetPanel != MonicaImePanel.KEYBOARD,
+                    errorMessage = null
+                )
+            }
+            requestRefreshVaultEntries(force = true)
+        } else {
+            suppressAutoUnlockUntilNextAttempt = true
+            uiState.update {
+                it.copy(
+                    unlocked = false,
+                    activePanel = targetPanel,
+                    isAutofillPanelVisible = targetPanel != MonicaImePanel.KEYBOARD,
+                    errorMessage = errorMessage ?: getString(takagi.ru.monica.R.string.ime_unlock_required)
+                )
             }
         }
     }
@@ -124,7 +128,9 @@ class MonicaInputMethodService : InputMethodService() {
         }
         registerReceiver(
             imeUnlockResultReceiver,
-            IntentFilter(ACTION_IME_BIOMETRIC_RESULT),
+            IntentFilter().apply {
+                addAction(ACTION_IME_BIOMETRIC_RESULT)
+            },
             receiverFlags
         )
         observeDatabaseSources()

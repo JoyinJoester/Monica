@@ -49,11 +49,13 @@ object SessionManager {
     /**
      * 标记应用已锁定
      */
-    fun markLocked() {
+    fun markLocked(clearSecondarySession: Boolean = true) {
         _isUnlocked.value = false
         unlockTimestamp = 0L
         SecurityManager.clearRuntimeUnlockCache()
-        SecondarySessionManager.markLocked(clearRuntimeUnlockCache = false)
+        if (clearSecondarySession) {
+            SecondarySessionManager.markLocked(clearRuntimeUnlockCache = false)
+        }
         android.util.Log.d(TAG, "Session locked, PID=$processId")
     }
     
@@ -87,7 +89,7 @@ object SessionManager {
         val elapsedMinutes = (SystemClock.elapsedRealtime() - unlockTimestamp) / 60000
         if (autoLockMinutes != -1 && elapsedMinutes >= autoLockMinutes) {
             android.util.Log.d(TAG, "canSkipVerification: false (session expired, elapsed=$elapsedMinutes min)")
-            markLocked()
+            markLocked(clearSecondarySession = false)
             return false
         }
         

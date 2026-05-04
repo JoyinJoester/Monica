@@ -311,8 +311,12 @@ class SecurityManager(private val context: Context) {
             SecurityDiagLogger.append("D/$logTag canAccessVaultNow: no master password set -> accessible")
             return true
         }
-        val sharedSessionActive = hasActiveSharedSession(context, autoLockMinutes)
         val secondarySessionActive = hasActiveSecondarySession(context, autoLockMinutes)
+        val sharedSessionActive = if (secondarySessionActive) {
+            false
+        } else {
+            hasActiveSharedSession(context, autoLockMinutes)
+        }
         if (!sharedSessionActive && !secondarySessionActive) {
             android.util.Log.d(logTag, "canAccessVaultNow: session inactive -> locked")
             SecurityDiagLogger.append("D/$logTag canAccessVaultNow: session inactive -> locked")

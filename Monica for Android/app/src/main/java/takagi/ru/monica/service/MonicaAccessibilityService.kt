@@ -101,6 +101,10 @@ class MonicaAccessibilityService : AccessibilityService() {
             ) ?: false
         }
 
+        fun getActiveWindowPackageName(): String? {
+            return activeInstance?.rootInActiveWindow?.packageName?.toString()
+        }
+
         fun isCredentialFillAvailable(context: Context): Boolean {
             return isServiceEnabled(context) && activeInstance != null
         }

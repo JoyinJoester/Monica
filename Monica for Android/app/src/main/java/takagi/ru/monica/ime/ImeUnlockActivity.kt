@@ -6,7 +6,6 @@ import android.os.Bundle
 import android.view.View
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
-import androidx.biometric.BiometricPrompt
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.flow.first
@@ -21,6 +20,8 @@ class ImeUnlockActivity : AppCompatActivity() {
 
     private var resultPublished = false
     private var startupAutoLockMinutes: Int = 5
+    private var passwordFallbackScheduled = false
+    private var authSurface: AuthSurface = AuthSurface.NONE
     private lateinit var securityManager: SecurityManager
     private lateinit var settingsManager: SettingsManager
     private lateinit var biometricAuthHelper: BiometricAuthHelper
@@ -61,6 +62,7 @@ class ImeUnlockActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        authSurface = AuthSurface.NONE
         if (!resultPublished && !isChangingConfigurations) {
             publishResult(success = false, errorMessage = null)
         }
@@ -68,6 +70,8 @@ class ImeUnlockActivity : AppCompatActivity() {
     }
 
     private fun showBiometricAuthentication() {
+        if (resultPublished || authSurface != AuthSurface.NONE) return
+        authSurface = AuthSurface.BIOMETRIC
         biometricAuthHelper.authenticate(
             activity = this,
             title = getString(R.string.ime_unlock_title),
@@ -79,19 +83,32 @@ class ImeUnlockActivity : AppCompatActivity() {
                     securityManager.markSecondaryVaultAuthenticated(startupAutoLockMinutes)
                     publishResult(success = true, errorMessage = null)
                 } else {
-                    showPasswordAuthentication()
+                    schedulePasswordAuthentication()
                 }
             },
             onError = { _, _ ->
-                showPasswordAuthentication()
+                schedulePasswordAuthentication()
             },
             onCancel = {
-                showPasswordAuthentication()
+                schedulePasswordAuthentication()
             }
         )
     }
 
+    private fun schedulePasswordAuthentication() {
+        if (resultPublished || passwordFallbackScheduled) return
+        passwordFallbackScheduled = true
+        authSurface = AuthSurface.TRANSITIONING
+        window?.decorView?.postDelayed({
+            if (!resultPublished && !isFinishing && !isDestroyed) {
+                showPasswordAuthentication()
+            }
+        }, PASSWORD_FALLBACK_DELAY_MS)
+    }
+
     private fun showPasswordAuthentication() {
+        if (resultPublished || authSurface == AuthSurface.PASSWORD) return
+        authSurface = AuthSurface.PASSWORD
         setContent {
             MonicaPasswordDialogAuthScreen(
                 settingsFlow = settingsManager.settingsFlow,
@@ -127,5 +144,16 @@ class ImeUnlockActivity : AppCompatActivity() {
             }
         )
         finish()
+    }
+
+    private enum class AuthSurface {
+        NONE,
+        BIOMETRIC,
+        TRANSITIONING,
+        PASSWORD
+    }
+
+    companion object {
+        private const val PASSWORD_FALLBACK_DELAY_MS = 300L
     }
 }

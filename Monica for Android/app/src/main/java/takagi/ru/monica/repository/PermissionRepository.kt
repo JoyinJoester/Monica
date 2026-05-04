@@ -15,6 +15,7 @@ import takagi.ru.monica.data.model.PermissionImportance
 import takagi.ru.monica.data.model.PermissionInfo
 import takagi.ru.monica.data.model.PermissionStats
 import takagi.ru.monica.data.model.PermissionStatus
+import takagi.ru.monica.service.MonicaAccessibilityService
 
 /**
  * 权限管理Repository
@@ -61,7 +62,8 @@ class PermissionRepository(private val context: Context) {
             createVibratePermission(),
             createNotificationPermission(),
             createPhoneStatePermission(),
-            createAutofillPermission()
+            createAutofillPermission(),
+            createAccessibilityPermission()
         ).map { permission ->
             try {
                 val status = checkPermissionStatus(permission)
@@ -81,6 +83,7 @@ class PermissionRepository(private val context: Context) {
         return when (permission.id) {
             "BIOMETRIC" -> checkBiometricStatus()
             "AUTOFILL" -> checkAutofillStatus()
+            "ACCESSIBILITY" -> checkAccessibilityStatus()
             "INTERNET", "NETWORK_STATE", "VIBRATE" -> {
                 // 这些权限在安装时自动授予
                 PermissionStatus.GRANTED
@@ -154,6 +157,19 @@ class PermissionRepository(private val context: Context) {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Failed to check autofill status", e)
+            PermissionStatus.UNKNOWN
+        }
+    }
+
+    private fun checkAccessibilityStatus(): PermissionStatus {
+        return try {
+            if (MonicaAccessibilityService.isServiceEnabled(context)) {
+                PermissionStatus.GRANTED
+            } else {
+                PermissionStatus.DENIED
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to check accessibility status", e)
             PermissionStatus.UNKNOWN
         }
     }
@@ -286,6 +302,16 @@ class PermissionRepository(private val context: Context) {
         icon = Icons.Default.AutoAwesome,
         nameResId = R.string.permission_autofill_name,
         descriptionResId = R.string.permission_autofill_description,
+        category = PermissionCategory.SECURITY,
+        importance = PermissionImportance.RECOMMENDED
+    )
+
+    private fun createAccessibilityPermission() = PermissionInfo(
+        id = "ACCESSIBILITY",
+        androidPermission = "android.permission.BIND_ACCESSIBILITY_SERVICE",
+        icon = Icons.Default.Accessibility,
+        nameResId = R.string.permission_accessibility_name,
+        descriptionResId = R.string.permission_accessibility_description,
         category = PermissionCategory.SECURITY,
         importance = PermissionImportance.RECOMMENDED
     )

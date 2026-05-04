@@ -1901,6 +1901,7 @@
     <string name="permission_phone_state_name">Phone State</string>
     <string name="permission_location_name">Location</string>
     <string name="permission_autofill_name">Autofill Service</string>
+    <string name="permission_accessibility_name">Accessibility Service</string>
 
     <!-- Permission Descriptions -->
     <string name="permission_biometric_description">Used for: Fingerprint/Face unlock</string>
@@ -1912,6 +1913,7 @@
     <string name="permission_phone_state_description">Used for: Device identification</string>
     <string name="permission_location_description">Used for: Location-based features (optional)</string>
     <string name="permission_autofill_description">Used for: Auto-filling passwords in apps and browsers</string>
+    <string name="permission_accessibility_description">Used for: Manual fill from the quick settings tile and picker</string>
     <string name="permission_notification_name">Notifications</string>
     <string name="permission_notification_description">Used for: Displaying TOTP codes in notification bar</string>
 

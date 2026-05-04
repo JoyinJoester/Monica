@@ -1749,6 +1749,7 @@
     <string name="permission_location_name">位置</string>
     <string name="permission_notification_name">通知</string>
     <string name="permission_autofill_name">自动填充服务</string>
+    <string name="permission_accessibility_name">无障碍服务</string>
 
     <!-- Permission Descriptions -->
     <string name="permission_biometric_description">用于：指纹/面部解锁</string>
@@ -1761,6 +1762,7 @@
     <string name="permission_location_description">用于：基于位置的功能（可选）</string>
     <string name="permission_notification_description">用于：在通知栏显示TOTP验证码</string>
     <string name="permission_autofill_description">用于：在应用和浏览器中自动填充密码</string>
+    <string name="permission_accessibility_description">用于：从磁贴和选择页面手动填充账号密码</string>
 
     <!-- Permission Stats -->
     <string name="permission_stats_title">权限摘要</string>

@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.asStateFlow
 object SecondarySessionManager {
 
     private const val TAG = "SecondarySessionManager"
+    private const val IMMEDIATE_LOCK_SECONDARY_GRACE_MS = 60_000L
 
     private val _isUnlocked = MutableStateFlow(false)
     val isUnlocked: StateFlow<Boolean> = _isUnlocked.asStateFlow()
@@ -50,9 +51,12 @@ object SecondarySessionManager {
             return false
         }
 
-        val elapsedMinutes = (SystemClock.elapsedRealtime() - unlockTimestamp) / 60000
-        if (autoLockMinutes != -1 && elapsedMinutes >= autoLockMinutes) {
-            android.util.Log.d(TAG, "canSkipVerification: false (session expired, elapsed=$elapsedMinutes min)")
+        val elapsedMillis = SystemClock.elapsedRealtime() - unlockTimestamp
+        if (isExpired(elapsedMillis)) {
+            android.util.Log.d(
+                TAG,
+                "canSkipVerification: false (session expired, elapsedMs=$elapsedMillis, autoLockMinutes=$autoLockMinutes)"
+            )
             markLocked()
             return false
         }
@@ -65,5 +69,13 @@ object SecondarySessionManager {
 
         android.util.Log.d(TAG, "canSkipVerification: true (unlocked, within timeout, screen unlocked)")
         return true
+    }
+
+    private fun isExpired(elapsedMillis: Long): Boolean {
+        return when {
+            autoLockMinutes == -1 -> false
+            autoLockMinutes <= 0 -> elapsedMillis >= IMMEDIATE_LOCK_SECONDARY_GRACE_MS
+            else -> elapsedMillis >= autoLockMinutes * 60_000L
+        }
     }
 }

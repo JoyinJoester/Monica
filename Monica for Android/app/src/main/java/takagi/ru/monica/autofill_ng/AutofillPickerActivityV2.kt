@@ -11,6 +11,8 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.Parcelable
 import android.service.autofill.Dataset
 import android.service.autofill.FillResponse
@@ -95,6 +97,7 @@ import takagi.ru.monica.repository.CustomFieldRepository
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.service.MonicaAccessibilityService
 import takagi.ru.monica.ui.theme.MonicaTheme
 import androidx.compose.foundation.isSystemInDarkTheme
 import takagi.ru.monica.data.model.TotpData
@@ -132,6 +135,9 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         const val EXTRA_IME_MODE = "extra_ime_mode"
         private const val DUPLICATE_LAUNCH_WINDOW_MS = 1500L
         private const val AUTOFILL_OTP_NOTIFICATION_ID = 12001
+        private const val MANUAL_ACCESSIBILITY_FILL_DELAY_MS = 450L
+        private const val MANUAL_ACCESSIBILITY_RETRY_DELAY_MS = 250L
+        private const val MANUAL_ACCESSIBILITY_MAX_ATTEMPTS = 8
         @Volatile
         private var lastLaunchSignature: String? = null
         @Volatile
@@ -568,24 +574,11 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         
         // 手动模式：复制密码到剪贴板
         if (isManualMode) {
-            // 使用智能复制：先复制密码，通知栏提供用户名
-            val queued = SmartCopyNotificationHelper.copyAndQueueNext(
-                context = this,
-                firstValue = decryptedPassword.orEmpty(),
-                firstLabel = getString(R.string.autofill_password),
-                secondValue = accountValue,
-                secondLabel = getString(R.string.autofill_username)
-            )
-            android.widget.Toast.makeText(this, R.string.password_copied, android.widget.Toast.LENGTH_SHORT).show()
-            if (queued) {
+            if (scheduleManualAccessibilityFill(accountValue, decryptedPassword.orEmpty())) {
                 finish()
-            } else {
-                android.widget.Toast.makeText(
-                    this,
-                    R.string.smart_copy_notification_unavailable,
-                    android.widget.Toast.LENGTH_SHORT
-                ).show()
+                return
             }
+            copyManualCredentialFallback(accountValue, decryptedPassword.orEmpty())
             return
         }
         
@@ -762,6 +755,115 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         )
         setResult(Activity.RESULT_OK, resultIntent)
         finish()
+    }
+
+    private fun scheduleManualAccessibilityFill(username: String, password: String): Boolean {
+        if (!MonicaAccessibilityService.isCredentialFillAvailable(applicationContext)) {
+            AutofillLogger.i("PICKER", "Manual accessibility fill unavailable; service is not active")
+            return false
+        }
+
+        val appContext = applicationContext
+        val packageNameToSkip = packageName
+        Handler(Looper.getMainLooper()).postDelayed({
+            requestManualAccessibilityFillWithRetry(
+                appContext = appContext,
+                packageNameToSkip = packageNameToSkip,
+                username = username,
+                password = password,
+                attempt = 1
+            )
+        }, MANUAL_ACCESSIBILITY_FILL_DELAY_MS)
+
+        setResult(Activity.RESULT_CANCELED)
+        moveTaskToBack(true)
+        AutofillLogger.i("PICKER", "Manual accessibility fill scheduled")
+        return true
+    }
+
+    private fun requestManualAccessibilityFillWithRetry(
+        appContext: Context,
+        packageNameToSkip: String,
+        username: String,
+        password: String,
+        attempt: Int,
+    ) {
+        val activePackage = MonicaAccessibilityService.getActiveWindowPackageName().orEmpty()
+        val shouldWaitForTargetWindow = activePackage.isBlank() ||
+            activePackage.equals(packageNameToSkip, ignoreCase = true)
+        val filled = if (shouldWaitForTargetWindow) {
+            false
+        } else {
+            MonicaAccessibilityService.requestCredentialFill(
+                targetPackageName = activePackage,
+                username = username,
+                password = password,
+                preferPasswordField = false
+            )
+        }
+
+        AutofillLogger.i(
+            "PICKER",
+            "Manual accessibility fill attempt: attempt=$attempt, filled=$filled, activePackage=${activePackage.ifBlank { "none" }}"
+        )
+
+        if (filled || attempt >= MANUAL_ACCESSIBILITY_MAX_ATTEMPTS) {
+            if (!filled) {
+                copyManualCredentialFallback(
+                    context = appContext,
+                    username = username,
+                    password = password,
+                    usernameLabel = appContext.getString(R.string.autofill_username),
+                    passwordLabel = appContext.getString(R.string.autofill_password)
+                )
+            }
+            return
+        }
+
+        Handler(Looper.getMainLooper()).postDelayed({
+            requestManualAccessibilityFillWithRetry(
+                appContext = appContext,
+                packageNameToSkip = packageNameToSkip,
+                username = username,
+                password = password,
+                attempt = attempt + 1
+            )
+        }, MANUAL_ACCESSIBILITY_RETRY_DELAY_MS)
+    }
+
+    private fun copyManualCredentialFallback(username: String, password: String) {
+        copyManualCredentialFallback(
+            context = this,
+            username = username,
+            password = password,
+            usernameLabel = getString(R.string.autofill_username),
+            passwordLabel = getString(R.string.autofill_password)
+        )
+        finish()
+    }
+
+    private fun copyManualCredentialFallback(
+        context: Context,
+        username: String,
+        password: String,
+        usernameLabel: String,
+        passwordLabel: String,
+    ) {
+        val queued = SmartCopyNotificationHelper.copyAndQueueNext(
+            context = context,
+            firstValue = password,
+            firstLabel = passwordLabel,
+            secondValue = username,
+            secondLabel = usernameLabel
+        )
+        android.widget.Toast.makeText(context, R.string.password_copied, android.widget.Toast.LENGTH_SHORT).show()
+        if (!queued) {
+            android.widget.Toast.makeText(
+                context,
+                R.string.smart_copy_notification_unavailable,
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+        }
     }
 
     private fun buildResultDataset(
