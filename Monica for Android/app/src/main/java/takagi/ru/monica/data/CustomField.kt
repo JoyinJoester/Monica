@@ -124,6 +124,14 @@ data class CustomFieldDraft(
      * 检查是否为有效字段（至少有标题）
      */
     fun isValid(): Boolean = title.isNotBlank()
+
+    /**
+     * 检查字段是否应该保存到条目。
+     * 用户未填写内容时不应保存成详情页里的空白词条。
+     */
+    fun shouldPersist(): Boolean {
+        return title.isNotBlank() && value.isNotBlank()
+    }
     
     /**
      * 检查是否为空字段（标题和值都为空）
@@ -167,7 +175,7 @@ data class CustomFieldDraft(
         fun fromPreset(preset: PresetCustomField): CustomFieldDraft {
             return CustomFieldDraft(
                 id = nextTempId(),
-                title = preset.fieldName,
+                title = preset.fieldName.trim(),
                 value = preset.defaultValue,
                 isProtected = preset.isSensitive,
                 isPreset = true,

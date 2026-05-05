@@ -955,6 +955,7 @@ fun AddEditPasswordScreen(
             hasLoadedPresets = true
             // 将预设字段添加到自定义字段列表（按order排序）
             val presetDrafts = presetCustomFields
+                .filter { it.fieldName.trim().isNotEmpty() }
                 .sortedBy { it.order }
                 .map { preset -> CustomFieldDraft.fromPreset(preset) }
             customFields.addAll(presetDrafts)
@@ -1134,7 +1135,9 @@ fun AddEditPasswordScreen(
                         
                         // 获取预设字段并标记
                         // 检查现有字段是否匹配预设（按标题匹配）
-                        val currentPresets = presetCustomFields.sortedBy { it.order }
+                        val currentPresets = presetCustomFields
+                            .filter { it.fieldName.trim().isNotEmpty() }
+                            .sortedBy { it.order }
                         val existingTitles = existingDrafts.map { it.title.lowercase() }.toSet()
                         
                         // 为匹配预设的现有字段添加预设标记

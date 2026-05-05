@@ -70,8 +70,8 @@ class CustomFieldRepository(
      * @return 插入的字段ID列表
      */
     suspend fun saveFieldsForEntry(entryId: Long, drafts: List<CustomFieldDraft>): List<Long> {
-        // 过滤掉空字段
-        val validDrafts = drafts.filter { it.isValid() }
+        // 过滤掉空字段；预设字段如果用户未填写内容，不保存成详情页里的空白词条。
+        val validDrafts = drafts.filter { it.shouldPersist() }
         
         if (validDrafts.isEmpty()) {
             // 如果没有有效字段，删除该条目的所有字段

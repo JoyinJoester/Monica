@@ -274,6 +274,7 @@ data class PresetCustomField(
                 }
                 
                 objects.mapNotNull { fromJson(it) }
+                    .filter { it.fieldName.trim().isNotEmpty() }
             } catch (e: Exception) {
                 emptyList()
             }
@@ -283,7 +284,7 @@ data class PresetCustomField(
          * 将预设字段列表序列化为 JSON
          */
         fun listToJson(fields: List<PresetCustomField>): String {
-            return "[${fields.joinToString(",") { it.toJson() }}]"
+            return "[${fields.filter { it.fieldName.trim().isNotEmpty() }.joinToString(",") { it.toJson() }}]"
         }
     }
 }

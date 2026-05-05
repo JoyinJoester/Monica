@@ -195,10 +195,15 @@ fun CustomFieldEditCard(
                 // 字段名称输入
                 OutlinedTextField(
                     value = field.title,
-                    onValueChange = { onFieldChange(field.copy(title = it)) },
+                    onValueChange = {
+                        if (!field.isPreset) {
+                            onFieldChange(field.copy(title = it))
+                        }
+                    },
                     label = { Text(stringResource(R.string.custom_field_name)) },
                     placeholder = { Text(stringResource(R.string.custom_field_name_placeholder)) },
                     modifier = Modifier.fillMaxWidth(),
+                    readOnly = field.isPreset,
                     singleLine = true,
                     shape = RoundedCornerShape(12.dp),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
