@@ -14,16 +14,19 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
+import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.writeOperationAvailability
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.ui.components.MonicaExpressiveFilterChip
 import takagi.ru.monica.viewmodel.CategoryFilter
 
 internal data class PasswordDatabaseFiltersSectionParams(
     val currentFilter: CategoryFilter,
-    val keepassDatabases: List<takagi.ru.monica.data.LocalKeePassDatabase>,
+    val keepassDatabases: List<LocalKeePassDatabase>,
     val bitwardenVaults: List<BitwardenVault>,
     val onSelectFilter: (CategoryFilter) -> Unit
 )
@@ -64,7 +67,12 @@ internal fun PasswordDatabaseFiltersSection(
                 selected = params.currentFilter.isKeePassDatabaseFilter(database.id),
                 onClick = { params.onSelectFilter(CategoryFilter.KeePassDatabase(database.id)) },
                 label = database.name,
-                leadingIcon = Icons.Default.Key
+                leadingIcon = Icons.Default.Key,
+                statusDotColor = if (database.writeOperationAvailability().canOperate) {
+                    StorageHealthyGreen
+                } else {
+                    null
+                }
             )
         }
         params.bitwardenVaults.forEach { vault ->
@@ -72,8 +80,15 @@ internal fun PasswordDatabaseFiltersSection(
                 selected = params.currentFilter.isBitwardenVaultFilter(vault.id),
                 onClick = { params.onSelectFilter(CategoryFilter.BitwardenVault(vault.id)) },
                 label = vault.email.ifBlank { "Bitwarden" },
-                leadingIcon = Icons.Default.CloudSync
+                leadingIcon = Icons.Default.CloudSync,
+                statusDotColor = if (vault.hasHealthyConnection()) StorageHealthyGreen else null
             )
         }
     }
+}
+
+private val StorageHealthyGreen = Color(0xFF22C55E)
+
+private fun BitwardenVault.hasHealthyConnection(): Boolean {
+    return isConnected && !encryptedRefreshToken.isNullOrBlank()
 }

@@ -18,6 +18,8 @@ import app.keemobile.kotpass.database.header.KdfParameters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import takagi.ru.monica.data.KeePassCipherAlgorithm
 import takagi.ru.monica.data.KeePassDatabaseCreationOptions
@@ -107,6 +109,7 @@ class LocalKeePassViewModel(
     private val kdbxService = KeePassKdbxService(context, dao, securityManager)
     private val workspaceRepository = KeePassWorkspaceRepository(kdbxService)
     private val compatibilityBridge = KeePassCompatibilityBridge(workspaceRepository)
+    private val verificationMutex = Mutex()
     private val appDatabase by lazy { PasswordDatabase.getDatabase(context) }
     private val remoteSyncService by lazy {
         RemoteKeePassSyncService(
@@ -194,9 +197,11 @@ class LocalKeePassViewModel(
                 current + (databaseId to VerificationState.Verifying)
             }
 
-            val startedAt = SystemClock.elapsedRealtime()
-            val verifyResult = workspaceRepository.verifyDatabase(databaseId)
-            val elapsedMs = SystemClock.elapsedRealtime() - startedAt
+            val (verifyResult, elapsedMs) = verificationMutex.withLock {
+                val startedAt = SystemClock.elapsedRealtime()
+                val result = workspaceRepository.verifyDatabase(databaseId)
+                result to (SystemClock.elapsedRealtime() - startedAt)
+            }
             _verificationStates.update { current ->
                 current + (
                     databaseId to if (verifyResult.isSuccess) {

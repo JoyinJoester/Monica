@@ -4,8 +4,14 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -16,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
@@ -30,40 +37,27 @@ fun MonicaExpressiveFilterChip(
     interactionSource: MutableInteractionSource? = null,
     leadingIcon: ImageVector? = null,
     selectedLeadingIcon: ImageVector? = leadingIcon,
+    statusDotColor: Color? = null,
     animated: Boolean = true
 ) {
     val colorScheme = MaterialTheme.colorScheme
     if (animated) {
         val resolvedInteractionSource = interactionSource ?: remember { MutableInteractionSource() }
         val isPressed by resolvedInteractionSource.collectIsPressedAsState()
-        val targetCornerRadius = when {
-            isPressed -> 8.dp
-            selected -> 12.dp
-            else -> 20.dp
-        }
+        val targetCornerRadius = if (selected) 12.dp else 20.dp
         val targetContainerColor = when {
-            isPressed && selected -> colorScheme.secondaryContainer
             selected -> colorScheme.secondaryContainer
-            isPressed -> colorScheme.surfaceContainerHigh
             else -> colorScheme.surfaceContainerLow
         }
         val targetContentColor = when {
             selected -> colorScheme.onSecondaryContainer
-            isPressed -> colorScheme.onSurface
             else -> colorScheme.onSurfaceVariant
         }
         val targetBorderColor = when {
-            isPressed && selected -> colorScheme.primary.copy(alpha = 0.18f)
             selected -> Color.Transparent
-            isPressed -> colorScheme.primary.copy(alpha = 0.20f)
             else -> colorScheme.outlineVariant.copy(alpha = 0.88f)
         }
-        val targetBorderWidth = when {
-            isPressed && selected -> 1.dp
-            selected -> 0.dp
-            isPressed -> 1.2.dp
-            else -> 1.dp
-        }
+        val targetBorderWidth = if (selected) 0.dp else 1.dp
 
         val cornerRadius by animateDpAsState(
             targetValue = targetCornerRadius,
@@ -111,10 +105,9 @@ fun MonicaExpressiveFilterChip(
             onClick = onClick,
             shape = RoundedCornerShape(cornerRadius),
             label = {
-                Text(
-                    text = label,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                MonicaExpressiveFilterChipLabel(
+                    label = label,
+                    statusDotColor = statusDotColor
                 )
             },
             leadingIcon = (selectedLeadingIcon ?: leadingIcon)?.let { icon ->
@@ -168,10 +161,9 @@ fun MonicaExpressiveFilterChip(
             onClick = onClick,
             shape = RoundedCornerShape(cornerRadius),
             label = {
-                Text(
-                    text = label,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                MonicaExpressiveFilterChipLabel(
+                    label = label,
+                    statusDotColor = statusDotColor
                 )
             },
             leadingIcon = (selectedLeadingIcon ?: leadingIcon)?.let { icon ->
@@ -199,6 +191,30 @@ fun MonicaExpressiveFilterChip(
                 selectedLeadingIconColor = contentColor
             ),
             modifier = modifier
+        )
+    }
+}
+
+@Composable
+private fun MonicaExpressiveFilterChipLabel(
+    label: String,
+    statusDotColor: Color?
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        if (statusDotColor != null) {
+            Box(
+                modifier = Modifier
+                    .size(7.dp)
+                    .background(statusDotColor, CircleShape)
+            )
+        }
+        Text(
+            text = label,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }

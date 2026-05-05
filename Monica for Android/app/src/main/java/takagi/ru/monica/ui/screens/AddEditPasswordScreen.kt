@@ -97,6 +97,7 @@ import takagi.ru.monica.ui.components.NotePickerBottomSheet
 import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import takagi.ru.monica.ui.components.PasswordStrengthIndicator
 import takagi.ru.monica.ui.components.buildMultiStorageTarget
+import takagi.ru.monica.ui.components.keepassBlockReasonLabel
 import takagi.ru.monica.ui.components.SimpleIconPickerBottomSheet
 import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_NONE
@@ -122,7 +123,9 @@ import takagi.ru.monica.viewmodel.TotpViewModel
 
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.KeePassOperationBlockReason
 import takagi.ru.monica.data.bitwarden.BitwardenVault
+import takagi.ru.monica.data.writeOperationAvailability
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.autofill_ng.ui.rememberFavicon
 import takagi.ru.monica.domain.provider.PasswordSource
@@ -155,6 +158,11 @@ data class AddEditPasswordInitialDraft(
     val password: String = "",
     val appPackageName: String = "",
     val appName: String = "",
+)
+
+private data class KeePassOperationBlockUiState(
+    val databaseName: String,
+    val reason: KeePassOperationBlockReason
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -199,6 +207,7 @@ fun AddEditPasswordScreen(
     
     // 是否显示常用账号选择器
     var showCommonAccountSelector by remember { mutableStateOf(false) }
+    var blockedKeePassOperation by remember { mutableStateOf<KeePassOperationBlockUiState?>(null) }
     var commonAccountSelectorField by remember { mutableStateOf("") } // "email", "phone", "username", "password"
     var commonAccountSelectorTargetIndex by remember { mutableStateOf(-1) }
     var isUsernameFieldFocused by remember { mutableStateOf(false) }
@@ -1201,6 +1210,27 @@ fun AddEditPasswordScreen(
     }
 
     val canSave = title.isNotEmpty() && !isSaving && !hasOwnershipConflict
+    fun findBlockedKeePassOperation(): KeePassOperationBlockUiState? {
+        selectedStorageTargets.forEach { target ->
+            val keepassTarget = target as? StorageTarget.KeePass ?: return@forEach
+            val database = keepassDatabases.firstOrNull { it.id == keepassTarget.databaseId }
+            if (database == null) {
+                return KeePassOperationBlockUiState(
+                    databaseName = context.getString(R.string.create_target_keepass),
+                    reason = KeePassOperationBlockReason.MISSING_DATABASE
+                )
+            }
+            val availability = database.writeOperationAvailability()
+            if (!availability.canOperate) {
+                return KeePassOperationBlockUiState(
+                    databaseName = database.name,
+                    reason = availability.reason ?: KeePassOperationBlockReason.NEEDS_REFRESH
+                )
+            }
+        }
+        return null
+    }
+
     val handleSave: () -> Unit = handleSave@{
         if (title.isNotEmpty() && !isSaving) {
             if (hasOwnershipConflict) {
@@ -1209,6 +1239,10 @@ fun AddEditPasswordScreen(
                     context.getString(R.string.password_owner_conflict_display),
                     Toast.LENGTH_SHORT
                 ).show()
+                return@handleSave
+            }
+            findBlockedKeePassOperation()?.let { blocked ->
+                blockedKeePassOperation = blocked
                 return@handleSave
             }
             isSaving = true // 防止重复点击
@@ -1384,6 +1418,28 @@ fun AddEditPasswordScreen(
                 }
             )
         }
+    }
+
+    blockedKeePassOperation?.let { blocked ->
+        val reason = keepassBlockReasonLabel(blocked.reason)
+        AlertDialog(
+            onDismissRequest = { blockedKeePassOperation = null },
+            title = { Text(stringResource(R.string.keepass_operation_unavailable_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.keepass_operation_unavailable_message,
+                        blocked.databaseName,
+                        reason
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { blockedKeePassOperation = null }) {
+                    Text(stringResource(R.string.keepass_operation_refresh_hint))
+                }
+            }
+        )
     }
 
     LaunchedEffect(

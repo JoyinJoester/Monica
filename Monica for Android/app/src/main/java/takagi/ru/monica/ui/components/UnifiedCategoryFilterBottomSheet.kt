@@ -41,6 +41,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import android.graphics.Color as AndroidColor
 import android.graphics.drawable.ColorDrawable
@@ -97,6 +98,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp as lerpColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.graphicsLayer
@@ -121,6 +123,7 @@ import takagi.ru.monica.data.KeePassStorageLocation
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenVault
+import takagi.ru.monica.data.writeOperationAvailability
 import takagi.ru.monica.utils.KEEPASS_DISPLAY_PATH_SEPARATOR
 import takagi.ru.monica.utils.KeePassGroupInfo
 import takagi.ru.monica.utils.buildLocalCategoryPath
@@ -271,15 +274,19 @@ fun UnifiedCategoryFilterBottomSheet(
                         ),
                     onClick = { onSelect(UnifiedCategoryFilterSelection.KeePassDatabaseFilter(database.id)) },
                     badge = {
-                        Text(
-                            text = if (database.storageLocation == KeePassStorageLocation.EXTERNAL) {
-                                stringResource(R.string.external_storage)
-                            } else {
-                                stringResource(R.string.internal_storage)
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        StorageStatusBadge(
+                            healthy = database.writeOperationAvailability().canOperate
+                        ) {
+                            Text(
+                                text = if (database.storageLocation == KeePassStorageLocation.EXTERNAL) {
+                                    stringResource(R.string.external_storage)
+                                } else {
+                                    stringResource(R.string.internal_storage)
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     },
                     menu = {
                         IconButton(onClick = {
@@ -675,14 +682,24 @@ fun UnifiedCategoryFilterBottomSheet(
                                                 selected.vaultId == vault.id
                                             ),
                                         onClick = { onSelect(UnifiedCategoryFilterSelection.BitwardenVaultFilter(vault.id)) },
-                                        badge = {
-                                            if (vault.isDefault) {
-                                                Text(
-                                                    text = stringResource(R.string.default_label),
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = MaterialTheme.colorScheme.primary
-                                                )
+                                        badge = if (vault.hasHealthyConnection() || vault.isDefault) {
+                                            {
+                                                StorageStatusBadge(
+                                                    healthy = vault.hasHealthyConnection()
+                                                ) {
+                                                    if (vault.isDefault) {
+                                                        Text(
+                                                            text = stringResource(R.string.default_label),
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            color = MaterialTheme.colorScheme.primary,
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                    }
+                                                }
                                             }
+                                        } else {
+                                            null
                                         },
                                         menu = {
                                             IconButton(onClick = {
@@ -1542,4 +1559,30 @@ private fun UnifiedCategoryListItem(
             }
         }
     )
+}
+
+@Composable
+private fun StorageStatusBadge(
+    healthy: Boolean,
+    content: @Composable () -> Unit = {}
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        if (healthy) {
+            Box(
+                modifier = Modifier
+                    .size(7.dp)
+                    .background(StorageHealthyGreen, CircleShape)
+            )
+        }
+        content()
+    }
+}
+
+private val StorageHealthyGreen = Color(0xFF22C55E)
+
+private fun BitwardenVault.hasHealthyConnection(): Boolean {
+    return isConnected && !encryptedRefreshToken.isNullOrBlank()
 }

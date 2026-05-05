@@ -53,6 +53,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -66,6 +67,7 @@ import kotlinx.coroutines.flow.flowOf
 import takagi.ru.monica.R
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.writeOperationAvailability
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.utils.KeePassGroupInfo
@@ -344,7 +346,12 @@ fun UnifiedCategoryFilterChipMenu(
                     selected = selected.isKeePassScope(database.id),
                     onClick = { onSelect(UnifiedCategoryFilterSelection.KeePassDatabaseFilter(database.id)) },
                     label = database.name,
-                    leadingIcon = Icons.Default.Key
+                    leadingIcon = Icons.Default.Key,
+                    statusDotColor = if (database.writeOperationAvailability().canOperate) {
+                        StorageHealthyGreen
+                    } else {
+                        null
+                    }
                 )
             }
             bitwardenVaults.forEach { vault ->
@@ -352,7 +359,8 @@ fun UnifiedCategoryFilterChipMenu(
                     selected = selected.isBitwardenScope(vault.id),
                     onClick = { onSelect(UnifiedCategoryFilterSelection.BitwardenVaultFilter(vault.id)) },
                     label = vault.email.ifBlank { "Bitwarden" },
-                    leadingIcon = Icons.Default.CloudSync
+                    leadingIcon = Icons.Default.CloudSync,
+                    statusDotColor = if (vault.hasHealthyConnection()) StorageHealthyGreen else null
                 )
             }
         }
@@ -439,6 +447,12 @@ private data class FolderChipItem(
     val selection: UnifiedCategoryFilterSelection,
     val isBack: Boolean = false
 )
+
+private val StorageHealthyGreen = Color(0xFF22C55E)
+
+private fun BitwardenVault.hasHealthyConnection(): Boolean {
+    return isConnected && !encryptedRefreshToken.isNullOrBlank()
+}
 
 private fun buildFolderChips(
     selected: UnifiedCategoryFilterSelection,

@@ -85,7 +85,10 @@ internal fun CreateCategoryDialog(
     onCreateCategoryWithName: ((String) -> Unit)? = null,
     onCreateBitwardenFolder: ((Long, String) -> Unit)? = null,
     onCreateKeePassGroup: ((databaseId: Long, parentPath: String?, name: String) -> Unit)? = null,
-    initialLocalParentPath: String? = null
+    initialLocalParentPath: String? = null,
+    initialTarget: CreateDialogTarget? = null,
+    initialKeePassDbId: Long? = null,
+    initialBitwardenVaultId: Long? = null
 ) {
     if (!visible) return
 
@@ -109,18 +112,25 @@ internal fun CreateCategoryDialog(
         stiffness = Spring.StiffnessMediumLow
     )
 
-    LaunchedEffect(visible, canCreateLocal, canCreateBitwarden, canCreateKeePass, initialLocalParentPath) {
+    LaunchedEffect(visible, canCreateLocal, canCreateBitwarden, canCreateKeePass, initialLocalParentPath, initialTarget, initialKeePassDbId, initialBitwardenVaultId) {
         if (!visible) return@LaunchedEffect
         createNameInput = ""
         createLocalParentPath = initialLocalParentPath
         createKeePassParentPath = null
         createOptionsExpanded = true
         createTarget = when {
+            initialTarget != null -> initialTarget
             !initialLocalParentPath.isNullOrBlank() && canCreateLocal -> CreateDialogTarget.Local
             canCreateLocal -> CreateDialogTarget.Local
             canCreateBitwarden -> CreateDialogTarget.Bitwarden
             canCreateKeePass -> CreateDialogTarget.KeePass
             else -> CreateDialogTarget.Local
+        }
+        if (initialKeePassDbId != null) {
+            selectedCreateKeePassDbId = initialKeePassDbId
+        }
+        if (initialBitwardenVaultId != null) {
+            selectedCreateVaultId = initialBitwardenVaultId
         }
     }
 
@@ -541,7 +551,7 @@ private fun CreateDialogAnimatedVisibility(
     }
 }
 
-private enum class CreateDialogTarget {
+enum class CreateDialogTarget {
     Local,
     Bitwarden,
     KeePass

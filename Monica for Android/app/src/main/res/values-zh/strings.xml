@@ -1908,6 +1908,15 @@
     <string name="keepass_remote_sync_status_remote_changed">远端已变化</string>
     <string name="keepass_remote_sync_status_conflict">存在冲突</string>
     <string name="keepass_remote_sync_status_failed">同步失败</string>
+    <string name="keepass_connection_status_unavailable_format">不可用：%1$s</string>
+    <string name="keepass_connection_status_missing">数据库不存在</string>
+    <string name="keepass_connection_status_needs_refresh">需要手动刷新</string>
+    <string name="keepass_connection_status_syncing">正在同步</string>
+    <string name="keepass_connection_status_conflict">存在冲突需要处理</string>
+    <string name="keepass_connection_status_failed">上次同步失败</string>
+    <string name="keepass_operation_unavailable_title">KeePass 暂不可用</string>
+    <string name="keepass_operation_unavailable_message">“%1$s” 当前不能正常写入：%2$s。\n\n请先手动刷新/同步这个 KeePass 数据库，然后再重试。</string>
+    <string name="keepass_operation_refresh_hint">手动刷新</string>
     <string name="keepass_remote_path">远端路径</string>
     <string name="keepass_remote_path_placeholder">示例：vault/main.kdbx</string>
     

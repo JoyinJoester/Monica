@@ -19,31 +19,8 @@
 
 [![Release](https://img.shields.io/github/v/release/JoyinJoester/Monica?style=flat-square)](https://github.com/JoyinJoester/Monica/releases)
 [![Downloads](https://img.shields.io/github/downloads/JoyinJoester/Monica/total?style=flat-square)](https://github.com/JoyinJoester/Monica/releases)
-[![License](https://img.shields.io/github/license/JoyinJoester/Monica?style=flat-square)](LICENSE)
-[![Website](https://img.shields.io/badge/Website-Monica-0A66C2?style=flat-square)](https://joyinjoester.github.io/Monica/)
 [![Last Commit](https://img.shields.io/github/last-commit/JoyinJoester/Monica?style=flat-square)](https://github.com/JoyinJoester/Monica/commits)
-[![Commit Activity](https://img.shields.io/github/commit-activity/m/JoyinJoester/Monica?style=flat-square)](https://github.com/JoyinJoester/Monica/graphs/commit-activity)
-
-[![Stars](https://img.shields.io/github/stars/JoyinJoester/Monica?style=flat-square)](https://github.com/JoyinJoester/Monica/stargazers)
-[![Forks](https://img.shields.io/github/forks/JoyinJoester/Monica?style=flat-square)](https://github.com/JoyinJoester/Monica/network/members)
-[![Issues](https://img.shields.io/github/issues/JoyinJoester/Monica?style=flat-square)](https://github.com/JoyinJoester/Monica/issues)
-[![Pull Requests](https://img.shields.io/github/issues-pr/JoyinJoester/Monica?style=flat-square)](https://github.com/JoyinJoester/Monica/pulls)
 [![QQ Group](https://img.shields.io/badge/QQ%20Group-1087865010-12B7F5?style=flat-square&logo=tencentqq&logoColor=white)](https://qm.qq.com/q/2vTdTkHV3u)
-
-![Platform](https://img.shields.io/badge/Platform-Android%20%7C%20Browser-3DDC84?style=flat-square)
-![Security](https://img.shields.io/badge/Security-AES--256--GCM-success?style=flat-square)
-![Local First](https://img.shields.io/badge/Architecture-Local%20First-2F855A?style=flat-square)
-[![Kotlin](https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?style=flat-square&logo=kotlin&logoColor=white)](https://kotlinlang.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.9.3-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-![Repo Size](https://img.shields.io/github/repo-size/JoyinJoester/Monica?style=flat-square)
-![Language Count](https://img.shields.io/github/languages/count/JoyinJoester/Monica?style=flat-square)
-
-[![Android CI](https://github.com/JoyinJoester/Monica/actions/workflows/Android.yml/badge.svg)](https://github.com/JoyinJoester/Monica/actions/workflows/Android.yml)
-[![Browser CI](https://github.com/JoyinJoester/Monica/actions/workflows/Browser-CI.yml/badge.svg)](https://github.com/JoyinJoester/Monica/actions/workflows/Browser-CI.yml)
-[![Website Deploy](https://github.com/JoyinJoester/Monica/actions/workflows/deploy-website.yml/badge.svg)](https://github.com/JoyinJoester/Monica/actions/workflows/deploy-website.yml)
-[![CodeQL](https://github.com/JoyinJoester/Monica/actions/workflows/CodeQL.yml/badge.svg)](https://github.com/JoyinJoester/Monica/actions/workflows/CodeQL.yml)
-[![Top Language](https://img.shields.io/github/languages/top/JoyinJoester/Monica?style=flat-square)](https://github.com/JoyinJoester/Monica)
-[![State-of-the-art Shitcode](https://img.shields.io/static/v1?label=State-of-the-art&message=Shitcode&color=7B5804&style=flat-square)](https://github.com/trekhleb/state-of-the-art-shitcode)
 
 [![Afdian](https://img.shields.io/badge/Afdian-JoyinJoester-ea4aaa?style=flat-square)](https://afdian.com/a/JoyinJoester)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-joyinjoester-29ABE0?style=flat-square&logo=kofi&logoColor=white)](https://ko-fi.com/joyinjoester)
@@ -52,6 +29,8 @@
 
 Monica is a local password vault that aggregates **Bitwarden** and **KeePass**.
 It is built around local-first storage and helps you manage passwords, 2FA, secure notes, and sensitive attachments across Android and browser clients.
+
+This project is AI-assisted. Please build a habit of backing up regularly to avoid data loss. Data privacy is priceless, so do not keep all of your data in a single app.
 
 Website: https://joyinjoester.github.io/Monica/
 

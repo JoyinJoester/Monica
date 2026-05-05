@@ -2063,6 +2063,15 @@
     <string name="keepass_remote_sync_status_remote_changed">Remote changed</string>
     <string name="keepass_remote_sync_status_conflict">Conflict</string>
     <string name="keepass_remote_sync_status_failed">Sync failed</string>
+    <string name="keepass_connection_status_unavailable_format">Unavailable: %1$s</string>
+    <string name="keepass_connection_status_missing">database not found</string>
+    <string name="keepass_connection_status_needs_refresh">manual refresh required</string>
+    <string name="keepass_connection_status_syncing">syncing</string>
+    <string name="keepass_connection_status_conflict">conflict needs resolution</string>
+    <string name="keepass_connection_status_failed">last sync failed</string>
+    <string name="keepass_operation_unavailable_title">KeePass unavailable</string>
+    <string name="keepass_operation_unavailable_message">“%1$s” is not ready for changes: %2$s.\n\nPlease refresh/sync this KeePass database manually, then try again.</string>
+    <string name="keepass_operation_refresh_hint">Refresh manually</string>
     <string name="keepass_remote_loading_files">Loading remote files…</string>
     <string name="keepass_remote_path">Remote Path</string>
     <string name="keepass_remote_path_placeholder">Example: vault/main.kdbx</string>

@@ -35,6 +35,7 @@ import androidx.compose.material.icons.filled.FolderOff
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -43,6 +44,7 @@ import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -60,7 +62,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import takagi.ru.monica.R
 import takagi.ru.monica.data.Category
+import takagi.ru.monica.data.KeePassOperationBlockReason
 import takagi.ru.monica.data.KeePassStorageLocation
+import takagi.ru.monica.data.writeOperationAvailability
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenVault
@@ -107,6 +111,7 @@ fun UnifiedMoveToCategoryBottomSheet(
     val selectedAction = remember { mutableStateOf(if (allowMove) UnifiedMoveAction.MOVE else UnifiedMoveAction.COPY) }
     val bitwardenExpanded = remember { mutableStateOf<Map<Long, Boolean>>(emptyMap()) }
     val keepassExpanded = remember { mutableStateOf<Map<Long, Boolean>>(emptyMap()) }
+    val blockedKeePassOperation = remember { mutableStateOf<KeePassUnavailableMoveState?>(null) }
     val expandCollapseSpec = spring<IntSize>(
         dampingRatio = Spring.DampingRatioNoBouncy,
         stiffness = Spring.StiffnessMediumLow
@@ -118,6 +123,42 @@ fun UnifiedMoveToCategoryBottomSheet(
     }
     val localKeePassDatabases = keepassDatabases
     val monicaCategoryNodes = remember(categories) { buildMonicaCategoryNodes(categories) }
+    fun selectKeePassTarget(
+        database: LocalKeePassDatabase,
+        target: UnifiedMoveCategoryTarget
+    ) {
+        val availability = database.writeOperationAvailability()
+        if (availability.canOperate) {
+            onTargetSelected(target, selectedAction.value)
+        } else {
+            blockedKeePassOperation.value = KeePassUnavailableMoveState(
+                databaseName = database.name,
+                reason = availability.reason ?: KeePassOperationBlockReason.NEEDS_REFRESH
+            )
+        }
+    }
+
+    blockedKeePassOperation.value?.let { blocked ->
+        val reason = keepassBlockReasonLabel(blocked.reason)
+        AlertDialog(
+            onDismissRequest = { blockedKeePassOperation.value = null },
+            title = { Text(stringResource(R.string.keepass_operation_unavailable_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.keepass_operation_unavailable_message,
+                        blocked.databaseName,
+                        reason
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { blockedKeePassOperation.value = null }) {
+                    Text(stringResource(R.string.keepass_operation_refresh_hint))
+                }
+            }
+        )
+    }
 
     MonicaModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -356,6 +397,12 @@ fun UnifiedMoveToCategoryBottomSheet(
                                 ).collectAsState(initial = emptyList())
                                 val groupNodes = remember(groups) { buildKeePassGroupNodes(groups) }
                                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    val availability = database.writeOperationAvailability()
+                                    val unavailableReason = if (availability.canOperate) {
+                                        null
+                                    } else {
+                                        keepassBlockReasonLabel(availability.reason)
+                                    }
                                     MoveTargetItem(
                                         title = database.name,
                                         icon = Icons.Default.Key,
@@ -364,11 +411,13 @@ fun UnifiedMoveToCategoryBottomSheet(
                                                 this[database.id] = !expanded
                                             }
                                         },
-                                        supportingText = when {
-                                            database.storageLocation == KeePassStorageLocation.EXTERNAL ->
-                                                stringResource(R.string.external_storage)
-                                            else -> stringResource(R.string.internal_storage)
-                                        },
+                                        supportingText = unavailableReason
+                                            ?.let { stringResource(R.string.keepass_connection_status_unavailable_format, it) }
+                                            ?: when {
+                                                database.storageLocation == KeePassStorageLocation.EXTERNAL ->
+                                                    stringResource(R.string.external_storage)
+                                                else -> stringResource(R.string.internal_storage)
+                                            },
                                         menu = {
                                             IconButton(
                                                 onClick = {
@@ -398,9 +447,9 @@ fun UnifiedMoveToCategoryBottomSheet(
                                                     title = stringResource(R.string.category_none),
                                                     icon = Icons.Default.FolderOff,
                                                     onClick = {
-                                                        onTargetSelected(
-                                                            UnifiedMoveCategoryTarget.KeePassDatabaseTarget(database.id),
-                                                            selectedAction.value
+                                                        selectKeePassTarget(
+                                                            database = database,
+                                                            target = UnifiedMoveCategoryTarget.KeePassDatabaseTarget(database.id)
                                                         )
                                                     }
                                                 )
@@ -413,12 +462,12 @@ fun UnifiedMoveToCategoryBottomSheet(
                                                         icon = Icons.Default.Folder,
                                                         supportingText = groupNode.parentPathLabel,
                                                         onClick = {
-                                                            onTargetSelected(
-                                                                UnifiedMoveCategoryTarget.KeePassGroupTarget(
+                                                            selectKeePassTarget(
+                                                                database = database,
+                                                                target = UnifiedMoveCategoryTarget.KeePassGroupTarget(
                                                                     databaseId = database.id,
                                                                     groupPath = groupNode.group.path
-                                                                ),
-                                                                selectedAction.value
+                                                                )
                                                             )
                                                         }
                                                     )
@@ -439,6 +488,11 @@ fun UnifiedMoveToCategoryBottomSheet(
         }
     }
 }
+
+private data class KeePassUnavailableMoveState(
+    val databaseName: String,
+    val reason: KeePassOperationBlockReason
+)
 
 @Composable
 private fun MoveSectionCard(

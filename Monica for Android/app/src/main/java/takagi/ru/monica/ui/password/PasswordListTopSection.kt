@@ -48,6 +48,7 @@ import takagi.ru.monica.data.PasswordListQuickFilterItem
 import takagi.ru.monica.data.model.StorageTarget
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.components.CreateCategoryDialog
+import takagi.ru.monica.ui.components.CreateDialogTarget
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenuDropdown
@@ -709,6 +710,37 @@ internal fun PasswordListTopSection(
             val initialLocalParentPath = (currentFilter as? CategoryFilter.Custom)?.let { filter ->
                 categories.firstOrNull { it.id == filter.categoryId }?.name
             }
+            val (initialDialogTarget, initialDialogKeePassDbId, initialDialogBitwardenVaultId) = remember(currentFilter) {
+                when (currentFilter) {
+                    is CategoryFilter.KeePassDatabase,
+                    is CategoryFilter.KeePassGroupFilter,
+                    is CategoryFilter.KeePassDatabaseStarred,
+                    is CategoryFilter.KeePassDatabaseUncategorized -> {
+                        val dbId = when (currentFilter) {
+                            is CategoryFilter.KeePassDatabase -> currentFilter.databaseId
+                            is CategoryFilter.KeePassGroupFilter -> currentFilter.databaseId
+                            is CategoryFilter.KeePassDatabaseStarred -> currentFilter.databaseId
+                            is CategoryFilter.KeePassDatabaseUncategorized -> currentFilter.databaseId
+                            else -> null
+                        }
+                        Triple(CreateDialogTarget.KeePass, dbId, null)
+                    }
+                    is CategoryFilter.BitwardenVault,
+                    is CategoryFilter.BitwardenFolderFilter,
+                    is CategoryFilter.BitwardenVaultStarred,
+                    is CategoryFilter.BitwardenVaultUncategorized -> {
+                        val vaultId = when (currentFilter) {
+                            is CategoryFilter.BitwardenVault -> currentFilter.vaultId
+                            is CategoryFilter.BitwardenFolderFilter -> currentFilter.vaultId
+                            is CategoryFilter.BitwardenVaultStarred -> currentFilter.vaultId
+                            is CategoryFilter.BitwardenVaultUncategorized -> currentFilter.vaultId
+                            else -> null
+                        }
+                        Triple(CreateDialogTarget.Bitwarden, null, vaultId)
+                    }
+                    else -> Triple(null, null, null)
+                }
+            }
             CreateCategoryDialog(
                 visible = true,
                 onDismiss = { showCreateCategoryDialog = false },
@@ -718,6 +750,9 @@ internal fun PasswordListTopSection(
                 getKeePassGroups = localKeePassViewModel::getGroups,
                 onCreateCategoryWithName = { name -> viewModel.addCategory(name) },
                 initialLocalParentPath = initialLocalParentPath,
+                initialTarget = initialDialogTarget,
+                initialKeePassDbId = initialDialogKeePassDbId,
+                initialBitwardenVaultId = initialDialogBitwardenVaultId,
                 onCreateBitwardenFolder = { vaultId, name ->
                     coroutineScope.launch {
                         val result = bitwardenRepository.createFolder(vaultId, name)

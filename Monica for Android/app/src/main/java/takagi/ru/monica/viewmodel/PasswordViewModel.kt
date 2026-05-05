@@ -27,6 +27,7 @@ import takagi.ru.monica.data.PasswordHistoryEntry
 import takagi.ru.monica.data.PasswordHistoryManager
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.resolveOwnership
+import takagi.ru.monica.data.writeOperationAvailability
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.repository.CustomFieldRepository
@@ -1628,6 +1629,10 @@ class PasswordViewModel(
 
     suspend fun movePasswordsToKeePassDatabaseAwait(ids: List<Long>, databaseId: Long?) {
         if (ids.isEmpty()) return
+        if (databaseId != null && !canWriteKeePassDatabase(databaseId)) {
+            Log.w("PasswordViewModel", "movePasswordsToKeePassDatabase blocked because KeePass target is unavailable")
+            return
+        }
         movePasswordsToKeePassInternal(
             ids = ids,
             buildUpdatedEntry = { entry ->
@@ -1659,6 +1664,10 @@ class PasswordViewModel(
 
     suspend fun movePasswordsToKeePassGroupAwait(ids: List<Long>, databaseId: Long, groupPath: String) {
         if (ids.isEmpty()) return
+        if (!canWriteKeePassDatabase(databaseId)) {
+            Log.w("PasswordViewModel", "movePasswordsToKeePassGroup blocked because KeePass target is unavailable")
+            return
+        }
         movePasswordsToKeePassInternal(
             ids = ids,
             buildUpdatedEntry = { entry ->
@@ -2993,6 +3002,13 @@ class PasswordViewModel(
                 if (distinctTargets.isEmpty()) {
                     return@withContext null
                 }
+                if (!canWriteKeePassTargets(distinctTargets)) {
+                    Log.w(
+                        "PasswordViewModel",
+                        "savePasswordsAcrossTargets blocked because a KeePass target is unavailable"
+                    )
+                    return@withContext null
+                }
 
                 val currentEntry = originalIds.firstOrNull()?.let { repository.getPasswordEntryById(it) }
                 val currentTarget = currentEntry?.toStorageTarget() ?: distinctTargets.first()
@@ -3063,6 +3079,21 @@ class PasswordViewModel(
 
             onComplete(firstId)
         }
+    }
+
+    private suspend fun canWriteKeePassTargets(targets: List<StorageTarget>): Boolean {
+        val dao = localKeePassDatabaseDao ?: return true
+        return targets.all { target ->
+            val keepassTarget = target as? StorageTarget.KeePass ?: return@all true
+            val database = dao.getDatabaseById(keepassTarget.databaseId) ?: return@all false
+            database.writeOperationAvailability().canOperate
+        }
+    }
+
+    private suspend fun canWriteKeePassDatabase(databaseId: Long): Boolean {
+        val dao = localKeePassDatabaseDao ?: return true
+        val database = dao.getDatabaseById(databaseId) ?: return false
+        return database.writeOperationAvailability().canOperate
     }
 
     private suspend fun saveGroupedPasswordsInternal(

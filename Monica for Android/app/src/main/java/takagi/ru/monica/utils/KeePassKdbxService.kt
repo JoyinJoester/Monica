@@ -335,6 +335,10 @@ class KeePassKdbxService(
         keyFileUriOverride: Uri? = null
     ): Result<KeePassDatabaseDiagnostics> = withContext(Dispatchers.IO) {
         try {
+            if (passwordOverride == null && keyFileUriOverride == null) {
+                val loaded = getCachedLoadedDatabase(databaseId) ?: loadDatabase(databaseId)
+                return@withContext Result.success(buildDiagnostics(loaded.keePassDatabase))
+            }
             val database = dao.getDatabaseById(databaseId) ?: throw Exception("数据库不存在")
             val credentials = buildCredentials(
                 database,
@@ -348,24 +352,7 @@ class KeePassKdbxService(
                 sourceLabel = "databaseId=$databaseId",
                 sourceName = database.resolvedActiveFilePath()
             )
-            val (entries, hasRecycleBinMeta) = collectEntryContexts(keePassDatabase)
-            val resolutionContext = KeePassFieldReferenceResolver.buildContext(entries.map { it.entry })
-            val count = entries.count { context ->
-                entryToData(
-                    entry = context.entry,
-                    groupPath = context.groupPath,
-                    groupUuid = context.groupUuid,
-                    isInRecycleBinByMeta = context.isInRecycleBinByMeta,
-                    hasRecycleBinMeta = hasRecycleBinMeta,
-                    resolutionContext = resolutionContext
-                ) != null
-            }
-            Result.success(
-                KeePassDatabaseDiagnostics(
-                    entryCount = count,
-                    creationOptions = inferCreationOptions(keePassDatabase)
-                )
-            )
+            Result.success(buildDiagnostics(keePassDatabase))
         } catch (e: Exception) {
             Result.failure(normalizeError(e))
         }
@@ -385,27 +372,29 @@ class KeePassKdbxService(
                 sourceLabel = "uri=$fileUri",
                 sourceName = fileUri.lastPathSegment ?: fileUri.toString()
             )
-            val (entries, hasRecycleBinMeta) = collectEntryContexts(keePassDatabase)
-            val resolutionContext = KeePassFieldReferenceResolver.buildContext(entries.map { it.entry })
-            val count = entries.count { context ->
-                entryToData(
-                    entry = context.entry,
-                    groupPath = context.groupPath,
-                    groupUuid = context.groupUuid,
-                    isInRecycleBinByMeta = context.isInRecycleBinByMeta,
-                    hasRecycleBinMeta = hasRecycleBinMeta,
-                    resolutionContext = resolutionContext
-                ) != null
-            }
-            Result.success(
-                KeePassDatabaseDiagnostics(
-                    entryCount = count,
-                    creationOptions = inferCreationOptions(keePassDatabase)
-                )
-            )
+            Result.success(buildDiagnostics(keePassDatabase))
         } catch (e: Exception) {
             Result.failure(normalizeError(e))
         }
+    }
+
+    private fun buildDiagnostics(keePassDatabase: KeePassDatabase): KeePassDatabaseDiagnostics {
+        val (entries, hasRecycleBinMeta) = collectEntryContexts(keePassDatabase)
+        val resolutionContext = KeePassFieldReferenceResolver.buildContext(entries.map { it.entry })
+        val count = entries.count { context ->
+            entryToData(
+                entry = context.entry,
+                groupPath = context.groupPath,
+                groupUuid = context.groupUuid,
+                isInRecycleBinByMeta = context.isInRecycleBinByMeta,
+                hasRecycleBinMeta = hasRecycleBinMeta,
+                resolutionContext = resolutionContext
+            ) != null
+        }
+        return KeePassDatabaseDiagnostics(
+            entryCount = count,
+            creationOptions = inferCreationOptions(keePassDatabase)
+        )
     }
 
     suspend fun createGroup(
@@ -670,9 +659,12 @@ class KeePassKdbxService(
                         updatedDatabase = updateResult.first
                     } else {
                         val newEntry = buildEntry(entry, plainPassword)
-                        updatedDatabase = updatedDatabase.modifyParentGroup {
-                            copy(entries = this.entries + newEntry)
-                        }
+                        val updatedRoot = addEntryToGroupPath(
+                            rootGroup = updatedDatabase.content.group,
+                            groupPath = entry.keepassGroupPath,
+                            entry = newEntry
+                        )
+                        updatedDatabase = updatedDatabase.modifyParentGroup { updatedRoot }
                         addedCount++
                     }
                 }
@@ -703,9 +695,12 @@ class KeePassKdbxService(
                 val updateResult = updateEntry(loaded.keePassDatabase, entry, plainPassword)
                 val updatedDatabase = if (updateResult.second) updateResult.first else {
                     val newEntry = buildEntry(entry, plainPassword)
-                    loaded.keePassDatabase.modifyParentGroup {
-                        copy(entries = this.entries + newEntry)
-                    }
+                    val updatedRoot = addEntryToGroupPath(
+                        rootGroup = loaded.keePassDatabase.content.group,
+                        groupPath = entry.keepassGroupPath,
+                        entry = newEntry
+                    )
+                    loaded.keePassDatabase.modifyParentGroup { updatedRoot }
                 }
                 MutationPlan(updatedDatabase = updatedDatabase, result = Unit)
             }
@@ -2859,11 +2854,26 @@ class KeePassKdbxService(
 
     private fun readBytesFromUri(uri: Uri, missingMessage: String): ByteArray {
         return try {
-            context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            openExternalInputBytes(uri)
                 ?: throw FileNotFoundException(missingMessage)
         } catch (t: Throwable) {
             throw normalizeError(t)
         }
+    }
+
+    private fun openExternalInputBytes(uri: Uri): ByteArray? {
+        val descriptorBytes = runCatching {
+            context.contentResolver.openFileDescriptor(uri, "r")?.use { descriptor ->
+                ParcelFileDescriptor.AutoCloseInputStream(descriptor).use { input ->
+                    input.readBytes()
+                }
+            }
+        }.onFailure { error ->
+            Log.w(TAG, "openFileDescriptor r failed, retry with input stream: $uri", error)
+        }.getOrNull()
+        if (descriptorBytes != null) return descriptorBytes
+
+        return context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
     }
 
     private fun resolveCredentials(password: String, keyFileBytes: ByteArray?): CredentialsResolution {

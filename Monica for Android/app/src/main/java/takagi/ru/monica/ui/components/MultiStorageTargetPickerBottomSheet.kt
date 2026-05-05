@@ -41,6 +41,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
@@ -51,7 +52,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.Flow
 import takagi.ru.monica.data.Category
+import takagi.ru.monica.data.KeePassOperationBlockReason
 import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.writeOperationAvailability
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.StorageTarget
@@ -140,6 +143,12 @@ fun MultiStorageTargetPickerBottomSheet(
     val categoryNoneLabel = stringResource(R.string.category_none)
     val bitwardenRootLabel = stringResource(R.string.folder_no_folder_root)
     val keepassRootLabel = stringResource(R.string.storage_picker_keepass_root)
+    val keepassUnavailableFormat = stringResource(R.string.keepass_connection_status_unavailable_format)
+    val keepassMissingLabel = stringResource(R.string.keepass_connection_status_missing)
+    val keepassNeedsRefreshLabel = stringResource(R.string.keepass_connection_status_needs_refresh)
+    val keepassSyncingLabel = stringResource(R.string.keepass_connection_status_syncing)
+    val keepassConflictLabel = stringResource(R.string.keepass_connection_status_conflict)
+    val keepassFailedLabel = stringResource(R.string.keepass_connection_status_failed)
     val selectedKeys = selectedTargets.map(StorageTarget::stableKey).toSet()
     val selectedSourceKeys = remember(selectedTargets) {
         selectedTargets.map { it.toSourceKey() }.toSet()
@@ -186,8 +195,35 @@ fun MultiStorageTargetPickerBottomSheet(
     fun labelForSource(source: StoragePickerSource): String {
         return when (source) {
             StoragePickerSource.MonicaLocal -> monicaOnlyLabel
-            is StoragePickerSource.KeePassDatabase -> source.database.name
+            is StoragePickerSource.KeePassDatabase -> {
+                val availability = source.database.writeOperationAvailability()
+                if (availability.canOperate) {
+                    source.database.name
+                } else {
+                    val reason = when (availability.reason) {
+                        KeePassOperationBlockReason.MISSING_DATABASE -> keepassMissingLabel
+                        KeePassOperationBlockReason.NEEDS_REFRESH -> keepassNeedsRefreshLabel
+                        KeePassOperationBlockReason.SYNCING -> keepassSyncingLabel
+                        KeePassOperationBlockReason.CONFLICT -> keepassConflictLabel
+                        KeePassOperationBlockReason.FAILED -> keepassFailedLabel
+                        null -> keepassNeedsRefreshLabel
+                    }
+                    "${source.database.name} · ${keepassUnavailableFormat.format(reason)}"
+                }
+            }
             is StoragePickerSource.BitwardenVaultSource -> source.vault.displayName ?: source.vault.email
+        }
+    }
+
+    fun statusDotColorForSource(source: StoragePickerSource): Color? {
+        return when (source) {
+            StoragePickerSource.MonicaLocal -> null
+            is StoragePickerSource.KeePassDatabase -> {
+                if (source.database.writeOperationAvailability().canOperate) StorageHealthyGreen else null
+            }
+            is StoragePickerSource.BitwardenVaultSource -> {
+                if (source.vault.hasHealthyConnection()) StorageHealthyGreen else null
+            }
         }
     }
 
@@ -408,7 +444,8 @@ fun MultiStorageTargetPickerBottomSheet(
                             }
                         },
                         label = labelForSource(source),
-                        leadingIcon = source.icon
+                        leadingIcon = source.icon,
+                        statusDotColor = statusDotColorForSource(source)
                     )
                 }
             }
@@ -652,4 +689,10 @@ private fun StorageTarget.toSourceKey(): String {
         is StorageTarget.KeePass -> "keepass:$databaseId"
         is StorageTarget.Bitwarden -> "bitwarden:$vaultId"
     }
+}
+
+private val StorageHealthyGreen = Color(0xFF22C55E)
+
+private fun BitwardenVault.hasHealthyConnection(): Boolean {
+    return isConnected && !encryptedRefreshToken.isNullOrBlank()
 }

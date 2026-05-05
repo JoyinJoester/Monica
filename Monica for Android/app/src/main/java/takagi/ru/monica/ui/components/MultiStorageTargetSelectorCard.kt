@@ -33,10 +33,12 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import takagi.ru.monica.R
 import takagi.ru.monica.data.Category
+import takagi.ru.monica.data.KeePassOperationBlockReason
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenFolderDao
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.StorageTarget
+import takagi.ru.monica.data.writeOperationAvailability
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
 
 @Composable
@@ -78,6 +80,7 @@ fun MultiStorageTargetSelectorCard(
     val keepOriginalSuffix = stringResource(R.string.multi_storage_preserved_existing_suffix)
     val noTargetLabel = stringResource(R.string.multi_storage_no_target)
     val moreSourcesFormat = stringResource(R.string.multi_storage_more_sources_suffix)
+    val keepassUnavailableFormat = stringResource(R.string.keepass_connection_status_unavailable_format)
 
     val sourceLabels = selectedTargets
         .map { target ->
@@ -109,9 +112,22 @@ fun MultiStorageTargetSelectorCard(
             ?: keepassRootLabel
         is StorageTarget.Bitwarden -> bitwardenFolderName ?: noFolderLabel
     }
+    val keepassConnectionHint = (primaryTarget as? StorageTarget.KeePass)
+        ?.let { keepassTarget ->
+            keepassDatabases.firstOrNull { it.id == keepassTarget.databaseId }
+        }
+        ?.let { database ->
+            val availability = database.writeOperationAvailability()
+            if (availability.canOperate) {
+                null
+            } else {
+                keepassUnavailableFormat.format(keepassBlockReasonLabel(availability.reason))
+            }
+        }
     val summarizedSources = summarizeStorageSources(sourceLabels, noTargetLabel, moreSourcesFormat)
     val subtitle = when {
         selectedTargets.isEmpty() -> emptyHint
+        selectedTargets.size == 1 && keepassConnectionHint != null -> "$previewTitle · $previewFolder · $keepassConnectionHint"
         selectedTargets.size == 1 -> "$previewTitle · $previewFolder"
         else -> selectedSummaryFormat.format(selectedTargets.size, summarizedSources)
     }
@@ -175,6 +191,18 @@ fun MultiStorageTargetSelectorCard(
                 tint = visuals.contentColor
             )
         }
+    }
+}
+
+@Composable
+fun keepassBlockReasonLabel(reason: KeePassOperationBlockReason?): String {
+    return when (reason) {
+        KeePassOperationBlockReason.MISSING_DATABASE -> stringResource(R.string.keepass_connection_status_missing)
+        KeePassOperationBlockReason.NEEDS_REFRESH -> stringResource(R.string.keepass_connection_status_needs_refresh)
+        KeePassOperationBlockReason.SYNCING -> stringResource(R.string.keepass_connection_status_syncing)
+        KeePassOperationBlockReason.CONFLICT -> stringResource(R.string.keepass_connection_status_conflict)
+        KeePassOperationBlockReason.FAILED -> stringResource(R.string.keepass_connection_status_failed)
+        null -> stringResource(R.string.keepass_connection_status_needs_refresh)
     }
 }
 
