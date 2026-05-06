@@ -179,8 +179,12 @@ class KeePassKdbxService(
             Thread(runnable, "KeePassDecodeThread").apply { isDaemon = true }
         }
         private val decodeDispatcher = decodeExecutor.asCoroutineDispatcher()
-        // 写入采用“读-改-写”原子化，避免同进程并发冲突。
-        private val globalMutationMutex = Mutex()
+        // 写入采用“读-改-写”原子化；不同数据库可独立排队，跨库操作按 ID 顺序加锁。
+        private val databaseMutationMutexes = mutableMapOf<Long, Mutex>()
+        // 同一数据库首次打开时只允许一个入口执行解码，避免验证/读取并发触发重复开库。
+        private val databaseLoadMutexes = mutableMapOf<Long, Mutex>()
+        // 按数据库 ID 维护进程级已解锁会话；不同调用入口共享同一次 KDBX 解码结果。
+        private val loadedDatabaseCache = mutableMapOf<Long, CachedLoadedDatabase>()
         // 跨实例缓存失效信号：某实例更新数据库绑定后，其他实例的本地缓存应立即失效。
         private val externallyInvalidatedDatabaseIds = mutableSetOf<Long>()
 
@@ -188,8 +192,38 @@ class KeePassKdbxService(
             return globalDecodeMutex.withLock { block() }
         }
 
+        private fun mutationMutexForDatabase(databaseId: Long): Mutex {
+            return synchronized(databaseMutationMutexes) {
+                databaseMutationMutexes.getOrPut(databaseId) { Mutex() }
+            }
+        }
+
+        private fun loadMutexForDatabase(databaseId: Long): Mutex {
+            return synchronized(databaseLoadMutexes) {
+                databaseLoadMutexes.getOrPut(databaseId) { Mutex() }
+            }
+        }
+
+        private suspend fun <T> withDatabaseMutationLocks(
+            databaseIds: List<Long>,
+            block: suspend () -> T
+        ): T {
+            val mutexes = databaseIds.distinct().sorted().map { mutationMutexForDatabase(it) }
+            suspend fun lockAt(index: Int): T {
+                return if (index >= mutexes.size) {
+                    block()
+                } else {
+                    mutexes[index].withLock { lockAt(index + 1) }
+                }
+            }
+            return lockAt(0)
+        }
+
         @Synchronized
         fun invalidateProcessCache(databaseId: Long) {
+            synchronized(loadedDatabaseCache) {
+                loadedDatabaseCache.remove(databaseId)
+            }
             externallyInvalidatedDatabaseIds += databaseId
         }
 
@@ -282,8 +316,6 @@ class KeePassKdbxService(
     private data class CredentialsResolution(
         val candidates: List<KeePassCredentialCandidate>
     )
-
-    private val loadedDatabaseCache = mutableMapOf<Long, CachedLoadedDatabase>()
 
     suspend fun verifyDatabase(
         databaseId: Long,
@@ -519,7 +551,7 @@ class KeePassKdbxService(
                 throw IllegalArgumentException("不能移动到自身或子分组下")
             }
 
-            val movedGroupInfo = globalMutationMutex.withLock {
+            val movedGroupInfo = withDatabaseMutationLocks(listOf(sourceDatabaseId, targetDatabaseId)) {
                 try {
                     val sourceLoaded = getCachedLoadedDatabase(sourceDatabaseId) ?: loadDatabase(sourceDatabaseId)
                     val targetLoaded = if (sourceDatabaseId == targetDatabaseId) {
@@ -2681,7 +2713,7 @@ class KeePassKdbxService(
         forceSyncWrite: Boolean = false,
         mutation: (LoadedDatabase) -> MutationPlan<T>
     ): T {
-        return globalMutationMutex.withLock {
+        return withDatabaseMutationLocks(listOf(databaseId)) {
             try {
                 if (forceSyncWrite) {
                     invalidateLoadedDatabaseCache(databaseId)
@@ -2696,7 +2728,7 @@ class KeePassKdbxService(
                     sourceLastModified = loaded.sourceLastModified
                 )
                 plan.afterWrite?.invoke(loaded.database, plan.updatedDatabase)
-                return@withLock plan.result
+                plan.result
             } catch (e: Exception) {
                 invalidateLoadedDatabaseCache(databaseId)
                 throw e
@@ -2706,25 +2738,28 @@ class KeePassKdbxService(
 
     private suspend fun loadDatabase(databaseId: Long): LoadedDatabase {
         getCachedLoadedDatabase(databaseId)?.let { return it }
-        val database = dao.getDatabaseById(databaseId) ?: throw Exception("数据库不存在")
-        val credentials = buildCredentials(database)
-        val snapshot = readDatabaseSnapshot(database)
-        val (keePassDatabase, resolvedCredentials) = decodeDatabaseWithFallback(
-            bytes = snapshot.bytes,
-            credentialsResolution = credentials,
-            sourceLabel = "databaseId=$databaseId",
-            sourceName = database.resolvedActiveFilePath()
-        )
-        val loaded = LoadedDatabase(
-            database = database,
-            credentials = resolvedCredentials,
-            keePassDatabase = keePassDatabase,
-            sourceEtag = snapshot.etag,
-            sourceLastModified = snapshot.lastModified,
-            sourceSignature = snapshot.signature
-        )
-        cacheLoadedDatabase(loaded)
-        return loaded
+        return loadMutexForDatabase(databaseId).withLock {
+            getCachedLoadedDatabase(databaseId)?.let { return@withLock it }
+            val database = dao.getDatabaseById(databaseId) ?: throw Exception("数据库不存在")
+            val credentials = buildCredentials(database)
+            val snapshot = readDatabaseSnapshot(database)
+            val (keePassDatabase, resolvedCredentials) = decodeDatabaseWithFallback(
+                bytes = snapshot.bytes,
+                credentialsResolution = credentials,
+                sourceLabel = "databaseId=$databaseId",
+                sourceName = database.resolvedActiveFilePath()
+            )
+            val loaded = LoadedDatabase(
+                database = database,
+                credentials = resolvedCredentials,
+                keePassDatabase = keePassDatabase,
+                sourceEtag = snapshot.etag,
+                sourceLastModified = snapshot.lastModified,
+                sourceSignature = snapshot.signature
+            )
+            cacheLoadedDatabase(loaded)
+            loaded
+        }
     }
 
     private suspend fun decodeDatabase(

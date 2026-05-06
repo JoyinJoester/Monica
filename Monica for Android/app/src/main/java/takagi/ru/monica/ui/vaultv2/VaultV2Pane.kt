@@ -851,6 +851,7 @@ private fun VaultV2Item.matchesDisplayedTypes(
 
 private fun VaultV2Item.matchesPasswordQuickFilters(
 	configuredQuickFilterItems: List<PasswordListQuickFilterItem>,
+	storageSelection: UnifiedCategoryFilterSelection,
 	quickFilterFavorite: Boolean,
 	quickFilter2fa: Boolean,
 	quickFilterNotes: Boolean,
@@ -883,7 +884,7 @@ private fun VaultV2Item.matchesPasswordQuickFilters(
 	if (
 		quickFilterUncategorized &&
 		PasswordListQuickFilterItem.UNCATEGORIZED in configuredQuickFilterItems &&
-		categoryId() != null
+		!matchesUncategorizedQuickFilter(storageSelection)
 	) {
 		return false
 	}
@@ -919,6 +920,18 @@ private fun VaultV2Item.matchesPasswordQuickFilters(
 	}
 
 	return true
+}
+
+private fun VaultV2Item.matchesUncategorizedQuickFilter(
+	storageSelection: UnifiedCategoryFilterSelection
+): Boolean {
+	return when (storageSelection) {
+		is UnifiedCategoryFilterSelection.KeePassDatabaseFilter ->
+			keepassDatabaseId() == storageSelection.databaseId && keepassGroupPath().isNullOrBlank()
+		is UnifiedCategoryFilterSelection.BitwardenVaultFilter ->
+			bitwardenVaultId() == storageSelection.vaultId && bitwardenFolderId().isNullOrBlank()
+		else -> categoryId() == null
+	}
 }
 
 @OptIn(
@@ -1550,6 +1563,7 @@ fun VaultV2Pane(
 			if (
 				!item.matchesPasswordQuickFilters(
 					configuredQuickFilterItems = configuredQuickFilterItems,
+					storageSelection = storageSelection,
 					quickFilterFavorite = quickFilterFavorite,
 					quickFilter2fa = quickFilter2fa,
 					quickFilterNotes = quickFilterNotes,

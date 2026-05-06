@@ -118,8 +118,14 @@ fun LocalKeePassScreen(
         }
     }
 
+    fun openDatabaseDetail(database: LocalKeePassDatabase) {
+        selectedDatabase = database
+        showDatabaseDetailSheet = true
+        viewModel.verifyDatabaseCredentials(database.id, force = false)
+    }
+
     LaunchedEffect(allDatabases.map { it.id }) {
-        viewModel.ensureVerificationForDatabases(allDatabases.map { it.id })
+        viewModel.pruneVerificationStates(allDatabases.map { it.id })
     }
     
     Scaffold(
@@ -201,8 +207,7 @@ fun LocalKeePassScreen(
                                 database = database,
                                 verificationState = verificationStates[database.id] ?: LocalKeePassViewModel.VerificationState.Unknown,
                                 onClick = {
-                                    selectedDatabase = database
-                                    showDatabaseDetailSheet = true
+                                    openDatabaseDetail(database)
                                 }
                             )
                         }
@@ -230,8 +235,7 @@ fun LocalKeePassScreen(
                                 database = database,
                                 verificationState = verificationStates[database.id] ?: LocalKeePassViewModel.VerificationState.Unknown,
                                 onClick = {
-                                    selectedDatabase = database
-                                    showDatabaseDetailSheet = true
+                                    openDatabaseDetail(database)
                                 }
                             )
                         }
@@ -258,8 +262,7 @@ fun LocalKeePassScreen(
                                 database = database,
                                 verificationState = verificationStates[database.id] ?: LocalKeePassViewModel.VerificationState.Unknown,
                                 onClick = {
-                                    selectedDatabase = database
-                                    showDatabaseDetailSheet = true
+                                    openDatabaseDetail(database)
                                 }
                             )
                         }

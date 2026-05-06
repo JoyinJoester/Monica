@@ -16,6 +16,8 @@ import app.keemobile.kotpass.database.KeePassDatabase
 import app.keemobile.kotpass.database.encode
 import app.keemobile.kotpass.database.header.KdfParameters
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -110,6 +112,7 @@ class LocalKeePassViewModel(
     private val workspaceRepository = KeePassWorkspaceRepository(kdbxService)
     private val compatibilityBridge = KeePassCompatibilityBridge(workspaceRepository)
     private val verificationMutex = Mutex()
+    private val verificationJobs = mutableMapOf<Long, Job>()
     private val appDatabase by lazy { PasswordDatabase.getDatabase(context) }
     private val remoteSyncService by lazy {
         RemoteKeePassSyncService(
@@ -175,51 +178,65 @@ class LocalKeePassViewModel(
         }
     }
 
-    fun ensureVerificationForDatabases(databaseIds: List<Long>) {
+    fun pruneVerificationStates(databaseIds: List<Long>) {
         val idSet = databaseIds.toSet()
         _verificationStates.update { current -> current.filterKeys { it in idSet } }
-        databaseIds.forEach { databaseId ->
-            val existing = _verificationStates.value[databaseId]
-            if (existing == null || existing is VerificationState.Unknown) {
-                verifyDatabaseCredentials(databaseId, force = false)
-            }
-        }
     }
 
     fun verifyDatabaseCredentials(databaseId: Long, force: Boolean = true) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val existing = _verificationStates.value[databaseId]
-            if (!force && existing is VerificationState.Verified) {
-                return@launch
+        synchronized(verificationJobs) {
+            val activeJob = verificationJobs[databaseId]
+            if (activeJob?.isActive == true) {
+                return
             }
-
-            _verificationStates.update { current ->
-                current + (databaseId to VerificationState.Verifying)
-            }
-
-            val (verifyResult, elapsedMs) = verificationMutex.withLock {
-                val startedAt = SystemClock.elapsedRealtime()
-                val result = workspaceRepository.verifyDatabase(databaseId)
-                result to (SystemClock.elapsedRealtime() - startedAt)
-            }
-            _verificationStates.update { current ->
-                current + (
-                    databaseId to if (verifyResult.isSuccess) {
-                        VerificationState.Verified(
-                            entryCount = verifyResult.getOrDefault(0),
-                            decryptTimeMs = elapsedMs
-                        )
-                    } else {
-                        VerificationState.Failed(verifyResult.exceptionOrNull()?.message ?: "验证失败")
-                    }
-                )
-            }
-            if (verifyResult.isSuccess) {
-                Log.d(TAG, "KeePass verify success db=$databaseId elapsed=${elapsedMs}ms")
-            } else {
-                Log.w(TAG, "KeePass verify failed db=$databaseId elapsed=${elapsedMs}ms")
+            if (activeJob != null) {
+                verificationJobs.remove(databaseId)
             }
         }
+
+        val job = viewModelScope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
+            try {
+                val existing = _verificationStates.value[databaseId]
+                if (!force && existing != null && existing !is VerificationState.Unknown) {
+                    return@launch
+                }
+
+                _verificationStates.update { current ->
+                    current + (databaseId to VerificationState.Verifying)
+                }
+
+                val (verifyResult, elapsedMs) = verificationMutex.withLock {
+                    val startedAt = SystemClock.elapsedRealtime()
+                    val result = workspaceRepository.verifyDatabase(databaseId)
+                    result to (SystemClock.elapsedRealtime() - startedAt)
+                }
+                _verificationStates.update { current ->
+                    current + (
+                        databaseId to if (verifyResult.isSuccess) {
+                            VerificationState.Verified(
+                                entryCount = verifyResult.getOrDefault(0),
+                                decryptTimeMs = elapsedMs
+                            )
+                        } else {
+                            VerificationState.Failed(verifyResult.exceptionOrNull()?.message ?: "验证失败")
+                        }
+                    )
+                }
+                if (verifyResult.isSuccess) {
+                    Log.d(TAG, "KeePass verify success db=$databaseId elapsed=${elapsedMs}ms")
+                } else {
+                    Log.w(TAG, "KeePass verify failed db=$databaseId elapsed=${elapsedMs}ms")
+                }
+            } finally {
+                synchronized(verificationJobs) {
+                    verificationJobs.remove(databaseId)
+                }
+            }
+        }
+        synchronized(verificationJobs) {
+            verificationJobs[databaseId] = job
+        }
+        job.start()
     }
 
     fun reverifyDatabasePassword(databaseId: Long, password: String, keyFileUri: Uri? = null) {

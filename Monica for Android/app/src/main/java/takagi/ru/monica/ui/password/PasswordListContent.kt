@@ -869,7 +869,17 @@ fun PasswordListContent(
             filtered = filtered.filter { it.notes.isNotBlank() }
         }
         if (quickFilterUncategorized && takagi.ru.monica.data.PasswordListQuickFilterItem.UNCATEGORIZED in configuredQuickFilterItems) {
-            filtered = filtered.filter { it.categoryId == null }
+            filtered = filtered.filter { entry ->
+                when (val filter = currentFilter) {
+                    is CategoryFilter.KeePassDatabase ->
+                        entry.keepassDatabaseId == filter.databaseId &&
+                            entry.keepassGroupPath?.trim().isNullOrBlank()
+                    is CategoryFilter.BitwardenVault ->
+                        entry.bitwardenVaultId == filter.vaultId &&
+                            entry.bitwardenFolderId?.trim().isNullOrBlank()
+                    else -> entry.categoryId == null
+                }
+            }
         }
         if (quickFilterLocalOnly && takagi.ru.monica.data.PasswordListQuickFilterItem.LOCAL_ONLY in configuredQuickFilterItems) {
             filtered = filtered.filter {
@@ -896,10 +906,12 @@ fun PasswordListContent(
         quickFilterUncategorized,
         quickFilterLocalOnly,
         quickFilterNeverStack,
+        currentFilter,
         effectiveStackCardMode
     ) {
         filterPasswordAggregateItemsByQuickFilters(
             items = aggregateUiState.visibleItems,
+            currentFilter = currentFilter,
             configuredQuickFilterItems = configuredQuickFilterItems,
             quickFilterFavorite = quickFilterFavorite,
             quickFilter2fa = quickFilter2fa,
@@ -960,6 +972,7 @@ fun PasswordListContent(
     ) {
         filterPasswordAggregateItemsByQuickFilters(
             items = preStackFilteredAggregateItems,
+            currentFilter = currentFilter,
             configuredQuickFilterItems = configuredQuickFilterItems,
             quickFilterFavorite = false,
             quickFilter2fa = false,

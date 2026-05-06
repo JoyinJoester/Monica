@@ -115,6 +115,7 @@ internal fun resolveNonEmptyAggregateContentTypes(
 
 internal fun filterPasswordAggregateItemsByQuickFilters(
     items: List<PasswordAggregateListItemUi>,
+    currentFilter: CategoryFilter,
     configuredQuickFilterItems: List<PasswordListQuickFilterItem>,
     quickFilterFavorite: Boolean,
     quickFilter2fa: Boolean,
@@ -141,7 +142,17 @@ internal fun filterPasswordAggregateItemsByQuickFilters(
         filtered = filtered.filter { it.entry.notes.isNotBlank() }
     }
     if (quickFilterUncategorized && PasswordListQuickFilterItem.UNCATEGORIZED in configuredQuickFilterItems) {
-        filtered = filtered.filter { it.entry.categoryId == null }
+        filtered = filtered.filter { item ->
+            when (currentFilter) {
+                is CategoryFilter.KeePassDatabase ->
+                    item.entry.keepassDatabaseId == currentFilter.databaseId &&
+                        item.entry.keepassGroupPath?.trim().isNullOrBlank()
+                is CategoryFilter.BitwardenVault ->
+                    item.entry.bitwardenVaultId == currentFilter.vaultId &&
+                        item.entry.bitwardenFolderId?.trim().isNullOrBlank()
+                else -> item.entry.categoryId == null
+            }
+        }
     }
     if (quickFilterLocalOnly && PasswordListQuickFilterItem.LOCAL_ONLY in configuredQuickFilterItems) {
         filtered = filtered.filter { it.entry.isLocalOnlyEntry() }
