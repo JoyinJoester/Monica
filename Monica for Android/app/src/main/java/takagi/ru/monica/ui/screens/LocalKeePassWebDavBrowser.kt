@@ -131,7 +131,7 @@ fun KeepassWebDavBrowserBottomSheet(
         }
     }
 
-    val canConnect = serverUrl.isNotBlank() && username.isNotBlank() && webDavPassword.isNotBlank()
+    val canConnect = serverUrl.isNotBlank()
     val currentPathLabel = if (currentPath.isBlank()) stringResource(R.string.keepass_webdav_root_path) else "/$currentPath"
 
     ModalBottomSheet(
@@ -172,7 +172,7 @@ fun KeepassWebDavBrowserBottomSheet(
             OutlinedTextField(
                 value = username,
                 onValueChange = { username = it },
-                label = { Text(stringResource(R.string.username_email)) },
+                label = { Text(stringResource(R.string.webdav_username_optional)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) }
@@ -181,7 +181,7 @@ fun KeepassWebDavBrowserBottomSheet(
             OutlinedTextField(
                 value = webDavPassword,
                 onValueChange = { webDavPassword = it },
-                label = { Text(stringResource(R.string.password_required)) },
+                label = { Text(stringResource(R.string.webdav_password_optional)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
                 leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },

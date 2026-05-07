@@ -29,7 +29,9 @@ class WebDavKeePassFileSource(
     private val remoteUrl = buildRemoteUrl(normalizedServerUrl, normalizedRemotePath)
     private val sardine by lazy {
         OkHttpSardine().apply {
-            setCredentials(username, password)
+            if (username.isNotBlank() || password.isNotBlank()) {
+                setCredentials(username.trim(), password)
+            }
         }
     }
 
@@ -47,7 +49,7 @@ class WebDavKeePassFileSource(
             )
         }
 
-        val exists = sardine.exists(remoteUrl)
+        val exists = webDavPathExists(remoteUrl)
         if (!exists) {
             throw IOException("远端文件不存在: $normalizedRemotePath")
         }
@@ -64,7 +66,7 @@ class WebDavKeePassFileSource(
 
     override suspend fun read(): ByteArray = withContext(Dispatchers.IO) {
         requireRemotePath()
-        if (!sardine.exists(remoteUrl)) {
+        if (!webDavPathExists(remoteUrl)) {
             throw IOException("远端文件不存在: $normalizedRemotePath")
         }
         sardine.get(remoteUrl).use { input ->
@@ -78,7 +80,7 @@ class WebDavKeePassFileSource(
     ): FileSourceWriteResult = withContext(Dispatchers.IO) {
         requireRemotePath()
         val parentUrl = buildRemoteUrl(normalizedServerUrl, parentPathOf(normalizedRemotePath))
-        if (parentUrl.isNotBlank() && !sardine.exists(parentUrl)) {
+        if (parentUrl.isNotBlank() && !webDavPathExists(parentUrl)) {
             throw IOException("远端目录不存在: ${parentPathOf(normalizedRemotePath)}")
         }
 
@@ -126,7 +128,7 @@ class WebDavKeePassFileSource(
                 else -> parentPathOf(normalizedRemotePath)
             }
             val targetUrl = buildRemoteUrl(normalizedServerUrl, targetDirectory).ifBlank { normalizedServerUrl }
-            if (!sardine.exists(targetUrl)) {
+            if (!webDavPathExists(targetUrl)) {
                 throw IOException("无法访问 WebDAV 路径: $targetUrl")
             }
             Unit
@@ -136,7 +138,7 @@ class WebDavKeePassFileSource(
     suspend fun listDirectory(directoryPath: String? = null): List<FileSourceEntry> = withContext(Dispatchers.IO) {
         val normalizedDirectoryPath = normalizeOptionalRemotePath(directoryPath)
         val targetUrl = buildRemoteUrl(normalizedServerUrl, normalizedDirectoryPath).ifBlank { normalizedServerUrl }
-        if (!sardine.exists(targetUrl)) {
+        if (!webDavPathExists(targetUrl)) {
             throw IOException(
                 if (normalizedDirectoryPath.isBlank()) {
                     "无法访问 WebDAV 根目录"
@@ -171,7 +173,7 @@ class WebDavKeePassFileSource(
         val normalizedParentPath = normalizeOptionalRemotePath(parentPath)
         val targetPath = buildChildPath(normalizedParentPath, name)
         val targetUrl = buildRemoteUrl(normalizedServerUrl, targetPath)
-        if (sardine.exists(targetUrl)) {
+        if (webDavPathExists(targetUrl)) {
             throw IOException("同名目录已存在")
         }
         sardine.createDirectory(targetUrl)
@@ -192,7 +194,7 @@ class WebDavKeePassFileSource(
         val targetPath = buildChildPath(normalizedParentPath, name)
         val targetUrl = buildRemoteUrl(normalizedServerUrl, targetPath)
         val parentUrl = buildRemoteUrl(normalizedServerUrl, normalizedParentPath)
-        if (parentUrl.isNotBlank() && !sardine.exists(parentUrl)) {
+        if (parentUrl.isNotBlank() && !webDavPathExists(parentUrl)) {
             throw IOException(
                 if (normalizedParentPath.isBlank()) {
                     "远端目录不存在"
@@ -201,7 +203,7 @@ class WebDavKeePassFileSource(
                 }
             )
         }
-        if (sardine.exists(targetUrl)) {
+        if (webDavPathExists(targetUrl)) {
             throw IOException("同名文件已存在")
         }
         sardine.put(targetUrl, bytes, "application/octet-stream")
@@ -238,6 +240,14 @@ class WebDavKeePassFileSource(
 
     private fun normalizeResourceUrl(url: String?): String {
         return url.orEmpty().trimEnd('/')
+    }
+
+    private fun webDavPathExists(targetUrl: String): Boolean {
+        runCatching { sardine.exists(targetUrl) }
+            .onSuccess { return it }
+        return runCatching { sardine.list(targetUrl) }
+            .map { true }
+            .getOrElse { false }
     }
 
     private fun requireRemotePath() {

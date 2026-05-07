@@ -433,7 +433,7 @@ fun WebDavBackupScreen(
                             username = it
                             isConfigured = false
                         },
-                        label = { Text(stringResource(R.string.username_email)) },
+                        label = { Text(stringResource(R.string.webdav_username_optional)) },
                         leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
                         modifier = Modifier.fillMaxWidth(),
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
@@ -448,7 +448,7 @@ fun WebDavBackupScreen(
                             password = it
                             isConfigured = false
                         },
-                        label = { Text(stringResource(R.string.password_required)) },
+                        label = { Text(stringResource(R.string.webdav_password_optional)) },
                         leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
                         visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
                         trailingIcon = {
@@ -475,7 +475,7 @@ fun WebDavBackupScreen(
                         if (!isConfigured) {
                             Button(
                                 onClick = {
-                                    if (serverUrl.isBlank() || username.isBlank() || password.isBlank()) {
+                                    if (serverUrl.isBlank()) {
                                         errorMessage = context.getString(R.string.webdav_fill_all_fields)
                                         return@Button
                                     }
@@ -526,7 +526,7 @@ fun WebDavBackupScreen(
                                     }
                                 },
                                 modifier = Modifier.weight(1f),
-                                enabled = !isTesting && serverUrl.isNotBlank() && username.isNotBlank() && password.isNotBlank()
+                                enabled = !isTesting && serverUrl.isNotBlank()
                             ) {
                                 if (isTesting) {
                                     CircularProgressIndicator(

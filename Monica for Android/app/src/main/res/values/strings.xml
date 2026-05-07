@@ -6,7 +6,7 @@
     <string name="press_back_again_to_exit">Press back again to exit</string>
     
     <!-- Accessibility Service -->
-    <string name="accessibility_service_description">Monica Accessibility Service helps improve autofill functionality by detecting password fields more accurately.</string>
+    <string name="accessibility_service_description">Helps Monica find password fields for better autofill.</string>
     
     <!-- General -->
     <string name="ok">OK</string>
@@ -108,14 +108,14 @@
     <string name="biometric_none_enrolled">No biometric enrolled. Please set up fingerprint or face in system settings</string>
     <string name="biometric_not_available">Biometric authentication not available</string>
     <string name="biometric_error">Biometric authentication error: %s</string>
-    <string name="biometric_requires_password_reentry">Biometric verification passed, but secure key initialization needs one master-password unlock. Please enter your master password once and try biometric again.</string>
+    <string name="biometric_requires_password_reentry">Biometrics worked. Unlock with your master password once, then try again.</string>
     <string name="biometric_success">Authentication successful</string>
     <string name="biometric_unlock">Fingerprint Unlock</string>
     <string name="biometric_unlock_enabled">Fingerprint unlock enabled</string>
     <string name="biometric_unlock_disabled">Fingerprint unlock disabled</string>
     <string name="biometric_cannot_enable">Cannot enable fingerprint unlock</string>
     <string name="biometric_weak_warning_title">Weaker biometric detected</string>
-    <string name="biometric_weak_warning_message">This device only supports weaker biometric authentication, which has lower anti-spoofing capability. Do you want to continue enabling fingerprint unlock?</string>
+    <string name="biometric_weak_warning_message">This device only supports weaker biometrics. Still enable fingerprint unlock?</string>
     <string name="biometric_weak_warning_confirm">Continue</string>
     <string name="biometric_weak_warning_cancel">Cancel</string>
     
@@ -135,8 +135,8 @@
     <!-- Password List Screen -->
     <string name="search_passwords">Search passwords...</string>
     <string name="no_passwords_saved">No passwords saved yet</string>
-    <string name="password_list_quick_folder_root_empty">No entries are available in the current root directory</string>
-    <string name="password_list_quick_folder_root_empty_hint">Open a folder from the quick folder cards above to view its contents</string>
+    <string name="password_list_quick_folder_root_empty">Nothing in this folder</string>
+    <string name="password_list_quick_folder_root_empty_hint">Open a folder card above to browse.</string>
     <string name="no_passwords_found">No passwords found</string>
     <string name="add_password">Add Password</string>
     <string name="clear_search">Clear search</string>
@@ -165,7 +165,7 @@
     
     <string name="notification_validator_ready">Authenticator notification is starting...</string>
     <string name="notification_validator_no_match">No matching authenticator yet</string>
-    <string name="notification_validator_switch">切换</string>
+    <string name="notification_validator_switch">Switch</string>
     
     <!-- Form Fields -->
     <string name="field_email">Email</string>
@@ -208,7 +208,7 @@
     <string name="smart_deduplication">Smart Deduplication</string>
     <string name="smart_deduplication_desc">Merge duplicate entries from different sources in \'All\' view</string>
     <string name="separate_username_account_title">Separate Username/Account</string>
-    <string name="separate_username_account_desc">Experimental: treat account as an independent login identifier; autofill account instead of email aliases</string>
+    <string name="separate_username_account_desc">Experimental: treat account as its own login ID and autofill it directly</string>
     <string name="filter_title">Filter</string>
     <string name="filter_monica">Monica</string>
     <string name="filter_bitwarden">Bitwarden</string>
@@ -305,7 +305,7 @@
     <string name="code_digits">Code Digits</string>
     <string name="usually_6_digits">Usually 6 digits</string>
     <string name="how_to_get_secret_key">How to get secret key?</string>
-    <string name="secret_key_instructions">1. Find \"Two-Factor Authentication\" settings on the website\n2. Choose \"Use authenticator app\"\n3. Copy the displayed secret key or scan QR code\n4. Paste the key in the input box above</string>
+    <string name="secret_key_instructions">1. Open site 2FA\n2. Choose authenticator app\n3. Copy key or scan QR\n4. Paste above</string>
     
     <!-- OTP Types -->
     <string name="otp_type">OTP Type</string>
@@ -376,7 +376,7 @@
     <string name="bottom_nav_move_down">Move tab down</string>
     <string name="bottom_nav_settings_entry_subtitle">Choose which tabs appear and reorder them</string>
     <string name="bottom_nav_auto_hide_single_tab_title">Hide navigation when only one tab remains</string>
-    <string name="bottom_nav_auto_hide_single_tab_subtitle">If only one bottom tab is enabled, automatically hide the navigation bar and use the top-right menu for Settings.</string>
+    <string name="bottom_nav_auto_hide_single_tab_subtitle">With one tab, hide bottom nav and use the top-right Settings menu.</string>
     <string name="draggable_bottom_nav">Draggable Bottom Nav</string>
     <string name="draggable_bottom_nav_description">Swipe up on the nav bar to reveal quick actions</string>
     
@@ -479,7 +479,7 @@
     <!-- New Export Screen -->
     <string name="export_select_option">Select Export Option</string>
     <string name="export_option_zip">Full Backup (ZIP)</string>
-    <string name="export_option_zip_desc">Includes all data (passwords, notes, images, etc.). Compatible with Windows and Android versions. Recommended.</string>
+    <string name="export_option_zip_desc">Exports everything, including passwords, notes, and images. Works on Windows and Android.</string>
     <string name="export_option_kdbx">KeePass Format (KDBX)</string>
     <string name="export_option_kdbx_desc">Export passwords and authenticators in KeePass-compatible format for KeePass, KeePassXC, etc.</string>
     <string name="kdbx_password_title">Set KDBX Password</string>
@@ -504,7 +504,7 @@
     <string name="export_encryption_password_hint">This password will be required when importing the file</string>
     
     <string name="import_data_warning_title">Warning</string>
-    <string name="import_data_warning_message">Importing data may overwrite existing data. Please make sure to backup your current data before importing.</string>
+    <string name="import_data_warning_message">Importing may overwrite data. Back up your current vault first.</string>
     <string name="import_data_select_file">Select File</string>
     <string name="import_data_button">Import</string>
     <string name="import_data_success">Data imported successfully</string>
@@ -526,7 +526,7 @@
     <!-- Support Author -->
     <string name="support_author_title">Support Author</string>
     <string name="software_free_title">💝 Software is completely free</string>
-    <string name="software_free_description">Monica Password Manager is completely free and open-source software, with no mandatory fees. All features are available for free.</string>
+    <string name="software_free_description">Monica is free and open source. No required fees, no locked core features.</string>
     <string name="if_helpful_title">🙏 If you find this app helpful</string>
     <string name="support_ways_description">Feel free to support the author\'s continued development through the following ways:</string>
     <string name="support_author_qr">Support Author ❤️</string>
@@ -594,7 +594,8 @@
     <string name="language_chinese">中文</string>
     <string name="language_vietnamese">Tiếng Việt</string>
     <string name="language_japanese">日本語</string>
-    
+    <string name="language_russian">Русский</string>
+
     <!-- Theme Options -->
     <string name="theme_system">System Default</string>
     <string name="theme_light">Light</string>
@@ -640,7 +641,7 @@
     <!-- Forgot Password -->
     <string name="forgot_password">Forgot Password?</string>
     <string name="forgot_password_title">Reset Application</string>
-    <string name="forgot_password_warning">This will permanently delete all your saved passwords and reset the application. This action cannot be undone.</string>
+    <string name="forgot_password_warning">This permanently deletes saved passwords and resets Monica. This can\'t be undone.</string>
     <string name="forgot_password_confirm">Are you sure you want to reset all data?</string>
     <string name="reset_all_data">Reset All Data</string>
     <string name="data_reset_complete">All data has been reset. You can now set up a new master password.</string>
@@ -649,7 +650,7 @@
     <string name="security_questions">Security Questions</string>
     <string name="setup_security_questions">Setup Security Questions</string>
     <string name="edit_security_questions">Edit Security Questions</string>
-    <string name="security_questions_description">Set up security questions to recover your password if you forget it. These questions will help verify your identity.</string>
+    <string name="security_questions_description">Set recovery questions in case you forget your password.</string>
     <string name="security_question_1">Security Question 1</string>
     <string name="security_question_2">Security Question 2</string>
     <string name="select_question">Select a question</string>
@@ -752,13 +753,13 @@
     <string name="passkey_used_count">Used %1$d times</string>
     <string name="passkey_discoverable">Discoverable</string>
     <string name="passkey_empty_title">No Passkeys Yet</string>
-    <string name="passkey_empty_message">Passkeys are a more secure and convenient way to sign in. When you create a passkey on a website or app, it will appear here.</string>
-    <string name="passkey_empty_message_unsupported">Your device does not support creating passkeys. You can still view passkeys synced from other devices.</string>
-    <string name="passkey_add_hint">Passkeys must be created by websites or apps. Choose \"Use passkey\" when signing in to a supported website.</string>
+    <string name="passkey_empty_message">Create a passkey in an app or website, and it will show up here.</string>
+    <string name="passkey_empty_message_unsupported">This device can\'t create passkeys, but you can still view synced ones.</string>
+    <string name="passkey_add_hint">Create passkeys from supported apps or websites by choosing \"Use passkey\".</string>
     <string name="passkey_no_search_results">No Results</string>
     <string name="passkey_no_search_results_hint">Try a different search term</string>
     <string name="passkey_version_warning_title">Limited Passkey Support</string>
-    <string name="passkey_version_warning_message">Full passkey functionality requires Android 14 or later. Current: %1$s. You can view synced passkeys but cannot create new ones.</string>
+    <string name="passkey_version_warning_message">Passkey creation needs Android 14+. Current: %1$s. Synced passkeys are still viewable.</string>
     <string name="passkey_what_is_title">What are Passkeys?</string>
     <string name="passkey_feature_1">More secure than passwords - resistant to phishing</string>
     <string name="passkey_feature_2">Easy to use - just use your fingerprint or face</string>
@@ -780,7 +781,7 @@
     <string name="passkey_search_empty_hint">Try a different search term</string>
     <string name="passkey_empty_subtitle">Create passkeys on websites and apps to see them here</string>
     <string name="passkey_delete_title">Delete Passkey</string>
-    <string name="passkey_delete_message">Are you sure you want to delete the passkey for %1$s (%2$s)? You will no longer be able to sign in with this passkey.</string>
+    <string name="passkey_delete_message">Delete the passkey for %1$s (%2$s)? You won\'t be able to sign in with it.</string>
     <string name="passkey_delete_button">Delete Passkey</string>
     <string name="passkey_detail_user">Display Name</string>
     <string name="passkey_detail_username">Username</string>
@@ -797,7 +798,7 @@
     <string name="passkey_category_follow_binding">Category is inherited from the bound password.</string>
     <string name="passkey_category_empty">No categories yet. You can create one in folder management.</string>
     <string name="passkey_format_keepass">KeePass format</string>
-    <string name="passkey_format_keepass_hint">Stored as Monica private KeePass passkey data. It can sync with Monica local and KeePass, but not Bitwarden.</string>
+    <string name="passkey_format_keepass_hint">Stored as Monica-only KeePass passkey data. Syncs with Monica/KeePass, not Bitwarden.</string>
     <string name="passkey_keepass_create_failed">Failed to create KeePass-format passkey.</string>
     <string name="passkey_update_failed">Failed to update passkey.</string>
     <string name="passkey_bitwarden_legacy_hint">This legacy passkey cannot be migrated to Bitwarden.</string>
@@ -826,7 +827,7 @@
     <string name="bitwarden_sync_raw_meta">Source: %1$s  HTTP: %2$s  Digest: %3$s</string>
     <string name="bitwarden_sync_raw_payload_unavailable">Raw payload unavailable.</string>
     <string name="bitwarden_sync_raw_payload_hidden">Raw payload hidden (%1$d chars). Tap eye icon to view.</string>
-    <string name="bitwarden_sync_snapshot_empty">No sync snapshots yet. Run Bitwarden sync once and the latest differing raw snapshot will be stored here.</string>
+    <string name="bitwarden_sync_snapshot_empty">No snapshots yet. Run Bitwarden sync to save the next changed raw snapshot.</string>
     <string name="bitwarden_sync_snapshot_tap_to_preview">Tap to preview this snapshot as Monica fields.</string>
     <string name="bitwarden_sync_snapshot_preview_locked">Unlock this Bitwarden vault to parse the snapshot into Monica fields.</string>
     <string name="bitwarden_sync_snapshot_preview_invalid">This snapshot was saved, but its payload can no longer be parsed into a Monica preview.</string>
@@ -901,7 +902,7 @@
     <string name="note_bitwarden_inline_image_disabled_reason">Bitwarden storage: inline image is disabled for compatibility.</string>
     <string name="note_bitwarden_inline_image_disabled_toast">Bitwarden notes currently do not allow inline images.</string>
     <string name="note_bitwarden_move_warning_title">Bitwarden image compatibility notice</string>
-    <string name="note_bitwarden_move_warning_message">The %1$d selected notes contain images. After moving/copying to Bitwarden, images remain in Monica locally but will not sync to Bitwarden, and new images cannot be added in Bitwarden target notes. Continue?</string>
+    <string name="note_bitwarden_move_warning_message">%1$d selected notes include images. Images stay local and won\'t sync to Bitwarden. Continue?</string>
     <string name="continue_action">Continue</string>
     <string name="no_notes_title">No notes yet</string>
     <string name="no_notes_description">Tap the + button to create your first secure note</string>
@@ -951,7 +952,7 @@
     <string name="version_info_full_version_label">Full version</string>
     <string name="version_info_icon_source_label">Icon source</string>
     <string name="version_info_icon_release_label">Icon version</string>
-    <string name="version_info_simple_icons_note">Includes locally bundled icons from Stratum Auth app (v1.4.0, GPL-3.0). Brand names and logos are trademarks of their respective owners.</string>
+    <string name="version_info_simple_icons_note">Includes bundled Stratum Auth icons (v1.4.0, GPL-3.0). Brands and logos belong to their owners.</string>
     <string name="custom_icon_button">Custom icon</string>
     <string name="custom_icon_dialog_title">Set custom icon</string>
     <string name="custom_icon_pick_simple">Choose from icon library</string>
@@ -980,7 +981,7 @@
     <!-- Change Password Screen -->
     <string name="change_password_title">Change Master Password</string>
     <string name="change_password_warning_title">Important Notice</string>
-    <string name="change_password_warning_message">After changing the master password, all saved data will be re-encrypted with the new password. Please make sure you can remember the new password, otherwise you will not be able to access your data.</string>
+    <string name="change_password_warning_message">Monica will re-encrypt everything. Remember the new password or you may lose access.</string>
     <string name="change_password_intro">Choose a memorable master password. Letters, numbers, symbols, and Chinese are all supported now.</string>
     <string name="change_password_supports_unicode">Supports letters, numbers, symbols, and Chinese</string>
     <string name="change_password_current">Current Password *</string>
@@ -989,7 +990,7 @@
     <string name="change_password_hint">Password must be at least 3 characters</string>
     <string name="change_password_button">Change Password</string>
     <string name="change_password_success_title">Password Changed Successfully</string>
-    <string name="change_password_success_message">Your master password has been successfully changed and all data has been re-encrypted with the new password. Please login with the new password.</string>
+    <string name="change_password_success_message">Master password changed. Sign in again with the new one.</string>
     <string name="change_password_error_current_empty">Please enter current password</string>
     <string name="change_password_error_new_empty">Please enter new password</string>
     <string name="change_password_error_new_too_short">New password must be at least 3 characters</string>
@@ -1001,7 +1002,7 @@
     
     <!-- Security Question Screen -->
     <string name="security_question_title">Security Questions</string>
-    <string name="security_question_description">Set up security questions to recover your password if you forget it. These questions will help verify your identity.</string>
+    <string name="security_question_description">Set recovery questions in case you forget your password.</string>
     <string name="security_question_label_1">Security Question 1 *</string>
     <string name="security_question_label_2">Security Question 2 *</string>
     <string name="security_question_label_3">Security Question 3 *</string>
@@ -1011,7 +1012,7 @@
     <string name="security_question_answer_hint">Enter your answer (case insensitive)</string>
     <string name="security_question_save">Save Security Questions</string>
     <string name="security_question_success_title">Setup Successful</string>
-    <string name="security_question_success_message">Security questions have been successfully set up. You can use these questions to recover your password if you forget it.</string>
+    <string name="security_question_success_message">Recovery questions are set. You can use them if you forget your password.</string>
     <string name="security_question_error_q1_empty">Please select the first security question</string>
     <string name="security_question_error_q2_empty">Please select the second security question</string>
     <string name="security_question_error_q3_empty">Please select the third security question</string>
@@ -1033,7 +1034,7 @@
     <string name="security_question_preset_10">What is your favorite movie?</string>
     
     <!-- Support Author Screen (legacy) -->
-    <string name="support_author_description">If you find this app helpful, please consider supporting the author. Your support is the biggest motivation for us to keep improving!</string>
+    <string name="support_author_description">Enjoying Monica? Your support helps keep it improving.</string>
     <string name="support_author_thanks">Thank You!</string>
     <string name="support_author_thanks_message">Thank you for using Monica Password Manager. Your support means a lot!</string>
     
@@ -1081,7 +1082,7 @@
     <string name="catppuccin_mocha_scheme">Catppuccin Mocha</string>
     <string name="custom_color_scheme">Custom Colors</string>
     <string name="custom_color_scheme_description">Customize three seed colors for the app theme</string>
-    <string name="custom_color_scheme_generated_hint">Material 3 roles (surface, container, outline, on-colors) are generated automatically from your seeds.</string>
+    <string name="custom_color_scheme_generated_hint">Material 3 colors are generated from your chosen seeds.</string>
     <string name="custom_color_presets">Monica Presets</string>
     <string name="seed_colors">Seed Colors</string>
     <string name="live_preview">Live Preview</string>
@@ -1168,11 +1169,13 @@
     <string name="webdav_fill_from_password">Fill from password vault</string>
     <string name="webdav_fill_from_password_applied">WebDAV fields filled from selected password</string>
     <string name="webdav_server_url">Server URL</string>
+    <string name="webdav_username_optional">Username (optional)</string>
+    <string name="webdav_password_optional">Password (optional)</string>
     <string name="webdav_test_connection">Test Connection</string>
     <string name="webdav_reconfigure">Reconfigure</string>
     <string name="webdav_connection_success">Connection successful</string>
     <string name="webdav_connection_failed">Connection failed: %s</string>
-    <string name="webdav_fill_all_fields">Please fill in all fields</string>
+    <string name="webdav_fill_all_fields">Please enter the server URL</string>
     <string name="webdav_backup_list">Backup List</string>
     <string name="webdav_no_backups">No backups found</string>
     <string name="delete_backup">Delete Backup</string>
@@ -1287,7 +1290,7 @@
     <string name="passkey_settings_subtitle">Sign in to apps and websites without passwords</string>
     <string name="passkey_settings_title">Passkey Settings</string>
     <string name="passkey_settings_intro_title">Passkey Provider</string>
-    <string name="passkey_settings_intro_subtitle">Monica can create and manage passkeys for websites and apps, providing a more secure and convenient sign-in experience.</string>
+    <string name="passkey_settings_intro_subtitle">Create and manage passkeys for apps and websites.</string>
     <string name="passkey_settings_unsupported_title">Not Supported</string>
     <string name="passkey_settings_unsupported_subtitle">Passkey Provider requires Android 14 or later. Your device is running Android %1$s.</string>
     <string name="passkey_settings_system_title">Open System Settings</string>
@@ -1295,21 +1298,21 @@
     <string name="passkey_stats_saved">Passkeys Saved</string>
     <string name="passkey_settings_features_title">Passkey Features</string>
     <string name="passkey_feature_security_title">Enhanced Security</string>
-    <string name="passkey_feature_security_desc">Passkeys use public-key cryptography, more secure than passwords</string>
+    <string name="passkey_feature_security_desc">Public-key sign-in, safer than passwords</string>
     <string name="passkey_feature_biometric_title">Biometric Authentication</string>
     <string name="passkey_feature_biometric_desc">Sign in with fingerprint or face recognition</string>
     <string name="passkey_feature_sync_title">Cross-Device Sync</string>
     <string name="passkey_feature_sync_desc">Sync passkeys across devices with WebDAV backup</string>
     <string name="passkey_feature_phishing_title">Phishing Resistant</string>
-    <string name="passkey_feature_phishing_desc">Passkeys are bound to specific websites, preventing phishing attacks</string>
+    <string name="passkey_feature_phishing_desc">Works only on the right website</string>
     <string name="passkey_settings_requirement_title">System Requirements</string>
-    <string name="passkey_settings_requirement_desc">To use Monica as a Passkey provider, your device must be running Android 14 (API 34) or later. You can still view passkeys synced from other devices.</string>
+    <string name="passkey_settings_requirement_desc">Monica can create passkeys on Android 14+. Synced passkeys can still be viewed here.</string>
     <string name="passkey_validation_title">Request Validation</string>
     <string name="passkey_shadow_validation_title">Shadow Validation</string>
     <string name="passkey_shadow_validation_desc">Observe and log suspicious passkey requests without blocking sign-ins.</string>
     <string name="passkey_strict_validation_title">Strict Validation</string>
     <string name="passkey_strict_validation_desc">Block requests that clearly conflict with relying-party origin rules.</string>
-    <string name="passkey_strict_validation_warning">Strict mode may block login on poorly implemented apps. Keep this off unless you are debugging.</string>
+    <string name="passkey_strict_validation_warning">Strict mode can block buggy apps. Leave it off unless you\'re debugging.</string>
     <string name="passkey_hyperos_bypass_title">HyperOS Biometric Compatibility</string>
     <string name="passkey_hyperos_bypass_desc">On Xiaomi HyperOS, skip passkey biometric prompts and use master-password fallback when needed.</string>
     <string name="passkey_diagnostics_title">Validation Diagnostics</string>
@@ -1328,7 +1331,7 @@
     <string name="biometric_subtitle_passkey_create">Creating passkey for %1$s</string>
     
     <string name="autofill_service_description">Automatically fill passwords and forms in apps and websites</string>
-    <string name="autofill_service_summary">Monica Password Manager provides secure autofill for your passwords</string>
+    <string name="autofill_service_summary">Secure autofill from Monica</string>
     <string name="autofill_save_password">Save Password</string>
     <string name="autofill_save_to_monica">Save this password to Monica</string>
     <string name="autofill_title">Title</string>
@@ -1362,7 +1365,7 @@
     <string name="clear_all_data">Clear All Data</string>
     <string name="clear_all_data_subtitle">Delete all passwords, authenticators, bank cards and documents</string>
     <string name="clear_all_data_confirm">Confirm Clear All Data?</string>
-    <string name="clear_all_data_warning">This will permanently delete all passwords, authenticators, bank cards and documents, and cannot be recovered.\n\nIt is recommended to export a backup before clearing!</string>
+    <string name="clear_all_data_warning">This permanently deletes passwords, authenticators, cards, and documents.\n\nExport a backup first.</string>
     <string name="clearing_data">Clearing data…</string>
     <string name="password_incorrect">Password incorrect</string>
     <string name="data_type_passwords">Passwords</string>
@@ -1555,13 +1558,13 @@
     <!-- Autofill Settings - Fill Behavior -->
     <string name="autofill_fill_behavior_title">Fill Behavior</string>
     <string name="autofill_fill_verify_identity">Verify Before Filling</string>
-    <string name="autofill_fill_verify_identity_desc">Require fingerprint or password verification after selecting password</string>
+    <string name="autofill_fill_verify_identity_desc">Verify after choosing a password</string>
     <string name="autofill_fill_suggestions">Fill Suggestions</string>
     <string name="autofill_fill_suggestions_desc">Automatically show matching password suggestions</string>
     <string name="autofill_fill_manual_selection">Manual Selection</string>
     <string name="autofill_fill_manual_selection_desc">Allow manual selection of password to fill</string>
     <string name="autofill_respect_disabled_flag_title">Respect Autofill disabled flag</string>
-    <string name="autofill_respect_disabled_flag_desc">Disables autofill for a browser field that has autofill disabled flag set</string>
+    <string name="autofill_respect_disabled_flag_desc">Skip browser fields that disable autofill</string>
     
     <!-- OTP Notification Settings -->
     <string name="autofill_otp_settings_title">Authenticator</string>
@@ -1598,7 +1601,7 @@
     <string name="autofill_save_blocked_targets_title">Never-save targets</string>
     <string name="autofill_save_blocked_targets_manage">Manage never-save list</string>
     <string name="autofill_save_blocked_targets_manage_desc">%1$d targets will no longer show save prompts.</string>
-    <string name="autofill_save_blocked_targets_dialog_desc">These apps or websites have been set to never show Monica\'s save-password prompt. Remove an item to restore save prompts.</string>
+    <string name="autofill_save_blocked_targets_dialog_desc">Monica won\'t show save prompts for these apps or sites. Remove one to allow prompts again.</string>
     <string name="autofill_save_blocked_targets_empty">No apps or websites have been blocked from save prompts yet.</string>
     <string name="autofill_save_blocked_targets_badge_domain">Website save blocked</string>
     <string name="autofill_save_blocked_targets_badge_app">App save blocked</string>
@@ -1610,7 +1613,7 @@
     <string name="autofill_blacklist_dialog_done">Done</string>
     
     <!-- Autofill Settings - Info Card -->
-    <string name="autofill_info_card_text">Autofill requires Android 8.0 or higher. Once enabled, Monica will automatically fill saved passwords when you visit apps and websites.</string>
+    <string name="autofill_info_card_text">Autofill works on Android 8+. Once enabled, Monica can fill saved logins in apps and websites.</string>
     
     <!-- Autofill Status -->
     <string name="autofill_status_enabled">Autofill Enabled</string>
@@ -1715,7 +1718,7 @@
     <string name="developer_bitwarden_forensics_toggle">Enable Bitwarden Sync Forensics</string>
     <string name="developer_bitwarden_forensics_toggle_desc">Record redacted sync snapshots (lengths and counters only, no plaintext)</string>
     <string name="developer_bitwarden_forensics_raw_toggle">Capture Raw Bitwarden Request/Response</string>
-    <string name="developer_bitwarden_forensics_raw_toggle_desc">Store sanitized request/response payload previews for sync and upload diagnostics. Sensitive fields are redacted and long payloads are truncated.</string>
+    <string name="developer_bitwarden_forensics_raw_toggle_desc">Save redacted sync/upload payload previews for debugging. Long data is trimmed.</string>
     <string name="developer_bitwarden_forensics_dir">Forensics Output Folder</string>
     <string name="developer_bitwarden_forensics_dir_not_set">No external folder selected. Logs stay in app private storage.</string>
     <string name="developer_bitwarden_forensics_dir_selected">Current folder: %1$s</string>
@@ -1725,7 +1728,7 @@
     <string name="developer_bitwarden_forensics_clear_dir_desc">Stop mirroring logs to external storage and keep internal logs only</string>
     <string name="developer_bitwarden_forensics_dir_cleared">Forensics output folder cleared</string>
     <string name="developer_mndx_create_demo_onedrive">Create MNDX Demo Vault in OneDrive</string>
-    <string name="developer_mndx_create_demo_onedrive_desc">Experimental: creates a readable .mndx fixture in the configured OneDrive backup folder. Not encrypted and not for real secrets.</string>
+    <string name="developer_mndx_create_demo_onedrive_desc">Experimental: create a readable .mndx demo in OneDrive. Not encrypted. Don\'t use real secrets.</string>
     <string name="developer_mndx_create_demo_running">Creating MNDX demo vault in OneDrive...</string>
     <string name="developer_mndx_create_demo_success">Created %1$s with %2$d files</string>
     <string name="developer_mndx_create_demo_failed">MNDX demo creation failed: %1$s</string>
@@ -1929,11 +1932,11 @@
 
     <!-- Permission Help Dialog -->
     <string name="permission_help_title">About Permissions</string>
-    <string name="permission_help_content">This screen shows all permissions used by Monica. Tap on a permission to manage it in system settings.\n\n• Required: Essential for core functionality\n• Recommended: Enhances user experience\n• Optional: For additional features</string>
+    <string name="permission_help_content">Tap a permission to manage it.\n\nRequired: core\nRecommended: useful\nOptional: extras</string>
 
     <!-- Permission Info Card -->
     <string name="permission_info_title">Permission Management</string>
-    <string name="permission_info_message">Here you can view all permissions used by Monica and their current status. Tap any permission to manage it in system settings.</string>
+    <string name="permission_info_message">See Monica\'s permissions and status. Tap one to manage it in system settings.</string>
 
     <!-- Selective Backup -->
     <string name="selective_backup_title">Backup Content Selection</string>
@@ -1953,12 +1956,12 @@
     <string name="backup_content_trash_and_history">Recycle Bin &amp; History</string>
     <string name="backup_content_trash_and_history_hint">Include recycle bin, password generator history, and operation history</string>
     <string name="backup_content_local_keepass">Local KeePass Databases</string>
-    <string name="backup_content_local_keepass_hint">Include all local KeePass databases (both internal and external). Restored as internal storage databases.</string>
+    <string name="backup_content_local_keepass_hint">Back up all local KeePass databases. Restores into internal storage.</string>
     <string name="backup_content_local_keepass_empty">No local KeePass databases</string>
     <string name="backup_content_keepass_webdav_config">KeePass WebDAV Configuration</string>
     <string name="backup_content_keepass_webdav_config_hint">Include KeePass WebDAV sync settings for easy setup on new devices.</string>
     <string name="backup_content_webdav_config">Monica Configuration</string>
-    <string name="backup_content_webdav_config_hint">Include Monica configuration such as WebDAV connection info, auto backup settings, blocked non-autofill fields, common account info, page adjustment customizations, and Bitwarden vaults. WebDAV connection is only restored when local WebDAV is not configured. Restored Bitwarden vaults stay locked and require verification again.</string>
+    <string name="backup_content_webdav_config_hint">Back up WebDAV, auto backup, autofill blocks, account info, page tweaks, and Bitwarden vaults.</string>
     <string name="deselect_all">Deselect All</string>
     <string name="backup_validation_error">Please select at least one content type</string>
 
@@ -2048,7 +2051,7 @@
     <string name="confirm_remove">Remove Database?</string>
     <string name="confirm_remove_internal_description">This will remove the database record. The file will also be deleted from internal storage.</string>
     <string name="confirm_remove_external_description">This will remove the database reference. The original file will not be deleted.</string>
-    <string name="confirm_remove_remote_description">This will remove the remote database record and local working copy. The file in cloud storage will not be deleted.</string>
+    <string name="confirm_remove_remote_description">Remove this remote database and local copy. The cloud file stays untouched.</string>
     <string name="remove">Remove</string>
     <string name="create">Create</string>
     <string name="import_existing_database">Import Existing Database</string>
@@ -2070,7 +2073,7 @@
     <string name="keepass_connection_status_conflict">conflict needs resolution</string>
     <string name="keepass_connection_status_failed">last sync failed</string>
     <string name="keepass_operation_unavailable_title">KeePass unavailable</string>
-    <string name="keepass_operation_unavailable_message">“%1$s” is not ready for changes: %2$s.\n\nPlease refresh/sync this KeePass database manually, then try again.</string>
+    <string name="keepass_operation_unavailable_message">“%1$s” isn\'t ready: %2$s.\n\nRefresh or sync this KeePass database, then try again.</string>
     <string name="keepass_operation_refresh_hint">Refresh manually</string>
     <string name="keepass_remote_loading_files">Loading remote files…</string>
     <string name="keepass_remote_path">Remote Path</string>
@@ -2330,7 +2333,7 @@
     <string name="menu">Menu</string>
     <string name="single_select">Single-select</string>
     <string name="multi_select">Multi-select</string>
-    <string name="storage_picker_edit_multi_append_hint">When editing an existing item, only multi-select append is supported. Existing targets will be preserved.</string>
+    <string name="storage_picker_edit_multi_append_hint">When editing, multi-select only adds targets. Existing targets stay kept.</string>
     
     <!-- Autofill hardcoded text cleanup -->
     <string name="autofill_view_all_passwords">View all passwords</string>
@@ -2372,13 +2375,13 @@
     <string name="send_empty_vault_locked_title">Vault is locked</string>
     <string name="send_empty_vault_locked_message">Please unlock your vault in Bitwarden settings to use Send.</string>
     <string name="send_empty_none_title">No Send items</string>
-    <string name="send_empty_none_message">Tap the bottom-right button to create your first text Send with expiry, access limits, and password protection.</string>
+    <string name="send_empty_none_message">Tap Add to create your first text Send with expiry, limits, or a password.</string>
     <string name="send_empty_no_match_title">No matching Send</string>
     <string name="send_empty_no_match_message">Try another keyword or clear search to see all results.</string>
     <string name="send_delete_title">Delete Send</string>
     <string name="send_delete_message">Delete \"%1$s\"? This action cannot be undone.</string>
     <string name="send_secure_share_title">End-to-end encrypted sharing</string>
-    <string name="send_secure_share_desc">Your Send data is encrypted with Bitwarden protocol. Links can have expiry, access limits, and access passwords.</string>
+    <string name="send_secure_share_desc">Sends are encrypted with Bitwarden. Links can expire, have limits, or require passwords.</string>
     <string name="send_chip_total">Total %1$d</string>
     <string name="send_chip_text">Text %1$d</string>
     <string name="send_chip_file">File %1$d</string>
@@ -2441,7 +2444,7 @@
     <string name="sync_status_failed_full">Sync failed</string>
     <string name="sync_status_conflict_full">Sync conflict</string>
     <string name="sync_status_local_full">Stored locally only</string>
-    <string name="bitwarden_password_unreadable_inline">This Bitwarden password is temporarily unreadable locally. Leave it blank to keep the existing value.</string>
+    <string name="bitwarden_password_unreadable_inline">This Bitwarden password can\'t be read right now. Leave it blank to keep it.</string>
     <string name="bitwarden_password_unreadable_display">Password is temporarily unreadable on this device. Unlock again or resync Bitwarden.</string>
     <string name="bitwarden_password_unreadable_copy">This password is temporarily unreadable and cannot be copied.</string>
     <string name="password_unreadable_display">This password is temporarily unreadable on this device. Please unlock again and try later.</string>
@@ -2452,8 +2455,8 @@
     <string name="bitwarden_password_resync_blocked">Bitwarden resync blocked: %1$s</string>
     <string name="password_owner_conflict_short">Owner conflict</string>
     <string name="password_owner_conflict_database">Conflicting storage owner</string>
-    <string name="password_owner_conflict_inline">This entry is bound to multiple vaults at the same time. Editing is blocked until the ownership conflict is repaired.</string>
-    <string name="password_owner_conflict_display">This entry currently has conflicting storage ownership. Monica local, KeePass, and Bitwarden ownership must be repaired before editing.</string>
+    <string name="password_owner_conflict_inline">This entry belongs to multiple vaults. Fix ownership before editing.</string>
+    <string name="password_owner_conflict_display">Storage ownership conflicts across Monica, KeePass, or Bitwarden. Repair before editing.</string>
     <string name="password_owner_conflict_copy">This entry has conflicting ownership and its password cannot be copied safely.</string>
     <string name="pull_release_to_search">Pull to search</string>
     <string name="pull_release_to_sync_bitwarden">Release to sync Bitwarden</string>
@@ -2481,7 +2484,7 @@
     <string name="bitwarden_cache_failed">Bitwarden cache failed: %1$s</string>
     <string name="bitwarden_cache_requires_unlock">Please unlock Bitwarden vault first</string>
     <string name="bitwarden_cache_blocked_empty_vault">Bitwarden cache blocked: %1$s</string>
-    <string name="bitwarden_sync_success_with_offline_ready">Sync completed. %1$d changes were applied in this sync, and %2$d passwords are currently available offline.</string>
+    <string name="bitwarden_sync_success_with_offline_ready">Sync complete: %1$d changes applied, %2$d passwords available offline.</string>
     <string name="bitwarden_sync_summary_success_title">Bitwarden synced %1$d changes</string>
     <string name="bitwarden_sync_summary_warning_title">Bitwarden synced %1$d changes with warnings</string>
     <string name="bitwarden_sync_summary_offline_detail">%1$d passwords available offline</string>
@@ -2493,8 +2496,8 @@
     <string name="bitwarden_sync_notification_channel_name">Bitwarden sync</string>
     <string name="bitwarden_sync_notification_channel_desc">Shows Bitwarden sync summaries and warning counts</string>
     <string name="bitwarden_clear_cache_confirm_title">Clear Bitwarden cache?</string>
-    <string name="bitwarden_clear_cache_confirm_message">This will remove local Bitwarden cache data for the current vault. You can sync again later.</string>
-    <string name="bitwarden_clear_cache_confirm_message_with_risk">Pending changes detected (pending ops: %1$d, password edits: %2$d, secure item edits: %3$d, unresolved conflicts: %4$d). You can clear synced cache only, or force clear all local Bitwarden cache.</string>
+    <string name="bitwarden_clear_cache_confirm_message">This removes the local Bitwarden cache for this vault. You can sync again later.</string>
+    <string name="bitwarden_clear_cache_confirm_message_with_risk">Pending: %1$d ops, %2$d password edits, %3$d item edits, %4$d conflicts. Clear synced cache?</string>
     <string name="bitwarden_clear_cache_action">Clear cache</string>
     <string name="bitwarden_clear_cache_action_safe">Clear synced cache only</string>
     <string name="bitwarden_clear_cache_action_force">Force clear all</string>
@@ -2557,7 +2560,7 @@
     <string name="timeline_undo_operation">Undo action</string>
     <string name="timeline_restore_snapshot">Restore snapshot</string>
     <string name="timeline_restore_failed">Restore failed</string>
-    <string name="timeline_restore_snapshot_result">Snapshot restored: deleted %1$d passwords, %2$d secure items; restored %3$d passwords, %4$d secure items</string>
+    <string name="timeline_restore_snapshot_result">Snapshot restored: %1$d passwords and %2$d items deleted; %3$d passwords and %4$d items restored</string>
     <string name="timeline_restore_snapshot_result_legacy">Snapshot restored (legacy mode): deleted %1$d passwords, %2$d secure items</string>
     <string name="timeline_redo_operation">Redo action</string>
     <string name="timeline_save_old_as_new">Save old data as new entry</string>
@@ -2601,7 +2604,7 @@
     <string name="app_selector_app_name_example">Example: WeChat</string>
     <string name="app_selector_app_name_optional_hint">Optional, for display only</string>
     <string name="app_selector_how_get_package_name">How to find package name?</string>
-    <string name="app_selector_how_get_package_name_steps">• Check app detail in app store\n• Use tools like \"View app package name\"\n• Check in Settings - App management</string>
+    <string name="app_selector_how_get_package_name_steps">• Check the app store page\n• Use a package-name viewer\n• Check system App settings</string>
     <string name="custom_field_title">Custom fields</string>
     <string name="custom_field_add">Add custom field</string>
     <string name="custom_field_new_field">New field</string>
@@ -2767,7 +2770,7 @@
     <string name="dedup_engine_desc">Scan Monica, KeePass, and Bitwarden data with rule-based duplicate governance</string>
     <string name="dedup_engine_entry_desc">Review exact duplicates, cross-source mirrors, and type-level conflicts in one place</string>
     <string name="dedup_engine_overview_title">Duplicate mission control</string>
-    <string name="dedup_engine_overview_desc">See the current duplicate landscape first, lock the strategy, and then clear clusters with less noise.</string>
+    <string name="dedup_engine_overview_desc">Review duplicates, lock a strategy, then clean up with less noise.</string>
     <string name="dedup_engine_overview_actionable">Actionable now</string>
     <string name="dedup_engine_overview_types">Active issue types</string>
     <string name="dedup_engine_overview_sources">Sources involved</string>
@@ -2786,7 +2789,7 @@
     <string name="dedup_engine_multi_source_hint">Multi-source governance</string>
     <string name="dedup_engine_preferred_source_hint">Preferred database</string>
     <string name="dedup_engine_preferred_source_title">Primary database</string>
-    <string name="dedup_engine_preferred_source_desc">Tell Monica which database you trust most. Duplicate suggestions will prefer keeping it and then handling other password copies.</string>
+    <string name="dedup_engine_preferred_source_desc">Choose your trusted database. Monica will prefer keeping it when resolving duplicates.</string>
     <string name="dedup_engine_controls_title">Governance and filters</string>
     <string name="dedup_engine_controls_desc">Keep the page compact by putting the primary database, scope, and issue type in one control card.</string>
     <string name="dedup_engine_controls_expand">Expand controls</string>
@@ -2837,8 +2840,8 @@
     <string name="dedup_cluster_exact_password_desc">Same source, same account, same password. Suitable for cleanup inside %1$s.</string>
     <string name="dedup_cluster_cross_source_password_desc">The same account appears across %1$s. Prefer governance instead of direct deletion.</string>
     <string name="dedup_cluster_exact_password_recommendation">Exact password duplicates were found in the same source. Keep 1 %1$s record and archive the rest.</string>
-    <string name="dedup_cluster_cross_source_password_recommendation">This account exists across multiple databases. Based on the current preference, keep %1$s as the primary record and archive the other password copies.</string>
-    <string name="dedup_cluster_cross_source_password_fallback">There is no %1$s record in this cluster. Keep %2$s as the primary record and archive the other password copies.</string>
+    <string name="dedup_cluster_cross_source_password_recommendation">This account appears in multiple databases. Keep %1$s and archive the other copies.</string>
+    <string name="dedup_cluster_cross_source_password_fallback">No %1$s record found. Keep %2$s and archive the other copies.</string>
     <string name="dedup_cluster_totp_desc">Authenticator secrets or issuer/account pairs overlap across %1$s.</string>
     <string name="dedup_cluster_bank_card_desc">The same card fingerprint appears across %1$s.</string>
     <string name="dedup_cluster_document_desc">The same document number appears across %1$s.</string>
@@ -2848,7 +2851,7 @@
     <string name="target_account">Target account</string>
     <string name="payment_platform_afdian">Afdian</string>
     <string name="password_field_customization_title">Add password field customization</string>
-    <string name="password_field_customization_notice">Disabled fields are hidden on the add/edit password page.\n\nNote: if an entry already has data for a field, that field card still appears when editing.</string>
+    <string name="password_field_customization_notice">Disabled fields are hidden when adding or editing.\n\nFields with existing data still appear.</string>
     <string name="password_field_customization_system_fields">System fields</string>
     <string name="password_field_customization_security_title">Security verification</string>
     <string name="password_field_customization_security_subtitle">TOTP secret key</string>
@@ -2864,7 +2867,7 @@
     <string name="password_field_customization_payment_info_subtitle">Credit/debit card details</string>
     <string name="password_field_customization_preset_section_title">Preset custom fields</string>
     <string name="password_field_customization_preset_section_subtitle">Auto-added when creating passwords, cannot be deleted</string>
-    <string name="password_field_customization_preset_notice">Preset custom fields are automatically shown when adding a password. They are locked and cannot be deleted to prevent accidental removal of important fields.</string>
+    <string name="password_field_customization_preset_notice">Preset fields appear when adding passwords. They\'re locked to avoid accidental deletion.</string>
     <string name="password_field_customization_no_preset_fields">No preset fields yet</string>
     <string name="password_field_customization_no_preset_fields_hint">Tap Add above to create commonly used field templates</string>
     <string name="password_field_customization_reset_system_fields">Reset system fields to default</string>
@@ -2899,15 +2902,15 @@
     <string name="import_type_keepass_format_title">KeePass Format</string>
     <string name="import_type_keepass_format_desc">Import a KeePass-compatible .kdbx database</string>
     <string name="import_type_keepass_format_file_hint">Select .kdbx file</string>
-    <string name="import_data_keepass_legacy_kdb_unsupported">Legacy .kdb (KeePass 1.x) is not supported. Please convert it to .kdbx in KeePassDX or KeePassXC first.</string>
+    <string name="import_data_keepass_legacy_kdb_unsupported">KeePass 1.x .kdb isn\'t supported. Convert it to .kdbx first.</string>
     <string name="import_data_keepass_error_title">KeePass import failed</string>
     <string name="import_data_keepass_error_code_value">Error code: %1$s</string>
     <string name="import_data_keepass_error_suggestion_label">Suggested action</string>
     <string name="import_data_keepass_tip_legacy_kdb">Open this file in KeePassDX or KeePassXC and save it as .kdbx, then import again.</string>
-    <string name="import_data_keepass_tip_invalid_credential">Check password/key file combination, and ensure key file format matches the database origin (XML/HEX/RAW).</string>
+    <string name="import_data_keepass_tip_invalid_credential">Check the password and key file. Make sure the key format matches its source.</string>
     <string name="import_data_keepass_tip_permission">Re-select the database or key file and grant read permission again.</string>
-    <string name="import_data_keepass_tip_kdf_memory">Database KDF memory settings are too high for this device. Lower Argon2 memory/parallelism and retry.</string>
-    <string name="import_data_keepass_tip_format_unsupported">The file format or cipher is not supported, or the file is corrupted. Verify with KeePassDX/KeePassXC first.</string>
+    <string name="import_data_keepass_tip_kdf_memory">KDF memory is too high for this device. Lower Argon2 memory/parallelism and retry.</string>
+    <string name="import_data_keepass_tip_format_unsupported">Unsupported format/cipher, or the file is damaged. Check it in KeePassDX/KeePassXC.</string>
     <string name="import_data_keepass_tip_io_failed">I/O failed while reading the file. Check file integrity and storage availability, then retry.</string>
     <string name="import_type_csv_data_title">CSV Data</string>
     <string name="import_type_csv_data_desc">Import CSV exported from Monica / KeePass / Bitwarden / Password Keyboard</string>
@@ -2956,7 +2959,7 @@
     <string name="import_type_csv_password_keyboard_desc">Import CSV exported by Password Keyboard app</string>
     <string name="import_type_csv_password_keyboard_file_hint">Select Password Keyboard .csv file</string>
     <string name="import_password_keyboard_tag_dialog_title">Tag Field Handling</string>
-    <string name="import_password_keyboard_tag_dialog_message">Password Keyboard CSV may include a "tag" field. For password/card entries, Monica has no built-in tag feature. Do you want to convert tags into custom fields or drop tags during import? (Validator fields will be imported into Monica authenticator when possible.)</string>
+    <string name="import_password_keyboard_tag_dialog_message">CSV tags can become custom fields or be skipped. Authenticator tags import when supported.</string>
     <string name="import_password_keyboard_tag_convert_action">Convert to custom fields</string>
     <string name="import_password_keyboard_tag_drop_action">Drop tags</string>
     <string name="import_type_csv_source_title">Select CSV source</string>
@@ -2984,7 +2987,7 @@
     <string name="webdav_image_no_need_compress">All images are optimized, no compression needed</string>
     <string name="webdav_compress_images_one_tap">Compress images in one tap</string>
     <string name="webdav_compress_dialog_title">Compress Images</string>
-    <string name="webdav_compress_dialog_message">This will compress %1$d large images to reduce backup size.\n\n• Image quality may decrease slightly after compression\n• Already-compressed images will not be compressed again\n• This action cannot be undone\n\nContinue?</string>
+    <string name="webdav_compress_dialog_message">Compress %1$d large images to shrink the backup?\n\nQuality may drop slightly.</string>
     <string name="webdav_compress_status_preparing">Preparing...</string>
     <string name="webdav_compress_status_processing">Compressing %1$d/%2$d...</string>
     <string name="webdav_compress_status_done">Done</string>
@@ -2999,7 +3002,7 @@
     <string name="webdav_mark_permanent_success">Marked as permanent backup</string>
     <string name="webdav_operation_failed">Operation failed: %1$s</string>
     <string name="webdav_restore_backup_title">Restore Backup</string>
-    <string name="webdav_restore_backup_confirm_message">Restore data from this backup?\n\n%1$s\n\nNote: this imports all data in this backup into the current app.</string>
+    <string name="webdav_restore_backup_confirm_message">Restore this backup?\n\n%1$s\n\nAll backup data will be imported into this app.</string>
     <string name="webdav_restore_local_only_dedup">Deduplicate only against Monica local data</string>
     <string name="webdav_restore_local_only_dedup_desc">Off: keep old behavior (global dedup across all data). On: only dedup with local entries.</string>
     <string name="webdav_restore_mode_merge_title">Merge Into Monica Local Library</string>
@@ -3014,12 +3017,12 @@
     <string name="webdav_restore_mode_replace_warning">KeePass / Bitwarden data will not be changed.</string>
     <string name="webdav_restore_action">Restore</string>
     <string name="webdav_restore_config_detected_title">Monica Configuration Detected</string>
-    <string name="webdav_restore_config_detected_desc">This backup includes %1$d Monica configuration item(s). Do you want to overwrite local configuration as well?</string>
+    <string name="webdav_restore_config_detected_desc">This backup includes %1$d Monica setting(s). Restore them too?</string>
     <string name="webdav_restore_config_detected_more">And %1$d more item(s)…</string>
     <string name="webdav_restore_config_overwrite_action">Overwrite Config</string>
     <string name="webdav_restore_config_keep_local_action">Keep Local Config</string>
     <string name="webdav_restore_restart_title">Restart Recommended</string>
-    <string name="webdav_restore_restart_desc">Configuration from backup “%1$s” has been applied. To ensure all pages use the new settings, restart the app once.</string>
+    <string name="webdav_restore_restart_desc">Settings from “%1$s” were restored. Restart Monica to apply them everywhere.</string>
     <string name="webdav_restore_restart_countdown">%1$ds</string>
     <string name="webdav_restore_restart_ready">Ready</string>
     <string name="webdav_restore_restart_hint">After countdown ends, tap Confirm and relaunch Monica.</string>
@@ -3058,7 +3061,7 @@
     <string name="keepass_webdav_conflict_mode_strict_title">Strict mode</string>
     <string name="keepass_webdav_conflict_mode_strict_desc">Require server-side conflict metadata; safer but may block writes on some WebDAV servers.</string>
     <string name="keepass_webdav_conflict_protection_enabled_hint">Strict mode: blocks writes if ETag is missing or the remote file changed.</string>
-    <string name="keepass_webdav_conflict_protection_disabled_hint">Auto mode (recommended): uses If-Match when ETag exists; otherwise falls back to best-effort overwrite.</string>
+    <string name="keepass_webdav_conflict_protection_disabled_hint">Auto mode: use If-Match with ETag, otherwise save best-effort.</string>
     <string name="keepass_webdav_create_action">Create Remote Database</string>
     <string name="keepass_webdav_creating">Creating...</string>
     <string name="keepass_webdav_create_title">Create Remote .kdbx</string>
@@ -3073,14 +3076,14 @@
     <string name="keepass_webdav_attach_hint">Select a remote .kdbx file below to attach for direct read/write.</string>
     <string name="keepass_webdav_force_overwrite_action">Force Overwrite</string>
     <string name="keepass_webdav_force_overwrite_title">Force Overwrite Remote Database</string>
-    <string name="keepass_webdav_force_overwrite_message">This will force-push local data to WebDAV and overwrite the remote file. Remote changes not in local data will be lost.</string>
+    <string name="keepass_webdav_force_overwrite_message">Force-push local data to WebDAV? Remote-only changes will be lost.</string>
     <string name="keepass_webdav_force_overwrite_confirm">Force Overwrite</string>
     <string name="keepass_webdav_force_overwrite_success">Force overwrite completed: %1$d entries written</string>
     <string name="keepass_webdav_force_overwrite_failed">Force overwrite failed: %1$s</string>
     <string name="keepass_webdav_force_overwrite_not_attached">This remote database is not attached yet</string>
     <string name="keepass_webdav_attach_title">Attach Remote Database</string>
     <string name="keepass_webdav_attach_message">Attach the following remote database:</string>
-    <string name="keepass_webdav_browser_message">Sign in to WebDAV first, then browse folders, pick an existing .kdbx, or create a new database in the current directory.</string>
+    <string name="keepass_webdav_browser_message">Sign in, browse folders, pick a .kdbx, or create one here.</string>
     <string name="keepass_webdav_attach_success">Attached successfully: %1$d entries</string>
     <string name="keepass_webdav_attach_failed">Attach failed: %1$s</string>
     <string name="keepass_webdav_attach_exception">Attach exception: %1$s</string>
@@ -3090,7 +3093,7 @@
     <string name="keepass_webdav_database">KeePass WebDAV Database</string>
     <string name="keepass_webdav_database_badge">WebDAV</string>
     <string name="keepass_onedrive_attach_title">Attach OneDrive Database</string>
-    <string name="keepass_onedrive_browser_message">Sign in to OneDrive first, then browse folders, pick an existing .kdbx, or create a new database in the current directory.</string>
+    <string name="keepass_onedrive_browser_message">Sign in, browse folders, pick a .kdbx, or create one here.</string>
     <string name="keepass_onedrive_sign_in_action">Connect</string>
     <string name="keepass_onedrive_switch_account">Switch</string>
     <string name="keepass_onedrive_sign_in_hint">Sign in with your Microsoft account to browse OneDrive.</string>
@@ -3123,7 +3126,7 @@
     <string name="folder_name">Folder Name</string>
     <string name="keepass_gdrive_attach_card_description">Attach an existing .kdbx file from your Google Drive as a working copy</string>
     <string name="keepass_gdrive_attach_title">Attach Google Drive Database</string>
-    <string name="keepass_gdrive_browser_message">Sign in to Google Drive first, then browse folders, pick an existing .kdbx, or create a new database in the current directory.</string>
+    <string name="keepass_gdrive_browser_message">Sign in, browse folders, pick a .kdbx, or create one here.</string>
     <string name="keepass_gdrive_sign_in_action">Connect</string>
     <string name="keepass_gdrive_switch_account">Switch</string>
     <string name="keepass_gdrive_sign_in_hint">Sign in with your Google account to browse Google Drive.</string>
@@ -3216,7 +3219,7 @@
     <string name="password_list_customization_subtitle">Customize top quick filters in the password list</string>
     <string name="add_button_customization_title">Add Button Settings</string>
     <string name="add_button_customization_subtitle">Customize how the main add button behaves on the password page</string>
-    <string name="add_button_customization_desc">Choose whether the add button opens the password editor directly or expands into multiple add actions.</string>
+    <string name="add_button_customization_desc">Choose whether Add opens the editor or expands into more actions.</string>
     <string name="add_button_preview_title">Preview</string>
     <string name="add_button_mode_title">Tap behavior</string>
     <string name="add_button_mode_subtitle">Direct mode opens Add Password immediately. Expand mode shows a configurable action menu.</string>
@@ -3233,30 +3236,30 @@
     <string name="password_list_preview_desc">Preview reflects currently enabled top modules and their order.</string>
     <string name="password_list_preview_empty">No top modules enabled. Turn on at least one item below.</string>
     <string name="password_page_aggregate_switch_title">Password page aggregate</string>
-    <string name="password_page_aggregate_switch_desc">When enabled, the password page can also show cards, notes, standalone authenticators, and standalone passkeys. When disabled, it only shows passwords and password-bound data.</string>
+    <string name="password_page_aggregate_switch_desc">Show cards, notes, 2FA, and passkeys here. Turn off for passwords only.</string>
     <string name="password_page_aggregate_content_title">Password page content types</string>
-    <string name="password_page_aggregate_content_desc">Choose which content types can appear on the password page and drag to reorder the top filter tabs. Password is always enabled.</string>
+    <string name="password_page_aggregate_content_desc">Choose content types and reorder the top filters. Passwords stay enabled.</string>
     <string name="password_list_quick_filters_switch_title">Quick Filters Switch</string>
-    <string name="password_list_quick_filters_switch_desc">Show quick filter chips at the top of the password list for Favorites, 2FA, Notes, Uncategorized, Local only, Manual stack only, Never stack, Unstacked, and aggregate content types like Cards, Authenticator, Passkeys, and Notes.</string>
+    <string name="password_list_quick_filters_switch_desc">Show chips for favorites, 2FA, notes, stacks, and other content types.</string>
     <string name="password_list_quick_filters_content_title">Quick Filter Items</string>
     <string name="password_list_quick_filters_content_desc">Toggle each quick filter item and drag to reorder.</string>
     <string name="password_list_category_quick_filters_switch_title">Category Quick Filters</string>
-    <string name="password_list_category_quick_filters_switch_desc">Show category folder chips as the second row of the top quick filters. Monica folders support returning to the parent folder, while Bitwarden folders can be deselected by tapping the selected folder again.</string>
+    <string name="password_list_category_quick_filters_switch_desc">Show folder chips under quick filters. Tap again to go up or clear.</string>
     <string name="password_list_quick_folders_switch_title">Quick Folder Switch</string>
-    <string name="password_list_quick_folders_switch_desc">Show quick folder cards at the top of the password list to jump to parent or child folders.</string>
+    <string name="password_list_quick_folders_switch_desc">Show folder cards above the password list.</string>
     <string name="password_list_quick_folders_style_title">Quick Folder Style</string>
     <string name="password_list_quick_folders_style_classic">Classic</string>
     <string name="password_list_quick_folders_style_m3">Card</string>
     <string name="password_list_quick_folder_path_banner_switch_title">Path Banner</string>
     <string name="password_list_quick_folder_path_banner_switch_desc">Show a folder path banner above the password list. Works independently from quick folder cards.</string>
     <string name="password_list_system_back_to_parent_folder_switch_title">System back goes to parent folder</string>
-    <string name="password_list_system_back_to_parent_folder_switch_desc">When enabled, pressing the system back button in a subfolder navigates to its parent folder first.</string>
+    <string name="password_list_system_back_to_parent_folder_switch_desc">In a subfolder, system Back goes to the parent folder first.</string>
     <string name="category_selection_menu_databases">Databases</string>
     <string name="category_selection_menu_quick_filters">Quick filters</string>
     <string name="category_selection_menu_folders">Category folders</string>
     <string name="category_selection_menu_local_database">Monica</string>
     <string name="password_list_quick_access_switch_title">Recent &amp; Frequent Button</string>
-    <string name="password_list_quick_access_switch_desc">Show a quick-entry button above Add FAB for recently opened and frequently opened passwords.</string>
+    <string name="password_list_quick_access_switch_desc">Show a shortcut for recent and frequent passwords above Add.</string>
     <string name="password_list_quick_filter_favorite">Favorites</string>
     <string name="password_list_quick_filter_2fa">2FA</string>
     <string name="password_list_quick_filter_notes">Notes</string>
@@ -3303,23 +3306,23 @@
     <string name="icon_settings_unmatched_strategy_hide">Hide icon</string>
     <string name="icon_settings_priority_title">Icon Priority</string>
     <string name="icon_settings_priority_desc">The resolver checks from top to bottom and stops at the first matched source.</string>
-    <string name="icon_settings_priority_unified">Custom Simple Icon &gt; Custom Uploaded Icon &gt; Auto-matched Simple Icon &gt; Website favicon &gt; App icon &gt; Default icon</string>
-    <string name="icon_settings_priority_password">Custom Simple Icon &gt; Custom Uploaded Icon &gt; Auto-matched Simple Icon &gt; Website favicon &gt; App icon &gt; Default icon</string>
-    <string name="icon_settings_priority_authenticator">Custom Simple Icon &gt; Custom Uploaded Icon &gt; Auto-matched Simple Icon &gt; Website favicon &gt; App icon &gt; Default icon</string>
-    <string name="icon_settings_priority_passkey">Custom Simple Icon (bound password) &gt; Custom Uploaded Icon (bound password) &gt; Auto-matched Simple Icon &gt; Website favicon &gt; Bound app icon &gt; Default icon</string>
+    <string name="icon_settings_priority_unified">Priority: custom icon &gt; uploaded icon &gt; auto match &gt; favicon &gt; app icon &gt; default</string>
+    <string name="icon_settings_priority_password">Priority: custom icon &gt; uploaded icon &gt; auto match &gt; favicon &gt; app icon &gt; default</string>
+    <string name="icon_settings_priority_authenticator">Priority: custom icon &gt; uploaded icon &gt; auto match &gt; favicon &gt; app icon &gt; default</string>
+    <string name="icon_settings_priority_passkey">Priority: bound custom icon &gt; uploaded icon &gt; auto match &gt; favicon &gt; app icon &gt; default</string>
     <string name="icon_settings_source_title">Third-party Icon Attribution</string>
     <string name="icon_settings_source_desc">Source and trademark attribution details</string>
-    <string name="icon_settings_source_line_1">This project packages icon assets from Stratum Auth app (v1.4.0, GPL-3.0): https://github.com/stratumauth/app/releases/tag/v1.4.0</string>
-    <string name="icon_settings_source_line_2">Asset directories: icons / extraicons (https://github.com/stratumauth/app/tree/v1.4.0/icons, https://github.com/stratumauth/app/tree/v1.4.0/extraicons)</string>
+    <string name="icon_settings_source_line_1">Icon assets from Stratum Auth app v1.4.0 (GPL-3.0).</string>
+    <string name="icon_settings_source_line_2">Source directories: icons and extraicons.</string>
     <string name="icon_settings_source_line_3">Brand names and logos are trademarks of their respective owners.</string>
     <string name="password_card_preview_title">Live preview</string>
     <string name="password_card_display_field_desc">Title is always displayed. You can customize and reorder up to 3 extra lines.</string>
     <string name="password_card_field_limit_hint">Only the first 3 selected fields are shown on cards.</string>
     <string name="password_card_show_authenticator_title">Show authenticator</string>
-    <string name="password_card_show_authenticator_desc">If this password has a bound authenticator, show code and countdown on the card. This item is fixed and not reorderable.</string>
+    <string name="password_card_show_authenticator_desc">Show the bound 2FA code and countdown on the card. This item stays fixed.</string>
     <string name="password_card_show_authenticator_switch_label">Show authenticator on password card</string>
     <string name="password_card_hide_other_content_when_authenticator_title">Hide other content when authenticator is shown</string>
-    <string name="password_card_hide_other_content_when_authenticator_desc">If a password has a bound authenticator, only show title and authenticator info on the card, and hide other display fields.</string>
+    <string name="password_card_hide_other_content_when_authenticator_desc">When 2FA is shown, hide other card fields and keep the card compact.</string>
     <string name="password_card_authenticator_seconds">%1$ds</string>
     <string name="authenticator_card_preview_title">Live preview</string>
     <string name="authenticator_card_display_content_title">Card display content</string>
@@ -3381,7 +3384,7 @@
     <string name="autofill_v2_default_bitwarden_title">Default Bitwarden vault</string>
     <string name="autofill_v2_default_bitwarden_desc">Limit default suggestions and list items to one Bitwarden vault.</string>
     <string name="repair_bitwarden_totp_menu">Repair legacy Bitwarden authenticator data</string>
-    <string name="repair_bitwarden_totp_result_sync">Repaired %1$d legacy authenticator records, queued %2$d records for Bitwarden sync, and skipped %3$d records.</string>
+    <string name="repair_bitwarden_totp_result_sync">Repaired %1$d legacy authenticators, queued %2$d for Bitwarden, skipped %3$d.</string>
     <string name="repair_bitwarden_totp_result_local">Repaired %1$d legacy authenticator records locally and skipped %2$d records.</string>
     <string name="repair_bitwarden_totp_nothing_to_fix">No legacy Bitwarden authenticator issues were found to repair.</string>
     <string name="repair_bitwarden_totp_failed">Failed to repair legacy Bitwarden authenticator data: %1$s</string>
@@ -3390,4 +3393,107 @@
     <string name="version_code_max" translatable="false">9223372036854775807</string>
     <string name="settings_search_hint">Search settings…</string>
     <string name="settings_search_empty_hint">Try another keyword</string>
+    <string name="quick_init_section_title">Quick initialization</string>
+    <string name="re_quick_init_title">Re-do quick initialization</string>
+    <string name="re_quick_init_desc">Re-run master password, autofill, appearance, bottom bar, and page habit settings</string>
+    <string name="swipe_selection_mode">Swipe selection mode</string>
+    <string name="swipe_selection_mode_desc">Continuous mode selects everything from the last item to the current one.</string>
+    <string name="swipe_mode_continuous">Continuous</string>
+    <string name="color_scheme_default">Default</string>
+    <string name="color_scheme_custom">Custom</string>
+    <string name="qs_step_welcome_title">Quick initialization</string>
+    <string name="qs_step_welcome_subtitle">Run through the most common settings at once</string>
+    <string name="qs_step_security_title">Security settings</string>
+    <string name="qs_step_security_subtitle">Set master password, biometrics, and security questions</string>
+    <string name="qs_step_autofill_title">Autofill</string>
+    <string name="qs_step_autofill_subtitle">Guide to enable Monica\'s autofill</string>
+    <string name="qs_step_appearance_title">Appearance</string>
+    <string name="qs_step_appearance_subtitle">Choose a Monica that looks good to you</string>
+    <string name="qs_step_bottom_nav_title">Bottom navigation bar</string>
+    <string name="qs_step_bottom_nav_subtitle">Decide where common pages go</string>
+    <string name="qs_step_data_import_title">Data import</string>
+    <string name="qs_step_data_import_subtitle">Connect existing password vault or backup</string>
+    <string name="qs_step_password_list_title">Password list adjustment</string>
+    <string name="qs_step_password_list_subtitle">Decide how the password list is filtered and grouped</string>
+    <string name="qs_step_password_card_title">Password card adjustment</string>
+    <string name="qs_step_password_card_subtitle">Decide what info the password card shows</string>
+    <string name="qs_step_authenticator_card_title">Authenticator card adjustment</string>
+    <string name="qs_step_authenticator_card_subtitle">Decide authenticator card info and progress display</string>
+    <string name="qs_step_monica_plus_title">Monica Plus</string>
+    <string name="qs_step_monica_plus_subtitle">Finally decide whether to enable more extensions</string>
+    <string name="qs_finish_dialog_title">Initialization complete</string>
+    <string name="qs_finish_dialog_message">All set. You can change these later in Settings or reopen this from Extensions.</string>
+    <string name="qs_finish">Finish</string>
+    <string name="qs_start">Start</string>
+    <string name="qs_next">Next</string>
+    <string name="qs_skip">Skip</string>
+    <string name="qs_previous">Previous</string>
+    <string name="qs_welcome_heading">Monica has a lot of settings. Want a quick setup walkthrough?</string>
+    <string name="qs_welcome_description">We\'ll cover only the settings that matter most at first. You can skip or reopen this later.</string>
+    <string name="qs_language_selection">Language</string>
+    <string name="qs_collapse">Collapse</string>
+    <string name="qs_change">Change</string>
+    <string name="qs_lang_system">Follow system</string>
+    <string name="qs_lang_english">English</string>
+    <string name="qs_lang_chinese">简体中文</string>
+    <string name="qs_lang_vietnamese">Tiếng Việt</string>
+    <string name="qs_lang_japanese">日本語</string>
+    <string name="qs_lang_russian">Русский</string>
+    <string name="qs_master_password">Master password</string>
+    <string name="qs_master_password_set">Already set, can be used to unlock and protect data</string>
+    <string name="qs_master_password_unset">Recommended to set a master password first</string>
+    <string name="qs_completed">Completed</string>
+    <string name="qs_go_setup">Go setup</string>
+    <string name="qs_biometric">Biometric verification</string>
+    <string name="qs_biometric_desc">Enable to unlock faster with fingerprint or face</string>
+    <string name="qs_security_questions">Security questions</string>
+    <string name="qs_security_questions_set">Already set, used to verify identity when you forget your master password</string>
+    <string name="qs_security_questions_unset">Easier to recover if you forget your master password</string>
+    <string name="qs_autofill_enable">Enable autofill</string>
+    <string name="qs_autofill_enable_desc">Show account, password, card, and 2FA suggestions in login forms.</string>
+    <string name="qs_open_autofill_settings">Open autofill settings</string>
+    <string name="qs_autofill_hint">Already enabled? Tap Next. You can tune autofill source and verification later.</string>
+    <string name="qs_color_scheme">Color scheme</string>
+    <string name="qs_bottom_preview">Bottom preview</string>
+    <string name="qs_display_items">Display items</string>
+    <string name="qs_keep_at_least_one_tab">Keeping at least one common entry will be more convenient</string>
+    <string name="qs_data_import_heading">You can connect your data to Monica first</string>
+    <string name="qs_data_import_desc">Already have a vault or backup? Connect or import it here.</string>
+    <string name="qs_link_bitwarden">Link to Bitwarden</string>
+    <string name="qs_link_bitwarden_desc">Open Bitwarden sync settings. After connecting, you can sync your existing password vault.</string>
+    <string name="qs_go_link">Go link</string>
+    <string name="qs_link_webdav">Link WebDAV</string>
+    <string name="qs_link_webdav_desc">Used for snapshot backup, backup Monica data to your WebDAV storage.</string>
+    <string name="qs_link_keepass">Link to KeePass</string>
+    <string name="qs_link_keepass_desc">Open local KeePass settings page, connect local KDBX password vault.</string>
+    <string name="qs_manual_import">Manual file import</string>
+    <string name="qs_manual_import_desc">Enter import page, manually import existing data from file.</string>
+    <string name="qs_go_import">Go import</string>
+    <string name="qs_list_content">List content</string>
+    <string name="qs_aggregate_all_items">Manage all items on password page</string>
+    <string name="qs_quick_access">Show recent/common quick access</string>
+    <string name="qs_filter">Filter</string>
+    <string name="qs_quick_filters">Show quick filters</string>
+    <string name="qs_category_quick_filters">Show category quick filters</string>
+    <string name="qs_display_fields">Display fields</string>
+    <string name="qs_show_username">Show username</string>
+    <string name="qs_show_website">Show website</string>
+    <string name="qs_authenticator_link">Authenticator link</string>
+    <string name="qs_show_bound_authenticator">Show bound authenticator</string>
+    <string name="qs_hide_other_when_authenticator">Hide other content when showing authenticator</string>
+    <string name="qs_show_issuer">Show issuer</string>
+    <string name="qs_show_account_name">Show account name</string>
+    <string name="qs_progress_display">Progress display</string>
+    <string name="qs_unified_progress_bar">Enable unified progress bar</string>
+    <string name="qs_smooth_progress_animation">Enable smooth progress animation</string>
+    <string name="qs_live_preview">Live preview</string>
+    <string name="qs_preview_note_3_fields">Only the first 3 of selected fields will be shown on the card.</string>
+    <string name="qs_authenticator_preview_note">Authenticator card will display in real-time based on these field and progress settings.</string>
+    <string name="qs_plus_activated">Monica Plus activated</string>
+    <string name="qs_plus_prompt">Want to activate Monica Plus?</string>
+    <string name="qs_plus_activated_desc">Plus features are now available, you can continue using after initialization.</string>
+    <string name="qs_plus_prompt_desc">Need Plus themes, sync, or extensions? Activate now, or just finish.</string>
+    <string name="qs_open_monica_plus">Open Monica Plus</string>
+    <string name="qs_yes">Yes</string>
+    <string name="qs_no">No</string>
 </resources>

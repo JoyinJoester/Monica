@@ -642,14 +642,20 @@ class WebDavHelper(
      */
     fun configure(url: String, user: String, pass: String) {
         serverUrl = normalizeServerUrl(url)
-        username = user
+        username = user.trim()
         password = pass
         // 创建新的 Sardine 实例并立即设置凭证
         sardine = OkHttpSardine()
-        sardine?.setCredentials(username, password)
+        applyCredentialsIfPresent()
         android.util.Log.d("WebDavHelper", "Configured WebDAV: url=$serverUrl, user=$username")
         // 自动保存配置
         saveConfig()
+    }
+
+    private fun applyCredentialsIfPresent() {
+        if (username.isNotBlank() || password.isNotBlank()) {
+            sardine?.setCredentials(username, password)
+        }
     }
     
     /**
@@ -679,13 +685,13 @@ class WebDavHelper(
         enableEncryption = prefs.getBoolean(KEY_ENABLE_ENCRYPTION, false)
         encryptionPassword = prefs.getString(KEY_ENCRYPTION_PASSWORD, "") ?: ""
         
-        if (url.isNotEmpty() && user.isNotEmpty() && pass.isNotEmpty()) {
+        if (url.isNotEmpty()) {
             serverUrl = url
-            username = user
+            username = user.trim()
             password = pass
             // 重新创建 sardine 实例并设置凭证
             sardine = OkHttpSardine()
-            sardine?.setCredentials(username, password)
+            applyCredentialsIfPresent()
             android.util.Log.d("WebDavHelper", "Loaded WebDAV config: url=$serverUrl, user=$username, encryption=$enableEncryption")
             if (url != storedUrl) {
                 saveConfig()
@@ -697,7 +703,7 @@ class WebDavHelper(
      * 检查是否已配置
      */
     fun isConfigured(): Boolean {
-        return serverUrl.isNotEmpty() && username.isNotEmpty() && password.isNotEmpty()
+        return serverUrl.isNotEmpty()
     }
     
     /**
@@ -923,25 +929,21 @@ class WebDavHelper(
             var connectionOk = false
             var lastError: Exception? = null
             
-            // 方法1: 使用 exists() - HEAD 请求
+            // 方法1: 使用兼容性路径探测（HEAD 失败时回退到 PROPFIND）
             try {
-                val exists = sardine?.exists(serverUrl) ?: false
-                android.util.Log.d("WebDavHelper", "Method 1 (exists): path exists = $exists")
-                connectionOk = true
-                
-                // 如果路径不存在,尝试创建
-                if (!exists) {
-                    try {
-                        sardine?.createDirectory(serverUrl)
-                        android.util.Log.d("WebDavHelper", "Directory created successfully")
-                    } catch (createError: Exception) {
-                        android.util.Log.w("WebDavHelper", "Could not create directory (may already exist): ${createError.message}")
-                    }
+                val exists = webDavPathExists(serverUrl)
+                android.util.Log.d("WebDavHelper", "Method 1 (compatible exists): path exists = $exists")
+                if (exists) {
+                    connectionOk = true
+                } else {
+                    lastError = Exception("WebDAV path is not accessible: $serverUrl")
                 }
             } catch (e1: Exception) {
                 android.util.Log.w("WebDavHelper", "Method 1 (exists) failed: ${e1.message}")
                 lastError = e1
-                
+            }
+
+            if (!connectionOk) {
                 // 方法2: 尝试 list() - PROPFIND 请求
                 try {
                     val resources = sardine?.list(serverUrl)
@@ -955,8 +957,7 @@ class WebDavHelper(
                     // 方法3: 尝试上传一个测试文件
                     try {
                         val testFileName = ".monica_test"
-                        val testUrl = "$serverUrl/$testFileName".replace("//", "/")
-                            .replace(":/", "://")
+                        val testUrl = joinWebDavUrl(serverUrl, testFileName)
                         val testData = "test".toByteArray()
                         
                         sardine?.put(testUrl, testData, "text/plain")
@@ -4241,6 +4242,30 @@ class WebDavHelper(
     private fun getBackupFilePath(fileName: String): String {
         return "${getBackupDirectoryPath()}/$fileName"
     }
+
+    private fun joinWebDavUrl(baseUrl: String, childPath: String): String {
+        val normalizedBase = normalizeServerUrl(baseUrl)
+        val normalizedChild = childPath
+            .trim()
+            .replace('\\', '/')
+            .trim('/')
+        return if (normalizedChild.isBlank()) normalizedBase else "$normalizedBase/$normalizedChild"
+    }
+
+    private fun webDavPathExists(url: String): Boolean {
+        val client = sardine ?: return false
+        runCatching { client.exists(url) }
+            .onSuccess { return it }
+            .onFailure {
+                android.util.Log.w(
+                    "WebDavHelper",
+                    "exists() failed for $url, falling back to PROPFIND: ${it.message}"
+                )
+            }
+        return runCatching { client.list(url) }
+            .map { true }
+            .getOrElse { false }
+    }
     
     /**
      * 上传备份文件
@@ -4260,7 +4285,7 @@ class WebDavHelper(
             
             // 创建 Monica 备份目录
             val backupDir = getBackupDirectoryPath()
-            if (!sardine!!.exists(backupDir)) {
+            if (!webDavPathExists(backupDir)) {
                 sardine!!.createDirectory(backupDir)
             }
             
@@ -4320,7 +4345,7 @@ class WebDavHelper(
             val backupDir = getBackupDirectoryPath()
             
             // 检查目录是否存在
-            if (!sardine!!.exists(backupDir)) {
+            if (!webDavPathExists(backupDir)) {
                 return@withContext Result.success(emptyList())
             }
             

@@ -1,5 +1,7 @@
 package takagi.ru.monica.ui.screens
 
+import android.app.Activity
+import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.core.animateFloatAsState
@@ -80,16 +82,20 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import takagi.ru.monica.R
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.AuthenticatorCardDisplayField
@@ -105,52 +111,54 @@ import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.components.TotpCodeCard
 import takagi.ru.monica.ui.password.PasswordEntryCard as PasswordEntryCardV2
 import takagi.ru.monica.viewmodel.SettingsViewModel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 private enum class QuickSetupStep(
-    val title: String,
-    val subtitle: String
+    val titleRes: Int,
+    val subtitleRes: Int
 ) {
     WELCOME(
-        title = "快速初始化",
-        subtitle = "先把最常用的设置一次过掉"
+        titleRes = R.string.qs_step_welcome_title,
+        subtitleRes = R.string.qs_step_welcome_subtitle
     ),
     SECURITY(
-        title = "安全设置",
-        subtitle = "设置主密码、生物验证和密保问题"
+        titleRes = R.string.qs_step_security_title,
+        subtitleRes = R.string.qs_step_security_subtitle
     ),
     AUTOFILL(
-        title = "自动填充",
-        subtitle = "引导开启 Monica 的自动填充能力"
+        titleRes = R.string.qs_step_autofill_title,
+        subtitleRes = R.string.qs_step_autofill_subtitle
     ),
     APPEARANCE(
-        title = "外观配色",
-        subtitle = "选择一个你看着顺眼的 Monica"
+        titleRes = R.string.qs_step_appearance_title,
+        subtitleRes = R.string.qs_step_appearance_subtitle
     ),
     BOTTOM_NAV(
-        title = "底部导航栏",
-        subtitle = "决定常用页面放在哪里"
+        titleRes = R.string.qs_step_bottom_nav_title,
+        subtitleRes = R.string.qs_step_bottom_nav_subtitle
     ),
     DATA_IMPORT(
-        title = "数据导入",
-        subtitle = "把已有密码库或备份先接进来"
+        titleRes = R.string.qs_step_data_import_title,
+        subtitleRes = R.string.qs_step_data_import_subtitle
     ),
     PASSWORD_LIST(
-        title = "密码列表调整",
-        subtitle = "决定密码列表怎样筛选和聚合"
+        titleRes = R.string.qs_step_password_list_title,
+        subtitleRes = R.string.qs_step_password_list_subtitle
     ),
     PASSWORD_CARD(
-        title = "密码卡片调整",
-        subtitle = "决定密码卡片直接显示哪些信息"
+        titleRes = R.string.qs_step_password_card_title,
+        subtitleRes = R.string.qs_step_password_card_subtitle
     ),
     AUTHENTICATOR_CARD(
-        title = "验证器卡片调整",
-        subtitle = "决定验证码卡片的信息和进度显示"
+        titleRes = R.string.qs_step_authenticator_card_title,
+        subtitleRes = R.string.qs_step_authenticator_card_subtitle
     ),
     MONICA_PLUS(
-        title = "Monica Plus",
-        subtitle = "最后决定是否开启更多扩展能力"
+        titleRes = R.string.qs_step_monica_plus_title,
+        subtitleRes = R.string.qs_step_monica_plus_subtitle
     )
 }
 
@@ -175,6 +183,8 @@ fun QuickSetupScreen(
     var stepIndex by rememberSaveable { mutableIntStateOf(0) }
     var showFinishDialog by remember { mutableStateOf(false) }
     val step = steps[stepIndex]
+    val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     fun completeWithoutDialog() {
         settingsViewModel.updateQuickSetupCompleted(true)
@@ -196,13 +206,13 @@ fun QuickSetupScreen(
                     tint = MaterialTheme.colorScheme.primary
                 )
             },
-            title = { Text("初始化完成") },
+            title = { Text(stringResource(R.string.qs_finish_dialog_title)) },
             text = {
-                Text("不用担心，如果设置项有失误，稍后可以再设置里继续修改，你也可以从“功能拓展”中再次找到我")
+                Text(stringResource(R.string.qs_finish_dialog_message))
             },
             confirmButton = {
                 Button(onClick = { finishFlow() }) {
-                    Text("完成")
+                    Text(stringResource(R.string.qs_finish))
                 }
             }
         )
@@ -214,9 +224,9 @@ fun QuickSetupScreen(
                 currentIndex = stepIndex,
                 total = steps.size,
                 primaryText = when (step) {
-                    QuickSetupStep.WELCOME -> "开始"
-                    QuickSetupStep.MONICA_PLUS -> "完成"
-                    else -> "下一步"
+                    QuickSetupStep.WELCOME -> stringResource(R.string.qs_start)
+                    QuickSetupStep.MONICA_PLUS -> stringResource(R.string.qs_finish)
+                    else -> stringResource(R.string.qs_next)
                 },
                 onBack = if (stepIndex > 0) {
                     { stepIndex -= 1 }
@@ -246,19 +256,19 @@ fun QuickSetupScreen(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = step.title,
+                        text = stringResource(step.titleRes),
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = step.subtitle,
+                        text = stringResource(step.subtitleRes),
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 6.dp)
                     )
                 }
                 TextButton(onClick = ::completeWithoutDialog) {
-                    Text("跳过")
+                    Text(stringResource(R.string.qs_skip))
                 }
             }
             Spacer(modifier = Modifier.height(18.dp))
@@ -291,7 +301,15 @@ fun QuickSetupScreen(
                     when (steps[targetStep]) {
                         QuickSetupStep.WELCOME -> WelcomeStep(
                             selectedLanguage = settings.language,
-                            onLanguageSelected = settingsViewModel::updateLanguage
+                            onLanguageSelected = { language ->
+                                coroutineScope.launch {
+                                    settingsViewModel.updateLanguage(language)
+                                    delay(200)
+                                    if (context is Activity) {
+                                        context.recreate()
+                                    }
+                                }
+                            }
                         )
 
                         QuickSetupStep.SECURITY -> SecurityStep(
@@ -389,13 +407,13 @@ private fun WelcomeStep(
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
-                text = "Monica的设置可能有点复杂，所以我可以带你进行快速初始化，是否要开始？",
+                text = stringResource(R.string.qs_welcome_heading),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = "下面只保留第一次使用最容易影响体验的设置。你可以跳过，也可以之后在“功能拓展”里重新打开。",
+                text = stringResource(R.string.qs_welcome_description),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -426,19 +444,19 @@ private fun WelcomeStep(
                     )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "语言选择",
+                            text = stringResource(R.string.qs_language_selection),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = languageLabel(selectedLanguage),
+                            text = stringResource(languageLabelRes(selectedLanguage)),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                     AssistChip(
                         onClick = { languageExpanded = !languageExpanded },
-                        label = { Text(if (languageExpanded) "收起" else "更改") }
+                        label = { Text(stringResource(if (languageExpanded) R.string.qs_collapse else R.string.qs_change)) }
                     )
                 }
                 if (languageExpanded) {
@@ -453,7 +471,7 @@ private fun WelcomeStep(
                                     onLanguageSelected(language)
                                     languageExpanded = false
                                 },
-                                label = { Text(languageLabel(language)) },
+                                label = { Text(stringResource(languageLabelRes(language))) },
                                 leadingIcon = if (selectedLanguage == language) {
                                     {
                                         Icon(
@@ -485,23 +503,23 @@ private fun SecurityStep(
 ) {
     SetupActionCard(
         icon = Icons.Default.Password,
-        title = "主密码",
-        description = if (masterPasswordSet) "已设置，可以用于解锁和保护数据" else "建议先设置一个主密码",
-        badge = if (masterPasswordSet) "已完成" else "去设置",
+        title = stringResource(R.string.qs_master_password),
+        description = stringResource(if (masterPasswordSet) R.string.qs_master_password_set else R.string.qs_master_password_unset),
+        badge = stringResource(if (masterPasswordSet) R.string.qs_completed else R.string.qs_go_setup),
         onClick = onOpenMasterPassword
     )
     SetupSwitchCard(
         icon = Icons.Default.Fingerprint,
-        title = "生物验证",
-        description = "开启后可以用指纹或面容更快解锁",
+        title = stringResource(R.string.qs_biometric),
+        description = stringResource(R.string.qs_biometric_desc),
         checked = biometricEnabled,
         onCheckedChange = onBiometricChange
     )
     SetupActionCard(
         icon = Icons.Default.QuestionAnswer,
-        title = "密保问题",
-        description = if (securityQuestionsSet) "已设置，用于忘记主密码时验证身份" else "设置后忘记主密码时更容易找回",
-        badge = if (securityQuestionsSet) "已完成" else "去设置",
+        title = stringResource(R.string.qs_security_questions),
+        description = stringResource(if (securityQuestionsSet) R.string.qs_security_questions_set else R.string.qs_security_questions_unset),
+        badge = stringResource(if (securityQuestionsSet) R.string.qs_completed else R.string.qs_go_setup),
         onClick = onOpenSecurityQuestions
     )
 }
@@ -510,8 +528,8 @@ private fun SecurityStep(
 private fun AutofillStep(onOpenAutofillSettings: () -> Unit) {
     HeroCard(
         icon = Icons.Default.Shield,
-        title = "开启自动填充",
-        description = "开启后，Monica 可以在登录表单里提供账号、密码、卡包和验证器相关候选。"
+        title = stringResource(R.string.qs_autofill_enable),
+        description = stringResource(R.string.qs_autofill_enable_desc)
     )
     Button(
         onClick = onOpenAutofillSettings,
@@ -520,10 +538,10 @@ private fun AutofillStep(onOpenAutofillSettings: () -> Unit) {
     ) {
         Icon(Icons.Default.Security, contentDescription = null)
         Spacer(modifier = Modifier.width(8.dp))
-        Text("打开自动填充设置")
+        Text(stringResource(R.string.qs_open_autofill_settings))
     }
     Text(
-        text = "如果系统已经开启，直接下一步就可以。后续也可以在设置里继续调整自动填充来源和验证方式。",
+        text = stringResource(R.string.qs_autofill_hint),
         style = MaterialTheme.typography.bodyMedium,
         color = MaterialTheme.colorScheme.onSurfaceVariant
     )
@@ -542,7 +560,7 @@ private fun AppearanceStep(
         ColorScheme.GREY_STYLE,
         ColorScheme.BLACK_MAMBA
     )
-    SetupSection(title = "配色", icon = Icons.Default.Palette) {
+    SetupSection(title = stringResource(R.string.qs_color_scheme), icon = Icons.Default.Palette) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             recommended.forEach { scheme ->
                 ColorSchemeRow(
@@ -562,19 +580,19 @@ private fun BottomNavStep(
     isVisible: (BottomNavContentTab) -> Boolean,
     onVisibilityChange: (BottomNavContentTab, Boolean) -> Unit
 ) {
-    SetupSection(title = "底部预览", icon = Icons.Default.Widgets) {
+    SetupSection(title = stringResource(R.string.qs_bottom_preview), icon = Icons.Default.Widgets) {
         MonicaBottomNavPreview(
             tabs = visibleTabs,
             selectedTab = visibleTabs.firstOrNull() ?: BottomNavContentTab.PASSWORDS
         )
     }
 
-    SetupSection(title = "显示项目", icon = Icons.Default.DashboardCustomize) {
+    SetupSection(title = stringResource(R.string.qs_display_items), icon = Icons.Default.DashboardCustomize) {
         Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             allTabs.forEach { tab ->
                 SetupSwitchRow(
                     icon = tabIcon(tab),
-                    title = tabLabel(tab),
+                    title = stringResource(tabLabelRes(tab)),
                     checked = isVisible(tab),
                     onCheckedChange = { onVisibilityChange(tab, it) }
                 )
@@ -725,7 +743,7 @@ private fun MonicaBottomNavPreview(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "至少保留一个常用入口会更顺手",
+                    text = stringResource(R.string.qs_keep_at_least_one_tab),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -742,12 +760,12 @@ private fun MonicaBottomNavPreview(
                         icon = {
                             Icon(
                                 imageVector = tabIcon(tab),
-                                contentDescription = tabLabel(tab)
+                                contentDescription = stringResource(tabLabelRes(tab))
                             )
                         },
                         label = {
                             Text(
-                                text = tabShortLabel(tab),
+                                text = stringResource(tabShortLabelRes(tab)),
                                 maxLines = 2,
                                 overflow = TextOverflow.Clip
                             )
@@ -760,12 +778,12 @@ private fun MonicaBottomNavPreview(
                     icon = {
                         Icon(
                             imageVector = Icons.Default.Settings,
-                            contentDescription = "设置"
+                            contentDescription = stringResource(R.string.nav_settings)
                         )
                     },
                     label = {
                         Text(
-                            text = "设置",
+                            text = stringResource(R.string.nav_settings_short),
                             maxLines = 2,
                             overflow = TextOverflow.Clip
                         )
@@ -785,42 +803,42 @@ private fun DataImportStep(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
-            text = "你可以先把数据接进 Monica",
+            text = stringResource(R.string.qs_data_import_heading),
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold
         )
         Text(
-            text = "如果你已经在用其他密码库或备份方式，可以从这里先完成连接或导入。",
+            text = stringResource(R.string.qs_data_import_desc),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
     SetupActionCard(
         icon = Icons.Default.Shield,
-        title = "链接到 Bitwarden",
-        description = "打开 Bitwarden 同步设置页，连接后可以同步已有密码库。",
-        badge = "去链接",
+        title = stringResource(R.string.qs_link_bitwarden),
+        description = stringResource(R.string.qs_link_bitwarden_desc),
+        badge = stringResource(R.string.qs_go_link),
         onClick = onOpenBitwardenSettings
     )
     SetupActionCard(
         icon = Icons.Default.Link,
-        title = "链接 WebDAV",
-        description = "用于快照备份，把 Monica 数据备份到你的 WebDAV 存储。",
-        badge = "去设置",
+        title = stringResource(R.string.qs_link_webdav),
+        description = stringResource(R.string.qs_link_webdav_desc),
+        badge = stringResource(R.string.qs_go_setup),
         onClick = onOpenWebDavBackup
     )
     SetupActionCard(
         icon = Icons.Default.Key,
-        title = "链接到 KeePass",
-        description = "打开本地 KeePass 设置页面，连接本地 KDBX 密码库。",
-        badge = "去链接",
+        title = stringResource(R.string.qs_link_keepass),
+        description = stringResource(R.string.qs_link_keepass_desc),
+        badge = stringResource(R.string.qs_go_link),
         onClick = onOpenLocalKeePass
     )
     SetupActionCard(
         icon = Icons.Default.UploadFile,
-        title = "手动文件导入",
-        description = "进入导入页面，从文件中手动导入已有数据。",
-        badge = "去导入",
+        title = stringResource(R.string.qs_manual_import),
+        description = stringResource(R.string.qs_manual_import_desc),
+        badge = stringResource(R.string.qs_go_import),
         onClick = onOpenImportData
     )
 }
@@ -836,30 +854,30 @@ private fun PasswordListAdjustmentStep(
     onCategoryQuickFiltersChange: (Boolean) -> Unit,
     onQuickAccessChange: (Boolean) -> Unit
 ) {
-    SetupSection(title = "列表内容", icon = Icons.Default.DashboardCustomize) {
+    SetupSection(title = stringResource(R.string.qs_list_content), icon = Icons.Default.DashboardCustomize) {
         SetupSwitchRow(
             icon = Icons.Default.Widgets,
-            title = "在密码页面管理所有项目",
+            title = stringResource(R.string.qs_aggregate_all_items),
             checked = aggregateEnabled,
             onCheckedChange = onAggregateChange
         )
         SetupSwitchRow(
             icon = Icons.Default.Security,
-            title = "显示最近/常用快捷入口",
+            title = stringResource(R.string.qs_quick_access),
             checked = quickAccessEnabled,
             onCheckedChange = onQuickAccessChange
         )
     }
-    SetupSection(title = "筛选", icon = Icons.Default.Storage) {
+    SetupSection(title = stringResource(R.string.qs_filter), icon = Icons.Default.Storage) {
         SetupSwitchRow(
             icon = Icons.Default.Check,
-            title = "显示快捷筛选",
+            title = stringResource(R.string.qs_quick_filters),
             checked = quickFiltersEnabled,
             onCheckedChange = onQuickFiltersChange
         )
         SetupSwitchRow(
             icon = Icons.Default.DashboardCustomize,
-            title = "显示分类快捷筛选",
+            title = stringResource(R.string.qs_category_quick_filters),
             checked = categoryQuickFiltersEnabled,
             onCheckedChange = onCategoryQuickFiltersChange
         )
@@ -877,10 +895,10 @@ private fun PasswordCardAdjustmentStep(
     onHideOtherContentWhenAuthenticatorChange: (Boolean) -> Unit
 ) {
     PasswordCardLivePreview(settings = settings, selectedFields = selectedFields)
-    SetupSection(title = "显示字段", icon = Icons.Default.Password) {
+    SetupSection(title = stringResource(R.string.qs_display_fields), icon = Icons.Default.Password) {
         SetupSwitchRow(
             icon = Icons.Default.Key,
-            title = "显示用户名",
+            title = stringResource(R.string.qs_show_username),
             checked = PasswordCardDisplayField.USERNAME in selectedFields,
             onCheckedChange = {
                 onFieldsChange(togglePasswordCardField(selectedFields, PasswordCardDisplayField.USERNAME, it))
@@ -888,23 +906,23 @@ private fun PasswordCardAdjustmentStep(
         )
         SetupSwitchRow(
             icon = Icons.Default.Language,
-            title = "显示网站",
+            title = stringResource(R.string.qs_show_website),
             checked = PasswordCardDisplayField.WEBSITE in selectedFields,
             onCheckedChange = {
                 onFieldsChange(togglePasswordCardField(selectedFields, PasswordCardDisplayField.WEBSITE, it))
             }
         )
     }
-    SetupSection(title = "验证器联动", icon = Icons.Default.Security) {
+    SetupSection(title = stringResource(R.string.qs_authenticator_link), icon = Icons.Default.Security) {
         SetupSwitchRow(
             icon = Icons.Default.Lock,
-            title = "显示绑定验证器",
+            title = stringResource(R.string.qs_show_bound_authenticator),
             checked = showAuthenticator,
             onCheckedChange = onShowAuthenticatorChange
         )
         SetupSwitchRow(
             icon = Icons.Default.Shield,
-            title = "显示验证器时隐藏其他内容",
+            title = stringResource(R.string.qs_hide_other_when_authenticator),
             checked = hideOtherContentWhenAuthenticator,
             onCheckedChange = onHideOtherContentWhenAuthenticatorChange
         )
@@ -922,10 +940,10 @@ private fun AuthenticatorCardAdjustmentStep(
     onSmoothProgressChange: (Boolean) -> Unit
 ) {
     AuthenticatorCardLivePreview(settings = settings, selectedFields = selectedFields)
-    SetupSection(title = "显示字段", icon = Icons.Default.Security) {
+    SetupSection(title = stringResource(R.string.qs_display_fields), icon = Icons.Default.Security) {
         SetupSwitchRow(
             icon = Icons.Default.Shield,
-            title = "显示发行方",
+            title = stringResource(R.string.qs_show_issuer),
             checked = AuthenticatorCardDisplayField.ISSUER in selectedFields,
             onCheckedChange = {
                 onFieldsChange(toggleAuthenticatorField(selectedFields, AuthenticatorCardDisplayField.ISSUER, it))
@@ -933,23 +951,23 @@ private fun AuthenticatorCardAdjustmentStep(
         )
         SetupSwitchRow(
             icon = Icons.Default.Key,
-            title = "显示账号名",
+            title = stringResource(R.string.qs_show_account_name),
             checked = AuthenticatorCardDisplayField.ACCOUNT_NAME in selectedFields,
             onCheckedChange = {
                 onFieldsChange(toggleAuthenticatorField(selectedFields, AuthenticatorCardDisplayField.ACCOUNT_NAME, it))
             }
         )
     }
-    SetupSection(title = "进度显示", icon = Icons.Default.AutoAwesome) {
+    SetupSection(title = stringResource(R.string.qs_progress_display), icon = Icons.Default.AutoAwesome) {
         SetupSwitchRow(
             icon = Icons.Default.Widgets,
-            title = "启用统一进度条",
+            title = stringResource(R.string.qs_unified_progress_bar),
             checked = unifiedProgressEnabled,
             onCheckedChange = onUnifiedProgressChange
         )
         SetupSwitchRow(
             icon = Icons.Default.AutoAwesome,
-            title = "启用平滑进度动画",
+            title = stringResource(R.string.qs_smooth_progress_animation),
             checked = smoothProgressEnabled,
             onCheckedChange = onSmoothProgressChange
         )
@@ -971,7 +989,7 @@ private fun PasswordCardLivePreview(
             authenticatorKey = "JBSWY3DPEHPK3PXP"
         )
     }
-    SetupSection(title = "实时预览", icon = Icons.Default.Password) {
+    SetupSection(title = stringResource(R.string.qs_live_preview), icon = Icons.Default.Password) {
         PasswordEntryCardV2(
             entry = previewEntry,
             onClick = {},
@@ -987,7 +1005,7 @@ private fun PasswordCardLivePreview(
             enableSharedBounds = false
         )
         Text(
-            text = "卡片上只会显示已选择字段中的前 3 项。",
+            text = stringResource(R.string.qs_preview_note_3_fields),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -1013,7 +1031,7 @@ private fun AuthenticatorCardLivePreview(
             )
         )
     }
-    SetupSection(title = "实时预览", icon = Icons.Default.Security) {
+    SetupSection(title = stringResource(R.string.qs_live_preview), icon = Icons.Default.Security) {
         TotpCodeCard(
             item = previewItem,
             onCopyCode = {},
@@ -1023,7 +1041,7 @@ private fun AuthenticatorCardLivePreview(
             )
         )
         Text(
-            text = "验证器卡片会按这里的字段和进度设置实时展示。",
+            text = stringResource(R.string.qs_authenticator_preview_note),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -1037,16 +1055,12 @@ private fun MonicaPlusStep(
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text(
-            text = if (isPlusActivated) "Monica Plus 已开启" else "是否要开启 Monica Plus？",
+            text = stringResource(if (isPlusActivated) R.string.qs_plus_activated else R.string.qs_plus_prompt),
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold
         )
         Text(
-            text = if (isPlusActivated) {
-                "Plus 能力已经可用，完成初始化后就可以继续使用。"
-            } else {
-                "如果你需要 Plus 配色、更多同步与扩展能力，可以现在去开启；不需要的话直接完成就行。"
-            },
+            text = stringResource(if (isPlusActivated) R.string.qs_plus_activated_desc else R.string.qs_plus_prompt_desc),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -1055,7 +1069,7 @@ private fun MonicaPlusStep(
                 onClick = onOpenMonicaPlus,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("打开 Monica Plus")
+                Text(stringResource(R.string.qs_open_monica_plus))
                 Spacer(modifier = Modifier.width(4.dp))
                 Icon(Icons.Default.ChevronRight, contentDescription = null)
             }
@@ -1108,25 +1122,12 @@ private fun QuickSetupBottomBar(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Surface(
-                modifier = Modifier.weight(1f),
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-            ) {
-                Text(
-                    text = "（${(currentIndex + 1).toString().padStart(2, '0')}/${total.toString().padStart(2, '0')}）",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp)
-                )
-            }
             if (onBack != null) {
                 OutlinedButton(onClick = onBack) {
-                    Text("上一步")
+                    Text(stringResource(R.string.qs_previous))
                 }
             }
+            Spacer(modifier = Modifier.weight(1f))
             Button(onClick = onNext) {
                 Text(primaryText)
                 Spacer(modifier = Modifier.width(4.dp))
@@ -1358,7 +1359,7 @@ private fun ColorSchemeRow(
     ) {
         ColorSchemePreviewIcon(scheme = scheme)
         Text(
-            text = colorSchemeLabel(scheme),
+            text = stringResource(colorSchemeLabelRes(scheme)),
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
@@ -1420,13 +1421,13 @@ private fun QuestionCard(
             )
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 AnswerButton(
-                    text = "是",
+                    text = stringResource(R.string.qs_yes),
                     selected = selectedYes,
                     onClick = { onAnswer(true) },
                     modifier = Modifier.weight(1f)
                 )
                 AnswerButton(
-                    text = "不是",
+                    text = stringResource(R.string.qs_no),
                     selected = !selectedYes,
                     onClick = { onAnswer(false) },
                     modifier = Modifier.weight(1f)
@@ -1492,33 +1493,36 @@ private fun IconSurface(icon: ImageVector) {
     }
 }
 
-private fun languageLabel(language: Language): String = when (language) {
-    Language.SYSTEM -> "跟随系统"
-    Language.ENGLISH -> "English"
-    Language.CHINESE -> "简体中文"
-    Language.VIETNAMESE -> "Tiếng Việt"
-    Language.JAPANESE -> "日本語"
+@StringRes
+private fun languageLabelRes(language: Language): Int = when (language) {
+    Language.SYSTEM -> R.string.qs_lang_system
+    Language.ENGLISH -> R.string.qs_lang_english
+    Language.CHINESE -> R.string.qs_lang_chinese
+    Language.VIETNAMESE -> R.string.qs_lang_vietnamese
+    Language.JAPANESE -> R.string.qs_lang_japanese
+    Language.RUSSIAN -> R.string.qs_lang_russian
 }
 
-private fun colorSchemeLabel(scheme: ColorScheme): String = when (scheme) {
-    ColorScheme.DEFAULT -> "默认"
-    ColorScheme.OCEAN_BLUE -> "海洋蓝"
-    ColorScheme.SUNSET_ORANGE -> "日落橙"
-    ColorScheme.FOREST_GREEN -> "森林绿"
-    ColorScheme.TECH_PURPLE -> "科技紫"
-    ColorScheme.BLACK_MAMBA -> "黑曼巴"
-    ColorScheme.GREY_STYLE -> "小黑紫"
-    ColorScheme.WATER_LILIES -> "睡莲"
-    ColorScheme.IMPRESSION_SUNRISE -> "印象·日出"
-    ColorScheme.JAPANESE_BRIDGE -> "日本桥"
-    ColorScheme.HAYSTACKS -> "干草堆"
-    ColorScheme.ROUEN_CATHEDRAL -> "鲁昂大教堂"
-    ColorScheme.PARLIAMENT_FOG -> "国会大厦"
-    ColorScheme.CATPPUCCIN_LATTE -> "Catppuccin Latte"
-    ColorScheme.CATPPUCCIN_FRAPPE -> "Catppuccin Frappé"
-    ColorScheme.CATPPUCCIN_MACCHIATO -> "Catppuccin Macchiato"
-    ColorScheme.CATPPUCCIN_MOCHA -> "Catppuccin Mocha"
-    ColorScheme.CUSTOM -> "自定义"
+@StringRes
+private fun colorSchemeLabelRes(scheme: ColorScheme): Int = when (scheme) {
+    ColorScheme.DEFAULT -> R.string.color_scheme_default
+    ColorScheme.OCEAN_BLUE -> R.string.ocean_blue_scheme
+    ColorScheme.SUNSET_ORANGE -> R.string.sunset_orange_scheme
+    ColorScheme.FOREST_GREEN -> R.string.forest_green_scheme
+    ColorScheme.TECH_PURPLE -> R.string.tech_purple_scheme
+    ColorScheme.BLACK_MAMBA -> R.string.black_mamba_scheme
+    ColorScheme.GREY_STYLE -> R.string.grey_style_scheme
+    ColorScheme.WATER_LILIES -> R.string.water_lilies_scheme
+    ColorScheme.IMPRESSION_SUNRISE -> R.string.impression_sunrise_scheme
+    ColorScheme.JAPANESE_BRIDGE -> R.string.japanese_bridge_scheme
+    ColorScheme.HAYSTACKS -> R.string.haystacks_scheme
+    ColorScheme.ROUEN_CATHEDRAL -> R.string.rouen_cathedral_scheme
+    ColorScheme.PARLIAMENT_FOG -> R.string.parliament_fog_scheme
+    ColorScheme.CATPPUCCIN_LATTE -> R.string.catppuccin_latte_scheme
+    ColorScheme.CATPPUCCIN_FRAPPE -> R.string.catppuccin_frappe_scheme
+    ColorScheme.CATPPUCCIN_MACCHIATO -> R.string.catppuccin_macchiato_scheme
+    ColorScheme.CATPPUCCIN_MOCHA -> R.string.catppuccin_mocha_scheme
+    ColorScheme.CUSTOM -> R.string.color_scheme_custom
 }
 
 private fun schemeSwatches(scheme: ColorScheme): List<Color> = when (scheme) {
@@ -1530,26 +1534,28 @@ private fun schemeSwatches(scheme: ColorScheme): List<Color> = when (scheme) {
     else -> listOf(Color(0xFF6750A4), Color(0xFF625B71), Color(0xFFEADDFF))
 }
 
-private fun tabLabel(tab: BottomNavContentTab): String = when (tab) {
-    BottomNavContentTab.VAULT_V2 -> "密码库（测试）"
-    BottomNavContentTab.PASSWORDS -> "密码"
-    BottomNavContentTab.AUTHENTICATOR -> "验证器"
-    BottomNavContentTab.CARD_WALLET -> "卡包"
-    BottomNavContentTab.GENERATOR -> "生成器"
-    BottomNavContentTab.NOTES -> "笔记"
-    BottomNavContentTab.SEND -> "发送"
-    BottomNavContentTab.PASSKEY -> "通行密钥"
+@StringRes
+private fun tabLabelRes(tab: BottomNavContentTab): Int = when (tab) {
+    BottomNavContentTab.VAULT_V2 -> R.string.nav_v2_vault
+    BottomNavContentTab.PASSWORDS -> R.string.nav_passwords
+    BottomNavContentTab.AUTHENTICATOR -> R.string.nav_authenticator
+    BottomNavContentTab.CARD_WALLET -> R.string.nav_card_wallet
+    BottomNavContentTab.GENERATOR -> R.string.nav_generator
+    BottomNavContentTab.NOTES -> R.string.nav_notes
+    BottomNavContentTab.SEND -> R.string.nav_v2_send
+    BottomNavContentTab.PASSKEY -> R.string.nav_passkey
 }
 
-private fun tabShortLabel(tab: BottomNavContentTab): String = when (tab) {
-    BottomNavContentTab.VAULT_V2 -> "密码库"
-    BottomNavContentTab.PASSWORDS -> "密码"
-    BottomNavContentTab.AUTHENTICATOR -> "验证"
-    BottomNavContentTab.CARD_WALLET -> "卡包"
-    BottomNavContentTab.GENERATOR -> "生成"
-    BottomNavContentTab.NOTES -> "笔记"
-    BottomNavContentTab.SEND -> "发送"
-    BottomNavContentTab.PASSKEY -> "密钥"
+@StringRes
+private fun tabShortLabelRes(tab: BottomNavContentTab): Int = when (tab) {
+    BottomNavContentTab.VAULT_V2 -> R.string.nav_v2_vault_short
+    BottomNavContentTab.PASSWORDS -> R.string.nav_passwords_short
+    BottomNavContentTab.AUTHENTICATOR -> R.string.nav_authenticator_short
+    BottomNavContentTab.CARD_WALLET -> R.string.nav_card_wallet_short
+    BottomNavContentTab.GENERATOR -> R.string.nav_generator_short
+    BottomNavContentTab.NOTES -> R.string.nav_notes_short
+    BottomNavContentTab.SEND -> R.string.nav_v2_send_short
+    BottomNavContentTab.PASSKEY -> R.string.nav_passkey_short
 }
 
 private fun tabIcon(tab: BottomNavContentTab): ImageVector = when (tab) {

@@ -187,11 +187,11 @@ fun ExtensionsScreen(
                 }
             }
 
-            ExtensionSection(title = "快速初始化") {
+            ExtensionSection(title = stringResource(R.string.quick_init_section_title)) {
                 ExtensionClickableItem(
                     icon = Icons.Default.SettingsSuggest,
-                    title = "重新进行快速初始化",
-                    description = "重新走一遍主密码、自动填充、外观、底栏和页面习惯设置",
+                    title = stringResource(R.string.re_quick_init_title),
+                    description = stringResource(R.string.re_quick_init_desc),
                     onClick = onNavigateToQuickSetup
                 )
             }
@@ -246,8 +246,8 @@ fun ExtensionsScreen(
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                 ExtensionSegmentedItem(
                     icon = Icons.Default.Swipe,
-                    title = "滑动选中模式",
-                    description = "连续模式下，右滑会从最近一次选中的项目连续选到当前项目",
+                    title = stringResource(R.string.swipe_selection_mode),
+                    description = stringResource(R.string.swipe_selection_mode_desc),
                     selectedMode = passwordSwipeSelectionMode,
                     onModeChange = onPasswordSwipeSelectionModeChange
                 )
@@ -465,8 +465,8 @@ private fun ExtensionSegmentedItem(
                     label = {
                         Text(
                             when (mode) {
-                                PasswordSwipeSelectionMode.SINGLE -> "单选"
-                                PasswordSwipeSelectionMode.CONTINUOUS -> "连续"
+                                PasswordSwipeSelectionMode.SINGLE -> stringResource(R.string.single_select)
+                                PasswordSwipeSelectionMode.CONTINUOUS -> stringResource(R.string.swipe_mode_continuous)
                             }
                         )
                     }

@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[中文](README.md) | [English](README_EN.md) | [日本語](README_JA.md) | **Tiếng Việt**
+[中文](README.md) | [English](README_EN.md) | [日本語](README_JA.md) | **Tiếng Việt** | [Русский](README_RU.md)
 
 <img src="documentation\image\Monicaico.png" alt="Monica App Icon" width="112" />
 
