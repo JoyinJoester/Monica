@@ -11,6 +11,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -175,8 +176,10 @@ private fun ChipMenuSection(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .clickable { onExpandedChange(!expanded) }
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null
+                ) { onExpandedChange(!expanded) }
                 .padding(vertical = 2.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
@@ -229,6 +232,7 @@ fun UnifiedCategoryFilterChipMenu(
     if (!visible) return
 
     var showDeferredFolderSection by remember { mutableStateOf(false) }
+    var databasesExpanded by rememberSaveable { mutableStateOf(false) }
     var quickFiltersExpanded by rememberSaveable { mutableStateOf(true) }
     var foldersExpanded by rememberSaveable { mutableStateOf(true) }
     LaunchedEffect(Unit) {
@@ -318,50 +322,130 @@ fun UnifiedCategoryFilterChipMenu(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text(
-            text = stringResource(R.string.category_selection_menu_databases),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            MonicaExpressiveFilterChip(
-                selected = selected is UnifiedCategoryFilterSelection.All,
-                onClick = { onSelect(UnifiedCategoryFilterSelection.All) },
-                label = stringResource(R.string.category_all),
-                leadingIcon = Icons.Default.List
+            val dbArrowRotation by animateFloatAsState(
+                targetValue = if (databasesExpanded) 0f else -90f,
+                animationSpec = tween(durationMillis = 160),
+                label = "database_section_arrow"
             )
-            MonicaExpressiveFilterChip(
-                selected = selected.isMonicaScope(),
-                onClick = { onSelect(UnifiedCategoryFilterSelection.Local) },
-                label = stringResource(R.string.category_selection_menu_local_database),
-                leadingIcon = Icons.Default.Smartphone
-            )
-            keepassDatabases.forEach { database ->
-                MonicaExpressiveFilterChip(
-                    selected = selected.isKeePassScope(database.id),
-                    onClick = { onSelect(UnifiedCategoryFilterSelection.KeePassDatabaseFilter(database.id)) },
-                    label = database.name,
-                    leadingIcon = Icons.Default.Key,
-                    statusDotColor = if (database.writeOperationAvailability().canOperate) {
-                        StorageHealthyGreen
-                    } else {
-                        null
-                    }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null
+                    ) { databasesExpanded = !databasesExpanded }
+                    .padding(vertical = 2.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.category_selection_menu_databases),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.graphicsLayer { rotationZ = dbArrowRotation }
                 )
             }
-            bitwardenVaults.forEach { vault ->
-                MonicaExpressiveFilterChip(
-                    selected = selected.isBitwardenScope(vault.id),
-                    onClick = { onSelect(UnifiedCategoryFilterSelection.BitwardenVaultFilter(vault.id)) },
-                    label = vault.email.ifBlank { "Bitwarden" },
-                    leadingIcon = Icons.Default.CloudSync,
-                    statusDotColor = if (vault.hasHealthyConnection()) StorageHealthyGreen else null
-                )
+            AnimatedVisibility(
+                visible = databasesExpanded,
+                enter = expandVertically(animationSpec = tween(180)) + fadeIn(animationSpec = tween(120)),
+                exit = shrinkVertically(animationSpec = tween(140)) + fadeOut(animationSpec = tween(100))
+            ) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    MonicaExpressiveFilterChip(
+                        selected = selected is UnifiedCategoryFilterSelection.All,
+                        onClick = { onSelect(UnifiedCategoryFilterSelection.All) },
+                        label = stringResource(R.string.category_all),
+                        leadingIcon = Icons.Default.List
+                    )
+                    MonicaExpressiveFilterChip(
+                        selected = selected.isMonicaScope(),
+                        onClick = { onSelect(UnifiedCategoryFilterSelection.Local) },
+                        label = stringResource(R.string.category_selection_menu_local_database),
+                        leadingIcon = Icons.Default.Smartphone
+                    )
+                    keepassDatabases.forEach { database ->
+                        MonicaExpressiveFilterChip(
+                            selected = selected.isKeePassScope(database.id),
+                            onClick = { onSelect(UnifiedCategoryFilterSelection.KeePassDatabaseFilter(database.id)) },
+                            label = database.name,
+                            leadingIcon = Icons.Default.Key,
+                            statusDotColor = if (database.writeOperationAvailability().canOperate) {
+                                StorageHealthyGreen
+                            } else {
+                                null
+                            }
+                        )
+                    }
+                    bitwardenVaults.forEach { vault ->
+                        MonicaExpressiveFilterChip(
+                            selected = selected.isBitwardenScope(vault.id),
+                            onClick = { onSelect(UnifiedCategoryFilterSelection.BitwardenVaultFilter(vault.id)) },
+                            label = vault.email.ifBlank { "Bitwarden" },
+                            leadingIcon = Icons.Default.CloudSync,
+                            statusDotColor = if (vault.hasHealthyConnection()) StorageHealthyGreen else null
+                        )
+                    }
+                }
+            }
+            AnimatedVisibility(
+                visible = !databasesExpanded,
+                enter = expandVertically(animationSpec = tween(180)) + fadeIn(animationSpec = tween(120)),
+                exit = shrinkVertically(animationSpec = tween(140)) + fadeOut(animationSpec = tween(100))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    MonicaExpressiveFilterChip(
+                        selected = selected is UnifiedCategoryFilterSelection.All,
+                        onClick = { onSelect(UnifiedCategoryFilterSelection.All) },
+                        label = stringResource(R.string.category_all),
+                        leadingIcon = Icons.Default.List
+                    )
+                    MonicaExpressiveFilterChip(
+                        selected = selected.isMonicaScope(),
+                        onClick = { onSelect(UnifiedCategoryFilterSelection.Local) },
+                        label = stringResource(R.string.category_selection_menu_local_database),
+                        leadingIcon = Icons.Default.Smartphone
+                    )
+                    keepassDatabases.forEach { database ->
+                        MonicaExpressiveFilterChip(
+                            selected = selected.isKeePassScope(database.id),
+                            onClick = { onSelect(UnifiedCategoryFilterSelection.KeePassDatabaseFilter(database.id)) },
+                            label = database.name,
+                            leadingIcon = Icons.Default.Key,
+                            statusDotColor = if (database.writeOperationAvailability().canOperate) {
+                                StorageHealthyGreen
+                            } else {
+                                null
+                            }
+                        )
+                    }
+                    bitwardenVaults.forEach { vault ->
+                        MonicaExpressiveFilterChip(
+                            selected = selected.isBitwardenScope(vault.id),
+                            onClick = { onSelect(UnifiedCategoryFilterSelection.BitwardenVaultFilter(vault.id)) },
+                            label = vault.email.ifBlank { "Bitwarden" },
+                            leadingIcon = Icons.Default.CloudSync,
+                            statusDotColor = if (vault.hasHealthyConnection()) StorageHealthyGreen else null
+                        )
+                    }
+                }
             }
         }
 

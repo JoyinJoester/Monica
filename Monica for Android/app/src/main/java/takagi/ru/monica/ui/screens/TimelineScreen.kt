@@ -2269,8 +2269,14 @@ private fun TrashContent(
     
     fun deleteSelectedItems() {
         val itemsToDelete = visibleItems.filter { isItemSelected(it) }
-        itemsToDelete.forEach { item ->
-            viewModel.permanentlyDeleteItem(item) { _ -> }
+        viewModel.permanentlyDeleteItems(itemsToDelete) { success ->
+            if (!success) {
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.delete_failed, context.getString(R.string.timeline_permanent_delete_title)),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
         }
         exitSelectionMode()
     }
@@ -2438,8 +2444,14 @@ private fun TrashContent(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        scopedItems.forEach { item ->
-                            viewModel.permanentlyDeleteItem(item) { _ -> }
+                        viewModel.permanentlyDeleteItems(scopedItems) { success ->
+                            if (!success) {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.delete_failed, context.getString(R.string.timeline_empty_trash_title)),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
                         }
                         showEmptyTrashDialog = false
                     },

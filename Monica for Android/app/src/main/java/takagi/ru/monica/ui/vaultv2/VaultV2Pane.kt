@@ -220,6 +220,12 @@ private data class VaultV2ComputedListState(
 	val passwordById: Map<Long, PasswordEntry> = emptyMap(),
 )
 
+private data class VaultV2VisibleListState(
+	val filteredItems: List<VaultV2Item> = emptyList(),
+	val sectionedItems: List<Pair<String, List<VaultV2Item>>> = emptyList(),
+	val sectionLayouts: List<VaultV2SectionLayout> = emptyList(),
+)
+
 private data class VaultV2AsyncComputedValue<T>(
 	val value: T,
 	val isComputing: Boolean,
@@ -1374,9 +1380,12 @@ fun VaultV2Pane(
 				passwordEntry = entry,
 			)
 		}
+		val visiblePasswordIds = visiblePasswordEntries.mapTo(hashSetOf()) { it.id }
 
-		val totpList = visibleTotpItems.map { item ->
+		val totpList = visibleTotpItems.mapNotNull { item ->
 			val data = runCatching { Json.decodeFromString<TotpData>(item.itemData) }.getOrNull()
+			val boundPasswordId = data?.boundPasswordId
+			if (boundPasswordId != null && boundPasswordId in visiblePasswordIds) return@mapNotNull null
 			val subtitle = listOf(data?.issuer, data?.accountName)
 				.filterNotNull()
 				.map { it.trim() }
@@ -1523,8 +1532,9 @@ fun VaultV2Pane(
 		if (isAutoScrollingToTop) {
 			pendingAllItems = allItemsRaw
 		} else {
-			// Coalesce rapid multi-source emissions so the list appears in one stable batch.
-			delay(120)
+			if (allItems.isNotEmpty()) {
+				delay(80)
+			}
 			allItems = allItemsRaw
 		}
 	}
@@ -1539,11 +1549,9 @@ fun VaultV2Pane(
 	}
 
 	val normalizedQuery = remember(searchQuery) { searchQuery.trim() }
-	val storageFilteredItems = remember(allItems, storageSelection) {
-		allItems.filter { item -> item.matchesStorageFilter(storageSelection) }
-	}
-	val filteredItems = remember(
-		storageFilteredItems,
+	val visibleListState = rememberVaultV2AsyncComputed(
+		allItems,
+		storageSelection,
 		displayedContentTypes,
 		configuredQuickFilterItems,
 		quickFilterFavorite,
@@ -1556,9 +1564,12 @@ fun VaultV2Pane(
 		quickFilterUnstacked,
 		manualStackGroupByEntryId,
 		noStackEntryIds,
-		normalizedQuery
+		normalizedQuery,
+		initialValue = VaultV2VisibleListState(),
 	) {
-		storageFilteredItems.filter { item ->
+		val filteredItems = allItems.asSequence().filter { item ->
+			item.matchesStorageFilter(storageSelection)
+		}.filter { item ->
 			if (!item.matchesDisplayedTypes(displayedContentTypes)) return@filter false
 			if (
 				!item.matchesPasswordQuickFilters(
@@ -1582,20 +1593,33 @@ fun VaultV2Pane(
 			} else {
 				item.searchText.contains(normalizedQuery, ignoreCase = true)
 			}
-		}
-	}
-
-	val groupedItems = remember(filteredItems) {
-		filteredItems.groupBy { item ->
-			firstLetterGroup(item.sortKey)
-		}
-	}
-
-	val sectionedItems = remember(groupedItems) {
-		groupedItems.keys
+		}.toList()
+		val groupedItems = filteredItems.groupBy { item -> firstLetterGroup(item.sortKey) }
+		val sectionedItems = groupedItems.keys
 			.sortedWith(compareBy<String> { if (it == "#") 1 else 0 }.thenBy { it })
 			.map { section -> section to groupedItems[section].orEmpty() }
+		var itemStartIndex = 0
+		var lazyIndex = 0
+		val sectionLayouts = sectionedItems.map { (sectionTitle, itemsInSection) ->
+			VaultV2SectionLayout(
+				title = sectionTitle,
+				items = itemsInSection,
+				itemStartIndex = itemStartIndex,
+				firstItemLazyIndex = lazyIndex + 1,
+			).also {
+				itemStartIndex += itemsInSection.size
+				lazyIndex += itemsInSection.size + 1
+			}
+		}
+		VaultV2VisibleListState(
+			filteredItems = filteredItems,
+			sectionedItems = sectionedItems,
+			sectionLayouts = sectionLayouts,
+		)
 	}
+	val filteredItems = visibleListState.filteredItems
+	val sectionedItems = visibleListState.sectionedItems
+	val sectionLayouts = visibleListState.sectionLayouts
 	val isVaultListLoading = remember(
 		computedListStateAsync.isComputing,
 		pendingAllItems,
@@ -1624,21 +1648,6 @@ fun VaultV2Pane(
 		showVaultEmptyState = true
 	}
 	val showVaultLoadingIndicator = sectionedItems.isEmpty() && !showVaultEmptyState
-	val sectionLayouts = remember(sectionedItems) {
-		var itemStartIndex = 0
-		var lazyIndex = 0
-		sectionedItems.map { (sectionTitle, itemsInSection) ->
-			VaultV2SectionLayout(
-				title = sectionTitle,
-				items = itemsInSection,
-				itemStartIndex = itemStartIndex,
-				firstItemLazyIndex = lazyIndex + 1,
-			).also {
-				itemStartIndex += itemsInSection.size
-				lazyIndex += itemsInSection.size + 1
-			}
-		}
-	}
 
 	val selectedCount by remember { derivedStateOf { selectedKeys.size } }
 	val selectedItems = remember(selectedKeys, allItems) {

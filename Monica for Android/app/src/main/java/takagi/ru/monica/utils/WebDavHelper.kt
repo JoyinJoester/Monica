@@ -8,17 +8,21 @@ import android.widget.Toast
 import com.thegrizzlylabs.sardineandroid.Sardine
 import com.thegrizzlylabs.sardineandroid.impl.OkHttpSardine
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.Serializable
+
 import takagi.ru.monica.autofill_ng.AutofillPreferences
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordHistoryEntry
 import takagi.ru.monica.data.SecureItem
-import takagi.ru.monica.data.SecureItemOwnership
 import takagi.ru.monica.data.PasswordHistoryManager
 import takagi.ru.monica.data.BackupPreferences
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasskeyEntry
+import takagi.ru.monica.data.SecureItemOwnership
 import takagi.ru.monica.data.BackupReport
 import takagi.ru.monica.data.RestoreReport
 import takagi.ru.monica.data.ItemCounts
@@ -32,13 +36,14 @@ import takagi.ru.monica.util.DataExportImportManager
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.encodeToString
 import kotlinx.coroutines.flow.first
+import okhttp3.OkHttpClient
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -51,6 +56,7 @@ import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import java.io.BufferedWriter
 import java.io.OutputStreamWriter
+import java.util.concurrent.TimeUnit
 
 /**
  * 自定义字段备份数据结构
@@ -72,7 +78,7 @@ private data class PasswordBackupEntry(
     val notes: String = "",
     val isFavorite: Boolean = false,
     val categoryId: Long? = null,
-    val categoryName: String? = null,  // ✅ 添加分类名称用于跨设备同步
+    val categoryName: String? = null,  // 
     val appPackageName: String = "",
     val appName: String = "",
     val email: String = "",
@@ -83,17 +89,17 @@ private data class PasswordBackupEntry(
     val bitwardenFolderId: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
-    val authenticatorKey: String = "",  // ✅ 直接存储验证器密钥
-    val passkeyBindings: String = "",   // ✅ 绑定通行密钥元数据
+    val authenticatorKey: String = "",  // 
+    val passkeyBindings: String = "",   // 
     val sshKeyData: String = "",
-    // ✅ 第三方登录(SSO)字段
-    val loginType: String = "PASSWORD",  // 登录类型: PASSWORD 或 SSO
-    val ssoProvider: String = "",        // SSO提供商: GOOGLE, APPLE, FACEBOOK 等
-    val ssoRefEntryId: Long? = null,     // 引用的账号条目ID
+    // 
+    val loginType: String = "PASSWORD",  // : PASSWORD 
+    val ssoProvider: String = "",        // SSO: GOOGLE, APPLE, FACEBOOK 
+    val ssoRefEntryId: Long? = null,     // 
     val customIconType: String = "NONE",
     val customIconValue: String? = null,
     val customIconUpdatedAt: Long = 0L,
-    // ✅ 自定义字段
+    // 
     val customFields: List<CustomFieldBackupEntry> = emptyList()
 )
 
@@ -222,7 +228,7 @@ private data class TrashPasswordBackupEntry(
     val passkeyBindings: String = "",
     val sshKeyData: String = "",
     val deletedAt: Long? = null,
-    // ✅ 第三方登录(SSO)字段
+    // 
     val loginType: String = "PASSWORD",
     val ssoProvider: String = "",
     val ssoRefEntryId: Long? = null,
@@ -247,8 +253,8 @@ private data class TrashSecureItemBackupEntry(
 )
 
 /**
- * ✅ 常用账号信息备份数据类
- * 用于备份设置中的常用账号信息
+ * 
+ * 
  */
 @Serializable
 private data class CommonAccountTemplateBackupEntry(
@@ -268,17 +274,16 @@ private data class CommonAccountBackupEntry(
 )
 
 /**
- * ✅ Monica 配置聚合备份数据类
- * 仅用于兼容旧版 monica_config.json 备份结构
- * 注意：密码会被加密存储
+ * 
+ * 
  */
 @Serializable
 private data class MonicaConfigBackupEntry(
     val serverUrl: String = "",
     val username: String = "",
-    val encryptedPassword: String = "",  // 使用备份密码加密的 WebDAV 密码
+    val encryptedPassword: String = "",  // 
     val enableEncryption: Boolean = false,
-    val encryptedEncryptionPassword: String = "",  // 使用备份密码加密的加密密码
+    val encryptedEncryptionPassword: String = "",  // 
     val autoBackupEnabled: Boolean = false,
     val blockedFieldSignatures: List<AutofillBlockedFieldBackupEntry> = emptyList(),
     val saveBlockedTargets: List<String> = emptyList(),
@@ -422,16 +427,16 @@ private data class BitwardenVaultsBackupEntry(
 )
 
 /**
- * ✅ KeePass 数据库备份数据类
- * 用于备份本地 KeePass 数据库的元信息
+ * 
+ * 
  */
 @Serializable
 private data class KeePassDatabaseBackupEntry(
     val id: Long = 0,
     val name: String = "",
     val description: String = "",
-    val originalStorageLocation: String = "INTERNAL",  // INTERNAL 或 EXTERNAL
-    val originalFilePath: String = "",  // 原始文件路径（用于参考）
+    val originalStorageLocation: String = "INTERNAL",  // INTERNAL 
+    val originalFilePath: String = "",  // 
     val isDefault: Boolean = false,
     val lastSyncTime: Long? = null,
     val createdAt: Long = 0,
@@ -439,8 +444,8 @@ private data class KeePassDatabaseBackupEntry(
 )
 
 /**
- * WebDAV 帮助类
- * 用于备份和恢复数据到 WebDAV 服务器
+ * WebDAV 
+ * 
  */
 class WebDavHelper(
     private val context: Context
@@ -450,11 +455,11 @@ class WebDavHelper(
     private var username: String = ""
     private var password: String = ""
     
-    // 备份操作锁，防止多次点击导致并发备份
+    // 
     private val backupLock = java.util.concurrent.atomic.AtomicBoolean(false)
     
     /**
-     * 检查是否正在备份
+     * 
      */
     fun isBackupInProgress(): Boolean = backupLock.get()
     
@@ -486,12 +491,12 @@ class WebDavHelper(
         private const val BACKUP_FOLDER_NAME = "Monica_Backups"
     }
     
-    // 加密相关
+    // 
     private var enableEncryption: Boolean = false
     private var encryptionPassword: String = ""
     
     init {
-        // 启动时自动加载保存的配置
+        // 
         loadConfig()
     }
 
@@ -638,17 +643,17 @@ class WebDavHelper(
     }
     
     /**
-     * 配置 WebDAV 连接
+     * 
      */
     fun configure(url: String, user: String, pass: String) {
         serverUrl = normalizeServerUrl(url)
         username = user.trim()
         password = pass
-        // 创建新的 Sardine 实例并立即设置凭证
-        sardine = OkHttpSardine()
+        // 
+        sardine = createSardineClient()
         applyCredentialsIfPresent()
         android.util.Log.d("WebDavHelper", "Configured WebDAV: url=$serverUrl, user=$username")
-        // 自动保存配置
+        // 
         saveConfig()
     }
 
@@ -659,7 +664,7 @@ class WebDavHelper(
     }
     
     /**
-     * 保存配置到SharedPreferences
+     * 
      */
     private fun saveConfig() {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -674,7 +679,7 @@ class WebDavHelper(
     }
     
     /**
-     * 从SharedPreferences加载配置
+     * 
      */
     private fun loadConfig() {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -689,8 +694,8 @@ class WebDavHelper(
             serverUrl = url
             username = user.trim()
             password = pass
-            // 重新创建 sardine 实例并设置凭证
-            sardine = OkHttpSardine()
+            // 
+            sardine = createSardineClient()
             applyCredentialsIfPresent()
             android.util.Log.d("WebDavHelper", "Loaded WebDAV config: url=$serverUrl, user=$username, encryption=$enableEncryption")
             if (url != storedUrl) {
@@ -700,14 +705,14 @@ class WebDavHelper(
     }
     
     /**
-     * 检查是否已配置
+     * 
      */
     fun isConfigured(): Boolean {
         return serverUrl.isNotEmpty()
     }
     
     /**
-     * 获取当前配置信息
+     * 
      */
     data class WebDavConfig(
         val serverUrl: String,
@@ -723,14 +728,15 @@ class WebDavHelper(
     }
 
     /**
-     * 获取当前已保存的 WebDAV 密码（用于编辑配置时回填）。
+     * 
+     * 
      */
     fun getCurrentPasswordForEdit(): String {
         return if (isConfigured()) password else ""
     }
     
     /**
-     * 清除配置
+     * 
      */
     fun clearConfig() {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -744,9 +750,9 @@ class WebDavHelper(
     }
     
     /**
-     * 配置加密设置
-     * @param enable 是否启用加密
-     * @param encPassword 加密密码 (如果启用加密)
+     * 
+     * @param enable 
+     * @param encPassword 
      */
     fun configureEncryption(enable: Boolean, encPassword: String = "") {
         enableEncryption = enable
@@ -756,18 +762,18 @@ class WebDavHelper(
     }
     
     /**
-     * 获取加密状态
+     * 
      */
     fun isEncryptionEnabled(): Boolean = enableEncryption
     
     /**
-     * 检查加密密码是否已设置
+     * 
      */
     fun hasEncryptionPassword(): Boolean = enableEncryption && encryptionPassword.isNotEmpty()
     
     /**
-     * 配置自动备份
-     * @param enable 是否启用自动备份
+     * 
+     * @param enable 
      */
     fun configureAutoBackup(enable: Boolean) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -776,7 +782,7 @@ class WebDavHelper(
     }
     
     /**
-     * 获取自动备份状态
+     * 
      */
     fun isAutoBackupEnabled(): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -784,10 +790,7 @@ class WebDavHelper(
     }
     
     /**
-     * 检查是否需要自动备份
-     * 逻辑:
-     * 1. 每天首次打开必定备份(即使距离上次备份不到12小时)
-     * 2. 如果距离上次备份超过12小时,则备份(即使今天已经备份过)
+     * 
      */
     fun shouldAutoBackup(): Boolean {
         if (!isAutoBackupEnabled()) {
@@ -797,7 +800,7 @@ class WebDavHelper(
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val lastBackupTime = prefs.getLong(KEY_LAST_BACKUP_TIME, 0)
         
-        // 如果从未备份过,则需要备份
+        // 
         if (lastBackupTime == 0L) {
             android.util.Log.d("WebDavHelper", "Never backed up before, need backup")
             return true
@@ -806,20 +809,20 @@ class WebDavHelper(
         val currentTime = System.currentTimeMillis()
         val calendar = java.util.Calendar.getInstance()
         
-        // 获取上次备份的日期
+        // 
         calendar.timeInMillis = lastBackupTime
         val lastBackupDay = calendar.get(java.util.Calendar.DAY_OF_YEAR)
         val lastBackupYear = calendar.get(java.util.Calendar.YEAR)
         
-        // 获取当前日期
+        // 
         calendar.timeInMillis = currentTime
         val currentDay = calendar.get(java.util.Calendar.DAY_OF_YEAR)
         val currentYear = calendar.get(java.util.Calendar.YEAR)
         
-        // 计算距离上次备份的小时数
+        // 
         val hoursSinceLastBackup = (currentTime - lastBackupTime) / (1000 * 60 * 60)
         
-        // 判断是否为新的一天
+        // 
         val isNewDay = (currentYear > lastBackupYear) || 
                       (currentYear == lastBackupYear && currentDay > lastBackupDay)
         
@@ -829,13 +832,13 @@ class WebDavHelper(
             "Hours since: $hoursSinceLastBackup, " +
             "Is new day: $isNewDay")
         
-        // 规则1: 如果是新的一天,必定备份
+        // 1: 
         if (isNewDay) {
             android.util.Log.d("WebDavHelper", "New day detected, need backup")
             return true
         }
         
-        // 规则2: 如果距离上次备份超过12小时,则备份
+        // 2: 
         if (hoursSinceLastBackup >= 12) {
             android.util.Log.d("WebDavHelper", "More than 12 hours since last backup, need backup")
             return true
@@ -846,7 +849,7 @@ class WebDavHelper(
     }
     
     /**
-     * 更新最后备份时间
+     * 
      */
     fun updateLastBackupTime() {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -856,7 +859,7 @@ class WebDavHelper(
     }
     
     /**
-     * 获取最后备份时间
+     * 
      */
     fun getLastBackupTime(): Long {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -864,7 +867,7 @@ class WebDavHelper(
     }
     
     /**
-     * 保存备份偏好设置
+     * 
      */
     fun saveBackupPreferences(preferences: BackupPreferences) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -888,8 +891,8 @@ class WebDavHelper(
     }
     
     /**
-     * 获取备份偏好设置
-     * 默认所有类型都启用（WebDAV配置默认关闭）
+     * 
+     * 
      */
     fun getBackupPreferences(): BackupPreferences {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -911,7 +914,7 @@ class WebDavHelper(
     }
     
     /**
-     * 测试连接
+     * 
      */
     suspend fun testConnection(): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
@@ -919,92 +922,105 @@ class WebDavHelper(
                 return@withContext Result.failure(Exception("WebDAV not configured"))
             }
             
-            // 检查网络和时间同步
+            // 
             checkNetworkAndTimeSync(context)
             
-            android.util.Log.d("WebDavHelper", "Testing connection to: $serverUrl")
+            val candidateUrls = buildConnectionCandidates(serverUrl)
+            android.util.Log.d("WebDavHelper", "Testing connection to: ${candidateUrls.joinToString(", ")}")
             android.util.Log.d("WebDavHelper", "Username: $username")
             
-            // 尝试多种方法测试连接,从最简单到最复杂
-            var connectionOk = false
-            var lastError: Exception? = null
-            
-            // 方法1: 使用兼容性路径探测（HEAD 失败时回退到 PROPFIND）
-            try {
-                val exists = webDavPathExists(serverUrl)
-                android.util.Log.d("WebDavHelper", "Method 1 (compatible exists): path exists = $exists")
-                if (exists) {
-                    connectionOk = true
-                } else {
-                    lastError = Exception("WebDAV path is not accessible: $serverUrl")
-                }
-            } catch (e1: Exception) {
-                android.util.Log.w("WebDavHelper", "Method 1 (exists) failed: ${e1.message}")
-                lastError = e1
-            }
+            withTimeout(20_000L) {
+                var lastError: Exception? = null
+                var resolvedUrl: String? = null
 
-            if (!connectionOk) {
-                // 方法2: 尝试 list() - PROPFIND 请求
-                try {
-                    val resources = sardine?.list(serverUrl)
-                    android.util.Log.d("WebDavHelper", "Method 2 (list): found ${resources?.size ?: 0} resources")
-                    connectionOk = true
-                    lastError = null
-                } catch (e2: Exception) {
-                    android.util.Log.w("WebDavHelper", "Method 2 (list) failed: ${e2.message}")
-                    lastError = e2
-                    
-                    // 方法3: 尝试上传一个测试文件
+                for (candidateUrl in candidateUrls) {
+                    var connectionOk = false
+
                     try {
-                        val testFileName = ".monica_test"
-                        val testUrl = joinWebDavUrl(serverUrl, testFileName)
-                        val testData = "test".toByteArray()
-                        
-                        sardine?.put(testUrl, testData, "text/plain")
-                        android.util.Log.d("WebDavHelper", "Method 3 (put): test file uploaded")
-                        
-                        // 尝试删除测试文件
-                        try {
-                            sardine?.delete(testUrl)
-                            android.util.Log.d("WebDavHelper", "Test file deleted")
-                        } catch (delError: Exception) {
-                            android.util.Log.w("WebDavHelper", "Could not delete test file: ${delError.message}")
+                        val exists = webDavPathExists(candidateUrl)
+                        android.util.Log.d("WebDavHelper", "Method 1 (exists): $candidateUrl -> $exists")
+                        if (exists) {
+                            connectionOk = true
+                        } else {
+                            lastError = Exception("WebDAV path is not accessible: $candidateUrl")
                         }
-                        
-                        connectionOk = true
-                        lastError = null
-                    } catch (e3: Exception) {
-                        android.util.Log.w("WebDavHelper", "Method 3 (put) failed: ${e3.message}")
-                        lastError = e3
+                    } catch (e1: Exception) {
+                        android.util.Log.w("WebDavHelper", "Method 1 (exists) failed: ${e1.message}")
+                        lastError = e1
+                    }
+
+                    if (!connectionOk) {
+                        try {
+                            val resources = sardine?.list(candidateUrl)
+                            android.util.Log.d("WebDavHelper", "Method 2 (list): $candidateUrl -> ${resources?.size ?: 0}")
+                            connectionOk = true
+                            lastError = null
+                        } catch (e2: Exception) {
+                            android.util.Log.w("WebDavHelper", "Method 2 (list) failed: ${e2.message}")
+                            lastError = e2
+
+                            try {
+                                val testFileName = ".monica_test"
+                                val testUrl = joinWebDavUrl(candidateUrl, testFileName)
+                                val testData = "test".toByteArray()
+
+                                sardine?.put(testUrl, testData, "text/plain")
+                                android.util.Log.d("WebDavHelper", "Method 3 (put): test file uploaded")
+
+                                try {
+                                    sardine?.delete(testUrl)
+                                    android.util.Log.d("WebDavHelper", "Test file deleted")
+                                } catch (delError: Exception) {
+                                    android.util.Log.w("WebDavHelper", "Could not delete test file: ${delError.message}")
+                                }
+
+                                connectionOk = true
+                                lastError = null
+                            } catch (e3: Exception) {
+                                android.util.Log.w("WebDavHelper", "Method 3 (put) failed: ${e3.message}")
+                                lastError = e3
+                            }
+                        }
+                    }
+
+                    if (connectionOk) {
+                        resolvedUrl = candidateUrl
+                        break
                     }
                 }
+
+                if (resolvedUrl == null) {
+                    throw lastError ?: Exception("All connection methods failed")
+                }
+
+                if (resolvedUrl != serverUrl) {
+                    serverUrl = resolvedUrl
+                    saveConfig()
+                    android.util.Log.d("WebDavHelper", "Connection URL updated: $serverUrl")
+                }
             }
-            
-            if (connectionOk) {
-                android.util.Log.d("WebDavHelper", "Connection test SUCCESSFUL")
-                return@withContext Result.success(true)
-            } else {
-                throw lastError ?: Exception("All connection methods failed")
-            }
+            android.util.Log.d("WebDavHelper", "Connection test SUCCESSFUL")
+            return@withContext Result.success(true)
             
         } catch (e: Exception) {
             android.util.Log.e("WebDavHelper", "Connection test FAILED", e)
             android.util.Log.e("WebDavHelper", "Error type: ${e.javaClass.name}")
             android.util.Log.e("WebDavHelper", "Error message: ${e.message}")
             
-            // 添加更详细的错误信息
+            // 
             val detailedMessage = when {
                 e.message?.contains("CLEARTEXT", ignoreCase = true) == true ||
                 e.message?.contains("cleartext", ignoreCase = true) == true ->
-                    "检测到 HTTP 明文传输被系统限制。请升级到最新版应用后重试，或改用 https:// WebDAV 地址。"
+                    "HTTP "
                 e.message?.contains("Network is unreachable") == true -> 
-                    "网络不可达，请检查网络连接"
+                    " "
+                e is TimeoutCancellationException ||
                 e.message?.contains("Connection timed out") == true -> 
-                    "连接超时，请检查服务器地址和网络连接"
+                    " "
                 e.message?.contains("401") == true || e.message?.contains("Unauthorized") == true -> 
-                    "认证失败(401)，请检查用户名和密码"
+                    "401 "
                 e.message?.contains("404") == true -> 
-                    "路径未找到(404)，请检查服务器地址"
+                    "404 "
                 e.message?.contains("403") == true -> 
                     "访问被拒绝(403)，请检查权限设置"
                 e.message?.contains("405") == true || e.message?.contains("Method Not Allowed") == true -> 
@@ -1023,6 +1039,7 @@ class WebDavHelper(
      * @return Result<Pair<File, BackupReport>> 包含生成的ZIP文件和备份报告
      */
     suspend fun createBackupZip(
+        
         passwords: List<PasswordEntry>,
         secureItems: List<SecureItem>,
         preferences: BackupPreferences = getBackupPreferences()
@@ -3786,19 +3803,28 @@ class WebDavHelper(
         return try {
             val json = Json { ignoreUnknownKeys = true }
             val text = file.readText(Charsets.UTF_8)
-            val entry = json.decodeFromString(NoteBackupEntry.serializer(), text)
+            val entry = json.parseToJsonElement(text).jsonObject
+            fun stringField(name: String, defaultValue: String = ""): String {
+                return entry[name]?.jsonPrimitive?.contentOrNull ?: defaultValue
+            }
+            fun longField(name: String, defaultValue: Long = 0L): Long {
+                return entry[name]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: defaultValue
+            }
+            fun booleanField(name: String, defaultValue: Boolean = false): Boolean {
+                return entry[name]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: defaultValue
+            }
             Pair(
                 restoreSecureItemAsMonicaLocal(
                     itemType = ItemType.NOTE,
-                    title = entry.title,
-                    itemData = entry.itemData,
-                    notes = entry.notes,
-                    isFavorite = entry.isFavorite,
-                    imagePaths = entry.imagePaths,
-                    createdAt = entry.createdAt,
-                    updatedAt = entry.updatedAt,
+                    title = stringField("title"),
+                    itemData = stringField("itemData"),
+                    notes = stringField("notes"),
+                    isFavorite = booleanField("isFavorite"),
+                    imagePaths = stringField("imagePaths"),
+                    createdAt = longField("createdAt", System.currentTimeMillis()),
+                    updatedAt = longField("updatedAt", System.currentTimeMillis()),
                 ),
-                entry.categoryName
+                entry["categoryName"]?.jsonPrimitive?.contentOrNull
             )
         } catch (e: Exception) {
             android.util.Log.w("WebDavHelper", "Failed to restore note from ${file.name}: ${e.message}")
@@ -3813,24 +3839,33 @@ class WebDavHelper(
         return try {
             val json = Json { ignoreUnknownKeys = true }
             val text = file.readText(Charsets.UTF_8)
-            val entry = json.decodeFromString(CardWalletBackupEntry.serializer(), text)
+            val entry = json.parseToJsonElement(text).jsonObject
+            fun stringField(name: String, defaultValue: String = ""): String {
+                return entry[name]?.jsonPrimitive?.contentOrNull ?: defaultValue
+            }
+            fun longField(name: String, defaultValue: Long = 0L): Long {
+                return entry[name]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: defaultValue
+            }
+            fun booleanField(name: String, defaultValue: Boolean = false): Boolean {
+                return entry[name]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: defaultValue
+            }
             val itemType = SecureItemRestoreTypeResolver.resolve(
-                rawType = entry.itemType,
-                itemData = entry.itemData,
+                rawType = stringField("itemType"),
+                itemData = stringField("itemData"),
                 sourceFileName = file.name
             ) ?: fallbackType
             Pair(
                 restoreSecureItemAsMonicaLocal(
                     itemType = itemType,
-                    title = entry.title,
-                    itemData = entry.itemData,
-                    notes = entry.notes,
-                    isFavorite = entry.isFavorite,
-                    imagePaths = entry.imagePaths,
-                    createdAt = entry.createdAt,
-                    updatedAt = entry.updatedAt,
+                    title = stringField("title"),
+                    itemData = stringField("itemData"),
+                    notes = stringField("notes"),
+                    isFavorite = booleanField("isFavorite"),
+                    imagePaths = stringField("imagePaths"),
+                    createdAt = longField("createdAt", System.currentTimeMillis()),
+                    updatedAt = longField("updatedAt", System.currentTimeMillis()),
                 ),
-                entry.categoryName
+                entry["categoryName"]?.jsonPrimitive?.contentOrNull
             )
         } catch (e: Exception) {
             android.util.Log.w("WebDavHelper", "Failed to restore card wallet item from ${file.name}: ${e.message}")
@@ -3842,19 +3877,28 @@ class WebDavHelper(
         return try {
             val json = Json { ignoreUnknownKeys = true }
             val text = file.readText(Charsets.UTF_8)
-            val entry = json.decodeFromString(TotpBackupEntry.serializer(), text)
+            val entry = json.parseToJsonElement(text).jsonObject
+            fun stringField(name: String, defaultValue: String = ""): String {
+                return entry[name]?.jsonPrimitive?.contentOrNull ?: defaultValue
+            }
+            fun longField(name: String, defaultValue: Long = 0L): Long {
+                return entry[name]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: defaultValue
+            }
+            fun booleanField(name: String, defaultValue: Boolean = false): Boolean {
+                return entry[name]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: defaultValue
+            }
             Pair(
                 restoreSecureItemAsMonicaLocal(
                     itemType = ItemType.TOTP,
-                    title = entry.title,
-                    itemData = normalizeRestoredTotpItemData(entry.itemData, entry.title),
-                    notes = entry.notes,
-                    isFavorite = entry.isFavorite,
-                    imagePaths = entry.imagePaths,
-                    createdAt = entry.createdAt,
-                    updatedAt = entry.updatedAt,
+                    title = stringField("title"),
+                    itemData = normalizeRestoredTotpItemData(stringField("itemData"), stringField("title")),
+                    notes = stringField("notes"),
+                    isFavorite = booleanField("isFavorite"),
+                    imagePaths = stringField("imagePaths"),
+                    createdAt = longField("createdAt", System.currentTimeMillis()),
+                    updatedAt = longField("updatedAt", System.currentTimeMillis()),
                 ),
-                entry.categoryName
+                entry["categoryName"]?.jsonPrimitive?.contentOrNull
             )
         } catch (e: Exception) {
             android.util.Log.w("WebDavHelper", "Failed to restore totp from ${file.name}: ${e.message}")
@@ -3946,33 +3990,49 @@ class WebDavHelper(
         return try {
             val json = Json { ignoreUnknownKeys = true }
             val text = file.readText(Charsets.UTF_8)
-            val backup = json.decodeFromString(PasskeyBackupEntry.serializer(), text)
+            val backup = json.parseToJsonElement(text).jsonObject
+            fun stringField(name: String, defaultValue: String = ""): String {
+                return backup[name]?.jsonPrimitive?.contentOrNull ?: defaultValue
+            }
+            fun nullableStringField(name: String): String? {
+                return backup[name]?.jsonPrimitive?.contentOrNull
+            }
+            fun intField(name: String, defaultValue: Int = 0): Int {
+                return backup[name]?.jsonPrimitive?.contentOrNull?.toIntOrNull() ?: defaultValue
+            }
+            fun longField(name: String, defaultValue: Long = 0L): Long {
+                return backup[name]?.jsonPrimitive?.contentOrNull?.toLongOrNull() ?: defaultValue
+            }
+            fun booleanField(name: String, defaultValue: Boolean = false): Boolean {
+                return backup[name]?.jsonPrimitive?.contentOrNull?.toBooleanStrictOrNull() ?: defaultValue
+            }
             Pair(
                 PasskeyEntry(
-                credentialId = backup.credentialId,
-                rpId = backup.rpId,
-                rpName = backup.rpName,
-                userId = backup.userId,
-                userName = backup.userName,
-                userDisplayName = backup.userDisplayName,
-                publicKeyAlgorithm = backup.publicKeyAlgorithm,
-                publicKey = backup.publicKey,
-                privateKeyAlias = backup.privateKeyAlias,
-                createdAt = backup.createdAt,
-                lastUsedAt = backup.lastUsedAt,
-                useCount = backup.useCount,
-                iconUrl = backup.iconUrl,
-                isDiscoverable = backup.isDiscoverable,
-                isUserVerificationRequired = backup.isUserVerificationRequired,
-                transports = backup.transports,
-                aaguid = backup.aaguid,
-                signCount = backup.signCount,
-                isBackedUp = true,
-                notes = backup.notes,
-                boundPasswordId = backup.boundPasswordId,
-                passkeyMode = normalizePasskeyMode(backup.passkeyMode)
+                    id = 0,
+                    credentialId = stringField("credentialId"),
+                    rpId = stringField("rpId"),
+                    rpName = stringField("rpName"),
+                    userId = stringField("userId"),
+                    userName = stringField("userName"),
+                    userDisplayName = stringField("userDisplayName"),
+                    publicKeyAlgorithm = intField("publicKeyAlgorithm", -7),
+                    publicKey = stringField("publicKey"),
+                    privateKeyAlias = stringField("privateKeyAlias"),
+                    createdAt = longField("createdAt", System.currentTimeMillis()),
+                    lastUsedAt = longField("lastUsedAt", System.currentTimeMillis()),
+                    useCount = intField("useCount"),
+                    iconUrl = nullableStringField("iconUrl"),
+                    isDiscoverable = booleanField("isDiscoverable", true),
+                    isUserVerificationRequired = booleanField("isUserVerificationRequired", true),
+                    transports = stringField("transports", "internal"),
+                    aaguid = stringField("aaguid"),
+                    signCount = longField("signCount"),
+                    isBackedUp = true,
+                    notes = stringField("notes"),
+                    boundPasswordId = backup["boundPasswordId"]?.jsonPrimitive?.contentOrNull?.toLongOrNull(),
+                    passkeyMode = normalizePasskeyMode(nullableStringField("passkeyMode"))
                 ),
-                backup.categoryName
+                nullableStringField("categoryName")
             )
         } catch (e: Exception) {
             android.util.Log.w("WebDavHelper", "Failed to restore passkey from ${file.name}: ${e.message}")
@@ -4227,7 +4287,38 @@ class WebDavHelper(
     }
 
     private fun normalizeServerUrl(url: String): String {
-        return url.trim().trimEnd('/')
+        val trimmed = url.trim()
+        if (trimmed.isEmpty()) return ""
+        val withScheme = if (trimmed.contains("://")) {
+            trimmed
+        } else {
+            "http://$trimmed"
+        }
+        return withScheme.trimEnd('/')
+    }
+
+    private fun buildConnectionCandidates(rawUrl: String): List<String> {
+        val normalized = normalizeServerUrl(rawUrl)
+        if (normalized.isBlank()) return emptyList()
+        val candidates = mutableListOf(normalized)
+        val path = runCatching { Uri.parse(normalized).path }.getOrNull().orEmpty()
+        if (path.isBlank() || path == "/") {
+            val davUrl = joinWebDavUrl(normalized, "dav")
+            if (!candidates.contains(davUrl)) {
+                candidates.add(davUrl)
+            }
+        }
+        return candidates
+    }
+
+    private fun createSardineClient(): Sardine {
+        val okHttpClient = OkHttpClient.Builder()
+            .connectTimeout(10, TimeUnit.SECONDS)
+            .readTimeout(12, TimeUnit.SECONDS)
+            .writeTimeout(12, TimeUnit.SECONDS)
+            .callTimeout(15, TimeUnit.SECONDS)
+            .build()
+        return OkHttpSardine(okHttpClient)
     }
 
     private fun getBackupDirectoryPath(): String {

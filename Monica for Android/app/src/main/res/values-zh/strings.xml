@@ -1346,6 +1346,8 @@
     <string name="security_analysis_score_short">得分</string>
     <string name="security_analysis_auto_toggle_title">自动分析</string>
     <string name="security_analysis_auto_toggle_subtitle">开启后自动分析；关闭后仅手动点击分析。</string>
+    <string name="password_detail_security_analysis_title">密码详情安全分析</string>
+    <string name="password_detail_security_analysis_desc">在密码详情页显示密码强度、通行密钥可用性和 2FA 状态。</string>
     <string name="security_strength_distribution">密码强度分布</string>
     <string name="security_strength_medium">中</string>
     <string name="security_strength_very_strong">极强</string>

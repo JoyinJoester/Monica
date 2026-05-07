@@ -2406,6 +2406,10 @@ fun MonicaContent(
                 onSmartDeduplicationEnabledChange = { enabled ->
                     settingsViewModel.updateSmartDeduplicationEnabled(enabled)
                 },
+                passwordDetailSecurityAnalysisEnabled = settings.passwordDetailSecurityAnalysisEnabled,
+                onPasswordDetailSecurityAnalysisEnabledChange = { enabled ->
+                    settingsViewModel.updatePasswordDetailSecurityAnalysisEnabled(enabled)
+                },
                 passwordSwipeSelectionMode = settings.passwordSwipeSelectionMode,
                 onPasswordSwipeSelectionModeChange = { mode ->
                     settingsViewModel.updatePasswordSwipeSelectionMode(mode)

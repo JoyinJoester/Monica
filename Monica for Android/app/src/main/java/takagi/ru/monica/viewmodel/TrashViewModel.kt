@@ -309,6 +309,24 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+
+    fun permanentlyDeleteItems(items: List<TrashItem>, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            try {
+                val (deletedCount, hasFailure) = permanentlyDeleteTrashItems(items)
+                if (deletedCount > 0) {
+                    logTrashSummaryDelete(
+                        title = getApplication<Application>().getString(R.string.timeline_permanent_delete_title),
+                        detail = getApplication<Application>().getString(R.string.timeline_deleted_items_count, deletedCount)
+                    )
+                }
+                onResult(!hasFailure)
+            } catch (e: Exception) {
+                android.util.Log.e("TrashViewModel", "Failed to permanently delete items", e)
+                onResult(false)
+            }
+        }
+    }
     
     /**
      * 恢复某个类别的所有条目
@@ -417,26 +435,28 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
     fun emptyTrash(onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
             try {
-                var hasFailure = false
-                var deletedCount = 0
-
                 val deletedPasswords = database.passwordEntryDao().getDeletedEntriesSync()
-                deletedPasswords.forEach { entry ->
-                    if (!permanentlyDeleteWithSources(entry)) {
-                        hasFailure = true
-                    } else {
-                        deletedCount += 1
-                    }
-                }
-
                 val deletedSecureItems = database.secureItemDao().getDeletedItemsSync()
-                deletedSecureItems.forEach { item ->
-                    if (!permanentlyDeleteWithSources(item)) {
-                        hasFailure = true
-                    } else {
-                        deletedCount += 1
-                    }
+                val items = deletedPasswords.map { entry ->
+                    TrashItem(
+                        id = entry.id,
+                        title = entry.title,
+                        itemType = ItemType.PASSWORD,
+                        deletedAt = entry.deletedAt ?: Date(),
+                        daysRemaining = -1,
+                        originalData = entry
+                    )
+                } + deletedSecureItems.map { item ->
+                    TrashItem(
+                        id = item.id,
+                        title = item.title,
+                        itemType = item.itemType,
+                        deletedAt = item.deletedAt ?: Date(),
+                        daysRemaining = -1,
+                        originalData = item
+                    )
                 }
+                val (deletedCount, hasFailure) = permanentlyDeleteTrashItems(items)
 
                 if (deletedCount > 0) {
                     logTrashSummaryDelete(
@@ -783,7 +803,19 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
                     databaseId = keepassId,
                     entries = listOf(data.copy(keepassDatabaseId = keepassId))
                 )
-                result.getOrNull()?.let { it > 0 } ?: false
+                if (result.isFailure) {
+                    android.util.Log.e(
+                        "TrashViewModel",
+                        "KeePass permanent delete failed for password id=${data.id}, db=$keepassId",
+                        result.exceptionOrNull()
+                    )
+                    return false
+                }
+                val deletedCount = result.getOrNull() ?: 0
+                if (deletedCount <= 0) {
+                    android.util.Log.w("TrashViewModel", "KeePass password already absent during permanent delete: id=${data.id}, db=$keepassId")
+                }
+                true
             }
             is SecureItem -> {
                 val keepassId = data.keepassDatabaseId ?: return true
@@ -791,10 +823,35 @@ class TrashViewModel(application: Application) : AndroidViewModel(application) {
                     databaseId = keepassId,
                     items = listOf(data.copy(keepassDatabaseId = keepassId))
                 )
-                result.getOrNull()?.let { it > 0 } ?: false
+                if (result.isFailure) {
+                    android.util.Log.e(
+                        "TrashViewModel",
+                        "KeePass permanent delete failed for secure item id=${data.id}, db=$keepassId",
+                        result.exceptionOrNull()
+                    )
+                    return false
+                }
+                val deletedCount = result.getOrNull() ?: 0
+                if (deletedCount <= 0) {
+                    android.util.Log.w("TrashViewModel", "KeePass secure item already absent during permanent delete: id=${data.id}, db=$keepassId")
+                }
+                true
             }
             else -> true
         }
+    }
+
+    private suspend fun permanentlyDeleteTrashItems(items: List<TrashItem>): Pair<Int, Boolean> {
+        var hasFailure = false
+        var deletedCount = 0
+        items.forEach { item ->
+            if (permanentlyDeleteWithSources(item.originalData)) {
+                deletedCount += 1
+            } else {
+                hasFailure = true
+            }
+        }
+        return deletedCount to hasFailure
     }
 
     private suspend fun permanentlyDeleteWithSources(data: Any): Boolean {

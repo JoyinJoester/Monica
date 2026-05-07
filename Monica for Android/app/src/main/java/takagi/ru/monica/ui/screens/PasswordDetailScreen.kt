@@ -30,6 +30,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -46,7 +47,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
 import androidx.fragment.app.FragmentActivity
 import takagi.ru.monica.utils.BiometricHelper
+import takagi.ru.monica.utils.PasskeySupportCatalog
+import takagi.ru.monica.utils.PasswordStrengthAnalyzer
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
+
 import takagi.ru.monica.ui.components.ActionStrip
 import takagi.ru.monica.ui.components.ActionStripItem
 import takagi.ru.monica.ui.icons.MonicaIcons
@@ -323,6 +327,13 @@ fun PasswordDetailScreen(
     val boundPasskeys by (passkeyViewModel?.getPasskeysByBoundPasswordId(passwordId)
         ?: kotlinx.coroutines.flow.flowOf(emptyList()))
         .collectAsState(initial = emptyList())
+    val passkeySupportCatalog = remember(context.applicationContext) {
+        PasskeySupportCatalog(context.applicationContext)
+    }
+    var passkeySigninDomains by remember { mutableStateOf<List<String>>(emptyList()) }
+    LaunchedEffect(passkeySupportCatalog) {
+        passkeySigninDomains = passkeySupportCatalog.getSigninDomains()
+    }
     val availableNotes by (noteViewModel?.allNotes ?: flowOf(emptyList()))
         .collectAsState(initial = emptyList())
     val boundNoteId = passwordEntry?.boundNoteId
@@ -686,11 +697,24 @@ fun PasswordDetailScreen(
                             }
                         },
                         isResyncingUnreadable = isResyncingUnreadablePassword,
+                        showSecurityAnalysis = settings.passwordDetailSecurityAnalysisEnabled,
                         onDelete = { targetEntry ->
                             itemToDelete = targetEntry
                             showDeleteDialog = true
                         },
                         context = context
+                    )
+                }
+
+                if (settings.passwordDetailSecurityAnalysisEnabled) {
+                    PasswordDetailSecurityAnalysisCard(
+                        hasTwoFactor = linkedTotp != null || entry.authenticatorKey.isNotBlank(),
+                        hasBoundPasskey = boundPasskeys.isNotEmpty() || entry.passkeyBindings.isNotBlank(),
+                        passkeyAvailable = isPasskeyAvailableForEntry(
+                            entry = entry,
+                            signinDomains = passkeySigninDomains,
+                            catalog = passkeySupportCatalog
+                        )
                     )
                 }
 
@@ -1627,6 +1651,128 @@ private fun WebsiteCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun PasswordDetailSecurityAnalysisCard(
+    hasTwoFactor: Boolean,
+    hasBoundPasskey: Boolean,
+    passkeyAvailable: Boolean
+) {
+    val colorScheme = MaterialTheme.colorScheme
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = colorScheme.surfaceContainerHigh
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Security,
+                    contentDescription = null,
+                    tint = colorScheme.primary
+                )
+                Text(
+                    text = stringResource(R.string.security_analysis),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            SecurityStatusChip(
+                icon = Icons.Default.Key,
+                label = stringResource(R.string.inactive_passkeys_short),
+                value = when {
+                    hasBoundPasskey -> stringResource(R.string.passkey_bound_label)
+                    passkeyAvailable -> stringResource(R.string.inactive_passkeys)
+                    else -> stringResource(R.string.biometric_not_available)
+                },
+                color = when {
+                    hasBoundPasskey -> colorScheme.primary
+                    passkeyAvailable -> colorScheme.tertiary
+                    else -> colorScheme.onSurfaceVariant
+                },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            SecurityStatusChip(
+                icon = Icons.Default.Lock,
+                label = "2FA",
+                value = if (hasTwoFactor) {
+                    stringResource(R.string.supports_twofa)
+                } else {
+                    stringResource(R.string.no_twofa)
+                },
+                color = if (hasTwoFactor) Color(0xFF22C55E) else colorScheme.error,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+    }
+}
+
+@Composable
+private fun SecurityStatusChip(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    value: String,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(color.copy(alpha = 0.13f))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = color,
+            modifier = Modifier.size(18.dp)
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.labelLarge,
+                color = color,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+private fun isPasskeyAvailableForEntry(
+    entry: PasswordEntry,
+    signinDomains: List<String>,
+    catalog: PasskeySupportCatalog
+): Boolean {
+    return normalizeWebsiteUrls(entry.website).any { website ->
+        val host = runCatching {
+            val uri = Uri.parse(if (website.contains("://")) website else "https://$website")
+            uri.host ?: website.substringBefore('/').substringBefore(':')
+        }.getOrDefault(website)
+        catalog.findMatchingDomain(host, signinDomains) != null
     }
 }
 
@@ -2823,6 +2969,7 @@ private fun PasswordListCard(
     unavailablePasswordSources: Map<Long, PasswordSource>,
     onResyncUnreadable: (PasswordEntry) -> Unit,
     isResyncingUnreadable: Boolean,
+    showSecurityAnalysis: Boolean,
     onDelete: (PasswordEntry) -> Unit,
     context: Context
 ) {
@@ -2851,6 +2998,7 @@ private fun PasswordListCard(
                     unavailableSource = unavailablePasswordSources[entry.id],
                     onResyncUnreadable = { onResyncUnreadable(entry) },
                     isResyncingUnreadable = isResyncingUnreadable,
+                    showSecurityAnalysis = showSecurityAnalysis,
                     index = index + 1,
                     showIndex = passwords.size > 1,
                     onDelete = { onDelete(entry) },
@@ -2872,6 +3020,7 @@ private fun PasswordItemRow(
     unavailableSource: PasswordSource?,
     onResyncUnreadable: () -> Unit,
     isResyncingUnreadable: Boolean,
+    showSecurityAnalysis: Boolean,
     index: Int,
     showIndex: Boolean,
     onDelete: () -> Unit,
@@ -2896,6 +3045,20 @@ private fun PasswordItemRow(
         else -> stringResource(R.string.password_unreadable_copy)
     }
     val hasPasswordValue = displayPassword.isNotBlank()
+    val strength = remember(displayPassword) {
+        PasswordStrengthAnalyzer.calculateStrength(displayPassword)
+    }
+    val strengthLevel = remember(strength) {
+        PasswordStrengthAnalyzer.getStrengthLevel(strength)
+    }
+    val strengthText = PasswordStrengthAnalyzer.getStrengthLevelText(strengthLevel, context)
+    val strengthColor = when (strengthLevel) {
+        PasswordStrengthAnalyzer.StrengthLevel.VERY_WEAK,
+        PasswordStrengthAnalyzer.StrengthLevel.WEAK -> MaterialTheme.colorScheme.error
+        PasswordStrengthAnalyzer.StrengthLevel.FAIR -> MaterialTheme.colorScheme.tertiary
+        PasswordStrengthAnalyzer.StrengthLevel.STRONG -> MaterialTheme.colorScheme.secondary
+        PasswordStrengthAnalyzer.StrengthLevel.VERY_STRONG -> MaterialTheme.colorScheme.primary
+    }
 
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
@@ -2962,6 +3125,21 @@ private fun PasswordItemRow(
             ),
             color = MaterialTheme.colorScheme.onSurface
         )
+
+        if (showSecurityAnalysis && hasPasswordValue && !isUnavailable) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = strengthColor.copy(alpha = 0.16f),
+                contentColor = strengthColor
+            ) {
+                Text(
+                    text = strengthText,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        }
 
         if (isBitwardenUnreadable) {
             TextButton(

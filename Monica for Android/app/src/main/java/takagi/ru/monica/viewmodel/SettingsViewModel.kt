@@ -221,6 +221,12 @@ class SettingsViewModel(
         }
     }
 
+    fun updatePasswordDetailSecurityAnalysisEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updatePasswordDetailSecurityAnalysisEnabled(enabled)
+        }
+    }
+
     fun updateBitwardenBottomStatusBarEnabled(enabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updateBitwardenBottomStatusBarEnabled(enabled)

@@ -1,6 +1,16 @@
 package takagi.ru.monica.ui.screens
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -13,12 +23,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -36,10 +48,7 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -47,13 +56,13 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
-import takagi.ru.monica.ui.components.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,6 +73,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -81,6 +91,7 @@ import takagi.ru.monica.data.PasswordStrengthDistribution
 import takagi.ru.monica.data.SecurityAnalysisData
 import takagi.ru.monica.data.SecurityAnalysisScopeOption
 import takagi.ru.monica.data.SecurityAnalysisScopeType
+import kotlinx.coroutines.delay
 
 private enum class SecurityIssueType {
     DUPLICATE_PASSWORDS,
@@ -120,12 +131,39 @@ fun SecurityAnalysisScreen(
     val compromisedCount = analysisData.compromisedPasswords.size
     val no2faCount = analysisData.no2FAAccounts.count { it.supports2FA }
     val inactivePasskeyCount = analysisData.inactivePasskeyAccounts.size
+    val totalRiskCount = duplicatePasswordItemCount + duplicateUrlItemCount + compromisedCount + no2faCount + inactivePasskeyCount
+    var showAnalyzingUi by remember { mutableStateOf(analysisData.isAnalyzing) }
+    LaunchedEffect(analysisData.isAnalyzing) {
+        if (analysisData.isAnalyzing) {
+            delay(300)
+            if (analysisData.isAnalyzing) {
+                showAnalyzingUi = true
+            }
+        } else {
+            showAnalyzingUi = false
+        }
+    }
+    val analyzingTransition = rememberInfiniteTransition(label = "security_analysis_progress")
+    val loopingProgress by analyzingTransition.animateFloat(
+        initialValue = 0.12f,
+        targetValue = 0.92f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1200, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "security_analysis_looping_progress"
+    )
+    val effectiveProgress = if (analysisData.analysisProgress in 1..99) {
+        analysisData.analysisProgress / 100f
+    } else {
+        loopingProgress
+    }
 
     Scaffold(
         topBar = {
             Column {
                 TopAppBar(
-                    title = { Text(text = stringResource(R.string.security_analysis)) },
+                    title = {},
                     navigationIcon = {
                         IconButton(onClick = onNavigateBack) {
                             Icon(
@@ -135,7 +173,7 @@ fun SecurityAnalysisScreen(
                         }
                     },
                     actions = {
-                        if (analysisData.isAnalyzing) {
+                        if (showAnalyzingUi) {
                             AssistChip(
                                 onClick = {},
                                 enabled = false,
@@ -150,8 +188,9 @@ fun SecurityAnalysisScreen(
                         }
                     }
                 )
-                if (analysisData.isAnalyzing) {
+                if (showAnalyzingUi) {
                     LinearProgressIndicator(
+                        progress = { effectiveProgress },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(2.dp)
@@ -164,24 +203,21 @@ fun SecurityAnalysisScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {
-                CompactOverviewCard(
-                    duplicatePasswordsCount = duplicatePasswordItemCount,
-                    duplicateUrlsCount = duplicateUrlItemCount,
-                    compromisedCount = compromisedCount,
-                    no2faCount = no2faCount,
-                    inactivePasskeyCount = inactivePasskeyCount,
-                    isAnalyzing = analysisData.isAnalyzing
+                SecurityOverviewHeader(
+                    score = analysisData.securityScore,
+                    riskCount = totalRiskCount,
+                    isAnalyzing = showAnalyzingUi,
+                    progress = effectiveProgress
                 )
             }
 
             item {
-                AutoAnalysisToggleCard(
-                    autoAnalysisEnabled = autoAnalysisEnabled,
-                    onAutoAnalysisEnabledChange = onAutoAnalysisEnabledChange
+                SecurityStrengthDistributionCard(
+                    distribution = analysisData.passwordStrengthDistribution
                 )
             }
 
@@ -194,78 +230,60 @@ fun SecurityAnalysisScreen(
             }
 
             item {
-                SecurityStrengthDistributionCard(
-                    distribution = analysisData.passwordStrengthDistribution
+                AutoAnalysisToggleCard(
+                    autoAnalysisEnabled = autoAnalysisEnabled,
+                    onAutoAnalysisEnabledChange = onAutoAnalysisEnabledChange
                 )
             }
 
             item {
-                Text(
-                    text = stringResource(R.string.security_risk_cards_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
-            item {
-                SecurityIssueSummaryCard(
-                    icon = Icons.Default.ContentCopy,
-                    title = stringResource(R.string.duplicate_passwords),
-                    subtitle = stringResource(
-                        R.string.security_issue_duplicate_password_subtitle,
-                        duplicatePasswordGroupCount,
-                        duplicatePasswordItemCount
+                SecurityIssueGrid(
+                    items = listOf(
+                        SecurityIssueGridItem(
+                            icon = Icons.Default.ContentCopy,
+                            title = stringResource(R.string.duplicate_passwords),
+                            count = duplicatePasswordItemCount,
+                            subtitle = stringResource(
+                                R.string.security_issue_duplicate_password_subtitle,
+                                duplicatePasswordGroupCount,
+                                duplicatePasswordItemCount
+                            ),
+                            issueType = SecurityIssueType.DUPLICATE_PASSWORDS
+                        ),
+                        SecurityIssueGridItem(
+                            icon = Icons.Default.Link,
+                            title = stringResource(R.string.duplicate_urls),
+                            count = duplicateUrlItemCount,
+                            subtitle = stringResource(
+                                R.string.security_issue_duplicate_url_subtitle,
+                                duplicateUrlGroupCount,
+                                duplicateUrlItemCount
+                            ),
+                            issueType = SecurityIssueType.DUPLICATE_URLS
+                        ),
+                        SecurityIssueGridItem(
+                            icon = Icons.Default.Warning,
+                            title = stringResource(R.string.compromised_passwords),
+                            count = compromisedCount,
+                            subtitle = stringResource(R.string.security_issue_simple_count_subtitle, compromisedCount),
+                            issueType = SecurityIssueType.COMPROMISED
+                        ),
+                        SecurityIssueGridItem(
+                            icon = Icons.Default.Security,
+                            title = stringResource(R.string.no_twofa),
+                            count = no2faCount,
+                            subtitle = stringResource(R.string.security_issue_simple_count_subtitle, no2faCount),
+                            issueType = SecurityIssueType.NO_2FA
+                        ),
+                        SecurityIssueGridItem(
+                            icon = Icons.Default.VpnKey,
+                            title = stringResource(R.string.inactive_passkeys),
+                            count = inactivePasskeyCount,
+                            subtitle = stringResource(R.string.security_issue_simple_count_subtitle, inactivePasskeyCount),
+                            issueType = SecurityIssueType.INACTIVE_PASSKEY
+                        )
                     ),
-                    onClick = { selectedIssue = SecurityIssueType.DUPLICATE_PASSWORDS }
-                )
-            }
-
-            item {
-                SecurityIssueSummaryCard(
-                    icon = Icons.Default.Link,
-                    title = stringResource(R.string.duplicate_urls),
-                    subtitle = stringResource(
-                        R.string.security_issue_duplicate_url_subtitle,
-                        duplicateUrlGroupCount,
-                        duplicateUrlItemCount
-                    ),
-                    onClick = { selectedIssue = SecurityIssueType.DUPLICATE_URLS }
-                )
-            }
-
-            item {
-                SecurityIssueSummaryCard(
-                    icon = Icons.Default.Warning,
-                    title = stringResource(R.string.compromised_passwords),
-                    subtitle = stringResource(
-                        R.string.security_issue_simple_count_subtitle,
-                        compromisedCount
-                    ),
-                    onClick = { selectedIssue = SecurityIssueType.COMPROMISED }
-                )
-            }
-
-            item {
-                SecurityIssueSummaryCard(
-                    icon = Icons.Default.Security,
-                    title = stringResource(R.string.no_twofa),
-                    subtitle = stringResource(
-                        R.string.security_issue_simple_count_subtitle,
-                        no2faCount
-                    ),
-                    onClick = { selectedIssue = SecurityIssueType.NO_2FA }
-                )
-            }
-
-            item {
-                SecurityIssueSummaryCard(
-                    icon = Icons.Default.VpnKey,
-                    title = stringResource(R.string.inactive_passkeys),
-                    subtitle = stringResource(
-                        R.string.security_issue_simple_count_subtitle,
-                        inactivePasskeyCount
-                    ),
-                    onClick = { selectedIssue = SecurityIssueType.INACTIVE_PASSKEY }
+                    onSelectIssue = { selectedIssue = it }
                 )
             }
         }
@@ -283,138 +301,190 @@ private fun AutoAnalysisToggleCard(
     autoAnalysisEnabled: Boolean,
     onAutoAnalysisEnabledChange: (Boolean) -> Unit
 ) {
-    OutlinedCard(shape = RoundedCornerShape(16.dp)) {
-        ListItem(
-            headlineContent = {
+    val colorScheme = MaterialTheme.colorScheme
+    Card(
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = colorScheme.surfaceVariant.copy(alpha = 0.22f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 18.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Security,
+                contentDescription = null,
+                tint = colorScheme.primary,
+                modifier = Modifier
+                    .size(42.dp)
+                    .background(colorScheme.primaryContainer.copy(alpha = 0.72f), CircleShape)
+                    .padding(9.dp)
+            )
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
                     text = stringResource(R.string.security_analysis_auto_toggle_title),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold
                 )
-            },
-            supportingContent = {
                 Text(
                     text = stringResource(R.string.security_analysis_auto_toggle_subtitle),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            },
-            trailingContent = {
-                Switch(
-                    checked = autoAnalysisEnabled,
-                    onCheckedChange = onAutoAnalysisEnabledChange
+                    color = colorScheme.onSurfaceVariant
                 )
             }
-        )
+            Switch(
+                checked = autoAnalysisEnabled,
+                onCheckedChange = onAutoAnalysisEnabledChange
+            )
+        }
     }
 }
 
 @Composable
-private fun CompactOverviewCard(
-    duplicatePasswordsCount: Int,
-    duplicateUrlsCount: Int,
-    compromisedCount: Int,
-    no2faCount: Int,
-    inactivePasskeyCount: Int,
-    isAnalyzing: Boolean
+private fun SecurityOverviewHeader(
+    score: Int,
+    riskCount: Int,
+    isAnalyzing: Boolean,
+    progress: Float
 ) {
     val colorScheme = MaterialTheme.colorScheme
+    val animatedScore by animateFloatAsState(
+        targetValue = score.coerceIn(0, 100) / 100f,
+        animationSpec = tween(durationMillis = 700),
+        label = "security_score_progress"
+    )
+    val scoreColor = when {
+        score >= 80 -> Color(0xFF22C55E)
+        score >= 55 -> Color(0xFFF59E0B)
+        else -> colorScheme.error
+    }
 
-    Card(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = colorScheme.surface)
+    AnimatedVisibility(
+        visible = true,
+        enter = fadeIn(tween(220)) + slideInVertically(tween(260)) { it / 4 }
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(
-                    Brush.linearGradient(
-                        listOf(
-                            colorScheme.primaryContainer.copy(alpha = 0.36f),
-                            colorScheme.secondaryContainer.copy(alpha = 0.20f)
+        Card(
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(containerColor = colorScheme.surface),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        Brush.linearGradient(
+                            listOf(
+                                colorScheme.primaryContainer.copy(alpha = 0.42f),
+                                colorScheme.secondaryContainer.copy(alpha = 0.20f),
+                                colorScheme.surface.copy(alpha = 0.10f)
+                            )
                         )
                     )
-                )
-                .padding(14.dp)
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Shield,
-                        contentDescription = null,
-                        tint = colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = stringResource(R.string.security_overview),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text(
-                        text = if (isAnalyzing) {
-                            stringResource(R.string.security_analysis_in_progress_short)
-                        } else {
-                            stringResource(R.string.security_analysis_realtime)
-                        },
-                        style = MaterialTheme.typography.labelMedium,
-                        color = colorScheme.onSurfaceVariant
-                    )
-                }
+                    .padding(20.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = stringResource(R.string.security_analysis),
+                                style = MaterialTheme.typography.headlineLarge,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                            Text(
+                                text = if (isAnalyzing) {
+                                    stringResource(R.string.security_analysis_in_progress_short)
+                                } else {
+                                    stringResource(R.string.security_analysis_realtime)
+                                },
+                                style = MaterialTheme.typography.labelLarge,
+                                color = colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(86.dp)
+                                .clip(CircleShape)
+                                .background(scoreColor.copy(alpha = 0.16f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(8.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        Brush.sweepGradient(
+                                            0f to scoreColor,
+                                            animatedScore to scoreColor,
+                                            animatedScore to colorScheme.outline.copy(alpha = 0.20f),
+                                            1f to colorScheme.outline.copy(alpha = 0.20f)
+                                        )
+                                    )
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(62.dp)
+                                    .clip(CircleShape)
+                                    .background(colorScheme.surface),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = score.coerceIn(0, 100).toString(),
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = scoreColor
+                                )
+                            }
+                        }
+                    }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = stringResource(R.string.security_risk_cards_title),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = colorScheme.onSurfaceVariant
-                    )
-                }
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        OverviewPill(
+                            label = stringResource(R.string.security_risk_cards_title),
+                            value = riskCount.toString(),
+                            color = if (riskCount == 0) Color(0xFF22C55E) else colorScheme.error
+                        )
+                        OverviewPill(
+                            label = stringResource(R.string.security_overview),
+                            value = if (score >= 80) "OK" else "!",
+                            color = scoreColor
+                        )
+                    }
 
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    AssistChip(
-                        onClick = {},
-                        enabled = false,
-                        label = { Text("${stringResource(R.string.duplicate_short)} $duplicatePasswordsCount") }
-                    )
-                    AssistChip(
-                        onClick = {},
-                        enabled = false,
-                        label = { Text("${stringResource(R.string.duplicate_url_short)} $duplicateUrlsCount") }
-                    )
-                    AssistChip(
-                        onClick = {},
-                        enabled = false,
-                        label = { Text("${stringResource(R.string.compromised_short)} $compromisedCount") }
-                    )
-                    AssistChip(
-                        onClick = {},
-                        enabled = false,
-                        label = { Text("${stringResource(R.string.no_2fa_short)} $no2faCount") }
-                    )
-                    AssistChip(
-                        onClick = {},
-                        enabled = false,
-                        label = { Text("${stringResource(R.string.inactive_passkeys_short)} $inactivePasskeyCount") }
-                    )
-                    Spacer(modifier = Modifier.width(2.dp))
+                    if (isAnalyzing) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.security_analysis_in_progress_short),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = colorScheme.primary
+                                )
+                            }
+                            LinearProgressIndicator(
+                                progress = { progress.coerceIn(0f, 1f) },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(8.dp)
+                                    .clip(RoundedCornerShape(999.dp)),
+                                color = scoreColor,
+                                trackColor = colorScheme.outline.copy(alpha = 0.18f)
+                            )
+                        }
+                    }
                 }
             }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ScopeSelectorCard(
     scopes: List<SecurityAnalysisScopeOption>,
@@ -422,52 +492,63 @@ private fun ScopeSelectorCard(
     onSelectScope: (String) -> Unit
 ) {
     val context = LocalContext.current
-    val selectedScope = scopes.firstOrNull { it.key == selectedScopeKey } ?: scopes.firstOrNull() ?: SecurityAnalysisScopeOption.all()
-    var expanded by remember { mutableStateOf(false) }
+    val scrollState = rememberScrollState()
 
-    OutlinedCard(shape = RoundedCornerShape(16.dp)) {
-        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Card(
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.18f)
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(
                 text = stringResource(R.string.security_analysis_scope_title),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold
             )
-
-            ExposedDropdownMenuBox(
-                expanded = expanded,
-                onExpandedChange = { expanded = !expanded }
+            Row(
+                modifier = Modifier.horizontalScroll(scrollState),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                OutlinedTextField(
-                    value = scopeDisplayName(selectedScope, context),
-                    onValueChange = {},
-                    readOnly = true,
-                    singleLine = true,
-                    label = { Text(stringResource(R.string.security_analysis_scope_label)) },
-                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                    modifier = Modifier
-                        .menuAnchor()
-                        .fillMaxWidth()
-                )
-                ExposedDropdownMenu(
-                    expanded = expanded,
-                    onDismissRequest = { expanded = false }
-                ) {
-                    scopes.forEach { scope ->
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    text = "${scopeDisplayName(scope, context)} (${scope.itemCount})"
-                                )
-                            },
-                            onClick = {
-                                expanded = false
-                                onSelectScope(scope.key)
-                            }
-                        )
-                    }
+                scopes.forEach { scope ->
+                    ScopeChip(
+                        text = "${scopeDisplayName(scope, context)} ${scope.itemCount}",
+                        selected = scope.key == selectedScopeKey,
+                        onClick = { onSelectScope(scope.key) }
+                    )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ScopeChip(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(14.dp))
+            .background(
+                if (selected) {
+                    colorScheme.primary.copy(alpha = 0.22f)
+                } else {
+                    colorScheme.surface.copy(alpha = 0.72f)
+                }
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 9.dp)
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge,
+            color = if (selected) colorScheme.primary else colorScheme.onSurfaceVariant,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            maxLines = 1
+        )
     }
 }
 
@@ -477,22 +558,25 @@ private fun SecurityStrengthDistributionCard(
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val total = distribution.total
-    OutlinedCard(shape = RoundedCornerShape(16.dp)) {
+    Card(
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = colorScheme.surfaceVariant.copy(alpha = 0.18f))
+    ) {
         Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             Text(
                 text = stringResource(R.string.security_strength_distribution),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.ExtraBold
             )
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(12.dp)
-                    .background(colorScheme.surfaceVariant, RoundedCornerShape(999.dp))
+                    .height(18.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
                 val segments = listOf(
                     Pair(distribution.weak, colorScheme.error),
@@ -509,7 +593,10 @@ private fun SecurityStrengthDistributionCard(
                                 modifier = Modifier
                                     .weight(weight)
                                     .fillMaxSize()
-                                    .background(color = color)
+                                    .background(
+                                        color = color.copy(alpha = 0.72f),
+                                        shape = RoundedCornerShape(6.dp)
+                                    )
                             )
                         }
                     }
@@ -554,10 +641,10 @@ private fun StrengthLegendChip(
     Box(
         modifier = Modifier
             .background(
-                color = color.copy(alpha = 0.20f),
-                shape = RoundedCornerShape(12.dp)
+                color = color.copy(alpha = 0.16f),
+                shape = RoundedCornerShape(8.dp)
             )
-            .padding(horizontal = 12.dp, vertical = 7.dp)
+            .padding(horizontal = 10.dp, vertical = 6.dp)
     ) {
         Text(
             text = "$label $count",
@@ -569,43 +656,129 @@ private fun StrengthLegendChip(
 }
 
 @Composable
-private fun SecurityIssueSummaryCard(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
+private fun OverviewPill(
+    label: String,
+    value: String,
+    color: Color
+) {
+    Row(
+        modifier = Modifier
+            .background(color.copy(alpha = 0.16f), RoundedCornerShape(14.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(
+            text = value,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.ExtraBold,
+            color = color
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1
+        )
+    }
+}
+
+private data class SecurityIssueGridItem(
+    val icon: ImageVector,
+    val title: String,
+    val count: Int,
+    val subtitle: String,
+    val issueType: SecurityIssueType
+)
+
+@Composable
+private fun SecurityIssueGrid(
+    items: List<SecurityIssueGridItem>,
+    onSelectIssue: (SecurityIssueType) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(
+            text = stringResource(R.string.security_risk_cards_title),
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.ExtraBold
+        )
+        items.chunked(2).forEachIndexed { rowIndex, rowItems ->
+            AnimatedVisibility(
+                visible = true,
+                enter = fadeIn(tween(180 + rowIndex * 80)) + slideInVertically(tween(220 + rowIndex * 80)) { it / 5 }
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    rowItems.forEach { item ->
+                        SecurityIssueTile(
+                            item = item,
+                            modifier = Modifier.weight(1f),
+                            onClick = { onSelectIssue(item.issueType) }
+                        )
+                    }
+                    if (rowItems.size == 1) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SecurityIssueTile(
+    item: SecurityIssueGridItem,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
-    OutlinedCard(
-        modifier = Modifier
-            .fillMaxWidth()
+    val colorScheme = MaterialTheme.colorScheme
+    val accent = if (item.count == 0) Color(0xFF22C55E) else colorScheme.error
+    Card(
+        modifier = modifier
+            .heightIn(min = 168.dp)
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = colorScheme.surfaceVariant.copy(alpha = 0.20f)
+        )
     ) {
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(16.dp)
         ) {
-            Icon(imageVector = icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
+            Icon(
+                imageVector = item.icon,
+                contentDescription = null,
+                tint = accent.copy(alpha = 0.10f),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(72.dp)
+            )
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold
+                    text = item.count.toString(),
+                    style = MaterialTheme.typography.displaySmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = subtitle,
+                    text = item.title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = item.subtitle,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = colorScheme.onSurfaceVariant,
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
     }
 }

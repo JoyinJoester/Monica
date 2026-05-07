@@ -229,6 +229,8 @@ class SettingsManager(private val context: Context) {
         private val PASSWORD_SWIPE_SELECTION_MODE_KEY = stringPreferencesKey("password_swipe_selection_mode") // 密码列表右滑选中模式
         private val HIDE_FAB_ON_SCROLL_KEY = booleanPreferencesKey("hide_fab_on_scroll") // 滚动隐藏 FAB
         private val SECURITY_ANALYSIS_AUTO_ENABLED_KEY = booleanPreferencesKey("security_analysis_auto_enabled") // 安全分析自动分析
+        private val PASSWORD_DETAIL_SECURITY_ANALYSIS_ENABLED_KEY =
+            booleanPreferencesKey("password_detail_security_analysis_enabled")
         private val NOTE_GRID_LAYOUT_KEY = booleanPreferencesKey("note_grid_layout") // 笔记网格布局
         private val NOTE_CODE_BLOCK_COLLAPSE_MODE_KEY = stringPreferencesKey("note_code_block_collapse_mode") // 笔记代码块折叠模式
         private val AUTOFILL_AUTH_REQUIRED_KEY = booleanPreferencesKey("autofill_auth_required") // 自动填充验证
@@ -534,6 +536,8 @@ class SettingsManager(private val context: Context) {
             validatorVibrationEnabled = preferences[VALIDATOR_VIBRATION_ENABLED_KEY] ?: true,
             hideFabOnScroll = preferences[HIDE_FAB_ON_SCROLL_KEY] ?: false,
             securityAnalysisAutoEnabled = preferences[SECURITY_ANALYSIS_AUTO_ENABLED_KEY] ?: false,
+            passwordDetailSecurityAnalysisEnabled =
+                preferences[PASSWORD_DETAIL_SECURITY_ANALYSIS_ENABLED_KEY] ?: true,
             bitwardenBottomStatusBarEnabled = preferences[BITWARDEN_BOTTOM_STATUS_BAR_ENABLED_KEY] ?: false,
             copyNextCodeWhenExpiring = preferences[COPY_NEXT_CODE_WHEN_EXPIRING_KEY] ?: false,
             // Temporarily hard-disabled for stability.
@@ -842,6 +846,12 @@ class SettingsManager(private val context: Context) {
     suspend fun updateSecurityAnalysisAutoEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[SECURITY_ANALYSIS_AUTO_ENABLED_KEY] = enabled
+        }
+    }
+
+    suspend fun updatePasswordDetailSecurityAnalysisEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PASSWORD_DETAIL_SECURITY_ANALYSIS_ENABLED_KEY] = enabled
         }
     }
 

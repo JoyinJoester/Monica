@@ -1399,6 +1399,8 @@
     <string name="security_analysis_score_short">Score</string>
     <string name="security_analysis_auto_toggle_title">Auto analysis</string>
     <string name="security_analysis_auto_toggle_subtitle">Enable to analyze automatically; disable for manual analyze only.</string>
+    <string name="password_detail_security_analysis_title">Password detail security analysis</string>
+    <string name="password_detail_security_analysis_desc">Show password strength, passkey availability and 2FA status on password details.</string>
     <string name="security_strength_distribution">Password strength distribution</string>
     <string name="security_strength_medium">Medium</string>
     <string name="security_strength_very_strong">Very strong</string>

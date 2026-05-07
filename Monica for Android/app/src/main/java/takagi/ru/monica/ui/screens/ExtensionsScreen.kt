@@ -40,6 +40,8 @@ fun ExtensionsScreen(
     onCopyNextCodeWhenExpiringChange: (Boolean) -> Unit = {},
     smartDeduplicationEnabled: Boolean = false,
     onSmartDeduplicationEnabledChange: (Boolean) -> Unit = {},
+    passwordDetailSecurityAnalysisEnabled: Boolean = true,
+    onPasswordDetailSecurityAnalysisEnabledChange: (Boolean) -> Unit = {},
     passwordSwipeSelectionMode: PasswordSwipeSelectionMode = PasswordSwipeSelectionMode.DEFAULT,
     onPasswordSwipeSelectionModeChange: (PasswordSwipeSelectionMode) -> Unit = {},
     passwordCardDisplayMode: takagi.ru.monica.data.PasswordCardDisplayMode = takagi.ru.monica.data.PasswordCardDisplayMode.SHOW_ALL,
@@ -242,6 +244,14 @@ fun ExtensionsScreen(
                     description = stringResource(R.string.smart_deduplication_desc),
                     checked = smartDeduplicationEnabled,
                     onCheckedChange = onSmartDeduplicationEnabledChange
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                ExtensionSwitchItem(
+                    icon = Icons.Default.Security,
+                    title = stringResource(R.string.password_detail_security_analysis_title),
+                    description = stringResource(R.string.password_detail_security_analysis_desc),
+                    checked = passwordDetailSecurityAnalysisEnabled,
+                    onCheckedChange = onPasswordDetailSecurityAnalysisEnabledChange
                 )
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                 ExtensionSegmentedItem(
