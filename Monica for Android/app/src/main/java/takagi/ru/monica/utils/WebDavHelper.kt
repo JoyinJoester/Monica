@@ -13,6 +13,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.Serializable
 
+import takagi.ru.monica.R
 import takagi.ru.monica.autofill_ng.AutofillPreferences
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
@@ -649,18 +650,15 @@ class WebDavHelper(
         serverUrl = normalizeServerUrl(url)
         username = user.trim()
         password = pass
-        // 
         sardine = createSardineClient()
-        applyCredentialsIfPresent()
         android.util.Log.d("WebDavHelper", "Configured WebDAV: url=$serverUrl, user=$username")
         // 
         saveConfig()
     }
 
     private fun applyCredentialsIfPresent() {
-        if (username.isNotBlank() || password.isNotBlank()) {
-            sardine?.setCredentials(username, password)
-        }
+        // 凭据已由 PreemptiveBasicAuthInterceptor 预置到每个请求，
+        // 这里保留空实现以兼容历史调用点。
     }
     
     /**
@@ -694,9 +692,7 @@ class WebDavHelper(
             serverUrl = url
             username = user.trim()
             password = pass
-            // 
             sardine = createSardineClient()
-            applyCredentialsIfPresent()
             android.util.Log.d("WebDavHelper", "Loaded WebDAV config: url=$serverUrl, user=$username, encryption=$enableEncryption")
             if (url != storedUrl) {
                 saveConfig()
@@ -918,116 +914,100 @@ class WebDavHelper(
      */
     suspend fun testConnection(): Result<Boolean> = withContext(Dispatchers.IO) {
         try {
-            if (sardine == null) {
-                return@withContext Result.failure(Exception("WebDAV not configured"))
-            }
-            
-            // 
+            val client = sardine ?: return@withContext Result.failure(Exception("WebDAV not configured"))
+
             checkNetworkAndTimeSync(context)
-            
+
             val candidateUrls = buildConnectionCandidates(serverUrl)
+            val normalizedServer = takagi.ru.monica.webdav.WebDavUrlBuilder.normalizeServer(serverUrl)
             android.util.Log.d("WebDavHelper", "Testing connection to: ${candidateUrls.joinToString(", ")}")
             android.util.Log.d("WebDavHelper", "Username: $username")
-            
+
+            var resolvedUrl: String? = null
+            var lastClassified: takagi.ru.monica.webdav.WebDavErrorClassifier.ClassifiedError? = null
+            var lastCandidateTried: String = normalizedServer
+
             withTimeout(20_000L) {
-                var lastError: Exception? = null
-                var resolvedUrl: String? = null
-
                 for (candidateUrl in candidateUrls) {
-                    var connectionOk = false
-
+                    lastCandidateTried = candidateUrl
                     try {
-                        val exists = webDavPathExists(candidateUrl)
-                        android.util.Log.d("WebDavHelper", "Method 1 (exists): $candidateUrl -> $exists")
-                        if (exists) {
-                            connectionOk = true
-                        } else {
-                            lastError = Exception("WebDAV path is not accessible: $candidateUrl")
-                        }
-                    } catch (e1: Exception) {
-                        android.util.Log.w("WebDavHelper", "Method 1 (exists) failed: ${e1.message}")
-                        lastError = e1
-                    }
-
-                    if (!connectionOk) {
-                        try {
-                            val resources = sardine?.list(candidateUrl)
-                            android.util.Log.d("WebDavHelper", "Method 2 (list): $candidateUrl -> ${resources?.size ?: 0}")
-                            connectionOk = true
-                            lastError = null
-                        } catch (e2: Exception) {
-                            android.util.Log.w("WebDavHelper", "Method 2 (list) failed: ${e2.message}")
-                            lastError = e2
-
-                            try {
-                                val testFileName = ".monica_test"
-                                val testUrl = joinWebDavUrl(candidateUrl, testFileName)
-                                val testData = "test".toByteArray()
-
-                                sardine?.put(testUrl, testData, "text/plain")
-                                android.util.Log.d("WebDavHelper", "Method 3 (put): test file uploaded")
-
-                                try {
-                                    sardine?.delete(testUrl)
-                                    android.util.Log.d("WebDavHelper", "Test file deleted")
-                                } catch (delError: Exception) {
-                                    android.util.Log.w("WebDavHelper", "Could not delete test file: ${delError.message}")
-                                }
-
-                                connectionOk = true
-                                lastError = null
-                            } catch (e3: Exception) {
-                                android.util.Log.w("WebDavHelper", "Method 3 (put) failed: ${e3.message}")
-                                lastError = e3
-                            }
-                        }
-                    }
-
-                    if (connectionOk) {
+                        // 单次 PROPFIND（sardine.list 默认 Depth: 1）即可确认可达性与鉴权。
+                        client.list(candidateUrl)
                         resolvedUrl = candidateUrl
+                        val host = takagi.ru.monica.webdav.WebDavGateway.hostOf(candidateUrl)
+                        if (host.isNotEmpty()) {
+                            takagi.ru.monica.webdav.WebDavBackoffState.recordSuccess(host)
+                        }
                         break
+                    } catch (e: Exception) {
+                        val classified = takagi.ru.monica.webdav.WebDavErrorClassifier.classify(e)
+                        android.util.Log.w(
+                            "WebDavHelper",
+                            "Probe $candidateUrl failed: kind=${classified.kind}, msg=${e.message}"
+                        )
+                        lastClassified = classified
+                        // 终止条件：被速率限制、鉴权失败、方法不被支持时立即 fail-fast
+                        if (classified.kind == takagi.ru.monica.webdav.WebDavErrorKind.RateLimited ||
+                            classified.kind == takagi.ru.monica.webdav.WebDavErrorKind.AuthFailed ||
+                            classified.kind == takagi.ru.monica.webdav.WebDavErrorKind.MethodNotAllowed
+                        ) {
+                            break
+                        }
+                        // 其他分类则继续尝试下一个候选
                     }
                 }
+            }
 
-                if (resolvedUrl == null) {
-                    throw lastError ?: Exception("All connection methods failed")
-                }
-
-                if (resolvedUrl != serverUrl) {
-                    serverUrl = resolvedUrl
-                    saveConfig()
-                    android.util.Log.d("WebDavHelper", "Connection URL updated: $serverUrl")
-                }
+            val resolved = resolvedUrl
+            if (resolved == null) {
+                val message = buildConnectionErrorMessage(lastClassified, lastCandidateTried)
+                return@withContext Result.failure(Exception(message, lastClassified?.cause))
+            }
+            if (resolved != serverUrl) {
+                serverUrl = resolved
+                saveConfig()
+                android.util.Log.d("WebDavHelper", "Connection URL updated: $serverUrl")
             }
             android.util.Log.d("WebDavHelper", "Connection test SUCCESSFUL")
             return@withContext Result.success(true)
-            
+
         } catch (e: Exception) {
             android.util.Log.e("WebDavHelper", "Connection test FAILED", e)
-            android.util.Log.e("WebDavHelper", "Error type: ${e.javaClass.name}")
-            android.util.Log.e("WebDavHelper", "Error message: ${e.message}")
-            
-            // 
-            val detailedMessage = when {
-                e.message?.contains("CLEARTEXT", ignoreCase = true) == true ||
-                e.message?.contains("cleartext", ignoreCase = true) == true ->
-                    "HTTP "
-                e.message?.contains("Network is unreachable") == true -> 
-                    " "
-                e is TimeoutCancellationException ||
-                e.message?.contains("Connection timed out") == true -> 
-                    " "
-                e.message?.contains("401") == true || e.message?.contains("Unauthorized") == true -> 
-                    "401 "
-                e.message?.contains("404") == true -> 
-                    "404 "
-                e.message?.contains("403") == true -> 
-                    "访问被拒绝(403)，请检查权限设置"
-                e.message?.contains("405") == true || e.message?.contains("Method Not Allowed") == true -> 
-                    "服务器限制了某些操作方法(405)，但这不影响备份功能。请直接尝试创建备份。"
-                else -> "连接测试失败: ${e.message}。如果账号密码正确，可以忽略此错误直接创建备份。"
+            val classified = takagi.ru.monica.webdav.WebDavErrorClassifier.classify(e)
+            val message = buildConnectionErrorMessage(
+                classified,
+                takagi.ru.monica.webdav.WebDavUrlBuilder.normalizeServer(serverUrl)
+            )
+            Result.failure(Exception(message, e))
+        }
+    }
+
+    private fun buildConnectionErrorMessage(
+        classified: takagi.ru.monica.webdav.WebDavErrorClassifier.ClassifiedError?,
+        normalizedUrl: String,
+    ): String {
+        val urlHint = if (normalizedUrl.isNotEmpty()) " ($normalizedUrl)" else ""
+        val kind = classified?.kind ?: takagi.ru.monica.webdav.WebDavErrorKind.Unknown
+        return when (kind) {
+            takagi.ru.monica.webdav.WebDavErrorKind.RateLimited -> {
+                val waitSec = ((classified?.retryAfterMillis ?: 0L) / 1000L).coerceAtLeast(1L)
+                context.getString(R.string.webdav_error_rate_limited, waitSec) + urlHint
             }
-            Result.failure(Exception(detailedMessage, e))
+            takagi.ru.monica.webdav.WebDavErrorKind.AuthFailed ->
+                context.getString(R.string.webdav_error_auth_failed) + urlHint
+            takagi.ru.monica.webdav.WebDavErrorKind.MethodNotAllowed ->
+                context.getString(R.string.webdav_error_method_not_allowed) + urlHint
+            takagi.ru.monica.webdav.WebDavErrorKind.NetworkUnreachable,
+            takagi.ru.monica.webdav.WebDavErrorKind.Timeout ->
+                context.getString(R.string.webdav_error_network_unreachable) + urlHint
+            takagi.ru.monica.webdav.WebDavErrorKind.MalformedResponse ->
+                context.getString(R.string.webdav_error_malformed_response) + urlHint
+            takagi.ru.monica.webdav.WebDavErrorKind.NotFound -> "资源不存在$urlHint"
+            takagi.ru.monica.webdav.WebDavErrorKind.Ok,
+            takagi.ru.monica.webdav.WebDavErrorKind.Unknown -> {
+                val raw = classified?.cause?.message ?: "未知错误"
+                "连接测试失败: $raw$urlHint"
+            }
         }
     }
     
@@ -4312,13 +4292,11 @@ class WebDavHelper(
     }
 
     private fun createSardineClient(): Sardine {
-        val okHttpClient = OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(12, TimeUnit.SECONDS)
-            .writeTimeout(12, TimeUnit.SECONDS)
-            .callTimeout(15, TimeUnit.SECONDS)
-            .build()
-        return OkHttpSardine(okHttpClient)
+        // 通过统一的 Gateway 构造，确保所有请求都经过预置式 Basic 鉴权、
+        // 速率限制与 User-Agent 拦截器链（与 Kazumi webdav_client 一致）。
+        return takagi.ru.monica.webdav.WebDavGateway.buildClient(
+            takagi.ru.monica.webdav.WebDavCredentials(username, password)
+        )
     }
 
     private fun getBackupDirectoryPath(): String {
@@ -4345,17 +4323,36 @@ class WebDavHelper(
 
     private fun webDavPathExists(url: String): Boolean {
         val client = sardine ?: return false
-        runCatching { client.exists(url) }
-            .onSuccess { return it }
-            .onFailure {
-                android.util.Log.w(
-                    "WebDavHelper",
-                    "exists() failed for $url, falling back to PROPFIND: ${it.message}"
-                )
+        // 单次 PROPFIND（sardine 的 exists() 内部实现）即可；失败时根据错误分类决定返回值：
+        // - 404 -> 明确不存在（返回 false）
+        // - RateLimited / AuthFailed -> 上抛，由上层处理而不是吞掉
+        // - 其他 -> 记录后返回 false（保守处理，避免阻塞业务路径）
+        try {
+            return client.exists(url)
+        } catch (e: Exception) {
+            val classified = takagi.ru.monica.webdav.WebDavErrorClassifier.classify(e)
+            when (classified.kind) {
+                takagi.ru.monica.webdav.WebDavErrorKind.NotFound -> {
+                    android.util.Log.d("WebDavHelper", "exists() -> not found: $url")
+                    return false
+                }
+                takagi.ru.monica.webdav.WebDavErrorKind.RateLimited,
+                takagi.ru.monica.webdav.WebDavErrorKind.AuthFailed -> {
+                    android.util.Log.w(
+                        "WebDavHelper",
+                        "exists() failed for $url with kind=${classified.kind}"
+                    )
+                    throw e
+                }
+                else -> {
+                    android.util.Log.w(
+                        "WebDavHelper",
+                        "exists() failed for $url, treating as not-exist: ${e.message}"
+                    )
+                    return false
+                }
             }
-        return runCatching { client.list(url) }
-            .map { true }
-            .getOrElse { false }
+        }
     }
     
     /**
@@ -4420,7 +4417,12 @@ class WebDavHelper(
             Result.failure(Exception("备份文件过大，内存不足。请先压缩图片后再试。"))
         } catch (e: Exception) {
             android.util.Log.e("WebDavHelper", "Failed to upload backup", e)
-            Result.failure(e)
+            // 将底层异常归一为面向用户的错误消息，同时附带规范化 URL 便于排查
+            val message = buildConnectionErrorMessage(
+                takagi.ru.monica.webdav.WebDavErrorClassifier.classify(e),
+                takagi.ru.monica.webdav.WebDavUrlBuilder.normalizeServer(serverUrl)
+            )
+            Result.failure(Exception(message, e))
         }
     }
     

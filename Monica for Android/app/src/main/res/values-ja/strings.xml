@@ -821,6 +821,13 @@
     <string name="webdav_auth_failed">認証失敗。ユーザー名とパスワードを確認してください</string>
     <string name="webdav_path_not_found">サーバーパスが見つかりません。サーバーアドレスを確認してください</string>
     <string name="webdav_backup_trigger_failed">バックアップのトリガーに失敗しました: %s</string>
+    <!-- OpenList / WebDAV error classification -->
+    <string name="webdav_error_rate_limited">サーバーがリクエストを制限しています。%1$d 秒後に再試行してください。</string>
+    <string name="webdav_error_rate_limited_toast">サーバーがバックアップを制限しています。後ほど再試行してください。</string>
+    <string name="webdav_error_auth_failed">認証失敗。ユーザー名とパスワードをご確認ください。</string>
+    <string name="webdav_error_method_not_allowed">サーバーはこの WebDAV 操作をサポートしていません。パスを確認してください。</string>
+    <string name="webdav_error_network_unreachable">サーバーに到達できません。アドレスとネットワーク接続を確認してください。</string>
+    <string name="webdav_error_malformed_response">サーバーからの応答形式が不正です。</string>
     <string name="webdav_create_backup_failed">バックアップの作成に失敗しました</string>
     <string name="webdav_create_new_backup">新しいバックアップを作成</string>
     <string name="webdav_backup_success_detail">バックアップ成功: %s</string>

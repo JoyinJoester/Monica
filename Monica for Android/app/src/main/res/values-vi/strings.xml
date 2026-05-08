@@ -791,6 +791,13 @@
     <string name="webdav_auth_failed">Xác thực thất bại, vui lòng kiểm tra tên người dùng và mật khẩu</string>
     <string name="webdav_path_not_found">Không tìm thấy đường dẫn máy chủ, vui lòng kiểm tra địa chỉ máy chủ</string>
     <string name="webdav_backup_trigger_failed">Không thể kích hoạt sao lưu: %s</string>
+    <!-- OpenList / WebDAV error classification -->
+    <string name="webdav_error_rate_limited">Máy chủ đang giới hạn tốc độ. Vui lòng thử lại sau %1$d giây.</string>
+    <string name="webdav_error_rate_limited_toast">Máy chủ đang giới hạn sao lưu. Thử lại sau.</string>
+    <string name="webdav_error_auth_failed">Xác thực thất bại. Vui lòng kiểm tra tên người dùng và mật khẩu.</string>
+    <string name="webdav_error_method_not_allowed">Máy chủ không hỗ trợ thao tác WebDAV này. Kiểm tra đường dẫn.</string>
+    <string name="webdav_error_network_unreachable">Không thể kết nối máy chủ. Kiểm tra địa chỉ và kết nối mạng.</string>
+    <string name="webdav_error_malformed_response">Máy chủ trả về định dạng phản hồi không hợp lệ.</string>
     <string name="webdav_create_backup_failed">Không thể tạo bản sao lưu</string>
     <string name="webdav_create_new_backup">Tạo bản sao lưu mới</string>
     <string name="webdav_backup_success_detail">Sao lưu thành công: %s</string>

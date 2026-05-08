@@ -3,15 +3,26 @@ package takagi.ru.monica.workers
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import kotlinx.coroutines.flow.first
+import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
-import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.utils.WebDavHelper
-import kotlinx.coroutines.flow.first
+import takagi.ru.monica.webdav.WebDavBackoffState
+import takagi.ru.monica.webdav.WebDavErrorClassifier
+import takagi.ru.monica.webdav.WebDavErrorKind
+import takagi.ru.monica.webdav.WebDavGateway
 
 /**
- * 自动 WebDAV 备份工作器
- * 使用 WorkManager 实现每日自动备份
+ * 自动 WebDAV 备份工作器。
+ *
+ * 与 OpenList 等有速率限制的 WebDAV 服务兼容的关键在于：
+ * - 在调用前查询 [WebDavBackoffState]，若目标主机仍处于 backoff 或临时禁用期，
+ *   直接返回 Result.success() 跳过本轮，避免持续冲击服务器。
+ * - 业务调用失败后按 [WebDavErrorClassifier] 分类映射结果：
+ *   - 速率限制 / 鉴权失败 / 方法不被支持 / 响应格式错误 → success（重试无意义）
+ *   - 网络不可达 / 超时 → retry
+ *   - 成功 → success
  */
 class AutoBackupWorker(
     context: Context,
@@ -19,93 +30,130 @@ class AutoBackupWorker(
 ) : CoroutineWorker(context, params) {
 
     override suspend fun doWork(): androidx.work.ListenableWorker.Result {
-        android.util.Log.d("AutoBackupWorker", "Starting auto backup work...")
-        
-        // ✅ 检查是否为手动触发的备份
+        android.util.Log.d(TAG, "Starting auto backup work...")
+
         val isManualTrigger = inputData.getBoolean(KEY_MANUAL_TRIGGER, false)
-        android.util.Log.d("AutoBackupWorker", "Manual trigger: $isManualTrigger")
-        
+        android.util.Log.d(TAG, "Manual trigger: $isManualTrigger")
+
         try {
             val webDavHelper = WebDavHelper(applicationContext)
-            
-            // 检查是否配置了 WebDAV
+
             if (!webDavHelper.isConfigured()) {
-                android.util.Log.w("AutoBackupWorker", "WebDAV not configured, skipping backup")
+                android.util.Log.w(TAG, "WebDAV not configured, skipping backup")
                 return androidx.work.ListenableWorker.Result.success()
             }
-            
-            // 检查是否启用自动备份（手动触发时跳过此检查）
+
             if (!isManualTrigger && !webDavHelper.isAutoBackupEnabled()) {
-                android.util.Log.w("AutoBackupWorker", "Auto backup disabled, skipping backup")
+                android.util.Log.w(TAG, "Auto backup disabled, skipping backup")
                 return androidx.work.ListenableWorker.Result.success()
             }
-            
-            // ✅ 检查是否需要备份（防止重复备份）- 手动触发时跳过此检查
+
             if (!isManualTrigger && !webDavHelper.shouldAutoBackup()) {
-                android.util.Log.d("AutoBackupWorker", "Backup not needed yet (< 24 hours since last backup)")
+                android.util.Log.d(TAG, "Backup not needed yet (< 12 hours since last backup)")
                 return androidx.work.ListenableWorker.Result.success()
             }
-            
-            android.util.Log.d("AutoBackupWorker", "Proceeding with backup (manual=$isManualTrigger)")
-            
-            // 获取所有数据
+
+            val host = WebDavGateway.hostOf(
+                webDavHelper.getCurrentConfig()?.serverUrl.orEmpty()
+            )
+            if (host.isNotEmpty()) {
+                if (WebDavBackoffState.isTemporarilyDisabled(host)) {
+                    val waitMs = WebDavBackoffState.suggestedWaitMillis(host)
+                    android.util.Log.i(
+                        TAG,
+                        "Host $host temporarily disabled (${waitMs}ms remaining); skip."
+                    )
+                    return androidx.work.ListenableWorker.Result.success()
+                }
+                if (WebDavBackoffState.shouldBlock(host)) {
+                    val waitMs = WebDavBackoffState.suggestedWaitMillis(host)
+                    android.util.Log.i(
+                        TAG,
+                        "Host $host backoff until +${waitMs}ms; skip."
+                    )
+                    return androidx.work.ListenableWorker.Result.success()
+                }
+            }
+
+            android.util.Log.d(TAG, "Proceeding with backup (manual=$isManualTrigger)")
+
             val database = PasswordDatabase.getDatabase(applicationContext)
             val passwordRepo = PasswordRepository(database.passwordEntryDao())
             val secureItemRepo = SecureItemRepository(database.secureItemDao())
-            
+
             val passwords = passwordRepo.getAllPasswordEntries().first()
             val secureItems = secureItemRepo.getAllItems().first()
-            
-            // ✅ 解密密码再备份（修复：之前导出的是加密数据）
+
             val securityManager = takagi.ru.monica.security.SecurityManager(applicationContext)
             val decryptedPasswords = passwords.map { entry ->
                 try {
                     entry.copy(password = securityManager.decryptData(entry.password))
                 } catch (e: Exception) {
-                    // 如果解密失败，保留原值（可能已是明文）
-                    android.util.Log.w("AutoBackupWorker", "无法解密密码 ${entry.title}: ${e.message}")
+                    android.util.Log.w(TAG, "无法解密密码 ${entry.title}: ${e.message}")
                     entry
                 }
             }
-            
-            // 加载备份偏好设置
+
             val backupPreferences = webDavHelper.getBackupPreferences()
-            
-            android.util.Log.d("AutoBackupWorker", "Creating backup with ${passwords.size} passwords and ${secureItems.size} secure items")
-            android.util.Log.d("AutoBackupWorker", "Backup preferences: $backupPreferences")
-            
-            // 创建并上传备份（使用偏好设置）
+
+            android.util.Log.d(
+                TAG,
+                "Creating backup with ${passwords.size} passwords and ${secureItems.size} secure items"
+            )
+
             val backupResult = webDavHelper.createAndUploadBackup(
                 passwords = decryptedPasswords,
                 secureItems = secureItems,
                 preferences = backupPreferences,
-                isPermanent = false,  // Auto backups are temporary
+                isPermanent = false,
                 isManualTrigger = isManualTrigger
             )
-            
-            return if (backupResult.isSuccess) {
-                val report = backupResult.getOrNull()
-                android.util.Log.d("AutoBackupWorker", "Auto backup completed: ${report?.getSummary()}")
-                // P0修复：检查是否有失败项
-                if (report != null && report.hasIssues()) {
-                    android.util.Log.w("AutoBackupWorker", "Backup has issues but completed")
+
+            if (backupResult.isSuccess) {
+                if (host.isNotEmpty()) {
+                    WebDavBackoffState.recordSuccess(host)
                 }
-                androidx.work.ListenableWorker.Result.success()
-            } else {
-                val error = backupResult.exceptionOrNull()
-                android.util.Log.e("AutoBackupWorker", "Auto backup failed: ${error?.message}", error)
-                // 返回 retry 以便稍后重试
-                androidx.work.ListenableWorker.Result.retry()
+                val report = backupResult.getOrNull()
+                android.util.Log.d(TAG, "Auto backup completed: ${report?.getSummary()}")
+                if (report != null && report.hasIssues()) {
+                    android.util.Log.w(TAG, "Backup has issues but completed")
+                }
+                return androidx.work.ListenableWorker.Result.success()
             }
-            
+
+            val error = backupResult.exceptionOrNull()
+            val classified = WebDavErrorClassifier.classify(error)
+            android.util.Log.e(
+                TAG,
+                "Auto backup failed: kind=${classified.kind}, msg=${error?.message}",
+                error
+            )
+            return when (classified.kind) {
+                WebDavErrorKind.RateLimited,
+                WebDavErrorKind.AuthFailed,
+                WebDavErrorKind.MethodNotAllowed,
+                WebDavErrorKind.MalformedResponse -> androidx.work.ListenableWorker.Result.success()
+                WebDavErrorKind.Timeout,
+                WebDavErrorKind.NetworkUnreachable -> androidx.work.ListenableWorker.Result.retry()
+                else -> androidx.work.ListenableWorker.Result.retry()
+            }
+
         } catch (e: Exception) {
-            android.util.Log.e("AutoBackupWorker", "Auto backup error", e)
-            return androidx.work.ListenableWorker.Result.retry()
+            android.util.Log.e(TAG, "Auto backup error", e)
+            val classified = WebDavErrorClassifier.classify(e)
+            return when (classified.kind) {
+                WebDavErrorKind.RateLimited,
+                WebDavErrorKind.AuthFailed,
+                WebDavErrorKind.MethodNotAllowed,
+                WebDavErrorKind.MalformedResponse -> androidx.work.ListenableWorker.Result.success()
+                else -> androidx.work.ListenableWorker.Result.retry()
+            }
         }
     }
-    
+
     companion object {
+        private const val TAG = "AutoBackupWorker"
         const val WORK_NAME = "auto_webdav_backup"
-        const val KEY_MANUAL_TRIGGER = "manual_trigger"  // ✅ 手动触发标志的键
+        const val KEY_MANUAL_TRIGGER = "manual_trigger"
     }
 }

@@ -1217,6 +1217,13 @@
     <string name="webdav_auth_failed">Ошибка авторизации, проверьте логин и пароль</string>
     <string name="webdav_path_not_found">Путь не найден, проверьте адрес сервера</string>
     <string name="webdav_backup_trigger_failed">Не удалось запустить копирование: %s</string>
+    <!-- OpenList / WebDAV error classification -->
+    <string name="webdav_error_rate_limited">Сервер ограничивает запросы. Повторите через %1$d сек.</string>
+    <string name="webdav_error_rate_limited_toast">Сервер ограничивает резервные копии. Попробуйте позже.</string>
+    <string name="webdav_error_auth_failed">Ошибка авторизации. Проверьте логин и пароль.</string>
+    <string name="webdav_error_method_not_allowed">Сервер не поддерживает эту операцию WebDAV. Проверьте путь.</string>
+    <string name="webdav_error_network_unreachable">Сервер недоступен. Проверьте адрес и сеть.</string>
+    <string name="webdav_error_malformed_response">Сервер вернул ответ неверного формата.</string>
     <string name="webdav_create_backup_failed">Не удалось создать копию</string>
     <string name="webdav_create_new_backup">Создать новую копию</string>
     <string name="webdav_backup_success_detail">Копирование выполнено: %s</string>

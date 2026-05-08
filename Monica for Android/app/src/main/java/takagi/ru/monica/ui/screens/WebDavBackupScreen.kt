@@ -674,7 +674,15 @@ fun WebDavBackupScreen(
                             onClick = {
                                 coroutineScope.launch {
                                     try {
-                                        autoBackupManager.triggerBackupNow()
+                                        val enqueued = autoBackupManager.triggerBackupNow()
+                                        if (!enqueued) {
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(R.string.webdav_error_rate_limited_toast),
+                                                Toast.LENGTH_LONG
+                                            ).show()
+                                            return@launch
+                                        }
                                         Toast.makeText(
                                             context,
                                             context.getString(R.string.webdav_backup_in_progress),

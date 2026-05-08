@@ -2,6 +2,8 @@ package takagi.ru.monica.utils
 
 import android.content.Context
 import androidx.work.*
+import takagi.ru.monica.webdav.WebDavBackoffState
+import takagi.ru.monica.webdav.WebDavGateway
 import takagi.ru.monica.workers.AutoBackupWorker
 import java.util.concurrent.TimeUnit
 
@@ -88,28 +90,51 @@ class AutoBackupManager(private val context: Context) {
     }
     
     /**
-     * 立即执行一次备份（用于测试）
+     * 立即执行一次备份（用于测试或用户主动触发）。
+     *
+     * 使用 [ExistingWorkPolicy.REPLACE] 避免同一分钟内多次点击造成的重复任务堆积；
+     * 并在入队前检查 [WebDavBackoffState]，若目标主机仍处于 backoff 期，直接返回 false
+     * 让 UI 提示用户稍后再试，而不是继续打穿服务器速率限制。
+     *
+     * @return true 表示任务已入队；false 表示由于 backoff 被拒绝或未配置服务器。
      */
-    fun triggerBackupNow() {
+    fun triggerBackupNow(): Boolean {
         android.util.Log.d("AutoBackupManager", "Triggering immediate backup...")
-        
+
+        val webDavHelper = takagi.ru.monica.utils.WebDavHelper(context)
+        val serverUrl = webDavHelper.getCurrentConfig()?.serverUrl.orEmpty()
+        val host = WebDavGateway.hostOf(serverUrl)
+        if (host.isNotEmpty() && WebDavBackoffState.shouldBlock(host)) {
+            val waitMs = WebDavBackoffState.suggestedWaitMillis(host)
+            android.util.Log.w(
+                "AutoBackupManager",
+                "Refuse manual backup: host $host backoff for ${waitMs}ms"
+            )
+            return false
+        }
+
         val constraints = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
-        
-        // ✅ 添加参数标记这是手动触发的备份，应跳过时间检查
+
         val inputData = androidx.work.Data.Builder()
             .putBoolean(AutoBackupWorker.KEY_MANUAL_TRIGGER, true)
             .build()
-        
+
         val workRequest = OneTimeWorkRequestBuilder<AutoBackupWorker>()
             .setConstraints(constraints)
-            .setInputData(inputData)  // ✅ 传递手动触发标志
+            .setInputData(inputData)
             .addTag("manual_backup")
             .build()
-        
-        workManager.enqueue(workRequest)
-        android.util.Log.d("AutoBackupManager", "Immediate backup triggered")
+
+        // REPLACE 策略：同一分钟内多次手动触发只保留最近一次，避免同时排队。
+        workManager.enqueueUniqueWork(
+            MANUAL_WORK_NAME,
+            ExistingWorkPolicy.REPLACE,
+            workRequest
+        )
+        android.util.Log.d("AutoBackupManager", "Immediate backup triggered (REPLACE)")
+        return true
     }
     
     /**
@@ -118,5 +143,10 @@ class AutoBackupManager(private val context: Context) {
     fun getLastBackupStatus(): WorkInfo? {
         val workInfos = workManager.getWorkInfosForUniqueWork(AutoBackupWorker.WORK_NAME).get()
         return workInfos.firstOrNull()
+    }
+
+    companion object {
+        /** 手动触发的 WebDAV 备份 unique work name。 */
+        const val MANUAL_WORK_NAME = "manual_webdav_backup"
     }
 }

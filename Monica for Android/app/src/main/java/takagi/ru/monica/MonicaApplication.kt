@@ -17,6 +17,7 @@ import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.security.AppUpdateSecurityGuard
 import takagi.ru.monica.utils.AppLauncherIconManager
 import takagi.ru.monica.utils.SettingsManager
+import takagi.ru.monica.webdav.WebDavBackoffState
 
 /**
  * Monica 应用程序入口
@@ -45,6 +46,7 @@ class MonicaApplication : Application() {
         initKoin()
         syncLauncherEntryPointsWithSettings()
         initBitwardenSyncInfrastructure()
+        WebDavBackoffState.attachPersistence(this)
     }
     
     /**

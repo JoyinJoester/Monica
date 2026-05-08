@@ -1174,6 +1174,13 @@
     <string name="webdav_auth_failed">认证失败，请检查用户名和密码</string>
     <string name="webdav_path_not_found">服务器路径未找到，请检查服务器地址</string>
     <string name="webdav_backup_trigger_failed">触发备份失败: %s</string>
+    <!-- OpenList / WebDAV 错误分类 -->
+    <string name="webdav_error_rate_limited">服务器正在限流，请在 %1$d 秒后重试。</string>
+    <string name="webdav_error_rate_limited_toast">服务器正在限流备份请求，请稍后再试。</string>
+    <string name="webdav_error_auth_failed">鉴权失败，请检查用户名和密码。</string>
+    <string name="webdav_error_method_not_allowed">服务器不支持此 WebDAV 操作，请检查服务器路径。</string>
+    <string name="webdav_error_network_unreachable">无法到达服务器，请检查地址与网络连接。</string>
+    <string name="webdav_error_malformed_response">服务器返回的响应格式不合规。</string>
     <string name="webdav_create_backup_failed">创建备份失败</string>
     <string name="webdav_create_new_backup">创建新备份</string>
     <string name="webdav_backup_success_detail">备份成功: %s</string>

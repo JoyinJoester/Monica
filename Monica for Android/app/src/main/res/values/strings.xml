@@ -1218,6 +1218,13 @@
     <string name="webdav_auth_failed">Authentication failed, please check username and password</string>
     <string name="webdav_path_not_found">Server path not found, please check server address</string>
     <string name="webdav_backup_trigger_failed">Failed to trigger backup: %s</string>
+    <!-- OpenList / WebDAV error classification strings -->
+    <string name="webdav_error_rate_limited">Server is rate-limiting requests. Please retry after %1$d seconds.</string>
+    <string name="webdav_error_rate_limited_toast">Server is rate-limiting backup requests. Try again later.</string>
+    <string name="webdav_error_auth_failed">Authentication failed. Please verify your username and password.</string>
+    <string name="webdav_error_method_not_allowed">Server does not accept this WebDAV operation. Check server path.</string>
+    <string name="webdav_error_network_unreachable">Cannot reach the server. Check the address and network connection.</string>
+    <string name="webdav_error_malformed_response">Server returned an unexpected response format.</string>
     <string name="webdav_create_backup_failed">Failed to create backup</string>
     <string name="webdav_create_new_backup">Create New Backup</string>
     <string name="webdav_backup_success_detail">Backup successful: %s</string>
