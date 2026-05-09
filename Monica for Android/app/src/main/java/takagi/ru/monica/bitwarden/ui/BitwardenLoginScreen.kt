@@ -83,6 +83,8 @@ fun BitwardenLoginScreen(
     var twoFactorCode by remember { mutableStateOf("") }
     var selectedTwoFactorMethod by remember { mutableStateOf(0) }
     var availableTwoFactorMethods by remember { mutableStateOf<List<Int>>(emptyList()) }
+    var twoFactorStatusMessage by remember { mutableStateOf<String?>(null) }
+    var hasAutoRequestedEmailTwoFactor by remember { mutableStateOf(false) }
     var showCaptchaDialog by remember { mutableStateOf(false) }
     var captchaResponse by remember { mutableStateOf("") }
     var captchaMessage by remember { mutableStateOf("需要验证码，请输入 Captcha response") }
@@ -142,6 +144,8 @@ fun BitwardenLoginScreen(
                 is BitwardenViewModel.BitwardenEvent.ShowTwoFactorDialog -> {
                     availableTwoFactorMethods = event.methods
                     selectedTwoFactorMethod = choosePreferredTwoFactorMethod(event.methods)
+                    twoFactorStatusMessage = null
+                    hasAutoRequestedEmailTwoFactor = false
                     showTwoFactorDialog = true
                 }
                 is BitwardenViewModel.BitwardenEvent.NavigateToVault -> {
@@ -153,8 +157,26 @@ fun BitwardenLoginScreen(
                     captchaSiteKey = event.siteKey
                     showCaptchaDialog = true
                 }
+                is BitwardenViewModel.BitwardenEvent.ShowSuccess -> if (showTwoFactorDialog) {
+                    twoFactorStatusMessage = event.message
+                }
+                is BitwardenViewModel.BitwardenEvent.ShowError -> if (showTwoFactorDialog) {
+                    twoFactorStatusMessage = event.message
+                }
                 else -> {}
             }
+        }
+    }
+
+    LaunchedEffect(showTwoFactorDialog, selectedTwoFactorMethod) {
+        if (
+            showTwoFactorDialog &&
+            selectedTwoFactorMethod == BitwardenAuthService.TWO_FACTOR_EMAIL &&
+            !hasAutoRequestedEmailTwoFactor
+        ) {
+            hasAutoRequestedEmailTwoFactor = true
+            twoFactorStatusMessage = "正在请求发送邮箱验证码..."
+            viewModel.sendTwoFactorEmailLogin()
         }
     }
     
@@ -544,9 +566,17 @@ fun BitwardenLoginScreen(
         TwoFactorDialog(
             availableMethods = availableTwoFactorMethods,
             selectedMethod = selectedTwoFactorMethod,
-            onMethodSelected = { selectedTwoFactorMethod = it },
+            onMethodSelected = {
+                selectedTwoFactorMethod = it
+                twoFactorStatusMessage = null
+            },
             code = twoFactorCode,
             onCodeChange = { twoFactorCode = it },
+            statusMessage = twoFactorStatusMessage,
+            onSendEmailCode = {
+                twoFactorStatusMessage = "正在请求发送邮箱验证码..."
+                viewModel.sendTwoFactorEmailLogin()
+            },
             onConfirm = {
                 showTwoFactorDialog = false
                 submitTwoFactorLogin()
@@ -768,6 +798,8 @@ fun TwoFactorDialog(
     onMethodSelected: (Int) -> Unit,
     code: String,
     onCodeChange: (String) -> Unit,
+    statusMessage: String?,
+    onSendEmailCode: () -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -789,6 +821,27 @@ fun TwoFactorDialog(
                     text = getTwoFactorInputGuide(selectedMethod),
                     style = MaterialTheme.typography.bodyMedium
                 )
+
+                if (selectedMethod == BitwardenAuthService.TWO_FACTOR_EMAIL) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = onSendEmailCode,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Outlined.Email, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("发送/重发邮箱验证码")
+                    }
+                }
+
+                if (!statusMessage.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = statusMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 
                 Spacer(modifier = Modifier.height(16.dp))
                 
@@ -881,7 +934,7 @@ private fun getTwoFactorMethodName(method: Int): String {
 private fun getTwoFactorMethodHint(method: Int): String {
     return when (method) {
         BitwardenAuthService.TWO_FACTOR_EMAIL ->
-            "邮箱里收到的验证码（不要填验证器 App 的动态码）"
+            "仅当你确实开启邮箱两步验证且已收到邮件时使用"
         BitwardenAuthService.TWO_FACTOR_AUTHENTICATOR ->
             "来自 Google/Microsoft Authenticator 等 App 的动态码"
         BitwardenAuthService.TWO_FACTOR_EMAIL_NEW_DEVICE ->
@@ -893,7 +946,7 @@ private fun getTwoFactorMethodHint(method: Int): String {
 private fun getTwoFactorInputGuide(method: Int): String {
     return when (method) {
         BitwardenAuthService.TWO_FACTOR_EMAIL ->
-            "当前方式：邮箱验证码。请输入邮箱收到的验证码，不要输入验证器动态码。"
+            "当前方式：邮箱验证码。若没有收到邮件，请切换到验证器动态码；标准邮箱两步验证不等同于新设备验证邮件。"
         BitwardenAuthService.TWO_FACTOR_AUTHENTICATOR ->
             "当前方式：验证器动态码（TOTP）。请输入验证器 App 里当前 6 位动态码。"
         BitwardenAuthService.TWO_FACTOR_EMAIL_NEW_DEVICE ->
@@ -935,10 +988,10 @@ private fun choosePreferredTwoFactorMethod(methods: List<Int>): Int {
     return when {
         methods.contains(BitwardenAuthService.TWO_FACTOR_EMAIL_NEW_DEVICE) ->
             BitwardenAuthService.TWO_FACTOR_EMAIL_NEW_DEVICE
-        methods.contains(BitwardenAuthService.TWO_FACTOR_EMAIL) ->
-            BitwardenAuthService.TWO_FACTOR_EMAIL
         methods.contains(BitwardenAuthService.TWO_FACTOR_AUTHENTICATOR) ->
             BitwardenAuthService.TWO_FACTOR_AUTHENTICATOR
+        methods.contains(BitwardenAuthService.TWO_FACTOR_EMAIL) ->
+            BitwardenAuthService.TWO_FACTOR_EMAIL
         else -> methods.first()
     }
 }

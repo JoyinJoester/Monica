@@ -955,6 +955,76 @@ class BitwardenAuthService(
             Result.failure(e)
         }
     }
+
+    suspend fun sendTwoFactorEmailLogin(
+        twoFactorState: LoginResult.TwoFactorRequired,
+        serverUrl: String = BitwardenApiFactory.OFFICIAL_VAULT_URL,
+        tlsConfig: BitwardenTlsConfig? = null
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        val attemptId = twoFactorState.diagnosticAttemptId ?: newAttemptId()
+        val startMs = System.currentTimeMillis()
+        try {
+            val urls = BitwardenApiFactory.inferServerUrls(serverUrl)
+            val headerProfile = twoFactorState.authHeaderProfile
+            logDiag(
+                flow = "two_factor_email",
+                attemptId = attemptId,
+                stage = "send_start",
+                message =
+                    "serverClass=${classifyServer(urls.vault)}, api=${urls.api}, " +
+                        "emailDomain=${emailDomain(twoFactorState.email)}, " +
+                        "headerProfile=${BitwardenApiFactory.headerProfileName(headerProfile)}, " +
+                        "uaVersion=${BitwardenApiFactory.headerProfileUserAgentVersion(headerProfile)}, " +
+                        "refererApplied=${BitwardenApiFactory.isRefererApplied(headerProfile, urls.vault)}"
+            )
+            val vaultApi = apiManager.getVaultApi(
+                apiUrl = urls.api,
+                refererUrl = urls.vault,
+                headerProfile = headerProfile,
+                tlsConfig = tlsConfig
+            )
+            val response = vaultApi.sendTwoFactorEmailLogin(
+                SendEmailLoginRequest(
+                    deviceIdentifier = getDeviceId(),
+                    email = twoFactorState.email,
+                    masterPasswordHash = twoFactorState.passwordHash
+                )
+            )
+            if (response.isSuccessful) {
+                logDiag(
+                    flow = "two_factor_email",
+                    attemptId = attemptId,
+                    stage = "send_success",
+                    message = "code=${response.code()}, latencyMs=${System.currentTimeMillis() - startMs}"
+                )
+                Result.success(Unit)
+            } else {
+                val errorBody = response.errorBody()?.string()
+                logDiag(
+                    flow = "two_factor_email",
+                    attemptId = attemptId,
+                    stage = "send_error",
+                    message =
+                        "code=${response.code()}, message=${response.message()}, " +
+                            "latencyMs=${System.currentTimeMillis() - startMs}, " +
+                            "body=${oneLine(errorBody, ERROR_BODY_SNIPPET_LIMIT)}"
+                )
+                Result.failure(
+                    Exception("Send email two-factor code failed [attemptId=$attemptId]: ${response.code()} - $errorBody")
+                )
+            }
+        } catch (e: Exception) {
+            logDiag(
+                flow = "two_factor_email",
+                attemptId = attemptId,
+                stage = "send_exception",
+                message =
+                    "type=${e.javaClass.simpleName}, msg=${oneLine(e.message, 140)}, " +
+                        "latencyMs=${System.currentTimeMillis() - startMs}"
+            )
+            Result.failure(e)
+        }
+    }
     
     /**
      * 刷新访问令牌

@@ -334,6 +334,20 @@ class BitwardenRepository(private val context: Context) {
             RepositoryLoginResult.Error(parseErrorMessage(e.message))
         }
     }
+
+    suspend fun sendTwoFactorEmailLogin(
+        twoFactorState: LoginResult.TwoFactorRequired,
+        serverUrl: String?,
+        tlsConfig: BitwardenTlsConfig? = null
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        val effectiveServerUrl = serverUrl?.takeIf { it.isNotBlank() }
+            ?: BitwardenApiFactory.OFFICIAL_VAULT_URL
+        authService.sendTwoFactorEmailLogin(
+            twoFactorState = twoFactorState,
+            serverUrl = effectiveServerUrl,
+            tlsConfig = tlsConfig
+        )
+    }
     
     /**
      * 处理成功登录

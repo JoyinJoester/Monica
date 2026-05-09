@@ -113,7 +113,8 @@ class CipherSyncProcessor(
         serverDeletedAt: Date?,
         serverArchivedAt: Date?
     ): CipherSyncResult {
-        return when {
+        val passwordResult = syncPasswordCipher(vault, cipher, symmetricKey, serverDeletedAt, serverArchivedAt)
+        val supplementalResult = when {
             PasskeyMapper.isPasskeyCipher(cipher) -> {
                 syncPasskeyCipher(vault, cipher, symmetricKey)
             }
@@ -121,9 +122,16 @@ class CipherSyncProcessor(
                 syncTotpCipher(vault, cipher, symmetricKey, serverDeletedAt)
             }
             else -> {
-                // 标准密码条目 - 使用现有逻辑
-                syncPasswordCipher(vault, cipher, symmetricKey, serverDeletedAt, serverArchivedAt)
+                null
             }
+        }
+
+        return when (passwordResult) {
+            is CipherSyncResult.Added,
+            is CipherSyncResult.Updated,
+            is CipherSyncResult.Conflict -> passwordResult
+            is CipherSyncResult.Skipped -> supplementalResult ?: passwordResult
+            is CipherSyncResult.Error -> supplementalResult ?: passwordResult
         }
     }
     

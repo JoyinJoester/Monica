@@ -122,7 +122,11 @@ interface BitwardenIdentityApi {
  *       或自托管服务的 /api 路径
  */
 interface BitwardenVaultApi {
-    
+    @POST("two-factor/send-email-login")
+    suspend fun sendTwoFactorEmailLogin(
+        @Body request: SendEmailLoginRequest
+    ): Response<Unit>
+
     /**
      * 同步全部数据
      * 
@@ -272,6 +276,16 @@ interface BitwardenVaultApi {
 @Serializable
 data class PreLoginRequest(
     val email: String
+)
+
+@Serializable
+data class SendEmailLoginRequest(
+    @SerialName("deviceIdentifier")
+    val deviceIdentifier: String,
+    @SerialName("email")
+    val email: String,
+    @SerialName("masterPasswordHash")
+    val masterPasswordHash: String
 )
 
 /**

@@ -365,6 +365,31 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
             }
         }
     }
+
+    fun sendTwoFactorEmailLogin() {
+        val state = twoFactorState ?: run {
+            viewModelScope.launch {
+                _events.emit(BitwardenEvent.ShowError("两步验证状态丢失，请重新登录"))
+            }
+            return
+        }
+
+        viewModelScope.launch {
+            val result = repository.sendTwoFactorEmailLogin(
+                twoFactorState = state,
+                serverUrl = pendingServerUrl,
+                tlsConfig = pendingTlsConfig
+            )
+            result.fold(
+                onSuccess = {
+                    _events.emit(BitwardenEvent.ShowSuccess("邮箱验证码已发送，请检查收件箱和垃圾邮件"))
+                },
+                onFailure = { error ->
+                    _events.emit(BitwardenEvent.ShowError("发送邮箱验证码失败：${error.message ?: "未知错误"}"))
+                }
+            )
+        }
+    }
     
     /**
      * 解锁 Vault
