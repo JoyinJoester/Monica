@@ -3,6 +3,7 @@ package takagi.ru.monica.ui
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FolderOff
@@ -50,6 +51,13 @@ internal fun shouldShowQuickFilterItem(
     item: PasswordListQuickFilterItem,
     aggregateVisibleContentTypes: List<PasswordPageContentType>
 ): Boolean {
+    if (item == PasswordListQuickFilterItem.TWO_FA ||
+        item == PasswordListQuickFilterItem.PASSKEY ||
+        item == PasswordListQuickFilterItem.NOTE ||
+        item == PasswordListQuickFilterItem.ATTACHMENTS
+    ) {
+        return true
+    }
     val type = item.toPasswordPageContentTypeOrNull() ?: return true
     return type in aggregateVisibleContentTypes
 }
@@ -64,6 +72,12 @@ internal fun PasswordQuickFilterChipItem(
     onQuickFilter2faChange: (Boolean) -> Unit,
     quickFilterNotes: Boolean,
     onQuickFilterNotesChange: (Boolean) -> Unit,
+    quickFilterPasskey: Boolean,
+    onQuickFilterPasskeyChange: (Boolean) -> Unit,
+    quickFilterBoundNote: Boolean,
+    onQuickFilterBoundNoteChange: (Boolean) -> Unit,
+    quickFilterAttachments: Boolean,
+    onQuickFilterAttachmentsChange: (Boolean) -> Unit,
     quickFilterUncategorized: Boolean,
     onQuickFilterUncategorizedChange: (Boolean) -> Unit,
     quickFilterLocalOnly: Boolean,
@@ -202,9 +216,7 @@ internal fun PasswordQuickFilterChipItem(
             )
         }
 
-        PasswordListQuickFilterItem.CARD_WALLET,
-        PasswordListQuickFilterItem.PASSKEY,
-        PasswordListQuickFilterItem.NOTE -> {
+        PasswordListQuickFilterItem.CARD_WALLET -> {
             val type = item.toPasswordPageContentTypeOrNull() ?: return
             if (type !in aggregateVisibleTypes) return
             PasswordQuickFilterChip(
@@ -218,6 +230,63 @@ internal fun PasswordQuickFilterChipItem(
                 modifier = modifier,
                 interactionSource = interactionSource,
                 leadingIcon = type.icon()
+            )
+        }
+
+        PasswordListQuickFilterItem.PASSKEY -> {
+            val type = PasswordPageContentType.PASSKEY
+            val useAggregateFilter = type in aggregateVisibleTypes
+            PasswordQuickFilterChip(
+                selected = if (useAggregateFilter) aggregateSelectedTypes.contains(type) else quickFilterPasskey,
+                onClick = {
+                    if (!categoryEditMode) {
+                        if (useAggregateFilter) {
+                            onToggleAggregateType?.invoke(type)
+                        } else {
+                            onQuickFilterPasskeyChange(!quickFilterPasskey)
+                        }
+                    }
+                },
+                label = stringResource(type.labelRes()),
+                modifier = modifier,
+                interactionSource = interactionSource,
+                leadingIcon = type.icon()
+            )
+        }
+
+        PasswordListQuickFilterItem.NOTE -> {
+            val type = PasswordPageContentType.NOTE
+            val useAggregateFilter = type in aggregateVisibleTypes
+            PasswordQuickFilterChip(
+                selected = if (useAggregateFilter) aggregateSelectedTypes.contains(type) else quickFilterBoundNote,
+                onClick = {
+                    if (!categoryEditMode) {
+                        if (useAggregateFilter) {
+                            onToggleAggregateType?.invoke(type)
+                        } else {
+                            onQuickFilterBoundNoteChange(!quickFilterBoundNote)
+                        }
+                    }
+                },
+                label = stringResource(type.labelRes()),
+                modifier = modifier,
+                interactionSource = interactionSource,
+                leadingIcon = type.icon()
+            )
+        }
+
+        PasswordListQuickFilterItem.ATTACHMENTS -> {
+            PasswordQuickFilterChip(
+                selected = quickFilterAttachments,
+                onClick = {
+                    if (!categoryEditMode) {
+                        onQuickFilterAttachmentsChange(!quickFilterAttachments)
+                    }
+                },
+                label = stringResource(R.string.attachment_section_title),
+                modifier = modifier,
+                interactionSource = interactionSource,
+                leadingIcon = Icons.Default.AttachFile
             )
         }
 

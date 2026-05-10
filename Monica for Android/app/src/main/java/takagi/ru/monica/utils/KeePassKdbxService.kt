@@ -12,7 +12,11 @@ import app.keemobile.kotpass.database.KeePassDatabase
 import app.keemobile.kotpass.database.decode
 import app.keemobile.kotpass.database.encode
 import app.keemobile.kotpass.database.header.KdfParameters
+import app.keemobile.kotpass.database.modifiers.binaries
+import app.keemobile.kotpass.database.modifiers.modifyBinaries
 import app.keemobile.kotpass.database.modifiers.modifyParentGroup
+import app.keemobile.kotpass.models.BinaryData
+import app.keemobile.kotpass.models.BinaryReference
 import app.keemobile.kotpass.models.Entry
 import app.keemobile.kotpass.models.EntryFields
 import app.keemobile.kotpass.models.EntryValue
@@ -73,7 +77,11 @@ data class KeePassEntryData(
     val entryUuid: String?,
     val groupPath: String?,
     val groupUuid: String?,
-    val isInRecycleBin: Boolean
+    val isInRecycleBin: Boolean,
+    /** 取值 `PASSWORD` / `SSO` / `WIFI`；用于还原 [PasswordEntry.loginType]。 */
+    val loginType: String = "PASSWORD",
+    /** [takagi.ru.monica.data.model.WifiData] 的 JSON，仅在 WIFI 条目上有值。 */
+    val wifiMetadata: String = ""
 )
 
 data class KeePassGroupInfo(
@@ -172,6 +180,17 @@ class KeePassKdbxService(
         private const val REMOTE_CONFLICT_TITLE_SUFFIX = "[远端冲突副本]"
         private const val FIELD_MONICA_SSH_FORMAT = "MonicaSshFormat"
         private const val FIELD_KEEPASS_XC_TEMPLATE = "_etm_template"
+        // === WIFI 条目互通字段 ===
+        // `SSID` 是 keepass2android 官方 WLan 模板的 `TemplateField_WLan_SSID`，
+        // 同时也是 KeeWeb/KeePassXC 社区常见命名；把它作为"标准字段"写入以保证
+        // 其他 KeePass 客户端能读懂。
+        private const val FIELD_WIFI_SSID = "SSID"
+        // Monica 扩展元数据（安全类型、代理、IP 等）。只有 Monica 自己解析；
+        // 其它客户端看到的是一段 JSON 字符串，不影响它们的常规使用。
+        private const val FIELD_MONICA_WIFI_DATA = "MonicaWifiData"
+        // 快速识别标志；与 PasswordEntry.loginType 对应，避免读回来时要解析 JSON
+        // 才能判断是不是 WIFI 条目。值为 "WIFI"/"SSO"/"PASSWORD"。
+        private const val FIELD_MONICA_LOGIN_TYPE = "MonicaLoginType"
         // kotpass decode 在并发下可能触发 native 崩溃，必须跨实例串行化。
         private val globalDecodeMutex = Mutex()
         // 部分设备/ABI 下 decode 在不同工作线程切换时更易触发 native 崩溃，固定到单线程执行更稳。
@@ -742,6 +761,211 @@ class KeePassKdbxService(
         }
     }
 
+    // ================================================================
+    // Attachment API（供 takagi.ru.monica.attachments.executor 使用）
+    //
+    // 对应 .kiro/specs/monica-android-attachments Requirement 6。
+    // 所有方法都通过既有的 `mutateDatabase` / `loadDatabase` 通道，不另起 IO 路径，
+    // 以保证 kdbx 保存时机、锁与缓存行为与密码/安全项一致。
+    // ================================================================
+
+    /** 附件元数据视图（供 executor 层构造 [takagi.ru.monica.attachments.model.Attachment] 使用）。 */
+    data class KeePassAttachmentInfo(
+        val hashHex: String,
+        val fileName: String,
+        val sizeBytes: Long,
+        val memoryProtection: Boolean
+    )
+
+    /**
+     * 读取某个条目的全部附件元数据（不读字节）。
+     *
+     * 要求数据库已解锁（即已通过正常流程 load 过）。
+     */
+    suspend fun readEntryAttachments(
+        databaseId: Long,
+        entryUuid: String
+    ): Result<List<KeePassAttachmentInfo>> = withContext(Dispatchers.IO) {
+        try {
+            val loaded = loadDatabase(databaseId)
+            val targetUuid = parseUuid(entryUuid)
+                ?: return@withContext Result.failure(IllegalArgumentException("Invalid entry uuid"))
+            val entry = findEntryByUuid(loaded.keePassDatabase.content.group, targetUuid)
+                ?: return@withContext Result.failure(NoSuchElementException("Entry not found"))
+            val pool = loaded.keePassDatabase.binaries
+            val infos = entry.binaries.map { ref ->
+                val data = pool[ref.hash]
+                KeePassAttachmentInfo(
+                    hashHex = ref.hash.hex(),
+                    fileName = ref.name,
+                    sizeBytes = (data?.rawContent?.size ?: 0).toLong(),
+                    memoryProtection = data?.memoryProtection ?: false
+                )
+            }
+            Result.success(infos)
+        } catch (e: Exception) {
+            Result.failure(normalizeError(e))
+        }
+    }
+
+    /**
+     * 读取某个附件的明文字节（kotpass 已在内部处理解压）。
+     */
+    suspend fun readAttachmentBytes(
+        databaseId: Long,
+        entryUuid: String,
+        hashHex: String
+    ): Result<ByteArray> = withContext(Dispatchers.IO) {
+        try {
+            val loaded = loadDatabase(databaseId)
+            val targetUuid = parseUuid(entryUuid)
+                ?: return@withContext Result.failure(IllegalArgumentException("Invalid entry uuid"))
+            val entry = findEntryByUuid(loaded.keePassDatabase.content.group, targetUuid)
+                ?: return@withContext Result.failure(NoSuchElementException("Entry not found"))
+            val matchRef = entry.binaries.firstOrNull { it.hash.hex().equals(hashHex, ignoreCase = true) }
+                ?: return@withContext Result.failure(NoSuchElementException("Attachment not found in entry"))
+            val data = loaded.keePassDatabase.binaries[matchRef.hash]
+                ?: return@withContext Result.failure(NoSuchElementException("Attachment missing in binary pool"))
+            // 用 inputStream 读回解压后的明文字节；避免直接访问 BinaryData.content / BinaryData.rawContent
+            // 避免不同 kotpass 版本里 abstract property 访问差异带来的符号解析问题。
+            val bytes = data.inputStream().use { it.readBytes() }
+            Result.success(bytes)
+        } catch (e: Exception) {
+            Result.failure(normalizeError(e))
+        }
+    }
+
+    /**
+     * 为条目新增一个附件：把字节写入 `Meta.binaries` 池（若 hash 已存在则复用），
+     * 再把对应 [BinaryReference] 追加到 `Entry.binaries`。
+     */
+    suspend fun addAttachmentToEntry(
+        databaseId: Long,
+        entryUuid: String,
+        fileName: String,
+        bytes: ByteArray,
+        memoryProtection: Boolean = false,
+        compressed: Boolean = true
+    ): Result<KeePassAttachmentInfo> = withContext(Dispatchers.IO) {
+        try {
+            val targetUuid = parseUuid(entryUuid)
+                ?: return@withContext Result.failure(IllegalArgumentException("Invalid entry uuid"))
+
+            val info = mutateDatabase(databaseId) { loaded ->
+                val oldDb = loaded.keePassDatabase
+                val existingEntry = findEntryByUuid(oldDb.content.group, targetUuid)
+                    ?: throw NoSuchElementException("Entry not found")
+
+                val binaryData: BinaryData = if (compressed) {
+                    BinaryData.Uncompressed(memoryProtection, bytes).toCompressed()
+                } else {
+                    BinaryData.Uncompressed(memoryProtection, bytes)
+                }
+                val hash = binaryData.hash
+
+                // 1. 先写二进制池（未映射时 put；已存在相同 hash 则复用）
+                val withBinary = oldDb.modifyBinaries { pool ->
+                    if (pool.containsKey(hash)) pool else pool + (hash to binaryData)
+                }
+                // 2. 手工替换 Entry.binaries；避开 kotpass 的 inline modifyEntry
+                val newRef = BinaryReference(hash = hash, name = fileName)
+                val updatedEntry = existingEntry.copy(
+                    binaries = existingEntry.binaries + newRef
+                )
+                val rootRewriter: (Group) -> Group = { root ->
+                    updateEntryInGroup(root, targetUuid, updatedEntry)
+                }
+                val updatedDatabase = withBinary.modifyParentGroup(rootRewriter)
+
+                val resultInfo = KeePassAttachmentInfo(
+                    hashHex = hash.hex(),
+                    fileName = fileName,
+                    sizeBytes = bytes.size.toLong(),
+                    memoryProtection = memoryProtection
+                )
+                MutationPlan(updatedDatabase = updatedDatabase, result = resultInfo)
+            }
+            Result.success(info)
+        } catch (e: OutOfMemoryError) {
+            Result.failure(e)
+        } catch (e: Exception) {
+            Result.failure(normalizeError(e))
+        }
+    }
+
+    /**
+     * 从条目中删除一个附件；若该 hash 在所有 Entry 里都不再被引用，从 `Meta.binaries` 池释放。
+     */
+    suspend fun deleteAttachmentFromEntry(
+        databaseId: Long,
+        entryUuid: String,
+        hashHex: String
+    ): Result<Boolean> = withContext(Dispatchers.IO) {
+        try {
+            val targetUuid = parseUuid(entryUuid)
+                ?: return@withContext Result.failure(IllegalArgumentException("Invalid entry uuid"))
+            val removed = mutateDatabase(databaseId) { loaded ->
+                val oldDb = loaded.keePassDatabase
+                val existingEntry = findEntryByUuid(oldDb.content.group, targetUuid)
+                    ?: throw NoSuchElementException("Entry not found")
+                val targetRef = existingEntry.binaries
+                    .firstOrNull { it.hash.hex().equals(hashHex, ignoreCase = true) }
+                if (targetRef == null) {
+                    return@mutateDatabase MutationPlan(updatedDatabase = oldDb, result = false)
+                }
+                val updatedEntry = existingEntry.copy(
+                    binaries = existingEntry.binaries - targetRef
+                )
+                val rootRewriter: (Group) -> Group = { root ->
+                    updateEntryInGroup(root, targetUuid, updatedEntry)
+                }
+                val rootReplaced = oldDb.modifyParentGroup(rootRewriter)
+                // 判断该 hash 是否还被任何条目引用；不再引用时从池释放。
+                val stillReferenced = anyEntryReferencesHash(
+                    rootReplaced.content.group,
+                    targetRef.hash
+                )
+                val compacted = if (stillReferenced) {
+                    rootReplaced
+                } else {
+                    rootReplaced.modifyBinaries { pool -> pool - targetRef.hash }
+                }
+                MutationPlan(updatedDatabase = compacted, result = true)
+            }
+            Result.success(removed)
+        } catch (e: Exception) {
+            Result.failure(normalizeError(e))
+        }
+    }
+
+    /** 仅判断 kdbx 是否已解锁（有 cache 命中），不会触发解密。 */
+    fun isDatabaseUnlocked(databaseId: Long): Boolean {
+        return synchronized(loadedDatabaseCache) { loadedDatabaseCache.containsKey(databaseId) }
+    }
+
+    private fun findEntryByUuid(group: Group, uuid: UUID): Entry? {
+        group.entries.firstOrNull { it.uuid == uuid }?.let { return it }
+        for (child in group.groups) {
+            findEntryByUuid(child, uuid)?.let { return it }
+        }
+        return null
+    }
+
+    private fun updateEntryInGroup(group: Group, targetUuid: UUID, replacement: Entry): Group {
+        val newEntries = group.entries.map { if (it.uuid == targetUuid) replacement else it }
+        val newGroups = group.groups.map { updateEntryInGroup(it, targetUuid, replacement) }
+        return group.copy(entries = newEntries, groups = newGroups)
+    }
+
+    private fun anyEntryReferencesHash(group: Group, hash: okio.ByteString): Boolean {
+        if (group.entries.any { entry -> entry.binaries.any { it.hash == hash } }) return true
+        return group.groups.any { anyEntryReferencesHash(it, hash) }
+    }
+
+    // ================================================================
+    // Attachment API end
+    // ================================================================
+
     suspend fun addPasswordEntry(
         databaseId: Long,
         entry: PasswordEntry,
@@ -1278,10 +1502,16 @@ class KeePassKdbxService(
     }
 
     private fun buildEntry(entry: PasswordEntry, plainPassword: String): Entry {
-        return Entry(
+        val base = Entry(
             uuid = parseUuid(entry.keepassEntryUuid) ?: UUID.randomUUID(),
             fields = buildEntryFields(entry, plainPassword)
         )
+        // WIFI 条目使用 IRCommunication 图标，与 keepass2android WLan 模板一致。
+        return if (entry.isWifiEntry()) {
+            base.copy(icon = app.keemobile.kotpass.constants.PredefinedIcon.IRCommunication)
+        } else {
+            base
+        }
     }
 
     private fun buildPasskeyEntry(passkey: PasskeyEntry): Entry {
@@ -1302,6 +1532,21 @@ class KeePassKdbxService(
         )
         if (monicaId.isNotEmpty()) {
             pairs.add(FIELD_MONICA_LOCAL_ID to EntryValue.Plain(monicaId))
+        }
+        // WIFI 条目：写入与 keepass2android WLan 模板兼容的标准字段（SSID + Password），
+        // 并把 Monica 专属扩展 (安全类型、代理、IP 设置等) 塞到 MonicaWifiData JSON。
+        // 这样其他 KeePass 客户端能读到 SSID/Password 基本信息，Monica 自己读回时
+        // 则能无损还原完整配置。
+        if (entry.isWifiEntry()) {
+            pairs += FIELD_MONICA_LOGIN_TYPE to EntryValue.Plain("WIFI")
+            val wifi = takagi.ru.monica.data.model.WifiData.fromJsonOrEmpty(entry.wifiMetadata)
+            val ssidForStandardField = wifi.ssid.ifBlank { entry.title }
+            if (ssidForStandardField.isNotBlank()) {
+                pairs += FIELD_WIFI_SSID to EntryValue.Plain(ssidForStandardField)
+            }
+            if (entry.wifiMetadata.isNotBlank()) {
+                pairs += FIELD_MONICA_WIFI_DATA to EntryValue.Plain(entry.wifiMetadata)
+            }
         }
         SshKeyDataCodec.decode(entry.sshKeyData)?.let { ssh ->
             if (ssh.algorithm.isNotBlank()) {
@@ -1780,6 +2025,27 @@ class KeePassKdbxService(
             isInRecycleBinByMeta = isInRecycleBinByMeta,
             hasRecycleBinMeta = hasRecycleBinMeta
         )
+        // WIFI 识别：优先使用 Monica 自己写的元数据（包含安全类型/代理/IP 等），
+        // 兜底看 keepass2android WLan 模板的 SSID 字段；两者都有的话 Monica 元
+        // 数据更完整，优先用它。
+        val monicaLoginType = getFieldValue(entry, FIELD_MONICA_LOGIN_TYPE, resolutionContext)
+        val monicaWifiJson = getFieldValue(entry, FIELD_MONICA_WIFI_DATA, resolutionContext)
+        val ssidField = getFieldValue(entry, FIELD_WIFI_SSID, resolutionContext)
+        val (resolvedLoginType, resolvedWifiJson) = when {
+            monicaLoginType.equals("WIFI", ignoreCase = true) && monicaWifiJson.isNotBlank() ->
+                "WIFI" to monicaWifiJson
+            monicaLoginType.equals("WIFI", ignoreCase = true) -> {
+                val wifi = takagi.ru.monica.data.model.WifiData(ssid = ssidField.ifBlank { title })
+                "WIFI" to wifi.toJson()
+            }
+            ssidField.isNotBlank() -> {
+                // 外部客户端（kp2a/KeePassXC 手动填 SSID 字段）写入的兼容条目。
+                val wifi = takagi.ru.monica.data.model.WifiData(ssid = ssidField)
+                "WIFI" to wifi.toJson()
+            }
+            monicaLoginType.equals("SSO", ignoreCase = true) -> "SSO" to ""
+            else -> "PASSWORD" to ""
+        }
         return KeePassEntryData(
             title = title,
             username = username,
@@ -1791,7 +2057,9 @@ class KeePassKdbxService(
             entryUuid = entry.uuid.toString(),
             groupPath = groupPath,
             groupUuid = groupUuid?.toString(),
-            isInRecycleBin = inRecycleBin
+            isInRecycleBin = inRecycleBin,
+            loginType = resolvedLoginType,
+            wifiMetadata = resolvedWifiJson
         )
     }
 
@@ -2008,6 +2276,7 @@ class KeePassKdbxService(
             FIELD_MONICA_IMAGE_PATHS, FIELD_MONICA_IS_FAVORITE,
             FIELD_MONICA_PASSKEY_CREDENTIAL_ID, FIELD_MONICA_PASSKEY_DATA,
             FIELD_MONICA_PASSKEY_MODE,
+            FIELD_WIFI_SSID, FIELD_MONICA_WIFI_DATA, FIELD_MONICA_LOGIN_TYPE,
             KeePassDxPasskeyCodec.FIELD_PASSKEY,
             KeePassDxPasskeyCodec.FIELD_USERNAME,
             KeePassDxPasskeyCodec.FIELD_PRIVATE_KEY,

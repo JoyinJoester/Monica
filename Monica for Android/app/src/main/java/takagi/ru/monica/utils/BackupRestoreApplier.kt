@@ -182,6 +182,61 @@ object BackupRestoreApplier {
             }
         }
 
+        // 附件恢复：zip 扫描阶段已经把密文 blob 放到 filesDir/secure_attachments/，
+        // 这里按 passwordIdMap 把备份里的 parent id 重映射到新 id 后再 upsert。
+        // 对应 spec Requirement 9.5 / 9.6。
+        if (content.attachments.isNotEmpty()) {
+            val attachmentDao = PasswordDatabase.getDatabase(context).attachmentDao()
+            val storageDir = java.io.File(context.filesDir, "secure_attachments")
+            var attachmentRestored = 0
+            var attachmentSkipped = 0
+            var attachmentMissingBlob = 0
+            var attachmentUnmappedParent = 0
+            val now = System.currentTimeMillis()
+            content.attachments.forEach { entry ->
+                val mappedParentId = passwordIdMap[entry.parentPasswordId]
+                if (mappedParentId == null) {
+                    // 对应密码没有被恢复（可能是重复项命中了 existingEntry 但 passwordIdMap 已记录），
+                    // 或者压根没出现在备份密码列表。后者跳过，前者 passwordIdMap 里有值会走下面的分支。
+                    attachmentUnmappedParent++
+                    return@forEach
+                }
+                val blob = java.io.File(storageDir, entry.localPath)
+                if (!blob.isFile) {
+                    attachmentMissingBlob++
+                    return@forEach
+                }
+                val existingForParent = attachmentDao.getAllByParent(mappedParentId)
+                val duplicate = existingForParent.any { existing ->
+                    existing.localPath == entry.localPath ||
+                        (existing.fileName == entry.fileName &&
+                            existing.sizeBytes == entry.sizeBytes &&
+                            existing.sha256Hex != null &&
+                            existing.sha256Hex == entry.sha256Hex)
+                }
+                if (duplicate) {
+                    attachmentSkipped++
+                    return@forEach
+                }
+                val attachment = with(
+                    takagi.ru.monica.attachments.backup.AttachmentBackupCodec
+                ) { entry.toAttachment(now) }.copy(parentPasswordId = mappedParentId)
+                try {
+                    attachmentDao.insert(attachment)
+                    attachmentRestored++
+                } catch (e: Exception) {
+                    android.util.Log.w(
+                        logTag,
+                        "Attachment upsert failed for ${entry.localPath} -> parent $mappedParentId: ${e.message}"
+                    )
+                }
+            }
+            android.util.Log.d(
+                logTag,
+                "Restored attachments: total=${content.attachments.size} restored=$attachmentRestored skipped=$attachmentSkipped missingBlob=$attachmentMissingBlob unmappedParent=$attachmentUnmappedParent"
+            )
+        }
+
         if (passwordHistory.isNotEmpty()) {
             var historyCount = 0
             passwordHistory.forEach { historyEntry ->

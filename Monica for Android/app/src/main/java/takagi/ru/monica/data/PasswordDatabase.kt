@@ -5,6 +5,8 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import takagi.ru.monica.attachments.data.AttachmentDao
+import takagi.ru.monica.attachments.model.Attachment
 import takagi.ru.monica.data.bitwarden.*
 
 /**
@@ -31,9 +33,11 @@ import takagi.ru.monica.data.bitwarden.*
         BitwardenSend::class,
         BitwardenConflictBackup::class,
         BitwardenPendingOperation::class,
-        BitwardenSyncRawEntryRecord::class
+        BitwardenSyncRawEntryRecord::class,
+        // 附件（仅挂在 PasswordEntry 上，跨 Local/Bitwarden/KeePass 三个来源统一元数据）
+        Attachment::class
     ],
-    version = 59,
+    version = 61,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -60,6 +64,9 @@ abstract class PasswordDatabase : RoomDatabase() {
     abstract fun bitwardenConflictBackupDao(): BitwardenConflictBackupDao
     abstract fun bitwardenPendingOperationDao(): BitwardenPendingOperationDao
     abstract fun bitwardenSyncRawEntryRecordDao(): BitwardenSyncRawEntryRecordDao
+
+    // Attachment DAO（跨来源统一附件元数据）
+    abstract fun attachmentDao(): AttachmentDao
     
     companion object {
         @Volatile
@@ -1780,6 +1787,68 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        // Migration 59 → 60 - 附件表（仅挂在 password_entries 上）
+        // 对应 .kiro/specs/monica-android-attachments Requirement 1 / 9.1
+        private val MIGRATION_59_60 = object : androidx.room.migration.Migration(59, 60) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 59→60: attachments table")
+
+                    database.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS attachments (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            parent_password_id INTEGER NOT NULL,
+                            source TEXT NOT NULL,
+                            file_name TEXT NOT NULL,
+                            mime_type TEXT NOT NULL,
+                            size_bytes INTEGER NOT NULL,
+                            sha256_hex TEXT,
+                            wrapped_cek TEXT,
+                            local_path TEXT,
+                            bitwarden_attachment_id TEXT,
+                            bitwarden_url TEXT,
+                            bitwarden_file_key_enc TEXT,
+                            keepass_binary_ref TEXT,
+                            download_state TEXT NOT NULL,
+                            created_at INTEGER NOT NULL,
+                            updated_at INTEGER NOT NULL,
+                            is_deleted INTEGER NOT NULL DEFAULT 0,
+                            deleted_at INTEGER,
+                            FOREIGN KEY(parent_password_id) REFERENCES password_entries(id) ON DELETE CASCADE
+                        )
+                        """.trimIndent()
+                    )
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_attachments_parent ON attachments(parent_password_id)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_attachments_source ON attachments(source)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_attachments_bw_id ON attachments(bitwarden_attachment_id)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_attachments_kp_ref ON attachments(keepass_binary_ref)")
+
+                    android.util.Log.i("PasswordDatabase", "Migration 59→60 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 59→60 failed: ${e.message}")
+                    throw e
+                }
+            }
+        }
+
+        // Migration 60 → 61 - WIFI 条目扩展元数据
+        // 复用 password_entries：loginType 新增取值 "WIFI"，额外字段 wifi_metadata 存 JSON。
+        private val MIGRATION_60_61 = object : androidx.room.migration.Migration(60, 61) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 60→61: wifi_metadata column")
+                    database.execSQL(
+                        "ALTER TABLE password_entries ADD COLUMN wifi_metadata TEXT NOT NULL DEFAULT ''"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 60→61 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 60→61 failed: ${e.message}")
+                    throw e
+                }
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -1845,7 +1914,9 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_55_56,  // Passkey 内部记录 ID
                         MIGRATION_56_57,  // KeePass 远端来源与同步骨架
                         MIGRATION_57_58,  // Bitwarden Vault 身份稳定化
-                        MIGRATION_58_59   // KeePass Passkey 去重与唯一约束
+                        MIGRATION_58_59,  // KeePass Passkey 去重与唯一约束
+                        MIGRATION_59_60,   // 附件表 (attachments)
+                        MIGRATION_60_61   // WIFI 条目扩展元数据 (wifi_metadata)
                     )
                     .build()
                 INSTANCE = instance

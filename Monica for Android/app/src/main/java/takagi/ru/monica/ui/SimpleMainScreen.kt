@@ -811,6 +811,7 @@ fun SimpleMainScreen(
     localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
     securityManager: SecurityManager,
     onNavigateToAddPassword: (Long?) -> Unit,
+    onNavigateToAddWifi: (Long?) -> Unit = {},
     onNavigateToAddTotp: (Long?) -> Unit,
     onNavigateToQuickTotpScan: () -> Unit,
     onNavigateToFidoQrScan: () -> Unit,
@@ -2148,6 +2149,7 @@ fun SimpleMainScreen(
                         selectedPasswordId = selectedPasswordId,
                         passwordNewItemDefaults = pendingInlinePasswordAddStorageDefaults ?: passwordNewItemDefaults,
                         onInlinePasswordEditorBack = handleInlinePasswordEditorBack,
+                        onNavigateToAddWifi = onNavigateToAddWifi,
                         totpViewModel = totpViewModel,
                         bankCardViewModel = bankCardViewModel,
                         noteViewModel = noteViewModel,
@@ -2569,7 +2571,8 @@ fun SimpleMainScreen(
         walletAddSaveableStateHolder = walletAddSaveableStateHolder,
         noteViewModel = noteViewModel,
         sendState = sendState,
-        bitwardenViewModel = bitwardenViewModel
+        bitwardenViewModel = bitwardenViewModel,
+        onNavigateToAddWifi = onNavigateToAddWifi
     )
 
     val navBarInsetBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -2706,6 +2709,7 @@ private fun PasswordTabPane(
     selectedPasswordId: Long?,
     passwordNewItemDefaults: NewItemStorageDefaults,
     onInlinePasswordEditorBack: () -> Unit,
+    onNavigateToAddWifi: (Long?) -> Unit = {},
     totpViewModel: takagi.ru.monica.viewmodel.TotpViewModel,
     bankCardViewModel: takagi.ru.monica.viewmodel.BankCardViewModel,
     noteViewModel: NoteViewModel,
@@ -2812,6 +2816,10 @@ private fun PasswordTabPane(
                         initialKeePassGroupPath = passwordNewItemDefaults.keepassGroupPath,
                         initialBitwardenVaultId = passwordNewItemDefaults.bitwardenVaultId,
                         initialBitwardenFolderId = passwordNewItemDefaults.bitwardenFolderId,
+                        onSwitchToWifi = { targetId ->
+                            onInlinePasswordEditorBack()
+                            onNavigateToAddWifi(targetId)
+                        },
                         onNavigateBack = onInlinePasswordEditorBack
                     )
                 } else if (selectedPasswordId == null) {
@@ -3507,6 +3515,7 @@ private fun BoxScope.MainScreenFabOverlay(
     noteViewModel: NoteViewModel,
     sendState: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel.SendState,
     bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel,
+    onNavigateToAddWifi: (Long?) -> Unit = {},
 ) {
     // FAB visibility is computed from tab context + selection mode + detail pane occupancy.
     // This avoids conflicting gestures between fast-scroll, quick access, and expandable add menu.
@@ -3714,6 +3723,7 @@ private fun BoxScope.MainScreenFabOverlay(
                 onSendAddOpen = onSendAddOpen,
                 onGeneratorRefresh = onGeneratorRefresh,
                 onExpandStateChanged = onFabExpandedChange,
+                onNavigateToAddWifi = onNavigateToAddWifi,
                 passwordViewModel = passwordViewModel,
                 totpViewModel = totpViewModel,
                 bankCardViewModel = bankCardViewModel,
@@ -4090,6 +4100,7 @@ private fun MainScreenAddFab(
     onSendAddOpen: () -> Unit,
     onGeneratorRefresh: () -> Unit,
     onExpandStateChanged: (Boolean) -> Unit,
+    onNavigateToAddWifi: (Long?) -> Unit = {},
     passwordViewModel: PasswordViewModel,
     totpViewModel: TotpViewModel,
     bankCardViewModel: BankCardViewModel,
@@ -4297,6 +4308,10 @@ private fun MainScreenAddFab(
                                 initialKeePassGroupPath = aggregateStorageDefaults?.keepassGroupPath,
                                 initialBitwardenVaultId = aggregateStorageDefaults?.bitwardenVaultId,
                                 initialBitwardenFolderId = aggregateStorageDefaults?.bitwardenFolderId,
+                                onSwitchToWifi = { targetId ->
+                                    collapse()
+                                    onNavigateToAddWifi(targetId)
+                                },
                                 onNavigateBack = collapse
                             )
                         }
@@ -4370,6 +4385,10 @@ private fun MainScreenAddFab(
                                     initialKeePassGroupPath = aggregateStorageDefaults?.keepassGroupPath,
                                     initialBitwardenVaultId = aggregateStorageDefaults?.bitwardenVaultId,
                                     initialBitwardenFolderId = aggregateStorageDefaults?.bitwardenFolderId,
+                                    onSwitchToWifi = { targetId ->
+                                        collapse()
+                                        onNavigateToAddWifi(targetId)
+                                    },
                                     onNavigateBack = collapse
                                 )
                             }

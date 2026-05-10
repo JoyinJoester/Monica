@@ -27,6 +27,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.DragIndicator
@@ -941,6 +942,20 @@ fun PasswordListCustomizationScreen(
                                                     }
                                                 )
                                             }
+                                        }
+
+                                        PasswordListQuickFilterItem.ATTACHMENTS -> {
+                                            FilterChip(
+                                                selected = false,
+                                                onClick = {},
+                                                label = { Text(text = stringResource(R.string.attachment_section_title)) },
+                                                leadingIcon = {
+                                                    Icon(
+                                                        imageVector = Icons.Default.AttachFile,
+                                                        contentDescription = null
+                                                    )
+                                                }
+                                            )
                                         }
 
                                         PasswordListQuickFilterItem.AUTHENTICATOR -> Unit

@@ -86,11 +86,16 @@ data class PasswordEntry(
     
     // 第三方登录(SSO)字段
     @ColumnInfo(defaultValue = "PASSWORD")
-    val loginType: String = "PASSWORD",  // 登录类型: PASSWORD 或 SSO
+    val loginType: String = "PASSWORD",  // 登录类型: PASSWORD / SSO / WIFI
     @ColumnInfo(defaultValue = "")
     val ssoProvider: String = "",        // SSO提供商: GOOGLE, APPLE, FACEBOOK 等
     @ColumnInfo(defaultValue = "NULL")
     val ssoRefEntryId: Long? = null,     // 引用的账号条目ID
+
+    // WIFI 条目扩展数据（JSON 序列化的 takagi.ru.monica.data.model.WifiData）
+    // 仅当 loginType == "WIFI" 时使用；其他登录类型保持空字符串以节省空间。
+    @ColumnInfo(name = "wifi_metadata", defaultValue = "")
+    val wifiMetadata: String = "",
 
     // 自定义图标字段
     @ColumnInfo(defaultValue = "NONE")
@@ -140,6 +145,11 @@ data class PasswordEntry(
      * 是否使用第三方登录
      */
     fun isSsoLogin(): Boolean = loginType == "SSO"
+
+    /**
+     * 是否为 WIFI 类型条目
+     */
+    fun isWifiEntry(): Boolean = loginType.equals("WIFI", ignoreCase = true)
     
     /**
      * 获取SSO提供商枚举

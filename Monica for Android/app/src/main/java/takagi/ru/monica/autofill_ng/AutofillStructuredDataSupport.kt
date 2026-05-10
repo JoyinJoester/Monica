@@ -23,18 +23,14 @@ internal fun buildAutofillPickerRequestProfile(hints: List<String>?): AutofillPi
     val documentKeyHintCount = normalizedHints.count(::isDocumentKeyAutofillHint)
 
     val hasLoginHints = loginHintCount > 0
-    val dominantBankCard = bankCardHintCount >= 2 &&
-        bankCardKeyHintCount >= 1 &&
-        bankCardHintCount >= documentHintCount + 1
-    val dominantDocument = documentHintCount >= 2 &&
-        documentKeyHintCount >= 1 &&
-        documentHintCount >= bankCardHintCount + 1
-    val wantsBankCards = !hasLoginHints && dominantBankCard
-    val wantsDocuments = !hasLoginHints && dominantDocument
-
-    // Keep login suggestions as the default path whenever login hints are present.
-    // Structured entry points are enabled only for high-confidence non-login requests.
-    val wantsPasswords = hasLoginHints || (!wantsBankCards && !wantsDocuments)
+    val hasBankCardHints = bankCardHintCount > 0
+    val hasDocumentHints = documentHintCount > 0
+    val wantsBankCards = hasBankCardHints &&
+        (bankCardKeyHintCount > 0 || bankCardHintCount >= documentHintCount)
+    val wantsDocuments = hasDocumentHints &&
+        (documentKeyHintCount > 0 || documentHintCount >= bankCardHintCount)
+    val wantsStructuredItems = wantsBankCards || wantsDocuments
+    val wantsPasswords = hasLoginHints || !wantsStructuredItems
 
     return AutofillPickerRequestProfile(
         wantsPasswords = wantsPasswords,
@@ -97,6 +93,11 @@ internal fun isBankCardAutofillHint(rawHint: String?): Boolean {
         hint == EnhancedAutofillStructureParserV2.FieldHint.CREDIT_CARD_EXPIRATION_YEAR.name.lowercase() ||
         hint == EnhancedAutofillStructureParserV2.FieldHint.CREDIT_CARD_SECURITY_CODE.name.lowercase() ||
         hint == EnhancedAutofillStructureParserV2.FieldHint.CREDIT_CARD_HOLDER_NAME.name.lowercase() ||
+        hint == EnhancedAutofillStructureParserV2.FieldHint.POSTAL_ADDRESS.name.lowercase() ||
+        hint == EnhancedAutofillStructureParserV2.FieldHint.POSTAL_CODE.name.lowercase() ||
+        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_CITY.name.lowercase() ||
+        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_REGION.name.lowercase() ||
+        hint == EnhancedAutofillStructureParserV2.FieldHint.ADDRESS_COUNTRY.name.lowercase() ||
         hint.contains("cc_") ||
         hint.contains("credit_card") ||
         hint.contains("creditcard") ||
@@ -104,7 +105,17 @@ internal fun isBankCardAutofillHint(rawHint: String?): Boolean {
         hint.contains("cardholder") ||
         hint.contains("holder_name") ||
         hint.contains("cvv") ||
-        hint.contains("cvc")
+        hint.contains("cvc") ||
+        hint.contains("billing_address") ||
+        hint.contains("street_address") ||
+        hint.contains("address_line") ||
+        hint.contains("postal") ||
+        hint.contains("zip") ||
+        hint.contains("city") ||
+        hint.contains("state") ||
+        hint.contains("province") ||
+        hint.contains("region") ||
+        hint.contains("country")
 }
 
 internal fun isDocumentAutofillHint(rawHint: String?): Boolean {
@@ -295,6 +306,15 @@ internal fun documentDisplaySubtitle(data: DocumentData): String {
         resolveIdentityNumber("", data).takeIf { it.isNotBlank() }?.let(::maskDocumentNumber),
         data.issuedBy.takeIf { it.isNotBlank() },
     ).joinToString(" · ")
+}
+
+internal fun bankCardBillingAddressDisplay(data: BankCardData): String {
+    return CardWalletDataCodec.parseBillingAddress(data.billingAddress)
+        .toAutofillAddress()
+}
+
+internal fun documentBillingAddressDisplay(data: DocumentData): String {
+    return data.toAutofillAddress()
 }
 
 private fun normalizeAutofillHint(rawHint: String?): String {

@@ -798,6 +798,11 @@ fun MonicaContent(
                         launchSingleTop = true
                     }
                 },
+                onNavigateToAddWifi = { passwordId ->
+                    navController.navigate(Screen.AddEditWifi.createRoute(passwordId)) {
+                        launchSingleTop = true
+                    }
+                },
                 onNavigateToAddTotp = { totpId ->
                     navController.navigate(Screen.AddEditTotp.createRoute(totpId))
                 },
@@ -1044,8 +1049,91 @@ fun MonicaContent(
                         launchSingleTop = true
                     }
                 },
+                onSwitchToWifi = { targetId ->
+                    val route = Screen.AddEditWifi.createRoute(targetId)
+                    navController.navigate(route) {
+                        popUpTo(Screen.AddEditPassword.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
                 onNavigateBack = navigateBackFromAddEditPassword
             )
+        }
+
+        composable(
+            route = Screen.AddEditWifi.route,
+            enterTransition = { rightSlideEnterTransition() },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { rightSlidePopExitTransition() }
+        ) { backStackEntry ->
+            val passwordIdArg = backStackEntry.arguments?.getString("passwordId")?.toLongOrNull() ?: -1L
+            val navigateBack = {
+                val popped = navController.popBackStack()
+                if (!popped) {
+                    navController.navigate(Screen.Main.createRoute()) {
+                        popUpTo(0) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }
+            }
+            val qrResult = navController.currentBackStackEntry
+                ?.savedStateHandle
+                ?.get<String>("qr_result")
+            takagi.ru.monica.ui.screens.AddEditWifiScreen(
+                viewModel = viewModel,
+                localKeePassViewModel = localKeePassViewModel,
+                passwordId = if (passwordIdArg == -1L) null else passwordIdArg,
+                pendingQrResult = qrResult,
+                onConsumePendingQrResult = {
+                    navController.currentBackStackEntry
+                        ?.savedStateHandle
+                        ?.remove<String>("qr_result")
+                },
+                onScanQrCode = {
+                    navController.navigate(Screen.QrScanner.route) {
+                        launchSingleTop = true
+                    }
+                },
+                onNavigateBack = navigateBack,
+                onNavigateToPassword = {
+                    navController.navigate(Screen.AddEditPassword.createRoute(null)) {
+                        popUpTo(Screen.AddEditWifi.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }
+            )
+        }
+
+        composable(
+            route = Screen.WifiDetail.route,
+            enterTransition = { rightSlideEnterTransition() },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { rightSlidePopExitTransition() }
+        ) { backStackEntry ->
+            val wifiId = backStackEntry.arguments?.getString("passwordId")?.toLongOrNull() ?: -1L
+            if (wifiId > 0) {
+                val navigateBack = {
+                    val popped = navController.popBackStack()
+                    if (!popped) {
+                        navController.navigate(Screen.Main.createRoute()) {
+                            popUpTo(0) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    }
+                }
+                takagi.ru.monica.ui.screens.WifiDetailScreen(
+                    viewModel = viewModel,
+                    passwordId = wifiId,
+                    onNavigateBack = navigateBack,
+                    onEdit = { id ->
+                        navController.navigate(Screen.AddEditWifi.createRoute(id)) {
+                            launchSingleTop = true
+                        }
+                    }
+                )
+            }
         }
 
         composable(
@@ -1486,10 +1574,29 @@ fun MonicaContent(
                         }
                     }
                 }
-                androidx.compose.runtime.CompositionLocalProvider(
-                    takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
-                ) {
-                    takagi.ru.monica.ui.screens.PasswordDetailScreen(
+                // WIFI 条目走独立详情页；快速探测 loginType 后重定向，避免打开复杂的密码详情屏。
+                var wifiRedirectChecked by androidx.compose.runtime.remember(passwordId) {
+                    androidx.compose.runtime.mutableStateOf(false)
+                }
+                var redirectedToWifi by androidx.compose.runtime.remember(passwordId) {
+                    androidx.compose.runtime.mutableStateOf(false)
+                }
+                androidx.compose.runtime.LaunchedEffect(passwordId) {
+                    val entry = viewModel.getRawPasswordEntryById(passwordId)
+                    if (entry?.isWifiEntry() == true) {
+                        redirectedToWifi = true
+                        navController.navigate(Screen.WifiDetail.createRoute(passwordId)) {
+                            popUpTo(Screen.PasswordDetail.route) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    }
+                    wifiRedirectChecked = true
+                }
+                if (wifiRedirectChecked && !redirectedToWifi) {
+                    androidx.compose.runtime.CompositionLocalProvider(
+                        takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
+                    ) {
+                        takagi.ru.monica.ui.screens.PasswordDetailScreen(
                         viewModel = viewModel,
                         passkeyViewModel = passkeyViewModel,
                         noteViewModel = noteViewModel,
@@ -1514,6 +1621,7 @@ fun MonicaContent(
                             }
                         }
                     )
+                }
                 }
             }
         }

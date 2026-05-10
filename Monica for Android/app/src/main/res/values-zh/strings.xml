@@ -252,6 +252,80 @@
     <!-- Add/Edit Password Screen -->
     <string name="add_password_title">添加密码</string>
     <string name="edit_password_title">编辑密码</string>
+
+    <!-- 条目类型切换 chip -->
+    <string name="entry_type_chip_content_description">切换条目类型</string>
+    <string name="entry_type_password">密码</string>
+    <string name="entry_type_wifi">WIFI</string>
+
+    <!-- 添加/编辑 WIFI 页面 -->
+    <string name="add_wifi_title">添加WIFI</string>
+    <string name="edit_wifi_title">编辑WIFI</string>
+    <string name="wifi_section_basic">基础信息</string>
+    <string name="wifi_section_security">安全性</string>
+    <string name="wifi_section_privacy">隐私</string>
+    <string name="wifi_section_proxy">代理</string>
+    <string name="wifi_section_ip">IP设置</string>
+    <string name="wifi_ssid_label">网络名称 (SSID)</string>
+    <string name="wifi_ssid_required">网络名称 *</string>
+    <string name="wifi_password_label">密码</string>
+    <string name="wifi_hidden_network">隐藏网络</string>
+    <string name="wifi_bssid_label">BSSID (可选)</string>
+    <string name="wifi_security_label">安全性</string>
+    <string name="wifi_security_none">无</string>
+    <string name="wifi_security_wep">WEP</string>
+    <string name="wifi_security_wpa_wpa2">WPA/WPA2-Personal</string>
+    <string name="wifi_security_wpa2_wpa3">WPA2/WPA3-Personal</string>
+    <string name="wifi_security_wpa3">WPA3-Personal</string>
+    <string name="wifi_security_wpa2_enterprise">WPA2-Enterprise</string>
+    <string name="wifi_security_wpa3_enterprise">WPA3-Enterprise</string>
+    <string name="wifi_eap_method">EAP方法</string>
+    <string name="wifi_eap_phase2">阶段2身份验证</string>
+    <string name="wifi_eap_identity">身份</string>
+    <string name="wifi_eap_anonymous_identity">匿名身份</string>
+    <string name="wifi_eap_ca_certificate">CA证书</string>
+    <string name="wifi_eap_domain">域</string>
+    <string name="wifi_privacy_label">MAC地址</string>
+    <string name="wifi_privacy_default">使用系统默认</string>
+    <string name="wifi_privacy_randomized">使用随机MAC</string>
+    <string name="wifi_privacy_device_mac">使用设备MAC</string>
+    <string name="wifi_proxy_label">代理</string>
+    <string name="wifi_proxy_none">无</string>
+    <string name="wifi_proxy_manual">手动</string>
+    <string name="wifi_proxy_auto">自动配置 (PAC)</string>
+    <string name="wifi_proxy_host">代理主机</string>
+    <string name="wifi_proxy_port">代理端口</string>
+    <string name="wifi_proxy_bypass">绕过列表</string>
+    <string name="wifi_proxy_pac_url">PAC网址</string>
+    <string name="wifi_ip_label">IP分配</string>
+    <string name="wifi_ip_dhcp">DHCP</string>
+    <string name="wifi_ip_static">静态</string>
+    <string name="wifi_ip_address">IP地址</string>
+    <string name="wifi_ip_gateway">网关</string>
+    <string name="wifi_ip_prefix">网络前缀长度</string>
+    <string name="wifi_ip_dns1">DNS1</string>
+    <string name="wifi_ip_dns2">DNS2</string>
+    <string name="wifi_detail_title">WIFI详情</string>
+    <string name="wifi_detail_copy_password">复制密码</string>
+    <string name="wifi_detail_copy_ssid">复制SSID</string>
+    <string name="wifi_list_subtitle_security_none">开放网络</string>
+    <string name="wifi_list_subtitle_format">%1$s · %2$s</string>
+    <string name="wifi_scan_qr">扫描 Wi-Fi 二维码</string>
+    <string name="wifi_scan_success">已从二维码填入：%1$s</string>
+    <string name="wifi_scan_invalid">不是有效的 Wi-Fi 二维码</string>
+    <string name="wifi_detail_storage">存储位置</string>
+
+    <!-- WIFI 一键连接 -->
+    <string name="wifi_connect_button">连接</string>
+    <string name="wifi_connect_prefilled_hint">已提交到系统 Wi-Fi 建议，在弹窗里点"加入"即可连接</string>
+    <string name="wifi_connect_fallback_copied">密码已复制，打开 Wi-Fi 设置后粘贴即可</string>
+    <string name="wifi_connect_fallback_no_copy">已打开 Wi-Fi 设置页，请手动添加网络</string>
+    <string name="wifi_connect_failed">当前设备无法打开 Wi-Fi 设置</string>
+    <string name="wifi_qr_button">二维码</string>
+    <string name="wifi_qr_dialog_title">扫码加入 %1$s</string>
+    <string name="wifi_qr_unsupported">企业级 Wi-Fi 无法生成二维码</string>
+
+    <string name="loading">加载中…</string>
     <string name="title_required">标题 *</string>
     <string name="website_url">网站/网址</string>
     <string name="username_email">用户名/邮箱</string>
@@ -929,7 +1003,7 @@
     <string name="custom_icon_load_more">加载更多图标（剩余 %1$d 个）</string>
     <string name="custom_icon_upload_success">图标上传成功</string>
     <string name="custom_icon_upload_failed">上传失败：%1$s</string>
-    <string name="settings_version_number">V1.0.285</string>
+    <string name="settings_version_number">V1.0.286</string>
     <string name="settings_support_author">支持作者</string>
     <string name="settings_support_author_description">感谢您的支持</string>
     <string name="settings_privacy_policy">隐私政策</string>
@@ -1996,6 +2070,14 @@
     <string name="fill_common_account">填充</string>
     <string name="common_account_templates_title">常用账号信息</string>
     <string name="common_account_templates_description">管理可复用的账号模板，支持邮箱、账号、手机号、密码四种类型。</string>
+    <string name="common_account_billing_address_title">账单地址</string>
+    <string name="common_account_billing_address_desc">保存默认账单地址，用于付款和银行卡表单。</string>
+    <string name="common_account_billing_use_saved">使用常用账单地址</string>
+    <string name="common_account_billing_filled">已填入常用账单地址</string>
+    <string name="common_account_billing_use_location">使用当前位置</string>
+    <string name="common_account_billing_location_filled">已根据当前位置填入地址</string>
+    <string name="common_account_billing_location_failed">无法从当前位置获取地址</string>
+    <string name="common_account_billing_location_permission_denied">需要位置权限才能自动填入地址</string>
     <string name="common_account_templates_empty_title">还没有模板</string>
     <string name="common_account_templates_empty_desc">点击下方按钮创建第一条常用账号模板。</string>
     <string name="common_account_template_add">创建模板</string>
@@ -3338,4 +3420,50 @@
     <string name="qs_open_monica_plus">打开 Monica Plus</string>
     <string name="qs_yes">是</string>
     <string name="qs_no">不是</string>
+
+    <!-- 附件 (Monica_Android_Attachments spec) -->
+    <string name="attachment_section_title">附件</string>
+    <string name="attachment_section_title_with_count">附件 (%1$d)</string>
+    <string name="attachment_add">添加附件</string>
+    <string name="attachment_delete">删除</string>
+    <string name="attachment_download">下载</string>
+    <string name="attachment_save_to_device">保存到设备</string>
+    <string name="attachment_open">打开</string>
+    <string name="attachment_retry">重试</string>
+    <string name="attachment_state_pending">未下载</string>
+    <string name="attachment_state_downloading">下载中…</string>
+    <string name="attachment_state_failed">下载失败</string>
+    <string name="attachment_source_local">本地</string>
+    <string name="attachment_source_bitwarden">Bitwarden</string>
+    <string name="attachment_source_keepass">KeePass</string>
+    <string name="attachments_section_title">附件（%1$d 个）</string>
+    <string name="attachments_add">添加附件</string>
+    <string name="attachments_delete">移除</string>
+
+    <string name="attachment_error_too_large">文件过大，上限为 %1$s。</string>
+    <string name="attachment_error_quota_exceeded">免费账户每条密码最多 10 个附件，升级 Plus 解除限制。</string>
+    <string name="attachment_error_premium_required">Bitwarden 附件功能需要 Premium 账户。</string>
+    <string name="attachment_error_offline">网络不可用。</string>
+    <string name="attachment_error_network">网络错误（状态码 %1$s）。</string>
+    <string name="attachment_error_crypto">附件加解密错误。</string>
+    <string name="attachment_error_io">附件读写错误。</string>
+    <string name="attachment_error_kdbx_locked">KeePass 数据库未解锁。</string>
+    <string name="attachment_error_kdbx_capacity">文件过大，当前 KeePass 数据库无法容纳。</string>
+
+    <string name="attachment_upgrade_plus_action">前往 Monica Plus</string>
+    <string name="attachment_upgrade_bitwarden_action">了解如何升级 Bitwarden</string>
+
+    <string name="attachment_kdbx_soft_limit_title">附件较大</string>
+    <string name="attachment_kdbx_soft_limit_message">该文件（%1$s）超出 KeePass 推荐上限，可能超过设备可加载范围。仍要继续吗？</string>
+    <string name="attachment_kdbx_soft_limit_continue">继续</string>
+    <string name="attachment_kdbx_soft_limit_cancel">取消</string>
+
+    <string name="attachment_soft_limit_title">附件较大</string>
+    <string name="attachment_soft_limit_message">该文件 %1$d MB，超过推荐的 %2$d MB 上限，可能占用较多存储空间。仍要继续吗？</string>
+
+    <string name="attachment_move_dialog_title">移动到 Bitwarden</string>
+    <string name="attachment_move_dialog_message">已选中 %1$d 项密码，其中 %2$d 项带有附件。\n\n你的 Bitwarden 账户为免费账户，无法同步附件：\n• %2$d 项带附件的条目将仅复制到 Bitwarden（不含附件），本地保留。\n• 其余 %3$d 项将正常移动到 Bitwarden。</string>
+    <string name="attachment_move_dialog_confirm">确定</string>
+    <string name="attachment_move_dialog_cancel">取消</string>
+    <string name="attachment_move_dialog_details">查看详情</string>
 </resources>

@@ -3,11 +3,13 @@ package takagi.ru.monica
 import android.app.Application
 import android.util.Log
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.core.context.startKoin
 import org.koin.core.logger.Level
+import takagi.ru.monica.attachments.AttachmentContainer
 import takagi.ru.monica.bitwarden.sync.NetworkMonitor
 import takagi.ru.monica.bitwarden.sync.SyncQueueManager
 import takagi.ru.monica.bitwarden.sync.SyncQueueManagerHolder
@@ -47,6 +49,7 @@ class MonicaApplication : Application() {
         syncLauncherEntryPointsWithSettings()
         initBitwardenSyncInfrastructure()
         WebDavBackoffState.attachPersistence(this)
+        scheduleAttachmentHousekeeping()
     }
     
     /**
@@ -80,8 +83,23 @@ class MonicaApplication : Application() {
         }
     }
 
-    private fun syncLauncherEntryPointsWithSettings() {
-        runCatching {
+    /**
+     * 附件子系统的启动级维护：
+     * - 扫描并删除 Room 已不再引用的密文孤儿文件
+     *
+     * 在独立协程里跑，失败不影响应用启动。
+     */
+    @OptIn(kotlinx.coroutines.DelicateCoroutinesApi::class)
+    private fun scheduleAttachmentHousekeeping() {
+        kotlinx.coroutines.GlobalScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            runCatching {
+                val facade = AttachmentContainer.facade(this@MonicaApplication)
+                facade.purgeOrphanedLocalBlobs()
+            }.onFailure { Log.w(TAG, "Attachment housekeeping failed", it) }
+        }
+    }
+
+    private fun syncLauncherEntryPointsWithSettings() {        runCatching {
             val settings = runBlocking {
                 SettingsManager(this@MonicaApplication).settingsFlow.first()
             }

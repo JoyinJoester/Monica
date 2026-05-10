@@ -13,7 +13,7 @@ android {
 
     def previewVersionSuffix = project.findProperty('previewVersionSuffix')?.toString()?.trim()
     def appVersionCode = 10
-    def baseVersionName = previewVersionSuffix ? "1.0.285-${previewVersionSuffix}" : "1.0.285"
+    def baseVersionName = previewVersionSuffix ? "1.0.286-${previewVersionSuffix}" : "1.0.286"
     def workspaceRootDir = rootDir?.parentFile ?: rootDir
     def buildBakRootDir = new File(workspaceRootDir, 'Build bak')
 
@@ -158,11 +158,11 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
     }
     kotlinOptions {
-        jvmTarget = '1.8'
+        jvmTarget = '11'
     }
     buildFeatures {
         compose true

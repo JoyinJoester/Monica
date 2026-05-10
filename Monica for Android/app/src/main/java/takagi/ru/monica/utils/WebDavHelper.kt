@@ -32,6 +32,8 @@ import takagi.ru.monica.data.isLocalOnlyItem
 import takagi.ru.monica.data.resolveOwnership
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.data.model.CardWalletDataCodec
+import takagi.ru.monica.data.model.isEmpty
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.util.DataExportImportManager
 import kotlinx.serialization.json.Json
@@ -271,6 +273,7 @@ private data class CommonAccountBackupEntry(
     val phone: String = "",
     val username: String = "",
     val autoFillEnabled: Boolean = false,
+    val billingAddress: String = "",
     val templates: List<CommonAccountTemplateBackupEntry> = emptyList()
 )
 
@@ -1655,6 +1658,7 @@ class WebDavHelper(
                                 phone = commonInfo.phone,
                                 username = commonInfo.username,
                                 autoFillEnabled = commonInfo.autoFillEnabled,
+                                billingAddress = CardWalletDataCodec.encodeBillingAddress(commonInfo.billingAddress),
                                 templates = templateBackups
                             )
                             val json = Json { prettyPrint = false }
@@ -2027,6 +2031,47 @@ class WebDavHelper(
                             android.util.Log.w("WebDavHelper", "Failed to backup KeePass databases: ${e.message}")
                             warnings.add("KeePass数据库备份失败: ${e.message}")
                         }
+                    }
+
+                    // 附件备份：写入 `attachments/<uuid>.enc` 和 `attachments/attachments_meta.json`
+                    // 对应 spec Requirement 9.5。仅备份 LOCAL 附件（Bitwarden/KeePass 附件有自己的远端/kdbx 容器）。
+                    try {
+                        val attachmentRepository =
+                            takagi.ru.monica.attachments.AttachmentContainer.repository(context)
+                        val attachmentStorage = File(context.filesDir, "secure_attachments")
+                        val localAttachments = attachmentRepository.listAllActiveLocalAttachments()
+
+                        if (localAttachments.isNotEmpty()) {
+                            // 1. 写入密文 blob（按 Room 中存的 local_path 去取）
+                            val writtenBlobs = mutableSetOf<String>()
+                            localAttachments.forEach { att ->
+                                val blobName = att.localPath ?: return@forEach
+                                if (blobName in writtenBlobs) return@forEach
+                                val blobFile = File(attachmentStorage, blobName)
+                                if (blobFile.isFile) {
+                                    addFileToZip(zipOut, blobFile, "attachments/$blobName")
+                                    writtenBlobs += blobName
+                                } else {
+                                    warnings.add("附件密文文件缺失: $blobName")
+                                }
+                            }
+
+                            // 2. 写入元数据 manifest
+                            val manifestJson = takagi.ru.monica.attachments.backup
+                                .AttachmentBackupCodec.encode(localAttachments)
+                            val metaFile = File(cacheBackupDir, "attachments_meta.json")
+                            metaFile.writeText(manifestJson, Charsets.UTF_8)
+                            addFileToZip(zipOut, metaFile, "attachments/attachments_meta.json")
+                            metaFile.delete()
+
+                            android.util.Log.d(
+                                "WebDavHelper",
+                                "Backup attachments: ${localAttachments.size} records, ${writtenBlobs.size} blobs"
+                            )
+                        }
+                    } catch (e: Exception) {
+                        android.util.Log.w("WebDavHelper", "Failed to backup attachments: ${e.message}")
+                        warnings.add("附件备份失败: ${e.message}")
                     }
                 }
 
@@ -2409,6 +2454,7 @@ class WebDavHelper(
                 val secureItems = mutableListOf<DataExportImportManager.ExportItem>()
                 val passkeys = mutableListOf<PasskeyEntry>()
                 val passwordHistory = mutableListOf<PasswordHistoryBackupEntry>()
+                val pendingAttachments = mutableListOf<takagi.ru.monica.attachments.backup.AttachmentBackupCodec.Entry>()
                 
                 // 临时存储CSV文件路径，延后处理
                 var passwordsCsvFile: File? = null
@@ -2787,6 +2833,36 @@ class WebDavHelper(
                                         warnings.add("自定义图标恢复失败: $entryName - ${e.message}")
                                     }
                                 }
+                                normalizedEntryName.contains("/attachments/") || normalizedEntryName.startsWith("attachments/") -> {
+                                    // 附件恢复：`attachments/<uuid>.enc` + `attachments/attachments_meta.json`
+                                    // 对应 spec Requirement 9.5 / 9.6
+                                    // 注意：密码的 id 在恢复时会重新分配，因此这里只落地 blob + 收集元数据，
+                                    // 真正的 attachments 表 upsert 等 BackupRestoreApplier 拿到 passwordIdMap 后再做。
+                                    try {
+                                        val leafName = entryName.substringAfterLast('/')
+                                        if (leafName.equals("attachments_meta.json", ignoreCase = true)) {
+                                            val manifestText = tempFile.readText(Charsets.UTF_8)
+                                            val manifest = takagi.ru.monica.attachments.backup
+                                                .AttachmentBackupCodec.decode(manifestText)
+                                            pendingAttachments.addAll(manifest.entries)
+                                            android.util.Log.d(
+                                                "WebDavHelper",
+                                                "Collected attachments manifest: ${manifest.entries.size} entries"
+                                            )
+                                        } else if (leafName.endsWith(".enc")) {
+                                            val storageDir = File(context.filesDir, "secure_attachments")
+                                            if (!storageDir.exists()) storageDir.mkdirs()
+                                            val destFile = File(storageDir, leafName)
+                                            tempFile.copyTo(destFile, overwrite = true)
+                                        }
+                                    } catch (e: Exception) {
+                                        android.util.Log.w(
+                                            "WebDavHelper",
+                                            "Failed to restore attachment entry $entryName: ${e.message}"
+                                        )
+                                        warnings.add("附件恢复失败: $entryName - ${e.message}")
+                                    }
+                                }
                                 normalizedEntryName.contains("/images/") || entryName.endsWith(".enc") -> {
                                     backupImageCount++
                                     // 恢复图片文件
@@ -2829,6 +2905,14 @@ class WebDavHelper(
                                         // autoFillEnabled 只有在当前未启用且备份启用时才恢复
                                         if (!currentInfo.autoFillEnabled && commonAccountBackup.autoFillEnabled) {
                                             commonAccountPreferences.setAutoFillEnabled(true)
+                                        }
+                                        if (currentInfo.billingAddress.isEmpty() && commonAccountBackup.billingAddress.isNotBlank()) {
+                                            val restoredBillingAddress = CardWalletDataCodec.parseBillingAddress(
+                                                commonAccountBackup.billingAddress
+                                            )
+                                            if (!restoredBillingAddress.isEmpty()) {
+                                                commonAccountPreferences.setBillingAddress(restoredBillingAddress)
+                                            }
                                         }
 
                                         // 恢复模板：采用合并模式，不覆盖本地，仅补充缺失模板
@@ -3513,7 +3597,8 @@ class WebDavHelper(
                         secureItems = normalizedSecureItems,
                         passkeys = passkeys,
                         customFieldsMap = pendingCustomFields.toMap(),
-                        passwordHistory = passwordHistory
+                        passwordHistory = passwordHistory,
+                        attachments = pendingAttachments.toList()
                     ),
                     report = report,
                     monicaConfigDetected = detectedMonicaConfigEntries.isNotEmpty(),
@@ -4800,7 +4885,15 @@ data class BackupContent(
     val secureItems: List<DataExportImportManager.ExportItem>,
     val passkeys: List<PasskeyEntry> = emptyList(),
     val customFieldsMap: Map<Long, List<CustomFieldBackupEntry>> = emptyMap(),
-    val passwordHistory: List<PasswordHistoryBackupEntry> = emptyList()
+    val passwordHistory: List<PasswordHistoryBackupEntry> = emptyList(),
+    /**
+     * 从备份 zip 里解析出来的 LOCAL 附件清单。
+     *
+     * 仅包含元数据——对应的密文 blob 在 zip 扫描阶段已经拷到 `filesDir/secure_attachments/`。
+     * 实际写入 attachments 表的时机是 [BackupRestoreApplier.applyRestoreResult]，需要等
+     * 密码拿到新 id 之后按 `passwordIdMap` 重映射 `parentPasswordId`。
+     */
+    val attachments: List<takagi.ru.monica.attachments.backup.AttachmentBackupCodec.Entry> = emptyList()
 )
 
 /**

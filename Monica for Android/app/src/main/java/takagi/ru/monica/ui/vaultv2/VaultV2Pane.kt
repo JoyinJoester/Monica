@@ -115,6 +115,7 @@ import takagi.ru.monica.data.isLocalOnlyItem
 import takagi.ru.monica.data.isLocalOnlyPasskey
 import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenVault
@@ -122,6 +123,7 @@ import takagi.ru.monica.data.model.BankCardData
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.model.OtpType
+import takagi.ru.monica.data.model.PasskeyBindingCodec
 import takagi.ru.monica.data.UnmatchedIconHandlingStrategy
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.ui.PasswordListCategoryChipMenu
@@ -861,6 +863,10 @@ private fun VaultV2Item.matchesPasswordQuickFilters(
 	quickFilterFavorite: Boolean,
 	quickFilter2fa: Boolean,
 	quickFilterNotes: Boolean,
+	quickFilterPasskey: Boolean,
+	quickFilterBoundNote: Boolean,
+	quickFilterAttachments: Boolean,
+	activeAttachmentParentIds: Set<Long>,
 	quickFilterUncategorized: Boolean,
 	quickFilterLocalOnly: Boolean,
 	quickFilterManualStackOnly: Boolean,
@@ -884,6 +890,27 @@ private fun VaultV2Item.matchesPasswordQuickFilters(
 		quickFilterNotes &&
 		PasswordListQuickFilterItem.NOTES in configuredQuickFilterItems &&
 		passwordEntry?.notes.isNullOrBlank()
+	) {
+		return false
+	}
+	if (
+		quickFilterPasskey &&
+		PasswordListQuickFilterItem.PASSKEY in configuredQuickFilterItems &&
+		PasskeyBindingCodec.decodeList(passwordEntry?.passkeyBindings.orEmpty()).isEmpty()
+	) {
+		return false
+	}
+	if (
+		quickFilterBoundNote &&
+		PasswordListQuickFilterItem.NOTE in configuredQuickFilterItems &&
+		passwordEntry?.boundNoteId == null
+	) {
+		return false
+	}
+	if (
+		quickFilterAttachments &&
+		PasswordListQuickFilterItem.ATTACHMENTS in configuredQuickFilterItems &&
+		passwordEntry?.id !in activeAttachmentParentIds
 	) {
 		return false
 	}
@@ -983,6 +1010,9 @@ fun VaultV2Pane(
 	var quickFilterFavorite by rememberSaveable { mutableStateOf(false) }
 	var quickFilter2fa by rememberSaveable { mutableStateOf(false) }
 	var quickFilterNotes by rememberSaveable { mutableStateOf(false) }
+	var quickFilterPasskey by rememberSaveable { mutableStateOf(false) }
+	var quickFilterBoundNote by rememberSaveable { mutableStateOf(false) }
+	var quickFilterAttachments by rememberSaveable { mutableStateOf(false) }
 	var quickFilterUncategorized by rememberSaveable { mutableStateOf(false) }
 	var quickFilterLocalOnly by rememberSaveable { mutableStateOf(false) }
 	var quickFilterManualStackOnly by rememberSaveable { mutableStateOf(false) }
@@ -995,6 +1025,11 @@ fun VaultV2Pane(
 		initialFirstVisibleItemScrollOffset = state.scrollOffset
 	)
 	val context = LocalContext.current
+	val database = remember(context) { PasswordDatabase.getDatabase(context) }
+	val attachmentParentIds by database.attachmentDao()
+		.observeParentsWithActiveAttachments()
+		.collectAsState(initial = emptyList())
+	val activeAttachmentParentIds = remember(attachmentParentIds) { attachmentParentIds.toSet() }
 	val density = LocalDensity.current
 	val scope = rememberCoroutineScope()
 	val bitwardenViewModel: BitwardenViewModel = viewModel()
@@ -1197,6 +1232,9 @@ fun VaultV2Pane(
 		if (PasswordListQuickFilterItem.FAVORITE !in configuredQuickFilterItems) quickFilterFavorite = false
 		if (PasswordListQuickFilterItem.TWO_FA !in configuredQuickFilterItems) quickFilter2fa = false
 		if (PasswordListQuickFilterItem.NOTES !in configuredQuickFilterItems) quickFilterNotes = false
+		if (PasswordListQuickFilterItem.PASSKEY !in configuredQuickFilterItems) quickFilterPasskey = false
+		if (PasswordListQuickFilterItem.NOTE !in configuredQuickFilterItems) quickFilterBoundNote = false
+		if (PasswordListQuickFilterItem.ATTACHMENTS !in configuredQuickFilterItems) quickFilterAttachments = false
 		if (PasswordListQuickFilterItem.UNCATEGORIZED !in configuredQuickFilterItems) quickFilterUncategorized = false
 		if (PasswordListQuickFilterItem.LOCAL_ONLY !in configuredQuickFilterItems) quickFilterLocalOnly = false
 		if (PasswordListQuickFilterItem.MANUAL_STACK_ONLY !in configuredQuickFilterItems) quickFilterManualStackOnly = false
@@ -1318,6 +1356,9 @@ fun VaultV2Pane(
 		quickFilterFavorite,
 		quickFilter2fa,
 		quickFilterNotes,
+		quickFilterPasskey,
+		quickFilterBoundNote,
+		quickFilterAttachments,
 		quickFilterUncategorized,
 		quickFilterLocalOnly,
 		quickFilterManualStackOnly,
@@ -1333,6 +1374,12 @@ fun VaultV2Pane(
 			onQuickFilter2faChange = { quickFilter2fa = it },
 			quickFilterNotes = quickFilterNotes,
 			onQuickFilterNotesChange = { quickFilterNotes = it },
+			quickFilterPasskey = quickFilterPasskey,
+			onQuickFilterPasskeyChange = { quickFilterPasskey = it },
+			quickFilterBoundNote = quickFilterBoundNote,
+			onQuickFilterBoundNoteChange = { quickFilterBoundNote = it },
+			quickFilterAttachments = quickFilterAttachments,
+			onQuickFilterAttachmentsChange = { quickFilterAttachments = it },
 			quickFilterUncategorized = quickFilterUncategorized,
 			onQuickFilterUncategorizedChange = { quickFilterUncategorized = it },
 			quickFilterLocalOnly = quickFilterLocalOnly,
@@ -1557,6 +1604,10 @@ fun VaultV2Pane(
 		quickFilterFavorite,
 		quickFilter2fa,
 		quickFilterNotes,
+		quickFilterPasskey,
+		quickFilterBoundNote,
+		quickFilterAttachments,
+		activeAttachmentParentIds,
 		quickFilterUncategorized,
 		quickFilterLocalOnly,
 		quickFilterManualStackOnly,
@@ -1578,6 +1629,10 @@ fun VaultV2Pane(
 					quickFilterFavorite = quickFilterFavorite,
 					quickFilter2fa = quickFilter2fa,
 					quickFilterNotes = quickFilterNotes,
+					quickFilterPasskey = quickFilterPasskey,
+					quickFilterBoundNote = quickFilterBoundNote,
+					quickFilterAttachments = quickFilterAttachments,
+					activeAttachmentParentIds = activeAttachmentParentIds,
 					quickFilterUncategorized = quickFilterUncategorized,
 					quickFilterLocalOnly = quickFilterLocalOnly,
 					quickFilterManualStackOnly = quickFilterManualStackOnly,
@@ -1814,6 +1869,12 @@ fun VaultV2Pane(
 									onQuickFilter2faChange = { quickFilter2fa = it },
 									quickFilterNotes = quickFilterNotes,
 									onQuickFilterNotesChange = { quickFilterNotes = it },
+									quickFilterPasskey = quickFilterPasskey,
+									onQuickFilterPasskeyChange = { quickFilterPasskey = it },
+									quickFilterBoundNote = quickFilterBoundNote,
+									onQuickFilterBoundNoteChange = { quickFilterBoundNote = it },
+									quickFilterAttachments = quickFilterAttachments,
+									onQuickFilterAttachmentsChange = { quickFilterAttachments = it },
 									quickFilterUncategorized = quickFilterUncategorized,
 									onQuickFilterUncategorizedChange = { quickFilterUncategorized = it },
 									quickFilterLocalOnly = quickFilterLocalOnly,

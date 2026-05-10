@@ -5,6 +5,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import takagi.ru.monica.attachments.AttachmentContainer
+import takagi.ru.monica.bitwarden.BitwardenVaultPremiumStore
 import takagi.ru.monica.bitwarden.api.*
 import takagi.ru.monica.bitwarden.BitwardenVaultIdentity
 import takagi.ru.monica.bitwarden.mapper.BitwardenSendMapper
@@ -63,6 +65,9 @@ class BitwardenSyncService(
     // 多类型 Cipher 同步处理器
     private val cipherSyncProcessor = CipherSyncProcessor(context)
     private val cipherUploadProcessor = CipherUploadProcessor(context, apiManager)
+
+    // 附件元数据对齐器（只对齐元数据 + 清理本地孤儿缓存，不下载字节）
+    private val attachmentReconciler = AttachmentContainer.bitwardenReconciler(context)
     
     private val json = Json {
         ignoreUnknownKeys = true
@@ -216,6 +221,12 @@ class BitwardenSyncService(
                 lastSyncAt = now,
                 revisionDate = syncResponse.profile.securityStamp
             )
+            // 记录 profile.premium 供附件 UI 判断（批量移动弹窗 / 上传按钮启用态）
+            BitwardenVaultPremiumStore.setPremium(
+                context = context,
+                vaultId = vault.id,
+                premium = syncResponse.profile.premium
+            )
             
             android.util.Log.i(TAG, "Full sync completed: $result")
             result
@@ -310,6 +321,21 @@ class BitwardenSyncService(
                         is CipherSyncResult.Error -> {
                             android.util.Log.w(TAG, "Cipher sync error: ${result.message}")
                         }
+                    }
+                    // 附件元数据对齐：仅对已有本地 PasswordEntry 的 cipher 执行
+                    runCatching {
+                        val localEntry = passwordEntryDao.getByBitwardenCipherIdInVault(
+                            vaultId = vault.id,
+                            cipherId = cipherApi.id
+                        )
+                        if (localEntry != null) {
+                            attachmentReconciler.reconcile(
+                                passwordId = localEntry.id,
+                                remoteAttachments = cipherApi.attachments
+                            )
+                        }
+                    }.onFailure { err ->
+                        android.util.Log.w(TAG, "Attachment reconcile failed for ${cipherApi.id}: ${err.message}")
                     }
                 } catch (e: Exception) {
                     android.util.Log.w(TAG, "Failed to sync cipher ${cipherApi.id}: ${e.message}")

@@ -240,6 +240,81 @@
     <string name="edit_password_title">Edit Password</string>
     <string name="title_required">Title *</string>
     <string name="website_url">Website/URL</string>
+
+    <!-- Entry type chip (password vs. WIFI) shown in the Add/Edit screen TopBar -->
+    <string name="entry_type_chip_content_description">Switch entry type</string>
+    <string name="entry_type_password">Password</string>
+    <string name="entry_type_wifi">WIFI</string>
+
+    <!-- Add/Edit WIFI Screen -->
+    <string name="add_wifi_title">Add WIFI</string>
+    <string name="edit_wifi_title">Edit WIFI</string>
+    <string name="wifi_section_basic">Basic</string>
+    <string name="wifi_section_security">Security</string>
+    <string name="wifi_section_privacy">Privacy</string>
+    <string name="wifi_section_proxy">Proxy</string>
+    <string name="wifi_section_ip">IP settings</string>
+    <string name="wifi_ssid_label">Network name (SSID)</string>
+    <string name="wifi_ssid_required">Network name *</string>
+    <string name="wifi_password_label">Password</string>
+    <string name="wifi_hidden_network">Hidden network</string>
+    <string name="wifi_bssid_label">BSSID (optional)</string>
+    <string name="wifi_security_label">Security</string>
+    <string name="wifi_security_none">None</string>
+    <string name="wifi_security_wep">WEP</string>
+    <string name="wifi_security_wpa_wpa2">WPA/WPA2-Personal</string>
+    <string name="wifi_security_wpa2_wpa3">WPA2/WPA3-Personal</string>
+    <string name="wifi_security_wpa3">WPA3-Personal</string>
+    <string name="wifi_security_wpa2_enterprise">WPA2-Enterprise</string>
+    <string name="wifi_security_wpa3_enterprise">WPA3-Enterprise</string>
+    <string name="wifi_eap_method">EAP method</string>
+    <string name="wifi_eap_phase2">Phase 2 authentication</string>
+    <string name="wifi_eap_identity">Identity</string>
+    <string name="wifi_eap_anonymous_identity">Anonymous identity</string>
+    <string name="wifi_eap_ca_certificate">CA certificate</string>
+    <string name="wifi_eap_domain">Domain</string>
+    <string name="wifi_privacy_label">MAC address</string>
+    <string name="wifi_privacy_default">Use system default</string>
+    <string name="wifi_privacy_randomized">Use randomized MAC</string>
+    <string name="wifi_privacy_device_mac">Use device MAC</string>
+    <string name="wifi_proxy_label">Proxy</string>
+    <string name="wifi_proxy_none">None</string>
+    <string name="wifi_proxy_manual">Manual</string>
+    <string name="wifi_proxy_auto">Auto config (PAC)</string>
+    <string name="wifi_proxy_host">Proxy host</string>
+    <string name="wifi_proxy_port">Proxy port</string>
+    <string name="wifi_proxy_bypass">Bypass list</string>
+    <string name="wifi_proxy_pac_url">PAC URL</string>
+    <string name="wifi_ip_label">IP assignment</string>
+    <string name="wifi_ip_dhcp">DHCP</string>
+    <string name="wifi_ip_static">Static</string>
+    <string name="wifi_ip_address">IP address</string>
+    <string name="wifi_ip_gateway">Gateway</string>
+    <string name="wifi_ip_prefix">Network prefix length</string>
+    <string name="wifi_ip_dns1">DNS 1</string>
+    <string name="wifi_ip_dns2">DNS 2</string>
+    <string name="wifi_detail_title">WIFI details</string>
+    <string name="wifi_detail_copy_password">Copy password</string>
+    <string name="wifi_detail_copy_ssid">Copy SSID</string>
+    <string name="wifi_list_subtitle_security_none">Open network</string>
+    <string name="wifi_list_subtitle_format">%1$s · %2$s</string>
+    <string name="wifi_scan_qr">Scan Wi-Fi QR code</string>
+    <string name="wifi_scan_success">Filled from QR: %1$s</string>
+    <string name="wifi_scan_invalid">Not a valid Wi-Fi QR code</string>
+    <string name="wifi_detail_storage">Storage</string>
+
+    <!-- WIFI quick-connect via system Wi-Fi UI -->
+    <string name="wifi_connect_button">Connect</string>
+    <string name="wifi_connect_prefilled_hint">Added to system Wi-Fi suggestions. Tap \"Join\" on the system prompt.</string>
+    <string name="wifi_connect_fallback_copied">Password copied. Open the network in Wi-Fi settings and paste.</string>
+    <string name="wifi_connect_fallback_no_copy">Wi-Fi settings opened. Add the network manually.</string>
+    <string name="wifi_connect_failed">Cannot open Wi-Fi settings on this device.</string>
+    <string name="wifi_qr_button">QR code</string>
+    <string name="wifi_qr_dialog_title">Scan to join %1$s</string>
+    <string name="wifi_qr_unsupported">Enterprise Wi-Fi cannot be encoded as a QR code.</string>
+
+    <string name="loading">Loading…</string>
+
     <string name="username_email">Username/Email</string>
     <string name="field_account">Account</string>
     <string name="password_required">Password *</string>
@@ -968,7 +1043,7 @@
     <string name="all_navigation_items">All Navigation Items</string>
     <string name="category_all">All</string>
     <string name="hidden">Hidden</string>
-    <string name="settings_version_number">V1.0.285</string>
+    <string name="settings_version_number">V1.0.286</string>
     <string name="settings_support_author">Support Author</string>
     <string name="settings_support_author_description">Thank you for your support</string>
     <string name="settings_privacy_policy">Privacy Policy</string>
@@ -2184,6 +2259,14 @@
     <string name="fill_common_account">Fill</string>
     <string name="common_account_templates_title">Common Account Info</string>
     <string name="common_account_templates_description">Manage reusable templates for email, account, phone, and password.</string>
+    <string name="common_account_billing_address_title">Billing address</string>
+    <string name="common_account_billing_address_desc">Save a default billing address for payments and card forms.</string>
+    <string name="common_account_billing_use_saved">Use saved billing address</string>
+    <string name="common_account_billing_filled">Filled from saved billing address</string>
+    <string name="common_account_billing_use_location">Use current location</string>
+    <string name="common_account_billing_location_filled">Address filled from current location</string>
+    <string name="common_account_billing_location_failed">Could not get an address from the current location</string>
+    <string name="common_account_billing_location_permission_denied">Location permission is required to fill the address automatically</string>
     <string name="common_account_templates_empty_title">No templates yet</string>
     <string name="common_account_templates_empty_desc">Create your first common account template from the button below.</string>
     <string name="common_account_template_add">Create template</string>
@@ -3505,4 +3588,50 @@
     <string name="qs_open_monica_plus">Open Monica Plus</string>
     <string name="qs_yes">Yes</string>
     <string name="qs_no">No</string>
+
+    <!-- Attachments (Monica_Android_Attachments spec) -->
+    <string name="attachment_section_title">Attachments</string>
+    <string name="attachment_section_title_with_count">Attachments (%1$d)</string>
+    <string name="attachment_add">Add attachment</string>
+    <string name="attachment_delete">Delete</string>
+    <string name="attachment_download">Download</string>
+    <string name="attachment_save_to_device">Save to device</string>
+    <string name="attachment_open">Open</string>
+    <string name="attachment_retry">Retry</string>
+    <string name="attachment_state_pending">Not downloaded</string>
+    <string name="attachment_state_downloading">Downloading…</string>
+    <string name="attachment_state_failed">Failed</string>
+    <string name="attachment_source_local">Local</string>
+    <string name="attachment_source_bitwarden">Bitwarden</string>
+    <string name="attachment_source_keepass">KeePass</string>
+    <string name="attachments_section_title">Attachments (%1$d)</string>
+    <string name="attachments_add">Add attachment</string>
+    <string name="attachments_delete">Remove</string>
+
+    <string name="attachment_error_too_large">File too large. Limit is %1$s.</string>
+    <string name="attachment_error_quota_exceeded">Free accounts can attach up to 10 files per password. Upgrade to Plus to remove this limit.</string>
+    <string name="attachment_error_premium_required">Bitwarden attachments require a Premium account.</string>
+    <string name="attachment_error_offline">Network unavailable.</string>
+    <string name="attachment_error_network">Network error (code %1$s).</string>
+    <string name="attachment_error_crypto">Attachment encryption error.</string>
+    <string name="attachment_error_io">Attachment I/O error.</string>
+    <string name="attachment_error_kdbx_locked">KeePass database is locked.</string>
+    <string name="attachment_error_kdbx_capacity">File is too large for this KeePass database.</string>
+
+    <string name="attachment_upgrade_plus_action">Go to Monica Plus</string>
+    <string name="attachment_upgrade_bitwarden_action">Learn how to upgrade Bitwarden</string>
+
+    <string name="attachment_kdbx_soft_limit_title">Large attachment</string>
+    <string name="attachment_kdbx_soft_limit_message">This file (%1$s) is larger than the recommended KeePass cap. It may exceed what your device can load. Continue anyway?</string>
+    <string name="attachment_kdbx_soft_limit_continue">Continue</string>
+    <string name="attachment_kdbx_soft_limit_cancel">Cancel</string>
+
+    <string name="attachment_soft_limit_title">Large attachment</string>
+    <string name="attachment_soft_limit_message">This file is %1$d MB, larger than the recommended %2$d MB cap. It may use significant storage. Continue anyway?</string>
+
+    <string name="attachment_move_dialog_title">Move to Bitwarden</string>
+    <string name="attachment_move_dialog_message">%1$d selected, %2$d have attachments.\n\nYour Bitwarden account is free and cannot sync attachments:\n• %2$d item(s) with attachments will be copied to Bitwarden (without attachments); the local entry and attachments will be kept.\n• The remaining %3$d item(s) will be moved to Bitwarden normally.</string>
+    <string name="attachment_move_dialog_confirm">Continue</string>
+    <string name="attachment_move_dialog_cancel">Cancel</string>
+    <string name="attachment_move_dialog_details">View details</string>
 </resources>

@@ -335,7 +335,8 @@ enum class PasswordListQuickFilterItem {
     CARD_WALLET,
     AUTHENTICATOR,
     PASSKEY,
-    NOTE;
+    NOTE,
+    ATTACHMENTS;
 
     companion object {
         val DEFAULT_ORDER: List<PasswordListQuickFilterItem> = listOf(
@@ -346,7 +347,8 @@ enum class PasswordListQuickFilterItem {
             LOCAL_ONLY,
             CARD_WALLET,
             PASSKEY,
-            NOTE
+            NOTE,
+            ATTACHMENTS
         )
 
         fun sanitizeOrder(order: List<PasswordListQuickFilterItem>): List<PasswordListQuickFilterItem> {

@@ -734,6 +734,11 @@ fun PasswordDetailScreen(
                     )
                 }
 
+                // 附件区块（仅本地附件；Bitwarden/KeePass 附件目前只做元数据展示）
+                takagi.ru.monica.attachments.ui.AttachmentsDetailSection(
+                    passwordId = entry.id
+                )
+
                 if (noteViewModel != null) {
                     BoundNoteCard(
                         boundNote = boundNote,

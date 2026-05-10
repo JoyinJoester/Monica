@@ -219,3 +219,114 @@ private suspend fun saveBitmapToGallery(context: Context, bitmap: Bitmap, title:
         }
     }
 }
+
+/**
+ * 通用二维码对话框。与 [QrCodeDialog] 相同的外观，但接受任意文本内容，用于
+ * WIFI、文本分享等场景。
+ *
+ * @param title 对话框顶部展示的标题（例如 SSID 名称）
+ * @param content 要编码进 QR 码的原始文本（例如 `WIFI:S:mySsid;T:WPA;P:pwd;;`）
+ * @param saveFileBaseName 另存为图片时的文件名前缀，缺省使用 title
+ */
+@Composable
+fun TextQrCodeDialog(
+    title: String,
+    content: String,
+    onDismiss: () -> Unit,
+    saveFileBaseName: String = title
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var qrBitmap by remember(content) { mutableStateOf<Bitmap?>(null) }
+
+    LaunchedEffect(content) {
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val hints = mapOf(
+                    com.google.zxing.EncodeHintType.CHARACTER_SET to "UTF-8",
+                    com.google.zxing.EncodeHintType.ERROR_CORRECTION to
+                        com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.Q,
+                    com.google.zxing.EncodeHintType.MARGIN to 2
+                )
+                val encoder = BarcodeEncoder()
+                encoder.encodeBitmap(content, BarcodeFormat.QR_CODE, 800, 800, hints)
+            }.onSuccess { qrBitmap = it }
+        }
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Card(
+            shape = RoundedCornerShape(16.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surface
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    textAlign = TextAlign.Center
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                if (qrBitmap != null) {
+                    Image(
+                        bitmap = qrBitmap!!.asImageBitmap(),
+                        contentDescription = "QR Code",
+                        modifier = Modifier
+                            .size(240.dp)
+                            .background(Color.White)
+                            .padding(8.dp)
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .size(240.dp)
+                            .background(Color.LightGray),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = null)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(stringResource(R.string.close))
+                    }
+
+                    Button(
+                        onClick = {
+                            qrBitmap?.let { bitmap ->
+                                scope.launch {
+                                    saveBitmapToGallery(
+                                        context = context,
+                                        bitmap = bitmap,
+                                        title = "Monica_QR_$saveFileBaseName"
+                                    )
+                                }
+                            }
+                        }
+                    ) {
+                        Icon(Icons.Default.Save, contentDescription = null)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(stringResource(R.string.save))
+                    }
+                }
+            }
+        }
+    }
+}

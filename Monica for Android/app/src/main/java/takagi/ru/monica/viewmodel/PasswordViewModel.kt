@@ -1205,6 +1205,8 @@ class PasswordViewModel(
                     keepassEntryUuid = item.entryUuid,
                     keepassGroupUuid = item.groupUuid,
                     sshKeyData = item.sshKeyData,
+                    loginType = item.loginType,
+                    wifiMetadata = item.wifiMetadata,
                     isDeleted = isInRecycleBin,
                     deletedAt = if (isInRecycleBin) (existing.deletedAt ?: Date()) else null,
                     updatedAt = Date()
@@ -1225,6 +1227,8 @@ class PasswordViewModel(
                     keepassEntryUuid = item.entryUuid,
                     keepassGroupUuid = item.groupUuid,
                     sshKeyData = item.sshKeyData,
+                    loginType = item.loginType,
+                    wifiMetadata = item.wifiMetadata,
                     isDeleted = isInRecycleBin,
                     deletedAt = if (isInRecycleBin) Date() else null
                 )
@@ -1803,6 +1807,7 @@ class PasswordViewModel(
         entry: PasswordEntry,
         includeDetailedLog: Boolean = true,
         skipCategoryBinding: Boolean = false,
+        passwordAlreadyEncrypted: Boolean = false,
         onResult: (Long?) -> Unit = {}
     ) {
         viewModelScope.launch {
@@ -1810,7 +1815,8 @@ class PasswordViewModel(
                 createPasswordEntryInternal(
                     entry = entry,
                     includeDetailedLog = includeDetailedLog,
-                    skipCategoryBinding = skipCategoryBinding
+                    skipCategoryBinding = skipCategoryBinding,
+                    passwordAlreadyEncrypted = passwordAlreadyEncrypted
                 )
             }
             onResult(id)
@@ -1820,10 +1826,18 @@ class PasswordViewModel(
     private suspend fun createPasswordEntryInternal(
         entry: PasswordEntry,
         includeDetailedLog: Boolean,
-        skipCategoryBinding: Boolean = false
+        skipCategoryBinding: Boolean = false,
+        passwordAlreadyEncrypted: Boolean = false
     ): Long? {
         val boundEntry = (if (skipCategoryBinding) entry else applyCategoryBinding(entry)).let { candidate ->
-            if (candidate.keepassDatabaseId != null && candidate.keepassEntryUuid.isNullOrBlank()) {
+            // 只在"纯 KeePass 新建"场景下补 entryUuid；若 candidate 同时绑定了 Bitwarden vault，
+            // 说明 keepassDatabaseId 其实是 applyCategoryBinding 根据当前 UI 过滤误塞进去的，
+            // 继续补 UUID 会让 entry 同时拥有 concrete KeePass + concrete Bitwarden 绑定，
+            // resolveOwnership 会判为 Conflict 导致 normalizePasswordInsert 后续 block 整个创建。
+            if (candidate.keepassDatabaseId != null &&
+                candidate.keepassEntryUuid.isNullOrBlank() &&
+                candidate.bitwardenVaultId == null
+            ) {
                 candidate.copy(keepassEntryUuid = UUID.randomUUID().toString())
             } else {
                 candidate
@@ -1838,7 +1852,13 @@ class PasswordViewModel(
             return null
         }
         val encryptedEntry = normalizedBoundEntry.copy(
-            password = securityManager.encryptData(normalizedBoundEntry.password),
+            // 复制已有条目（batch copy / cross-container）的 password 字段已经是 Monica SecurityManager
+            // 加密过的密文，不需要再加密一次，否则解密时会多出一层导致显示乱码或用不了。
+            password = if (passwordAlreadyEncrypted) {
+                normalizedBoundEntry.password
+            } else {
+                securityManager.encryptData(normalizedBoundEntry.password)
+            },
             createdAt = Date(),
             updatedAt = Date()
         )
@@ -1886,7 +1906,9 @@ class PasswordViewModel(
         return createPasswordEntryInternal(
             entry = buildMonicaLocalCopy(entry, categoryId),
             includeDetailedLog = false,
-            skipCategoryBinding = true
+            skipCategoryBinding = true,
+            // 源条目的 password 已经是 Monica SecurityManager 加密过的密文，直接复用
+            passwordAlreadyEncrypted = true
         )
     }
 

@@ -240,8 +240,12 @@
             android:theme="@style/Theme.Monica"
             android:exported="true" />
         
-        <receiver android:name=".autofill_ng.AutofillNotificationReceiver"
-            android:exported="false" />
+        <receiver android:name=".autofill_ng.utils.SmartCopyReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="takagi.ru.monica.ACTION_SMART_COPY" />
+            </intent-filter>
+        </receiver>
 
         <!-- Quick Settings Tile for Manual Autofill -->
         <service
@@ -255,14 +259,18 @@
             </intent-filter>
         </service>
 
-        <!-- Smart Copy Broadcast Receiver -->
-        <receiver 
-            android:name=".autofill_ng.utils.SmartCopyReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="takagi.ru.monica.ACTION_SMART_COPY" />
-            </intent-filter>
-        </receiver>
+        <!-- Autofill OTP Notification Service: real-time TOTP in notification bar -->
+        <service
+            android:name=".autofill_ng.service.AutofillOtpNotificationService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="specialUse"
+            tools:targetApi="34">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Displaying autofill TOTP codes in notification"
+                tools:targetApi="34" />
+        </service>
 
         <!-- Notification Validator Service -->
         <service

@@ -326,7 +326,7 @@ class MonicaAutofillServiceNg : AutofillService() {
                 } else {
                     null
                 }
-                if (directFillEntry != null) {
+                val prioritized = if (directFillEntry != null) {
                     listOf(directFillEntry)
                 } else {
                     AutofillInteractionContextResolver.prioritizeLastFilled(
@@ -334,6 +334,14 @@ class MonicaAutofillServiceNg : AutofillService() {
                         lastFilled = passwordOnlyLastFilledEntry,
                     )
                 }
+                // 补丁：系统 Wi-Fi 设置页的密码输入框没有 webDomain，也匹配
+                // 不到 appPackageName；这里补上所有 WIFI 条目作为候选。
+                WifiAutofillAssist.augmentWithWifiEntries(
+                    originalRanked = prioritized,
+                    allEntries = scopedPasswords,
+                    packageName = packageName,
+                    maxSuggestions = 20,
+                )
             }
         } else {
             emptyList()
@@ -619,16 +627,29 @@ class MonicaAutofillServiceNg : AutofillService() {
                 confidentCount = 0,
             )
         }
-        if (abs(bankCardTargets.size - documentTargets.size) < 1 && secondaryCount > 0) {
+        val hasBalancedStructuredCategories = abs(bankCardTargets.size - documentTargets.size) < 1 &&
+            secondaryCount > 0
+        if (hasBalancedStructuredCategories) {
+            val mixedKeyHintCount =
+                bankCardTargets.count { isBankCardKeyAutofillHint(it.hint.name) } +
+                    documentTargets.count { isDocumentKeyAutofillHint(it.hint.name) }
+            val mixedConfidentCount = structured.count {
+                it.accuracy.score >= PARSED_ITEM_ACCURACY_THRESHOLD
+            }
+            val highConfidence = mixedKeyHintCount >= 1 && mixedConfidentCount >= 2
             return StructuredConfidenceDecision(
-                highConfidence = false,
-                reason = "mixed_structured_categories",
+                highConfidence = highConfidence,
+                reason = if (highConfidence) {
+                    "mixed_structured_categories"
+                } else {
+                    "weak_mixed_structured_categories"
+                },
                 structuredCount = structured.size,
                 bankCardCount = bankCardTargets.size,
                 documentCount = documentTargets.size,
                 dominantCount = dominantTargets.size,
-                keyHintCount = 0,
-                confidentCount = 0,
+                keyHintCount = mixedKeyHintCount,
+                confidentCount = mixedConfidentCount,
             )
         }
 

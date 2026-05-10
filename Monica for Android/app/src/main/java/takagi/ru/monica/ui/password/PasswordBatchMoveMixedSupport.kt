@@ -799,7 +799,11 @@ private suspend fun PasswordViewModel.addPasswordEntryWithResultAwait(
     val deferred = CompletableDeferred<Long?>()
     addPasswordEntryWithResult(
         entry = entry,
-        includeDetailedLog = false
+        includeDetailedLog = false,
+        // 来源 entry 的 password 已经是 Monica 加密过的密文，不能再加密一次
+        passwordAlreadyEncrypted = true,
+        // mixed batch 的 target 已经在 buildCopiedEntryForTarget 里明确指定，不走 categoryFilter
+        skipCategoryBinding = true
     ) { createdId ->
         deferred.complete(createdId)
     }

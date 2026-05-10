@@ -553,6 +553,11 @@ class KeePassKdbxViewModel {
                             groupPath = groupPath
                         )
                         val sshKeyData = resolveSshKeyData(entry, resolutionContext)
+                        val (wifiLoginType, wifiMetadataJson) = resolveWifiMetadata(
+                            entry = entry,
+                            title = title,
+                            resolutionContext = resolutionContext
+                        )
 
                         val isNewPasswordEntry = existingEntry == null
                         val insertedPasswordId = if (existingEntry != null) {
@@ -565,6 +570,8 @@ class KeePassKdbxViewModel {
                                 keepassDatabaseId = keepassDatabaseId,
                                 keepassGroupPath = groupPath,
                                 sshKeyData = sshKeyData,
+                                loginType = wifiLoginType,
+                                wifiMetadata = wifiMetadataJson,
                                 isDeleted = false,
                                 deletedAt = null,
                                 updatedAt = Date()
@@ -583,7 +590,9 @@ class KeePassKdbxViewModel {
                                 updatedAt = Date(),
                                 keepassDatabaseId = keepassDatabaseId,
                                 keepassGroupPath = groupPath,
-                                sshKeyData = sshKeyData
+                                sshKeyData = sshKeyData,
+                                loginType = wifiLoginType,
+                                wifiMetadata = wifiMetadataJson
                             )
                             val newPasswordId = passwordDao.insertPasswordEntry(passwordEntry)
                             passwordImportedCount++
@@ -600,6 +609,8 @@ class KeePassKdbxViewModel {
                                 "otp", "TOTP Seed", "TOTP Settings", "MonicaItemType",
                                 "MonicaSshAlgorithm", "MonicaSshKeySize", "MonicaSshPublicKey",
                                 "MonicaSshPrivateKey", "MonicaSshFingerprint", "MonicaSshComment", "MonicaSshFormat",
+                                // WIFI 互通字段：已映射到 loginType/wifiMetadata，不再作为自定义字段导入
+                                "SSID", "MonicaLoginType", "MonicaWifiData",
                                 // 非标准密码别名：已用于主密码提取，不再作为自定义字段重复导入
                                 "密码", "口令", "PIN", "Pin", "pin", "pwd", "PWD", "pass", "Pass", "password"
                             )
@@ -781,6 +792,46 @@ class KeePassKdbxViewModel {
                 format = field("MonicaSshFormat").ifBlank { SshKeyData.FORMAT_OPENSSH }
             )
         )
+    }
+
+    /**
+     * 从一个 KeePass entry 解析 WIFI 信息，返回 (loginType, wifiMetadataJson)。
+     *
+     * 优先级：
+     *  1. Monica 自己写入的 `MonicaLoginType + MonicaWifiData`（完整保真）
+     *  2. `MonicaLoginType=WIFI` 但没有 JSON 时，基于 SSID 构造一个最小 WifiData
+     *  3. keepass2android 等外部客户端只写了 `SSID` 字段 —— 识别为 WIFI 条目，
+     *     安全性默认 WPA2/WPA3（家庭网络绝大多数）
+     *  4. 都没有：普通 PASSWORD 登录
+     */
+    private fun resolveWifiMetadata(
+        entry: Entry,
+        title: String,
+        resolutionContext: KeePassEntryResolutionContext? = null
+    ): Pair<String, String> {
+        fun field(key: String): String =
+            KeePassFieldReferenceResolver.getFieldValue(entry, key, resolutionContext)
+
+        val monicaLoginType = field("MonicaLoginType")
+        val monicaWifiJson = field("MonicaWifiData")
+        val ssidField = field("SSID")
+
+        return when {
+            monicaLoginType.equals("WIFI", ignoreCase = true) && monicaWifiJson.isNotBlank() ->
+                "WIFI" to monicaWifiJson
+            monicaLoginType.equals("WIFI", ignoreCase = true) -> {
+                val wifi = takagi.ru.monica.data.model.WifiData(
+                    ssid = ssidField.ifBlank { title }
+                )
+                "WIFI" to wifi.toJson()
+            }
+            ssidField.isNotBlank() -> {
+                val wifi = takagi.ru.monica.data.model.WifiData(ssid = ssidField)
+                "WIFI" to wifi.toJson()
+            }
+            monicaLoginType.equals("SSO", ignoreCase = true) -> "SSO" to ""
+            else -> "PASSWORD" to ""
+        }
     }
 
     /**

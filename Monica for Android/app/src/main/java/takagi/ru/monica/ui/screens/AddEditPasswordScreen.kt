@@ -82,8 +82,10 @@ import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.model.StorageTarget
 import takagi.ru.monica.data.model.toStorageTarget
 import takagi.ru.monica.data.model.BankCardData
+import takagi.ru.monica.data.model.BillingAddress
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.data.model.isEmpty
 import takagi.ru.monica.ui.components.AppSelectorDialog
 import takagi.ru.monica.ui.components.CustomIconActionDialog
 import takagi.ru.monica.ui.components.CustomFieldEditorSection
@@ -185,6 +187,7 @@ fun AddEditPasswordScreen(
     onConsumePendingQrResult: () -> Unit = {},
     onScanAuthenticatorQrCode: (() -> Unit)? = null,
     onSaveCompleted: ((Long?) -> Unit)? = null,
+    onSwitchToWifi: ((Long?) -> Unit)? = null,
     onNavigateBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -228,6 +231,12 @@ fun AddEditPasswordScreen(
     var originalIds by remember { mutableStateOf<List<Long>>(emptyList()) }
     var unreadablePasswordIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var hasOwnershipConflict by remember { mutableStateOf(false) }
+
+    // 新建密码阶段的附件草稿队列。由 AttachmentsEditSection 在草稿模式下写入；
+    // 保存成功拿到新密码 id 后统一 flush 成真实附件。
+    val pendingAttachmentDrafts = remember {
+        mutableStateListOf<takagi.ru.monica.attachments.ui.AttachmentPendingDraft>()
+    }
     
     var authenticatorSecret by rememberSaveable { mutableStateOf("") }
     var selectedAuthenticatorOtpTypeName by rememberSaveable { mutableStateOf(OtpType.TOTP.name) }
@@ -271,6 +280,18 @@ fun AddEditPasswordScreen(
     var state by rememberSaveable { mutableStateOf("") }
     var zipCode by rememberSaveable { mutableStateOf("") }
     var country by rememberSaveable { mutableStateOf("") }
+
+    fun applyCommonBillingAddress(address: BillingAddress) {
+        addressLine = listOf(address.streetAddress, address.apartment)
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+            .joinToString(", ")
+        city = address.city
+        state = address.stateProvince
+        zipCode = address.postalCode
+        country = address.country
+    }
+
     var creditCardNumber by rememberSaveable { mutableStateOf("") }
     var creditCardHolder by rememberSaveable { mutableStateOf("") }
     var creditCardExpiry by rememberSaveable { mutableStateOf("") }
@@ -875,8 +896,10 @@ fun AddEditPasswordScreen(
             noteViewModel != null
     fun shouldShowPersonalInfo() = fieldVisibility.personalInfo ||
         emails.any { it.isNotEmpty() } || phones.any { it.isNotEmpty() }
-    fun shouldShowAddressInfo() = fieldVisibility.addressInfo || 
-        addressLine.isNotEmpty() || city.isNotEmpty() || state.isNotEmpty() || 
+    // 地址信息仅看开关 + 当前条目已有数据；
+    // 不再因为「常用账号」里存过账单地址而强制展示，否则用户关了开关仍会看到面板。
+    fun shouldShowAddressInfo() = fieldVisibility.addressInfo ||
+        addressLine.isNotEmpty() || city.isNotEmpty() || state.isNotEmpty() ||
         zipCode.isNotEmpty() || country.isNotEmpty()
     fun shouldShowPaymentInfo() = fieldVisibility.paymentInfo || 
         creditCardNumber.isNotEmpty() || creditCardHolder.isNotEmpty() || 
@@ -953,6 +976,16 @@ fun AddEditPasswordScreen(
             if (phones.size == 1 && phones[0].isEmpty() && commonAccountInfo.phone.isNotEmpty()) {
                 phones[0] = commonAccountInfo.phone
             }
+            if (
+                addressLine.isBlank() &&
+                city.isBlank() &&
+                state.isBlank() &&
+                zipCode.isBlank() &&
+                country.isBlank() &&
+                !commonAccountInfo.billingAddress.isEmpty()
+            ) {
+                applyCommonBillingAddress(commonAccountInfo.billingAddress)
+            }
         }
     }
     
@@ -982,6 +1015,11 @@ fun AddEditPasswordScreen(
             coroutineScope.launch {
                 val actualId = if (passwordId < 0) -passwordId else passwordId
                 viewModel.getRawPasswordEntryById(actualId)?.let { rawEntry ->
+                    // WIFI 条目走独立编辑页；这里立即重定向，不继续解包普通密码 UI 状态。
+                    if (rawEntry.isWifiEntry() && onSwitchToWifi != null) {
+                        onSwitchToWifi(actualId)
+                        return@launch
+                    }
                     hasOwnershipConflict = viewModel.hasOwnershipConflict(rawEntry)
                     val secretState = viewModel.inspectSecretState(rawEntry)
                     val entry = rawEntry.copy(
@@ -1413,6 +1451,20 @@ fun AddEditPasswordScreen(
                         PasswordCustomIconStore.deleteIconFile(context, originalUploaded)
                     }
                     hasSavedSuccessfully = true
+                    // 新建密码：把草稿附件挂到新 id 上再导航返回
+                    if (!isEditing && pendingAttachmentDrafts.isNotEmpty()) {
+                        coroutineScope.launch {
+                            takagi.ru.monica.attachments.ui.flushPendingDraftsTo(
+                                context = context,
+                                passwordId = firstPasswordId,
+                                pendingDrafts = pendingAttachmentDrafts,
+                                isPlusActivated = settings.isPlusActivated
+                            )
+                            onSaveCompleted?.invoke(firstPasswordId)
+                            onNavigateBack()
+                        }
+                        return@onComplete
+                    }
                     onSaveCompleted?.invoke(firstPasswordId)
                     onNavigateBack()
                 }
@@ -1500,6 +1552,18 @@ fun AddEditPasswordScreen(
                     }
                 },
                 actions = {
+                    if (onSwitchToWifi != null) {
+                        takagi.ru.monica.ui.components.EntryTypeChip(
+                            current = takagi.ru.monica.ui.components.EntryTypeChipOption.PASSWORD,
+                            onSelect = { option ->
+                                if (option == takagi.ru.monica.ui.components.EntryTypeChipOption.WIFI) {
+                                    onSwitchToWifi(if (isEditing) passwordId else null)
+                                }
+                            },
+                            enabled = !isEditing
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                    }
                     IconButton(onClick = { isFavorite = !isFavorite }) {
                         Icon(
                             if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
@@ -2436,7 +2500,16 @@ fun AddEditPasswordScreen(
                     }
                 )
             }
-            
+
+            // 附件区块：编辑模式直接操作附件表；新建阶段使用草稿 list，在保存后统一 flush
+            item {
+                takagi.ru.monica.attachments.ui.AttachmentsEditSection(
+                    passwordId = passwordId ?: -1L,
+                    isPlusActivated = settings.isPlusActivated,
+                    pendingDrafts = if (isEditing) null else pendingAttachmentDrafts
+                )
+            }
+
             // Collapsible: Personal Info - 根据设置和数据决定是否显示
             if (shouldShowPersonalInfo()) {
                 item {
@@ -2596,6 +2669,25 @@ fun AddEditPasswordScreen(
                         onExpandChange = { addressInfoExpanded = it }
                     ) {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            if (!commonAccountInfo.billingAddress.isEmpty()) {
+                                OutlinedButton(
+                                    onClick = {
+                                        applyCommonBillingAddress(commonAccountInfo.billingAddress)
+                                        addressInfoExpanded = true
+                                        Toast.makeText(
+                                            context,
+                                            context.getString(R.string.common_account_billing_filled),
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Icon(Icons.Default.AccountCircle, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(stringResource(R.string.common_account_billing_use_saved))
+                                }
+                            }
                             OutlinedTextField(
                                 value = addressLine,
                                 onValueChange = { addressLine = it },

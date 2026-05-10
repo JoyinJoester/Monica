@@ -2,10 +2,6 @@ package takagi.ru.monica.autofill_ng
 
 import android.app.Activity
 import android.app.Application
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
@@ -134,7 +130,6 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         const val EXTRA_MANUAL_MODE = "extra_manual_mode"
         const val EXTRA_IME_MODE = "extra_ime_mode"
         private const val DUPLICATE_LAUNCH_WINDOW_MS = 1500L
-        private const val AUTOFILL_OTP_NOTIFICATION_ID = 12001
         private const val MANUAL_ACCESSIBILITY_FILL_DELAY_MS = 450L
         private const val MANUAL_ACCESSIBILITY_RETRY_DELAY_MS = 250L
         private const val MANUAL_ACCESSIBILITY_MAX_ATTEMPTS = 8
@@ -1098,7 +1093,12 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                 val durationSeconds = runBlocking(Dispatchers.IO) {
                     preferences.otpNotificationDuration.first()
                 }
-                showSelectedOtpNotification(code = code, label = password.title, durationSeconds = durationSeconds)
+                takagi.ru.monica.autofill_ng.service.AutofillOtpNotificationService.start(
+                    context = applicationContext,
+                    totpData = resolvedTotpData,
+                    label = password.title,
+                    durationSeconds = durationSeconds
+                )
             }
         }.onFailure { e ->
             AutofillLogger.e("OTP", "Failed selected OTP action", e)
@@ -1125,58 +1125,6 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         }.onFailure { e ->
             AutofillLogger.e("OTP", "Failed OTP fill generation", e)
         }.getOrNull()
-    }
-
-    private fun showSelectedOtpNotification(code: String, label: String, durationSeconds: Int) {
-        val channelId = "autofill_otp"
-        val notificationManager = getSystemService(NotificationManager::class.java) ?: return
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                channelId,
-                getString(R.string.autofill_otp_notification_channel),
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Shows 2FA codes during autofill"
-                enableVibration(true)
-            }
-            notificationManager.createNotificationChannel(channel)
-        }
-
-        val copyIntent = Intent(this, AutofillNotificationReceiver::class.java).apply {
-            action = AutofillNotificationReceiver.ACTION_COPY_OTP
-            putExtra(AutofillNotificationReceiver.EXTRA_OTP_CODE, code)
-            putExtra("notification_id", AUTOFILL_OTP_NOTIFICATION_ID)
-        }
-        val pendingIntentFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        } else {
-            PendingIntent.FLAG_UPDATE_CURRENT
-        }
-        val copyPendingIntent = PendingIntent.getBroadcast(this, 0, copyIntent, pendingIntentFlags)
-
-        val builder = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Notification.Builder(this, channelId)
-        } else {
-            @Suppress("DEPRECATION")
-            Notification.Builder(this)
-        }
-        val timeoutMs = durationSeconds.coerceAtLeast(1) * 1000L
-        val notification = builder
-            .setSmallIcon(AppLauncherIconManager.resolveBrandingIconRes(this))
-            .setContentTitle("Code: $code")
-            .setContentText(label)
-            .setAutoCancel(true)
-            .setTimeoutAfter(timeoutMs)
-            .addAction(
-                Notification.Action.Builder(
-                    null,
-                    getString(R.string.autofill_otp_copy_action, code),
-                    copyPendingIntent
-                ).build()
-            )
-            .build()
-
-        notificationManager.notify(AUTOFILL_OTP_NOTIFICATION_ID, notification)
     }
 
     private fun parsePasswordAuthenticatorTotpData(authenticatorKey: String): TotpData? {
@@ -2216,13 +2164,15 @@ private fun AutofillPickerContent(
                                     filteredPasswords
                                 }
                                 val displayedMainPasswords = mainPasswords
+                                val hasStructuredResults = filteredBankCards.isNotEmpty() || filteredDocuments.isNotEmpty()
                                 val showNoSuggestionsHint = sourceFilter == AutofillStorageSourceFilter.ALL &&
                                     selectedKeePassDatabaseId == null &&
                                     selectedKeePassGroupPath == null &&
                                     selectedVaultId == null &&
                                     selectedFolderId == null &&
                                     searchQuery.isBlank() &&
-                                    filteredSuggestedPasswords.isEmpty()
+                                    filteredSuggestedPasswords.isEmpty() &&
+                                    !hasStructuredResults
 
                                 LazyColumn(
                                     modifier = Modifier
@@ -2299,7 +2249,7 @@ private fun AutofillPickerContent(
                                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                                             )
                                         }
-                                    } else if (!showNoSuggestionsHint) {
+                                    } else if (!showNoSuggestionsHint && !hasStructuredResults) {
                                         item {
                                             EmptyPasswordState(
                                                 modifier = Modifier
@@ -2320,6 +2270,50 @@ private fun AutofillPickerContent(
                                             showSmartCopyOptions = hasNotificationPermission,
                                             onAction = handlePasswordAction
                                         )
+                                    }
+
+                                    if (requestProfile.wantsBankCards && filteredBankCards.isNotEmpty()) {
+                                        item(key = "cards_header") {
+                                            Text(
+                                                text = stringResource(R.string.item_type_bank_card),
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                            )
+                                        }
+                                        items(
+                                            items = filteredBankCards,
+                                            key = { (item, _) -> "card_${item.id}" }
+                                        ) { (item, data) ->
+                                            AutofillStructuredItemCard(
+                                                title = bankCardDisplayTitle(item, data),
+                                                subtitle = bankCardDisplaySubtitle(data),
+                                                billingAddress = bankCardBillingAddressDisplay(data),
+                                                onClick = { onAutofillBankCard(item) }
+                                            )
+                                        }
+                                    }
+
+                                    if (requestProfile.wantsDocuments && filteredDocuments.isNotEmpty()) {
+                                        item(key = "documents_header") {
+                                            Text(
+                                                text = stringResource(R.string.item_type_document),
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                            )
+                                        }
+                                        items(
+                                            items = filteredDocuments,
+                                            key = { (item, _) -> "document_${item.id}" }
+                                        ) { (item, data) ->
+                                            AutofillStructuredItemCard(
+                                                title = documentDisplayTitle(item, data),
+                                                subtitle = documentDisplaySubtitle(data),
+                                                billingAddress = documentBillingAddressDisplay(data),
+                                                onClick = { onAutofillDocument(item) }
+                                            )
+                                        }
                                     }
 
                                     item {
@@ -2349,6 +2343,7 @@ private fun AutofillPickerContent(
                                             AutofillStructuredItemCard(
                                                 title = bankCardDisplayTitle(item, data),
                                                 subtitle = bankCardDisplaySubtitle(data),
+                                                billingAddress = bankCardBillingAddressDisplay(data),
                                                 onClick = { onAutofillBankCard(item) }
                                             )
                                         }
@@ -2370,6 +2365,7 @@ private fun AutofillPickerContent(
                                             AutofillStructuredItemCard(
                                                 title = documentDisplayTitle(item, data),
                                                 subtitle = documentDisplaySubtitle(data),
+                                                billingAddress = documentBillingAddressDisplay(data),
                                                 onClick = { onAutofillDocument(item) }
                                             )
                                         }
@@ -2488,6 +2484,7 @@ private fun AutofillPickerContent(
 private fun AutofillStructuredItemCard(
     title: String,
     subtitle: String,
+    billingAddress: String,
     onClick: () -> Unit,
 ) {
     Card(
@@ -2512,6 +2509,24 @@ private fun AutofillStructuredItemCard(
             if (subtitle.isNotBlank()) {
                 Text(
                     text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (billingAddress.isNotBlank()) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 6.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant
+                )
+                Text(
+                    text = stringResource(R.string.billing_address),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = billingAddress,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,

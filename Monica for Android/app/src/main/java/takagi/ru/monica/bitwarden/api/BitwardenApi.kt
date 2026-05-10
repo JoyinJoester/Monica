@@ -231,6 +231,61 @@ interface BitwardenVaultApi {
         @Path("id") folderId: String
     ): Response<Unit>
 
+    // ========== Attachment 操作 ==========
+
+    /**
+     * 创建附件上传凭据（v2 端点）。
+     *
+     * 返回值根据 `fileUploadType` 字段指示后续如何上传密文：
+     * - 0 = Azure：需要 PUT 到 `url`，请求头带 `x-ms-blob-type: BlockBlob`；
+     * - 1 = Direct：需要走 [uploadAttachmentDirect] 以 Multipart 发送。
+     *
+     * 对应 Bitwarden 官方 `/ciphers/{id}/attachment/v2`。
+     */
+    @POST("ciphers/{id}/attachment/v2")
+    suspend fun createAttachmentUploadUrl(
+        @Header("Authorization") authorization: String,
+        @Path("id") cipherId: String,
+        @Body request: AttachmentUploadRequest
+    ): Response<AttachmentUploadResponse>
+
+    /**
+     * Direct 模式上传附件密文（fileUploadType = 1）。
+     *
+     * Multipart 需要两个 part：
+     * - `key`：附件独立密钥（EncString）；
+     * - `data`：加密后的文件字节。
+     */
+    @Multipart
+    @POST("ciphers/{id}/attachment/{attachmentId}")
+    suspend fun uploadAttachmentDirect(
+        @Header("Authorization") authorization: String,
+        @Path("id") cipherId: String,
+        @Path("attachmentId") attachmentId: String,
+        @Part key: okhttp3.MultipartBody.Part,
+        @Part data: okhttp3.MultipartBody.Part
+    ): Response<Unit>
+
+    /**
+     * 获取附件下载信息。返回值里 `url` 通常是一个短期有效的签名 URL。
+     */
+    @GET("ciphers/{id}/attachment/{attachmentId}")
+    suspend fun getAttachmentDownload(
+        @Header("Authorization") authorization: String,
+        @Path("id") cipherId: String,
+        @Path("attachmentId") attachmentId: String
+    ): Response<AttachmentDownloadInfo>
+
+    /**
+     * 删除附件。接口成功后再清理本地记录与密文缓存。
+     */
+    @DELETE("ciphers/{id}/attachment/{attachmentId}")
+    suspend fun deleteAttachment(
+        @Header("Authorization") authorization: String,
+        @Path("id") cipherId: String,
+        @Path("attachmentId") attachmentId: String
+    ): Response<Unit>
+
     // ========== Send 操作 ==========
 
     /**
@@ -499,7 +554,10 @@ data class CipherApiResponse(
     val archivedDate: String? = null,
     @JsonNames("deletedDate")
     @SerialName("DeletedDate")
-    val deletedDate: String? = null
+    val deletedDate: String? = null,
+    @JsonNames("attachments")
+    @SerialName("Attachments")
+    val attachments: List<CipherAttachmentApiData>? = null
 )
 
 @Serializable
@@ -878,6 +936,101 @@ data class FolderUpdateRequest(
     @JsonNames("Name", "name")
     @SerialName("name")
     val name: String  // 加密
+)
+
+// ========== 附件 DTO ==========
+
+/**
+ * `/ciphers/{id}/attachment/v2` 请求体。
+ *
+ * 所有字段都由客户端在本地加密好后再提交：
+ * - [key]：本次附件的独立密钥（EncString），用 cipher key 或 user key 包裹。
+ * - [fileName]：文件名 EncString。
+ * - [fileSize]：加密后的字节数（字符串形式，和服务端日志保持一致）。
+ */
+@Serializable
+data class AttachmentUploadRequest(
+    @JsonNames("key")
+    @SerialName("key")
+    val key: String,
+    @JsonNames("fileName")
+    @SerialName("fileName")
+    val fileName: String,
+    @JsonNames("fileSize")
+    @SerialName("fileSize")
+    val fileSize: String
+)
+
+/**
+ * `/ciphers/{id}/attachment/v2` 响应体。
+ */
+@Serializable
+data class AttachmentUploadResponse(
+    /** 0 = Azure Blob PUT，1 = Direct Multipart。 */
+    @JsonNames("fileUploadType")
+    @SerialName("fileUploadType")
+    val fileUploadType: Int = 0,
+    /** Azure 下的预签名 URL，或 Direct 模式下服务器回显的占位 URL。 */
+    @JsonNames("url")
+    @SerialName("url")
+    val url: String? = null,
+    /** 最新的 Cipher 快照，方便客户端立刻更新本地记录。 */
+    @JsonNames("cipherResponse")
+    @SerialName("cipherResponse")
+    val cipherResponse: CipherApiResponse? = null,
+    /** 生成的附件元数据（`id`、`fileName` 等）。 */
+    @JsonNames("attachmentId")
+    @SerialName("attachmentId")
+    val attachmentId: String? = null
+)
+
+/**
+ * `/ciphers/{id}/attachment/{attachmentId}` GET 响应体。
+ */
+@Serializable
+data class AttachmentDownloadInfo(
+    @JsonNames("id")
+    @SerialName("id")
+    val id: String = "",
+    @JsonNames("url")
+    @SerialName("url")
+    val url: String = "",
+    @JsonNames("fileName")
+    @SerialName("fileName")
+    val fileName: String? = null,
+    @JsonNames("size")
+    @SerialName("size")
+    val size: String? = null,
+    @JsonNames("key")
+    @SerialName("key")
+    val key: String? = null
+)
+
+/**
+ * `CipherApiResponse.attachments` 的元素。
+ *
+ * [size] 在 Bitwarden 官方返回中是字符串形式（与服务端日志格式一致）。
+ */
+@Serializable
+data class CipherAttachmentApiData(
+    @JsonNames("id")
+    @SerialName("id")
+    val id: String = "",
+    @JsonNames("fileName")
+    @SerialName("fileName")
+    val fileName: String? = null,
+    @JsonNames("size")
+    @SerialName("size")
+    val size: String = "0",
+    @JsonNames("sizeName")
+    @SerialName("sizeName")
+    val sizeName: String? = null,
+    @JsonNames("key")
+    @SerialName("key")
+    val key: String? = null,
+    @JsonNames("url")
+    @SerialName("url")
+    val url: String? = null
 )
 
 @Serializable

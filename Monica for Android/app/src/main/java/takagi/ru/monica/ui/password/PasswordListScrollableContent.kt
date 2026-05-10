@@ -13,9 +13,12 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
@@ -45,6 +48,12 @@ internal fun PasswordListScrollableContent(
     onQuickFilter2faChange: (Boolean) -> Unit,
     quickFilterNotes: Boolean,
     onQuickFilterNotesChange: (Boolean) -> Unit,
+    quickFilterPasskey: Boolean,
+    onQuickFilterPasskeyChange: (Boolean) -> Unit,
+    quickFilterBoundNote: Boolean,
+    onQuickFilterBoundNoteChange: (Boolean) -> Unit,
+    quickFilterAttachments: Boolean,
+    onQuickFilterAttachmentsChange: (Boolean) -> Unit,
     quickFilterUncategorized: Boolean,
     onQuickFilterUncategorizedChange: (Boolean) -> Unit,
     quickFilterLocalOnly: Boolean,
@@ -55,6 +64,9 @@ internal fun PasswordListScrollableContent(
     onQuickFilterNeverStackChange: (Boolean) -> Unit,
     quickFilterUnstacked: Boolean,
     onQuickFilterUnstackedChange: (Boolean) -> Unit,
+    quickFilterWifi: Boolean,
+    onQuickFilterWifiChange: (Boolean) -> Unit,
+    wifiQuickFilterVisible: Boolean,
     onToggleAggregateType: ((PasswordPageContentType) -> Unit)?,
     categoryQuickFilterShortcuts: List<PasswordQuickFolderShortcut>,
     quickFolderShortcuts: List<PasswordQuickFolderShortcut>,
@@ -104,6 +116,12 @@ internal fun PasswordListScrollableContent(
                                                 onQuickFilter2faChange = onQuickFilter2faChange,
                                                 quickFilterNotes = quickFilterNotes,
                                                 onQuickFilterNotesChange = onQuickFilterNotesChange,
+                                                quickFilterPasskey = quickFilterPasskey,
+                                                onQuickFilterPasskeyChange = onQuickFilterPasskeyChange,
+                                                quickFilterBoundNote = quickFilterBoundNote,
+                                                onQuickFilterBoundNoteChange = onQuickFilterBoundNoteChange,
+                                                quickFilterAttachments = quickFilterAttachments,
+                                                onQuickFilterAttachmentsChange = onQuickFilterAttachmentsChange,
                                                 quickFilterUncategorized = quickFilterUncategorized,
                                                 onQuickFilterUncategorizedChange = onQuickFilterUncategorizedChange,
                                                 quickFilterLocalOnly = quickFilterLocalOnly,
@@ -120,6 +138,14 @@ internal fun PasswordListScrollableContent(
                                             )
                                         }
                                     }
+                                }
+                                if (wifiQuickFilterVisible) {
+                                    PasswordQuickFilterChip(
+                                        selected = quickFilterWifi,
+                                        onClick = { onQuickFilterWifiChange(!quickFilterWifi) },
+                                        label = stringResource(R.string.entry_type_wifi),
+                                        leadingIcon = Icons.Default.Wifi
+                                    )
                                 }
                             }
                         }

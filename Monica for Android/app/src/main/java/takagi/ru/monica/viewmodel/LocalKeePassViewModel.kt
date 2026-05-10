@@ -2008,6 +2008,22 @@ class LocalKeePassViewModel(
                     ).getOrThrow()
                 }
 
+            // 迁移附件：把 KEEPASS 附件改写为 LOCAL（kdbx 条目已删，池里的 binary 也会被释放；
+            // 但我们在 Monica 侧为每个 KEEPASS 附件保留了本地 GCM 密文缓存 + wrappedCek，
+            // 因此只需把 source 切到 LOCAL、清 keepass_binary_ref 即可继续访问）
+            val attachmentRepository = takagi.ru.monica.attachments.AttachmentContainer
+                .repository(context)
+            keepassEntries.forEach { entry ->
+                runCatching {
+                    attachmentRepository.convertSourceToLocal(
+                        passwordId = entry.id,
+                        fromSource = takagi.ru.monica.attachments.model.AttachmentSource.KEEPASS
+                    )
+                }.onFailure { e ->
+                    Log.w(TAG, "Attachment source rewrite failed for entry ${entry.id}: ${e.message}")
+                }
+            }
+
             Result.success(keepassEntries.size)
         } catch (e: Exception) {
             Result.failure(e)

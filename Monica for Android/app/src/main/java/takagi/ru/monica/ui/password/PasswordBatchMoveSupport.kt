@@ -437,7 +437,9 @@ internal fun buildMoveTargetLabel(
 internal data class PasswordBatchCopyResult(
     val successCount: Int,
     val failedCount: Int,
-    val copiedEntryIds: List<Long>
+    val copiedEntryIds: List<Long>,
+    /** 源 password id → 新 password id 的映射，便于调用方做级联复制（附件、TOTP 等）。 */
+    val idPairs: List<Pair<Long, Long>> = emptyList()
 )
 
 internal suspend fun executePasswordBatchCopy(
@@ -451,6 +453,7 @@ internal suspend fun executePasswordBatchCopy(
     onProgress: ((Int, Int) -> Unit)? = null
 ): PasswordBatchCopyResult {
     val copiedIds = mutableListOf<Long>()
+    val idPairs = mutableListOf<Pair<Long, Long>>()
     var failedCount = 0
     val total = selectedEntries.size
     var processed = 0
@@ -463,6 +466,7 @@ internal suspend fun executePasswordBatchCopy(
             val createdId = copyPasswordToMonicaLocal(entry, targetRouting.monicaCategoryId)
             if (createdId != null && createdId > 0) {
                 copiedIds += createdId
+                idPairs += entry.id to createdId
             } else {
                 failedCount += 1
             }
@@ -475,11 +479,28 @@ internal suspend fun executePasswordBatchCopy(
             val createdId = addCopiedEntry(copiedEntry)
             if (createdId != null && createdId > 0) {
                 copiedIds += createdId
+                idPairs += entry.id to createdId
             } else {
                 failedCount += 1
             }
             processed += 1
             onProgress?.invoke(processed, total)
+        }
+    }
+
+    // 复制源密码的本地附件到新密码（仅 Monica-local 目标）。
+    // 对 Bitwarden / KeePass 目标不做复制：前者服务端不兼容 free 账户附件；
+    // 后者由各自 executor 在 kdbx 落地流程中自行处理。
+    if (targetRouting.isMonicaCopyTarget && idPairs.isNotEmpty()) {
+        val facade = takagi.ru.monica.attachments.AttachmentContainer.facade(context)
+        idPairs.forEach { (sourceId, newId) ->
+            runCatching { facade.cloneAttachmentsToNewParent(sourceId, newId) }
+                .onFailure { e ->
+                    android.util.Log.w(
+                        "PasswordBatchCopy",
+                        "cloneAttachments failed src=$sourceId -> dst=$newId: ${e.message}"
+                    )
+                }
         }
     }
 
@@ -491,7 +512,8 @@ internal suspend fun executePasswordBatchCopy(
     return PasswordBatchCopyResult(
         successCount = copiedIds.size,
         failedCount = failedCount,
-        copiedEntryIds = copiedIds.toList()
+        copiedEntryIds = copiedIds.toList(),
+        idPairs = idPairs.toList()
     )
 }
 
@@ -689,6 +711,11 @@ internal fun PasswordBatchMoveSheet(
         mutableStateOf(true)
     }
 
+    // 附件感知移动确认弹窗状态
+    var attachmentAwarePrompt by remember {
+        mutableStateOf<AttachmentAwareMovePrompt?>(null)
+    }
+
     UnifiedMoveToCategoryBottomSheet(
         visible = visible,
         onDismiss = onDismiss,
@@ -766,6 +793,98 @@ internal fun PasswordBatchMoveSheet(
             viewModel.viewModelScope.launch {
                 var successCount = 0
                 var failedCount = 0
+                // Attachment_Aware_Move_Dialog preflight（Requirement 8）：
+                // 目标是 Bitwarden Vault/Folder + 该 vault 是免费账户 + 选中集合里有带附件条目
+                // → 弹 dialog 让用户知情；用户确认后按原逻辑执行（附件本身不会被搬到 Bitwarden）
+                val bitwardenMoveTargetVaultId: Long? = when (target) {
+                    is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> target.vaultId
+                    is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> target.vaultId
+                    else -> null
+                }
+                if (bitwardenMoveTargetVaultId != null) {
+                    val vaultIsPremium = takagi.ru.monica.bitwarden.BitwardenVaultPremiumStore
+                        .isPremium(context, bitwardenMoveTargetVaultId)
+                    val advisor = takagi.ru.monica.attachments.AttachmentContainer
+                        .batchMoveAdvisor(context)
+                    val classification = advisor.classify(selectedIds, vaultIsPremium)
+                    if (!vaultIsPremium && classification.copyInsteadOfMove.isNotEmpty()) {
+                        val attachedTitles = selectedEntries
+                            .filter { it.id in classification.copyInsteadOfMove }
+                            .map { it.title }
+                        val userConfirmed = kotlinx.coroutines.CompletableDeferred<Boolean>()
+                        attachmentAwarePrompt = AttachmentAwareMovePrompt(
+                            classification = classification,
+                            titles = attachedTitles,
+                            response = userConfirmed
+                        )
+                        val confirmed = userConfirmed.await()
+                        attachmentAwarePrompt = null
+                        if (!confirmed) {
+                            // 用户取消：中止整个批量操作
+                            showProgressDialog = false
+                            transferProgress = null
+                            PasswordBatchTransferProgressTracker.clear()
+                            PasswordBatchTransferNotificationHelper.cancel(context, notificationId)
+                            onSelectionCleared()
+                            return@launch
+                        }
+                        // 用户确认 → action == MOVE 时走"分两路"的手动实现；
+                        // action == COPY（例如 KeePass 选中集被强转）时走原 COPY 主流程，
+                        // 附件本身不会被 buildCopiedEntryForTarget 带进 Bitwarden
+                        if (action == UnifiedMoveAction.MOVE) {
+                            try {
+                                val targetFolderId = when (target) {
+                                    is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> target.folderId
+                                    else -> ""
+                                }
+                                if (classification.plainMove.isNotEmpty()) {
+                                    viewModel.unarchivePasswordsAwait(classification.plainMove)
+                                    viewModel.movePasswordsToBitwardenFolderAwait(
+                                        classification.plainMove,
+                                        bitwardenMoveTargetVaultId,
+                                        targetFolderId
+                                    )
+                                }
+                                if (classification.copyInsteadOfMove.isNotEmpty()) {
+                                    val entriesToCopy = selectedEntries
+                                        .filter { it.id in classification.copyInsteadOfMove }
+                                    entriesToCopy.forEach { entry ->
+                                        val copied = buildCopiedEntryForTarget(entry, target)
+                                        viewModel.addPasswordEntryWithResultAwait(copied)
+                                    }
+                                }
+                                successCount = selectedEntries.size
+                                onProgressUpdate(selectedEntries.size, selectedEntries.size)
+                            } catch (e: Exception) {
+                                android.util.Log.e(
+                                    "PasswordBatchMove",
+                                    "Attachment-aware split move failed",
+                                    e
+                                )
+                                failedCount = selectedEntries.size
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.webdav_operation_failed, e.message ?: ""),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            } finally {
+                                transferProgress = null
+                                showProgressDialog = false
+                                PasswordBatchTransferProgressTracker.clear()
+                                PasswordBatchTransferNotificationHelper.showCompleted(
+                                    context = context,
+                                    notificationId = notificationId,
+                                    action = effectiveAction,
+                                    successCount = successCount,
+                                    failedCount = failedCount
+                                )
+                                onSelectionCleared()
+                            }
+                            return@launch
+                        }
+                        // action == COPY：跌落到后续标准流程（KeePass → Bitwarden 会走 COPY 分支）
+                    }
+                }
                 try {
                     if (hasMixedSelection) {
                         val result = executeMixedPasswordBatchMove(
@@ -1100,7 +1219,28 @@ internal fun PasswordBatchMoveSheet(
             )
         }
     }
+
+    // Attachment_Aware_Move_Dialog：在免费 Bitwarden 账户 + 带附件条目批量移动时渲染
+    attachmentAwarePrompt?.let { prompt ->
+        takagi.ru.monica.attachments.ui.AttachmentAwareMoveDialog(
+            classification = prompt.classification,
+            attachmentItemTitles = prompt.titles,
+            onConfirm = {
+                prompt.response.complete(true)
+            },
+            onDismiss = {
+                prompt.response.complete(false)
+            }
+        )
+    }
 }
+
+/** 附件感知批量移动弹窗挂起状态。 */
+private data class AttachmentAwareMovePrompt(
+    val classification: takagi.ru.monica.attachments.facade.AttachmentBatchMoveAdvisor.Classification,
+    val titles: List<String>,
+    val response: kotlinx.coroutines.CompletableDeferred<Boolean>
+)
 
 private suspend fun PasswordViewModel.addPasswordEntryWithResultAwait(
     entry: PasswordEntry
@@ -1108,7 +1248,14 @@ private suspend fun PasswordViewModel.addPasswordEntryWithResultAwait(
     val deferred = CompletableDeferred<Long?>()
     addPasswordEntryWithResult(
         entry = entry,
-        includeDetailedLog = false
+        includeDetailedLog = false,
+        // batch copy / cross-container copy 的 entry.password 是源条目的已加密密文，
+        // 不能再经一次 encryptData，否则存进去解不出来（KeePass → Bitwarden 常态）
+        passwordAlreadyEncrypted = true,
+        // batch copy 的 target 已经在 buildCopiedEntryForTarget 里明确指定；不能再被当前 UI
+        // categoryFilter 二次绑定（否则 KeePass 视图下复制到 Bitwarden 会被强塞
+        // keepassDatabaseId，触发 ownership conflict 直接 block）
+        skipCategoryBinding = true
     ) { createdId ->
         deferred.complete(createdId)
     }

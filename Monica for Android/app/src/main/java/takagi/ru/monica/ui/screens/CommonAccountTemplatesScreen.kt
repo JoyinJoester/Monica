@@ -1,5 +1,19 @@
 package takagi.ru.monica.ui.screens
 
+import android.Manifest
+import android.annotation.SuppressLint
+import android.content.Context
+import android.content.pm.PackageManager
+import android.location.Address
+import android.location.Geocoder
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import android.os.Bundle
+import android.os.Looper
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -29,7 +43,9 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material3.AlertDialog
@@ -37,6 +53,7 @@ import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -45,6 +62,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import takagi.ru.monica.ui.components.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -67,11 +85,20 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.Locale
+import kotlin.coroutines.resume
 import takagi.ru.monica.R
 import takagi.ru.monica.data.CommonAccountPreferences
 import takagi.ru.monica.data.CommonAccountTemplate
+import takagi.ru.monica.data.model.BillingAddress
+import takagi.ru.monica.data.model.formatForDisplay
+import takagi.ru.monica.data.model.isEmpty
 
 private data class TemplateTypeStyle(
     val icon: ImageVector,
@@ -88,6 +115,7 @@ fun CommonAccountTemplatesScreen(
     val scope = rememberCoroutineScope()
     val preferences = remember { CommonAccountPreferences(context) }
     val templates by preferences.templatesFlow.collectAsState(initial = emptyList())
+    val billingAddress by preferences.billingAddress.collectAsState(initial = BillingAddress())
 
     val emailType = stringResource(R.string.common_account_type_email)
     val accountType = stringResource(R.string.common_account_type_account)
@@ -103,6 +131,9 @@ fun CommonAccountTemplatesScreen(
     var editingContent by remember { mutableStateOf("") }
     var templateToDelete by remember { mutableStateOf<CommonAccountTemplate?>(null) }
     var selectedFilter by remember { mutableStateOf(allFilter) }
+    var showBillingAddressEditor by remember { mutableStateOf(false) }
+    var isResolvingLocation by remember { mutableStateOf(false) }
+    var pendingLocationAddressConsumer by remember { mutableStateOf<((BillingAddress) -> Unit)?>(null) }
 
     fun normalizeType(raw: String): String {
         val normalized = raw.trim().lowercase(Locale.ROOT)
@@ -133,6 +164,73 @@ fun CommonAccountTemplatesScreen(
         editingType = normalizeType(template.type)
         editingContent = template.content
         showEditor = true
+    }
+
+    fun hasLocationPermission(): Boolean {
+        return ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    fun resolvePendingLocationAddress() {
+        val consumer = pendingLocationAddressConsumer ?: return
+        scope.launch {
+            isResolvingLocation = true
+            try {
+                val resolvedAddress = resolveBillingAddressFromCurrentLocation(context)
+                if (resolvedAddress == null || resolvedAddress.isEmpty()) {
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.common_account_billing_location_failed),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                } else {
+                    consumer(resolvedAddress)
+                    Toast.makeText(
+                        context,
+                        context.getString(R.string.common_account_billing_location_filled),
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            } finally {
+                pendingLocationAddressConsumer = null
+                isResolvingLocation = false
+            }
+        }
+    }
+
+    val locationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        if (grants.values.any { it }) {
+            resolvePendingLocationAddress()
+        } else {
+            pendingLocationAddressConsumer = null
+            Toast.makeText(
+                context,
+                context.getString(R.string.common_account_billing_location_permission_denied),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    fun requestBillingAddressFromLocation(onResolved: (BillingAddress) -> Unit) {
+        pendingLocationAddressConsumer = onResolved
+        if (hasLocationPermission()) {
+            resolvePendingLocationAddress()
+        } else {
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        }
     }
 
     val filteredTemplates = remember(templates, selectedFilter, allFilter) {
@@ -186,6 +284,31 @@ fun CommonAccountTemplatesScreen(
             contentPadding = PaddingValues(start = 16.dp, top = 10.dp, end = 16.dp, bottom = 104.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
+            item {
+                BillingAddressSummaryCard(
+                    billingAddress = billingAddress,
+                    isResolvingLocation = isResolvingLocation,
+                    onEdit = { showBillingAddressEditor = true },
+                    onUseLocation = {
+                        requestBillingAddressFromLocation { address ->
+                            scope.launch {
+                                preferences.setBillingAddress(address)
+                            }
+                        }
+                    },
+                    onRemove = {
+                        scope.launch {
+                            preferences.setBillingAddress(BillingAddress())
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.billing_address_removed),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    }
+                )
+            }
+
             item {
                 Row(
                     modifier = Modifier
@@ -299,6 +422,32 @@ fun CommonAccountTemplatesScreen(
                 }
             }
         }
+    }
+
+    if (showBillingAddressEditor) {
+        BillingAddressEditorDialog(
+            billingAddress = billingAddress,
+            isResolvingLocation = isResolvingLocation,
+            onDismiss = { showBillingAddressEditor = false },
+            onUseLocation = { applyAddress ->
+                requestBillingAddressFromLocation(applyAddress)
+            },
+            onSave = { address ->
+                scope.launch {
+                    preferences.setBillingAddress(address)
+                    Toast.makeText(
+                        context,
+                        if (address.isEmpty()) {
+                            context.getString(R.string.billing_address_removed)
+                        } else {
+                            context.getString(R.string.billing_address_saved)
+                        },
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    showBillingAddressEditor = false
+                }
+            }
+        )
     }
 
     if (showEditor) {
@@ -505,6 +654,244 @@ fun CommonAccountTemplatesScreen(
 }
 
 @Composable
+private fun BillingAddressSummaryCard(
+    billingAddress: BillingAddress,
+    isResolvingLocation: Boolean,
+    onEdit: () -> Unit,
+    onUseLocation: () -> Unit,
+    onRemove: () -> Unit
+) {
+    val hasAddress = !billingAddress.isEmpty()
+
+    Card(
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        ),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(
+                            MaterialTheme.colorScheme.primaryContainer,
+                            RoundedCornerShape(12.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Home,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.common_account_billing_address_title),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = stringResource(R.string.common_account_billing_address_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            Text(
+                text = if (hasAddress) {
+                    billingAddress.formatForDisplay()
+                } else {
+                    stringResource(R.string.billing_address_empty)
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (hasAddress) {
+                    MaterialTheme.colorScheme.onSurface
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                }
+            )
+
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(onClick = onEdit) {
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (hasAddress) {
+                            stringResource(R.string.edit_billing_address)
+                        } else {
+                            stringResource(R.string.add_billing_address)
+                        }
+                    )
+                }
+                OutlinedButton(
+                    onClick = onUseLocation,
+                    enabled = !isResolvingLocation
+                ) {
+                    if (isResolvingLocation) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.common_account_billing_use_location))
+                }
+                if (hasAddress) {
+                    TextButton(onClick = onRemove) {
+                        Text(stringResource(R.string.remove_billing_address))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BillingAddressEditorDialog(
+    billingAddress: BillingAddress,
+    isResolvingLocation: Boolean,
+    onDismiss: () -> Unit,
+    onUseLocation: ((BillingAddress) -> Unit) -> Unit,
+    onSave: (BillingAddress) -> Unit
+) {
+    var streetAddress by remember(billingAddress) { mutableStateOf(billingAddress.streetAddress) }
+    var apartment by remember(billingAddress) { mutableStateOf(billingAddress.apartment) }
+    var city by remember(billingAddress) { mutableStateOf(billingAddress.city) }
+    var stateProvince by remember(billingAddress) { mutableStateOf(billingAddress.stateProvince) }
+    var postalCode by remember(billingAddress) { mutableStateOf(billingAddress.postalCode) }
+    var country by remember(billingAddress) { mutableStateOf(billingAddress.country) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.billing_address)) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        onUseLocation { resolved ->
+                            streetAddress = resolved.streetAddress
+                            apartment = resolved.apartment
+                            city = resolved.city
+                            stateProvince = resolved.stateProvince
+                            postalCode = resolved.postalCode
+                            country = resolved.country
+                        }
+                    },
+                    enabled = !isResolvingLocation,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    if (isResolvingLocation) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.common_account_billing_use_location))
+                }
+                OutlinedTextField(
+                    value = streetAddress,
+                    onValueChange = { streetAddress = it },
+                    label = { Text(stringResource(R.string.street_address)) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = apartment,
+                    onValueChange = { apartment = it },
+                    label = { Text(stringResource(R.string.apartment)) },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = city,
+                        onValueChange = { city = it },
+                        label = { Text(stringResource(R.string.city)) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = stateProvince,
+                        onValueChange = { stateProvince = it },
+                        label = { Text(stringResource(R.string.state_province)) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = postalCode,
+                        onValueChange = { postalCode = it },
+                        label = { Text(stringResource(R.string.postal_code)) },
+                        modifier = Modifier.weight(1f)
+                    )
+                    OutlinedTextField(
+                        value = country,
+                        onValueChange = { country = it },
+                        label = { Text(stringResource(R.string.country)) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onSave(
+                        BillingAddress(
+                            streetAddress = streetAddress.trim(),
+                            apartment = apartment.trim(),
+                            city = city.trim(),
+                            stateProvince = stateProvince.trim(),
+                            postalCode = postalCode.trim(),
+                            country = country.trim()
+                        )
+                    )
+                }
+            ) {
+                Text(stringResource(R.string.save))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
+}
+
+@Composable
 private fun CommonAccountTemplateCard(
     template: CommonAccountTemplate,
     emailType: String,
@@ -656,4 +1043,124 @@ private fun templateTypeStyle(
             contentColor = MaterialTheme.colorScheme.onSecondaryContainer
         )
     }
+}
+
+@SuppressLint("MissingPermission")
+private suspend fun resolveBillingAddressFromCurrentLocation(context: Context): BillingAddress? {
+    if (!hasAnyLocationPermission(context)) return null
+
+    val locationManager = context.getSystemService(LocationManager::class.java) ?: return null
+    val providers = runCatching {
+        locationManager.getProviders(true)
+            .filter { provider ->
+                provider == LocationManager.GPS_PROVIDER ||
+                    provider == LocationManager.NETWORK_PROVIDER ||
+                    provider == LocationManager.PASSIVE_PROVIDER
+            }
+    }.getOrDefault(emptyList())
+
+    if (providers.isEmpty()) return null
+
+    val lastKnown = providers
+        .mapNotNull { provider ->
+            runCatching { locationManager.getLastKnownLocation(provider) }.getOrNull()
+        }
+        .maxByOrNull { it.time }
+
+    var freshLocation: Location? = null
+    if (lastKnown == null) {
+        for (provider in providers) {
+            freshLocation = requestSingleLocation(locationManager, provider)
+            if (freshLocation != null) break
+        }
+    }
+    val location = lastKnown ?: freshLocation ?: return null
+
+    return reverseGeocodeBillingAddress(context, location)
+}
+
+private fun hasAnyLocationPermission(context: Context): Boolean {
+    return ContextCompat.checkSelfPermission(
+        context,
+        Manifest.permission.ACCESS_FINE_LOCATION
+    ) == PackageManager.PERMISSION_GRANTED ||
+        ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+}
+
+@SuppressLint("MissingPermission")
+private suspend fun requestSingleLocation(
+    locationManager: LocationManager,
+    provider: String
+): Location? = withTimeoutOrNull(8_000L) {
+    suspendCancellableCoroutine { continuation ->
+        val listener = object : LocationListener {
+            override fun onLocationChanged(location: Location) {
+                if (continuation.isActive) {
+                    continuation.resume(location)
+                }
+                runCatching { locationManager.removeUpdates(this) }
+            }
+
+            override fun onProviderEnabled(provider: String) = Unit
+
+            override fun onProviderDisabled(provider: String) = Unit
+
+            @Deprecated("Deprecated in Android framework")
+            override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) = Unit
+        }
+
+        runCatching {
+            locationManager.requestSingleUpdate(provider, listener, Looper.getMainLooper())
+        }.onFailure {
+            if (continuation.isActive) {
+                continuation.resume(null)
+            }
+        }
+
+        continuation.invokeOnCancellation {
+            runCatching { locationManager.removeUpdates(listener) }
+        }
+    }
+}
+
+private suspend fun reverseGeocodeBillingAddress(
+    context: Context,
+    location: Location
+): BillingAddress? = withContext(Dispatchers.IO) {
+    if (!Geocoder.isPresent()) return@withContext null
+    val geocoder = Geocoder(context, Locale.getDefault())
+    val address = runCatching {
+        @Suppress("DEPRECATION")
+        geocoder.getFromLocation(location.latitude, location.longitude, 1)
+            ?.firstOrNull()
+    }.getOrNull() ?: return@withContext null
+
+    address.toBillingAddress().takeUnless { it.isEmpty() }
+}
+
+private fun Address.toBillingAddress(): BillingAddress {
+    val streetParts = listOfNotNull(
+        subThoroughfare?.trim()?.takeIf { it.isNotBlank() },
+        thoroughfare?.trim()?.takeIf { it.isNotBlank() }
+    )
+    val streetAddress = when {
+        streetParts.isNotEmpty() -> streetParts.joinToString(" ")
+        !featureName.isNullOrBlank() && featureName != locality -> featureName
+        else -> getAddressLine(0)
+            ?.substringBefore(',')
+            ?.trim()
+            .orEmpty()
+    }
+
+    return BillingAddress(
+        streetAddress = streetAddress,
+        apartment = subLocality.orEmpty(),
+        city = locality ?: subAdminArea.orEmpty(),
+        stateProvince = adminArea.orEmpty(),
+        postalCode = postalCode.orEmpty(),
+        country = countryName.orEmpty()
+    )
 }

@@ -103,6 +103,8 @@ fun AddEditBankCardScreen(
     }
     val settingsManager = remember { SettingsManager(context) }
     val commonAccountPreferences = remember { CommonAccountPreferences(context) }
+    val commonBillingAddress by commonAccountPreferences.billingAddress.collectAsState(initial = BillingAddress())
+    val hasCommonBillingAddress = !commonBillingAddress.isEmpty()
     
     var title by rememberSaveable { mutableStateOf("") }
     var cardNumber by rememberSaveable { mutableStateOf("") }
@@ -819,6 +821,29 @@ fun AddEditBankCardScreen(
                                 Text(stringResource(R.string.remove_billing_address))
                             }
                         }
+
+                        if (hasCommonBillingAddress) {
+                            OutlinedButton(
+                                onClick = {
+                                    billingAddress = commonBillingAddress
+                                    hasBillingAddress = true
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.common_account_billing_filled),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AccountCircle,
+                                    contentDescription = null
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(stringResource(R.string.common_account_billing_use_saved))
+                            }
+                        }
                     } else {
                         Text(
                             text = stringResource(R.string.billing_address_empty),
@@ -837,6 +862,29 @@ fun AddEditBankCardScreen(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(stringResource(R.string.add_billing_address))
+                        }
+
+                        if (hasCommonBillingAddress) {
+                            OutlinedButton(
+                                onClick = {
+                                    billingAddress = commonBillingAddress
+                                    hasBillingAddress = true
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.common_account_billing_filled),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.AccountCircle,
+                                    contentDescription = null
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(stringResource(R.string.common_account_billing_use_saved))
+                            }
                         }
                     }
                 }
@@ -1147,6 +1195,27 @@ fun AddEditBankCardScreen(
             title = { Text(stringResource(R.string.billing_address)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (hasCommonBillingAddress) {
+                        OutlinedButton(
+                            onClick = {
+                                streetAddress = commonBillingAddress.streetAddress
+                                apartment = commonBillingAddress.apartment
+                                city = commonBillingAddress.city
+                                stateProvince = commonBillingAddress.stateProvince
+                                postalCode = commonBillingAddress.postalCode
+                                country = commonBillingAddress.country
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AccountCircle,
+                                contentDescription = null
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(stringResource(R.string.common_account_billing_use_saved))
+                        }
+                    }
                     OutlinedTextField(
                         value = streetAddress,
                         onValueChange = { streetAddress = it },

@@ -291,6 +291,8 @@ private fun PasswordEntry.hasBoundAuthenticator(): Boolean = authenticatorKey.is
 private fun PasswordEntry.hasBoundPasskey(): Boolean =
     PasskeyBindingCodec.decodeList(passkeyBindings).isNotEmpty()
 
+private fun PasswordEntry.hasBoundNote(): Boolean = boundNoteId != null
+
 private fun PasswordEntry.matchesLinkedAggregateContentTypes(
     selectedTypes: Set<PasswordPageContentType>
 ): Boolean {
@@ -298,7 +300,9 @@ private fun PasswordEntry.matchesLinkedAggregateContentTypes(
         PasswordPageContentType.AUTHENTICATOR in selectedTypes && hasBoundAuthenticator()
     val includePasskey =
         PasswordPageContentType.PASSKEY in selectedTypes && hasBoundPasskey()
-    return includeAuthenticator || includePasskey
+    val includeNote =
+        PasswordPageContentType.NOTE in selectedTypes && hasBoundNote()
+    return includeAuthenticator || includePasskey || includeNote
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
@@ -430,6 +434,12 @@ fun PasswordListContent(
     val biometricHelper = remember { BiometricHelper(context) }
     val canUseBiometric = activity != null && appSettings.biometricEnabled && biometricHelper.isBiometricAvailable()
     val database = remember { takagi.ru.monica.data.PasswordDatabase.getDatabase(context) }
+    val attachmentParentIds by database.attachmentDao()
+        .observeParentsWithActiveAttachments()
+        .collectAsState(initial = emptyList())
+    val activeAttachmentParentIds = remember(attachmentParentIds) {
+        attachmentParentIds.toSet()
+    }
     val bitwardenRepository = remember { takagi.ru.monica.bitwarden.repository.BitwardenRepository.getInstance(context) }
     val aggregateStackRepository = remember(database) {
         takagi.ru.monica.repository.PasswordPageAggregateStackRepository(
@@ -508,11 +518,23 @@ fun PasswordListContent(
     var quickFilterFavorite by rememberSaveable { mutableStateOf(false) }
     var quickFilter2fa by rememberSaveable { mutableStateOf(false) }
     var quickFilterNotes by rememberSaveable { mutableStateOf(false) }
+    var quickFilterPasskey by rememberSaveable { mutableStateOf(false) }
+    var quickFilterBoundNote by rememberSaveable { mutableStateOf(false) }
+    var quickFilterAttachments by rememberSaveable { mutableStateOf(false) }
     var quickFilterUncategorized by rememberSaveable { mutableStateOf(false) }
     var quickFilterLocalOnly by rememberSaveable { mutableStateOf(false) }
     var quickFilterManualStackOnly by rememberSaveable { mutableStateOf(false) }
     var quickFilterNeverStack by rememberSaveable { mutableStateOf(false) }
     var quickFilterUnstacked by rememberSaveable { mutableStateOf(false) }
+    // WIFI 筛选走"按需出现"分支：只有数据库里存在 WIFI 条目才渲染 chip，
+    // 也不写进用户的 [PasswordListQuickFilterItem] 清单，避免污染备份结构。
+    var quickFilterWifi by rememberSaveable { mutableStateOf(false) }
+    val hasAnyWifiEntry = remember(passwordEntries) {
+        passwordEntries.any { it.isWifiEntry() }
+    }
+    LaunchedEffect(hasAnyWifiEntry) {
+        if (!hasAnyWifiEntry) quickFilterWifi = false
+    }
     var manualStackGroupByEntryId by remember { mutableStateOf<Map<Long, String>>(emptyMap()) }
     var noStackEntryIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var lastCustomFieldEntryIds by remember { mutableStateOf<List<Long>>(emptyList()) }
@@ -557,6 +579,15 @@ fun PasswordListContent(
         }
         if (takagi.ru.monica.data.PasswordListQuickFilterItem.NOTES !in configuredQuickFilterItems) {
             quickFilterNotes = false
+        }
+        if (takagi.ru.monica.data.PasswordListQuickFilterItem.PASSKEY !in configuredQuickFilterItems) {
+            quickFilterPasskey = false
+        }
+        if (takagi.ru.monica.data.PasswordListQuickFilterItem.NOTE !in configuredQuickFilterItems) {
+            quickFilterBoundNote = false
+        }
+        if (takagi.ru.monica.data.PasswordListQuickFilterItem.ATTACHMENTS !in configuredQuickFilterItems) {
+            quickFilterAttachments = false
         }
         if (takagi.ru.monica.data.PasswordListQuickFilterItem.UNCATEGORIZED !in configuredQuickFilterItems) {
             quickFilterUncategorized = false
@@ -843,9 +874,14 @@ fun PasswordListContent(
         quickFilterFavorite,
         quickFilter2fa,
         quickFilterNotes,
+        quickFilterPasskey,
+        quickFilterBoundNote,
+        quickFilterAttachments,
+        activeAttachmentParentIds,
         quickFilterUncategorized,
         quickFilterLocalOnly,
         quickFilterNeverStack,
+        quickFilterWifi,
         effectiveNoStackEntryIds,
         aggregateUiState.hasActiveContentTypeFilter,
         aggregateUiState.contentTypeFilterTypes
@@ -867,6 +903,18 @@ fun PasswordListContent(
         }
         if (quickFilterNotes && takagi.ru.monica.data.PasswordListQuickFilterItem.NOTES in configuredQuickFilterItems) {
             filtered = filtered.filter { it.notes.isNotBlank() }
+        }
+        if (quickFilterPasskey && takagi.ru.monica.data.PasswordListQuickFilterItem.PASSKEY in configuredQuickFilterItems) {
+            filtered = filtered.filter { it.hasBoundPasskey() }
+        }
+        if (quickFilterBoundNote && takagi.ru.monica.data.PasswordListQuickFilterItem.NOTE in configuredQuickFilterItems) {
+            filtered = filtered.filter { it.hasBoundNote() }
+        }
+        if (quickFilterAttachments && takagi.ru.monica.data.PasswordListQuickFilterItem.ATTACHMENTS in configuredQuickFilterItems) {
+            filtered = filtered.filter { it.id in activeAttachmentParentIds }
+        }
+        if (quickFilterWifi) {
+            filtered = filtered.filter { it.isWifiEntry() }
         }
         if (quickFilterUncategorized && takagi.ru.monica.data.PasswordListQuickFilterItem.UNCATEGORIZED in configuredQuickFilterItems) {
             filtered = filtered.filter { entry ->
@@ -1243,13 +1291,16 @@ fun PasswordListContent(
         appSettings.passwordListQuickFiltersEnabled,
         configuredQuickFilterItems,
         aggregateUiState.visibleContentTypes,
-        shouldGateInitialPasswordFirstFrame
+        shouldGateInitialPasswordFirstFrame,
+        hasAnyWifiEntry
     ) {
-        !shouldGateInitialPasswordFirstFrame &&
-            appSettings.passwordListQuickFiltersEnabled &&
+        if (shouldGateInitialPasswordFirstFrame) return@remember false
+        val hasConfiguredChips = appSettings.passwordListQuickFiltersEnabled &&
             configuredQuickFilterItems.any { item ->
                 shouldShowQuickFilterItem(item, aggregateUiState.visibleContentTypes)
             }
+        // WIFI chip 无需 quickFilters 设置开关——"有数据就冒出来"语义。
+        hasConfiguredChips || hasAnyWifiEntry
     }
     val hasVisibleCategoryQuickFilters = remember(
         effectiveCategoryQuickFilterShortcuts
@@ -1455,6 +1506,12 @@ fun PasswordListContent(
         onQuickFilter2faChange = { quickFilter2fa = it },
         quickFilterNotes = quickFilterNotes,
         onQuickFilterNotesChange = { quickFilterNotes = it },
+        quickFilterPasskey = quickFilterPasskey,
+        onQuickFilterPasskeyChange = { quickFilterPasskey = it },
+        quickFilterBoundNote = quickFilterBoundNote,
+        onQuickFilterBoundNoteChange = { quickFilterBoundNote = it },
+        quickFilterAttachments = quickFilterAttachments,
+        onQuickFilterAttachmentsChange = { quickFilterAttachments = it },
         quickFilterUncategorized = quickFilterUncategorized,
         onQuickFilterUncategorizedChange = { quickFilterUncategorized = it },
         quickFilterLocalOnly = quickFilterLocalOnly,
@@ -1520,6 +1577,12 @@ fun PasswordListContent(
         onQuickFilter2faChange = { quickFilter2fa = it },
         quickFilterNotes = quickFilterNotes,
         onQuickFilterNotesChange = { quickFilterNotes = it },
+        quickFilterPasskey = quickFilterPasskey,
+        onQuickFilterPasskeyChange = { quickFilterPasskey = it },
+        quickFilterBoundNote = quickFilterBoundNote,
+        onQuickFilterBoundNoteChange = { quickFilterBoundNote = it },
+        quickFilterAttachments = quickFilterAttachments,
+        onQuickFilterAttachmentsChange = { quickFilterAttachments = it },
         quickFilterUncategorized = quickFilterUncategorized,
         onQuickFilterUncategorizedChange = { quickFilterUncategorized = it },
         quickFilterLocalOnly = quickFilterLocalOnly,
@@ -1530,6 +1593,9 @@ fun PasswordListContent(
         onQuickFilterNeverStackChange = { quickFilterNeverStack = it },
         quickFilterUnstacked = quickFilterUnstacked,
         onQuickFilterUnstackedChange = { quickFilterUnstacked = it },
+        quickFilterWifi = quickFilterWifi,
+        onQuickFilterWifiChange = { quickFilterWifi = it },
+        wifiQuickFilterVisible = hasAnyWifiEntry,
         onToggleAggregateType = aggregateConfig?.onToggleContentType,
         categoryQuickFilterShortcuts = effectiveCategoryQuickFilterShortcuts,
         quickFolderShortcuts = effectiveQuickFolderCardShortcuts,

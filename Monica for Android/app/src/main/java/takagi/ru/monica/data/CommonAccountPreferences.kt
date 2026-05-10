@@ -11,6 +11,9 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import org.json.JSONArray
 import org.json.JSONObject
+import takagi.ru.monica.data.model.BillingAddress
+import takagi.ru.monica.data.model.CardWalletDataCodec
+import takagi.ru.monica.data.model.isEmpty
 import java.util.UUID
 
 private val Context.commonAccountDataStore: DataStore<Preferences> by preferencesDataStore(name = "common_account")
@@ -28,6 +31,7 @@ class CommonAccountPreferences(private val context: Context) {
         private val KEY_DEFAULT_USERNAME = stringPreferencesKey("default_username")
         private val KEY_AUTO_FILL_ENABLED = booleanPreferencesKey("auto_fill_enabled")
         private val KEY_TEMPLATES_JSON = stringPreferencesKey("templates_json")
+        private val KEY_BILLING_ADDRESS_JSON = stringPreferencesKey("billing_address_json")
         private val KEY_LEGACY_DEFAULTS_MIGRATED = booleanPreferencesKey("legacy_defaults_migrated")
     }
     
@@ -91,8 +95,21 @@ class CommonAccountPreferences(private val context: Context) {
             email = preferences[KEY_DEFAULT_EMAIL] ?: "",
             phone = preferences[KEY_DEFAULT_PHONE] ?: "",
             username = preferences[KEY_DEFAULT_USERNAME] ?: "",
-            autoFillEnabled = preferences[KEY_AUTO_FILL_ENABLED] ?: false
+            autoFillEnabled = preferences[KEY_AUTO_FILL_ENABLED] ?: false,
+            billingAddress = CardWalletDataCodec.parseBillingAddress(
+                preferences[KEY_BILLING_ADDRESS_JSON].orEmpty()
+            )
         )
+    }
+
+    val billingAddress: Flow<BillingAddress> = context.commonAccountDataStore.data.map { preferences ->
+        CardWalletDataCodec.parseBillingAddress(preferences[KEY_BILLING_ADDRESS_JSON].orEmpty())
+    }
+
+    suspend fun setBillingAddress(address: BillingAddress) {
+        context.commonAccountDataStore.edit { preferences ->
+            preferences[KEY_BILLING_ADDRESS_JSON] = CardWalletDataCodec.encodeBillingAddress(address)
+        }
     }
 
     /**
@@ -276,9 +293,13 @@ data class CommonAccountInfo(
     val email: String = "",
     val phone: String = "",
     val username: String = "",
-    val autoFillEnabled: Boolean = false
+    val autoFillEnabled: Boolean = false,
+    val billingAddress: BillingAddress = BillingAddress()
 ) {
-    fun hasAnyInfo(): Boolean = email.isNotEmpty() || phone.isNotEmpty() || username.isNotEmpty()
+    fun hasAnyInfo(): Boolean = email.isNotEmpty() ||
+        phone.isNotEmpty() ||
+        username.isNotEmpty() ||
+        !billingAddress.isEmpty()
 }
 
 data class CommonAccountTemplate(
