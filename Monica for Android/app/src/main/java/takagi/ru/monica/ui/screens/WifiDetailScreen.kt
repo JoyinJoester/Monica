@@ -55,6 +55,7 @@ import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.model.WifiData
 import takagi.ru.monica.data.model.WifiSecurity
 import takagi.ru.monica.data.model.toStorageTarget
+import takagi.ru.monica.ui.components.CustomFieldDetailCard
 import takagi.ru.monica.ui.components.TextQrCodeDialog
 import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.utils.WifiConnectLauncher
@@ -75,9 +76,11 @@ fun WifiDetailScreen(
     val context = LocalContext.current
     var entry by remember { mutableStateOf<PasswordEntry?>(null) }
     var showQrDialog by remember { mutableStateOf(false) }
+    var customFields by remember { mutableStateOf<List<takagi.ru.monica.data.CustomField>>(emptyList()) }
 
     LaunchedEffect(passwordId) {
         entry = viewModel.getPasswordEntryById(passwordId)
+        customFields = viewModel.getCustomFieldsByEntryIdSync(passwordId)
     }
 
     Scaffold(
@@ -247,6 +250,18 @@ fun WifiDetailScreen(
                         value = storageLabel,
                         copyLabel = null,
                         context = context
+                    )
+                }
+            }
+
+            // 自定义字段
+            if (customFields.isNotEmpty()) {
+                customFields.forEach { field ->
+                    CustomFieldDetailCard(
+                        field = field,
+                        onCopy = { title ->
+                            Toast.makeText(context, title, Toast.LENGTH_SHORT).show()
+                        }
                     )
                 }
             }

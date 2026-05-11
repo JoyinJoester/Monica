@@ -26,6 +26,7 @@ internal fun NotePane(
     noteViewModel: NoteViewModel,
     settingsViewModel: SettingsViewModel,
     securityManager: SecurityManager,
+    passwordViewModel: takagi.ru.monica.viewmodel.PasswordViewModel,
     onNavigateToAddNote: (Long?) -> Unit,
     onSelectionModeChange: (Boolean) -> Unit,
     isAddingNoteInline: Boolean,
@@ -45,6 +46,7 @@ internal fun NotePane(
             settingsViewModel = settingsViewModel,
             onNavigateToAddNote = onNavigateToAddNote,
             securityManager = securityManager,
+            passwordViewModel = passwordViewModel,
             onSelectionModeChange = onSelectionModeChange,
             showStandaloneSettingsEntry = showStandaloneSettingsEntry,
             onOpenStandaloneSettings = onOpenStandaloneSettings
@@ -61,6 +63,7 @@ internal fun NotePane(
                     settingsViewModel = settingsViewModel,
                     onNavigateToAddNote = onNavigateToAddNote,
                     securityManager = securityManager,
+                    passwordViewModel = passwordViewModel,
                     onSelectionModeChange = onSelectionModeChange,
                     showStandaloneSettingsEntry = showStandaloneSettingsEntry,
                     onOpenStandaloneSettings = onOpenStandaloneSettings

@@ -257,6 +257,34 @@
     <string name="entry_type_chip_content_description">切换条目类型</string>
     <string name="entry_type_password">密码</string>
     <string name="entry_type_wifi">WIFI</string>
+    <string name="entry_type_ssh_key">SSH 密钥</string>
+
+    <!-- SSH 密钥生成器 / 添加编辑页 -->
+    <string name="generator_ssh_key">SSH 密钥</string>
+    <string name="add_ssh_key_title">添加 SSH 密钥</string>
+    <string name="edit_ssh_key_title">编辑 SSH 密钥</string>
+    <string name="ssh_key_section_basic">密钥</string>
+    <string name="ssh_key_algorithm_label">算法</string>
+    <string name="ssh_key_algorithm_rsa">RSA</string>
+    <string name="ssh_key_algorithm_ed25519">Ed25519</string>
+    <string name="ssh_key_size_label">密钥长度</string>
+    <string name="ssh_key_public_key">公钥</string>
+    <string name="ssh_key_private_key">私钥</string>
+    <string name="ssh_key_fingerprint">指纹 (SHA256)</string>
+    <string name="ssh_key_comment">备注</string>
+    <string name="ssh_key_generate">生成</string>
+    <string name="ssh_key_generating">正在生成 SSH 密钥...</string>
+    <string name="ssh_key_regenerate">重新生成</string>
+    <string name="ssh_key_empty_placeholder">尚未生成密钥，点击「生成」即可创建。</string>
+    <string name="ssh_key_rsa_description">所有 SSH 客户端都支持的算法。RSA 推荐至少 2048 位，使用 3072 位或更高更安全。</string>
+    <string name="ssh_key_ed25519_description">现代、紧凑、比 RSA 更快更安全，需要较新的 SSH 客户端。</string>
+    <string name="ssh_key_generate_failed">SSH 密钥生成失败</string>
+    <string name="ssh_key_copy_public">复制公钥</string>
+    <string name="ssh_key_copy_private">复制私钥</string>
+    <string name="ssh_key_copy_fingerprint">复制指纹</string>
+    <string name="ssh_key_reveal_private">显示私钥</string>
+    <string name="ssh_key_hide_private">隐藏私钥</string>
+    <string name="password_list_quick_filter_ssh_key">SSH 密钥</string>
 
     <!-- 添加/编辑 WIFI 页面 -->
     <string name="add_wifi_title">添加WIFI</string>

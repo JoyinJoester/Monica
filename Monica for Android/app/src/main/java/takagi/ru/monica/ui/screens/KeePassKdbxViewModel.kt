@@ -830,6 +830,7 @@ class KeePassKdbxViewModel {
                 "WIFI" to wifi.toJson()
             }
             monicaLoginType.equals("SSO", ignoreCase = true) -> "SSO" to ""
+            monicaLoginType.equals("SSH_KEY", ignoreCase = true) -> "SSH_KEY" to ""
             else -> "PASSWORD" to ""
         }
     }

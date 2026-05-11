@@ -93,6 +93,10 @@ object BitwardenApiFactory {
                 builder.header("Sec-Ch-Ua", """"Not.A/Brand";v="8", "Chromium";v="${headerSpec.majorVersion}"""")
                 builder.header("Sec-Ch-Ua-Mobile", "?0")
                 builder.header("Sec-Ch-Ua-Platform", "Linux")
+                // Bitwarden 服务端根据客户端版本决定是否返回 Type 5 (SSH Key) 等新类型数据
+                // 不声明版本时服务端会降级为 Type 1 并丢弃 sshKey 字段
+                builder.header("Bitwarden-Client-Name", "desktop")
+                builder.header("Bitwarden-Client-Version", "2025.1.0")
                 if (isRefererApplied(headerProfile, refererUrl)) {
                     builder.header("referer", ensureTrailingSlash(refererUrl!!.trim()))
                 }

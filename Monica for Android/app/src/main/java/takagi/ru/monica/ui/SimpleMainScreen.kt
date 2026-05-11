@@ -812,6 +812,7 @@ fun SimpleMainScreen(
     securityManager: SecurityManager,
     onNavigateToAddPassword: (Long?) -> Unit,
     onNavigateToAddWifi: (Long?) -> Unit = {},
+    onNavigateToAddSshKey: (Long?) -> Unit = {},
     onNavigateToAddTotp: (Long?) -> Unit,
     onNavigateToQuickTotpScan: () -> Unit,
     onNavigateToFidoQrScan: () -> Unit,
@@ -1054,11 +1055,13 @@ fun SimpleMainScreen(
     val passwordGeneratorResult by generatorViewModel.passwordResult.collectAsState()
     val passphraseGeneratorResult by generatorViewModel.passphraseResult.collectAsState()
     val pinGeneratorResult by generatorViewModel.pinResult.collectAsState()
+    val sshKeyGeneratorResult by generatorViewModel.sshKeyResult.collectAsState()
     val currentGeneratorResult = when (selectedGeneratorType) {
         GeneratorType.SYMBOL -> symbolGeneratorResult
         GeneratorType.PASSWORD -> passwordGeneratorResult
         GeneratorType.PASSPHRASE -> passphraseGeneratorResult
         GeneratorType.PIN -> pinGeneratorResult
+        GeneratorType.SSH_KEY -> sshKeyGeneratorResult?.fingerprintSha256.orEmpty()
     }
 
     val selectedPasswordId = passwordPaneState.selectedPasswordId
@@ -2150,6 +2153,7 @@ fun SimpleMainScreen(
                         passwordNewItemDefaults = pendingInlinePasswordAddStorageDefaults ?: passwordNewItemDefaults,
                         onInlinePasswordEditorBack = handleInlinePasswordEditorBack,
                         onNavigateToAddWifi = onNavigateToAddWifi,
+                        onNavigateToAddSshKey = onNavigateToAddSshKey,
                         totpViewModel = totpViewModel,
                         bankCardViewModel = bankCardViewModel,
                         noteViewModel = noteViewModel,
@@ -2197,6 +2201,7 @@ fun SimpleMainScreen(
                         saveableStateHolder = cardWalletSaveableStateHolder,
                         bankCardViewModel = bankCardViewModel,
                         documentViewModel = documentViewModel,
+                        passwordViewModel = passwordViewModel,
                         contentState = cardWalletContentState,
                         isAddingBankCardInline = isAddingBankCardInline,
                         inlineBankCardEditorId = inlineBankCardEditorId,
@@ -2240,6 +2245,7 @@ fun SimpleMainScreen(
                         noteViewModel = noteViewModel,
                         settingsViewModel = settingsViewModel,
                         securityManager = securityManager,
+                        passwordViewModel = passwordViewModel,
                         onNavigateToAddNote = handleNoteOpen,
                         onSelectionModeChange = { isSelectionMode ->
                             isNoteSelectionMode = isSelectionMode
@@ -2572,7 +2578,8 @@ fun SimpleMainScreen(
         noteViewModel = noteViewModel,
         sendState = sendState,
         bitwardenViewModel = bitwardenViewModel,
-        onNavigateToAddWifi = onNavigateToAddWifi
+        onNavigateToAddWifi = onNavigateToAddWifi,
+        onNavigateToAddSshKey = onNavigateToAddSshKey
     )
 
     val navBarInsetBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -2710,6 +2717,7 @@ private fun PasswordTabPane(
     passwordNewItemDefaults: NewItemStorageDefaults,
     onInlinePasswordEditorBack: () -> Unit,
     onNavigateToAddWifi: (Long?) -> Unit = {},
+    onNavigateToAddSshKey: (Long?) -> Unit = {},
     totpViewModel: takagi.ru.monica.viewmodel.TotpViewModel,
     bankCardViewModel: takagi.ru.monica.viewmodel.BankCardViewModel,
     noteViewModel: NoteViewModel,
@@ -2819,6 +2827,10 @@ private fun PasswordTabPane(
                         onSwitchToWifi = { targetId ->
                             onInlinePasswordEditorBack()
                             onNavigateToAddWifi(targetId)
+                        },
+                        onSwitchToSshKey = { targetId ->
+                            onInlinePasswordEditorBack()
+                            onNavigateToAddSshKey(targetId)
                         },
                         onNavigateBack = onInlinePasswordEditorBack
                     )
@@ -3272,6 +3284,7 @@ private fun CompactDraggableTabContent(
                     saveableStateHolder = cardWalletSaveableStateHolder,
                     bankCardViewModel = bankCardViewModel,
                     documentViewModel = documentViewModel,
+                    passwordViewModel = passwordViewModel,
                     state = cardWalletContentState,
                     showStandaloneSettingsEntry = showStandaloneSettingsEntry,
                     onOpenStandaloneSettings = onOpenStandaloneSettings
@@ -3295,6 +3308,7 @@ private fun CompactDraggableTabContent(
                     settingsViewModel = settingsViewModel,
                     onNavigateToAddNote = onNavigateToAddNote,
                     securityManager = securityManager,
+                    passwordViewModel = passwordViewModel,
                     onSelectionModeChange = onNoteSelectionModeChange,
                     showStandaloneSettingsEntry = showStandaloneSettingsEntry,
                     onOpenStandaloneSettings = onOpenStandaloneSettings
@@ -3516,6 +3530,7 @@ private fun BoxScope.MainScreenFabOverlay(
     sendState: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel.SendState,
     bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel,
     onNavigateToAddWifi: (Long?) -> Unit = {},
+    onNavigateToAddSshKey: (Long?) -> Unit = {},
 ) {
     // FAB visibility is computed from tab context + selection mode + detail pane occupancy.
     // This avoids conflicting gestures between fast-scroll, quick access, and expandable add menu.
@@ -3724,6 +3739,7 @@ private fun BoxScope.MainScreenFabOverlay(
                 onGeneratorRefresh = onGeneratorRefresh,
                 onExpandStateChanged = onFabExpandedChange,
                 onNavigateToAddWifi = onNavigateToAddWifi,
+                onNavigateToAddSshKey = onNavigateToAddSshKey,
                 passwordViewModel = passwordViewModel,
                 totpViewModel = totpViewModel,
                 bankCardViewModel = bankCardViewModel,
@@ -4101,6 +4117,7 @@ private fun MainScreenAddFab(
     onGeneratorRefresh: () -> Unit,
     onExpandStateChanged: (Boolean) -> Unit,
     onNavigateToAddWifi: (Long?) -> Unit = {},
+    onNavigateToAddSshKey: (Long?) -> Unit = {},
     passwordViewModel: PasswordViewModel,
     totpViewModel: TotpViewModel,
     bankCardViewModel: BankCardViewModel,
@@ -4312,6 +4329,10 @@ private fun MainScreenAddFab(
                                     collapse()
                                     onNavigateToAddWifi(targetId)
                                 },
+                                onSwitchToSshKey = { targetId ->
+                                    collapse()
+                                    onNavigateToAddSshKey(targetId)
+                                },
                                 onNavigateBack = collapse
                             )
                         }
@@ -4388,6 +4409,10 @@ private fun MainScreenAddFab(
                                     onSwitchToWifi = { targetId ->
                                         collapse()
                                         onNavigateToAddWifi(targetId)
+                                    },
+                                    onSwitchToSshKey = { targetId ->
+                                        collapse()
+                                        onNavigateToAddSshKey(targetId)
                                     },
                                     onNavigateBack = collapse
                                 )

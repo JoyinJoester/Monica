@@ -531,6 +531,9 @@ data class CipherApiResponse(
     @JsonNames("secureNote")
     @SerialName("SecureNote")
     val secureNote: CipherSecureNoteApiData? = null,
+    @JsonNames("SshKey", "SSHKey", "ssh_key")
+    @SerialName("sshKey")
+    val sshKey: CipherSshKeyApiData? = null,
     @JsonNames("fields")
     @SerialName("Fields")
     val fields: List<CipherFieldApiData>? = null,
@@ -723,6 +726,19 @@ data class CipherSecureNoteApiData(
 )
 
 @Serializable
+data class CipherSshKeyApiData(
+    @JsonNames("PrivateKey", "privateKey", "private_key")
+    @SerialName("privateKey")
+    val privateKey: String? = null,
+    @JsonNames("PublicKey", "publicKey", "public_key")
+    @SerialName("publicKey")
+    val publicKey: String? = null,
+    @JsonNames("KeyFingerprint", "keyFingerprint", "Fingerprint", "fingerprint", "key_fingerprint")
+    @SerialName("keyFingerprint")
+    val keyFingerprint: String? = null
+)
+
+@Serializable
 data class CipherFieldApiData(
     @JsonNames("Name", "name")
     @SerialName("name")
@@ -870,6 +886,9 @@ data class CipherCreateRequest(
     @JsonNames("SecureNote", "secureNote")
     @SerialName("secureNote")
     val secureNote: CipherSecureNoteApiData? = null,
+    @JsonNames("SshKey", "sshKey")
+    @SerialName("sshKey")
+    val sshKey: CipherSshKeyApiData? = null,
     @JsonNames("Fields", "fields")
     @SerialName("fields")
     val fields: List<CipherFieldApiData>? = null,
@@ -910,6 +929,9 @@ data class CipherUpdateRequest(
     @JsonNames("SecureNote", "secureNote")
     @SerialName("secureNote")
     val secureNote: CipherSecureNoteApiData? = null,
+    @JsonNames("SshKey", "sshKey")
+    @SerialName("sshKey")
+    val sshKey: CipherSshKeyApiData? = null,
     @JsonNames("Fields", "fields")
     @SerialName("fields")
     val fields: List<CipherFieldApiData>? = null,

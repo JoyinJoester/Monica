@@ -4,7 +4,9 @@ import androidx.lifecycle.ViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import takagi.ru.monica.data.model.SshKeyData
 import takagi.ru.monica.util.PasswordGenerator
+import takagi.ru.monica.utils.SshKeyGenerator
 
 /**
  * ViewModel for generator screen to persist state across navigation
@@ -128,6 +130,16 @@ class GeneratorViewModel : ViewModel() {
     
     private val _pinResult = MutableStateFlow("")
     val pinResult: StateFlow<String> = _pinResult.asStateFlow()
+
+    // ✨ SSH 密钥生成器状态
+    private val _sshKeyAlgorithm = MutableStateFlow(SshKeyGenerator.DEFAULT_ALGORITHM)
+    val sshKeyAlgorithm: StateFlow<String> = _sshKeyAlgorithm.asStateFlow()
+
+    private val _sshKeyRsaSize = MutableStateFlow(SshKeyGenerator.DEFAULT_RSA_KEY_SIZE)
+    val sshKeyRsaSize: StateFlow<Int> = _sshKeyRsaSize.asStateFlow()
+
+    private val _sshKeyResult = MutableStateFlow<SshKeyData?>(null)
+    val sshKeyResult: StateFlow<SshKeyData?> = _sshKeyResult.asStateFlow()
     
     // 更新生成器类型
     fun updateSelectedGenerator(generatorType: GeneratorType) {
@@ -304,6 +316,26 @@ class GeneratorViewModel : ViewModel() {
     fun updatePassphraseResult(result: String) {
         _passphraseResult.value = result
     }
+
+    // ✨ SSH 密钥更新方法
+    fun updateSshKeyAlgorithm(algorithm: String) {
+        _sshKeyAlgorithm.value = when (algorithm.uppercase()) {
+            SshKeyData.ALGORITHM_RSA -> SshKeyData.ALGORITHM_RSA
+            else -> SshKeyGenerator.DEFAULT_ALGORITHM
+        }
+    }
+
+    fun updateSshKeyRsaSize(size: Int) {
+        _sshKeyRsaSize.value = if (size in SshKeyGenerator.RSA_ALLOWED_KEY_SIZES) {
+            size
+        } else {
+            SshKeyGenerator.DEFAULT_RSA_KEY_SIZE
+        }
+    }
+
+    fun updateSshKeyResult(result: SshKeyData?) {
+        _sshKeyResult.value = result
+    }
     
     // 清除所有结果
     fun clearAllResults() {
@@ -311,6 +343,7 @@ class GeneratorViewModel : ViewModel() {
         _passwordResult.value = ""  // 保持兼容性
         _passphraseResult.value = ""
         _pinResult.value = ""
+        _sshKeyResult.value = null
     }
 }
 
@@ -319,5 +352,6 @@ enum class GeneratorType {
     SYMBOL,     // 原有：随机符号密码
     PASSWORD,   // 原有：基于单词的密码生成（保持兼容）
     PASSPHRASE, // 新增：Diceware 密码短语生成器
-    PIN         // 原有：PIN码
+    PIN,        // 原有：PIN码
+    SSH_KEY     // 新增：SSH 密钥（RSA / Ed25519）
 }

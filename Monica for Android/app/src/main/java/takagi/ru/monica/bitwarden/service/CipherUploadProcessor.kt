@@ -1400,6 +1400,7 @@ class CipherUploadProcessor(
             card = card,
             identity = identity,
             secureNote = secureNote,
+            sshKey = sshKey,
             fields = fields,
             favorite = favorite,
             reprompt = reprompt,
@@ -1458,6 +1459,13 @@ class CipherUploadProcessor(
                             creationDate = fido.creationDate
                         )
                     },
+                )
+            },
+            sshKey = request.sshKey?.let { sshKey ->
+                sshKey.copy(
+                    privateKey = encryptIfNeeded(sshKey.privateKey),
+                    publicKey = encryptIfNeeded(sshKey.publicKey),
+                    keyFingerprint = encryptIfNeeded(sshKey.keyFingerprint)
                 )
             }
         )

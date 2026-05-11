@@ -122,6 +122,7 @@ fun NoteListScreen(
     settingsViewModel: SettingsViewModel,
     onNavigateToAddNote: (Long?) -> Unit,
     securityManager: SecurityManager,
+    passwordViewModel: takagi.ru.monica.viewmodel.PasswordViewModel,
     onSelectionModeChange: (Boolean) -> Unit = {},
     showStandaloneSettingsEntry: Boolean = false,
     onOpenStandaloneSettings: () -> Unit = {},
@@ -218,6 +219,10 @@ fun NoteListScreen(
             )
         }
     }
+
+    val resolvedPasswordViewModel = passwordViewModel
+    val categoryMgmt = takagi.ru.monica.ui.category.rememberCategoryManagementState()
+
     val selectedUnifiedFilter = when (val filter = selectedCategoryFilter) {
         NoteCategoryFilter.All -> UnifiedCategoryFilterSelection.All
         NoteCategoryFilter.Local -> UnifiedCategoryFilterSelection.Local
@@ -539,6 +544,8 @@ fun NoteListScreen(
                                     bitwardenVaults = bitwardenVaults,
                                     getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
                                     getKeePassGroups = getKeePassGroups,
+                                    categoryEditMode = categoryMgmt.categoryEditMode,
+                                    onRequestCategoryAction = { categoryMgmt.categoryActionTarget = it },
                                     quickFilterContent = {
                                         if (availableTags.isNotEmpty()) {
                                             Text(
@@ -568,6 +575,18 @@ fun NoteListScreen(
                                                 }
                                             }
                                         }
+                                    },
+                                    trailingContent = {
+                                        takagi.ru.monica.ui.category.CategoryManagementTrailingContent(
+                                            state = categoryMgmt,
+                                            categories = categories,
+                                            keepassDatabases = keepassDatabases,
+                                            bitwardenVaults = bitwardenVaults,
+                                            getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+                                            getKeePassGroups = getKeePassGroups,
+                                            passwordViewModel = resolvedPasswordViewModel,
+                                            onDismissFilterSheet = { isCategorySheetVisible = false }
+                                        )
                                     }
                                 )
                             }
@@ -898,6 +917,19 @@ fun NoteListScreen(
             modifier = Modifier.padding(paddingValues)
         )
     }
+
+    takagi.ru.monica.ui.category.CategoryManagementCreateDialog(
+        state = categoryMgmt,
+        currentFilter = selectedUnifiedFilter,
+        categories = categories,
+        keepassDatabases = keepassDatabases,
+        bitwardenVaults = bitwardenVaults,
+        getKeePassGroups = getKeePassGroups,
+        passwordViewModel = resolvedPasswordViewModel,
+        bitwardenRepository = bitwardenRepository,
+        keepassBridge = keepassBridge,
+        scope = scope
+    )
 }
 
 private fun filterNotesByCategory(

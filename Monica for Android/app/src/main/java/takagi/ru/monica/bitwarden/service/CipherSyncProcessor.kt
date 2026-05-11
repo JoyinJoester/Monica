@@ -17,6 +17,7 @@ import takagi.ru.monica.data.model.DocumentType
 import takagi.ru.monica.data.model.NoteData
 import takagi.ru.monica.data.model.SecureCustomField
 import takagi.ru.monica.data.model.SecureCustomFieldType
+import takagi.ru.monica.data.model.LOGIN_TYPE_SSH_KEY
 import takagi.ru.monica.data.model.SshKeyData
 import takagi.ru.monica.data.model.SshKeyDataCodec
 import takagi.ru.monica.data.model.TotpData
@@ -78,11 +79,17 @@ class CipherSyncProcessor(
                 emptyMap()
             }
 
+            // 调试：记录 cipher 类型路由信息
+            if (cipher.type == 5 || cipher.sshKey != null) {
+                android.util.Log.i(TAG, "CIPHER_ROUTE id=${cipher.id} type=${cipher.type} hasSshKey=${cipher.sshKey != null} fieldsCount=${cipher.fields?.size ?: 0}")
+            }
+
             val syncResult = when (cipher.type) {
                 1 -> syncLoginCipher(vault, cipher, effectiveKey, serverDeletedAt, serverArchivedAt)
                 2 -> syncSecureNoteCipher(vault, cipher, effectiveKey, serverDeletedAt)
                 3 -> syncCardCipher(vault, cipher, effectiveKey, serverDeletedAt)
                 4 -> syncIdentityCipher(vault, cipher, effectiveKey, serverDeletedAt)
+                5 -> syncSshKeyCipher(vault, cipher, effectiveKey, serverDeletedAt, serverArchivedAt)
                 else -> CipherSyncResult.Skipped("Unknown cipher type: ${cipher.type}")
             }
             val outcome = mapCipherSyncOutcome(syncResult)
@@ -166,6 +173,10 @@ class CipherSyncProcessor(
         val totp = decryptString(login.totp, symmetricKey) ?: ""
         val parsedUris = parseLoginUris(login.uris, symmetricKey)
         val customFields = decryptCustomFieldMap(cipher.fields, symmetricKey)
+        // 调试：对有自定义字段的 cipher 记录 ID
+        if (customFields.isNotEmpty()) {
+            android.util.Log.i(TAG, "syncPasswordCipher cipherId=${cipher.id} has ${customFields.size} custom fields, title=$name")
+        }
         val remoteAppPackage = customFields["monica_app_package"]
             ?: customFields["appPackageName"]
             ?: parsedUris.appPackageName
@@ -190,6 +201,13 @@ class CipherSyncProcessor(
         val remoteCountry = customFields["monica_country"] ?: customFields["country"] ?: ""
         val remotePasskeyBindings = customFields["monica_passkey_bindings"].orEmpty()
         val remoteSshKeyData = buildSshKeyDataFromCustomFields(customFields)
+        val remoteLoginType = if (remoteSshKeyData.isNotBlank()) LOGIN_TYPE_SSH_KEY
+            else customFields["monica_login_type"]?.takeIf { it.equals(LOGIN_TYPE_SSH_KEY, ignoreCase = true) }
+                ?: "PASSWORD"
+        // 调试：记录 SSH 识别结果
+        if (customFields.isNotEmpty()) {
+            android.util.Log.i(TAG, "syncPasswordCipher cipherId=${cipher.id} loginType=$remoteLoginType sshDataBlank=${remoteSshKeyData.isBlank()}")
+        }
         val encryptedPassword = encryptBitwardenPasswordForOfflineDisplay(password, cipher.id)
         
         if (existing == null) {
@@ -215,6 +233,7 @@ class CipherSyncProcessor(
                 country = remoteCountry,
                 passkeyBindings = remotePasskeyBindings,
                 sshKeyData = remoteSshKeyData,
+                loginType = remoteLoginType,
                 isFavorite = cipher.favorite == true,
                 createdAt = Date(),
                 updatedAt = Date(),
@@ -255,6 +274,7 @@ class CipherSyncProcessor(
                         country = remoteCountry.ifBlank { existing.country },
                         passkeyBindings = remotePasskeyBindings.ifBlank { existing.passkeyBindings },
                         sshKeyData = remoteSshKeyData.ifBlank { existing.sshKeyData },
+                        loginType = if (remoteSshKeyData.isNotBlank()) LOGIN_TYPE_SSH_KEY else existing.loginType,
                         isFavorite = cipher.favorite == true,
                         isDeleted = true,
                         deletedAt = serverDeletedAt,
@@ -286,6 +306,13 @@ class CipherSyncProcessor(
                 return CipherSyncResult.Skipped("Local changes pending upload")
             }
             
+            // 如果本地是 SSH 密钥但服务端返回空数据（Type 5 被降级），
+            // 标记为本地已修改，触发下次同步时以 Type 1 + 自定义字段重新上传。
+            val localIsSshKey = existing.loginType.equals(LOGIN_TYPE_SSH_KEY, ignoreCase = true) &&
+                existing.sshKeyData.isNotBlank()
+            val serverLostSshData = localIsSshKey && remoteSshKeyData.isBlank() &&
+                customFields.isEmpty()
+            
             val updated = existing.copy(
                 title = name,
                 website = parsedUris.website.ifBlank { existing.website },
@@ -304,6 +331,7 @@ class CipherSyncProcessor(
                 country = remoteCountry.ifBlank { existing.country },
                 passkeyBindings = remotePasskeyBindings.ifBlank { existing.passkeyBindings },
                 sshKeyData = remoteSshKeyData.ifBlank { existing.sshKeyData },
+                loginType = if (remoteSshKeyData.isNotBlank()) LOGIN_TYPE_SSH_KEY else existing.loginType,
                 isFavorite = cipher.favorite == true,
                 isDeleted = false,
                 deletedAt = null,
@@ -313,9 +341,13 @@ class CipherSyncProcessor(
                 bitwardenVaultId = vault.id,
                 bitwardenFolderId = cipher.folderId,
                 bitwardenRevisionDate = cipher.revisionDate,
-                bitwardenLocalModified = false
+                // 如果服务端丢失了 SSH 数据，标记为本地修改以触发重新上传
+                bitwardenLocalModified = serverLostSshData
             )
             passwordEntryDao.update(updated)
+            if (serverLostSshData) {
+                android.util.Log.i(TAG, "SSH key ${cipher.id} lost on server, marking for re-upload as Type 1 + fields")
+            }
             return CipherSyncResult.Updated
         }
     }
@@ -355,17 +387,214 @@ class CipherSyncProcessor(
     }
 
     private fun buildSshKeyDataFromCustomFields(fields: Map<String, String>): String {
+        // 调试日志：打印所有解密后的自定义字段名和值前缀
+        if (fields.isNotEmpty()) {
+            val fieldDump = fields.entries.joinToString("; ") { (name, value) ->
+                val preview = if (value.length > 40) value.take(40) + "..." else value
+                "[$name]=${preview}"
+            }
+            android.util.Log.i(TAG, "SSH_FIELD_DUMP fieldCount=${fields.size}: $fieldDump")
+        }
+
+        // 1. 先按字段名匹配（Monica 自己上传的格式）
+        val publicKey = fields.findSshField(
+            "monica_ssh_public_key",
+            "publicKey",
+            "public_key",
+            "public key",
+            "public-key",
+            "ssh public key",
+            "ssh_public_key"
+        )
+        val privateKey = fields.findSshField(
+            "monica_ssh_private_key",
+            "privateKey",
+            "private_key",
+            "private key",
+            "private-key",
+            "ssh private key",
+            "ssh_private_key"
+        )
+        val fingerprint = fields.findSshField(
+            "monica_ssh_fingerprint",
+            "keyFingerprint",
+            "key_fingerprint",
+            "key fingerprint",
+            "key-fingerprint",
+            "fingerprint",
+            "ssh fingerprint",
+            "ssh_fingerprint"
+        )
+
+        // 2. 如果按名称没找到，尝试按值的内容特征识别（兼容 Bitwarden 等第三方客户端）
+        val resolvedPublicKey = publicKey.ifBlank { fields.findValueByContent(::looksLikeSshPublicKey) }
+        val resolvedPrivateKey = privateKey.ifBlank { fields.findValueByContent(::looksLikeSshPrivateKey) }
+        val resolvedFingerprint = fingerprint.ifBlank { fields.findValueByContent(::looksLikeSshFingerprint) }
+
+        if (fields.isNotEmpty()) {
+            android.util.Log.i(TAG, "SSH_RESOLVE pub=${resolvedPublicKey.take(30)} priv=${resolvedPrivateKey.take(30)} fp=${resolvedFingerprint.take(30)}")
+        }
+
+        val algorithm = fields.findSshField("monica_ssh_algorithm", "algorithm", "key type", "key-type", "keyType")
+            .ifBlank { inferSshAlgorithm(resolvedPublicKey) }
+
         return SshKeyDataCodec.encode(
             SshKeyData(
-                algorithm = fields["monica_ssh_algorithm"].orEmpty(),
+                algorithm = algorithm,
                 keySize = fields["monica_ssh_key_size"]?.toIntOrNull() ?: 0,
-                publicKeyOpenSsh = fields["monica_ssh_public_key"].orEmpty(),
-                privateKeyOpenSsh = fields["monica_ssh_private_key"].orEmpty(),
-                fingerprintSha256 = fields["monica_ssh_fingerprint"].orEmpty(),
+                publicKeyOpenSsh = resolvedPublicKey,
+                privateKeyOpenSsh = resolvedPrivateKey,
+                fingerprintSha256 = resolvedFingerprint,
                 comment = fields["monica_ssh_comment"].orEmpty(),
                 format = fields["monica_ssh_format"].orEmpty().ifBlank { SshKeyData.FORMAT_OPENSSH }
             )
         )
+    }
+
+    /** SSH 公钥特征：以 ssh-rsa、ssh-ed25519、ecdsa-sha2- 等开头 */
+    private fun looksLikeSshPublicKey(value: String): Boolean {
+        val trimmed = value.trimStart()
+        return trimmed.startsWith("ssh-rsa ") ||
+            trimmed.startsWith("ssh-ed25519 ") ||
+            trimmed.startsWith("ecdsa-sha2-") ||
+            trimmed.startsWith("ssh-dss ")
+    }
+
+    /** SSH 私钥特征：PEM 格式 BEGIN 头 */
+    private fun looksLikeSshPrivateKey(value: String): Boolean {
+        val trimmed = value.trimStart()
+        return trimmed.startsWith("-----BEGIN") &&
+            (trimmed.contains("PRIVATE KEY") || trimmed.contains("OPENSSH"))
+    }
+
+    /** SSH 指纹特征：SHA256: 前缀或 MD5 hex 格式 */
+    private fun looksLikeSshFingerprint(value: String): Boolean {
+        val trimmed = value.trim()
+        return trimmed.startsWith("SHA256:") ||
+            trimmed.startsWith("MD5:") ||
+            // 纯 base64 指纹（无前缀），长度在合理范围内
+            (trimmed.length in 40..50 && trimmed.all { it.isLetterOrDigit() || it == '+' || it == '/' || it == '=' })
+    }
+
+    /** 在所有字段值中查找符合特征的值（跳过已被其他字段使用的值） */
+    private fun Map<String, String>.findValueByContent(predicate: (String) -> Boolean): String {
+        return values.firstOrNull { it.isNotBlank() && predicate(it) }.orEmpty()
+    }
+
+    private fun Map<String, String>.findSshField(vararg names: String): String {
+        names.firstNotNullOfOrNull { this[it]?.takeIf(String::isNotBlank) }?.let { return it }
+        val normalizedNames = names.map { normalizeSshFieldName(it) }.toSet()
+        return entries.firstOrNull { (name, value) ->
+            value.isNotBlank() && normalizeSshFieldName(name) in normalizedNames
+        }?.value.orEmpty()
+    }
+
+    private fun normalizeSshFieldName(name: String): String {
+        return name.filter { it.isLetterOrDigit() }.lowercase()
+    }
+
+    private suspend fun syncSshKeyCipher(
+        vault: BitwardenVault,
+        cipher: CipherApiResponse,
+        symmetricKey: SymmetricCryptoKey,
+        serverDeletedAt: Date?,
+        serverArchivedAt: Date?
+    ): CipherSyncResult {
+        val sshKey = cipher.sshKey ?: return CipherSyncResult.Skipped("No SSH key data")
+        val name = decryptString(cipher.name, symmetricKey) ?: "SSH Key"
+        val notes = decryptString(cipher.notes, symmetricKey) ?: ""
+        val privateKey = decryptString(sshKey.privateKey, symmetricKey).orEmpty()
+        val publicKey = decryptString(sshKey.publicKey, symmetricKey).orEmpty()
+        val fingerprint = decryptString(sshKey.keyFingerprint, symmetricKey).orEmpty()
+        val sshKeyData = SshKeyDataCodec.encode(
+            SshKeyData(
+                algorithm = inferSshAlgorithm(publicKey),
+                publicKeyOpenSsh = publicKey,
+                privateKeyOpenSsh = privateKey,
+                fingerprintSha256 = fingerprint,
+                format = SshKeyData.FORMAT_OPENSSH
+            )
+        )
+        if (sshKeyData.isBlank()) {
+            return CipherSyncResult.Skipped("Empty SSH key data")
+        }
+
+        val isServerDeleted = serverDeletedAt != null
+        val existing = resolveCanonicalPasswordEntry(vault.id, cipher.id)
+        val hasPendingDelete = pendingOpDao.hasActiveDeleteByCipher(vault.id, cipher.id)
+
+        if (existing == null) {
+            if (hasPendingDelete && !isServerDeleted) {
+                return CipherSyncResult.Skipped("Pending local delete")
+            }
+            passwordEntryDao.insert(
+                PasswordEntry(
+                    title = name,
+                    website = "",
+                    username = "",
+                    password = "",
+                    notes = notes,
+                    sshKeyData = sshKeyData,
+                    loginType = LOGIN_TYPE_SSH_KEY,
+                    isFavorite = cipher.favorite == true,
+                    createdAt = Date(),
+                    updatedAt = Date(),
+                    bitwardenVaultId = vault.id,
+                    bitwardenCipherId = cipher.id,
+                    bitwardenFolderId = cipher.folderId,
+                    bitwardenRevisionDate = cipher.revisionDate,
+                    bitwardenCipherType = 5,
+                    bitwardenLocalModified = false,
+                    isDeleted = isServerDeleted,
+                    deletedAt = serverDeletedAt,
+                    isArchived = serverArchivedAt != null,
+                    archivedAt = serverArchivedAt
+                )
+            )
+            return CipherSyncResult.Added
+        }
+
+        if (hasPendingDelete && !isServerDeleted) {
+            return CipherSyncResult.Skipped("Local delete wins")
+        }
+        if (existing.bitwardenLocalModified) {
+            if (existing.bitwardenRevisionDate != cipher.revisionDate) {
+                return CipherSyncResult.Conflict
+            }
+            return CipherSyncResult.Skipped("Local changes pending upload")
+        }
+
+        passwordEntryDao.update(
+            existing.copy(
+                title = name,
+                website = "",
+                username = "",
+                password = "",
+                notes = notes,
+                sshKeyData = sshKeyData,
+                loginType = LOGIN_TYPE_SSH_KEY,
+                isFavorite = cipher.favorite == true,
+                isDeleted = isServerDeleted,
+                deletedAt = serverDeletedAt,
+                isArchived = serverArchivedAt != null || existing.isArchived,
+                archivedAt = serverArchivedAt ?: existing.archivedAt,
+                updatedAt = Date(),
+                bitwardenVaultId = vault.id,
+                bitwardenFolderId = cipher.folderId,
+                bitwardenRevisionDate = cipher.revisionDate,
+                bitwardenCipherType = 5,
+                bitwardenLocalModified = false
+            )
+        )
+        return CipherSyncResult.Updated
+    }
+
+    private fun inferSshAlgorithm(publicKey: String): String {
+        return when {
+            publicKey.startsWith("ssh-rsa") -> SshKeyData.ALGORITHM_RSA
+            publicKey.startsWith("ssh-ed25519") -> SshKeyData.ALGORITHM_ED25519
+            else -> ""
+        }
     }
 
     /**

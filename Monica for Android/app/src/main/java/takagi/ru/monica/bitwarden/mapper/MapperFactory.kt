@@ -49,6 +49,7 @@ object MapperFactory {
             SyncItemType.NOTE -> secureNoteMapper as BitwardenMapper<T>
             SyncItemType.IDENTITY -> identityMapper as BitwardenMapper<T>  // 使用 SyncItemType.IDENTITY
             SyncItemType.PASSKEY -> passkeyMapper as BitwardenMapper<T>
+            SyncItemType.SSH_KEY -> loginMapper as BitwardenMapper<T>
             SyncItemType.FOLDER -> null  // Folder 使用 Folder API，不是 Cipher
         }
     }
@@ -75,6 +76,7 @@ object MapperFactory {
             2 -> secureNoteMapper as BitwardenMapper<T>  // Secure Note
             3 -> cardMapper as BitwardenMapper<T>  // Card
             4 -> identityMapper as BitwardenMapper<T>  // Identity
+            5 -> loginMapper as BitwardenMapper<T>  // SSH Key
             else -> null
         }
     }
@@ -92,6 +94,7 @@ object MapperFactory {
             2 -> MonicaItemType.NOTE
             3 -> MonicaItemType.CARD  // 修改为 CARD
             4 -> MonicaItemType.IDENTITY  // 修改为 IDENTITY
+            5 -> MonicaItemType.SSH_KEY
             else -> MonicaItemType.UNKNOWN
         }
     }
@@ -107,6 +110,7 @@ object MapperFactory {
             SyncItemType.NOTE -> 2
             SyncItemType.CARD -> 3  // 使用 SyncItemType.CARD
             SyncItemType.IDENTITY -> 4  // 使用 SyncItemType.IDENTITY
+            SyncItemType.SSH_KEY -> 5
             SyncItemType.FOLDER -> 0  // Folder，不是 Cipher
         }
     }
@@ -130,6 +134,7 @@ enum class MonicaItemType {
     NOTE,
     IDENTITY,   // 证件
     PASSKEY,
+    SSH_KEY,
     FOLDER,     // 分类/文件夹
     UNKNOWN
 }

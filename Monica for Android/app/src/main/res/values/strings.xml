@@ -241,10 +241,38 @@
     <string name="title_required">Title *</string>
     <string name="website_url">Website/URL</string>
 
-    <!-- Entry type chip (password vs. WIFI) shown in the Add/Edit screen TopBar -->
+    <!-- Entry type chip (password vs. WIFI vs. SSH key) shown in the Add/Edit screen TopBar -->
     <string name="entry_type_chip_content_description">Switch entry type</string>
     <string name="entry_type_password">Password</string>
     <string name="entry_type_wifi">WIFI</string>
+    <string name="entry_type_ssh_key">SSH key</string>
+
+    <!-- SSH key generator / add-edit screens -->
+    <string name="generator_ssh_key">SSH key</string>
+    <string name="add_ssh_key_title">Add SSH key</string>
+    <string name="edit_ssh_key_title">Edit SSH key</string>
+    <string name="ssh_key_section_basic">Key</string>
+    <string name="ssh_key_algorithm_label">Algorithm</string>
+    <string name="ssh_key_algorithm_rsa">RSA</string>
+    <string name="ssh_key_algorithm_ed25519">Ed25519</string>
+    <string name="ssh_key_size_label">Key size</string>
+    <string name="ssh_key_public_key">Public key</string>
+    <string name="ssh_key_private_key">Private key</string>
+    <string name="ssh_key_fingerprint">Fingerprint (SHA256)</string>
+    <string name="ssh_key_comment">Comment</string>
+    <string name="ssh_key_generate">Generate</string>
+    <string name="ssh_key_generating">Generating SSH key...</string>
+    <string name="ssh_key_regenerate">Regenerate</string>
+    <string name="ssh_key_empty_placeholder">No key yet. Tap “Generate” to create one.</string>
+    <string name="ssh_key_rsa_description">Supported by every SSH client. 2048 bits minimum; 3072+ recommended.</string>
+    <string name="ssh_key_ed25519_description">Modern, compact, faster and safer than RSA. Requires a recent SSH client.</string>
+    <string name="ssh_key_generate_failed">Failed to generate SSH key</string>
+    <string name="ssh_key_copy_public">Copy public key</string>
+    <string name="ssh_key_copy_private">Copy private key</string>
+    <string name="ssh_key_copy_fingerprint">Copy fingerprint</string>
+    <string name="ssh_key_reveal_private">Show private key</string>
+    <string name="ssh_key_hide_private">Hide private key</string>
+    <string name="password_list_quick_filter_ssh_key">SSH keys</string>
 
     <!-- Add/Edit WIFI Screen -->
     <string name="add_wifi_title">Add WIFI</string>

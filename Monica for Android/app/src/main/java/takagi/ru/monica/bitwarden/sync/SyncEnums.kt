@@ -22,6 +22,9 @@ enum class SyncItemType {
     
     /** 通行密钥 (PasskeyEntry) -> Bitwarden Login with metadata (Type 1) */
     PASSKEY,
+
+    /** SSH 密钥 (PasswordEntry SSH_KEY) -> Bitwarden SSH Key (Type 5) */
+    SSH_KEY,
     
     /** 分类/文件夹 (Category) -> Bitwarden Folder */
     FOLDER;
@@ -36,6 +39,7 @@ enum class SyncItemType {
         NOTE -> 2      // SecureNote
         IDENTITY -> 4  // Identity
         PASSKEY -> 1   // Login (metadata only)
+        SSH_KEY -> 5   // SSH Key
         FOLDER -> 0    // Folder (not a cipher)
     }
     
@@ -49,6 +53,7 @@ enum class SyncItemType {
             2 -> NOTE
             3 -> CARD
             4 -> IDENTITY
+            5 -> SSH_KEY
             else -> PASSWORD
         }
     }

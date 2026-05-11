@@ -53,6 +53,20 @@ sealed class Screen(val route: String) {
             return "wifi_detail/$passwordId"
         }
     }
+    object AddEditSshKey : Screen("add_edit_ssh_key/{passwordId}") {
+        fun createRoute(passwordId: Long? = null): String {
+            return if (passwordId != null) {
+                "add_edit_ssh_key/$passwordId"
+            } else {
+                "add_edit_ssh_key/-1"
+            }
+        }
+    }
+    object SshKeyDetail : Screen("ssh_key_detail/{passwordId}") {
+        fun createRoute(passwordId: Long): String {
+            return "ssh_key_detail/$passwordId"
+        }
+    }
     object AddEditTotp : Screen("add_edit_totp/{totpId}") {
         fun createRoute(totpId: Long? = null): String {
             return if (totpId != null) {

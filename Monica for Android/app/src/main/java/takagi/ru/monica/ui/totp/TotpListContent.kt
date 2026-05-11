@@ -267,6 +267,7 @@ fun TotpListContent(
     var isCategorySheetVisible by rememberSaveable { mutableStateOf(false) }
     var categoryPillBoundsInWindow by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     val categories by viewModel.categories.collectAsState()
+    val categoryMgmt = takagi.ru.monica.ui.category.rememberCategoryManagementState()
     val currentFilter by viewModel.categoryFilter.collectAsState()
     val totpSelectedFilter = when (val filter = currentFilter) {
         is takagi.ru.monica.viewmodel.TotpCategoryFilter.All -> UnifiedCategoryFilterSelection.All
@@ -643,7 +644,21 @@ fun TotpListContent(
                                 keepassDatabases = keepassDatabases,
                                 bitwardenVaults = bitwardenVaults,
                                 getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
-                                getKeePassGroups = getKeePassGroups
+                                getKeePassGroups = getKeePassGroups,
+                                categoryEditMode = categoryMgmt.categoryEditMode,
+                                onRequestCategoryAction = { categoryMgmt.categoryActionTarget = it },
+                                trailingContent = {
+                                    takagi.ru.monica.ui.category.CategoryManagementTrailingContent(
+                                        state = categoryMgmt,
+                                        categories = categories,
+                                        keepassDatabases = keepassDatabases,
+                                        bitwardenVaults = bitwardenVaults,
+                                        getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+                                        getKeePassGroups = getKeePassGroups,
+                                        passwordViewModel = passwordViewModel,
+                                        onDismissFilterSheet = { isCategorySheetVisible = false }
+                                    )
+                                }
                             )
                         }
                     }
@@ -1156,6 +1171,19 @@ fun TotpListContent(
             }
         )
     }
+
+    takagi.ru.monica.ui.category.CategoryManagementCreateDialog(
+        state = categoryMgmt,
+        currentFilter = totpSelectedFilter,
+        categories = categories,
+        keepassDatabases = keepassDatabases,
+        bitwardenVaults = bitwardenVaults,
+        getKeePassGroups = getKeePassGroups,
+        passwordViewModel = passwordViewModel,
+        bitwardenRepository = bitwardenRepository,
+        keepassBridge = keepassBridge,
+        scope = scope
+    )
 }
 
 /**

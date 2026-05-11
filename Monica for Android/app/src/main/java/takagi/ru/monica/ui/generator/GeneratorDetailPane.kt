@@ -30,6 +30,7 @@ internal fun GeneratorDetailPane(
         GeneratorType.PASSWORD -> stringResource(R.string.generator_word)
         GeneratorType.PASSPHRASE -> stringResource(R.string.generator_passphrase)
         GeneratorType.PIN -> stringResource(R.string.generator_pin)
+        GeneratorType.SSH_KEY -> stringResource(R.string.generator_ssh_key)
     }
 
     Column(

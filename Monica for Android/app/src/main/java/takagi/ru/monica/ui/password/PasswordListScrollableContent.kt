@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -67,6 +68,9 @@ internal fun PasswordListScrollableContent(
     quickFilterWifi: Boolean,
     onQuickFilterWifiChange: (Boolean) -> Unit,
     wifiQuickFilterVisible: Boolean,
+    quickFilterSshKey: Boolean = false,
+    onQuickFilterSshKeyChange: (Boolean) -> Unit = {},
+    sshKeyQuickFilterVisible: Boolean = false,
     onToggleAggregateType: ((PasswordPageContentType) -> Unit)?,
     categoryQuickFilterShortcuts: List<PasswordQuickFolderShortcut>,
     quickFolderShortcuts: List<PasswordQuickFolderShortcut>,
@@ -145,6 +149,14 @@ internal fun PasswordListScrollableContent(
                                         onClick = { onQuickFilterWifiChange(!quickFilterWifi) },
                                         label = stringResource(R.string.entry_type_wifi),
                                         leadingIcon = Icons.Default.Wifi
+                                    )
+                                }
+                                if (sshKeyQuickFilterVisible) {
+                                    PasswordQuickFilterChip(
+                                        selected = quickFilterSshKey,
+                                        onClick = { onQuickFilterSshKeyChange(!quickFilterSshKey) },
+                                        label = stringResource(R.string.password_list_quick_filter_ssh_key),
+                                        leadingIcon = Icons.Default.Key
                                     )
                                 }
                             }

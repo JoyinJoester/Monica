@@ -2,6 +2,7 @@ package takagi.ru.monica.bitwarden.mapper
 
 import takagi.ru.monica.bitwarden.api.*
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.data.model.LOGIN_TYPE_SSH_KEY
 import takagi.ru.monica.data.model.SshKeyData
 import takagi.ru.monica.data.model.SshKeyDataCodec
 import takagi.ru.monica.util.TotpDataResolver
@@ -18,6 +19,33 @@ import java.util.Date
 class LoginMapper : BitwardenMapper<PasswordEntry> {
     
     override fun toCreateRequest(item: PasswordEntry, folderId: String?): CipherCreateRequest {
+        SshKeyDataCodec.decode(item.sshKeyData)?.let { ssh ->
+            if (item.loginType.equals(LOGIN_TYPE_SSH_KEY, ignoreCase = true)) {
+                // 使用 Type 1 + 自定义字段，兼容不支持 Type 5 的服务端（如 Vaultwarden）
+                val sshFields = mutableListOf<CipherFieldApiData>()
+                if (ssh.algorithm.isNotBlank()) sshFields.add(CipherFieldApiData(type = 0, name = "monica_ssh_algorithm", value = ssh.algorithm))
+                if (ssh.keySize > 0) sshFields.add(CipherFieldApiData(type = 0, name = "monica_ssh_key_size", value = ssh.keySize.toString()))
+                if (ssh.publicKeyOpenSsh.isNotBlank()) sshFields.add(CipherFieldApiData(type = 0, name = "monica_ssh_public_key", value = ssh.publicKeyOpenSsh))
+                if (ssh.privateKeyOpenSsh.isNotBlank()) sshFields.add(CipherFieldApiData(type = 1, name = "monica_ssh_private_key", value = ssh.privateKeyOpenSsh))
+                if (ssh.fingerprintSha256.isNotBlank()) sshFields.add(CipherFieldApiData(type = 0, name = "monica_ssh_fingerprint", value = ssh.fingerprintSha256))
+                if (ssh.comment.isNotBlank()) sshFields.add(CipherFieldApiData(type = 0, name = "monica_ssh_comment", value = ssh.comment))
+                if (ssh.format.isNotBlank()) sshFields.add(CipherFieldApiData(type = 0, name = "monica_ssh_format", value = ssh.format))
+                sshFields.add(CipherFieldApiData(type = 0, name = "monica_login_type", value = LOGIN_TYPE_SSH_KEY))
+                return CipherCreateRequest(
+                    type = 1,
+                    name = item.title,
+                    notes = item.notes.takeIf { it.isNotBlank() },
+                    folderId = folderId,
+                    favorite = item.isFavorite,
+                    login = CipherLoginApiData(
+                        uris = emptyList(),
+                        fido2Credentials = emptyList()
+                    ),
+                    fields = sshFields
+                )
+            }
+        }
+
         val totpPayload = item.authenticatorKey.takeIf { it.isNotBlank() }?.let {
             TotpDataResolver.fromAuthenticatorKey(
                 rawKey = it,
@@ -50,7 +78,29 @@ class LoginMapper : BitwardenMapper<PasswordEntry> {
     }
     
     override fun fromCipherResponse(cipher: CipherApiResponse, vaultId: Long): PasswordEntry {
-        require(cipher.type == 1) { "LoginMapper only supports Login ciphers (type 1)" }
+        require(cipher.type == 1 || cipher.type == 5) { "LoginMapper only supports Login and SSH key ciphers" }
+
+        if (cipher.type == 5) {
+            return PasswordEntry(
+                id = 0,
+                title = cipher.name ?: "",
+                website = "",
+                username = "",
+                password = "",
+                notes = cipher.notes ?: "",
+                createdAt = Date(),
+                updatedAt = Date(),
+                isFavorite = cipher.favorite == true,
+                loginType = LOGIN_TYPE_SSH_KEY,
+                sshKeyData = buildSshKeyData(cipher.sshKey),
+                bitwardenVaultId = vaultId,
+                bitwardenCipherId = cipher.id,
+                bitwardenFolderId = cipher.folderId,
+                bitwardenRevisionDate = cipher.revisionDate,
+                bitwardenCipherType = 5,
+                bitwardenLocalModified = false
+            )
+        }
         
         val login = cipher.login
         
@@ -73,17 +123,7 @@ class LoginMapper : BitwardenMapper<PasswordEntry> {
             phone = customFields["phone"] ?: "",
             appPackageName = customFields["appPackageName"] ?: "",
             appName = customFields["appName"] ?: "",
-            sshKeyData = SshKeyDataCodec.encode(
-                SshKeyData(
-                    algorithm = customFields["monica_ssh_algorithm"].orEmpty(),
-                    keySize = customFields["monica_ssh_key_size"]?.toIntOrNull() ?: 0,
-                    publicKeyOpenSsh = customFields["monica_ssh_public_key"].orEmpty(),
-                    privateKeyOpenSsh = customFields["monica_ssh_private_key"].orEmpty(),
-                    fingerprintSha256 = customFields["monica_ssh_fingerprint"].orEmpty(),
-                    comment = customFields["monica_ssh_comment"].orEmpty(),
-                    format = customFields["monica_ssh_format"].orEmpty().ifBlank { SshKeyData.FORMAT_OPENSSH }
-                )
-            ),
+            sshKeyData = buildSshKeyData(customFields),
             // Bitwarden 关联
             bitwardenVaultId = vaultId,
             bitwardenCipherId = cipher.id,
@@ -95,6 +135,18 @@ class LoginMapper : BitwardenMapper<PasswordEntry> {
     }
     
     override fun hasDifference(item: PasswordEntry, cipher: CipherApiResponse): Boolean {
+        if (cipher.type == 5) {
+            val localSsh = SshKeyDataCodec.decode(item.sshKeyData)
+            val remoteSsh = cipher.sshKey
+            return !item.loginType.equals(LOGIN_TYPE_SSH_KEY, ignoreCase = true) ||
+                    item.title != (cipher.name ?: "") ||
+                    item.notes != (cipher.notes ?: "") ||
+                    item.isFavorite != (cipher.favorite == true) ||
+                    localSsh?.privateKeyOpenSsh.orEmpty() != remoteSsh?.privateKey.orEmpty() ||
+                    localSsh?.publicKeyOpenSsh.orEmpty() != remoteSsh?.publicKey.orEmpty() ||
+                    localSsh?.fingerprintSha256.orEmpty() != remoteSsh?.keyFingerprint.orEmpty()
+        }
+
         if (cipher.type != 1) return true
         
         val login = cipher.login
@@ -231,6 +283,9 @@ class LoginMapper : BitwardenMapper<PasswordEntry> {
             ))
         }
         SshKeyDataCodec.decode(item.sshKeyData)?.let { ssh ->
+            if (item.loginType.equals(LOGIN_TYPE_SSH_KEY, ignoreCase = true)) {
+                return@let
+            }
             fields.add(CipherFieldApiData(type = 0, name = "monica_ssh_algorithm", value = ssh.algorithm))
             fields.add(CipherFieldApiData(type = 0, name = "monica_ssh_key_size", value = ssh.keySize.toString()))
             fields.add(CipherFieldApiData(type = 0, name = "monica_ssh_public_key", value = ssh.publicKeyOpenSsh))
@@ -318,6 +373,41 @@ class LoginMapper : BitwardenMapper<PasswordEntry> {
             java.time.Instant.parse(dateStr).toEpochMilli()
         } catch (e: Exception) {
             0
+        }
+    }
+
+    private fun buildSshKeyData(sshKey: CipherSshKeyApiData?): String {
+        if (sshKey == null) return ""
+        return SshKeyDataCodec.encode(
+            SshKeyData(
+                algorithm = inferSshAlgorithm(sshKey.publicKey),
+                publicKeyOpenSsh = sshKey.publicKey.orEmpty(),
+                privateKeyOpenSsh = sshKey.privateKey.orEmpty(),
+                fingerprintSha256 = sshKey.keyFingerprint.orEmpty(),
+                format = SshKeyData.FORMAT_OPENSSH
+            )
+        )
+    }
+
+    private fun buildSshKeyData(fields: Map<String, String>): String {
+        return SshKeyDataCodec.encode(
+            SshKeyData(
+                algorithm = fields["monica_ssh_algorithm"].orEmpty(),
+                keySize = fields["monica_ssh_key_size"]?.toIntOrNull() ?: 0,
+                publicKeyOpenSsh = fields["monica_ssh_public_key"].orEmpty(),
+                privateKeyOpenSsh = fields["monica_ssh_private_key"].orEmpty(),
+                fingerprintSha256 = fields["monica_ssh_fingerprint"].orEmpty(),
+                comment = fields["monica_ssh_comment"].orEmpty(),
+                format = fields["monica_ssh_format"].orEmpty().ifBlank { SshKeyData.FORMAT_OPENSSH }
+            )
+        )
+    }
+
+    private fun inferSshAlgorithm(publicKey: String?): String {
+        return when {
+            publicKey.orEmpty().startsWith("ssh-rsa") -> SshKeyData.ALGORITHM_RSA
+            publicKey.orEmpty().startsWith("ssh-ed25519") -> SshKeyData.ALGORITHM_ED25519
+            else -> ""
         }
     }
 }

@@ -14,6 +14,7 @@ import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto.SymmetricCryptoKey
  * - 2: SecureNote (安全笔记)
  * - 3: Card (信用卡)
  * - 4: Identity (身份信息)
+ * - 5: SshKey (SSH 密钥)
  */
 class BitwardenCipherDecoder(
     private val key: SymmetricCryptoKey
@@ -24,6 +25,7 @@ class BitwardenCipherDecoder(
         const val CIPHER_TYPE_SECURE_NOTE = 2
         const val CIPHER_TYPE_CARD = 3
         const val CIPHER_TYPE_IDENTITY = 4
+        const val CIPHER_TYPE_SSH_KEY = 5
     }
     
     private val json = Json { 
@@ -118,6 +120,17 @@ class BitwardenCipherDecoder(
             type = noteData.type
         )
     }
+
+    /**
+     * 解密 SSH Key Cipher
+     */
+    fun decryptSshKey(sshKeyData: CipherSshKeyData): DecryptedSshKey {
+        return DecryptedSshKey(
+            privateKey = decryptString(sshKeyData.privateKey),
+            publicKey = decryptString(sshKeyData.publicKey),
+            keyFingerprint = decryptString(sshKeyData.keyFingerprint)
+        )
+    }
     
     /**
      * 解密自定义字段
@@ -152,6 +165,7 @@ class BitwardenCipherDecoder(
             card = cipher.card?.let { decryptCard(it) },
             identity = cipher.identity?.let { decryptIdentity(it) },
             secureNote = cipher.secureNote?.let { decryptSecureNote(it) },
+            sshKey = cipher.sshKey?.let { decryptSshKey(it) },
             fields = decryptFields(cipher.fields),
             favorite = cipher.favorite,
             reprompt = cipher.reprompt,
@@ -176,6 +190,7 @@ data class CipherResponse(
     val card: CipherCardData? = null,
     val identity: CipherIdentityData? = null,
     val secureNote: CipherSecureNoteData? = null,
+    val sshKey: CipherSshKeyData? = null,
     val fields: List<CipherFieldData>? = null,
     val favorite: Boolean = false,
     val reprompt: Int = 0,
@@ -236,6 +251,13 @@ data class CipherSecureNoteData(
 )
 
 @Serializable
+data class CipherSshKeyData(
+    val privateKey: String? = null,
+    val publicKey: String? = null,
+    val keyFingerprint: String? = null
+)
+
+@Serializable
 data class CipherFieldData(
     val name: String?,
     val value: String?,
@@ -256,6 +278,7 @@ data class DecryptedCipher(
     val card: DecryptedCard?,
     val identity: DecryptedIdentity?,
     val secureNote: DecryptedSecureNote?,
+    val sshKey: DecryptedSshKey?,
     val fields: List<DecryptedField>,
     val favorite: Boolean,
     val reprompt: Int,
@@ -267,6 +290,7 @@ data class DecryptedCipher(
     fun isSecureNote() = type == BitwardenCipherDecoder.CIPHER_TYPE_SECURE_NOTE
     fun isCard() = type == BitwardenCipherDecoder.CIPHER_TYPE_CARD
     fun isIdentity() = type == BitwardenCipherDecoder.CIPHER_TYPE_IDENTITY
+    fun isSshKey() = type == BitwardenCipherDecoder.CIPHER_TYPE_SSH_KEY
     fun isDeleted() = deletedDate != null
 }
 
@@ -355,6 +379,12 @@ data class DecryptedIdentity(
 
 data class DecryptedSecureNote(
     val type: Int
+)
+
+data class DecryptedSshKey(
+    val privateKey: String?,
+    val publicKey: String?,
+    val keyFingerprint: String?
 )
 
 data class DecryptedField(

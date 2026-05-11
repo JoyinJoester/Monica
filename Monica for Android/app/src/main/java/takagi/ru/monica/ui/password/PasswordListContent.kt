@@ -142,6 +142,7 @@ import takagi.ru.monica.data.model.PasskeyBindingCodec
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.model.TimelinePasswordLocationState
 import takagi.ru.monica.data.model.TimelineEvent
+import takagi.ru.monica.data.model.isSshKeyEntry
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.FieldChange
@@ -535,6 +536,14 @@ fun PasswordListContent(
     LaunchedEffect(hasAnyWifiEntry) {
         if (!hasAnyWifiEntry) quickFilterWifi = false
     }
+    // SSH 密钥筛选：与 WIFI 同样按需出现，不进入 [PasswordListQuickFilterItem] 清单。
+    var quickFilterSshKey by rememberSaveable { mutableStateOf(false) }
+    val hasAnySshKeyEntry = remember(passwordEntries) {
+        passwordEntries.any { it.isSshKeyEntry() }
+    }
+    LaunchedEffect(hasAnySshKeyEntry) {
+        if (!hasAnySshKeyEntry) quickFilterSshKey = false
+    }
     var manualStackGroupByEntryId by remember { mutableStateOf<Map<Long, String>>(emptyMap()) }
     var noStackEntryIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var lastCustomFieldEntryIds by remember { mutableStateOf<List<Long>>(emptyList()) }
@@ -882,6 +891,7 @@ fun PasswordListContent(
         quickFilterLocalOnly,
         quickFilterNeverStack,
         quickFilterWifi,
+        quickFilterSshKey,
         effectiveNoStackEntryIds,
         aggregateUiState.hasActiveContentTypeFilter,
         aggregateUiState.contentTypeFilterTypes
@@ -915,6 +925,9 @@ fun PasswordListContent(
         }
         if (quickFilterWifi) {
             filtered = filtered.filter { it.isWifiEntry() }
+        }
+        if (quickFilterSshKey) {
+            filtered = filtered.filter { it.isSshKeyEntry() }
         }
         if (quickFilterUncategorized && takagi.ru.monica.data.PasswordListQuickFilterItem.UNCATEGORIZED in configuredQuickFilterItems) {
             filtered = filtered.filter { entry ->
@@ -1292,15 +1305,16 @@ fun PasswordListContent(
         configuredQuickFilterItems,
         aggregateUiState.visibleContentTypes,
         shouldGateInitialPasswordFirstFrame,
-        hasAnyWifiEntry
+        hasAnyWifiEntry,
+        hasAnySshKeyEntry
     ) {
         if (shouldGateInitialPasswordFirstFrame) return@remember false
         val hasConfiguredChips = appSettings.passwordListQuickFiltersEnabled &&
             configuredQuickFilterItems.any { item ->
                 shouldShowQuickFilterItem(item, aggregateUiState.visibleContentTypes)
             }
-        // WIFI chip 无需 quickFilters 设置开关——"有数据就冒出来"语义。
-        hasConfiguredChips || hasAnyWifiEntry
+        // WIFI / SSH chip 无需 quickFilters 设置开关——"有数据就冒出来"语义。
+        hasConfiguredChips || hasAnyWifiEntry || hasAnySshKeyEntry
     }
     val hasVisibleCategoryQuickFilters = remember(
         effectiveCategoryQuickFilterShortcuts
@@ -1596,6 +1610,9 @@ fun PasswordListContent(
         quickFilterWifi = quickFilterWifi,
         onQuickFilterWifiChange = { quickFilterWifi = it },
         wifiQuickFilterVisible = hasAnyWifiEntry,
+        quickFilterSshKey = quickFilterSshKey,
+        onQuickFilterSshKeyChange = { quickFilterSshKey = it },
+        sshKeyQuickFilterVisible = hasAnySshKeyEntry,
         onToggleAggregateType = aggregateConfig?.onToggleContentType,
         categoryQuickFilterShortcuts = effectiveCategoryQuickFilterShortcuts,
         quickFolderShortcuts = effectiveQuickFolderCardShortcuts,

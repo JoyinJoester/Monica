@@ -92,14 +92,18 @@ import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.isKeePassOwned
 import takagi.ru.monica.data.isLocalOnlyItem
 import takagi.ru.monica.data.bitwarden.BitwardenVault
+import takagi.ru.monica.data.model.StorageTarget
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.ui.components.BankCardCard
+import takagi.ru.monica.ui.components.CreateCategoryDialog
+import takagi.ru.monica.ui.components.CreateDialogTarget
 import takagi.ru.monica.ui.components.DocumentCard
 import takagi.ru.monica.ui.components.EmptyState
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.components.LoadingIndicator
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
+import takagi.ru.monica.ui.PasswordListCategoryChipMenuBottomActions
 import takagi.ru.monica.ui.components.PullActionVisualState
 import takagi.ru.monica.ui.common.pull.calculateDampedPullOffset
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenu
@@ -113,10 +117,12 @@ import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.KeePassGroupInfo
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
+import takagi.ru.monica.utils.planLocalCategoryMove
 import takagi.ru.monica.utils.SavedCategoryFilterState
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
+import takagi.ru.monica.viewmodel.PasswordViewModel
 import sh.calvin.reorderable.ReorderableItem
 import sh.calvin.reorderable.rememberReorderableLazyListState
 
@@ -131,6 +137,7 @@ enum class CardWalletTab {
 fun CardWalletScreen(
     bankCardViewModel: BankCardViewModel,
     documentViewModel: DocumentViewModel,
+    passwordViewModel: PasswordViewModel,
     onCardClick: (Long) -> Unit,
     onDocumentClick: (Long) -> Unit,
     currentTab: CardWalletTab,
@@ -209,6 +216,7 @@ fun CardWalletScreen(
     var verifyPasswordError by remember { mutableStateOf(false) }
     var verifyDeleteIds by remember { mutableStateOf(setOf<Long>()) }
     var showBatchMoveCategoryDialog by remember { mutableStateOf(false) }
+    val categoryMgmt = takagi.ru.monica.ui.category.rememberCategoryManagementState()
     val listState = rememberLazyListState()
     // Card wallet keeps pull-to-search; disable pull-to-sync on Bitwarden filters.
     val isBitwardenDatabaseView = false && when (selectedCategoryFilter) {
@@ -932,7 +940,21 @@ fun CardWalletScreen(
                                 keepassDatabases = keepassDatabases,
                                 bitwardenVaults = bitwardenVaults,
                                 getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
-                                getKeePassGroups = getKeePassGroups
+                                getKeePassGroups = getKeePassGroups,
+                                categoryEditMode = categoryMgmt.categoryEditMode,
+                                onRequestCategoryAction = { categoryMgmt.categoryActionTarget = it },
+                                trailingContent = {
+                                    takagi.ru.monica.ui.category.CategoryManagementTrailingContent(
+                                        state = categoryMgmt,
+                                        categories = categories,
+                                        keepassDatabases = keepassDatabases,
+                                        bitwardenVaults = bitwardenVaults,
+                                        getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+                                        getKeePassGroups = getKeePassGroups,
+                                        passwordViewModel = passwordViewModel,
+                                        onDismissFilterSheet = { showCategoryFilterDialog = false }
+                                    )
+                                }
                             )
                         }
                     }
@@ -1379,36 +1401,52 @@ fun CardWalletScreen(
 
     if (showBatchMoveCategoryDialog) {
         UnifiedMoveToCategoryBottomSheet(
-        visible = true,
-        onDismiss = { showBatchMoveCategoryDialog = false },
+            visible = true,
+            onDismiss = { showBatchMoveCategoryDialog = false },
+            categories = categories,
+            keepassDatabases = keepassDatabases,
+            bitwardenVaults = bitwardenVaults,
+            getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+            getKeePassGroups = getKeePassGroups,
+            allowCopy = true,
+            allowMove = allItems.filter { selectedIds.contains(it.id) }.none { it.isKeePassOwned() },
+            onTargetSelected = ::performBatchMove
+        )
+    }
+
+    takagi.ru.monica.ui.category.CategoryManagementCreateDialog(
+        state = categoryMgmt,
+        currentFilter = selectedCategoryFilter,
         categories = categories,
         keepassDatabases = keepassDatabases,
         bitwardenVaults = bitwardenVaults,
-        getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
         getKeePassGroups = getKeePassGroups,
-        allowCopy = true,
-        allowMove = allItems.filter { selectedIds.contains(it.id) }.none { it.isKeePassOwned() },
-        onTargetSelected = ::performBatchMove
-        )
-    }
+        passwordViewModel = passwordViewModel,
+        bitwardenRepository = bitwardenRepository,
+        keepassBridge = keepassBridge,
+        scope = scope
+    )
 }
 
-private fun encodeCardWalletCategoryFilter(filter: UnifiedCategoryFilterSelection): SavedCategoryFilterState = when (filter) {
-    UnifiedCategoryFilterSelection.All -> SavedCategoryFilterState(type = "all")
-    UnifiedCategoryFilterSelection.Local -> SavedCategoryFilterState(type = "local")
-    UnifiedCategoryFilterSelection.Starred -> SavedCategoryFilterState(type = "starred")
-    UnifiedCategoryFilterSelection.Uncategorized -> SavedCategoryFilterState(type = "uncategorized")
-    UnifiedCategoryFilterSelection.LocalStarred -> SavedCategoryFilterState(type = "local_starred")
-    UnifiedCategoryFilterSelection.LocalUncategorized -> SavedCategoryFilterState(type = "local_uncategorized")
-    is UnifiedCategoryFilterSelection.Custom -> SavedCategoryFilterState(type = "custom", primaryId = filter.categoryId)
-    is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> SavedCategoryFilterState(type = "bitwarden_vault", primaryId = filter.vaultId)
-    is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> SavedCategoryFilterState(type = "bitwarden_folder", primaryId = filter.vaultId, text = filter.folderId)
-    is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> SavedCategoryFilterState(type = "bitwarden_vault_starred", primaryId = filter.vaultId)
-    is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> SavedCategoryFilterState(type = "bitwarden_vault_uncategorized", primaryId = filter.vaultId)
-    is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> SavedCategoryFilterState(type = "keepass_database", primaryId = filter.databaseId)
-    is UnifiedCategoryFilterSelection.KeePassGroupFilter -> SavedCategoryFilterState(type = "keepass_group", primaryId = filter.databaseId, text = filter.groupPath)
-    is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> SavedCategoryFilterState(type = "keepass_database_starred", primaryId = filter.databaseId)
-    is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> SavedCategoryFilterState(type = "keepass_database_uncategorized", primaryId = filter.databaseId)
+private fun encodeCardWalletCategoryFilter(filter: UnifiedCategoryFilterSelection): SavedCategoryFilterState {
+    return when (filter) {
+        UnifiedCategoryFilterSelection.All -> SavedCategoryFilterState(type = "all")
+        UnifiedCategoryFilterSelection.Local -> SavedCategoryFilterState(type = "local")
+        UnifiedCategoryFilterSelection.Starred -> SavedCategoryFilterState(type = "starred")
+        UnifiedCategoryFilterSelection.Uncategorized -> SavedCategoryFilterState(type = "uncategorized")
+        UnifiedCategoryFilterSelection.LocalStarred -> SavedCategoryFilterState(type = "local_starred")
+        UnifiedCategoryFilterSelection.LocalUncategorized -> SavedCategoryFilterState(type = "local_uncategorized")
+        is UnifiedCategoryFilterSelection.Custom -> SavedCategoryFilterState(type = "custom", primaryId = filter.categoryId)
+        is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> SavedCategoryFilterState(type = "bitwarden_vault", primaryId = filter.vaultId)
+        is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> SavedCategoryFilterState(type = "bitwarden_folder", primaryId = filter.vaultId, text = filter.folderId)
+        is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> SavedCategoryFilterState(type = "bitwarden_vault_starred", primaryId = filter.vaultId)
+        is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> SavedCategoryFilterState(type = "bitwarden_vault_uncategorized", primaryId = filter.vaultId)
+        is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> SavedCategoryFilterState(type = "keepass_database", primaryId = filter.databaseId)
+        is UnifiedCategoryFilterSelection.KeePassGroupFilter -> SavedCategoryFilterState(type = "keepass_group", primaryId = filter.databaseId, text = filter.groupPath)
+        is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> SavedCategoryFilterState(type = "keepass_database_starred", primaryId = filter.databaseId)
+        is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> SavedCategoryFilterState(type = "keepass_database_uncategorized", primaryId = filter.databaseId)
+        else -> SavedCategoryFilterState(type = "all")
+    }
 }
 
 private val cardWalletCategoryFilterSaver = listSaver<UnifiedCategoryFilterSelection, Any?>(

@@ -182,6 +182,10 @@ import takagi.ru.monica.util.TotpGenerator
 import takagi.ru.monica.utils.KEEPASS_DISPLAY_PATH_SEPARATOR
 import takagi.ru.monica.utils.decodeKeePassPathSegments
 import takagi.ru.monica.utils.SavedCategoryFilterState
+import takagi.ru.monica.utils.planLocalCategoryMove
+import takagi.ru.monica.data.model.StorageTarget
+import takagi.ru.monica.ui.components.CreateCategoryDialog
+import takagi.ru.monica.ui.components.CreateDialogTarget
 import java.util.concurrent.CancellationException
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -1055,6 +1059,7 @@ fun VaultV2Pane(
 
 	val passwordEntries by passwordViewModel.allPasswordsForUi.collectAsState()
 	val categories by passwordViewModel.categories.collectAsState()
+	var showCreateCategoryDialog by remember { mutableStateOf(false) }
 	val totpItems by totpViewModel.allTotpItems.collectAsState()
 	val bankCardItems by bankCardViewModel.allCards.collectAsState(initial = emptyList())
 	val documentItems by documentViewModel.allDocuments.collectAsState(initial = emptyList())
@@ -1908,9 +1913,67 @@ fun VaultV2Pane(
 										isStorageFilterSheetVisible = false
 									},
 									categories = categories,
-									onCreateCategory = null,
-									onMoveCategory = null,
-									onMoveCategoryToStorageTarget = null,
+									onCreateCategory = {
+										isStorageFilterSheetVisible = false
+										showCreateCategoryDialog = true
+									},
+									onMoveCategory = { category, targetParentCategoryId ->
+										runCatching {
+											planLocalCategoryMove(
+												categories = categories,
+												sourceCategory = category,
+												targetParentCategory = categories.find { it.id == targetParentCategoryId }
+											)
+										}.onSuccess { plan ->
+											plan.updatedCategories.forEach(passwordViewModel::updateCategory)
+										}.onFailure { error ->
+											Toast.makeText(
+												context,
+												context.getString(R.string.save_failed_with_error, error.message ?: ""),
+												Toast.LENGTH_SHORT
+											).show()
+										}
+									},
+									onMoveCategoryToStorageTarget = { category, target ->
+										when (target) {
+											is StorageTarget.MonicaLocal -> {
+												runCatching {
+													planLocalCategoryMove(
+														categories = categories,
+														sourceCategory = category,
+														targetParentCategory = categories.find { it.id == target.categoryId }
+													)
+												}.onSuccess { plan ->
+													plan.updatedCategories.forEach(passwordViewModel::updateCategory)
+												}.onFailure { error ->
+													Toast.makeText(
+														context,
+														context.getString(R.string.save_failed_with_error, error.message ?: ""),
+														Toast.LENGTH_SHORT
+													).show()
+												}
+											}
+											is StorageTarget.Bitwarden -> {
+												passwordViewModel.updateCategory(
+													category.copy(
+														bitwardenVaultId = target.vaultId,
+														bitwardenFolderId = target.folderId.orEmpty()
+													)
+												)
+											}
+											is StorageTarget.KeePass -> {
+												Toast.makeText(
+													context,
+													context.getString(R.string.save_failed_with_error, "当前暂不支持将分类移动到 KeePass 数据库"),
+													Toast.LENGTH_SHORT
+												).show()
+											}
+										}
+									},
+									onRenameCategory = passwordViewModel::updateCategory,
+									onDeleteCategory = passwordViewModel::deleteCategory,
+									getBitwardenFolders = passwordViewModel::getBitwardenFolders,
+									getKeePassGroups = localKeePassViewModel::getGroups,
 								)
 							}
 						}
@@ -2401,6 +2464,64 @@ fun VaultV2Pane(
 			)
 		}
 
+	}
+
+	if (showCreateCategoryDialog) {
+		val currentSelection = state.toUnifiedCategoryFilterSelection()
+		val initialLocalParentPath = (currentSelection as? UnifiedCategoryFilterSelection.Custom)?.let { filter ->
+			categories.firstOrNull { it.id == filter.categoryId }?.name
+		}
+		val (initialDialogTarget, initialDialogKeePassDbId, initialDialogBitwardenVaultId) = when (val filter = currentSelection) {
+			is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> Triple(CreateDialogTarget.KeePass, filter.databaseId, null)
+			is UnifiedCategoryFilterSelection.KeePassGroupFilter -> Triple(CreateDialogTarget.KeePass, filter.databaseId, null)
+			is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> Triple(CreateDialogTarget.KeePass, filter.databaseId, null)
+			is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> Triple(CreateDialogTarget.KeePass, filter.databaseId, null)
+			is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> Triple(CreateDialogTarget.Bitwarden, null, filter.vaultId)
+			is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> Triple(CreateDialogTarget.Bitwarden, null, filter.vaultId)
+			is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> Triple(CreateDialogTarget.Bitwarden, null, filter.vaultId)
+			is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> Triple(CreateDialogTarget.Bitwarden, null, filter.vaultId)
+			else -> Triple(null, null, null)
+		}
+		CreateCategoryDialog(
+			visible = true,
+			onDismiss = { showCreateCategoryDialog = false },
+			categories = categories,
+			keepassDatabases = keepassDatabases,
+			bitwardenVaults = bitwardenVaults,
+			getKeePassGroups = localKeePassViewModel::getGroups,
+			onCreateCategoryWithName = { name -> passwordViewModel.addCategory(name) },
+			onCreateBitwardenFolder = { vaultId, name ->
+				scope.launch {
+					val result = bitwardenRepository.createFolder(vaultId, name)
+					result.exceptionOrNull()?.let { error ->
+						Toast.makeText(
+							context,
+							context.getString(R.string.save_failed_with_error, error.message ?: ""),
+							Toast.LENGTH_SHORT
+						).show()
+					}
+				}
+			},
+			onCreateKeePassGroup = { databaseId, parentPath, name ->
+				localKeePassViewModel.createGroup(
+					databaseId = databaseId,
+					groupName = name,
+					parentPath = parentPath
+				) { result ->
+					result.exceptionOrNull()?.let { error ->
+						Toast.makeText(
+							context,
+							context.getString(R.string.save_failed_with_error, error.message ?: ""),
+							Toast.LENGTH_SHORT
+						).show()
+					}
+				}
+			},
+			initialLocalParentPath = initialLocalParentPath,
+			initialTarget = initialDialogTarget,
+			initialKeePassDbId = initialDialogKeePassDbId,
+			initialBitwardenVaultId = initialDialogBitwardenVaultId
+		)
 	}
 }
 

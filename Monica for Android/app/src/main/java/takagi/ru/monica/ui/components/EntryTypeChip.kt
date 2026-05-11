@@ -15,6 +15,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Key
+import androidx.compose.material.icons.filled.Password
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -41,12 +42,12 @@ import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
 
 /**
- * 条目类型切换按钮。显示在添加/编辑页顶栏右侧，让用户在"密码 / WIFI"之间切换。
+ * 条目类型切换按钮。显示在添加/编辑页顶栏右侧，让用户在「密码 / WIFI / SSH 密钥」之间切换。
  *
  * Material 3 Expressive 风格：去掉 AssistChip 的描边，换成小圆角的 tonal pill，
  * 点击弹出 DropdownMenu 选类型。禁用时只做透明度淡出，保持形状一致。
  */
-enum class EntryTypeChipOption { PASSWORD, WIFI }
+enum class EntryTypeChipOption { PASSWORD, WIFI, SSH_KEY }
 
 @Composable
 fun EntryTypeChip(
@@ -175,11 +176,13 @@ fun EntryTypeChip(
 private fun EntryTypeChipOption.labelRes() = when (this) {
     EntryTypeChipOption.PASSWORD -> R.string.entry_type_password
     EntryTypeChipOption.WIFI -> R.string.entry_type_wifi
+    EntryTypeChipOption.SSH_KEY -> R.string.entry_type_ssh_key
 }
 
 private fun EntryTypeChipOption.icon(): ImageVector = when (this) {
-    EntryTypeChipOption.PASSWORD -> Icons.Default.Key
+    EntryTypeChipOption.PASSWORD -> Icons.Default.Password
     EntryTypeChipOption.WIFI -> Icons.Default.Wifi
+    EntryTypeChipOption.SSH_KEY -> Icons.Default.Key
 }
 
 /** 保留 import 不造成未使用警告。 */

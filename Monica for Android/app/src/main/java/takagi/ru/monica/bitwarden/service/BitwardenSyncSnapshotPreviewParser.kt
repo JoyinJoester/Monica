@@ -39,7 +39,7 @@ class BitwardenSyncSnapshotPreviewParser {
             )
         }
 
-        if (cipher.type !in setOf(1, 2, 3, 4)) {
+        if (cipher.type !in setOf(1, 2, 3, 4, 5)) {
             symmetricKey?.clear()
             return BitwardenSyncSnapshotPreview(
                 status = BitwardenSyncSnapshotPreviewStatus.UNSUPPORTED_TYPE,
@@ -60,6 +60,7 @@ class BitwardenSyncSnapshotPreviewParser {
                 2 -> parseSecureNoteCipher(cipher, effectiveKey)
                 3 -> parseCardCipher(cipher, effectiveKey)
                 4 -> parseIdentityCipher(cipher, effectiveKey)
+                5 -> parseSshKeyCipher(cipher, effectiveKey)
                 else -> BitwardenSyncSnapshotPreview(
                     status = BitwardenSyncSnapshotPreviewStatus.UNSUPPORTED_TYPE,
                     cipherType = cipher.type,
@@ -229,6 +230,32 @@ class BitwardenSyncSnapshotPreviewParser {
             extraSections = listOfNotNull(
                 identityFields.takeIf { it.isNotEmpty() }?.let {
                     BitwardenSyncSnapshotFieldGroupPreview(title = "Identity", fields = it)
+                }
+            )
+        )
+    }
+
+    private fun parseSshKeyCipher(
+        cipher: CipherApiResponse,
+        key: SymmetricCryptoKey?
+    ): BitwardenSyncSnapshotPreview {
+        val sshKey = cipher.sshKey
+        val sshKeyFields = buildList {
+            addHiddenIfPresent("Private Key", decryptOrPlain(sshKey?.privateKey, key))
+            addIfPresent("Public Key", decryptOrPlain(sshKey?.publicKey, key))
+            addIfPresent("Fingerprint", decryptOrPlain(sshKey?.keyFingerprint, key))
+        }
+
+        return BitwardenSyncSnapshotPreview(
+            status = readyOrLocked(key),
+            cipherType = cipher.type,
+            title = decryptOrPlain(cipher.name, key).orEmpty(),
+            notes = decryptOrPlain(cipher.notes, key).orEmpty(),
+            customFields = parseCustomFields(cipher, key),
+            metadataFields = parseMetadataFields(cipher),
+            extraSections = listOfNotNull(
+                sshKeyFields.takeIf { it.isNotEmpty() }?.let {
+                    BitwardenSyncSnapshotFieldGroupPreview(title = "SSH Key", fields = it)
                 }
             )
         )

@@ -86,6 +86,7 @@ import takagi.ru.monica.data.model.BillingAddress
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.model.isEmpty
+import takagi.ru.monica.data.model.isSshKeyEntry
 import takagi.ru.monica.ui.components.AppSelectorDialog
 import takagi.ru.monica.ui.components.CustomIconActionDialog
 import takagi.ru.monica.ui.components.CustomFieldEditorSection
@@ -188,6 +189,7 @@ fun AddEditPasswordScreen(
     onScanAuthenticatorQrCode: (() -> Unit)? = null,
     onSaveCompleted: ((Long?) -> Unit)? = null,
     onSwitchToWifi: ((Long?) -> Unit)? = null,
+    onSwitchToSshKey: ((Long?) -> Unit)? = null,
     onNavigateBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -1020,6 +1022,11 @@ fun AddEditPasswordScreen(
                         onSwitchToWifi(actualId)
                         return@launch
                     }
+                    // SSH 密钥条目走独立编辑页
+                    if (rawEntry.isSshKeyEntry() && onSwitchToSshKey != null) {
+                        onSwitchToSshKey(actualId)
+                        return@launch
+                    }
                     hasOwnershipConflict = viewModel.hasOwnershipConflict(rawEntry)
                     val secretState = viewModel.inspectSecretState(rawEntry)
                     val entry = rawEntry.copy(
@@ -1556,8 +1563,12 @@ fun AddEditPasswordScreen(
                         takagi.ru.monica.ui.components.EntryTypeChip(
                             current = takagi.ru.monica.ui.components.EntryTypeChipOption.PASSWORD,
                             onSelect = { option ->
-                                if (option == takagi.ru.monica.ui.components.EntryTypeChipOption.WIFI) {
-                                    onSwitchToWifi(if (isEditing) passwordId else null)
+                                when (option) {
+                                    takagi.ru.monica.ui.components.EntryTypeChipOption.WIFI ->
+                                        onSwitchToWifi(if (isEditing) passwordId else null)
+                                    takagi.ru.monica.ui.components.EntryTypeChipOption.SSH_KEY ->
+                                        onSwitchToSshKey?.invoke(if (isEditing) passwordId else null)
+                                    takagi.ru.monica.ui.components.EntryTypeChipOption.PASSWORD -> Unit
                                 }
                             },
                             enabled = !isEditing

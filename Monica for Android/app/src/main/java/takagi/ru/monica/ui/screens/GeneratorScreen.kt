@@ -71,6 +71,7 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import takagi.ru.monica.ui.components.OutlinedTextField
+import takagi.ru.monica.ui.components.SshKeyGenerationProgressIndicator
 
 /**
  * 将密码转换为彩色文本
@@ -227,6 +228,12 @@ fun GeneratorScreen(
     
     val pinLength by viewModel.pinLength.collectAsState()
     val pinResult by viewModel.pinResult.collectAsState()
+
+    // SSH 密钥生成器状态
+    val sshKeyAlgorithm by viewModel.sshKeyAlgorithm.collectAsState()
+    val sshKeyRsaSize by viewModel.sshKeyRsaSize.collectAsState()
+    val sshKeyResult by viewModel.sshKeyResult.collectAsState()
+    var isSshKeyGenerating by remember { mutableStateOf(false) }
     var symbolRulesExpanded by remember { mutableStateOf(false) }
 
     val regenerateNow: () -> Unit = regenerate@{
@@ -299,6 +306,34 @@ fun GeneratorScreen(
                 viewModel.updatePinResult(result)
                 appendGeneratorHistory(result, context.getString(R.string.pin_generator), "PIN")
             }
+            GeneratorType.SSH_KEY -> {
+                if (isSshKeyGenerating) return@regenerate
+                scope.launch {
+                    isSshKeyGenerating = true
+                    val request = buildSshKeyRequest(sshKeyAlgorithm, sshKeyRsaSize)
+                    val generated = try {
+                        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                            runCatching { takagi.ru.monica.utils.SshKeyGenerator.generate(request) }
+                        }
+                    } finally {
+                        isSshKeyGenerating = false
+                    }
+                    generated.onSuccess { data ->
+                        viewModel.updateSshKeyResult(data)
+                        appendGeneratorHistory(
+                            data.fingerprintSha256,
+                            context.getString(R.string.generator_ssh_key),
+                            "SSH_KEY"
+                        )
+                    }.onFailure {
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.ssh_key_generate_failed),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }
         }
     }
 
@@ -319,7 +354,8 @@ fun GeneratorScreen(
         customSeparator, separatorCountsTowardsLength, segmentLength,
         passphraseWordCount, passphraseDelimiter, passphraseCapitalize, 
         passphraseIncludeNumber, passphraseCustomWord, passphraseCustomWords,
-        pinLength
+        pinLength,
+        sshKeyAlgorithm, sshKeyRsaSize
     ) {
         // 延迟100ms以避免频繁生成
         kotlinx.coroutines.delay(100)
@@ -389,6 +425,21 @@ fun GeneratorScreen(
                 val result = PasswordGenerator.generatePinCode(pinLength)
                 viewModel.updatePinResult(result)
             }
+            GeneratorType.SSH_KEY -> {
+                // 生成 SSH 密钥可能比较慢 (RSA 4096 1-3s)，放到默认调度器。
+                val request = buildSshKeyRequest(sshKeyAlgorithm, sshKeyRsaSize)
+                isSshKeyGenerating = true
+                val generated = try {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                        runCatching {
+                            takagi.ru.monica.utils.SshKeyGenerator.generate(request)
+                        }.getOrNull()
+                    }
+                } finally {
+                    isSshKeyGenerating = false
+                }
+                viewModel.updateSshKeyResult(generated)
+            }
         }
     }
 
@@ -404,11 +455,33 @@ fun GeneratorScreen(
             GeneratorType.PASSWORD -> passwordResult
             GeneratorType.PASSPHRASE -> passphraseResult
             GeneratorType.PIN -> pinResult
+            GeneratorType.SSH_KEY -> sshKeyResult?.fingerprintSha256.orEmpty()
         }
+        val resultCardTitle = when (selectedGenerator) {
+            GeneratorType.SSH_KEY -> sshKeyResult?.algorithm.orEmpty()
+                .takeIf { it.isNotEmpty() } ?: stringResource(R.string.generator_ssh_key)
+            else -> null
+        }
+        val resultCardShowStrength = selectedGenerator != GeneratorType.SSH_KEY
+        val resultCardSupportingInfo = when (selectedGenerator) {
+            GeneratorType.SSH_KEY -> sshKeyResult?.let { data ->
+                if (data.algorithm == takagi.ru.monica.data.model.SshKeyData.ALGORITHM_RSA) {
+                    "${data.keySize} bits"
+                } else {
+                    data.algorithm
+                }
+            } ?: ""
+            else -> null
+        }
+        val isSshKeyGenerator = selectedGenerator == GeneratorType.SSH_KEY
         val shouldShowResultCard = currentResult.isNotEmpty()
-        val isResultCardPinned by remember(listState, shouldShowResultCard) {
+        val shouldShowSshGenerationProgress = isSshKeyGenerator && isSshKeyGenerating
+        // SSH_KEY 的结果卡片不参与 sticky compact 模式：指纹文本短，不需要收缩，
+        // 且 compact 切换会导致高度跳变影响滚动体验。
+        val isResultCardPinned by remember(listState, shouldShowResultCard, selectedGenerator) {
             derivedStateOf {
-                shouldShowResultCard &&
+                !isSshKeyGenerator &&
+                    shouldShowResultCard &&
                     (listState.firstVisibleItemIndex > 2 ||
                         (listState.firstVisibleItemIndex == 2 && listState.firstVisibleItemScrollOffset > 0))
             }
@@ -492,13 +565,49 @@ fun GeneratorScreen(
                 }
             }
 
-            if (shouldShowResultCard) {
+            if (isSshKeyGenerator && (shouldShowSshGenerationProgress || shouldShowResultCard)) {
+                item {
+                    if (shouldShowSshGenerationProgress) {
+                        ElevatedCard(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 20.dp),
+                            colors = CardDefaults.elevatedCardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceContainer
+                            ),
+                            elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
+                        ) {
+                            SshKeyGenerationProgressIndicator(
+                                modifier = Modifier.padding(16.dp)
+                            )
+                        }
+                    } else {
+                        ResultCard(
+                            result = currentResult,
+                            title = resultCardTitle,
+                            showStrengthSection = false,
+                            supportingInfo = resultCardSupportingInfo,
+                            compactMode = false,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 20.dp),
+                            onCopy = { text ->
+                                copyToClipboard(context, text)
+                                Toast.makeText(context, context.getString(R.string.copied_to_clipboard), Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                    }
+                }
+            } else if (shouldShowResultCard) {
                 stickyHeader {
                     Surface(
                         color = MaterialTheme.colorScheme.background.copy(alpha = 0.98f)
                     ) {
                         ResultCard(
                             result = currentResult,
+                            title = resultCardTitle,
+                            showStrengthSection = resultCardShowStrength,
+                            supportingInfo = resultCardSupportingInfo,
                             compactMode = isResultCardPinned,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -515,7 +624,11 @@ fun GeneratorScreen(
             item {
                 // 根据选择的生成器类型显示相应的配置选项
                 ElevatedCard(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = if (selectedGenerator == GeneratorType.SSH_KEY) {
+                        Modifier.fillMaxWidth().fillParentMaxHeight(0.6f)
+                    } else {
+                        Modifier.fillMaxWidth()
+                    },
                     colors = CardDefaults.elevatedCardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceContainer
                     ),
@@ -1043,6 +1156,14 @@ fun GeneratorScreen(
                         )
                     }
                 }
+                    GeneratorType.SSH_KEY -> {
+                        GeneratorSshKeySection(
+                            algorithm = sshKeyAlgorithm,
+                            onAlgorithmChange = viewModel::updateSshKeyAlgorithm,
+                            rsaKeySize = sshKeyRsaSize,
+                            onRsaKeySizeChange = viewModel::updateSshKeyRsaSize
+                        )
+                    }
                 }
                     }
                 }
@@ -1055,6 +1176,7 @@ fun GeneratorScreen(
 
             FloatingActionButton(
                 onClick = {
+                    if (selectedGenerator == GeneratorType.SSH_KEY && isSshKeyGenerating) return@FloatingActionButton
                     isRegenerating = true
                     regenerateNow()
                 },
@@ -1258,6 +1380,20 @@ private fun copyToClipboard(context: Context, text: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     val clip = ClipData.newPlainText("Generated Text", text)
     clipboard.setPrimaryClip(clip)
+}
+
+/**
+ * 把 UI 上的算法字符串和 RSA 长度组合成 [takagi.ru.monica.utils.SshKeyGenerator.Request]。
+ */
+private fun buildSshKeyRequest(
+    algorithm: String,
+    rsaKeySize: Int
+): takagi.ru.monica.utils.SshKeyGenerator.Request = when {
+    algorithm.equals(
+        takagi.ru.monica.data.model.SshKeyData.ALGORITHM_RSA,
+        ignoreCase = true
+    ) -> takagi.ru.monica.utils.SshKeyGenerator.Request.Rsa(rsaKeySize)
+    else -> takagi.ru.monica.utils.SshKeyGenerator.Request.Ed25519
 }
 
 private fun generatePassword(
@@ -1706,6 +1842,7 @@ private fun generatorTypeLabel(type: GeneratorType, context: Context): String = 
     GeneratorType.PASSWORD -> context.getString(R.string.generator_word)
     GeneratorType.PASSPHRASE -> context.getString(R.string.generator_passphrase)
     GeneratorType.PIN -> context.getString(R.string.generator_pin)
+    GeneratorType.SSH_KEY -> context.getString(R.string.generator_ssh_key)
 }
 
 private fun generatorTypeTitle(type: GeneratorType, context: Context): String = when (type) {
@@ -1713,6 +1850,7 @@ private fun generatorTypeTitle(type: GeneratorType, context: Context): String = 
     GeneratorType.PASSWORD -> context.getString(R.string.password_generator)
     GeneratorType.PASSPHRASE -> context.getString(R.string.passphrase_generator)
     GeneratorType.PIN -> context.getString(R.string.pin_generator)
+    GeneratorType.SSH_KEY -> context.getString(R.string.generator_ssh_key)
 }
 
 @Composable
@@ -1721,6 +1859,7 @@ private fun generatorTypeIcon(type: GeneratorType) = when (type) {
     GeneratorType.PASSWORD -> Icons.Default.Key
     GeneratorType.PASSPHRASE -> Icons.Default.Info
     GeneratorType.PIN -> Icons.Default.Visibility
+    GeneratorType.SSH_KEY -> Icons.Default.Key
 }
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)

@@ -76,6 +76,7 @@ import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordHistoryManager
 import takagi.ru.monica.data.ThemeMode
+import takagi.ru.monica.data.model.isSshKeyEntry
 import takagi.ru.monica.navigation.Screen
 import takagi.ru.monica.data.dedup.DedupEngine
 import takagi.ru.monica.data.dedup.DedupIgnoreStore
@@ -803,6 +804,11 @@ fun MonicaContent(
                         launchSingleTop = true
                     }
                 },
+                onNavigateToAddSshKey = { passwordId ->
+                    navController.navigate(Screen.AddEditSshKey.createRoute(passwordId)) {
+                        launchSingleTop = true
+                    }
+                },
                 onNavigateToAddTotp = { totpId ->
                     navController.navigate(Screen.AddEditTotp.createRoute(totpId))
                 },
@@ -1056,6 +1062,13 @@ fun MonicaContent(
                         launchSingleTop = true
                     }
                 },
+                onSwitchToSshKey = { targetId ->
+                    val route = Screen.AddEditSshKey.createRoute(targetId)
+                    navController.navigate(route) {
+                        popUpTo(Screen.AddEditPassword.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
                 onNavigateBack = navigateBackFromAddEditPassword
             )
         }
@@ -1101,6 +1114,12 @@ fun MonicaContent(
                         popUpTo(Screen.AddEditWifi.route) { inclusive = true }
                         launchSingleTop = true
                     }
+                },
+                onNavigateToSshKey = {
+                    navController.navigate(Screen.AddEditSshKey.createRoute(null)) {
+                        popUpTo(Screen.AddEditWifi.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
                 }
             )
         }
@@ -1129,6 +1148,87 @@ fun MonicaContent(
                     onNavigateBack = navigateBack,
                     onEdit = { id ->
                         navController.navigate(Screen.AddEditWifi.createRoute(id)) {
+                            launchSingleTop = true
+                        }
+                    }
+                )
+            }
+        }
+
+        composable(
+            route = Screen.AddEditSshKey.route,
+            enterTransition = { rightSlideEnterTransition() },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { rightSlidePopExitTransition() }
+        ) { backStackEntry ->
+            val passwordIdArg = backStackEntry.arguments?.getString("passwordId")?.toLongOrNull() ?: -1L
+            val navigateBack = {
+                val popped = navController.popBackStack()
+                if (!popped) {
+                    navController.navigate(Screen.Main.createRoute()) {
+                        popUpTo(0) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }
+            }
+            val pendingStorageDefaults = remember(backStackEntry, passwordIdArg) {
+                if (passwordIdArg > 0) {
+                    navController.previousBackStackEntry?.savedStateHandle?.clearPendingAddStorageDefaults()
+                    null
+                } else {
+                    navController.previousBackStackEntry?.savedStateHandle?.consumePendingAddStorageDefaults()
+                }
+            }
+            takagi.ru.monica.ui.screens.AddEditSshKeyScreen(
+                viewModel = viewModel,
+                localKeePassViewModel = localKeePassViewModel,
+                passwordId = if (passwordIdArg == -1L) null else passwordIdArg,
+                initialCategoryId = pendingStorageDefaults?.categoryId,
+                initialKeePassDatabaseId = pendingStorageDefaults?.keepassDatabaseId,
+                initialKeePassGroupPath = pendingStorageDefaults?.keepassGroupPath,
+                initialBitwardenVaultId = pendingStorageDefaults?.bitwardenVaultId,
+                initialBitwardenFolderId = pendingStorageDefaults?.bitwardenFolderId,
+                onNavigateBack = navigateBack,
+                onNavigateToPassword = {
+                    navController.navigate(Screen.AddEditPassword.createRoute(null)) {
+                        popUpTo(Screen.AddEditSshKey.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+                onNavigateToWifi = {
+                    navController.navigate(Screen.AddEditWifi.createRoute(null)) {
+                        popUpTo(Screen.AddEditSshKey.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                }
+            )
+        }
+
+        composable(
+            route = Screen.SshKeyDetail.route,
+            enterTransition = { rightSlideEnterTransition() },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { rightSlidePopExitTransition() }
+        ) { backStackEntry ->
+            val sshId = backStackEntry.arguments?.getString("passwordId")?.toLongOrNull() ?: -1L
+            if (sshId > 0) {
+                val navigateBack = {
+                    val popped = navController.popBackStack()
+                    if (!popped) {
+                        navController.navigate(Screen.Main.createRoute()) {
+                            popUpTo(0) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                    }
+                }
+                takagi.ru.monica.ui.screens.SshKeyDetailScreen(
+                    viewModel = viewModel,
+                    passwordId = sshId,
+                    onNavigateBack = navigateBack,
+                    onEdit = { id ->
+                        navController.navigate(Screen.AddEditSshKey.createRoute(id)) {
                             launchSingleTop = true
                         }
                     }
@@ -1574,25 +1674,34 @@ fun MonicaContent(
                         }
                     }
                 }
-                // WIFI 条目走独立详情页；快速探测 loginType 后重定向，避免打开复杂的密码详情屏。
-                var wifiRedirectChecked by androidx.compose.runtime.remember(passwordId) {
+                // WIFI / SSH_KEY 条目走独立详情页；快速探测 loginType 后重定向，避免打开复杂的密码详情屏。
+                var redirectChecked by androidx.compose.runtime.remember(passwordId) {
                     androidx.compose.runtime.mutableStateOf(false)
                 }
-                var redirectedToWifi by androidx.compose.runtime.remember(passwordId) {
+                var redirectedToSpecialized by androidx.compose.runtime.remember(passwordId) {
                     androidx.compose.runtime.mutableStateOf(false)
                 }
                 androidx.compose.runtime.LaunchedEffect(passwordId) {
                     val entry = viewModel.getRawPasswordEntryById(passwordId)
-                    if (entry?.isWifiEntry() == true) {
-                        redirectedToWifi = true
-                        navController.navigate(Screen.WifiDetail.createRoute(passwordId)) {
-                            popUpTo(Screen.PasswordDetail.route) { inclusive = true }
-                            launchSingleTop = true
+                    when {
+                        entry?.isWifiEntry() == true -> {
+                            redirectedToSpecialized = true
+                            navController.navigate(Screen.WifiDetail.createRoute(passwordId)) {
+                                popUpTo(Screen.PasswordDetail.route) { inclusive = true }
+                                launchSingleTop = true
+                            }
+                        }
+                        entry?.isSshKeyEntry() == true -> {
+                            redirectedToSpecialized = true
+                            navController.navigate(Screen.SshKeyDetail.createRoute(passwordId)) {
+                                popUpTo(Screen.PasswordDetail.route) { inclusive = true }
+                                launchSingleTop = true
+                            }
                         }
                     }
-                    wifiRedirectChecked = true
+                    redirectChecked = true
                 }
-                if (wifiRedirectChecked && !redirectedToWifi) {
+                if (redirectChecked && !redirectedToSpecialized) {
                     androidx.compose.runtime.CompositionLocalProvider(
                         takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
                     ) {

@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.FolderOff
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.DropdownMenu
@@ -226,6 +227,8 @@ fun UnifiedCategoryFilterChipMenu(
     bitwardenVaults: List<BitwardenVault>,
     getBitwardenFolders: (Long) -> Flow<List<BitwardenFolder>>,
     getKeePassGroups: ((Long) -> Flow<List<KeePassGroupInfo>>)? = null,
+    categoryEditMode: Boolean = false,
+    onRequestCategoryAction: ((Category) -> Unit)? = null,
     quickFilterContent: (@Composable ColumnScope.() -> Unit)? = null,
     trailingContent: (@Composable ColumnScope.() -> Unit)? = null
 ) {
@@ -498,14 +501,30 @@ fun UnifiedCategoryFilterChipMenu(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     folderChips.forEach { chip ->
+                        val editableCategory = if (
+                            categoryEditMode &&
+                            onRequestCategoryAction != null &&
+                            !chip.isBack
+                        ) {
+                            (chip.selection as? UnifiedCategoryFilterSelection.Custom)
+                                ?.let { selection -> categories.firstOrNull { it.id == selection.categoryId } }
+                        } else {
+                            null
+                        }
                         MonicaExpressiveFilterChip(
                             selected = chip.selection == selected,
                             onClick = {
-                                onSelect(chip.selection)
+                                if (editableCategory != null && onRequestCategoryAction != null) {
+                                    onRequestCategoryAction(editableCategory)
+                                } else {
+                                    onSelect(chip.selection)
+                                }
                             },
                             label = chip.label,
                             leadingIcon = if (chip.isBack) {
                                 Icons.AutoMirrored.Filled.KeyboardArrowLeft
+                            } else if (categoryEditMode && editableCategory != null) {
+                                Icons.Default.MoreVert
                             } else {
                                 Icons.Default.Folder
                             }

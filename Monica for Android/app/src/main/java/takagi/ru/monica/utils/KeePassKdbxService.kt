@@ -47,6 +47,7 @@ import takagi.ru.monica.data.resolvedActiveStorageLocation
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.SshKeyData
 import takagi.ru.monica.data.model.SshKeyDataCodec
+import takagi.ru.monica.data.model.isSshKeyEntry
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.keepass.KeePassDxPasskeyCodec
 import takagi.ru.monica.keepass.KeePassPasskeySyncCodec
@@ -1548,6 +1549,9 @@ class KeePassKdbxService(
                 pairs += FIELD_MONICA_WIFI_DATA to EntryValue.Plain(entry.wifiMetadata)
             }
         }
+        if (entry.isSshKeyEntry()) {
+            pairs += FIELD_MONICA_LOGIN_TYPE to EntryValue.Plain("SSH_KEY")
+        }
         SshKeyDataCodec.decode(entry.sshKeyData)?.let { ssh ->
             if (ssh.algorithm.isNotBlank()) {
                 pairs += FIELD_MONICA_SSH_ALGORITHM to EntryValue.Plain(ssh.algorithm)
@@ -2044,6 +2048,7 @@ class KeePassKdbxService(
                 "WIFI" to wifi.toJson()
             }
             monicaLoginType.equals("SSO", ignoreCase = true) -> "SSO" to ""
+            monicaLoginType.equals("SSH_KEY", ignoreCase = true) -> "SSH_KEY" to ""
             else -> "PASSWORD" to ""
         }
         return KeePassEntryData(

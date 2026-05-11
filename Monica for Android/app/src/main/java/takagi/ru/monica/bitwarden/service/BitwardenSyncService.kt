@@ -15,6 +15,7 @@ import takagi.ru.monica.bitwarden.sync.EmptyVaultProtection
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.OperationLogItemType
+import takagi.ru.monica.data.model.LOGIN_TYPE_SSH_KEY
 import takagi.ru.monica.data.model.SshKeyData
 import takagi.ru.monica.data.model.SshKeyDataCodec
 import takagi.ru.monica.data.bitwarden.*
@@ -528,6 +529,7 @@ class BitwardenSyncService(
             val parsedUris = parseLoginUris(login.uris, symmetricKey)
             val customFields = parsePasswordCustomFieldMap(cipher.fields, symmetricKey)
             val encryptedPassword = encryptBitwardenPasswordForOfflineDisplay(password, cipher.id)
+            val sshKeyData = buildSshKeyDataFromCustomFields(customFields)
             
             return PasswordEntry(
                 title = name,
@@ -559,7 +561,8 @@ class BitwardenSyncService(
                     ?: "",
                 country = customFields["monica_country"] ?: customFields["country"] ?: "",
                 passkeyBindings = customFields["monica_passkey_bindings"].orEmpty(),
-                sshKeyData = buildSshKeyDataFromCustomFields(customFields),
+                sshKeyData = sshKeyData,
+                loginType = if (sshKeyData.isNotBlank()) LOGIN_TYPE_SSH_KEY else "PASSWORD",
                 isFavorite = cipher.favorite,
                 createdAt = Date(),
                 updatedAt = Date(),
@@ -642,6 +645,7 @@ class BitwardenSyncService(
                 country = remoteCountry.ifBlank { entry.country },
                 passkeyBindings = remotePasskeyBindings.ifBlank { entry.passkeyBindings },
                 sshKeyData = remoteSshKeyData.ifBlank { entry.sshKeyData },
+                loginType = if (remoteSshKeyData.isNotBlank()) LOGIN_TYPE_SSH_KEY else entry.loginType,
                 isFavorite = cipher.favorite,
                 updatedAt = Date(),
                 bitwardenVaultId = vaultId,
@@ -1558,12 +1562,39 @@ class BitwardenSyncService(
     
     /**
      * 将 PasswordEntry 转换为加密的 CipherCreateRequest
+     *
+     * SSH 密钥使用 Type 1 (Login) + 自定义字段上传，而非 Type 5。
+     * 原因：Vaultwarden 等兼容服务端不支持 Type 5，会在 /sync 时将其
+     * 降级为 Type 1 并丢弃 sshKey 数据，导致同步回来后 SSH 密钥丢失。
+     * 使用 Type 1 + 自定义字段可确保数据在服务端完整保留并正确往返。
      */
     private fun passwordEntryToCipherRequest(
         entry: PasswordEntry,
         symmetricKey: SymmetricCryptoKey
     ): CipherCreateRequest {
         val crypto = takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
+        if (entry.loginType.equals(LOGIN_TYPE_SSH_KEY, ignoreCase = true)) {
+            // 使用 Type 1 + 自定义字段，兼容不支持 Type 5 的服务端
+            val encryptedName = crypto.encryptString(entry.title, symmetricKey)
+            val encryptedNotes = entry.notes.takeIf { it.isNotBlank() }?.let {
+                crypto.encryptString(it, symmetricKey)
+            }
+            val sshFields = buildEncryptedSshKeyCustomFields(entry, symmetricKey)
+            return CipherCreateRequest(
+                type = 1,
+                folderId = entry.bitwardenFolderId,
+                name = encryptedName,
+                notes = encryptedNotes,
+                login = CipherLoginApiData(
+                    uris = emptyList(),
+                    fido2Credentials = emptyList()
+                ),
+                fields = sshFields,
+                favorite = entry.isFavorite,
+                archivedDate = toBitwardenArchivedDate(entry)
+            )
+        }
+
         val plainPassword = resolvePlainPasswordForBitwardenUpload(entry.password, entry.id)
         
         // 加密各个字段
@@ -1611,6 +1642,28 @@ class BitwardenSyncService(
         mergedFields: List<CipherFieldApiData>? = null
     ): CipherUpdateRequest {
         val crypto = takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
+        if (entry.loginType.equals(LOGIN_TYPE_SSH_KEY, ignoreCase = true)) {
+            // 使用 Type 1 + 自定义字段，兼容不支持 Type 5 的服务端
+            val encryptedName = crypto.encryptString(entry.title, symmetricKey)
+            val encryptedNotes = entry.notes.takeIf { it.isNotBlank() }?.let {
+                crypto.encryptString(it, symmetricKey)
+            }
+            val sshFields = buildEncryptedSshKeyCustomFields(entry, symmetricKey)
+            return CipherUpdateRequest(
+                type = 1,
+                folderId = entry.bitwardenFolderId,
+                name = encryptedName,
+                notes = encryptedNotes,
+                login = CipherLoginApiData(
+                    uris = emptyList(),
+                    fido2Credentials = emptyList()
+                ),
+                fields = sshFields,
+                favorite = entry.isFavorite,
+                archivedDate = toBitwardenArchivedDate(entry)
+            )
+        }
+
         val plainPassword = resolvePlainPasswordForBitwardenUpload(entry.password, entry.id)
         
         val encryptedName = crypto.encryptString(entry.title, symmetricKey)
@@ -1917,6 +1970,41 @@ class BitwardenSyncService(
         }
     }
 
+    /**
+     * 为 SSH 密钥条目构建加密的自定义字段列表。
+     * 使用 monica_ssh_* 前缀字段名，同步回来时 buildSshKeyDataFromCustomFields 可识别。
+     */
+    private fun buildEncryptedSshKeyCustomFields(
+        entry: PasswordEntry,
+        symmetricKey: SymmetricCryptoKey
+    ): List<CipherFieldApiData> {
+        val crypto = takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
+        val ssh = SshKeyDataCodec.decode(entry.sshKeyData) ?: return emptyList()
+        val fields = mutableListOf<Pair<String, String>>()
+
+        fun addField(name: String, value: String) {
+            if (value.isNotBlank()) fields.add(name to value)
+        }
+
+        addField("monica_ssh_algorithm", ssh.algorithm)
+        addField("monica_ssh_key_size", ssh.keySize.takeIf { it > 0 }?.toString().orEmpty())
+        addField("monica_ssh_public_key", ssh.publicKeyOpenSsh)
+        addField("monica_ssh_private_key", ssh.privateKeyOpenSsh)
+        addField("monica_ssh_fingerprint", ssh.fingerprintSha256)
+        addField("monica_ssh_comment", ssh.comment)
+        addField("monica_ssh_format", ssh.format)
+        // 添加 monica_login_type 标记，方便同步时快速识别
+        addField("monica_login_type", LOGIN_TYPE_SSH_KEY)
+
+        return fields.map { (name, value) ->
+            CipherFieldApiData(
+                name = crypto.encryptString(name, symmetricKey),
+                value = crypto.encryptString(value, symmetricKey),
+                type = if (name == "monica_ssh_private_key") 1 else 0 // Hidden type for private key
+            )
+        }
+    }
+
     private fun parseLoginUris(
         uris: List<CipherUriApiData>?,
         symmetricKey: SymmetricCryptoKey
@@ -1967,17 +2055,100 @@ class BitwardenSyncService(
     }
 
     private fun buildSshKeyDataFromCustomFields(fields: Map<String, String>): String {
+        // 1. 先按字段名匹配（Monica 自己上传的格式）
+        val publicKey = fields.findSshField(
+            "monica_ssh_public_key",
+            "publicKey",
+            "public_key",
+            "public key",
+            "public-key",
+            "ssh public key",
+            "ssh_public_key"
+        )
+        val privateKey = fields.findSshField(
+            "monica_ssh_private_key",
+            "privateKey",
+            "private_key",
+            "private key",
+            "private-key",
+            "ssh private key",
+            "ssh_private_key"
+        )
+        val fingerprint = fields.findSshField(
+            "monica_ssh_fingerprint",
+            "keyFingerprint",
+            "key_fingerprint",
+            "key fingerprint",
+            "key-fingerprint",
+            "fingerprint",
+            "ssh fingerprint",
+            "ssh_fingerprint"
+        )
+
+        // 2. 如果按名称没找到，尝试按值的内容特征识别（兼容 Bitwarden 等第三方客户端）
+        val resolvedPublicKey = publicKey.ifBlank { fields.findValueByContent(::looksLikeSshPublicKey) }
+        val resolvedPrivateKey = privateKey.ifBlank { fields.findValueByContent(::looksLikeSshPrivateKey) }
+        val resolvedFingerprint = fingerprint.ifBlank { fields.findValueByContent(::looksLikeSshFingerprint) }
+
+        val algorithm = fields.findSshField("monica_ssh_algorithm", "algorithm", "key type", "key-type", "keyType")
+            .ifBlank { inferSshAlgorithm(resolvedPublicKey) }
+
         return SshKeyDataCodec.encode(
             SshKeyData(
-                algorithm = fields["monica_ssh_algorithm"].orEmpty(),
+                algorithm = algorithm,
                 keySize = fields["monica_ssh_key_size"]?.toIntOrNull() ?: 0,
-                publicKeyOpenSsh = fields["monica_ssh_public_key"].orEmpty(),
-                privateKeyOpenSsh = fields["monica_ssh_private_key"].orEmpty(),
-                fingerprintSha256 = fields["monica_ssh_fingerprint"].orEmpty(),
+                publicKeyOpenSsh = resolvedPublicKey,
+                privateKeyOpenSsh = resolvedPrivateKey,
+                fingerprintSha256 = resolvedFingerprint,
                 comment = fields["monica_ssh_comment"].orEmpty(),
                 format = fields["monica_ssh_format"].orEmpty().ifBlank { SshKeyData.FORMAT_OPENSSH }
             )
         )
+    }
+
+    private fun looksLikeSshPublicKey(value: String): Boolean {
+        val trimmed = value.trimStart()
+        return trimmed.startsWith("ssh-rsa ") ||
+            trimmed.startsWith("ssh-ed25519 ") ||
+            trimmed.startsWith("ecdsa-sha2-") ||
+            trimmed.startsWith("ssh-dss ")
+    }
+
+    private fun looksLikeSshPrivateKey(value: String): Boolean {
+        val trimmed = value.trimStart()
+        return trimmed.startsWith("-----BEGIN") &&
+            (trimmed.contains("PRIVATE KEY") || trimmed.contains("OPENSSH"))
+    }
+
+    private fun looksLikeSshFingerprint(value: String): Boolean {
+        val trimmed = value.trim()
+        return trimmed.startsWith("SHA256:") ||
+            trimmed.startsWith("MD5:") ||
+            (trimmed.length in 40..50 && trimmed.all { it.isLetterOrDigit() || it == '+' || it == '/' || it == '=' })
+    }
+
+    private fun Map<String, String>.findValueByContent(predicate: (String) -> Boolean): String {
+        return values.firstOrNull { it.isNotBlank() && predicate(it) }.orEmpty()
+    }
+
+    private fun Map<String, String>.findSshField(vararg names: String): String {
+        names.firstNotNullOfOrNull { this[it]?.takeIf(String::isNotBlank) }?.let { return it }
+        val normalizedNames = names.map { normalizeSshFieldName(it) }.toSet()
+        return entries.firstOrNull { (name, value) ->
+            value.isNotBlank() && normalizeSshFieldName(name) in normalizedNames
+        }?.value.orEmpty()
+    }
+
+    private fun normalizeSshFieldName(name: String): String {
+        return name.filter { it.isLetterOrDigit() }.lowercase()
+    }
+
+    private fun inferSshAlgorithm(publicKey: String): String {
+        return when {
+            publicKey.startsWith("ssh-rsa") -> SshKeyData.ALGORITHM_RSA
+            publicKey.startsWith("ssh-ed25519") -> SshKeyData.ALGORITHM_ED25519
+            else -> ""
+        }
     }
 
     /**

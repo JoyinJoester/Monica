@@ -21,6 +21,7 @@ internal fun CardWalletContent(
     saveableStateHolder: SaveableStateHolder,
     bankCardViewModel: BankCardViewModel,
     documentViewModel: DocumentViewModel,
+    passwordViewModel: takagi.ru.monica.viewmodel.PasswordViewModel,
     state: CardWalletContentState,
     showStandaloneSettingsEntry: Boolean = false,
     onOpenStandaloneSettings: () -> Unit = {}
@@ -29,6 +30,7 @@ internal fun CardWalletContent(
         CardWalletScreen(
             bankCardViewModel = bankCardViewModel,
             documentViewModel = documentViewModel,
+            passwordViewModel = passwordViewModel,
             currentTab = state.currentTab,
             onTabSelected = state.onTabSelected,
             onCardClick = state.onCardClick,

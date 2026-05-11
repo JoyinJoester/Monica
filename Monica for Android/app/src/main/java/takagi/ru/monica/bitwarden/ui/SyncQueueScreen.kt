@@ -380,6 +380,7 @@ private fun getTypeIcon(type: SyncItemType): androidx.compose.ui.graphics.vector
         SyncItemType.NOTE -> Icons.Outlined.Notes
         SyncItemType.IDENTITY -> Icons.Outlined.Badge
         SyncItemType.PASSKEY -> Icons.Outlined.Fingerprint
+        SyncItemType.SSH_KEY -> Icons.Outlined.Key
         SyncItemType.FOLDER -> Icons.Outlined.Folder
     }
 }
@@ -392,6 +393,7 @@ private fun getTypeLabel(type: SyncItemType): String {
         SyncItemType.NOTE -> "安全笔记"
         SyncItemType.IDENTITY -> "身份证件"
         SyncItemType.PASSKEY -> "通行密钥"
+        SyncItemType.SSH_KEY -> "SSH 密钥"
         SyncItemType.FOLDER -> "文件夹"
     }
 }

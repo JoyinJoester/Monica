@@ -71,8 +71,12 @@ import takagi.ru.monica.data.bitwarden.BitwardenPendingOperation
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.PasskeyBinding
 import takagi.ru.monica.data.model.PasskeyBindingCodec
+import takagi.ru.monica.data.model.StorageTarget
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
+import takagi.ru.monica.ui.PasswordListCategoryChipMenuBottomActions
+import takagi.ru.monica.ui.components.CreateCategoryDialog
+import takagi.ru.monica.ui.components.CreateDialogTarget
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.components.PullActionVisualState
@@ -252,6 +256,7 @@ fun PasskeyListScreen(
     var pendingDeletePasskey by remember { mutableStateOf<PasskeyEntry?>(null) }
     var selectedCategoryFilter by remember { mutableStateOf<UnifiedCategoryFilterSelection>(UnifiedCategoryFilterSelection.All) }
     var showCategoryFilterDialog by remember { mutableStateOf(false) }
+    val categoryMgmt = takagi.ru.monica.ui.category.rememberCategoryManagementState()
     var showTopActionsMenu by remember { mutableStateOf(false) }
     var categoryPillBoundsInWindow by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     var showBatchMoveCategoryDialog by remember { mutableStateOf(false) }
@@ -982,7 +987,22 @@ fun PasskeyListScreen(
                                     keepassDatabases = keepassDatabases,
                                     bitwardenVaults = bitwardenVaults,
                                     getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
-                                    quickFilterContent = {}
+                                    getKeePassGroups = getKeePassGroups,
+                                    categoryEditMode = categoryMgmt.categoryEditMode,
+                                    onRequestCategoryAction = { categoryMgmt.categoryActionTarget = it },
+                                    quickFilterContent = {},
+                                    trailingContent = {
+                                        takagi.ru.monica.ui.category.CategoryManagementTrailingContent(
+                                            state = categoryMgmt,
+                                            categories = categories,
+                                            keepassDatabases = keepassDatabases,
+                                            bitwardenVaults = bitwardenVaults,
+                                            getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
+                                            getKeePassGroups = getKeePassGroups,
+                                            passwordViewModel = passwordViewModel!!,
+                                            onDismissFilterSheet = { showCategoryFilterDialog = false }
+                                        )
+                                    }
                                 )
                             }
                         }
@@ -1561,6 +1581,19 @@ fun PasskeyListScreen(
                 selectedPasskeys = emptySet()
             }
         }
+    )
+
+    takagi.ru.monica.ui.category.CategoryManagementCreateDialog(
+        state = categoryMgmt,
+        currentFilter = selectedCategoryFilter,
+        categories = categories,
+        keepassDatabases = keepassDatabases,
+        bitwardenVaults = bitwardenVaults,
+        getKeePassGroups = getKeePassGroups,
+        passwordViewModel = passwordViewModel!!,
+        bitwardenRepository = bitwardenRepository,
+        keepassBridge = keepassBridge,
+        scope = scope
     )
 }
 

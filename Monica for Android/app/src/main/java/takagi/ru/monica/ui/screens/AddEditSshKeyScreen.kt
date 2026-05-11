@@ -1,5 +1,9 @@
 package takagi.ru.monica.ui.screens
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -16,13 +20,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenuItem
@@ -36,7 +40,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -55,45 +58,51 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import takagi.ru.monica.R
+import takagi.ru.monica.data.CustomFieldDraft
+import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.bitwarden.BitwardenVault
-import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.model.LOGIN_TYPE_SSH_KEY
+import takagi.ru.monica.data.model.SshKeyData
+import takagi.ru.monica.data.model.SshKeyDataCodec
 import takagi.ru.monica.data.model.StorageTarget
-import takagi.ru.monica.data.model.WifiData
-import takagi.ru.monica.data.model.WifiIp
-import takagi.ru.monica.data.model.WifiProxy
-import takagi.ru.monica.data.model.WifiSecurity
 import takagi.ru.monica.data.model.toStorageTarget
+import takagi.ru.monica.ui.components.CustomFieldEditCard
+import takagi.ru.monica.ui.components.CustomFieldSectionHeader
 import takagi.ru.monica.ui.components.EntryTypeChip
 import takagi.ru.monica.ui.components.EntryTypeChipOption
 import takagi.ru.monica.ui.components.MultiStorageTargetPickerBottomSheet
 import takagi.ru.monica.ui.components.MultiStorageTargetSelectorCard
 import takagi.ru.monica.ui.components.OutlinedTextField
+import takagi.ru.monica.ui.components.SshKeyGenerationProgressIndicator
 import takagi.ru.monica.ui.components.buildMultiStorageTarget
 import takagi.ru.monica.ui.icons.MonicaIcons
-import takagi.ru.monica.utils.WifiQrParser
+import takagi.ru.monica.utils.SshKeyGenerator
 import takagi.ru.monica.viewmodel.CategoryFilter
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
 
 /**
- * WIFI 添加/编辑页面。
+ * SSH 密钥添加 / 编辑页面。
  *
- * 结构参考 [AddEditPasswordScreen]：顶部选择存储位置（多目标），下方按
- * 分组（基础/安全/隐私/代理/IP 设置）展开可折叠卡片。
+ * 与 [AddEditWifiScreen] 结构一致：顶部选择多存储目标，下方渲染密钥字段卡片、
+ * 自定义字段。支持在编辑前「生成」一个新密钥覆盖当前表单。
  *
- * 额外能力：从 [pendingQrResult] 解析 ZXing 约定的 `WIFI:T:..;S:..;P:..` 字串
- * 自动回填表单；顶部 "扫码" 按钮跳到二维码扫描页。
+ * 不需要接入 `pendingQrResult` 等能力（SSH 密钥不通过扫码导入）。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddEditWifiScreen(
+fun AddEditSshKeyScreen(
     viewModel: PasswordViewModel,
     localKeePassViewModel: LocalKeePassViewModel? = null,
     passwordId: Long?,
@@ -102,12 +111,9 @@ fun AddEditWifiScreen(
     initialKeePassGroupPath: String? = null,
     initialBitwardenVaultId: Long? = null,
     initialBitwardenFolderId: String? = null,
-    pendingQrResult: String? = null,
-    onConsumePendingQrResult: () -> Unit = {},
-    onScanQrCode: (() -> Unit)? = null,
     onNavigateBack: () -> Unit,
     onNavigateToPassword: () -> Unit,
-    onNavigateToSshKey: (() -> Unit)? = null,
+    onNavigateToWifi: () -> Unit,
     onSaveCompleted: ((Long?) -> Unit)? = null,
 ) {
     val context = LocalContext.current
@@ -119,24 +125,26 @@ fun AddEditWifiScreen(
     val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow()
         .collectAsState(initial = emptyList<BitwardenVault>())
     val currentFilter by viewModel.categoryFilter.collectAsState()
+    val bitwardenFolderDao = remember { database.bitwardenFolderDao() }
 
-    // 已保存条目（用于 loginType 判断、replica 信息回显等）
+    // 表单状态
     var loadedEntry by remember { mutableStateOf<PasswordEntry?>(null) }
     var initialLoadDone by remember { mutableStateOf(passwordId == null || passwordId <= 0L) }
-
-    // 表单状态（精简版：只保留连接 Wi-Fi 的核心字段）
     var title by rememberSaveable { mutableStateOf("") }
-    var password by rememberSaveable { mutableStateOf("") }
+    var algorithm by rememberSaveable { mutableStateOf(SshKeyGenerator.DEFAULT_ALGORITHM) }
+    var rsaKeySize by rememberSaveable { mutableStateOf(SshKeyGenerator.DEFAULT_RSA_KEY_SIZE) }
+    var publicKey by rememberSaveable { mutableStateOf("") }
+    var privateKey by rememberSaveable { mutableStateOf("") }
+    var fingerprint by rememberSaveable { mutableStateOf("") }
+    var comment by rememberSaveable { mutableStateOf("") }
     var isFavorite by rememberSaveable { mutableStateOf(false) }
-    var ssid by rememberSaveable { mutableStateOf("") }
-    var hiddenNetwork by rememberSaveable { mutableStateOf(false) }
-    var security by rememberSaveable { mutableStateOf(WifiSecurity.WPA2_WPA3) }
+    var privateKeyVisible by rememberSaveable { mutableStateOf(false) }
+    var isGenerating by remember { mutableStateOf(false) }
 
     // 存储目标（多选）
     val selectedStorageTargets = remember { mutableStateListOf<StorageTarget>() }
     var existingReplicaTargetKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showStorageSheet by remember { mutableStateOf(false) }
-    val bitwardenFolderDao = remember { database.bitwardenFolderDao() }
 
     val getBitwardenFolders: (Long) -> kotlinx.coroutines.flow.Flow<List<takagi.ru.monica.data.bitwarden.BitwardenFolder>> =
         remember(bitwardenFolderDao) {
@@ -146,19 +154,15 @@ fun AddEditWifiScreen(
         remember(localKeePassViewModel) {
             { databaseId ->
                 localKeePassViewModel?.getGroups(databaseId)
-                    ?: flowOf(emptyList<takagi.ru.monica.utils.KeePassGroupInfo>())
+                    ?: flowOf(emptyList())
             }
         }
 
-    // 初始存储目标：先用 initial 参数；如果没有，按当前过滤上下文推断
+    // 默认存储目标
     LaunchedEffect(
-        initialCategoryId,
-        initialKeePassDatabaseId,
-        initialKeePassGroupPath,
-        initialBitwardenVaultId,
-        initialBitwardenFolderId,
-        passwordId,
-        currentFilter
+        initialCategoryId, initialKeePassDatabaseId, initialKeePassGroupPath,
+        initialBitwardenVaultId, initialBitwardenFolderId,
+        passwordId, currentFilter
     ) {
         if (passwordId != null && passwordId > 0L) return@LaunchedEffect
         val hasExplicit = initialCategoryId != null ||
@@ -204,69 +208,86 @@ fun AddEditWifiScreen(
             return@LaunchedEffect
         }
         loadedEntry = entry
-        val meta = WifiData.fromJsonOrEmpty(entry.wifiMetadata)
         title = entry.title
-        password = entry.password
         isFavorite = entry.isFavorite
-        ssid = meta.ssid.ifEmpty { entry.title }
-        hiddenNetwork = meta.hiddenNetwork
-        security = meta.security
+        val sshData = SshKeyDataCodec.decode(entry.sshKeyData)
+        if (sshData != null) {
+            algorithm = sshData.algorithm.ifBlank { SshKeyGenerator.DEFAULT_ALGORITHM }
+            rsaKeySize = sshData.keySize.takeIf { it in SshKeyGenerator.RSA_ALLOWED_KEY_SIZES }
+                ?: SshKeyGenerator.DEFAULT_RSA_KEY_SIZE
+            publicKey = sshData.publicKeyOpenSsh
+            privateKey = sshData.privateKeyOpenSsh
+            fingerprint = sshData.fingerprintSha256
+            comment = sshData.comment
+        }
         selectedStorageTargets.clear()
         selectedStorageTargets.add(entry.toStorageTarget())
         existingReplicaTargetKeys = setOf(entry.toStorageTarget().stableKey)
         initialLoadDone = true
     }
 
-    // 扫码结果回填
-    LaunchedEffect(pendingQrResult) {
-        val raw = pendingQrResult ?: return@LaunchedEffect
-        val parsed = WifiQrParser.parse(raw)
-        if (parsed != null) {
-            ssid = parsed.ssid
-            password = parsed.password
-            security = parsed.security
-            hiddenNetwork = parsed.hidden
-            if (title.isBlank()) title = parsed.ssid
-            android.widget.Toast.makeText(
-                context,
-                context.getString(R.string.wifi_scan_success, parsed.ssid),
-                android.widget.Toast.LENGTH_SHORT
-            ).show()
-        } else {
-            android.widget.Toast.makeText(
-                context,
-                context.getString(R.string.wifi_scan_invalid),
-                android.widget.Toast.LENGTH_LONG
-            ).show()
-        }
-        onConsumePendingQrResult()
-    }
-
-    val isEditing = passwordId != null && passwordId > 0L
-    val canSave = initialLoadDone && (title.isNotBlank() || ssid.isNotBlank())
-
-    // 自定义字段状态
-    val customFields = remember { mutableStateListOf<takagi.ru.monica.data.CustomFieldDraft>() }
-
-    // 回显自定义字段
+    // 自定义字段
+    val customFields = remember { mutableStateListOf<CustomFieldDraft>() }
     LaunchedEffect(passwordId) {
         val id = passwordId ?: return@LaunchedEffect
         if (id <= 0L) return@LaunchedEffect
         val existing = viewModel.getCustomFieldsByEntryIdSync(id)
         customFields.clear()
-        customFields.addAll(existing.map { takagi.ru.monica.data.CustomFieldDraft.fromCustomField(it) })
+        customFields.addAll(existing.map(CustomFieldDraft::fromCustomField))
     }
 
-    fun buildWifiData(): WifiData = WifiData(
-        ssid = ssid.ifBlank { title }.trim(),
-        hiddenNetwork = hiddenNetwork,
-        security = security
+    val isEditing = passwordId != null && passwordId > 0L
+    val canSave = initialLoadDone &&
+        title.isNotBlank() &&
+        publicKey.isNotBlank() &&
+        !isGenerating
+
+    fun generateNewKey() {
+        if (isGenerating) return
+        isGenerating = true
+        scope.launch {
+            val request = when (algorithm) {
+                SshKeyData.ALGORITHM_RSA -> SshKeyGenerator.Request.Rsa(rsaKeySize)
+                else -> SshKeyGenerator.Request.Ed25519
+            }
+            val generated = withContext(Dispatchers.Default) {
+                runCatching { SshKeyGenerator.generate(request, comment) }
+            }
+            isGenerating = false
+            generated.onSuccess { data ->
+                publicKey = data.publicKeyOpenSsh
+                privateKey = data.privateKeyOpenSsh
+                fingerprint = data.fingerprintSha256
+                // keySize 会被 SshKeyGenerator 强制归一化（Ed25519=256）
+                rsaKeySize = if (data.algorithm == SshKeyData.ALGORITHM_RSA) data.keySize else rsaKeySize
+            }.onFailure {
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.ssh_key_generate_failed),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    fun currentSshData(): SshKeyData = SshKeyData(
+        algorithm = algorithm,
+        keySize = when (algorithm) {
+            SshKeyData.ALGORITHM_RSA -> rsaKeySize
+            else -> 256
+        },
+        publicKeyOpenSsh = publicKey.trim(),
+        privateKeyOpenSsh = privateKey.trim(),
+        fingerprintSha256 = fingerprint.trim(),
+        comment = comment.trim(),
+        format = SshKeyData.FORMAT_OPENSSH
     )
 
     fun onSave() {
         if (!canSave) return
-        val finalTitle = title.ifBlank { ssid }.trim()
-        val wifiData = buildWifiData()
+        val finalTitle = title.trim()
+        val sshData = currentSshData()
+        val encoded = SshKeyDataCodec.encode(sshData)
         val commonEntry = (loadedEntry ?: PasswordEntry(
             title = finalTitle,
             website = "",
@@ -279,19 +300,18 @@ fun AddEditWifiScreen(
             website = "",
             username = "",
             password = "",
-            notes = "",
+            notes = comment,
             isFavorite = isFavorite,
-            loginType = "WIFI",
-            wifiMetadata = wifiData.toJson()
+            loginType = LOGIN_TYPE_SSH_KEY,
+            sshKeyData = encoded,
+            wifiMetadata = "",
+            authenticatorKey = ""
         )
-        val originalIds = if (isEditing && loadedEntry != null) {
-            listOf(loadedEntry!!.id)
-        } else emptyList()
-
+        val originalIds = if (isEditing && loadedEntry != null) listOf(loadedEntry!!.id) else emptyList()
         viewModel.savePasswordsAcrossTargets(
             originalIds = originalIds,
             commonEntry = commonEntry,
-            passwords = listOf(password),
+            passwords = listOf(""), // SSH 条目没有 password 字段
             targets = selectedStorageTargets.toList(),
             customFields = customFields.toList()
         ) { firstId ->
@@ -305,24 +325,30 @@ fun AddEditWifiScreen(
             TopAppBar(
                 title = {
                     Text(
-                        stringResource(if (isEditing) R.string.edit_wifi_title else R.string.add_wifi_title),
+                        stringResource(
+                            if (isEditing) R.string.edit_ssh_key_title
+                            else R.string.add_ssh_key_title
+                        ),
                         style = MaterialTheme.typography.titleLarge,
                         maxLines = 1
                     )
                 },
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
-                        Icon(MonicaIcons.Navigation.back, contentDescription = stringResource(R.string.back))
+                        Icon(
+                            MonicaIcons.Navigation.back,
+                            contentDescription = stringResource(R.string.back)
+                        )
                     }
                 },
                 actions = {
                     EntryTypeChip(
-                        current = EntryTypeChipOption.WIFI,
+                        current = EntryTypeChipOption.SSH_KEY,
                         onSelect = { option ->
                             when (option) {
                                 EntryTypeChipOption.PASSWORD -> onNavigateToPassword()
-                                EntryTypeChipOption.SSH_KEY -> onNavigateToSshKey?.invoke()
-                                EntryTypeChipOption.WIFI -> Unit
+                                EntryTypeChipOption.WIFI -> onNavigateToWifi()
+                                EntryTypeChipOption.SSH_KEY -> Unit
                             }
                         },
                         enabled = !isEditing
@@ -353,7 +379,7 @@ fun AddEditWifiScreen(
             }
         }
     ) { innerPadding ->
-        WifiFormBody(
+        SshKeyFormBody(
             innerPadding = innerPadding,
             selectedStorageTargets = selectedStorageTargets,
             existingReplicaTargetKeys = existingReplicaTargetKeys,
@@ -368,12 +394,23 @@ fun AddEditWifiScreen(
                     selectedStorageTargets.removeAll { it.stableKey == t.stableKey }
                 }
             },
-            onScanQrCode = onScanQrCode,
             title = title, onTitleChange = { title = it },
-            ssid = ssid, onSsidChange = { ssid = it },
-            password = password, onPasswordChange = { password = it },
-            hiddenNetwork = hiddenNetwork, onHiddenNetworkChange = { hiddenNetwork = it },
-            security = security, onSecurityChange = { security = it },
+            algorithm = algorithm,
+            onAlgorithmChange = { algorithm = it },
+            rsaKeySize = rsaKeySize,
+            onRsaKeySizeChange = { rsaKeySize = it },
+            publicKey = publicKey,
+            onPublicKeyChange = { publicKey = it },
+            privateKey = privateKey,
+            onPrivateKeyChange = { privateKey = it },
+            privateKeyVisible = privateKeyVisible,
+            onPrivateKeyVisibleChange = { privateKeyVisible = it },
+            fingerprint = fingerprint,
+            comment = comment,
+            onCommentChange = { comment = it },
+            isGenerating = isGenerating,
+            onGenerate = { generateNewKey() },
+            onCopy = { label, text -> copyTextToClipboard(context, label, text) },
             customFields = customFields,
             onCustomFieldsChange = { updated ->
                 customFields.clear()
@@ -400,10 +437,9 @@ fun AddEditWifiScreen(
     )
 }
 
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun WifiFormBody(
+private fun SshKeyFormBody(
     innerPadding: PaddingValues,
     selectedStorageTargets: List<StorageTarget>,
     existingReplicaTargetKeys: Set<String>,
@@ -414,16 +450,23 @@ private fun WifiFormBody(
     isEditing: Boolean,
     onAddTarget: () -> Unit,
     onRemoveTarget: (StorageTarget) -> Unit,
-    onScanQrCode: (() -> Unit)?,
     title: String, onTitleChange: (String) -> Unit,
-    ssid: String, onSsidChange: (String) -> Unit,
-    password: String, onPasswordChange: (String) -> Unit,
-    hiddenNetwork: Boolean, onHiddenNetworkChange: (Boolean) -> Unit,
-    security: WifiSecurity, onSecurityChange: (WifiSecurity) -> Unit,
-    customFields: List<takagi.ru.monica.data.CustomFieldDraft>,
-    onCustomFieldsChange: (List<takagi.ru.monica.data.CustomFieldDraft>) -> Unit
+    algorithm: String, onAlgorithmChange: (String) -> Unit,
+    rsaKeySize: Int, onRsaKeySizeChange: (Int) -> Unit,
+    publicKey: String, onPublicKeyChange: (String) -> Unit,
+    privateKey: String, onPrivateKeyChange: (String) -> Unit,
+    privateKeyVisible: Boolean, onPrivateKeyVisibleChange: (Boolean) -> Unit,
+    fingerprint: String,
+    comment: String, onCommentChange: (String) -> Unit,
+    isGenerating: Boolean,
+    onGenerate: () -> Unit,
+    onCopy: (label: String, text: String) -> Unit,
+    customFields: List<CustomFieldDraft>,
+    onCustomFieldsChange: (List<CustomFieldDraft>) -> Unit
 ) {
     val fieldShape = RoundedCornerShape(12.dp)
+    val isRsa = algorithm.equals(SshKeyData.ALGORITHM_RSA, ignoreCase = true)
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -446,7 +489,18 @@ private fun WifiFormBody(
             onRemoveTarget = onRemoveTarget
         )
 
-        // 单卡片：所有字段 + 扫码
+        // 名称
+        OutlinedTextField(
+            value = title,
+            onValueChange = onTitleChange,
+            label = { Text(stringResource(R.string.title_required)) },
+            leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) },
+            singleLine = true,
+            shape = fieldShape,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        // SSH 密钥主体卡片
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
@@ -460,117 +514,146 @@ private fun WifiFormBody(
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // 标题行
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Icon(
-                        Icons.Default.Wifi,
+                        Icons.Default.Key,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary
                     )
                     Text(
-                        stringResource(R.string.wifi_section_basic),
+                        stringResource(R.string.ssh_key_section_basic),
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                        fontWeight = FontWeight.Bold
                     )
                 }
 
-                // 扫码按钮
-                if (onScanQrCode != null) {
-                    FilledTonalButton(
-                        onClick = onScanQrCode,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = fieldShape
-                    ) {
-                        Icon(Icons.Default.QrCodeScanner, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.wifi_scan_qr))
-                    }
+                SshKeyAlgorithmField(
+                    selected = algorithm,
+                    onSelect = onAlgorithmChange,
+                    fieldShape = fieldShape
+                )
+                if (isRsa) {
+                    SshKeyRsaSizeField(
+                        selected = rsaKeySize,
+                        onSelect = onRsaKeySizeChange,
+                        fieldShape = fieldShape
+                    )
                 }
 
-                // SSID（网络名称）
+                FilledTonalButton(
+                    onClick = onGenerate,
+                    enabled = !isGenerating,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = fieldShape
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.ssh_key_generate))
+                }
+
+                if (isGenerating) {
+                    SshKeyGenerationProgressIndicator()
+                }
+
+                // 指纹
                 OutlinedTextField(
-                    value = ssid,
-                    onValueChange = {
-                        onSsidChange(it)
-                        if (title.isBlank() || title == ssid) onTitleChange(it)
+                    value = fingerprint.ifEmpty {
+                        stringResource(R.string.ssh_key_empty_placeholder)
                     },
-                    label = { Text(stringResource(R.string.wifi_ssid_required)) },
-                    leadingIcon = { Icon(Icons.Default.Wifi, contentDescription = null) },
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text(stringResource(R.string.ssh_key_fingerprint)) },
+                    trailingIcon = {
+                        if (fingerprint.isNotEmpty()) {
+                            val copyLabel = stringResource(R.string.ssh_key_copy_fingerprint)
+                            IconButton(onClick = { onCopy(copyLabel, fingerprint) }) {
+                                Icon(Icons.Default.ContentCopy, contentDescription = copyLabel)
+                            }
+                        }
+                    },
+                    shape = fieldShape,
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 1,
+                    maxLines = 2
+                )
+
+                // 公钥
+                OutlinedTextField(
+                    value = publicKey,
+                    onValueChange = onPublicKeyChange,
+                    label = { Text(stringResource(R.string.ssh_key_public_key)) },
+                    trailingIcon = {
+                        if (publicKey.isNotBlank()) {
+                            val copyLabel = stringResource(R.string.ssh_key_copy_public)
+                            IconButton(onClick = { onCopy(copyLabel, publicKey) }) {
+                                Icon(Icons.Default.ContentCopy, contentDescription = copyLabel)
+                            }
+                        }
+                    },
+                    shape = fieldShape,
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                    maxLines = 4
+                )
+
+                // 私钥
+                OutlinedTextField(
+                    value = privateKey,
+                    onValueChange = onPrivateKeyChange,
+                    label = { Text(stringResource(R.string.ssh_key_private_key)) },
+                    visualTransformation = if (privateKeyVisible) {
+                        VisualTransformation.None
+                    } else {
+                        PasswordVisualTransformation()
+                    },
+                    trailingIcon = {
+                        Row {
+                            val toggleLabel = stringResource(
+                                if (privateKeyVisible) R.string.ssh_key_hide_private
+                                else R.string.ssh_key_reveal_private
+                            )
+                            IconButton(onClick = { onPrivateKeyVisibleChange(!privateKeyVisible) }) {
+                                Icon(
+                                    if (privateKeyVisible) Icons.Default.VisibilityOff
+                                    else Icons.Default.Visibility,
+                                    contentDescription = toggleLabel
+                                )
+                            }
+                            if (privateKey.isNotBlank()) {
+                                val copyLabel = stringResource(R.string.ssh_key_copy_private)
+                                IconButton(onClick = { onCopy(copyLabel, privateKey) }) {
+                                    Icon(Icons.Default.ContentCopy, contentDescription = copyLabel)
+                                }
+                            }
+                        }
+                    },
+                    shape = fieldShape,
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 3,
+                    maxLines = 8
+                )
+
+                // 备注 / comment
+                OutlinedTextField(
+                    value = comment,
+                    onValueChange = onCommentChange,
+                    label = { Text(stringResource(R.string.ssh_key_comment)) },
                     singleLine = true,
                     shape = fieldShape,
                     modifier = Modifier.fillMaxWidth()
                 )
-
-                // 安全性
-                EnumDropdown(
-                    label = stringResource(R.string.wifi_security_label),
-                    value = security,
-                    options = WifiSecurity.entries.filter {
-                        it != WifiSecurity.WPA2_ENTERPRISE && it != WifiSecurity.WPA3_ENTERPRISE
-                    },
-                    optionLabel = { it.displayLabel() },
-                    onValueChange = onSecurityChange,
-                    fieldShape = fieldShape
-                )
-
-                // 密码（开放网络不显示）
-                if (security != WifiSecurity.NONE) {
-                    var passwordVisible by remember { mutableStateOf(false) }
-                    OutlinedTextField(
-                        value = password,
-                        onValueChange = onPasswordChange,
-                        label = { Text(stringResource(R.string.wifi_password_label)) },
-                        singleLine = true,
-                        shape = fieldShape,
-                        visualTransformation = if (passwordVisible) {
-                            androidx.compose.ui.text.input.VisualTransformation.None
-                        } else {
-                            androidx.compose.ui.text.input.PasswordVisualTransformation()
-                        },
-                        trailingIcon = {
-                            Row {
-                                IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                                    Icon(
-                                        if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                        contentDescription = null
-                                    )
-                                }
-                                IconButton(onClick = {
-                                    val gen = takagi.ru.monica.utils.PasswordGenerator()
-                                    onPasswordChange(gen.generatePassword())
-                                }) {
-                                    Icon(Icons.Default.Refresh, contentDescription = null)
-                                }
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-
-                // 隐藏网络
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        stringResource(R.string.wifi_hidden_network),
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                    Switch(checked = hiddenNetwork, onCheckedChange = onHiddenNetworkChange)
-                }
             }
         }
 
-        // 自定义字段区域（与密码页一致）
-        takagi.ru.monica.ui.components.CustomFieldSectionHeader(
+        // 自定义字段
+        CustomFieldSectionHeader(
             onAddClick = {
                 onCustomFieldsChange(
-                    customFields + takagi.ru.monica.data.CustomFieldDraft(
-                        id = takagi.ru.monica.data.CustomFieldDraft.nextTempId(),
+                    customFields + CustomFieldDraft(
+                        id = CustomFieldDraft.nextTempId(),
                         title = "",
                         value = "",
                         isProtected = false,
@@ -581,7 +664,7 @@ private fun WifiFormBody(
             }
         )
         customFields.forEachIndexed { index, field ->
-            takagi.ru.monica.ui.components.CustomFieldEditCard(
+            CustomFieldEditCard(
                 index = index,
                 field = field,
                 onFieldChange = { updated ->
@@ -603,40 +686,76 @@ private fun WifiFormBody(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun <T> EnumDropdown(
-    label: String,
-    value: T,
-    options: List<T>,
-    optionLabel: @Composable (T) -> String,
-    onValueChange: (T) -> Unit,
-    fieldShape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(12.dp)
+private fun SshKeyAlgorithmField(
+    selected: String,
+    onSelect: (String) -> Unit,
+    fieldShape: androidx.compose.ui.graphics.Shape
 ) {
     var expanded by remember { mutableStateOf(false) }
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = it }
-    ) {
+    val label = when {
+        selected.equals(SshKeyData.ALGORITHM_RSA, ignoreCase = true) ->
+            stringResource(R.string.ssh_key_algorithm_rsa)
+        else -> stringResource(R.string.ssh_key_algorithm_ed25519)
+    }
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
         OutlinedTextField(
-            value = optionLabel(value),
+            value = label,
             onValueChange = {},
             readOnly = true,
-            label = { Text(label) },
+            label = { Text(stringResource(R.string.ssh_key_algorithm_label)) },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
             shape = fieldShape,
             modifier = Modifier
                 .fillMaxWidth()
                 .menuAnchor()
         )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false }
-        ) {
-            options.forEach { option ->
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.ssh_key_algorithm_ed25519)) },
+                onClick = {
+                    expanded = false
+                    onSelect(SshKeyData.ALGORITHM_ED25519)
+                }
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.ssh_key_algorithm_rsa)) },
+                onClick = {
+                    expanded = false
+                    onSelect(SshKeyData.ALGORITHM_RSA)
+                }
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SshKeyRsaSizeField(
+    selected: Int,
+    onSelect: (Int) -> Unit,
+    fieldShape: androidx.compose.ui.graphics.Shape
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val options = SshKeyGenerator.RSA_ALLOWED_KEY_SIZES.sorted()
+    ExposedDropdownMenuBox(expanded = expanded, onExpandedChange = { expanded = it }) {
+        OutlinedTextField(
+            value = "$selected bits",
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(stringResource(R.string.ssh_key_size_label)) },
+            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+            shape = fieldShape,
+            modifier = Modifier
+                .fillMaxWidth()
+                .menuAnchor()
+        )
+        ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            options.forEach { size ->
                 DropdownMenuItem(
-                    text = { Text(optionLabel(option)) },
+                    text = { Text("$size bits") },
                     onClick = {
                         expanded = false
-                        onValueChange(option)
+                        onSelect(size)
                     }
                 )
             }
@@ -644,13 +763,12 @@ private fun <T> EnumDropdown(
     }
 }
 
-@Composable
-private fun WifiSecurity.displayLabel(): String = when (this) {
-    WifiSecurity.NONE -> stringResource(R.string.wifi_security_none)
-    WifiSecurity.WEP -> stringResource(R.string.wifi_security_wep)
-    WifiSecurity.WPA_WPA2 -> stringResource(R.string.wifi_security_wpa_wpa2)
-    WifiSecurity.WPA2_WPA3 -> stringResource(R.string.wifi_security_wpa2_wpa3)
-    WifiSecurity.WPA3 -> stringResource(R.string.wifi_security_wpa3)
-    WifiSecurity.WPA2_ENTERPRISE -> stringResource(R.string.wifi_security_wpa2_enterprise)
-    WifiSecurity.WPA3_ENTERPRISE -> stringResource(R.string.wifi_security_wpa3_enterprise)
+private fun copyTextToClipboard(context: Context, label: String, text: String) {
+    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
+    Toast.makeText(
+        context,
+        context.getString(R.string.copied_to_clipboard),
+        Toast.LENGTH_SHORT
+    ).show()
 }

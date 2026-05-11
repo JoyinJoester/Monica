@@ -21,6 +21,7 @@ internal fun CardWalletPane(
     saveableStateHolder: SaveableStateHolder,
     bankCardViewModel: BankCardViewModel,
     documentViewModel: DocumentViewModel,
+    passwordViewModel: takagi.ru.monica.viewmodel.PasswordViewModel,
     contentState: CardWalletContentState,
     isAddingBankCardInline: Boolean,
     inlineBankCardEditorId: Long?,
@@ -47,6 +48,7 @@ internal fun CardWalletPane(
             saveableStateHolder = saveableStateHolder,
             bankCardViewModel = bankCardViewModel,
             documentViewModel = documentViewModel,
+            passwordViewModel = passwordViewModel,
             state = contentState,
             showStandaloneSettingsEntry = showStandaloneSettingsEntry,
             onOpenStandaloneSettings = onOpenStandaloneSettings
