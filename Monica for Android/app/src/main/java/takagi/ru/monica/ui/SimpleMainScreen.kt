@@ -680,6 +680,7 @@ fun SimpleMainScreen(
     documentViewModel: takagi.ru.monica.viewmodel.DocumentViewModel,
     generatorViewModel: GeneratorViewModel = viewModel(), // 添加GeneratorViewModel
     noteViewModel: NoteViewModel = viewModel(),
+    bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel(),
     passkeyViewModel: PasskeyViewModel,  // Passkey ViewModel
     localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
     securityManager: SecurityManager,
@@ -724,8 +725,6 @@ fun SimpleMainScreen(
 ) {
 
     // --- ViewModel wiring and global app-level state ---
-    // Bitwarden ViewModel
-    val bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel()
     val timelineViewModel: TimelineViewModel = viewModel()
     
     // 双击返回退出相关状态

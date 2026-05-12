@@ -1854,7 +1854,7 @@ fun AddEditPasswordScreen(
                                 ) {
                                     Icon(Icons.Default.Add, contentDescription = null)
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("添加URL")
+                                    Text(stringResource(R.string.add_url))
                                 }
                                 OutlinedButton(
                                     onClick = { showAppSelectorFromWebsite = true },
@@ -1870,7 +1870,7 @@ fun AddEditPasswordScreen(
                                         }
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("绑定应用")
+                                    Text(stringResource(R.string.bind_app))
                                 }
                             }
 

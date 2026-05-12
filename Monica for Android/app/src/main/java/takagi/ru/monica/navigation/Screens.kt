@@ -30,6 +30,11 @@ sealed class Screen(val route: String) {
             return "note_detail/$noteId"
         }
     }
+    object AddEditSend : Screen("add_edit_send") {
+        fun createRoute(): String {
+            return "add_edit_send"
+        }
+    }
     object AddEditPassword : Screen("add_edit_password/{passwordId}") {
         fun createRoute(passwordId: Long? = null): String {
             return if (passwordId != null) {

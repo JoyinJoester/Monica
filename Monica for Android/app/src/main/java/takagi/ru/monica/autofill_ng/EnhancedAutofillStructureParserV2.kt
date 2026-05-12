@@ -254,6 +254,14 @@ class EnhancedAutofillStructureParserV2 {
             target = HintConstants.AUTOFILL_HINT_PASSWORD,
         ),
         AutofillHintMatcher(
+            hint = InternalHint.NEW_PASSWORD,
+            target = "newPassword",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.NEW_PASSWORD,
+            target = "new_password",
+        ),
+        AutofillHintMatcher(
             hint = InternalHint.PASSWORD,
             target = "password",
             partly = true,
@@ -273,6 +281,10 @@ class EnhancedAutofillStructureParserV2 {
         AutofillHintMatcher(
             hint = InternalHint.NEW_PASSWORD,
             target = "new-password",
+        ),
+        AutofillHintMatcher(
+            hint = InternalHint.NEW_PASSWORD,
+            target = "new password",
         ),
         AutofillHintMatcher(
             hint = InternalHint.USERNAME,

@@ -392,6 +392,19 @@ class MonicaInputMethodService : InputMethodService() {
             }
             return
         }
+        if (panel == MonicaImePanel.GENERATOR) {
+            suppressAutoUnlockUntilNextAttempt = false
+            uiState.update {
+                it.copy(
+                    activePanel = MonicaImePanel.GENERATOR,
+                    isAutofillPanelVisible = true,
+                    query = "",
+                    selectedDatabaseScope = MonicaImeDatabaseScope.All,
+                    errorMessage = null
+                )
+            }
+            return
+        }
 
         serviceScope.launch {
             val settings = settingsManager.settingsFlow.first()
@@ -1117,8 +1130,15 @@ class MonicaInputMethodService : InputMethodService() {
 
     private fun switchToNextInputMethod() {
         clearPendingDeleteUndo()
-        val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
-        imm.showInputMethodPicker()
+        val switched = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            runCatching { switchToPreviousInputMethod() }.getOrDefault(false)
+        } else {
+            false
+        }
+        if (!switched) {
+            val imm = getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+            imm.showInputMethodPicker()
+        }
     }
 
     private fun handleKeyPress(text: String) {

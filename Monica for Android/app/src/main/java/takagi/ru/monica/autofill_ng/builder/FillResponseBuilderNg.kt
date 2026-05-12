@@ -2,6 +2,7 @@ package takagi.ru.monica.autofill_ng.builder
 
 import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.service.autofill.FillResponse
@@ -10,13 +11,16 @@ import android.service.autofill.SaveInfo
 import android.view.autofill.AutofillId
 import android.view.autofill.AutofillValue
 import takagi.ru.monica.R
+import takagi.ru.monica.autofill_ng.EnhancedAutofillStructureParserV2.FieldHint
 import takagi.ru.monica.autofill_ng.AutofillCipherCallbackActivity
 import takagi.ru.monica.autofill_ng.AutofillPickerActivityV2
+import takagi.ru.monica.autofill_ng.PasswordSuggestionActivity
 import takagi.ru.monica.autofill_ng.builder.AutofillDatasetBuilder
 import takagi.ru.monica.autofill_ng.model.AutofillRequest
 import takagi.ru.monica.autofill_ng.model.AutofillView
 import takagi.ru.monica.autofill_ng.model.FilledData
 import takagi.ru.monica.autofill_ng.model.FilledPartition
+import takagi.ru.monica.utils.PasswordGenerator
 import kotlin.random.Random
 
 class FillResponseBuilderNg(
@@ -30,6 +34,7 @@ class FillResponseBuilderNg(
     fun build(
         request: AutofillRequest.Fillable,
         filledData: FilledData,
+        passwordSuggestionEnabled: Boolean = true,
     ): FillResponse? {
         val fillableAutofillIds = filledData.fillableAutofillIds
         if (fillableAutofillIds.isEmpty()) {
@@ -49,6 +54,17 @@ class FillResponseBuilderNg(
                 )
             )
             cipherDatasetCount++
+        }
+
+        val strongPasswordDataset = if (passwordSuggestionEnabled) {
+            buildStrongPasswordSuggestionDataset(
+                request = request
+            )
+        } else {
+            null
+        }
+        if (strongPasswordDataset != null) {
+            responseBuilder.addDataset(strongPasswordDataset)
         }
 
         responseBuilder.addDataset(
@@ -71,6 +87,7 @@ class FillResponseBuilderNg(
         android.util.Log.i(
             TAG,
             "build result: cipherDatasets=$cipherDatasetCount, " +
+                "strongPasswordDataset=${if (strongPasswordDataset != null) 1 else 0}, " +
                 "vaultDataset=1, fillableIds=${fillableAutofillIds.size}, " +
                 "suggestedIds=${filledData.filledPartitions.count { it.autofillCipher.cipherId != null }}"
         )
@@ -135,6 +152,102 @@ class FillResponseBuilderNg(
         }
 
         return datasetBuilder.build()
+    }
+
+    private fun buildStrongPasswordSuggestionDataset(
+        request: AutofillRequest.Fillable,
+    ): android.service.autofill.Dataset? {
+        val newPasswordIds = request.partition.views
+            .filterIsInstance<AutofillView.Login.Password>()
+            .filter { it.data.hint == FieldHint.NEW_PASSWORD }
+            .map { it.data.autofillId }
+            .distinct()
+            .ifEmpty { return null }
+
+        val pendingIntent = createStrongPasswordSuggestionPendingIntent(
+            request = request,
+            passwordFieldIds = newPasswordIds,
+        )
+        val menuPresentation = AutofillDatasetBuilder.RemoteViewsFactory.createPasswordSuggestion(context)
+        val fields = linkedMapOf<AutofillId, AutofillDatasetBuilder.FieldData?>()
+        newPasswordIds.forEach { autofillId ->
+            fields[autofillId] = AutofillDatasetBuilder.FieldData(
+                value = AutofillValue.forText(MANUAL_PLACEHOLDER_VALUE),
+                presentation = menuPresentation,
+            )
+        }
+
+        val datasetBuilder = AutofillDatasetBuilder.create(
+            menuPresentation = menuPresentation,
+            fields = fields
+        ) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                val spec = request.inlinePresentationSpecs?.firstOrNull() ?: return@create null
+                AutofillDatasetBuilder.InlinePresentationBuilder.tryCreate(
+                    context = context,
+                    spec = spec,
+                    specs = request.inlinePresentationSpecs,
+                    index = 0,
+                    pendingIntent = pendingIntent,
+                    title = context.getString(R.string.password_suggestion_title),
+                    subtitle = context.getString(R.string.password_suggestion_subtitle),
+                    icon = AutofillDatasetBuilder.InlinePresentationBuilder.createAppIcon(
+                        context = context,
+                        packageName = request.packageName
+                    ),
+                    contentDescription = context.getString(R.string.password_suggestion_title)
+                )
+            } else {
+                null
+            }
+        }
+        datasetBuilder.setAuthentication(pendingIntent.intentSender)
+        return datasetBuilder.build()
+    }
+
+    private fun createStrongPasswordSuggestionPendingIntent(
+        request: AutofillRequest.Fillable,
+        passwordFieldIds: List<AutofillId>,
+    ): PendingIntent {
+        val webDomain = extractWebDomain(request.uri)
+        val username = request.partition.views
+            .filterIsInstance<AutofillView.Login.Username>()
+            .firstOrNull { !it.data.textValue.isNullOrBlank() }
+            ?.data
+            ?.textValue
+            .orEmpty()
+        val generatedPassword = PasswordGenerator().generatePassword(
+            PasswordGenerator.PasswordOptions(
+                length = 16,
+                includeUppercase = true,
+                includeLowercase = true,
+                includeNumbers = true,
+                includeSymbols = true,
+                excludeSimilar = true,
+            )
+        )
+
+        val intent = Intent(context, PasswordSuggestionActivity::class.java).apply {
+            putExtra(PasswordSuggestionActivity.EXTRA_USERNAME, username)
+            putExtra(PasswordSuggestionActivity.EXTRA_GENERATED_PASSWORD, generatedPassword)
+            putExtra(PasswordSuggestionActivity.EXTRA_PACKAGE_NAME, request.packageName)
+            putExtra(PasswordSuggestionActivity.EXTRA_WEB_DOMAIN, webDomain)
+            putParcelableArrayListExtra(
+                PasswordSuggestionActivity.EXTRA_PASSWORD_FIELD_IDS,
+                ArrayList(passwordFieldIds)
+            )
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        return PendingIntent.getActivity(
+            context,
+            Random.nextInt(),
+            intent,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_MUTABLE
+            } else {
+                PendingIntent.FLAG_CANCEL_CURRENT
+            }
+        )
     }
 
     private fun createCipherAuthPendingIntent(

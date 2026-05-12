@@ -130,7 +130,8 @@ class AutofillParserNg {
             autofillType = View.AUTOFILL_TYPE_TEXT,
             isFocused = isFocused,
             textValue = value,
-            website = website
+            website = website,
+            hint = hint,
         )
         return when (hint) {
             FieldHint.PASSWORD, FieldHint.NEW_PASSWORD -> AutofillView.Login.Password(data)

@@ -14,6 +14,7 @@ sealed class AutofillView {
         val isFocused: Boolean,
         val textValue: String?,
         val website: String?,
+        val hint: FieldHint,
     )
 
     abstract val data: Data

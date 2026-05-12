@@ -759,6 +759,9 @@ private fun MetaTag(
 fun AddEditSendScreen(
     modifier: Modifier = Modifier,
     sendState: BitwardenViewModel.SendState,
+    initialTitle: String = "",
+    initialText: String = "",
+    initialNotes: String = "",
     onNavigateBack: () -> Unit,
     onCreate: (
         title: String,
@@ -771,9 +774,9 @@ fun AddEditSendScreen(
         expireInDays: Int
     ) -> Unit
 ) {
-    var title by remember { mutableStateOf("") }
-    var text by remember { mutableStateOf("") }
-    var notes by remember { mutableStateOf("") }
+    var title by remember(initialTitle) { mutableStateOf(initialTitle) }
+    var text by remember(initialText) { mutableStateOf(initialText) }
+    var notes by remember(initialNotes) { mutableStateOf(initialNotes) }
     var password by remember { mutableStateOf("") }
     var maxAccessCount by remember { mutableStateOf("") }
     var expireDaysText by remember { mutableStateOf("7") }

@@ -1643,6 +1643,9 @@
     <string name="bank_cards">Bank Cards</string>
     <string name="generator">Generator</string>
     <string name="generator_hint">Use the generator to create secure passwords</string>
+    <string name="ime_generator_length_value">Len %1$d</string>
+    <string name="add_url">Add URL</string>
+    <string name="bind_app">Bind app</string>
     <string name="settings_description">Configure your Monica settings</string>
     <string name="select_password_hint">Select a password to view details</string>
     <string name="select_totp_hint">Select an authenticator to view details</string>

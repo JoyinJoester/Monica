@@ -370,6 +370,7 @@ class MonicaAutofillServiceNg : AutofillService() {
             passwords = matchedPasswords,
             fieldSignatureKey = fieldSignatureKey,
             preferDirectAutoFill = isPasswordOnlyLogin && matchedPasswords.size == 1,
+            passwordSuggestionEnabled = autofillPreferences.isPasswordSuggestionEnabled.first(),
         )
 
         if (response == null) {

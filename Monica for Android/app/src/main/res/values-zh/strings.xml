@@ -970,6 +970,11 @@
     <string name="generator_copied">已复制到剪贴板</string>
     <string name="generator_invalid_length">长度无效</string>
     <string name="generator_action">生成</string>  <!-- 新增：生成按钮文字 -->
+    <string name="generator">生成器</string>
+    <string name="generator_hint">使用生成器创建安全密码</string>
+    <string name="ime_generator_length_value">长度 %1$d</string>
+    <string name="add_url">添加 URL</string>
+    <string name="bind_app">绑定应用</string>
 
     <!-- Detail Screens -->
     <string name="bank_card_details">银行卡详情</string>

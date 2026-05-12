@@ -90,6 +90,7 @@ import takagi.ru.monica.ui.SimpleMainScreen
 import takagi.ru.monica.ui.screens.AddEditBankCardScreen
 import takagi.ru.monica.ui.screens.AddEditDocumentScreen
 import takagi.ru.monica.ui.screens.AddEditPasswordScreen
+import takagi.ru.monica.ui.screens.AddEditSendScreen
 import takagi.ru.monica.ui.screens.AddEditTotpScreen
 import takagi.ru.monica.ui.screens.AutofillBlockedFieldsScreen
 import takagi.ru.monica.ui.screens.AutofillSaveBlockedTargetsScreen
@@ -149,11 +150,20 @@ private data class PendingAddStorageDefaults(
     val bitwardenFolderId: String? = null
 )
 
+private data class PendingSendDraft(
+    val title: String? = null,
+    val text: String? = null,
+    val notes: String? = null
+)
+
 private const val KEY_PENDING_ADD_CATEGORY_ID = "pending_add_category_id"
 private const val KEY_PENDING_ADD_KEEPASS_DATABASE_ID = "pending_add_keepass_database_id"
 private const val KEY_PENDING_ADD_KEEPASS_GROUP_PATH = "pending_add_keepass_group_path"
 private const val KEY_PENDING_ADD_BITWARDEN_VAULT_ID = "pending_add_bitwarden_vault_id"
 private const val KEY_PENDING_ADD_BITWARDEN_FOLDER_ID = "pending_add_bitwarden_folder_id"
+private const val KEY_PENDING_SEND_TITLE = "pending_send_title"
+private const val KEY_PENDING_SEND_TEXT = "pending_send_text"
+private const val KEY_PENDING_SEND_NOTES = "pending_send_notes"
 
 private fun PendingAddStorageDefaults.hasAnyValue(): Boolean {
     return categoryId != null ||
@@ -163,12 +173,24 @@ private fun PendingAddStorageDefaults.hasAnyValue(): Boolean {
         !bitwardenFolderId.isNullOrBlank()
 }
 
+private fun PendingSendDraft.hasAnyValue(): Boolean {
+    return !title.isNullOrBlank() ||
+        !text.isNullOrBlank() ||
+        !notes.isNullOrBlank()
+}
+
 private fun SavedStateHandle.clearPendingAddStorageDefaults() {
     remove<Long>(KEY_PENDING_ADD_CATEGORY_ID)
     remove<Long>(KEY_PENDING_ADD_KEEPASS_DATABASE_ID)
     remove<String>(KEY_PENDING_ADD_KEEPASS_GROUP_PATH)
     remove<Long>(KEY_PENDING_ADD_BITWARDEN_VAULT_ID)
     remove<String>(KEY_PENDING_ADD_BITWARDEN_FOLDER_ID)
+}
+
+private fun SavedStateHandle.clearPendingSendDraft() {
+    remove<String>(KEY_PENDING_SEND_TITLE)
+    remove<String>(KEY_PENDING_SEND_TEXT)
+    remove<String>(KEY_PENDING_SEND_NOTES)
 }
 
 private fun SavedStateHandle.setPendingAddStorageDefaults(defaults: PendingAddStorageDefaults?) {
@@ -206,6 +228,32 @@ private fun SavedStateHandle.setPendingAddStorageDefaults(defaults: PendingAddSt
     }
 }
 
+private fun SavedStateHandle.setPendingSendDraft(draft: PendingSendDraft?) {
+    if (draft == null || !draft.hasAnyValue()) {
+        clearPendingSendDraft()
+        return
+    }
+
+    val title = draft.title?.takeIf { it.isNotBlank() }
+    if (title != null) {
+        set(KEY_PENDING_SEND_TITLE, title)
+    } else {
+        remove<String>(KEY_PENDING_SEND_TITLE)
+    }
+    val text = draft.text?.takeIf { it.isNotBlank() }
+    if (text != null) {
+        set(KEY_PENDING_SEND_TEXT, text)
+    } else {
+        remove<String>(KEY_PENDING_SEND_TEXT)
+    }
+    val notes = draft.notes?.takeIf { it.isNotBlank() }
+    if (notes != null) {
+        set(KEY_PENDING_SEND_NOTES, notes)
+    } else {
+        remove<String>(KEY_PENDING_SEND_NOTES)
+    }
+}
+
 private fun SavedStateHandle.consumePendingAddStorageDefaults(): PendingAddStorageDefaults? {
     val defaults = PendingAddStorageDefaults(
         categoryId = get<Long>(KEY_PENDING_ADD_CATEGORY_ID),
@@ -216,6 +264,16 @@ private fun SavedStateHandle.consumePendingAddStorageDefaults(): PendingAddStora
     )
     clearPendingAddStorageDefaults()
     return defaults.takeIf { it.hasAnyValue() }
+}
+
+private fun SavedStateHandle.consumePendingSendDraft(): PendingSendDraft? {
+    val draft = PendingSendDraft(
+        title = get<String>(KEY_PENDING_SEND_TITLE)?.takeIf { it.isNotBlank() },
+        text = get<String>(KEY_PENDING_SEND_TEXT)?.takeIf { it.isNotBlank() },
+        notes = get<String>(KEY_PENDING_SEND_NOTES)?.takeIf { it.isNotBlank() }
+    )
+    clearPendingSendDraft()
+    return draft.takeIf { it.hasAnyValue() }
 }
 
 class MainActivity : BaseMonicaActivity() {
@@ -351,6 +409,7 @@ fun MonicaApp(
     database: PasswordDatabase
 ) {
     val context = LocalContext.current
+    val activity = context as ComponentActivity
     val navController = rememberNavController()
 
     // 创建权限共享 launcher
@@ -414,6 +473,9 @@ fun MonicaApp(
             securityManager
         )
     }
+    val bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel(
+        viewModelStoreOwner = activity
+    )
     
     // Passkey 通行密钥
     val passkeyRepository = remember { takagi.ru.monica.repository.PasskeyRepository(database.passkeyDao()) }
@@ -526,6 +588,7 @@ fun MonicaApp(
                     settingsViewModel = settingsViewModel,
                     generatorViewModel = generatorViewModel,
                     noteViewModel = noteViewModel,
+                    bitwardenViewModel = bitwardenViewModel,
                     passkeyViewModel = passkeyViewModel,
                     keePassViewModel = keePassViewModel,
                     localKeePassViewModel = localKeePassViewModel,
@@ -555,6 +618,7 @@ fun MonicaContent(
     settingsViewModel: SettingsViewModel,
     generatorViewModel: GeneratorViewModel,
     noteViewModel: takagi.ru.monica.viewmodel.NoteViewModel,
+    bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel,
     passkeyViewModel: takagi.ru.monica.viewmodel.PasskeyViewModel,
     keePassViewModel: KeePassKdbxViewModel,
     localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
@@ -788,6 +852,7 @@ fun MonicaContent(
                 documentViewModel = documentViewModel,
                 generatorViewModel = generatorViewModel,
                 noteViewModel = noteViewModel,
+                bitwardenViewModel = bitwardenViewModel,
                 passkeyViewModel = passkeyViewModel,
                 localKeePassViewModel = localKeePassViewModel,
                 securityManager = securityManager,
@@ -1624,6 +1689,41 @@ fun MonicaContent(
         }
 
         composable(
+            route = Screen.AddEditSend.route,
+            enterTransition = { rightSlideEnterTransition() },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { rightSlidePopExitTransition() }
+        ) { backStackEntry ->
+            val pendingSendDraft = remember(backStackEntry) {
+                navController.previousBackStackEntry?.savedStateHandle?.consumePendingSendDraft()
+            }
+
+            AddEditSendScreen(
+                sendState = bitwardenViewModel.sendState.collectAsState().value,
+                initialTitle = pendingSendDraft?.title.orEmpty(),
+                initialText = pendingSendDraft?.text.orEmpty(),
+                initialNotes = pendingSendDraft?.notes.orEmpty(),
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onCreate = { title, text, notes, password, maxAccessCount, hideEmail, hiddenText, expireInDays ->
+                    bitwardenViewModel.createTextSend(
+                        title = title,
+                        text = text,
+                        notes = notes,
+                        password = password,
+                        maxAccessCount = maxAccessCount,
+                        hideEmail = hideEmail,
+                        hiddenText = hiddenText,
+                        expireInDays = expireInDays
+                    )
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(
             route = Screen.NoteDetail.route,
             enterTransition = { rightSlideEnterTransition() },
             exitTransition = { ExitTransition.None },
@@ -1641,6 +1741,19 @@ fun MonicaContent(
                     },
                     onEditNote = { id ->
                         navController.navigate(Screen.AddEditNote.createRoute(id))
+                    },
+                    onCreateSend = { title, text ->
+                        navController.currentBackStackEntry
+                            ?.savedStateHandle
+                            ?.setPendingSendDraft(
+                                PendingSendDraft(
+                                    title = title,
+                                    text = text
+                                )
+                            )
+                        navController.navigate(Screen.AddEditSend.createRoute()) {
+                            launchSingleTop = true
+                        }
                     }
                 )
             }

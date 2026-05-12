@@ -14,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -55,10 +56,12 @@ fun NoteDetailScreen(
     noteId: Long,
     onNavigateBack: () -> Unit,
     onEditNote: (Long) -> Unit,
+    onCreateSend: (title: String, text: String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val detailImageMaxDimension = 1440
     val context = LocalContext.current
+    val untitledLabel = stringResource(R.string.untitled)
     val imageManager = remember { ImageManager(context) }
     val noteItem by viewModel.observeNoteById(noteId).collectAsState(initial = null)
     var showNoteImageDialog by remember { mutableStateOf<String?>(null) }
@@ -88,6 +91,21 @@ fun NoteDetailScreen(
                 .map { it.trim() }
                 .firstOrNull { it.isNotEmpty() && !it.startsWith("![](") }
                 .orEmpty()
+        }
+    }
+    val displayTitle by remember(noteItem?.title, fallbackTitle) {
+        derivedStateOf {
+            noteItem?.title
+                ?.lineSequence()
+                ?.map { it.trim() }
+                ?.firstOrNull { it.isNotEmpty() }
+                .orEmpty()
+                .ifBlank { fallbackTitle }
+        }
+    }
+    val sendText by remember(markdownSource, decodedNote?.content) {
+        derivedStateOf {
+            markdownSource.ifBlank { decodedNote?.content.orEmpty() }.trim()
         }
     }
 
@@ -127,6 +145,16 @@ fun NoteDetailScreen(
                 ActionStrip(
                     actions = listOf(
                         ActionStripItem(
+                            icon = Icons.Default.Send,
+                            contentDescription = stringResource(R.string.nav_v2_send),
+                            onClick = {
+                                onCreateSend(
+                                    displayTitle.ifBlank { untitledLabel },
+                                    sendText
+                                )
+                            }
+                        ),
+                        ActionStripItem(
                             icon = Icons.Default.Edit,
                             contentDescription = stringResource(R.string.edit),
                             onClick = { onEditNote(it.id) }
@@ -162,13 +190,6 @@ fun NoteDetailScreen(
             return@Scaffold
         }
         val currentNote = noteItem ?: return@Scaffold
-
-        val displayTitle = currentNote.title
-            .lineSequence()
-            .map { it.trim() }
-            .firstOrNull { it.isNotEmpty() }
-            .orEmpty()
-            .ifBlank { fallbackTitle }
         Column(
             modifier = modifier
                 .fillMaxSize()
@@ -178,7 +199,7 @@ fun NoteDetailScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = displayTitle.ifBlank { stringResource(R.string.untitled) },
+                text = displayTitle.ifBlank { untitledLabel },
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 maxLines = 2,

@@ -32,10 +32,18 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
@@ -44,6 +52,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.ArrowUpward
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Keyboard
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Key
@@ -51,6 +60,7 @@ import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material.icons.filled.SpaceBar
@@ -79,6 +89,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
@@ -86,6 +97,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -97,6 +109,7 @@ import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.ui.components.MonicaExpressiveFilterChip
 import takagi.ru.monica.ui.theme.MonicaTheme
+import takagi.ru.monica.util.PasswordGenerator
 
 internal data class MonicaImePasswordEntry(
     val id: Long,
@@ -169,7 +182,8 @@ internal enum class MonicaImePanel {
     KEYBOARD,
     PASSWORDS,
     AUTHENTICATORS,
-    DOCUMENTS
+    DOCUMENTS,
+    GENERATOR
 }
 
 internal sealed interface MonicaImeDatabaseScope {
@@ -205,7 +219,8 @@ private enum class MonicaToolbarSelection {
     MONICA,
     PASSWORDS,
     AUTHENTICATORS,
-    DOCUMENTS
+    DOCUMENTS,
+    GENERATOR
 }
 
 private val MonicaImeContentAreaHeight = 240.dp
@@ -241,8 +256,15 @@ internal fun MonicaImeContent(
         ThemeMode.LIGHT -> false
         ThemeMode.DARK -> true
     }
-    val activePanelRequiresUnlock = uiState.activePanel != MonicaImePanel.KEYBOARD
-    val showPanelContent = activePanelRequiresUnlock && uiState.unlocked
+    val activePanelRequiresUnlock = when (uiState.activePanel) {
+        MonicaImePanel.PASSWORDS,
+        MonicaImePanel.AUTHENTICATORS,
+        MonicaImePanel.DOCUMENTS -> true
+        MonicaImePanel.KEYBOARD,
+        MonicaImePanel.GENERATOR -> false
+    }
+    val showPanelContent = uiState.activePanel != MonicaImePanel.KEYBOARD &&
+        (!activePanelRequiresUnlock || uiState.unlocked)
     val showUnlockPanel = activePanelRequiresUnlock && !uiState.unlocked
 
     MonicaTheme(
@@ -313,6 +335,12 @@ internal fun MonicaImeContent(
                                         onSmartFill = onSmartFillCardWallet
                                     )
                                 }
+                                MonicaImePanel.GENERATOR -> {
+                                    ImeGeneratorPane(
+                                        modifier = Modifier.fillMaxSize(),
+                                        onInsertPassword = onKeyPressed
+                                    )
+                                }
                                 MonicaImePanel.KEYBOARD -> Unit
                             }
                         }
@@ -366,12 +394,14 @@ private fun MonicaImeToolbar(
         MonicaImePanel.PASSWORDS -> MonicaToolbarSelection.PASSWORDS
         MonicaImePanel.AUTHENTICATORS -> MonicaToolbarSelection.AUTHENTICATORS
         MonicaImePanel.DOCUMENTS -> MonicaToolbarSelection.DOCUMENTS
+        MonicaImePanel.GENERATOR -> MonicaToolbarSelection.GENERATOR
     }
     val toolbarItems = listOf(
         MonicaToolbarSelection.MONICA,
         MonicaToolbarSelection.PASSWORDS,
         MonicaToolbarSelection.AUTHENTICATORS,
-        MonicaToolbarSelection.DOCUMENTS
+        MonicaToolbarSelection.DOCUMENTS,
+        MonicaToolbarSelection.GENERATOR
     )
 
     Row(
@@ -382,7 +412,7 @@ private fun MonicaImeToolbar(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(
-            modifier = Modifier.widthIn(max = 240.dp),
+            modifier = Modifier.weight(1f),
             horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)
         ) {
             toolbarItems.forEachIndexed { index, item ->
@@ -398,12 +428,14 @@ private fun MonicaImeToolbar(
                         MonicaToolbarSelection.PASSWORDS -> stringResource(R.string.ime_toolbar_autofill)
                         MonicaToolbarSelection.AUTHENTICATORS -> stringResource(R.string.authenticator)
                         MonicaToolbarSelection.DOCUMENTS -> stringResource(R.string.nav_card_wallet)
+                        MonicaToolbarSelection.GENERATOR -> stringResource(R.string.generator)
                     },
                     imageVector = when (item) {
                         MonicaToolbarSelection.MONICA -> Icons.Default.Keyboard
                         MonicaToolbarSelection.PASSWORDS -> Icons.Default.Key
                         MonicaToolbarSelection.AUTHENTICATORS -> Icons.Default.VerifiedUser
                         MonicaToolbarSelection.DOCUMENTS -> Icons.Default.Badge
+                        MonicaToolbarSelection.GENERATOR -> Icons.Default.AutoAwesome
                     },
                     onClick = {
                         when (item) {
@@ -411,13 +443,12 @@ private fun MonicaImeToolbar(
                             MonicaToolbarSelection.PASSWORDS -> onPanelSelected(MonicaImePanel.PASSWORDS)
                             MonicaToolbarSelection.AUTHENTICATORS -> onPanelSelected(MonicaImePanel.AUTHENTICATORS)
                             MonicaToolbarSelection.DOCUMENTS -> onPanelSelected(MonicaImePanel.DOCUMENTS)
+                            MonicaToolbarSelection.GENERATOR -> onPanelSelected(MonicaImePanel.GENERATOR)
                         }
                     }
                 )
             }
         }
-
-        Spacer(modifier = Modifier.weight(1f))
 
         if (uiState.pendingClearedInput != null) {
             ToolbarCircleButton(
@@ -478,7 +509,7 @@ private fun RowScope.ConnectedToolbarButton(
             .zIndex(if (selected) 1f else 0f)
             .weight(animatedWeight)
             .height(46.dp)
-            .sizeIn(minWidth = 48.dp)
+            .sizeIn(minWidth = 42.dp)
             .semantics { role = Role.RadioButton },
         shapes = when (position) {
             ConnectedToolbarPosition.LEADING -> ButtonGroupDefaults.connectedLeadingButtonShapes()
@@ -493,6 +524,166 @@ private fun RowScope.ConnectedToolbarButton(
             modifier = Modifier.size(20.dp)
         )
     }
+}
+
+@Composable
+private fun ImeGeneratorPane(
+    modifier: Modifier = Modifier,
+    onInsertPassword: (String) -> Unit
+) {
+    var length by rememberSaveable { mutableStateOf(16) }
+    var generatedPassword by rememberSaveable {
+        mutableStateOf(generateImePassword(length))
+    }
+    var refreshTick by rememberSaveable { mutableStateOf(0) }
+    val refreshRotation by animateFloatAsState(
+        targetValue = refreshTick * 360f,
+        animationSpec = tween(durationMillis = 420),
+        label = "imeGeneratorRefreshRotation"
+    )
+
+    fun updatePassword(nextLength: Int = length) {
+        length = nextLength
+        generatedPassword = generateImePassword(nextLength)
+        refreshTick += 1
+    }
+
+    ElevatedCard(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 10.dp, vertical = 8.dp),
+        shape = RoundedCornerShape(30.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        )
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AutoAwesome,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = stringResource(R.string.generator),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = stringResource(R.string.generator_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                FilledIconButton(
+                    onClick = { updatePassword() },
+                    modifier = Modifier
+                        .size(42.dp)
+                        .graphicsLayer { rotationZ = refreshRotation }
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = stringResource(R.string.generate_password)
+                    )
+                }
+            }
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .animateContentSize(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
+                )
+            ) {
+                AnimatedContent(
+                    targetState = generatedPassword,
+                    transitionSpec = {
+                        (fadeIn(animationSpec = tween(160)) + scaleIn(initialScale = 0.96f)) togetherWith
+                            (fadeOut(animationSpec = tween(120)) + scaleOut(targetScale = 1.02f)) using
+                            SizeTransform(clip = false)
+                    },
+                    label = "imeGeneratedPassword"
+                ) { password ->
+                    Text(
+                        text = password,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 16.dp),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(
+                    onClick = { updatePassword((length - 4).coerceAtLeast(8)) },
+                    contentPadding = PaddingValues(horizontal = 12.dp)
+                ) {
+                    Text("-")
+                }
+                Text(
+                    text = stringResource(R.string.ime_generator_length_value, length),
+                    modifier = Modifier.width(54.dp),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center
+                )
+                OutlinedButton(
+                    onClick = { updatePassword((length + 4).coerceAtMost(32)) },
+                    contentPadding = PaddingValues(horizontal = 12.dp)
+                ) {
+                    Text("+")
+                }
+                OutlinedButton(
+                    onClick = { onInsertPassword(generatedPassword) },
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 12.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.use_password),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun generateImePassword(length: Int): String {
+    return PasswordGenerator.generatePassword(
+        length = length,
+        includeUppercase = true,
+        includeLowercase = true,
+        includeNumbers = true,
+        includeSymbols = true,
+        excludeSimilar = true,
+        uppercaseMin = 1,
+        lowercaseMin = 1,
+        numbersMin = 1,
+        symbolsMin = 1
+    )
 }
 
 @Composable
