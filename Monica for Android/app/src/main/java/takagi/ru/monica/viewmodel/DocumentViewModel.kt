@@ -381,9 +381,13 @@ class DocumentViewModel(
             if (distinctTargets.isEmpty()) return@launch
 
             val existingItem = id?.let { repository.getItemById(it) }?.takeIf { it.itemType == ItemType.DOCUMENT }
-            val currentTarget = existingItem?.toStorageTarget() ?: distinctTargets.first()
+            val selectedTargetKeys = distinctTargets.map(StorageTarget::stableKey).toSet()
+            val currentTarget = existingItem
+                ?.toStorageTarget()
+                ?.takeIf { it.stableKey in selectedTargetKeys }
+                ?: distinctTargets.first()
             val replicaGroupId = existingItem?.replicaGroupId?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
-            val existingReplicaKeys = if (existingItem != null) {
+            val existingReplicasByKey = if (existingItem != null) {
                 repository.getAllItems().first()
                     .asSequence()
                     .filter {
@@ -392,10 +396,9 @@ class DocumentViewModel(
                             it.id != existingItem.id &&
                             !it.isDeleted
                     }
-                    .map { it.toStorageTarget().stableKey }
-                    .toSet()
+                    .associateBy { it.toStorageTarget().stableKey }
             } else {
-                emptySet()
+                emptyMap()
             }
 
             when (currentTarget) {
@@ -478,10 +481,20 @@ class DocumentViewModel(
             }
 
             distinctTargets
-                .filter { it.stableKey != currentTarget.stableKey && it.stableKey !in existingReplicaKeys }
+                .filter { it.stableKey != currentTarget.stableKey }
                 .forEach { target ->
+                    val existingReplica = existingReplicasByKey[target.stableKey]
                     when (target) {
-                        is StorageTarget.MonicaLocal -> addDocument(
+                        is StorageTarget.MonicaLocal -> if (existingReplica == null) addDocument(
+                            title = title,
+                            documentData = documentData,
+                            notes = notes,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            categoryId = target.categoryId,
+                            replicaGroupId = replicaGroupId
+                        ) else updateDocument(
+                            id = existingReplica.id,
                             title = title,
                             documentData = documentData,
                             notes = notes,
@@ -490,7 +503,17 @@ class DocumentViewModel(
                             categoryId = target.categoryId,
                             replicaGroupId = replicaGroupId
                         )
-                        is StorageTarget.KeePass -> addDocument(
+                        is StorageTarget.KeePass -> if (existingReplica == null) addDocument(
+                            title = title,
+                            documentData = documentData,
+                            notes = notes,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            keepassDatabaseId = target.databaseId,
+                            keepassGroupPath = target.groupPath,
+                            replicaGroupId = replicaGroupId
+                        ) else updateDocument(
+                            id = existingReplica.id,
                             title = title,
                             documentData = documentData,
                             notes = notes,
@@ -500,7 +523,17 @@ class DocumentViewModel(
                             keepassGroupPath = target.groupPath,
                             replicaGroupId = replicaGroupId
                         )
-                        is StorageTarget.Bitwarden -> addDocument(
+                        is StorageTarget.Bitwarden -> if (existingReplica == null) addDocument(
+                            title = title,
+                            documentData = documentData,
+                            notes = notes,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            bitwardenVaultId = target.vaultId,
+                            bitwardenFolderId = target.folderId,
+                            replicaGroupId = replicaGroupId
+                        ) else updateDocument(
+                            id = existingReplica.id,
                             title = title,
                             documentData = documentData,
                             notes = notes,
@@ -512,6 +545,16 @@ class DocumentViewModel(
                         )
                     }
                 }
+
+            repository.getAllItems().first()
+                .filter {
+                    it.itemType == ItemType.DOCUMENT &&
+                        it.replicaGroupId == replicaGroupId &&
+                        it.id != existingItem?.id &&
+                        !it.isDeleted &&
+                        it.toStorageTarget().stableKey !in selectedTargetKeys
+                }
+                .forEach { repository.deleteItemById(it.id) }
         }
     }
 

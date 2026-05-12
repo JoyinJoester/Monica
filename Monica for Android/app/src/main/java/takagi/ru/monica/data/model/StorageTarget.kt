@@ -25,6 +25,61 @@ sealed interface StorageTarget {
     }
 }
 
+fun StorageTarget.storageScopeKey(): String = when (this) {
+    is StorageTarget.MonicaLocal -> "local"
+    is StorageTarget.KeePass -> "keepass:$databaseId"
+    is StorageTarget.Bitwarden -> "bitwarden:$vaultId"
+}
+
+fun StorageTarget.uncategorizedPeer(): StorageTarget = when (this) {
+    is StorageTarget.MonicaLocal -> StorageTarget.MonicaLocal(null)
+    is StorageTarget.KeePass -> StorageTarget.KeePass(databaseId, null)
+    is StorageTarget.Bitwarden -> StorageTarget.Bitwarden(vaultId, null)
+}
+
+fun StorageTarget.isUncategorizedTarget(): Boolean = when (this) {
+    is StorageTarget.MonicaLocal -> categoryId == null
+    is StorageTarget.KeePass -> groupPath.isNullOrBlank()
+    is StorageTarget.Bitwarden -> folderId.isNullOrBlank()
+}
+
+fun List<StorageTarget>.normalizedStorageTargets(
+    defaultTarget: StorageTarget = StorageTarget.MonicaLocal(null)
+): List<StorageTarget> = distinctBy(StorageTarget::stableKey).ifEmpty { listOf(defaultTarget) }
+
+fun List<StorageTarget>.withStorageTargetSelected(
+    target: StorageTarget,
+    defaultTarget: StorageTarget = StorageTarget.MonicaLocal(null)
+): List<StorageTarget> {
+    val current = normalizedStorageTargets(defaultTarget)
+    if (current.any { it.stableKey == target.stableKey }) return current
+    val withoutImplicitFallback = if (target.isUncategorizedTarget()) {
+        current
+    } else {
+        current.filterNot {
+            it.storageScopeKey() == target.storageScopeKey() && it.isUncategorizedTarget()
+        }
+    }
+    return (withoutImplicitFallback + target).normalizedStorageTargets(defaultTarget)
+}
+
+fun List<StorageTarget>.withoutStorageTarget(
+    target: StorageTarget,
+    defaultTarget: StorageTarget = StorageTarget.MonicaLocal(null)
+): List<StorageTarget> {
+    val current = normalizedStorageTargets(defaultTarget)
+    val remaining = current.filterNot { it.stableKey == target.stableKey }
+    if (remaining.size == current.size) return current
+    val hasSameScopeTarget = remaining.any { it.storageScopeKey() == target.storageScopeKey() }
+    val fallback = target.uncategorizedPeer()
+    val next = when {
+        hasSameScopeTarget -> remaining
+        fallback.stableKey != target.stableKey -> remaining + fallback
+        else -> remaining
+    }
+    return next.normalizedStorageTargets(defaultTarget)
+}
+
 fun PasswordEntry.toStorageTarget(): StorageTarget = when {
     bitwardenVaultId != null -> StorageTarget.Bitwarden(
         vaultId = bitwardenVaultId,

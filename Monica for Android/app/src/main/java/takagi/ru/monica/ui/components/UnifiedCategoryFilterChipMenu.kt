@@ -278,13 +278,12 @@ fun UnifiedCategoryFilterChipMenu(
             getKeePassGroups?.invoke(databaseId)
         } ?: flowOf(emptyList())
     }.collectAsState(initial = emptyList())
-    val folderChips = rememberAsyncComputed(
+    val folderChips = remember(
         selected,
         localNodes,
         localCurrentPath,
         bitwardenFolders,
-        keepassGroups,
-        initialValue = emptyList()
+        keepassGroups
     ) {
         buildFolderChips(
             selected = selected,
@@ -295,7 +294,7 @@ fun UnifiedCategoryFilterChipMenu(
             keepassGroups = keepassGroups
         )
     }
-    val quickFilterItems = remember(showLocalOnlyQuickFilter, onSelectLocalOnlyQuickFilter) {
+    val quickFilterItems = remember(selected, showLocalOnlyQuickFilter, isLocalOnlyQuickFilterSelected, onSelectLocalOnlyQuickFilter) {
         buildList {
             add(QuickFilterChipItem(
                 selection = selected.toStarredSelection(),
@@ -475,7 +474,10 @@ fun UnifiedCategoryFilterChipMenu(
                         MonicaExpressiveFilterChip(
                             selected = item.isSelected,
                             onClick = {
-                                if (item.selection != null) {
+                                if (item.isSelected) {
+                                    // 再次点击已选中的快捷筛选 → 取消，回到基础 scope
+                                    onSelect(selected.toBaseScope())
+                                } else if (item.selection != null) {
                                     onSelect(item.selection)
                                 } else {
                                     onSelectLocalOnlyQuickFilter?.invoke()
@@ -787,4 +789,24 @@ private fun UnifiedCategoryFilterSelection.toUncategorizedSelection(): UnifiedCa
     is UnifiedCategoryFilterSelection.Custom -> UnifiedCategoryFilterSelection.LocalUncategorized
 
     else -> UnifiedCategoryFilterSelection.Uncategorized
+}
+
+/**
+ * 返回当前 scope 的"基础"选择（去掉 Starred / Uncategorized 修饰符）。
+ * 用于快捷筛选 chip 的 toggle 行为：已选中时再点一次回到基础 scope。
+ */
+private fun UnifiedCategoryFilterSelection.toBaseScope(): UnifiedCategoryFilterSelection = when (this) {
+    is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter ->
+        UnifiedCategoryFilterSelection.KeePassDatabaseFilter(this.databaseId)
+    is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter ->
+        UnifiedCategoryFilterSelection.KeePassDatabaseFilter(this.databaseId)
+    is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter ->
+        UnifiedCategoryFilterSelection.BitwardenVaultFilter(this.vaultId)
+    is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter ->
+        UnifiedCategoryFilterSelection.BitwardenVaultFilter(this.vaultId)
+    UnifiedCategoryFilterSelection.LocalStarred,
+    UnifiedCategoryFilterSelection.LocalUncategorized -> UnifiedCategoryFilterSelection.Local
+    UnifiedCategoryFilterSelection.Starred,
+    UnifiedCategoryFilterSelection.Uncategorized -> UnifiedCategoryFilterSelection.All
+    else -> this
 }

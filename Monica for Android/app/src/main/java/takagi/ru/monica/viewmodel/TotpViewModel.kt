@@ -710,9 +710,13 @@ class TotpViewModel(
                 if (distinctTargets.isEmpty()) return@launch
 
                 val existingItem = id?.let { repository.getItemById(it) }?.takeIf { it.itemType == ItemType.TOTP }
-                val currentTarget = existingItem?.toStorageTarget() ?: distinctTargets.first()
+                val selectedTargetKeys = distinctTargets.map(StorageTarget::stableKey).toSet()
+                val currentTarget = existingItem
+                    ?.toStorageTarget()
+                    ?.takeIf { it.stableKey in selectedTargetKeys }
+                    ?: distinctTargets.first()
                 val replicaGroupId = existingItem?.replicaGroupId?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
-                val existingReplicaKeys = if (existingItem != null) {
+                val existingReplicasByKey = if (existingItem != null) {
                     repository.getAllItems().first()
                         .asSequence()
                         .filter {
@@ -721,10 +725,9 @@ class TotpViewModel(
                                 it.id != existingItem.id &&
                                 !it.isDeleted
                         }
-                        .map { it.toStorageTarget().stableKey }
-                        .toSet()
+                        .associateBy { it.toStorageTarget().stableKey }
                 } else {
-                    emptySet()
+                    emptyMap()
                 }
 
                 suspend fun saveIntoTarget(target: StorageTarget, targetId: Long?) {
@@ -777,10 +780,20 @@ class TotpViewModel(
                 saveIntoTarget(currentTarget, existingItem?.id)
 
                 distinctTargets
-                    .filter { it.stableKey != currentTarget.stableKey && it.stableKey !in existingReplicaKeys }
+                    .filter { it.stableKey != currentTarget.stableKey }
                     .forEach { target ->
-                        saveIntoTarget(target, targetId = null)
+                        saveIntoTarget(target, targetId = existingReplicasByKey[target.stableKey]?.id)
                     }
+
+                repository.getAllItems().first()
+                    .filter {
+                        it.itemType == ItemType.TOTP &&
+                            it.replicaGroupId == replicaGroupId &&
+                            it.id != existingItem?.id &&
+                            !it.isDeleted &&
+                            it.toStorageTarget().stableKey !in selectedTargetKeys
+                    }
+                    .forEach { repository.deleteItemById(it.id) }
             } catch (e: Exception) {
                 e.printStackTrace()
             }

@@ -405,9 +405,13 @@ class BankCardViewModel(
             if (distinctTargets.isEmpty()) return@launch
 
             val existingItem = id?.let { repository.getItemById(it) }?.takeIf { it.itemType == ItemType.BANK_CARD }
-            val currentTarget = existingItem?.toStorageTarget() ?: distinctTargets.first()
+            val selectedTargetKeys = distinctTargets.map(StorageTarget::stableKey).toSet()
+            val currentTarget = existingItem
+                ?.toStorageTarget()
+                ?.takeIf { it.stableKey in selectedTargetKeys }
+                ?: distinctTargets.first()
             val replicaGroupId = existingItem?.replicaGroupId?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
-            val existingReplicaKeys = if (existingItem != null) {
+            val existingReplicasByKey = if (existingItem != null) {
                 repository.getAllItems().first()
                     .asSequence()
                     .filter {
@@ -416,10 +420,9 @@ class BankCardViewModel(
                             it.id != existingItem.id &&
                             !it.isDeleted
                     }
-                    .map { it.toStorageTarget().stableKey }
-                    .toSet()
+                    .associateBy { it.toStorageTarget().stableKey }
             } else {
-                emptySet()
+                emptyMap()
             }
 
             when (currentTarget) {
@@ -502,10 +505,20 @@ class BankCardViewModel(
             }
 
             distinctTargets
-                .filter { it.stableKey != currentTarget.stableKey && it.stableKey !in existingReplicaKeys }
+                .filter { it.stableKey != currentTarget.stableKey }
                 .forEach { target ->
+                    val existingReplica = existingReplicasByKey[target.stableKey]
                     when (target) {
-                        is StorageTarget.MonicaLocal -> addCard(
+                        is StorageTarget.MonicaLocal -> if (existingReplica == null) addCard(
+                            title = title,
+                            cardData = cardData,
+                            notes = notes,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            categoryId = target.categoryId,
+                            replicaGroupId = replicaGroupId
+                        ) else updateCard(
+                            id = existingReplica.id,
                             title = title,
                             cardData = cardData,
                             notes = notes,
@@ -514,7 +527,17 @@ class BankCardViewModel(
                             categoryId = target.categoryId,
                             replicaGroupId = replicaGroupId
                         )
-                        is StorageTarget.KeePass -> addCard(
+                        is StorageTarget.KeePass -> if (existingReplica == null) addCard(
+                            title = title,
+                            cardData = cardData,
+                            notes = notes,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            keepassDatabaseId = target.databaseId,
+                            keepassGroupPath = target.groupPath,
+                            replicaGroupId = replicaGroupId
+                        ) else updateCard(
+                            id = existingReplica.id,
                             title = title,
                             cardData = cardData,
                             notes = notes,
@@ -524,7 +547,17 @@ class BankCardViewModel(
                             keepassGroupPath = target.groupPath,
                             replicaGroupId = replicaGroupId
                         )
-                        is StorageTarget.Bitwarden -> addCard(
+                        is StorageTarget.Bitwarden -> if (existingReplica == null) addCard(
+                            title = title,
+                            cardData = cardData,
+                            notes = notes,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            bitwardenVaultId = target.vaultId,
+                            bitwardenFolderId = target.folderId,
+                            replicaGroupId = replicaGroupId
+                        ) else updateCard(
+                            id = existingReplica.id,
                             title = title,
                             cardData = cardData,
                             notes = notes,
@@ -536,6 +569,16 @@ class BankCardViewModel(
                         )
                     }
                 }
+
+            repository.getAllItems().first()
+                .filter {
+                    it.itemType == ItemType.BANK_CARD &&
+                        it.replicaGroupId == replicaGroupId &&
+                        it.id != existingItem?.id &&
+                        !it.isDeleted &&
+                        it.toStorageTarget().stableKey !in selectedTargetKeys
+                }
+                .forEach { repository.deleteItemById(it.id) }
         }
     }
 

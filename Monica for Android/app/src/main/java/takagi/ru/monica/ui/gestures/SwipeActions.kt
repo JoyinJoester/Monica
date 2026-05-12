@@ -1,8 +1,8 @@
 package takagi.ru.monica.ui.gestures
 
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.*
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -203,45 +203,94 @@ fun SwipeActions(
                     }
                     .pointerInput(enabled) {
                         if (!enabled) return@pointerInput
-                        detectHorizontalDragGestures(
-                            onDragStart = { 
-                                if (cardWidth == 0f) cardWidth = size.width.toFloat()
-                                hasVibratedLeft = false
-                                hasVibratedRight = false
-                            },
-                            onDragEnd = {
-                                scope.launch {
-                                    // 将实时状态转移到 Animatable 中处理动画
-                                    animatableOffset.snapTo(dragOffset)
-                                    dragOffset = 0f
-                                    hasVibratedLeft = false
-                                    hasVibratedRight = false
-                                    
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            val touchSlop = viewConfiguration.touchSlop
+                            val horizontalTouchSlop = touchSlop * 1.35f
+                            var pointerId = down.id
+                            var horizontalLocked = false
+
+                            while (!horizontalLocked) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == pointerId }
+                                    ?: event.changes.firstOrNull()
+                                    ?: return@awaitEachGesture
+                                pointerId = change.id
+
+                                if (!change.pressed) {
+                                    return@awaitEachGesture
+                                }
+
+                                val drag = change.position - down.position
+                                val absX = abs(drag.x)
+                                val absY = abs(drag.y)
+
+                                if (absY > touchSlop && absY > absX * 0.8f) {
+                                    return@awaitEachGesture
+                                }
+
+                                if (absX > horizontalTouchSlop && absX > absY * 1.5f) {
+                                    horizontalLocked = true
+                                    change.consume()
+                                }
+                            }
+
+                            if (cardWidth == 0f) cardWidth = size.width.toFloat()
+                            hasVibratedLeft = false
+                            hasVibratedRight = false
+
+                            var wasCancelled = false
+
+                            var dragEnded = false
+                            while (!dragEnded) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull { it.id == pointerId }
+                                    ?: event.changes.firstOrNull()
+                                if (change == null) {
+                                    wasCancelled = true
+                                    dragEnded = true
+                                } else if (!change.pressed) {
+                                    dragEnded = true
+                                } else {
+                                    val dragAmount = change.positionChange().x
+                                    if (dragAmount != 0f) {
+                                        change.consume()
+                                    }
+
+                                    val current = dragOffset
+                                    val resistance = when {
+                                        abs(current) > maxSwipeDistance -> 0.1f
+                                        abs(current) > maxSwipeDistance * 0.8f -> 0.5f
+                                        else -> 1f
+                                    }
+                                    dragOffset = (current + dragAmount * resistance)
+                                        .coerceIn(-maxSwipeDistance * 1.2f, maxSwipeDistance * 1.2f)
+
                                     val dynamicThreshold = cardWidth * 0.2f
-                                    if (animatableOffset.value < -dynamicThreshold) {
-                                        // 触发左滑（删除）
-                                        // 先触发回调，给父组件响应时间
-                                        currentOnSwipeLeft()
-                                        // 执行展开动画
-                                        animatableOffset.animateTo(-cardWidth, tween(300, easing = FastOutSlowInEasing))
-                                        
-                                        // 动画结束后检查状态一致性
-                                        // 如果父组件没有将 isSwiped 置为 true（例如操作被取消或不合法），则回弹复位
-                                        if (!currentIsSwiped) {
-                                            animatableOffset.animateTo(0f, springSpec)
+                                    if (dragOffset > dynamicThreshold && !hasVibratedRight) {
+                                        hasVibratedRight = true
+                                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                            vibrator?.vibrate(android.os.VibrationEffect.createWaveform(takagi.ru.monica.util.VibrationPatterns.TICK, -1))
+                                        } else {
+                                            @Suppress("DEPRECATION")
+                                            vibrator?.vibrate(20)
                                         }
-                                    } else if (animatableOffset.value > dynamicThreshold) {
-                                        // 触发右滑（选择）
-                                        animatableOffset.animateTo(0f, springSpec)
-                                        currentOnSwipeRight()
-                                    } else {
-                                        // 未达到阈值，回弹
-                                        animatableOffset.animateTo(0f, quickSpringSpec)
+                                    } else if (dragOffset < -dynamicThreshold && !hasVibratedLeft) {
+                                        hasVibratedLeft = true
+                                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                            vibrator?.vibrate(android.os.VibrationEffect.createWaveform(takagi.ru.monica.util.VibrationPatterns.TICK, -1))
+                                        } else {
+                                            @Suppress("DEPRECATION")
+                                            vibrator?.vibrate(20)
+                                        }
+                                    } else if (abs(dragOffset) < dynamicThreshold) {
+                                        hasVibratedRight = false
+                                        hasVibratedLeft = false
                                     }
                                 }
-                            },
+                            }
 
-                            onDragCancel = {
+                            if (wasCancelled) {
                                 scope.launch {
                                     animatableOffset.snapTo(dragOffset)
                                     dragOffset = 0f
@@ -249,42 +298,29 @@ fun SwipeActions(
                                     hasVibratedRight = false
                                     animatableOffset.animateTo(0f, quickSpringSpec)
                                 }
-                            },
-                            onHorizontalDrag = { _, dragAmount ->
-                                // 高频拖动：仅更新 FloatState，不创建协程
-                                val current = dragOffset
-                                val resistance = when {
-                                    abs(current) > maxSwipeDistance -> 0.1f
-                                    abs(current) > maxSwipeDistance * 0.8f -> 0.5f
-                                    else -> 1f
-                                }
-                                dragOffset = (current + dragAmount * resistance)
-                                    .coerceIn(-maxSwipeDistance * 1.2f, maxSwipeDistance * 1.2f)
-                                
-                                // 震动反馈
-                                val dynamicThreshold = cardWidth * 0.2f
-                                if (dragOffset > dynamicThreshold && !hasVibratedRight) {
-                                    hasVibratedRight = true
-                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                         vibrator?.vibrate(android.os.VibrationEffect.createWaveform(takagi.ru.monica.util.VibrationPatterns.TICK, -1))
-                                    } else {
-                                        @Suppress("DEPRECATION")
-                                        vibrator?.vibrate(20)
-                                    }
-                                } else if (dragOffset < -dynamicThreshold && !hasVibratedLeft) {
-                                    hasVibratedLeft = true
-                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                         vibrator?.vibrate(android.os.VibrationEffect.createWaveform(takagi.ru.monica.util.VibrationPatterns.TICK, -1))
-                                    } else {
-                                        @Suppress("DEPRECATION")
-                                        vibrator?.vibrate(20)
-                                    }
-                                } else if (abs(dragOffset) < dynamicThreshold) {
-                                    hasVibratedRight = false
+                            } else {
+                                scope.launch {
+                                    animatableOffset.snapTo(dragOffset)
+                                    dragOffset = 0f
                                     hasVibratedLeft = false
+                                    hasVibratedRight = false
+
+                                    val dynamicThreshold = cardWidth * 0.2f
+                                    if (animatableOffset.value < -dynamicThreshold) {
+                                        currentOnSwipeLeft()
+                                        animatableOffset.animateTo(-cardWidth, tween(300, easing = FastOutSlowInEasing))
+                                        if (!currentIsSwiped) {
+                                            animatableOffset.animateTo(0f, springSpec)
+                                        }
+                                    } else if (animatableOffset.value > dynamicThreshold) {
+                                        animatableOffset.animateTo(0f, springSpec)
+                                        currentOnSwipeRight()
+                                    } else {
+                                        animatableOffset.animateTo(0f, quickSpringSpec)
+                                    }
                                 }
                             }
-                        )
+                        }
                     },
                 shape = componentShape
             ) {

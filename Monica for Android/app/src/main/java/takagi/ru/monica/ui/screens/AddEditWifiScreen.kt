@@ -69,7 +69,9 @@ import takagi.ru.monica.data.model.WifiData
 import takagi.ru.monica.data.model.WifiIp
 import takagi.ru.monica.data.model.WifiProxy
 import takagi.ru.monica.data.model.WifiSecurity
+import takagi.ru.monica.data.model.normalizedStorageTargets
 import takagi.ru.monica.data.model.toStorageTarget
+import takagi.ru.monica.data.model.withoutStorageTarget
 import takagi.ru.monica.ui.components.EntryTypeChip
 import takagi.ru.monica.ui.components.EntryTypeChipOption
 import takagi.ru.monica.ui.components.MultiStorageTargetPickerBottomSheet
@@ -364,9 +366,9 @@ fun AddEditWifiScreen(
             isEditing = isEditing,
             onAddTarget = { showStorageSheet = true },
             onRemoveTarget = { t ->
-                if (selectedStorageTargets.size > 1) {
-                    selectedStorageTargets.removeAll { it.stableKey == t.stableKey }
-                }
+                val updatedTargets = selectedStorageTargets.withoutStorageTarget(t)
+                selectedStorageTargets.clear()
+                selectedStorageTargets.addAll(updatedTargets)
             },
             onScanQrCode = onScanQrCode,
             title = title, onTitleChange = { title = it },
@@ -393,7 +395,7 @@ fun AddEditWifiScreen(
         getKeePassGroups = getKeePassGroups,
         onDismiss = { showStorageSheet = false },
         onSelectedTargetsChange = { targets ->
-            val normalized = targets.distinctBy(StorageTarget::stableKey)
+            val normalized = targets.normalizedStorageTargets()
             selectedStorageTargets.clear()
             selectedStorageTargets.addAll(normalized)
         }

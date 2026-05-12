@@ -151,6 +151,25 @@ private data class RemoteSyncOutcome(
     val conflictCopyCount: Int = 0
 )
 
+private enum class KeePassPasswordSkipReason {
+    MONICA_SECURE_ITEM,
+    PURE_PASSKEY,
+    TEMPLATE,
+    EMPTY
+}
+
+private data class KeePassPasswordEntryAnalysis(
+    val data: KeePassEntryData?,
+    val skipReason: KeePassPasswordSkipReason?,
+    val hasPasskeyFields: Boolean,
+    val hasTitle: Boolean,
+    val hasUsername: Boolean,
+    val hasPassword: Boolean,
+    val hasUrl: Boolean,
+    val hasNotes: Boolean,
+    val fieldNames: List<String>
+)
+
 class KeePassKdbxService(
     private val context: Context,
     private val dao: LocalKeePassDatabaseDao,
@@ -649,8 +668,12 @@ class KeePassKdbxService(
             val (database, _, keePassDatabase) = loadDatabase(databaseId)
             val (entries, hasRecycleBinMeta) = collectEntryContexts(keePassDatabase)
             val resolutionContext = KeePassFieldReferenceResolver.buildContext(entries.map { it.entry })
+            val skipCounts = mutableMapOf<KeePassPasswordSkipReason, Int>()
+            var passkeyFieldCount = 0
+            var importedWithPasskeyFields = 0
+            val skippedSamples = mutableListOf<String>()
             val data = entries.mapNotNull { context ->
-                entryToData(
+                val analysis = analyzePasswordEntry(
                     entry = context.entry,
                     groupPath = context.groupPath,
                     groupUuid = context.groupUuid,
@@ -658,6 +681,34 @@ class KeePassKdbxService(
                     hasRecycleBinMeta = hasRecycleBinMeta,
                     resolutionContext = resolutionContext
                 )
+                if (analysis.hasPasskeyFields) {
+                    passkeyFieldCount++
+                }
+                if (analysis.data != null && analysis.hasPasskeyFields) {
+                    importedWithPasskeyFields++
+                }
+                analysis.skipReason?.let { reason ->
+                    skipCounts[reason] = (skipCounts[reason] ?: 0) + 1
+                    if (skippedSamples.size < 8) {
+                        skippedSamples += buildPasswordEntrySkipSample(context, analysis, reason)
+                    }
+                }
+                analysis.data
+            }
+            Log.i(
+                TAG,
+                "KeePass password sync summary: databaseId=${database.id}, name=${database.name}, " +
+                    "total=${entries.size}, imported=${data.size}, passkeyFieldEntries=$passkeyFieldCount, " +
+                    "importedWithPasskeyFields=$importedWithPasskeyFields, " +
+                    "skippedSecureItem=${skipCounts[KeePassPasswordSkipReason.MONICA_SECURE_ITEM] ?: 0}, " +
+                    "skippedPurePasskey=${skipCounts[KeePassPasswordSkipReason.PURE_PASSKEY] ?: 0}, " +
+                    "skippedTemplate=${skipCounts[KeePassPasswordSkipReason.TEMPLATE] ?: 0}, " +
+                    "skippedEmpty=${skipCounts[KeePassPasswordSkipReason.EMPTY] ?: 0}"
+            )
+            if (data.isEmpty() || skipCounts.isNotEmpty()) {
+                skippedSamples.forEach { sample ->
+                    Log.i(TAG, "KeePass password sync sample: databaseId=${database.id}, $sample")
+                }
             }
             dao.updateEntryCount(database.id, data.size)
             Result.success(data)
@@ -1899,9 +1950,9 @@ class KeePassKdbxService(
         target: PasswordEntry,
         resolutionContext: KeePassEntryResolutionContext? = null
     ): Boolean {
-        val title = getFieldValue(entry, "Title", resolutionContext)
-        val username = getFieldValue(entry, "UserName", resolutionContext)
-        val url = getFieldValue(entry, "URL", resolutionContext)
+        val title = getStandardTitle(entry, resolutionContext)
+        val username = getStandardUsername(entry, resolutionContext)
+        val url = getStandardUrl(entry, resolutionContext)
         return title.equals(target.title, true) &&
             username.equals(target.username, true) &&
             url.equals(target.website, true)
@@ -1990,23 +2041,91 @@ class KeePassKdbxService(
         isInRecycleBinByMeta: Boolean,
         hasRecycleBinMeta: Boolean,
         resolutionContext: KeePassEntryResolutionContext? = null
-    ): KeePassEntryData? {
+    ): KeePassEntryData? = analyzePasswordEntry(
+        entry = entry,
+        groupPath = groupPath,
+        groupUuid = groupUuid,
+        isInRecycleBinByMeta = isInRecycleBinByMeta,
+        hasRecycleBinMeta = hasRecycleBinMeta,
+        resolutionContext = resolutionContext
+    ).data
+
+    private fun analyzePasswordEntry(
+        entry: Entry,
+        groupPath: String?,
+        groupUuid: UUID?,
+        isInRecycleBinByMeta: Boolean,
+        hasRecycleBinMeta: Boolean,
+        resolutionContext: KeePassEntryResolutionContext? = null
+    ): KeePassPasswordEntryAnalysis {
+        fun result(
+            data: KeePassEntryData? = null,
+            skipReason: KeePassPasswordSkipReason? = null,
+            hasPasskeyFields: Boolean,
+            title: String,
+            username: String,
+            password: String,
+            url: String,
+            notes: String
+        ) = KeePassPasswordEntryAnalysis(
+            data = data,
+            skipReason = skipReason,
+            hasPasskeyFields = hasPasskeyFields,
+            hasTitle = title.isNotBlank(),
+            hasUsername = username.isNotBlank(),
+            hasPassword = password.isNotBlank(),
+            hasUrl = url.isNotBlank(),
+            hasNotes = notes.isNotBlank(),
+            fieldNames = entry.fields.keys.sorted()
+        )
+
+        val title = getStandardTitle(entry, resolutionContext)
+        val username = getStandardUsername(entry, resolutionContext)
+        val password = resolveEntryPassword(entry, resolutionContext)
+        val url = getStandardUrl(entry, resolutionContext)
+        val notes = getStandardNotes(entry, resolutionContext)
+        val hasPasskeyFields = isPasskeyEntry(entry, resolutionContext)
+
         // Monica 安全项（TOTP/笔记/卡片等）会写入 MonicaItemType，不应进入密码列表。
         if (getFieldValue(entry, FIELD_MONICA_ITEM_TYPE, resolutionContext).isNotBlank()) {
-            return null
+            return result(
+                skipReason = KeePassPasswordSkipReason.MONICA_SECURE_ITEM,
+                hasPasskeyFields = hasPasskeyFields,
+                title = title,
+                username = username,
+                password = password,
+                url = url,
+                notes = notes
+            )
         }
-        if (isPasskeyEntry(entry, resolutionContext)) {
-            return null
+        if (
+            hasPasskeyFields &&
+            username.isBlank() &&
+            password.isBlank() &&
+            url.isBlank() &&
+            notes.isBlank()
+        ) {
+            return result(
+                skipReason = KeePassPasswordSkipReason.PURE_PASSKEY,
+                hasPasskeyFields = hasPasskeyFields,
+                title = title,
+                username = username,
+                password = password,
+                url = url,
+                notes = notes
+            )
         }
-
-        val title = getFieldValue(entry, "Title", resolutionContext)
-        val username = getFieldValue(entry, "UserName", resolutionContext)
-        val password = resolveEntryPassword(entry, resolutionContext)
-        val url = getFieldValue(entry, "URL", resolutionContext)
-        val notes = getFieldValue(entry, "Notes", resolutionContext)
         if (isEnhancedEntryTemplate(entry, title, username, password, url, notes, resolutionContext)) {
             Log.d(TAG, "Skip KeePassXC template entry from password sync: title=$title uuid=${entry.uuid}")
-            return null
+            return result(
+                skipReason = KeePassPasswordSkipReason.TEMPLATE,
+                hasPasskeyFields = hasPasskeyFields,
+                title = title,
+                username = username,
+                password = password,
+                url = url,
+                notes = notes
+            )
         }
         val sshKeyData = SshKeyDataCodec.encode(
             SshKeyData(
@@ -2021,7 +2140,15 @@ class KeePassKdbxService(
             )
         )
         if (title.isEmpty() && username.isEmpty() && password.isEmpty() && url.isEmpty() && notes.isEmpty()) {
-            return null
+            return result(
+                skipReason = KeePassPasswordSkipReason.EMPTY,
+                hasPasskeyFields = hasPasskeyFields,
+                title = title,
+                username = username,
+                password = password,
+                url = url,
+                notes = notes
+            )
         }
         val monicaId = getFieldValue(entry, FIELD_MONICA_LOCAL_ID, resolutionContext).toLongOrNull()
         val inRecycleBin = resolveRecycleBinFlag(
@@ -2051,7 +2178,7 @@ class KeePassKdbxService(
             monicaLoginType.equals("SSH_KEY", ignoreCase = true) -> "SSH_KEY" to ""
             else -> "PASSWORD" to ""
         }
-        return KeePassEntryData(
+        val data = KeePassEntryData(
             title = title,
             username = username,
             password = password,
@@ -2066,6 +2193,32 @@ class KeePassKdbxService(
             loginType = resolvedLoginType,
             wifiMetadata = resolvedWifiJson
         )
+        return result(
+            data = data,
+            hasPasskeyFields = hasPasskeyFields,
+            title = title,
+            username = username,
+            password = password,
+            url = url,
+            notes = notes
+        )
+    }
+
+    private fun buildPasswordEntrySkipSample(
+        context: EntryTraversalContext,
+        analysis: KeePassPasswordEntryAnalysis,
+        reason: KeePassPasswordSkipReason
+    ): String {
+        val uuidSuffix = context.entry.uuid.toString().takeLast(8)
+        val fields = analysis.fieldNames
+            .take(18)
+            .joinToString("|")
+            .ifBlank { "-" }
+        val moreFields = (analysis.fieldNames.size - 18).takeIf { it > 0 }?.let { "+$it" } ?: ""
+        return "reason=$reason, uuidSuffix=$uuidSuffix, group=${context.groupPath ?: "<root>"}, " +
+            "hasPasskey=${analysis.hasPasskeyFields}, hasTitle=${analysis.hasTitle}, " +
+            "hasUser=${analysis.hasUsername}, hasPassword=${analysis.hasPassword}, " +
+            "hasUrl=${analysis.hasUrl}, hasNotes=${analysis.hasNotes}, fields=$fields$moreFields"
     }
 
     private fun entryToSecureItemData(
@@ -2257,7 +2410,7 @@ class KeePassKdbxService(
             return false
         }
 
-        val standardPassword = getFieldValue(entry, "Password", resolutionContext)
+        val standardPassword = getStandardPassword(entry, resolutionContext)
         if (standardPassword.isNotBlank() && !isLikelyLabelValue(standardPassword, "Password")) {
             return standardPassword
         }
@@ -2267,7 +2420,7 @@ class KeePassKdbxService(
             "密码", "口令", "PIN", "Pin", "pin", "pwd", "PWD", "pass", "Pass", "password", "Password"
         )
         prioritizedKeys.forEach { key ->
-            val value = getFieldValue(entry, key, resolutionContext)
+            val value = getFieldValueIgnoreCase(entry, resolutionContext, key)
             if (value.isBlank()) return@forEach
             if (!isLikelyLabelValue(value, key)) return value
             if (fallback.isNullOrBlank()) fallback = value
@@ -2275,6 +2428,7 @@ class KeePassKdbxService(
 
         val standardFields = setOf(
             "Title", "UserName", "Password", "URL", "Notes",
+            "Username", "User", "Login", "Url", "Website", "URI", "Note", "Comment",
             "otp", "TOTP Seed", "TOTP Settings",
             FIELD_MONICA_LOCAL_ID, FIELD_MONICA_ITEM_ID,
             FIELD_MONICA_ITEM_TYPE, FIELD_MONICA_ITEM_DATA,
@@ -2291,8 +2445,9 @@ class KeePassKdbxService(
             KeePassDxPasskeyCodec.FIELD_FLAG_BE,
             KeePassDxPasskeyCodec.FIELD_FLAG_BS
         )
+        val standardFieldsLower = standardFields.mapTo(mutableSetOf()) { it.lowercase(Locale.ROOT) }
         entry.fields.forEach { (key, value) ->
-            if (key in standardFields || key.startsWith("_etm_")) return@forEach
+            if (key.lowercase(Locale.ROOT) in standardFieldsLower || key.startsWith("_etm_")) return@forEach
             if (value is EntryValue.Encrypted) {
                 val content = KeePassFieldReferenceResolver.resolveValue(
                     rawValue = runCatching { value.content }.getOrDefault(""),
@@ -2307,6 +2462,31 @@ class KeePassKdbxService(
 
         return fallback ?: ""
     }
+
+    private fun getStandardTitle(
+        entry: Entry,
+        resolutionContext: KeePassEntryResolutionContext? = null
+    ): String = getFieldValueIgnoreCase(entry, resolutionContext, "Title", "Name")
+
+    private fun getStandardUsername(
+        entry: Entry,
+        resolutionContext: KeePassEntryResolutionContext? = null
+    ): String = getFieldValueIgnoreCase(entry, resolutionContext, "UserName", "Username", "User", "Login")
+
+    private fun getStandardPassword(
+        entry: Entry,
+        resolutionContext: KeePassEntryResolutionContext? = null
+    ): String = getFieldValueIgnoreCase(entry, resolutionContext, "Password", "Pass", "pass", "pwd", "PWD", "密码", "口令")
+
+    private fun getStandardUrl(
+        entry: Entry,
+        resolutionContext: KeePassEntryResolutionContext? = null
+    ): String = getFieldValueIgnoreCase(entry, resolutionContext, "URL", "Url", "Website", "URI")
+
+    private fun getStandardNotes(
+        entry: Entry,
+        resolutionContext: KeePassEntryResolutionContext? = null
+    ): String = getFieldValueIgnoreCase(entry, resolutionContext, "Notes", "Note", "Comment")
 
     private fun getFieldValue(
         entry: Entry,

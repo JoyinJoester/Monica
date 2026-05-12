@@ -351,6 +351,14 @@ interface PasskeyDao {
 
     @Query(
         """
+        DELETE FROM passkeys
+        WHERE keepass_database_id = :databaseId
+        """
+    )
+    suspend fun deleteByKeePassDatabaseId(databaseId: Long)
+
+    @Query(
+        """
         UPDATE passkeys
         SET keepass_database_id = NULL,
             keepass_group_path = NULL

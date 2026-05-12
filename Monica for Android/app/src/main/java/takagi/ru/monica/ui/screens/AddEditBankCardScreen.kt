@@ -46,9 +46,12 @@ import takagi.ru.monica.data.model.BillingAddress
 import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.CardType
 import takagi.ru.monica.data.model.StorageTarget
+import takagi.ru.monica.data.model.normalizedStorageTargets
 import takagi.ru.monica.data.model.formatForDisplay
 import takagi.ru.monica.data.model.isEmpty
 import takagi.ru.monica.data.model.toStorageTarget
+import takagi.ru.monica.data.model.withStorageTargetSelected
+import takagi.ru.monica.data.model.withoutStorageTarget
 import takagi.ru.monica.data.CustomFieldDraft
 import takagi.ru.monica.ui.components.CommonNameSuggestion
 import takagi.ru.monica.ui.components.CommonNameSuggestionState
@@ -208,7 +211,7 @@ fun AddEditBankCardScreen(
     }
 
     fun setSelectedStorageTargets(targets: List<StorageTarget>) {
-        val normalizedTargets = targets.distinctBy(StorageTarget::stableKey)
+        val normalizedTargets = targets.normalizedStorageTargets()
         selectedStorageTargets.clear()
         selectedStorageTargets.addAll(normalizedTargets)
         syncLegacyStorageState(normalizedTargets)
@@ -216,14 +219,11 @@ fun AddEditBankCardScreen(
 
     fun addSelectedStorageTarget(target: StorageTarget) {
         if (selectedStorageTargets.any { it.stableKey == target.stableKey }) return
-        selectedStorageTargets.add(target)
-        syncLegacyStorageState(selectedStorageTargets)
+        setSelectedStorageTargets(selectedStorageTargets.withStorageTargetSelected(target))
     }
 
     fun removeSelectedStorageTarget(target: StorageTarget) {
-        if (selectedStorageTargets.size <= 1) return
-        selectedStorageTargets.removeAll { it.stableKey == target.stableKey }
-        syncLegacyStorageState(selectedStorageTargets)
+        setSelectedStorageTargets(selectedStorageTargets.withoutStorageTarget(target))
     }
 
     LaunchedEffect(

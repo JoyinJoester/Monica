@@ -80,7 +80,10 @@ import takagi.ru.monica.data.parseLinkedAppBindings
 import takagi.ru.monica.data.removeLinkedAppBinding
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.model.StorageTarget
+import takagi.ru.monica.data.model.normalizedStorageTargets
 import takagi.ru.monica.data.model.toStorageTarget
+import takagi.ru.monica.data.model.withStorageTargetSelected
+import takagi.ru.monica.data.model.withoutStorageTarget
 import takagi.ru.monica.data.model.BankCardData
 import takagi.ru.monica.data.model.BillingAddress
 import takagi.ru.monica.data.model.OtpType
@@ -562,7 +565,7 @@ fun AddEditPasswordScreen(
     }
 
     fun setSelectedStorageTargets(targets: List<StorageTarget>) {
-        val normalizedTargets = targets.distinctBy(StorageTarget::stableKey)
+        val normalizedTargets = targets.normalizedStorageTargets()
         selectedStorageTargets.clear()
         selectedStorageTargets.addAll(normalizedTargets)
         syncLegacyStorageState(normalizedTargets)
@@ -570,14 +573,11 @@ fun AddEditPasswordScreen(
 
     fun addSelectedStorageTarget(target: StorageTarget) {
         if (selectedStorageTargets.any { it.stableKey == target.stableKey }) return
-        selectedStorageTargets.add(target)
-        syncLegacyStorageState(selectedStorageTargets)
+        setSelectedStorageTargets(selectedStorageTargets.withStorageTargetSelected(target))
     }
 
     fun removeSelectedStorageTarget(target: StorageTarget) {
-        if (selectedStorageTargets.size <= 1) return
-        selectedStorageTargets.removeAll { it.stableKey == target.stableKey }
-        syncLegacyStorageState(selectedStorageTargets)
+        setSelectedStorageTargets(selectedStorageTargets.withoutStorageTarget(target))
     }
 
     fun normalizeCommonTemplateType(raw: String): String {
@@ -3967,7 +3967,7 @@ private fun buildPasswordSiblingGroupKey(entry: PasswordEntry): String {
             "bw-local:${entry.bitwardenVaultId}:${entry.bitwardenFolderId.orEmpty()}"
         entry.keepassDatabaseId != null ->
             "kp:${entry.keepassDatabaseId}:${entry.keepassGroupPath.orEmpty()}"
-        else -> "local"
+        else -> "local:${entry.categoryId ?: "root"}"
     }
 
     val title = entry.title.trim().lowercase(Locale.ROOT)

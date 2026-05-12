@@ -104,6 +104,9 @@ import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.components.LoadingIndicator
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.PasswordListCategoryChipMenuBottomActions
+import takagi.ru.monica.ui.category.CategoryManagementTrailingContent
+import takagi.ru.monica.ui.category.CategoryManagementCreateDialog
+import takagi.ru.monica.ui.category.rememberCategoryManagementState
 import takagi.ru.monica.ui.components.PullActionVisualState
 import takagi.ru.monica.ui.common.pull.calculateDampedPullOffset
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterChipMenu
@@ -944,7 +947,7 @@ fun CardWalletScreen(
                                 categoryEditMode = categoryMgmt.categoryEditMode,
                                 onRequestCategoryAction = { categoryMgmt.categoryActionTarget = it },
                                 trailingContent = {
-                                    takagi.ru.monica.ui.category.CategoryManagementTrailingContent(
+                                    CategoryManagementTrailingContent(
                                         state = categoryMgmt,
                                         categories = categories,
                                         keepassDatabases = keepassDatabases,
@@ -1414,7 +1417,7 @@ fun CardWalletScreen(
         )
     }
 
-    takagi.ru.monica.ui.category.CategoryManagementCreateDialog(
+    CategoryManagementCreateDialog(
         state = categoryMgmt,
         currentFilter = selectedCategoryFilter,
         categories = categories,

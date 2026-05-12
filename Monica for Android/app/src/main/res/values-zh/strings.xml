@@ -2080,6 +2080,9 @@
     <string name="delete_password">删除密码</string>
     <string name="delete_password_confirmation">确定要删除此密码吗？此操作无法撤销。</string>
     <string name="password_detail_storage_info">存储信息</string>
+    <string name="password_detail_current_location">当前位置</string>
+    <string name="password_detail_other_locations">其他位置</string>
+    <string name="password_detail_open_location">打开位置</string>
     <string name="password_detail_time_info">时间信息</string>
     <string name="password_detail_last_modified">最后修改</string>
     

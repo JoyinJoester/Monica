@@ -76,7 +76,9 @@ import takagi.ru.monica.data.model.LOGIN_TYPE_SSH_KEY
 import takagi.ru.monica.data.model.SshKeyData
 import takagi.ru.monica.data.model.SshKeyDataCodec
 import takagi.ru.monica.data.model.StorageTarget
+import takagi.ru.monica.data.model.normalizedStorageTargets
 import takagi.ru.monica.data.model.toStorageTarget
+import takagi.ru.monica.data.model.withoutStorageTarget
 import takagi.ru.monica.ui.components.CustomFieldEditCard
 import takagi.ru.monica.ui.components.CustomFieldSectionHeader
 import takagi.ru.monica.ui.components.EntryTypeChip
@@ -390,9 +392,9 @@ fun AddEditSshKeyScreen(
             isEditing = isEditing,
             onAddTarget = { showStorageSheet = true },
             onRemoveTarget = { t ->
-                if (selectedStorageTargets.size > 1) {
-                    selectedStorageTargets.removeAll { it.stableKey == t.stableKey }
-                }
+                val updatedTargets = selectedStorageTargets.withoutStorageTarget(t)
+                selectedStorageTargets.clear()
+                selectedStorageTargets.addAll(updatedTargets)
             },
             title = title, onTitleChange = { title = it },
             algorithm = algorithm,
@@ -430,7 +432,7 @@ fun AddEditSshKeyScreen(
         getKeePassGroups = getKeePassGroups,
         onDismiss = { showStorageSheet = false },
         onSelectedTargetsChange = { targets ->
-            val normalized = targets.distinctBy(StorageTarget::stableKey)
+            val normalized = targets.normalizedStorageTargets()
             selectedStorageTargets.clear()
             selectedStorageTargets.addAll(normalized)
         }

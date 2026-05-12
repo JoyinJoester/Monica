@@ -122,6 +122,7 @@ class PasskeyAuthActivity : FragmentActivity() {
         
         val requestJson = intent.getStringExtra(MonicaCredentialProviderService.EXTRA_REQUEST_JSON) ?: ""
         val credentialId = intent.getStringExtra(MonicaCredentialProviderService.EXTRA_CREDENTIAL_ID) ?: ""
+        val recordId = intent.getLongExtra(MonicaCredentialProviderService.EXTRA_RECORD_ID, 0L)
 
         recordPasskeyEvent(
             stage = "request_received",
@@ -173,14 +174,24 @@ class PasskeyAuthActivity : FragmentActivity() {
             return
         }
         
-        // 加载 Passkey 信息（优先按 credentialId，其次尝试规范化匹配）
+        // 加载 Passkey 信息。Credential Provider 的候选项按 recordId 精确传递，
+        // 避免同一 RP/用户名相近或同步引用数据存在时误取到另一条 credential。
         runBlocking {
-            passkey = database.passkeyDao().getPasskeyById(credentialId)
+            passkey = recordId
+                .takeIf { it > 0L }
+                ?.let { database.passkeyDao().getPasskeyByRecordId(it) }
+                ?.takeIf { it.credentialId == credentialId }
+            if (passkey == null) {
+                passkey = database.passkeyDao().getPasskeyById(credentialId)
+            }
             if (passkey == null) {
                 val normalizedId = normalizeCredentialId(credentialId)
                 if (normalizedId != null) {
                     val all = database.passkeyDao().getAllPasskeysSync()
-                    passkey = all.firstOrNull { normalizeCredentialId(it.credentialId) == normalizedId }
+                    passkey = all.firstOrNull {
+                        (recordId <= 0L || it.id == recordId) &&
+                            normalizeCredentialId(it.credentialId) == normalizedId
+                    } ?: all.firstOrNull { normalizeCredentialId(it.credentialId) == normalizedId }
                 }
             }
         }
@@ -456,36 +467,39 @@ class PasskeyAuthActivity : FragmentActivity() {
             // 创建 authenticator data
             val authenticatorData = createAuthenticatorData(rpId, newSignCount.toInt())
             
-            // 计算签名
-            // 如果调用方提供了 clientDataHash，直接使用它（调用方自己构建了 clientDataJSON）
-            // 否则需要自己构建 clientDataJSON 并计算哈希
-            val clientDataJsonBytes: ByteArray?
-            val clientDataHash: ByteArray
-            
-            if (pendingClientDataHash != null) {
-                // 调用方已提供 clientDataHash，不需要构建 clientDataJSON
-                clientDataJsonBytes = null
-                clientDataHash = pendingClientDataHash!!
-                Log.d(TAG, "Using provided clientDataHash")
-            } else {
-                // 需要自己构建 clientDataJSON
-                val origin = PasskeyOriginResolver.resolveOrigin(
-                    context = this,
-                    requestJson = requestJson,
-                    callingAppInfo = pendingCallingAppInfo,
-                    rpIdFallback = rpId
-                )
-                val androidPackageName = pendingCallingAppInfo?.packageName
-                val clientDataJson = createClientDataJson(
-                    type = "webauthn.get",
-                    challenge = challengeB64,
-                    origin = origin,
-                    androidPackageName = androidPackageName
-                )
-                clientDataJsonBytes = clientDataJson.toByteArray()
-                clientDataHash = MessageDigest.getInstance("SHA-256").digest(clientDataJsonBytes)
-                Log.d(TAG, "Built clientDataJSON with origin: $origin")
-            }
+            val origin = PasskeyOriginResolver.resolveOrigin(
+                context = this,
+                requestJson = requestJson,
+                callingAppInfo = pendingCallingAppInfo,
+                rpIdFallback = rpId
+            )
+            // 区分两种场景：
+            //  * 浏览器场景（系统已经算好 clientDataHash 交给我们）：此时浏览器自己的
+            //    clientDataJSON 里只有 {type, challenge, origin, crossOrigin}，不含
+            //    androidPackageName。如果我们额外塞 androidPackageName，RP 服务端对
+            //    返回的 clientDataJSON 做 SHA-256 会得到另一个哈希，和浏览器已经签过
+            //    名的那个对不上 → 站点报“密钥登录失败”。典型受害者是 Microsoft 登录。
+            //  * 原生 App 场景（没有 clientDataHash）：我们需要自己构造完整的
+            //    clientDataJSON 并对它签名，允许带 androidPackageName（Google GMS
+            //    的既定做法）。
+            val isBrowserFlow = pendingClientDataHash != null
+            val androidPackageName = pendingCallingAppInfo?.packageName
+            val clientDataJson = createClientDataJson(
+                type = "webauthn.get",
+                challenge = challengeB64,
+                origin = origin,
+                androidPackageName = if (isBrowserFlow) null else androidPackageName,
+                includeCrossOrigin = !isBrowserFlow
+            )
+            val clientDataJsonBytes = clientDataJson.toByteArray()
+            val clientDataHash = pendingClientDataHash
+                ?: MessageDigest.getInstance("SHA-256").digest(clientDataJsonBytes)
+            Log.d(
+                TAG,
+                "Built clientDataJSON: origin=$origin, providedClientDataHash=$isBrowserFlow, " +
+                    "hasAndroidPackageName=${!isBrowserFlow && !androidPackageName.isNullOrBlank()}, " +
+                    "clientDataJsonSize=${clientDataJsonBytes.size}"
+            )
             
             val signedData = authenticatorData + clientDataHash
             val signature = signWithPrivateKey(
@@ -496,24 +510,23 @@ class PasskeyAuthActivity : FragmentActivity() {
             
             // 更新数据库
             runBlocking {
-                database.passkeyDao().updateUsage(
+                passkey.id.takeIf { it > 0L }?.let { recordId ->
+                    database.passkeyDao().updateUsageByRecordId(
+                        recordId = recordId,
+                        timestamp = System.currentTimeMillis(),
+                        signCount = newSignCount
+                    )
+                } ?: database.passkeyDao().updateUsage(
                     credentialId = passkey.credentialId,
                     timestamp = System.currentTimeMillis(),
                     signCount = newSignCount
                 )
             }
             
-            // 构建响应 JSON - 参照 KeePassDX 实现
-            // 当调用方提供 clientDataHash 时，返回 placeholder 而不是省略 clientDataJSON
-            val clientDataJsonB64 = if (clientDataJsonBytes != null) {
-                Base64.encodeToString(
-                    clientDataJsonBytes,
-                    Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
-                )
-            } else {
-                // 参照 KeePassDX ClientDataDefinedResponse: 使用 placeholder
-                "<placeholder>"
-            }
+            val clientDataJsonB64 = Base64.encodeToString(
+                clientDataJsonBytes,
+                Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+            )
             
             val responseJson = JSONObject().apply {
                 val responseCredentialId = PasskeyCredentialIdCodec
@@ -678,7 +691,8 @@ class PasskeyAuthActivity : FragmentActivity() {
         type: String,
         challenge: String,
         origin: String,
-        androidPackageName: String? = null
+        androidPackageName: String? = null,
+        includeCrossOrigin: Boolean = true
     ): String {
         return JSONObject().apply {
             put("type", type)
@@ -687,7 +701,9 @@ class PasskeyAuthActivity : FragmentActivity() {
             if (!androidPackageName.isNullOrBlank()) {
                 put("androidPackageName", androidPackageName)
             }
-            put("crossOrigin", false)
+            if (includeCrossOrigin) {
+                put("crossOrigin", false)
+            }
         }.toString()
     }
 

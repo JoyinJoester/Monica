@@ -376,9 +376,13 @@ class NoteViewModel(
             if (distinctTargets.isEmpty()) return@launch
 
             val existingItem = id?.let { repository.getItemById(it) }?.takeIf { it.itemType == ItemType.NOTE }
-            val currentTarget = existingItem?.toStorageTarget() ?: distinctTargets.first()
+            val selectedTargetKeys = distinctTargets.map(StorageTarget::stableKey).toSet()
+            val currentTarget = existingItem
+                ?.toStorageTarget()
+                ?.takeIf { it.stableKey in selectedTargetKeys }
+                ?: distinctTargets.first()
             val replicaGroupId = existingItem?.replicaGroupId?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
-            val existingReplicaKeys = if (existingItem != null) {
+            val existingReplicasByKey = if (existingItem != null) {
                 repository.getAllItems().first()
                     .asSequence()
                     .filter {
@@ -387,10 +391,9 @@ class NoteViewModel(
                             it.id != existingItem.id &&
                             !it.isDeleted
                     }
-                    .map { it.toStorageTarget().stableKey }
-                    .toSet()
+                    .associateBy { it.toStorageTarget().stableKey }
             } else {
-                emptySet()
+                emptyMap()
             }
 
             when (currentTarget) {
@@ -482,10 +485,11 @@ class NoteViewModel(
             }
 
             distinctTargets
-                .filter { it.stableKey != currentTarget.stableKey && it.stableKey !in existingReplicaKeys }
+                .filter { it.stableKey != currentTarget.stableKey }
                 .forEach { target ->
+                    val existingReplica = existingReplicasByKey[target.stableKey]
                     when (target) {
-                        is StorageTarget.MonicaLocal -> addNote(
+                        is StorageTarget.MonicaLocal -> if (existingReplica == null) addNote(
                             content = content,
                             title = title,
                             tags = tags,
@@ -494,8 +498,19 @@ class NoteViewModel(
                             categoryId = target.categoryId,
                             imagePaths = imagePaths,
                             replicaGroupId = replicaGroupId
+                        ) else updateNote(
+                            id = existingReplica.id,
+                            content = content,
+                            title = title,
+                            tags = tags,
+                            isMarkdown = isMarkdown,
+                            isFavorite = isFavorite,
+                            createdAt = createdAt,
+                            categoryId = target.categoryId,
+                            imagePaths = imagePaths,
+                            replicaGroupId = replicaGroupId
                         )
-                        is StorageTarget.KeePass -> addNote(
+                        is StorageTarget.KeePass -> if (existingReplica == null) addNote(
                             content = content,
                             title = title,
                             tags = tags,
@@ -505,8 +520,20 @@ class NoteViewModel(
                             keepassDatabaseId = target.databaseId,
                             keepassGroupPath = target.groupPath,
                             replicaGroupId = replicaGroupId
+                        ) else updateNote(
+                            id = existingReplica.id,
+                            content = content,
+                            title = title,
+                            tags = tags,
+                            isMarkdown = isMarkdown,
+                            isFavorite = isFavorite,
+                            createdAt = createdAt,
+                            imagePaths = imagePaths,
+                            keepassDatabaseId = target.databaseId,
+                            keepassGroupPath = target.groupPath,
+                            replicaGroupId = replicaGroupId
                         )
-                        is StorageTarget.Bitwarden -> addNote(
+                        is StorageTarget.Bitwarden -> if (existingReplica == null) addNote(
                             content = content,
                             title = title,
                             tags = tags,
@@ -516,9 +543,31 @@ class NoteViewModel(
                             bitwardenVaultId = target.vaultId,
                             bitwardenFolderId = target.folderId,
                             replicaGroupId = replicaGroupId
+                        ) else updateNote(
+                            id = existingReplica.id,
+                            content = content,
+                            title = title,
+                            tags = tags,
+                            isMarkdown = isMarkdown,
+                            isFavorite = isFavorite,
+                            createdAt = createdAt,
+                            imagePaths = imagePaths,
+                            bitwardenVaultId = target.vaultId,
+                            bitwardenFolderId = target.folderId,
+                            replicaGroupId = replicaGroupId
                         )
                     }
                 }
+
+            repository.getAllItems().first()
+                .filter {
+                    it.itemType == ItemType.NOTE &&
+                        it.replicaGroupId == replicaGroupId &&
+                        it.id != existingItem?.id &&
+                        !it.isDeleted &&
+                        it.toStorageTarget().stableKey !in selectedTargetKeys
+                }
+                .forEach { repository.deleteItemById(it.id) }
         }
     }
 

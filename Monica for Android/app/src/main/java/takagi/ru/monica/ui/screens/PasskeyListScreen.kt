@@ -77,6 +77,9 @@ import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.ui.PasswordListCategoryChipMenuBottomActions
 import takagi.ru.monica.ui.components.CreateCategoryDialog
 import takagi.ru.monica.ui.components.CreateDialogTarget
+import takagi.ru.monica.ui.category.CategoryManagementTrailingContent
+import takagi.ru.monica.ui.category.CategoryManagementCreateDialog
+import takagi.ru.monica.ui.category.rememberCategoryManagementState
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.components.M3IdentityVerifyDialog
 import takagi.ru.monica.ui.components.PullActionVisualState
@@ -256,7 +259,7 @@ fun PasskeyListScreen(
     var pendingDeletePasskey by remember { mutableStateOf<PasskeyEntry?>(null) }
     var selectedCategoryFilter by remember { mutableStateOf<UnifiedCategoryFilterSelection>(UnifiedCategoryFilterSelection.All) }
     var showCategoryFilterDialog by remember { mutableStateOf(false) }
-    val categoryMgmt = takagi.ru.monica.ui.category.rememberCategoryManagementState()
+    val categoryMgmt = rememberCategoryManagementState()
     var showTopActionsMenu by remember { mutableStateOf(false) }
     var categoryPillBoundsInWindow by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     var showBatchMoveCategoryDialog by remember { mutableStateOf(false) }
@@ -992,7 +995,7 @@ fun PasskeyListScreen(
                                     onRequestCategoryAction = { categoryMgmt.categoryActionTarget = it },
                                     quickFilterContent = {},
                                     trailingContent = {
-                                        takagi.ru.monica.ui.category.CategoryManagementTrailingContent(
+                                        CategoryManagementTrailingContent(
                                             state = categoryMgmt,
                                             categories = categories,
                                             keepassDatabases = keepassDatabases,
@@ -1583,7 +1586,7 @@ fun PasskeyListScreen(
         }
     )
 
-    takagi.ru.monica.ui.category.CategoryManagementCreateDialog(
+    CategoryManagementCreateDialog(
         state = categoryMgmt,
         currentFilter = selectedCategoryFilter,
         categories = categories,

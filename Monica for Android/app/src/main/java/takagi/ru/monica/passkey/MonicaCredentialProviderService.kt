@@ -53,6 +53,7 @@ class MonicaCredentialProviderService : CredentialProviderService() {
         const val EXTRA_REQUEST_TYPE = "request_type"
         const val EXTRA_REQUEST_JSON = "request_json"
         const val EXTRA_CREDENTIAL_ID = "credential_id"
+        const val EXTRA_RECORD_ID = "record_id"
         const val EXTRA_RP_ID = "rp_id"
         const val EXTRA_USER_NAME = "user_name"
         const val EXTRA_USER_DISPLAY_NAME = "user_display_name"
@@ -294,14 +295,16 @@ class MonicaCredentialProviderService : CredentialProviderService() {
             
             for (passkey in filteredPasskeys) {
                 val intent = Intent(this, PasskeyAuthActivity::class.java).apply {
+                    action = buildGetCredentialIntentAction(passkey)
                     putExtra(EXTRA_REQUEST_TYPE, REQUEST_TYPE_GET)
                     putExtra(EXTRA_REQUEST_JSON, requestJson)
                     putExtra(EXTRA_CREDENTIAL_ID, passkey.credentialId)
+                    putExtra(EXTRA_RECORD_ID, passkey.id)
                 }
                 
                 val pendingIntent = buildPendingIntent(
                     intent,
-                    SystemClock.uptimeMillis().toInt()
+                    buildGetCredentialRequestCode(passkey)
                 )
                 
                 val entry = PublicKeyCredentialEntry.Builder(
@@ -389,5 +392,23 @@ class MonicaCredentialProviderService : CredentialProviderService() {
 
     private fun normalizeCredentialId(credentialId: String): String? {
         return PasskeyCredentialIdCodec.normalize(credentialId)
+    }
+
+    private fun buildGetCredentialIntentAction(passkey: takagi.ru.monica.data.PasskeyEntry): String {
+        val recordPart = passkey.id.takeIf { it > 0L }?.toString() ?: "no_record"
+        return "$packageName.PASSKEY_GET.$recordPart.${passkey.credentialId.hashCode()}"
+    }
+
+    private fun buildGetCredentialRequestCode(passkey: takagi.ru.monica.data.PasskeyEntry): Int {
+        return buildString {
+            append("get:")
+            append(passkey.id)
+            append(':')
+            append(passkey.credentialId)
+            append(':')
+            append(passkey.rpId)
+            append(':')
+            append(passkey.userName)
+        }.hashCode()
     }
 }

@@ -90,6 +90,9 @@ import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
 import takagi.ru.monica.utils.planLocalCategoryMove
+import takagi.ru.monica.ui.category.CategoryManagementTrailingContent
+import takagi.ru.monica.ui.category.CategoryManagementCreateDialog
+import takagi.ru.monica.ui.category.rememberCategoryManagementState
 import androidx.fragment.app.FragmentActivity
 import androidx.compose.ui.res.stringResource
 import takagi.ru.monica.R
@@ -221,7 +224,7 @@ fun NoteListScreen(
     }
 
     val resolvedPasswordViewModel = passwordViewModel
-    val categoryMgmt = takagi.ru.monica.ui.category.rememberCategoryManagementState()
+    val categoryMgmt = rememberCategoryManagementState()
 
     val selectedUnifiedFilter = when (val filter = selectedCategoryFilter) {
         NoteCategoryFilter.All -> UnifiedCategoryFilterSelection.All
@@ -577,7 +580,7 @@ fun NoteListScreen(
                                         }
                                     },
                                     trailingContent = {
-                                        takagi.ru.monica.ui.category.CategoryManagementTrailingContent(
+                                        CategoryManagementTrailingContent(
                                             state = categoryMgmt,
                                             categories = categories,
                                             keepassDatabases = keepassDatabases,
@@ -918,7 +921,7 @@ fun NoteListScreen(
         )
     }
 
-    takagi.ru.monica.ui.category.CategoryManagementCreateDialog(
+    CategoryManagementCreateDialog(
         state = categoryMgmt,
         currentFilter = selectedUnifiedFilter,
         categories = categories,

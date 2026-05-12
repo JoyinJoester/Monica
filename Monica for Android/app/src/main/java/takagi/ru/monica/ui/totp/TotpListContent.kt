@@ -116,6 +116,9 @@ import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
 import takagi.ru.monica.utils.planLocalCategoryMove
+import takagi.ru.monica.ui.category.CategoryManagementTrailingContent
+import takagi.ru.monica.ui.category.CategoryManagementCreateDialog
+import takagi.ru.monica.ui.category.rememberCategoryManagementState
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.SettingsViewModel
 import takagi.ru.monica.viewmodel.TotpViewModel
@@ -267,7 +270,7 @@ fun TotpListContent(
     var isCategorySheetVisible by rememberSaveable { mutableStateOf(false) }
     var categoryPillBoundsInWindow by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
     val categories by viewModel.categories.collectAsState()
-    val categoryMgmt = takagi.ru.monica.ui.category.rememberCategoryManagementState()
+    val categoryMgmt = rememberCategoryManagementState()
     val currentFilter by viewModel.categoryFilter.collectAsState()
     val totpSelectedFilter = when (val filter = currentFilter) {
         is takagi.ru.monica.viewmodel.TotpCategoryFilter.All -> UnifiedCategoryFilterSelection.All
@@ -648,7 +651,7 @@ fun TotpListContent(
                                 categoryEditMode = categoryMgmt.categoryEditMode,
                                 onRequestCategoryAction = { categoryMgmt.categoryActionTarget = it },
                                 trailingContent = {
-                                    takagi.ru.monica.ui.category.CategoryManagementTrailingContent(
+                                    CategoryManagementTrailingContent(
                                         state = categoryMgmt,
                                         categories = categories,
                                         keepassDatabases = keepassDatabases,
@@ -1172,7 +1175,7 @@ fun TotpListContent(
         )
     }
 
-    takagi.ru.monica.ui.category.CategoryManagementCreateDialog(
+    CategoryManagementCreateDialog(
         state = categoryMgmt,
         currentFilter = totpSelectedFilter,
         categories = categories,

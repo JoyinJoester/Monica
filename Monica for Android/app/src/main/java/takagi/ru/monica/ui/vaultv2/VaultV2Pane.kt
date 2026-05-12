@@ -1116,6 +1116,13 @@ fun VaultV2Pane(
 			else -> null
 		}
 	}
+
+	// 防御：如果当前筛选指向已删除的 Bitwarden vault，自动重置为 All
+	LaunchedEffect(selectedBitwardenVaultId, bitwardenVaults) {
+		if (selectedBitwardenVaultId != null && bitwardenVaults.none { it.id == selectedBitwardenVaultId }) {
+			state.updateStorageFilter(UnifiedCategoryFilterSelection.All)
+		}
+	}
 	val selectedKeePassDatabaseId = remember(storageSelection) {
 		when (storageSelection) {
 			is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> storageSelection.databaseId

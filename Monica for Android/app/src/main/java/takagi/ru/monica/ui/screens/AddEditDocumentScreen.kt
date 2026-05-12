@@ -34,8 +34,11 @@ import takagi.ru.monica.data.model.CardWalletDataCodec
 import takagi.ru.monica.data.model.DocumentData
 import takagi.ru.monica.data.model.DocumentType
 import takagi.ru.monica.data.model.StorageTarget
+import takagi.ru.monica.data.model.normalizedStorageTargets
 import takagi.ru.monica.data.model.displayFullName
 import takagi.ru.monica.data.model.toStorageTarget
+import takagi.ru.monica.data.model.withStorageTargetSelected
+import takagi.ru.monica.data.model.withoutStorageTarget
 import takagi.ru.monica.ui.components.CommonNameSuggestionSheet
 import takagi.ru.monica.ui.components.CustomFieldEditorSection
 import takagi.ru.monica.ui.components.DualPhotoPicker
@@ -189,7 +192,7 @@ fun AddEditDocumentScreen(
     }
 
     fun setSelectedStorageTargets(targets: List<StorageTarget>) {
-        val normalizedTargets = targets.distinctBy(StorageTarget::stableKey)
+        val normalizedTargets = targets.normalizedStorageTargets()
         selectedStorageTargets.clear()
         selectedStorageTargets.addAll(normalizedTargets)
         syncLegacyStorageState(normalizedTargets)
@@ -197,14 +200,11 @@ fun AddEditDocumentScreen(
 
     fun addSelectedStorageTarget(target: StorageTarget) {
         if (selectedStorageTargets.any { it.stableKey == target.stableKey }) return
-        selectedStorageTargets.add(target)
-        syncLegacyStorageState(selectedStorageTargets)
+        setSelectedStorageTargets(selectedStorageTargets.withStorageTargetSelected(target))
     }
 
     fun removeSelectedStorageTarget(target: StorageTarget) {
-        if (selectedStorageTargets.size <= 1) return
-        selectedStorageTargets.removeAll { it.stableKey == target.stableKey }
-        syncLegacyStorageState(selectedStorageTargets)
+        setSelectedStorageTargets(selectedStorageTargets.withoutStorageTarget(target))
     }
 
     LaunchedEffect(

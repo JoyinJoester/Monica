@@ -116,6 +116,7 @@ private const val MONICA_NO_STACK_FIELD_TITLE = "__monica_no_stack"
 private data class PasswordStorageInfo(
     val entryId: Long,
     val containerKey: String,
+    val locationKey: String,
     val source: String,
     val database: String,
     val folderPath: String
@@ -153,6 +154,7 @@ fun PasswordDetailScreen(
     enableSharedBounds: Boolean = true,
     onNavigateBack: () -> Unit,
     onOpenBoundNote: (Long) -> Unit = {},
+    onOpenPassword: (Long) -> Unit = {},
     onEditPassword: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -161,7 +163,6 @@ fun PasswordDetailScreen(
     val scrollState = rememberScrollState()
     val settingsManager = remember { SettingsManager(context) }
     val settings by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
-    val currentFilter by viewModel.categoryFilter.collectAsState()
     val database = remember { PasswordDatabase.getDatabase(context.applicationContext) }
     val categories by viewModel.categories.collectAsState(initial = emptyList())
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
@@ -384,10 +385,14 @@ fun PasswordDetailScreen(
             if (entry != null) {
                 passwordEntry = entry
                 
-                // Find siblings
+                val replicaGroupId = entry.replicaGroupId?.takeIf { it.isNotBlank() }
                 val key = getPasswordInfoKey(entry)
                 groupPasswords = allPasswords.filter {
-                    getPasswordInfoKey(it) == key
+                    if (replicaGroupId != null) {
+                        it.replicaGroupId == replicaGroupId
+                    } else {
+                        getPasswordInfoKey(it) == key
+                    }
                 }.sortedWith(
                     compareBy<PasswordEntry> {
                         when {
@@ -399,7 +404,11 @@ fun PasswordDetailScreen(
                         .thenBy { it.bitwardenVaultId ?: Long.MAX_VALUE }
                         .thenBy { it.id }
                 )
-                val detailPasswords = groupPasswords.ifEmpty { listOf(entry) }
+                val detailPasswords = if (!entry.replicaGroupId.isNullOrBlank()) {
+                    listOf(entry)
+                } else {
+                    groupPasswords.ifEmpty { listOf(entry) }
+                }
                 val (resolvedDisplayPasswords, resolvedUnavailableSources) = withContext(Dispatchers.IO) {
                     val passwordValues = mutableMapOf<Long, String>()
                     val unavailableSources = mutableMapOf<Long, PasswordSource>()
@@ -566,7 +575,6 @@ fun PasswordDetailScreen(
                 )
 
                 val storageInfoEntries = remember(
-                    currentFilter,
                     groupPasswords,
                     entry,
                     categories,
@@ -576,11 +584,7 @@ fun PasswordDetailScreen(
                     settings,
                     context
                 ) {
-                    val entries = if (currentFilter is CategoryFilter.All) {
-                        groupPasswords.ifEmpty { listOf(entry) }
-                    } else {
-                        listOf(entry)
-                    }
+                    val entries = groupPasswords.ifEmpty { listOf(entry) }
                     val infos = entries.map { candidate ->
                         buildPasswordStorageInfo(
                             entry = candidate,
@@ -597,36 +601,25 @@ fun PasswordDetailScreen(
                             rootLabel = context.getString(R.string.folder_no_folder_root)
                         )
                     }
-
-                    val shouldExpandMultiSource = currentFilter is CategoryFilter.All &&
-                        infos.map { it.containerKey }.distinct().size > 1
-
-                    if (shouldExpandMultiSource) {
-                        infos.groupBy { it.containerKey }
-                            .map { (_, containerInfos) ->
-                                containerInfos.firstOrNull { it.entryId == entry.id }
-                                    ?: containerInfos.minByOrNull { it.entryId }
-                                    ?: containerInfos.first()
-                            }
-                    } else {
-                        listOf(
-                            infos.firstOrNull { it.entryId == entry.id }
-                                ?: buildPasswordStorageInfo(
-                                    entry = entry,
-                                    categories = categories,
-                                    keepassDatabases = keepassDatabases,
-                                    bitwardenVaults = bitwardenVaults,
-                                    bitwardenFoldersByVault = bitwardenFoldersByVault,
-                                    localSourceLabel = context.getString(R.string.database_source_local),
-                                    keepassSourceLabel = context.getString(R.string.database_source_keepass),
-                                    bitwardenSourceLabel = context.getString(R.string.filter_bitwarden),
-                                    passwordOwnerConflictShortLabel = context.getString(R.string.password_owner_conflict_short),
-                                    passwordOwnerConflictDatabaseLabel = context.getString(R.string.password_owner_conflict_database),
-                                    passwordOwnerConflictDisplayLabel = context.getString(R.string.password_owner_conflict_display),
-                                    rootLabel = context.getString(R.string.folder_no_folder_root)
-                                )
+                    val currentInfo = infos.firstOrNull { it.entryId == entry.id }
+                        ?: buildPasswordStorageInfo(
+                            entry = entry,
+                            categories = categories,
+                            keepassDatabases = keepassDatabases,
+                            bitwardenVaults = bitwardenVaults,
+                            bitwardenFoldersByVault = bitwardenFoldersByVault,
+                            localSourceLabel = context.getString(R.string.database_source_local),
+                            keepassSourceLabel = context.getString(R.string.database_source_keepass),
+                            bitwardenSourceLabel = context.getString(R.string.filter_bitwarden),
+                            passwordOwnerConflictShortLabel = context.getString(R.string.password_owner_conflict_short),
+                            passwordOwnerConflictDatabaseLabel = context.getString(R.string.password_owner_conflict_database),
+                            passwordOwnerConflictDisplayLabel = context.getString(R.string.password_owner_conflict_display),
+                            rootLabel = context.getString(R.string.folder_no_folder_root)
                         )
-                    }
+                    listOf(currentInfo) + infos
+                        .filterNot { it.entryId == entry.id }
+                        .filterNot { it.locationKey == currentInfo.locationKey }
+                        .distinctBy { it.locationKey }
                 }
                 val dateFormatter = remember { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT) }
                 val createdAtText = remember(entry.createdAt) { dateFormatter.format(entry.createdAt) }
@@ -670,7 +663,11 @@ fun PasswordDetailScreen(
                 // ==========================================
                 // 🔑 密码列表
                 // ==========================================
-                val detailPasswords = groupPasswords.ifEmpty { listOf(entry) }
+                val detailPasswords = if (!entry.replicaGroupId.isNullOrBlank()) {
+                    listOf(entry)
+                } else {
+                    groupPasswords.ifEmpty { listOf(entry) }
+                }
                 val shouldShowPasswordCard = detailPasswords.any { passwordEntry ->
                     passwordEntry.password.isNotBlank() || unavailablePasswordSources[passwordEntry.id] != null
                 }
@@ -755,7 +752,9 @@ fun PasswordDetailScreen(
                 }
 
                 StorageInfoCard(
-                    storageInfos = storageInfoEntries,
+                    currentInfo = storageInfoEntries.first(),
+                    otherInfos = storageInfoEntries.drop(1),
+                    onOpenPassword = onOpenPassword,
                     onEditPassword = onEditPassword
                 )
 
@@ -1783,7 +1782,9 @@ private fun isPasskeyAvailableForEntry(
 
 @Composable
 private fun StorageInfoCard(
-    storageInfos: List<PasswordStorageInfo>,
+    currentInfo: PasswordStorageInfo,
+    otherInfos: List<PasswordStorageInfo>,
+    onOpenPassword: (Long) -> Unit,
     onEditPassword: (Long) -> Unit
 ) {
     Card(
@@ -1813,41 +1814,111 @@ private fun StorageInfoCard(
                     color = MaterialTheme.colorScheme.primary
                 )
             }
-            storageInfos.forEachIndexed { index, info ->
-                if (index > 0) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                }
-                Column(
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { onEditPassword(currentInfo.entryId) },
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.password_detail_current_location),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold
+                )
+                DetailInfoRow(
+                    label = stringResource(R.string.database_source_label),
+                    value = currentInfo.source
+                )
+                DetailInfoRow(
+                    label = stringResource(R.string.password_picker_filter_database),
+                    value = currentInfo.database
+                )
+                DetailInfoRow(
+                    label = stringResource(R.string.password_picker_filter_folder),
+                    value = currentInfo.folderPath
+                )
+                Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onEditPassword(info.entryId) },
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
                 ) {
-                    DetailInfoRow(
-                        label = stringResource(R.string.database_source_label),
-                        value = info.source
+                    Text(
+                        text = stringResource(R.string.edit),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium
                     )
-                    DetailInfoRow(
-                        label = stringResource(R.string.password_picker_filter_database),
-                        value = info.database
-                    )
-                    DetailInfoRow(
-                        label = stringResource(R.string.password_picker_filter_folder),
-                        value = info.folderPath
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        Text(
-                            text = stringResource(R.string.edit),
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
                 }
             }
+
+            if (otherInfos.isNotEmpty()) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Text(
+                    text = stringResource(R.string.password_detail_other_locations),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.SemiBold
+                )
+                otherInfos.forEach { info ->
+                    OtherStorageLocationRow(
+                        info = info,
+                        onClick = { onOpenPassword(info.entryId) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun OtherStorageLocationRow(
+    info: PasswordStorageInfo,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        tonalElevation = 1.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Folder,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp)
+            )
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = "${info.source} · ${info.database}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = info.folderPath,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = stringResource(R.string.password_detail_open_location),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
         }
     }
 }
@@ -2933,6 +3004,7 @@ private fun buildPasswordStorageInfo(
     return PasswordStorageInfo(
         entryId = entry.id,
         containerKey = containerKey,
+        locationKey = "$containerKey|$folderPath",
         source = sourceName,
         database = databaseName,
         folderPath = folderPath

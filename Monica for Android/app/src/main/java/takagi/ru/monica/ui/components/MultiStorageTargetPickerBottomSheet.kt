@@ -58,6 +58,9 @@ import takagi.ru.monica.data.writeOperationAvailability
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.StorageTarget
+import takagi.ru.monica.data.model.normalizedStorageTargets
+import takagi.ru.monica.data.model.withStorageTargetSelected
+import takagi.ru.monica.data.model.withoutStorageTarget
 import takagi.ru.monica.utils.KeePassGroupInfo
 import takagi.ru.monica.utils.buildLocalCategoryPathOptions
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
@@ -165,12 +168,12 @@ fun MultiStorageTargetPickerBottomSheet(
     }
     val primaryTarget = selectedTargets.firstOrNull() ?: StorageTarget.MonicaLocal(null)
     val primarySourceKey = primaryTarget.toSourceKey()
-    val singleModeAllowed = lockedTargetKeys.isEmpty()
-    var selectionMode by remember(visible, singleModeAllowed, selectedTargets) {
+    val singleModeAllowed = true
+    var selectionMode by remember(visible, selectedTargets) {
         mutableStateOf(
             if (forceMultiSelectionMode) {
                 StoragePickerSelectionMode.MULTI
-            } else if (!singleModeAllowed || selectedTargets.size > 1) {
+            } else if (selectedTargets.size > 1) {
                 StoragePickerSelectionMode.MULTI
             } else {
                 StoragePickerSelectionMode.SINGLE
@@ -310,22 +313,17 @@ fun MultiStorageTargetPickerBottomSheet(
     fun toggleMultiSource(sourceKey: String) {
         val source = sourceByKey(sourceKey)
         val rootTarget = rootTargetForSource(source)
-        val hasLockedTargetsInSource = selectedTargets.any {
-            it.toSourceKey() == sourceKey && it.stableKey in lockedTargetKeys
-        }
         if (sourceKey in activeSourceKeys) {
-            if (hasLockedTargetsInSource) return
             activeSourceKeys.remove(sourceKey)
             onSelectedTargetsChange(
-                selectedTargets.filterNot { it.toSourceKey() == sourceKey }
+                selectedTargets
+                    .filterNot { it.toSourceKey() == sourceKey }
+                    .normalizedStorageTargets()
             )
         } else {
             activeSourceKeys.add(sourceKey)
             onSelectedTargetsChange(
-                (
-                    selectedTargets.filterNot { it.toSourceKey() == sourceKey } +
-                        rootTarget
-                    ).distinctBy(StorageTarget::stableKey)
+                selectedTargets.withStorageTargetSelected(rootTarget)
             )
         }
     }
@@ -642,28 +640,20 @@ private fun FolderTargetChip(
     } else {
         targetKey in selectedKeys
     }
-    val enabled = if (singleMode) {
-        singleModeAllowed
-    } else {
-        !sourceHasLockedTarget
-    }
 
     MonicaExpressiveFilterChip(
         selected = selected,
         onClick = {
-            if (!enabled) return@MonicaExpressiveFilterChip
             if (singleMode) {
                 onSelectedTargetsChange(listOf(chip.target))
                 onTargetClicked?.invoke(chip.target)
             } else {
                 val updatedTargets = if (selected) {
-                    selectedTargets
+                    selectedTargets.withoutStorageTarget(chip.target)
                 } else {
-                    selectedTargets
-                        .filterNot { it.toSourceKey() == chip.sourceKey }
-                        .plus(chip.target)
+                    selectedTargets.withStorageTargetSelected(chip.target)
                 }
-                onSelectedTargetsChange(updatedTargets.distinctBy(StorageTarget::stableKey))
+                onSelectedTargetsChange(updatedTargets)
                 if (!selected) {
                     onTargetClicked?.invoke(chip.target)
                 }

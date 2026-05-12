@@ -2,9 +2,12 @@ package takagi.ru.monica.passkey
 
 import android.util.Base64
 import takagi.ru.monica.data.PasskeyEntry
+import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.security.KeyFactory
 import java.security.KeyStore
 import java.security.PrivateKey
+import java.security.Provider
+import java.security.Security
 import java.security.Signature
 import java.security.spec.MGF1ParameterSpec
 import java.security.spec.PKCS8EncodedKeySpec
@@ -117,9 +120,7 @@ object PasskeyPrivateKeySupport {
         )
 
         candidates.forEach { (keyAlgorithm, coseAlgorithm) ->
-            val privateKey = runCatching {
-                KeyFactory.getInstance(keyAlgorithm).generatePrivate(keySpec)
-            }.getOrNull()
+            val privateKey = generatePrivateKey(keyAlgorithm, keySpec)
             if (privateKey != null) {
                 return DecodedPrivateKey(
                     privateKey = privateKey,
@@ -132,6 +133,36 @@ object PasskeyPrivateKeySupport {
         return null
     }
 
+    private fun generatePrivateKey(
+        keyAlgorithm: String,
+        keySpec: PKCS8EncodedKeySpec
+    ): PrivateKey? {
+        val defaultKey = runCatching {
+            KeyFactory.getInstance(keyAlgorithm).generatePrivate(keySpec)
+        }.getOrNull()
+        if (defaultKey != null) return defaultKey
+
+        val provider = getBundledBouncyCastleProvider() ?: return null
+        return runCatching {
+            KeyFactory.getInstance(keyAlgorithm, provider).generatePrivate(keySpec)
+        }.getOrNull()
+    }
+
+    private fun getBundledBouncyCastleProvider(): Provider? {
+        val existing = Security.getProvider("BC")
+        if (existing?.javaClass?.name == BouncyCastleProvider::class.java.name) {
+            return existing
+        }
+
+        val provider = BouncyCastleProvider()
+        return runCatching {
+            Security.addProvider(provider)
+            provider
+        }.getOrElse {
+            provider
+        }
+    }
+
     private fun defaultSignatureFor(privateKey: PrivateKey): Signature {
         return when (privateKey.algorithm.uppercase()) {
             "RSA" -> Signature.getInstance("SHA256withRSA")
@@ -142,14 +173,44 @@ object PasskeyPrivateKeySupport {
 
     private fun decodeBase64Compat(value: String): ByteArray? {
         if (value.isBlank()) return null
+        decodeWithJavaBase64(value)?.let { return it }
+
         val flags = listOf(
-            Base64.NO_WRAP,
             Base64.NO_WRAP or Base64.URL_SAFE,
-            Base64.DEFAULT,
-            Base64.DEFAULT or Base64.URL_SAFE
+            Base64.NO_WRAP or Base64.URL_SAFE or Base64.NO_PADDING,
+            Base64.DEFAULT or Base64.URL_SAFE,
+            Base64.NO_WRAP,
+            Base64.DEFAULT
         )
         flags.forEach { base64Flags ->
             val decoded = runCatching { Base64.decode(value, base64Flags) }.getOrNull()
+            if (decoded != null && decoded.isNotEmpty()) {
+                return decoded
+            }
+        }
+        return null
+    }
+
+    private fun decodeWithJavaBase64(value: String): ByteArray? {
+        val compact = value.replace("\\s".toRegex(), "")
+        if (compact.isBlank()) return null
+        val padded = compact.padEnd(compact.length + (4 - compact.length % 4) % 4, '=')
+        val looksUrlSafe = compact.any { it == '-' || it == '_' }
+
+        val candidates = if (looksUrlSafe) {
+            listOf(
+                { java.util.Base64.getUrlDecoder().decode(padded) },
+                { java.util.Base64.getDecoder().decode(padded) }
+            )
+        } else {
+            listOf(
+                { java.util.Base64.getDecoder().decode(padded) },
+                { java.util.Base64.getUrlDecoder().decode(padded) }
+            )
+        }
+
+        candidates.forEach { decode ->
+            val decoded = runCatching { decode() }.getOrNull()
             if (decoded != null && decoded.isNotEmpty()) {
                 return decoded
             }

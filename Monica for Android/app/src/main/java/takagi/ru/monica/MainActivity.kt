@@ -1023,12 +1023,24 @@ fun MonicaContent(
             val qrResult = navController.currentBackStackEntry
                 ?.savedStateHandle
                 ?.get<String>("qr_result")
+            var replacementPasswordDetailId by remember(backStackEntry, passwordId) {
+                mutableStateOf<Long?>(null)
+            }
             val navigateBackFromAddEditPassword = {
-                val popped = navController.popBackStack()
-                if (!popped) {
-                    navController.navigate(Screen.Main.createRoute()) {
-                        popUpTo(0) { inclusive = true }
+                val replacementId = replacementPasswordDetailId
+                replacementPasswordDetailId = null
+                if (passwordId > 0 && replacementId != null && replacementId != passwordId) {
+                    navController.navigate(Screen.PasswordDetail.createRoute(replacementId)) {
+                        popUpTo(Screen.PasswordDetail.route) { inclusive = true }
                         launchSingleTop = true
+                    }
+                } else {
+                    val popped = navController.popBackStack()
+                    if (!popped) {
+                        navController.navigate(Screen.Main.createRoute()) {
+                            popUpTo(0) { inclusive = true }
+                            launchSingleTop = true
+                        }
                     }
                 }
             }
@@ -1068,6 +1080,9 @@ fun MonicaContent(
                         popUpTo(Screen.AddEditPassword.route) { inclusive = true }
                         launchSingleTop = true
                     }
+                },
+                onSaveCompleted = { savedPasswordId ->
+                    replacementPasswordDetailId = savedPasswordId
                 },
                 onNavigateBack = navigateBackFromAddEditPassword
             )
@@ -1444,7 +1459,7 @@ fun MonicaContent(
 
         composable(
             route = Screen.WalletAdd.route,
-            enterTransition = { EnterTransition.None },
+            enterTransition = { rightSlideEnterTransition() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
             popExitTransition = { rightSlidePopExitTransition() }
@@ -1718,6 +1733,14 @@ fun MonicaContent(
                         onOpenBoundNote = { noteId ->
                             scope.launch {
                                 navController.navigate(Screen.NoteDetail.createRoute(noteId)) {
+                                    launchSingleTop = true
+                                }
+                            }
+                        },
+                        onOpenPassword = { targetPasswordId ->
+                            scope.launch {
+                                navController.navigate(Screen.PasswordDetail.createRoute(targetPasswordId)) {
+                                    popUpTo(Screen.PasswordDetail.route) { inclusive = true }
                                     launchSingleTop = true
                                 }
                             }

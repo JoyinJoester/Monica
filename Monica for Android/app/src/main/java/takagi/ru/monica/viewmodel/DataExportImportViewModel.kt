@@ -162,6 +162,8 @@ class DataExportImportViewModel(
                             val passwordData = parsePasswordData(exportItem.itemData)
                             val website = passwordData["website"] ?: ""
                             val username = passwordData["username"] ?: ""
+                            val importedPassword = passwordData["password"].orEmpty()
+                            val storedPassword = prepareImportedPasswordForStorage(importedPassword)
                             val importedAuthenticator = parseImportedAuthenticatorDraft(
                                 rawAuthenticator = exportItem.importedAuthenticatorKey,
                                 fallbackTitle = exportItem.title,
@@ -170,22 +172,26 @@ class DataExportImportViewModel(
                             )
                             val originalId = exportItem.id
                             
-                            // 检查是否重复
-                            val existingEntry = PasswordImportDuplicateResolver.findMatchingEntry(
-                                passwordRepository = passwordRepository,
-                                securityManager = securityManager,
-                                snapshot = ImportedPasswordSnapshot(
-                                    title = exportItem.title,
-                                    username = username,
-                                    website = website,
-                                    password = passwordData["password"] ?: "",
-                                    notes = exportItem.notes,
-                                    email = passwordData["email"] ?: "",
-                                    phone = passwordData["phone"] ?: "",
-                                    authenticatorKey = importedAuthenticator?.authenticatorKey.orEmpty()
-                                ),
-                                localOnly = false
-                            )
+                            // 来自 Monica 自身导出的 CSV，直接恢复，跳过重复检测
+                            val existingEntry = if (exportItem.isFromAppExport) {
+                                null
+                            } else {
+                                PasswordImportDuplicateResolver.findMatchingEntry(
+                                    passwordRepository = passwordRepository,
+                                    securityManager = securityManager,
+                                    snapshot = ImportedPasswordSnapshot(
+                                        title = exportItem.title,
+                                        username = username,
+                                        website = website,
+                                        password = importedPassword,
+                                        notes = exportItem.notes,
+                                        email = passwordData["email"] ?: "",
+                                        phone = passwordData["phone"] ?: "",
+                                        authenticatorKey = importedAuthenticator?.authenticatorKey.orEmpty()
+                                    ),
+                                    localOnly = false
+                                )
+                            }
                             
                             if (existingEntry == null) {
                                 val passwordEntry = PasswordEntry(
@@ -193,7 +199,7 @@ class DataExportImportViewModel(
                                     title = exportItem.title,
                                     website = website,
                                     username = username,
-                                    password = passwordData["password"] ?: "",
+                                    password = storedPassword,
                                     notes = exportItem.notes,
                                     email = passwordData["email"] ?: "",
                                     phone = passwordData["phone"] ?: "",
@@ -577,6 +583,17 @@ class DataExportImportViewModel(
         return result
     }
 
+    private fun prepareImportedPasswordForStorage(password: String): String {
+        if (password.isBlank()) return password
+        if (isMonicaEncryptedValue(password)) return password
+        return securityManager.encryptDataLegacyCompat(password)
+    }
+
+    private fun isMonicaEncryptedValue(value: String): Boolean {
+        val trimmed = value.trim()
+        return trimmed.startsWith("MDK|") || trimmed.startsWith("V2|")
+    }
+
     /**
      * 获取建议的文件名
      */
@@ -780,9 +797,11 @@ class DataExportImportViewModel(
             // 获取PasswordEntry数据
             val passwordEntries = passwordRepository.getAllPasswordEntries().first()
             val passwordItems = passwordEntries.map { entry ->
+                val exportedPassword = runCatching { securityManager.decryptData(entry.password) }
+                    .getOrElse { entry.password }
                 val passwordData = buildString {
                     append("username:${entry.username};")
-                    append("password:${entry.password}")
+                    append("password:$exportedPassword")
                     if (entry.website.isNotEmpty()) {
                         append(";website:${entry.website}")
                     }

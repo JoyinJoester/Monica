@@ -1719,7 +1719,7 @@ class LocalKeePassViewModel(
 
                     appDatabase.passwordEntryDao().clearKeePassBindingForDatabase(databaseId)
                     appDatabase.secureItemDao().clearKeePassBindingForDatabase(databaseId)
-                    appDatabase.passkeyDao().clearKeePassBindingForDatabase(databaseId)
+                    appDatabase.passkeyDao().deleteByKeePassDatabaseId(databaseId)
                     appDatabase.keepassGroupSyncConfigDao().deleteByDatabaseId(databaseId)
                     if (database.sourceType == KeePassDatabaseSourceType.REMOTE_WEBDAV) {
                         cleanupRemoteLocalCopies(database.workingCopyPath, database.cacheCopyPath)

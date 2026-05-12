@@ -54,7 +54,9 @@ class DataExportImportManager(private val context: Context) {
         val bitwardenVaultId: Long? = null,
         val bitwardenFolderId: String? = null,
         val importedCustomFields: List<ImportedCustomField> = emptyList(),
-        val importedAuthenticatorKey: String? = null
+        val importedAuthenticatorKey: String? = null,
+        /** true 表示来自 Monica 自身导出的 CSV，导入时应跳过重复检测直接恢复 */
+        val isFromAppExport: Boolean = false
     )
 
     data class ImportedCustomField(
@@ -285,9 +287,13 @@ class DataExportImportManager(private val context: Context) {
      * 创建导出项
      */
     private fun createExportItem(fields: List<String>): ExportItem {
+        val itemType = fields.getOrNull(1)
+            ?.trim()
+            ?.uppercase()
+            .orEmpty()
         return ExportItem(
             id = fields[0].toLongOrNull() ?: 0,
-            itemType = fields[1],
+            itemType = itemType,
             title = fields[2],
             itemData = fields[3],
             notes = fields[4],
@@ -299,7 +305,8 @@ class DataExportImportManager(private val context: Context) {
             keepassDatabaseId = fields.getOrNull(10)?.toLongOrNull(),
             keepassGroupPath = fields.getOrNull(11)?.takeIf { it.isNotBlank() },
             bitwardenVaultId = fields.getOrNull(12)?.toLongOrNull(),
-            bitwardenFolderId = fields.getOrNull(13)?.takeIf { it.isNotBlank() }
+            bitwardenFolderId = fields.getOrNull(13)?.takeIf { it.isNotBlank() },
+            isFromAppExport = true
         )
     }
     
@@ -344,6 +351,12 @@ class DataExportImportManager(private val context: Context) {
             lowerLine.contains("交易时间") && lowerLine.contains("收/支") &&
             lowerLine.contains("金额") ->
                 CsvFormat.ALIPAY_TRANSACTION
+
+            // Monica 应用自身导出格式：ID,Type,Title,Data,Notes,...
+            // 必须在 PASSWORD_KEYBOARD 之前检测，否则 Title+Notes 会被误判为 normal 类型
+            lowerLine.contains("type") && lowerLine.contains("title") &&
+            lowerLine.contains("data") && headerSet.contains("id") ->
+                CsvFormat.APP_EXPORT
 
             // Chrome 标准导出头：name,url,username,password,note
             // 需要在密码键盘表头检测之前判断，避免被误识别为 password_keyboard
@@ -705,9 +718,12 @@ class DataExportImportManager(private val context: Context) {
 
     private fun isHeaderLine(firstLine: String, format: CsvFormat): Boolean {
         return when (format) {
-            CsvFormat.APP_EXPORT -> firstLine.contains("Type") &&
-                firstLine.contains("Title") &&
-                firstLine.contains("Data")
+            CsvFormat.APP_EXPORT -> {
+                val headers = parseCsvLine(firstLine).map { it.trim().lowercase() }.toSet()
+                headers.contains("type") &&
+                    headers.contains("title") &&
+                    headers.contains("data")
+            }
             CsvFormat.CHROME_PASSWORD -> {
                 val headers = parseCsvLine(firstLine).map { it.trim().lowercase() }.toSet()
                 headers.contains("name") &&
