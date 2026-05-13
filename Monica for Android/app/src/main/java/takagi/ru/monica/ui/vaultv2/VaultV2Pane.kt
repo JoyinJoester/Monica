@@ -1030,6 +1030,7 @@ fun VaultV2Pane(
 	)
 	val context = LocalContext.current
 	val database = remember(context) { PasswordDatabase.getDatabase(context) }
+	val isAuthenticated by passwordViewModel.isAuthenticated.collectAsState()
 	val attachmentParentIds by database.attachmentDao()
 		.observeParentsWithActiveAttachments()
 		.collectAsState(initial = emptyList())
@@ -1111,9 +1112,30 @@ fun VaultV2Pane(
 		when (storageSelection) {
 			is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> storageSelection.vaultId
 			is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> storageSelection.vaultId
-			is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> storageSelection.vaultId
-			is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> storageSelection.vaultId
 			else -> null
+		}
+	}
+	LaunchedEffect(isAuthenticated) {
+		if (!isAuthenticated) {
+			isTopActionsMenuExpanded = false
+			isStorageFilterSheetVisible = false
+			showBitwardenUnlockDialog = false
+			showClearBitwardenCacheDialog = false
+		}
+	}
+	LaunchedEffect(selectedBitwardenVaultId) {
+		if (selectedBitwardenVaultId == null) {
+			isTopActionsMenuExpanded = false
+			showBitwardenUnlockDialog = false
+			showClearBitwardenCacheDialog = false
+		}
+	}
+	DisposableEffect(Unit) {
+		onDispose {
+			isTopActionsMenuExpanded = false
+			isStorageFilterSheetVisible = false
+			showBitwardenUnlockDialog = false
+			showClearBitwardenCacheDialog = false
 		}
 	}
 
@@ -1992,14 +2014,21 @@ fun VaultV2Pane(
 						)
 					}
 					Box {
-						IconButton(onClick = { isTopActionsMenuExpanded = true }) {
+						IconButton(
+							onClick = {
+								if (isAuthenticated) {
+									isTopActionsMenuExpanded = true
+								}
+							},
+							enabled = isAuthenticated
+						) {
 							Icon(
 								imageVector = Icons.Default.MoreVert,
 								contentDescription = stringResource(R.string.more_options),
 							)
 						}
 						PasswordTopActionsDropdownMenu(
-							expanded = isTopActionsMenuExpanded,
+							expanded = isAuthenticated && isTopActionsMenuExpanded,
 							onDismissRequest = { isTopActionsMenuExpanded = false }
 						) {
 							if (selectedKeePassDatabaseId != null) {
@@ -2010,15 +2039,14 @@ fun VaultV2Pane(
 									}
 								)
 							}
-							if (selectedBitwardenVaultId != null) {
+							selectedBitwardenVaultId?.let { selectedVaultId ->
 								BitwardenSyncTopActionsMenuItem(
 									isSyncing = isTopBarSyncing,
 									enabled = !isTopBarSyncing && !isBitwardenMaintenanceActionRunning,
 									onClick = {
-										val vaultId = selectedBitwardenVaultId
-										if (!isTopBarSyncing && !isBitwardenMaintenanceActionRunning && vaultId != null) {
+										if (!isTopBarSyncing && !isBitwardenMaintenanceActionRunning) {
 											isTopActionsMenuExpanded = false
-											bitwardenViewModel.requestManualSync(vaultId)
+											bitwardenViewModel.requestManualSync(selectedVaultId)
 										}
 									}
 								)
@@ -2033,7 +2061,7 @@ fun VaultV2Pane(
 										isTopActionsMenuExpanded = false
 										scope.launch {
 											runCatching {
-												bitwardenRepository.forceLock(selectedBitwardenVaultId)
+												bitwardenRepository.forceLock(selectedVaultId)
 											}.onSuccess {
 												Toast.makeText(
 													context,
@@ -2056,25 +2084,22 @@ fun VaultV2Pane(
 								BitwardenClearCacheTopActionsMenuItem(
 									enabled = !isBitwardenMaintenanceActionRunning,
 									onClick = {
-										val vaultId = selectedBitwardenVaultId
-										if (vaultId != null) {
-											isTopActionsMenuExpanded = false
-											scope.launch {
-												runCatching {
-													passwordViewModel.getBitwardenVaultCacheRiskSummary(vaultId)
-												}.onSuccess { summary ->
-													clearCacheRiskSummary = summary
-													showClearBitwardenCacheDialog = true
-												}.onFailure { error ->
-													Toast.makeText(
-														context,
-														context.getString(
-															R.string.bitwarden_clear_cache_failed,
-															error.message ?: ""
-														),
-														Toast.LENGTH_SHORT
-													).show()
-												}
+										isTopActionsMenuExpanded = false
+										scope.launch {
+											runCatching {
+												passwordViewModel.getBitwardenVaultCacheRiskSummary(selectedVaultId)
+											}.onSuccess { summary ->
+												clearCacheRiskSummary = summary
+												showClearBitwardenCacheDialog = true
+											}.onFailure { error ->
+												Toast.makeText(
+													context,
+													context.getString(
+														R.string.save_failed_with_error,
+														error.message ?: ""
+													),
+													Toast.LENGTH_SHORT
+												).show()
 											}
 										}
 									}

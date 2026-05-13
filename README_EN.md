@@ -4,7 +4,7 @@
 
 [中文](README.md) | **English** | [日本語](README_JA.md) | [Tiếng Việt](README_VI.md) | [Русский](README_RU.md) | [黑羽川](readme_Nya.md)
 
-<img src="documentation\image\Monicaico.png" alt="Monica App Icon" width="112" />
+<img src="image/themepng.png" alt="Monica App Icon" width="112" />
 
 <p><strong>A local-first password vault that bridges Bitwarden and KeePass</strong></p>
 <p>Android / Browser · Local Vault · TOTP · WebDAV Backup</p>
@@ -36,7 +36,9 @@ Website: https://joyinjoester.github.io/Monica/
 
 > Monica for Windows is archived. Historical code: [Monica-for-Windows](https://github.com/JoyinJoester/Monica-for-Windows)
 >
-> Since the project is currently maintained mostly by me alone, both time and bandwidth are limited. Because of that, Monica for Wear and Monica for Browser cannot be updated continuously for the time being. My current focus will stay on improving features, experience, and stability for Monica for Android. Thanks for your understanding and support.
+> Monica for Browser is archived. The new Monica Extension is currently being rewritten and under active development — stay tuned.
+>
+> Since the project is currently maintained mostly by me alone, both time and bandwidth are limited. Because of that, Monica for Wear cannot be updated continuously for the time being. My current focus will stay on improving features, experience, and stability for Monica for Android. Thanks for your understanding and support.
 
 ---
 

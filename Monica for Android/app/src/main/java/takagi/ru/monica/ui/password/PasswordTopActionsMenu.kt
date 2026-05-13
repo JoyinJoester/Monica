@@ -41,6 +41,8 @@ internal fun PasswordTopActionsDropdownMenu(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    if (!expanded) return
+
     MaterialTheme(
         shapes = MaterialTheme.shapes.copy(
             extraSmall = RoundedCornerShape(20.dp),

@@ -29,6 +29,7 @@ import androidx.compose.material.icons.outlined.Input
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Link
+import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Smartphone
@@ -76,6 +77,8 @@ import takagi.ru.monica.autofill_ng.DomainMatchStrategy
 import takagi.ru.monica.autofill_ng.core.AutofillServiceChecker
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenVault
+import takagi.ru.monica.data.AppSettings
+import takagi.ru.monica.utils.SettingsManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -88,6 +91,7 @@ fun AutofillSettingsV2Screen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val preferences = remember { AutofillPreferences(context) }
+    val settingsManager = remember { SettingsManager(context) }
     val serviceChecker = remember { AutofillServiceChecker(context) }
     val localKeepassDao = remember(context.applicationContext) {
         PasswordDatabase.getDatabase(context.applicationContext).localKeePassDatabaseDao()
@@ -97,6 +101,8 @@ fun AutofillSettingsV2Screen(
     }
 
     val autofillEnabled by preferences.isAutofillEnabled.collectAsState(initial = true)
+    val appSettings by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
+    val autofillAuthRequired = appSettings.autofillAuthRequired
     val strictMode by preferences.isBitwardenStrictModeEnabled.collectAsState(initial = true)
     val subdomainMatch by preferences.isBitwardenSubdomainMatchEnabled.collectAsState(initial = true)
     val domainMatchStrategy by preferences.domainMatchStrategy.collectAsState(initial = DomainMatchStrategy.BASE_DOMAIN)
@@ -491,6 +497,16 @@ fun AutofillSettingsV2Screen(
                     checked = autofillEnabled,
                     onCheckedChange = { enabled ->
                         scope.launch { preferences.setAutofillEnabled(enabled) }
+                    },
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                SwitchSettingItem(
+                    icon = Icons.Outlined.Lock,
+                    title = stringResource(R.string.autofill_auth_required),
+                    subtitle = stringResource(R.string.autofill_auth_required_desc),
+                    checked = autofillAuthRequired,
+                    onCheckedChange = { enabled ->
+                        scope.launch { settingsManager.updateAutofillAuthRequired(enabled) }
                     },
                 )
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))

@@ -452,6 +452,12 @@ fun PasswordListContent(
     // Top actions menu and display options sheet state
     var topActionsMenuExpanded by remember { mutableStateOf(false) }
     var showDisplayOptionsSheet by remember { mutableStateOf(false) }
+    val isAuthenticated by viewModel.isAuthenticated.collectAsState()
+    LaunchedEffect(isAuthenticated) {
+        if (!isAuthenticated) {
+            topActionsMenuExpanded = false
+        }
+    }
     // Search state hoisted for morphing animation
     var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
 
@@ -1503,7 +1509,7 @@ fun PasswordListContent(
         isSearchExpanded = isSearchExpanded,
         onSearchExpandedChange = { isSearchExpanded = it },
         onSearchQueryChange = viewModel::updateSearchQuery,
-        topActionsMenuExpanded = topActionsMenuExpanded,
+        topActionsMenuExpanded = isAuthenticated && topActionsMenuExpanded,
         onTopActionsMenuExpandedChange = { topActionsMenuExpanded = it },
         showStandaloneSettingsEntry = showStandaloneSettingsEntry,
         onOpenStandaloneSettings = onOpenStandaloneSettings,

@@ -37,6 +37,7 @@ import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.service.BrowserAutofillContextStore
 import takagi.ru.monica.utils.DeviceUtils
+import takagi.ru.monica.utils.SettingsManager
 import java.security.MessageDigest
 import kotlin.math.abs
 
@@ -69,6 +70,7 @@ class MonicaAutofillServiceNg : AutofillService() {
 
     private lateinit var passwordRepository: PasswordRepository
     private lateinit var autofillPreferences: AutofillPreferences
+    private lateinit var settingsManager: SettingsManager
     private lateinit var diagnostics: AutofillDiagnostics
 
     private val parser = EnhancedAutofillStructureParserV2()
@@ -82,6 +84,7 @@ class MonicaAutofillServiceNg : AutofillService() {
         val database = PasswordDatabase.getDatabase(applicationContext)
         passwordRepository = PasswordRepository(database.passwordEntryDao())
         autofillPreferences = AutofillPreferences(applicationContext)
+        settingsManager = SettingsManager(applicationContext)
         diagnostics = AutofillDiagnostics(applicationContext)
         scope.launch {
             runCatching { autofillPreferences.ensureBitwardenV2EngineMode() }
@@ -361,6 +364,7 @@ class MonicaAutofillServiceNg : AutofillService() {
         )
 
         val inlineRequest = getInlineRequest(request)
+        val autofillAuthRequired = settingsManager.settingsFlow.first().autofillAuthRequired
         val response = bwCompatProcessor.process(
             packageName = packageName,
             uri = requestUri,
@@ -371,6 +375,7 @@ class MonicaAutofillServiceNg : AutofillService() {
             fieldSignatureKey = fieldSignatureKey,
             preferDirectAutoFill = isPasswordOnlyLogin && matchedPasswords.size == 1,
             passwordSuggestionEnabled = autofillPreferences.isPasswordSuggestionEnabled.first(),
+            requireAuthentication = autofillAuthRequired,
         )
 
         if (response == null) {

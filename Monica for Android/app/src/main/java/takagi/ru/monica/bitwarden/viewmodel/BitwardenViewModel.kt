@@ -1087,6 +1087,10 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
         reason: SyncTriggerReason,
         force: Boolean = false
     ) {
+        if (force || reason == SyncTriggerReason.MANUAL) {
+            syncOrchestrator.requestSync(vaultId, reason, force = true)
+            return
+        }
         val elapsed = System.currentTimeMillis() - processStartMs
         val remaining = COLD_START_AUTO_SYNC_GRACE_MS - elapsed
         if (remaining <= 0L) {

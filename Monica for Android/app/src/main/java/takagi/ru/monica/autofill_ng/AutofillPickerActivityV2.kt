@@ -397,6 +397,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                     keepassDatabases = keepassDatabases,
                     canSkipVerification = canOpenPicker,
                     biometricEnabled = settings.biometricEnabled,
+                    autoLockMinutes = settings.autoLockMinutes,
                     iconCardsEnabled = settings.iconCardsEnabled,
                     isManualMode = isManualMode,
                     showTargetContextInManualMode = imeMode,
@@ -1314,6 +1315,7 @@ private fun AutofillPickerContent(
     keepassDatabases: List<LocalKeePassDatabase>,
     canSkipVerification: Boolean = false,
     biometricEnabled: Boolean = false,
+    autoLockMinutes: Int = 5,
     iconCardsEnabled: Boolean = false,
     isManualMode: Boolean = false,
     showTargetContextInManualMode: Boolean = false,
@@ -1435,6 +1437,7 @@ private fun AutofillPickerContent(
                 isFirstTime = false,
                 disablePasswordVerification = false,
                 biometricEnabled = biometricEnabled,
+                autoLockMinutes = autoLockMinutes,
                 persistVaultUnlockToSession = false,
                 onVerifyPassword = { input -> securityManager.unlockVaultWithPassword(input) },
                 onSuccess = {

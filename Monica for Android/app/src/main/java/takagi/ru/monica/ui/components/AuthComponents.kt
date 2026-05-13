@@ -16,10 +16,7 @@ import androidx.fragment.app.FragmentActivity
 import takagi.ru.monica.R
 import takagi.ru.monica.security.MasterPasswordPolicy
 import takagi.ru.monica.security.SecurityManager
-import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.utils.BiometricAuthHelper
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
 
 private enum class PasswordVerificationBiometricAccessResult {
     PROCEED,
@@ -38,6 +35,7 @@ fun PasswordVerificationContent(
     isConfirmingPassword: Boolean = false,
     disablePasswordVerification: Boolean = false,
     biometricEnabled: Boolean = false,
+    autoLockMinutes: Int = 5,
     persistVaultUnlockToSession: Boolean = true,
     onVerifyPassword: (String) -> Boolean,
     onSetPassword: (String) -> Unit = {},
@@ -59,7 +57,6 @@ fun PasswordVerificationContent(
     // 生物识别帮助类
     val biometricHelper = remember { BiometricAuthHelper(context) }
     val securityManager = remember(context) { SecurityManager(context.applicationContext) }
-    val settingsManager = remember(context) { SettingsManager(context.applicationContext) }
     val isBiometricAvailable = remember { biometricHelper.isBiometricAvailable() }
     val canUseBiometric = !isFirstTime && isBiometricAvailable && biometricEnabled
     var autoBiometricTried by remember { mutableStateOf(false) }
@@ -80,9 +77,6 @@ fun PasswordVerificationContent(
             android.util.Log.d("PasswordVerification", "Biometric post-check: direct unlock succeeded")
             return PasswordVerificationBiometricAccessResult.PROCEED
         }
-        val autoLockMinutes = runCatching {
-            runBlocking { settingsManager.settingsFlow.first().autoLockMinutes }
-        }.getOrDefault(5)
         if (securityManager.canAccessVaultMaterialNow()) {
             android.util.Log.d("PasswordVerification", "Biometric post-check: vault material accessible after retry")
             return PasswordVerificationBiometricAccessResult.PROCEED

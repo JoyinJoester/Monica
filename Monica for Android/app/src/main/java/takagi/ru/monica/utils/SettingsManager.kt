@@ -113,7 +113,7 @@ data class PageAdjustmentSettingsSnapshot(
     val validatorVibrationEnabled: Boolean = true,
     val copyNextCodeWhenExpiring: Boolean = false,
     val iconCardsEnabled: Boolean = true,
-    val appLauncherIcon: String = takagi.ru.monica.data.AppLauncherIcon.LOCK_CLASSIC.name,
+    val appLauncherIcon: String = takagi.ru.monica.data.AppLauncherIcon.MODERN.name,
     val appLauncherLabel: String = takagi.ru.monica.data.AppLauncherLabel.MONICA_PASS.name,
     val passwordPageIconEnabled: Boolean = true,
     val authenticatorPageIconEnabled: Boolean = true,
@@ -555,9 +555,9 @@ class SettingsManager(private val context: Context) {
             iconCardsEnabled = preferences[ICON_CARDS_ENABLED_KEY] ?: true,
             appLauncherIcon = runCatching {
                 AppLauncherIcon.valueOf(
-                    preferences[APP_LAUNCHER_ICON_KEY] ?: AppLauncherIcon.LOCK_CLASSIC.name
+                    preferences[APP_LAUNCHER_ICON_KEY] ?: AppLauncherIcon.MODERN.name
                 )
-            }.getOrDefault(AppLauncherIcon.LOCK_CLASSIC),
+            }.getOrDefault(AppLauncherIcon.MODERN),
             appLauncherLabel = runCatching {
                 AppLauncherLabel.valueOf(
                     preferences[APP_LAUNCHER_LABEL_KEY] ?: AppLauncherLabel.MONICA_PASS.name
@@ -1448,7 +1448,7 @@ class SettingsManager(private val context: Context) {
             preferences[ICON_CARDS_ENABLED_KEY] = snapshot.iconCardsEnabled
             val parsedAppLauncherIcon = runCatching {
                 AppLauncherIcon.valueOf(snapshot.appLauncherIcon.trim())
-            }.getOrDefault(AppLauncherIcon.LOCK_CLASSIC)
+            }.getOrDefault(AppLauncherIcon.MODERN)
             preferences[APP_LAUNCHER_ICON_KEY] = parsedAppLauncherIcon.name
             val parsedAppLauncherLabel = runCatching {
                 AppLauncherLabel.valueOf(snapshot.appLauncherLabel.trim())
@@ -1474,7 +1474,7 @@ class SettingsManager(private val context: Context) {
         }
         val appliedIcon = runCatching {
             AppLauncherIcon.valueOf(snapshot.appLauncherIcon.trim())
-        }.getOrDefault(AppLauncherIcon.LOCK_CLASSIC)
+        }.getOrDefault(AppLauncherIcon.MODERN)
         val appliedLabel = runCatching {
             AppLauncherLabel.valueOf(snapshot.appLauncherLabel.trim())
         }.getOrDefault(AppLauncherLabel.MONICA_PASS)
@@ -1682,3 +1682,4 @@ class SettingsManager(private val context: Context) {
     }
     
 }
+

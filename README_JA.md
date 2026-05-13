@@ -4,7 +4,7 @@
 
 [中文](README.md) | [English](README_EN.md) | **日本語** | [Tiếng Việt](README_VI.md) | [Русский](README_RU.md) | [黑羽川](readme_Nya.md)
 
-<img src="documentation\image\Monicaico.png" alt="Monica App Icon" width="112" />
+<img src="image/themepng.png" alt="Monica App Icon" width="112" />
 
 <p><strong>Bitwarden と KeePass をつなぐローカル優先のパスワード保管庫</strong></p>
 <p>Android / Browser · Local Vault · TOTP · WebDAV Backup</p>
@@ -36,7 +36,9 @@ Monica は **Bitwarden** と **KeePass** を統合するローカルパスワー
 
 > Monica for Windows はアーカイブ済みです。過去コード: [Monica-for-Windows](https://github.com/JoyinJoester/Monica-for-Windows)
 >
-> 現在このプロジェクトは主に私一人で保守しているため、使える時間とリソースに限りがあります。そのため、Monica for Wear と Monica for Browser は当面のあいだ継続的な更新が難しい状況です。現段階では Monica for Android の機能改善、使い勝手の向上、安定性の維持に注力していきます。ご理解とご支援に感謝します。
+> Monica for Browser はアーカイブ済みです。新しい Monica Extension は現在リライト・開発中です。お楽しみに。
+>
+> 現在このプロジェクトは主に私一人で保守しているため、使える時間とリソースに限りがあります。そのため、Monica for Wear は当面のあいだ継続的な更新が難しい状況です。現段階では Monica for Android の機能改善、使い勝手の向上、安定性の維持に注力していきます。ご理解とご支援に感謝します。
 
 ---
 

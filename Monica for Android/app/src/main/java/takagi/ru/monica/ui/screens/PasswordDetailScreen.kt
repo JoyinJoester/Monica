@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionScope
@@ -18,10 +19,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -122,6 +121,38 @@ private data class PasswordStorageInfo(
     val folderPath: String
 )
 
+private fun resolvePasswordDetailGroupPasswords(
+    entry: PasswordEntry,
+    allPasswords: List<PasswordEntry>
+): List<PasswordEntry> {
+    val replicaGroupId = entry.replicaGroupId?.takeIf { it.isNotBlank() }
+    val key = getPasswordInfoKey(entry)
+    val currentAll = if (allPasswords.isEmpty()) {
+        listOf(entry)
+    } else {
+        allPasswords.map { candidate ->
+            if (candidate.id == entry.id) entry else candidate
+        }
+    }
+    return currentAll.filter {
+        if (replicaGroupId != null) {
+            it.replicaGroupId == replicaGroupId
+        } else {
+            getPasswordInfoKey(it) == key
+        }
+    }.sortedWith(
+        compareBy<PasswordEntry> {
+            when {
+                it.isLocalOnlyEntry() -> 0
+                it.isKeePassEntry() -> 1
+                else -> 2
+            }
+        }.thenBy { it.keepassDatabaseId ?: Long.MAX_VALUE }
+            .thenBy { it.bitwardenVaultId ?: Long.MAX_VALUE }
+            .thenBy { it.id }
+    )
+}
+
 /**
  * 密码详情页 (Password Detail Screen)
  * 
@@ -160,13 +191,19 @@ fun PasswordDetailScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    val scrollState = rememberScrollState()
     val settingsManager = remember { SettingsManager(context) }
     val settings by settingsManager.settingsFlow.collectAsState(initial = AppSettings())
     val database = remember { PasswordDatabase.getDatabase(context.applicationContext) }
     val categories by viewModel.categories.collectAsState(initial = emptyList())
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
     val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
+    var isLeavingDetail by remember { mutableStateOf(false) }
+    fun requestNavigateBack() {
+        if (isLeavingDetail) return
+        isLeavingDetail = true
+        onNavigateBack()
+    }
+    BackHandler(onBack = ::requestNavigateBack)
     
     // 密码条目状态
     var passwordEntry by remember { mutableStateOf<PasswordEntry?>(null) }
@@ -280,7 +317,7 @@ fun PasswordDetailScreen(
             // Fallback: Delete current main entry
             passwordEntry?.let { entry ->
                 viewModel.deletePasswordEntry(entry)
-                onNavigateBack()
+                requestNavigateBack()
             }
         }
         showDeleteDialog = false
@@ -377,84 +414,113 @@ fun PasswordDetailScreen(
 
     // 加载密码详情
     // We need to observe all passwords to detect updates/siblings
-    val allPasswords by viewModel.allPasswords.collectAsState(initial = emptyList())
-    
-    LaunchedEffect(passwordId, allPasswords) {
-        if (allPasswords.isNotEmpty()) {
-            val entry = allPasswords.find { it.id == passwordId }
-            if (entry != null) {
-                passwordEntry = entry
-                
-                val replicaGroupId = entry.replicaGroupId?.takeIf { it.isNotBlank() }
-                val key = getPasswordInfoKey(entry)
-                groupPasswords = allPasswords.filter {
-                    if (replicaGroupId != null) {
-                        it.replicaGroupId == replicaGroupId
-                    } else {
-                        getPasswordInfoKey(it) == key
-                    }
-                }.sortedWith(
-                    compareBy<PasswordEntry> {
-                        when {
-                            it.isLocalOnlyEntry() -> 0
-                            it.isKeePassEntry() -> 1
-                            else -> 2
-                        }
-                    }.thenBy { it.keepassDatabaseId ?: Long.MAX_VALUE }
-                        .thenBy { it.bitwardenVaultId ?: Long.MAX_VALUE }
-                        .thenBy { it.id }
-                )
-                val detailPasswords = if (!entry.replicaGroupId.isNullOrBlank()) {
-                    listOf(entry)
-                } else {
-                    groupPasswords.ifEmpty { listOf(entry) }
-                }
-                val (resolvedDisplayPasswords, resolvedUnavailableSources) = withContext(Dispatchers.IO) {
-                    val passwordValues = mutableMapOf<Long, String>()
-                    val unavailableSources = mutableMapOf<Long, PasswordSource>()
-                    detailPasswords.forEach { current ->
-                        val rawCurrent = viewModel.getRawPasswordEntryById(current.id) ?: current
-                        when (val secretState = viewModel.inspectSecretState(rawCurrent)) {
-                            is SecretValueState.Available -> {
-                                passwordValues[current.id] = secretState.value
-                            }
+    // Use allPasswordsForUi (no plaintext passwords) to avoid triggering full re-decryption on every list change
+    val allPasswords by viewModel.allPasswordsForUi.collectAsState(initial = emptyList())
 
-                            SecretValueState.Empty,
-                            SecretValueState.Hidden -> {
-                                passwordValues[current.id] = ""
-                            }
+    // Initial load: fetch entry directly from DB without waiting for allPasswords Flow
+    LaunchedEffect(passwordId) {
+        val entry = withContext(Dispatchers.IO) {
+            viewModel.getRawPasswordEntryById(passwordId)
+        } ?: return@LaunchedEffect
 
-                            is SecretValueState.Unreadable -> {
-                                unavailableSources[current.id] = secretState.source
-                            }
-                        }
-                    }
-                    passwordValues to unavailableSources
-                }
-                displayPasswords = resolvedDisplayPasswords
-                unavailablePasswordSources = resolvedUnavailableSources
-                
-                // 加载自定义字段 (添加错误处理)
-                try {
-                    customFields = viewModel.getCustomFieldsByEntryIdSync(passwordId)
-                } catch (_: CancellationException) {
-                    // Ignore cancellation when leaving composition.
-                } catch (e: Exception) {
-                    android.util.Log.e("PasswordDetailScreen", "Error loading custom fields", e)
-                    customFields = emptyList()
-                }
-                
-                // 根据数据内容设置折叠状态
-                personalInfoExpanded = hasPersonalInfo(entry)
-                addressInfoExpanded = hasAddressInfo(entry)
-                paymentInfoExpanded = hasPaymentInfo(entry)
-            } else {
-                // Entry deleted or not found
-                // If groupPasswords was not empty, maybe we switched to another sibling? 
-                // But passwordId is fixed param.
-                // onNavigateBack() // Only if we want to auto-close
-            }
+        val resolvedGroupPasswords = withContext(Dispatchers.Default) {
+            resolvePasswordDetailGroupPasswords(entry, allPasswords)
         }
+        val detailPasswords = resolvedGroupPasswords.ifEmpty { listOf(entry) }
+        val (resolvedDisplayPasswords, resolvedUnavailableSources) = withContext(Dispatchers.IO) {
+            val passwordValues = mutableMapOf<Long, String>()
+            val unavailableSources = mutableMapOf<Long, PasswordSource>()
+            detailPasswords.forEach { current ->
+                val rawCurrent = viewModel.getRawPasswordEntryById(current.id) ?: current
+                when (val secretState = viewModel.inspectSecretState(rawCurrent)) {
+                    is SecretValueState.Available -> {
+                        passwordValues[current.id] = secretState.value
+                    }
+
+                    SecretValueState.Empty,
+                    SecretValueState.Hidden -> {
+                        passwordValues[current.id] = ""
+                    }
+
+                    is SecretValueState.Unreadable -> {
+                        unavailableSources[current.id] = secretState.source
+                    }
+                }
+            }
+            passwordValues to unavailableSources
+        }
+
+        // 加载自定义字段 (添加错误处理)
+        val resolvedCustomFields = try {
+            withContext(Dispatchers.IO) {
+                viewModel.getCustomFieldsByEntryIdSync(passwordId)
+            }
+        } catch (_: CancellationException) {
+            throw CancellationException()
+        } catch (e: Exception) {
+            android.util.Log.e("PasswordDetailScreen", "Error loading custom fields", e)
+            emptyList<CustomField>()
+        }
+
+        if (isLeavingDetail) return@LaunchedEffect
+
+        groupPasswords = resolvedGroupPasswords
+        displayPasswords = resolvedDisplayPasswords
+        unavailablePasswordSources = resolvedUnavailableSources
+        customFields = resolvedCustomFields
+        // 根据数据内容设置折叠状态
+        personalInfoExpanded = hasPersonalInfo(entry)
+        addressInfoExpanded = hasAddressInfo(entry)
+        paymentInfoExpanded = hasPaymentInfo(entry)
+        passwordEntry = entry
+    }
+
+    // Lightweight observer: update passwordEntry metadata when allPasswords changes (e.g. after edit)
+    LaunchedEffect(allPasswords, passwordEntry?.id) {
+        if (allPasswords.isEmpty()) return@LaunchedEffect
+        if (passwordEntry == null) return@LaunchedEffect
+        val currentEntry = passwordEntry ?: return@LaunchedEffect
+        val updatedEntryFromList = allPasswords.find { it.id == passwordId } ?: return@LaunchedEffect
+        val updatedEntry = if (
+            updatedEntryFromList.password.isBlank() &&
+            currentEntry.password.isNotBlank()
+        ) {
+            updatedEntryFromList.copy(password = currentEntry.password)
+        } else {
+            updatedEntryFromList
+        }
+        val resolvedGroupPasswords = withContext(Dispatchers.Default) {
+            resolvePasswordDetailGroupPasswords(updatedEntry, allPasswords)
+        }
+        if (isLeavingDetail) return@LaunchedEffect
+        passwordEntry = updatedEntry
+        groupPasswords = resolvedGroupPasswords
+        val detailPasswords = resolvedGroupPasswords.ifEmpty { listOf(updatedEntry) }
+        val (resolvedDisplayPasswords, resolvedUnavailableSources) = withContext(Dispatchers.IO) {
+            val passwordValues = mutableMapOf<Long, String>()
+            val unavailableSources = mutableMapOf<Long, PasswordSource>()
+            detailPasswords.forEach { current ->
+                val rawCurrent = viewModel.getRawPasswordEntryById(current.id) ?: current
+                when (val secretState = viewModel.inspectSecretState(rawCurrent)) {
+                    is SecretValueState.Available -> {
+                        passwordValues[current.id] = secretState.value
+                    }
+
+                    SecretValueState.Empty,
+                    SecretValueState.Hidden -> {
+                        passwordValues[current.id] = ""
+                    }
+
+                    is SecretValueState.Unreadable -> {
+                        unavailableSources[current.id] = secretState.source
+                    }
+                }
+            }
+            passwordValues to unavailableSources
+        }
+        if (isLeavingDetail) return@LaunchedEffect
+        displayPasswords = resolvedDisplayPasswords
+        unavailablePasswordSources = resolvedUnavailableSources
     }
 
     LaunchedEffect(groupPasswords) {
@@ -493,7 +559,7 @@ fun PasswordDetailScreen(
             TopAppBar(
                 title = { Text(passwordEntry?.title ?: stringResource(R.string.password_details)) },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    IconButton(onClick = ::requestNavigateBack) {
                         Icon(
                             imageVector = MonicaIcons.Navigation.back,
                             contentDescription = stringResource(R.string.back)
@@ -557,370 +623,372 @@ fun PasswordDetailScreen(
         }
     ) { paddingValues ->
         passwordEntry?.let { entry ->
-            Column(
-                modifier = modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-                    .verticalScroll(scrollState)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+            val storageInfoEntries = remember(
+                groupPasswords,
+                entry,
+                categories,
+                keepassDatabases,
+                bitwardenVaults,
+                bitwardenFoldersByVault,
+                settings,
+                context
             ) {
-                // ==========================================
-                // 🎯 头部区域 - 居中大图标
-                // ==========================================
-                HeaderSection(
-                    entry = entry,
-                    iconCardsEnabled = iconCardsEnabled,
-                    unmatchedIconHandlingStrategy = unmatchedIconHandlingStrategy
-                )
-
-                val storageInfoEntries = remember(
-                    groupPasswords,
-                    entry,
-                    categories,
-                    keepassDatabases,
-                    bitwardenVaults,
-                    bitwardenFoldersByVault,
-                    settings,
-                    context
-                ) {
-                    val entries = groupPasswords.ifEmpty { listOf(entry) }
-                    val infos = entries.map { candidate ->
-                        buildPasswordStorageInfo(
-                            entry = candidate,
-                            categories = categories,
-                            keepassDatabases = keepassDatabases,
-                            bitwardenVaults = bitwardenVaults,
-                            bitwardenFoldersByVault = bitwardenFoldersByVault,
-                            localSourceLabel = context.getString(R.string.database_source_local),
-                            keepassSourceLabel = context.getString(R.string.database_source_keepass),
-                            bitwardenSourceLabel = context.getString(R.string.filter_bitwarden),
-                            passwordOwnerConflictShortLabel = context.getString(R.string.password_owner_conflict_short),
-                            passwordOwnerConflictDatabaseLabel = context.getString(R.string.password_owner_conflict_database),
-                            passwordOwnerConflictDisplayLabel = context.getString(R.string.password_owner_conflict_display),
-                            rootLabel = context.getString(R.string.folder_no_folder_root)
-                        )
-                    }
-                    val currentInfo = infos.firstOrNull { it.entryId == entry.id }
-                        ?: buildPasswordStorageInfo(
-                            entry = entry,
-                            categories = categories,
-                            keepassDatabases = keepassDatabases,
-                            bitwardenVaults = bitwardenVaults,
-                            bitwardenFoldersByVault = bitwardenFoldersByVault,
-                            localSourceLabel = context.getString(R.string.database_source_local),
-                            keepassSourceLabel = context.getString(R.string.database_source_keepass),
-                            bitwardenSourceLabel = context.getString(R.string.filter_bitwarden),
-                            passwordOwnerConflictShortLabel = context.getString(R.string.password_owner_conflict_short),
-                            passwordOwnerConflictDatabaseLabel = context.getString(R.string.password_owner_conflict_database),
-                            passwordOwnerConflictDisplayLabel = context.getString(R.string.password_owner_conflict_display),
-                            rootLabel = context.getString(R.string.folder_no_folder_root)
-                        )
-                    listOf(currentInfo) + infos
-                        .filterNot { it.entryId == entry.id }
-                        .filterNot { it.locationKey == currentInfo.locationKey }
-                        .distinctBy { it.locationKey }
-                }
-                val dateFormatter = remember { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT) }
-                val createdAtText = remember(entry.createdAt) { dateFormatter.format(entry.createdAt) }
-                val updatedAtText = remember(entry.updatedAt) { dateFormatter.format(entry.updatedAt) }
-                
-                // ==========================================
-                // 🔐 基本信息卡片
-                // ==========================================
-                // ==========================================
-                // 🔐 基本信息卡片 (Common Info)
-                // ==========================================
-                val shouldShowBasicInfo = if (settings.separateUsernameAccountEnabled) {
-                    entry.username.isNotEmpty() || separatedUsername.isNotEmpty()
-                } else {
-                    entry.username.isNotEmpty()
-                }
-                if (shouldShowBasicInfo) {
-                    BasicInfoCard(
-                        entry = entry,
-                        context = context,
-                        separateUsernameAccountEnabled = settings.separateUsernameAccountEnabled,
-                        separatedUsername = separatedUsername
+                val entries = groupPasswords.ifEmpty { listOf(entry) }
+                val infos = entries.map { candidate ->
+                    buildPasswordStorageInfo(
+                        entry = candidate,
+                        categories = categories,
+                        keepassDatabases = keepassDatabases,
+                        bitwardenVaults = bitwardenVaults,
+                        bitwardenFoldersByVault = bitwardenFoldersByVault,
+                        localSourceLabel = context.getString(R.string.database_source_local),
+                        keepassSourceLabel = context.getString(R.string.database_source_keepass),
+                        bitwardenSourceLabel = context.getString(R.string.filter_bitwarden),
+                        passwordOwnerConflictShortLabel = context.getString(R.string.password_owner_conflict_short),
+                        passwordOwnerConflictDatabaseLabel = context.getString(R.string.password_owner_conflict_database),
+                        passwordOwnerConflictDisplayLabel = context.getString(R.string.password_owner_conflict_display),
+                        rootLabel = context.getString(R.string.folder_no_folder_root)
                     )
                 }
-                
-                // ==========================================
-                // 🔗 SSO 第三方登录信息卡片
-                // ==========================================
-                if (entry.isSsoLogin()) {
-                    val refEntry = if (entry.ssoRefEntryId != null) {
-                        allPasswords.find { it.id == entry.ssoRefEntryId }
-                    } else null
-                    
-                    SsoLoginCard(
+                val currentInfo = infos.firstOrNull { it.entryId == entry.id }
+                    ?: buildPasswordStorageInfo(
                         entry = entry,
-                        refEntry = refEntry,
-                        context = context
+                        categories = categories,
+                        keepassDatabases = keepassDatabases,
+                        bitwardenVaults = bitwardenVaults,
+                        bitwardenFoldersByVault = bitwardenFoldersByVault,
+                        localSourceLabel = context.getString(R.string.database_source_local),
+                        keepassSourceLabel = context.getString(R.string.database_source_keepass),
+                        bitwardenSourceLabel = context.getString(R.string.filter_bitwarden),
+                        passwordOwnerConflictShortLabel = context.getString(R.string.password_owner_conflict_short),
+                        passwordOwnerConflictDatabaseLabel = context.getString(R.string.password_owner_conflict_database),
+                        passwordOwnerConflictDisplayLabel = context.getString(R.string.password_owner_conflict_display),
+                        rootLabel = context.getString(R.string.folder_no_folder_root)
                     )
-                }
-
-                // ==========================================
-                // 🔑 密码列表
-                // ==========================================
-                val detailPasswords = if (!entry.replicaGroupId.isNullOrBlank()) {
-                    listOf(entry)
-                } else {
-                    groupPasswords.ifEmpty { listOf(entry) }
-                }
-                val shouldShowPasswordCard = detailPasswords.any { passwordEntry ->
+                listOf(currentInfo) + infos
+                    .filterNot { it.entryId == entry.id }
+                    .filterNot { it.locationKey == currentInfo.locationKey }
+                    .distinctBy { it.locationKey }
+            }
+            val dateFormatter = remember { DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT) }
+            val createdAtText = remember(entry.createdAt) { dateFormatter.format(entry.createdAt) }
+            val updatedAtText = remember(entry.updatedAt) { dateFormatter.format(entry.updatedAt) }
+            val shouldShowBasicInfo = if (settings.separateUsernameAccountEnabled) {
+                entry.username.isNotEmpty() || separatedUsername.isNotEmpty()
+            } else {
+                entry.username.isNotEmpty()
+            }
+            val refEntry = remember(entry.ssoRefEntryId, allPasswords) {
+                entry.ssoRefEntryId?.let { refId -> allPasswords.find { it.id == refId } }
+            }
+            val detailPasswords = remember(entry, groupPasswords) {
+                groupPasswords.ifEmpty { listOf(entry) }
+            }
+            val shouldShowPasswordCard = remember(detailPasswords, unavailablePasswordSources) {
+                detailPasswords.any { passwordEntry ->
                     passwordEntry.password.isNotBlank() || unavailablePasswordSources[passwordEntry.id] != null
                 }
-                if (shouldShowPasswordCard) {
-                    PasswordListCard(
-                        passwords = detailPasswords,
-                        displayPasswords = displayPasswords,
-                        unavailablePasswordSources = unavailablePasswordSources,
-                        onResyncUnreadable = { targetEntry ->
-                            if (isResyncingUnreadablePassword) return@PasswordListCard
-                            coroutineScope.launch {
-                                isResyncingUnreadablePassword = true
-                                val result = viewModel.recoverUnreadableBitwardenEntry(targetEntry.id)
-                                val message = when (result) {
-                                    BitwardenRecoveryResult.Success ->
-                                        context.getString(R.string.bitwarden_password_resync_success)
-                                    is BitwardenRecoveryResult.Error ->
-                                        context.getString(R.string.bitwarden_password_resync_failed, result.message)
-                                    is BitwardenRecoveryResult.EmptyVaultBlocked ->
-                                        context.getString(R.string.bitwarden_password_resync_blocked, result.reason)
-                                }
-                                Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
-                                isResyncingUnreadablePassword = false
-                            }
-                        },
-                        isResyncingUnreadable = isResyncingUnreadablePassword,
-                        showSecurityAnalysis = settings.passwordDetailSecurityAnalysisEnabled,
-                        onDelete = { targetEntry ->
-                            itemToDelete = targetEntry
-                            showDeleteDialog = true
-                        },
-                        context = context
+            }
+            val websiteTargets = remember(entry.website) { normalizeWebsiteUrls(entry.website) }
+            val bindingSummaries = remember(entry.passkeyBindings, boundPasskeys) {
+                val fromField = PasskeyBindingCodec.decodeList(entry.passkeyBindings)
+                    .map { binding ->
+                        listOf(
+                            binding.rpName.ifBlank { binding.rpId },
+                            binding.userDisplayName.ifBlank { binding.userName }
+                        ).filter { it.isNotBlank() }.joinToString(" · ")
+                    }
+                    .filter { it.isNotBlank() }
+
+                if (fromField.isNotEmpty()) {
+                    fromField
+                } else {
+                    boundPasskeys.map { passkey ->
+                        listOf(
+                            passkey.rpName,
+                            passkey.userDisplayName.ifBlank { passkey.userName },
+                            passkey.rpId
+                        ).filter { it.isNotBlank() }.joinToString(" · ")
+                    }.filter { it.isNotBlank() }
+                }
+            }
+            val shouldShowBitwardenSnapshotSection =
+                entry.bitwardenVaultId != null && !entry.bitwardenCipherId.isNullOrBlank()
+
+            LaunchedEffect(entry.id, entry.passkeyBindings, boundPasskeys) {
+                if (entry.passkeyBindings.isBlank() && boundPasskeys.isNotEmpty()) {
+                    val bindings = boundPasskeys.map { passkey ->
+                        PasskeyBinding(
+                            credentialId = passkey.credentialId,
+                            rpId = passkey.rpId,
+                            rpName = passkey.rpName,
+                            userName = passkey.userName,
+                            userDisplayName = passkey.userDisplayName
+                        )
+                    }
+                    val encoded = PasskeyBindingCodec.encodeList(bindings)
+                    viewModel.updatePasskeyBindings(entry.id, encoded)
+                }
+            }
+
+            LazyColumn(
+                modifier = modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                item("header") {
+                    HeaderSection(
+                        entry = entry,
+                        iconCardsEnabled = iconCardsEnabled,
+                        unmatchedIconHandlingStrategy = unmatchedIconHandlingStrategy
                     )
+                }
+
+                if (shouldShowBasicInfo) {
+                    item("basic_info") {
+                        BasicInfoCard(
+                            entry = entry,
+                            context = context,
+                            separateUsernameAccountEnabled = settings.separateUsernameAccountEnabled,
+                            separatedUsername = separatedUsername
+                        )
+                    }
+                }
+
+                if (entry.isSsoLogin()) {
+                    item("sso_login") {
+                        SsoLoginCard(
+                            entry = entry,
+                            refEntry = refEntry,
+                            context = context
+                        )
+                    }
+                }
+
+                if (shouldShowPasswordCard) {
+                    item("passwords") {
+                        PasswordListCard(
+                            passwords = detailPasswords,
+                            displayPasswords = displayPasswords,
+                            unavailablePasswordSources = unavailablePasswordSources,
+                            onResyncUnreadable = { targetEntry ->
+                                if (isResyncingUnreadablePassword) return@PasswordListCard
+                                coroutineScope.launch {
+                                    isResyncingUnreadablePassword = true
+                                    val result = viewModel.recoverUnreadableBitwardenEntry(targetEntry.id)
+                                    val message = when (result) {
+                                        BitwardenRecoveryResult.Success ->
+                                            context.getString(R.string.bitwarden_password_resync_success)
+                                        is BitwardenRecoveryResult.Error ->
+                                            context.getString(R.string.bitwarden_password_resync_failed, result.message)
+                                        is BitwardenRecoveryResult.EmptyVaultBlocked ->
+                                            context.getString(R.string.bitwarden_password_resync_blocked, result.reason)
+                                    }
+                                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                                    isResyncingUnreadablePassword = false
+                                }
+                            },
+                            isResyncingUnreadable = isResyncingUnreadablePassword,
+                            showSecurityAnalysis = settings.passwordDetailSecurityAnalysisEnabled,
+                            onDelete = { targetEntry ->
+                                itemToDelete = targetEntry
+                                showDeleteDialog = true
+                            },
+                            context = context
+                        )
+                    }
                 }
 
                 if (settings.passwordDetailSecurityAnalysisEnabled) {
-                    PasswordDetailSecurityAnalysisCard(
-                        hasTwoFactor = linkedTotp != null || entry.authenticatorKey.isNotBlank(),
-                        hasBoundPasskey = boundPasskeys.isNotEmpty() || entry.passkeyBindings.isNotBlank(),
-                        passkeyAvailable = isPasskeyAvailableForEntry(
-                            entry = entry,
-                            signinDomains = passkeySigninDomains,
-                            catalog = passkeySupportCatalog
+                    item("security_analysis") {
+                        PasswordDetailSecurityAnalysisCard(
+                            hasTwoFactor = linkedTotp != null || entry.authenticatorKey.isNotBlank(),
+                            hasBoundPasskey = boundPasskeys.isNotEmpty() || entry.passkeyBindings.isNotBlank(),
+                            passkeyAvailable = isPasskeyAvailableForEntry(
+                                entry = entry,
+                                signinDomains = passkeySigninDomains,
+                                catalog = passkeySupportCatalog
+                            )
                         )
-                    )
-                }
-
-                val websiteTargets = remember(entry.website) { normalizeWebsiteUrls(entry.website) }
-                if (websiteTargets.isNotEmpty()) {
-                    WebsiteCard(
-                        websites = websiteTargets,
-                        context = context
-                    )
-                }
-
-                if (displayCustomFields.isNotEmpty()) {
-                    CustomFieldsCard(
-                        fields = displayCustomFields,
-                        visibilityState = customFieldVisibility,
-                        context = context
-                    )
-                }
-
-                // 附件区块（仅本地附件；Bitwarden/KeePass 附件目前只做元数据展示）
-                takagi.ru.monica.attachments.ui.AttachmentsDetailSection(
-                    passwordId = entry.id
-                )
-
-                if (noteViewModel != null) {
-                    BoundNoteCard(
-                        boundNote = boundNote,
-                        hasBoundNoteReference = entry.boundNoteId != null,
-                        onOpenBoundNote = {
-                            boundNote?.id?.let(onOpenBoundNote)
-                        },
-                        onChangeBoundNote = { showBoundNotePicker = true },
-                        onClearBoundNote = {
-                            viewModel.updateBoundNoteId(entry.id, null)
-                            passwordEntry = entry.copy(boundNoteId = null)
-                        }
-                    )
-                }
-
-                StorageInfoCard(
-                    currentInfo = storageInfoEntries.first(),
-                    otherInfos = storageInfoEntries.drop(1),
-                    onOpenPassword = onOpenPassword,
-                    onEditPassword = onEditPassword
-                )
-
-                TimeInfoCard(
-                    createdAt = createdAtText,
-                    updatedAt = updatedAtText
-                )
-                
-                // ==========================================
-                // 🔑 2FA / TOTP 卡片 (如果有关联应用)
-                // ==========================================
-                // ==========================================
-                // 🔑 2FA / TOTP 卡片 (如果有关联应用或TOTP)
-                // ==========================================
-                if (entry.appPackageName.isNotEmpty() || entry.appName.isNotEmpty() || linkedTotp != null) {
-                    TotpCard(
-                        entry = entry,
-                        totpData = linkedTotp,
-                        code = totpCode,
-                        progress = totpProgress,
-                        context = context
-                    )
-                }
-
-                val bindingSummaries = remember(entry.passkeyBindings, boundPasskeys) {
-                    val fromField = PasskeyBindingCodec.decodeList(entry.passkeyBindings)
-                        .map { binding ->
-                            listOf(
-                                binding.rpName.ifBlank { binding.rpId },
-                                binding.userDisplayName.ifBlank { binding.userName }
-                            ).filter { it.isNotBlank() }.joinToString(" · ")
-                        }
-                        .filter { it.isNotBlank() }
-
-                    if (fromField.isNotEmpty()) {
-                        fromField
-                    } else {
-                        boundPasskeys.map { passkey ->
-                            listOf(
-                                passkey.rpName,
-                                passkey.userDisplayName.ifBlank { passkey.userName },
-                                passkey.rpId
-                            ).filter { it.isNotBlank() }.joinToString(" · ")
-                        }.filter { it.isNotBlank() }
                     }
                 }
 
-                LaunchedEffect(entry.id, entry.passkeyBindings, boundPasskeys) {
-                    if (entry.passkeyBindings.isBlank() && boundPasskeys.isNotEmpty()) {
-                        val bindings = boundPasskeys.map { passkey ->
-                            PasskeyBinding(
-                                credentialId = passkey.credentialId,
-                                rpId = passkey.rpId,
-                                rpName = passkey.rpName,
-                                userName = passkey.userName,
-                                userDisplayName = passkey.userDisplayName
-                            )
-                        }
-                        val encoded = PasskeyBindingCodec.encodeList(bindings)
-                        viewModel.updatePasskeyBindings(entry.id, encoded)
+                if (websiteTargets.isNotEmpty()) {
+                    item("websites") {
+                        WebsiteCard(
+                            websites = websiteTargets,
+                            context = context
+                        )
+                    }
+                }
+
+                if (displayCustomFields.isNotEmpty()) {
+                    item("custom_fields") {
+                        CustomFieldsCard(
+                            fields = displayCustomFields,
+                            visibilityState = customFieldVisibility,
+                            context = context
+                        )
+                    }
+                }
+
+                item("attachments") {
+                    takagi.ru.monica.attachments.ui.AttachmentsDetailSection(
+                        passwordId = entry.id
+                    )
+                }
+
+                if (noteViewModel != null) {
+                    item("bound_note") {
+                        BoundNoteCard(
+                            boundNote = boundNote,
+                            hasBoundNoteReference = entry.boundNoteId != null,
+                            onOpenBoundNote = {
+                                boundNote?.id?.let(onOpenBoundNote)
+                            },
+                            onChangeBoundNote = { showBoundNotePicker = true },
+                            onClearBoundNote = {
+                                viewModel.updateBoundNoteId(entry.id, null)
+                                passwordEntry = entry.copy(boundNoteId = null)
+                            }
+                        )
+                    }
+                }
+
+                item("storage_info") {
+                    StorageInfoCard(
+                        currentInfo = storageInfoEntries.first(),
+                        otherInfos = storageInfoEntries.drop(1),
+                        onOpenPassword = onOpenPassword,
+                        onEditPassword = onEditPassword
+                    )
+                }
+
+                item("time_info") {
+                    TimeInfoCard(
+                        createdAt = createdAtText,
+                        updatedAt = updatedAtText
+                    )
+                }
+
+                if (entry.appPackageName.isNotEmpty() || entry.appName.isNotEmpty() || linkedTotp != null) {
+                    item("totp") {
+                        TotpCard(
+                            entry = entry,
+                            totpData = linkedTotp,
+                            code = totpCode,
+                            progress = totpProgress,
+                            context = context
+                        )
                     }
                 }
 
                 if (boundPasskeys.isNotEmpty() || bindingSummaries.isNotEmpty()) {
-                    Text(
-                        text = stringResource(R.string.passkey_bound_label),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(top = 12.dp)
-                    )
-                    PasskeyBoundCard(
-                        passkeys = boundPasskeys,
-                        bindingSummaries = bindingSummaries
-                    )
+                    item("passkeys") {
+                        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                            Text(
+                                text = stringResource(R.string.passkey_bound_label),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(top = 12.dp)
+                            )
+                            PasskeyBoundCard(
+                                passkeys = boundPasskeys,
+                                bindingSummaries = bindingSummaries
+                            )
+                        }
+                    }
                 }
 
-                // ==========================================
-                // 📧 个人信息区块
-                // ==========================================
                 if (hasPersonalInfo(entry)) {
-                    CollapsibleSection(
-                        title = stringResource(R.string.personal_info),
-                        icon = MonicaIcons.General.person,
-                        expanded = personalInfoExpanded,
-                        onToggle = { personalInfoExpanded = !personalInfoExpanded }
-                    ) {
-                        PersonalInfoContent(entry = entry, context = context)
+                    item("personal_info") {
+                        CollapsibleSection(
+                            title = stringResource(R.string.personal_info),
+                            icon = MonicaIcons.General.person,
+                            expanded = personalInfoExpanded,
+                            onToggle = { personalInfoExpanded = !personalInfoExpanded }
+                        ) {
+                            PersonalInfoContent(entry = entry, context = context)
+                        }
                     }
                 }
-                
-                // ==========================================
-                // 🏠 地址信息区块
-                // ==========================================
+
                 if (hasAddressInfo(entry)) {
-                    CollapsibleSection(
-                        title = stringResource(R.string.address_info),
-                        icon = Icons.Default.Home,
-                        expanded = addressInfoExpanded,
-                        onToggle = { addressInfoExpanded = !addressInfoExpanded }
-                    ) {
-                        AddressInfoContent(entry = entry)
+                    item("address_info") {
+                        CollapsibleSection(
+                            title = stringResource(R.string.address_info),
+                            icon = Icons.Default.Home,
+                            expanded = addressInfoExpanded,
+                            onToggle = { addressInfoExpanded = !addressInfoExpanded }
+                        ) {
+                            AddressInfoContent(entry = entry)
+                        }
                     }
                 }
-                
-                // ==========================================
-                // 💳 支付信息区块
-                // ==========================================
+
                 if (hasPaymentInfo(entry)) {
-                    CollapsibleSection(
-                        title = stringResource(R.string.payment_info),
-                        icon = MonicaIcons.Data.creditCard,
-                        expanded = paymentInfoExpanded,
-                        onToggle = { paymentInfoExpanded = !paymentInfoExpanded }
+                    item("payment_info") {
+                        CollapsibleSection(
+                            title = stringResource(R.string.payment_info),
+                            icon = MonicaIcons.Data.creditCard,
+                            expanded = paymentInfoExpanded,
+                            onToggle = { paymentInfoExpanded = !paymentInfoExpanded }
+                        ) {
+                            PaymentInfoContent(
+                                entry = entry,
+                                cvvVisible = cvvVisible,
+                                onToggleCvvVisibility = { cvvVisible = !cvvVisible },
+                                context = context
+                            )
+                        }
+                    }
+                }
+
+                if (entry.notes.isNotEmpty()) {
+                    item("notes") {
+                        NotesCard(notes = entry.notes)
+                    }
+                }
+
+                item("password_history") {
+                    AnimatedVisibility(
+                        visible = passwordHistory.isNotEmpty(),
+                        enter = expandVertically(),
+                        exit = shrinkVertically()
                     ) {
-                        PaymentInfoContent(
-                            entry = entry,
-                            cvvVisible = cvvVisible,
-                            onToggleCvvVisibility = { cvvVisible = !cvvVisible },
+                        PasswordHistorySection(
+                            history = passwordHistory,
+                            visibilityState = passwordHistoryVisibility,
+                            context = context,
+                            onDeleteHistoryItem = { item ->
+                                historyItemToDelete = item
+                            },
+                            onClearHistory = {
+                                showClearHistoryDialog = true
+                            }
+                        )
+                    }
+                }
+
+                item("bitwarden_snapshot") {
+                    AnimatedVisibility(
+                        visible = shouldShowBitwardenSnapshotSection,
+                        enter = expandVertically(),
+                        exit = shrinkVertically()
+                    ) {
+                        BitwardenSyncSnapshotSection(
+                            currentPreview = currentBitwardenSnapshotPreview,
+                            history = bitwardenSyncRawHistory,
                             context = context
                         )
                     }
                 }
                 
-                // ==========================================
-                // 📝 备注区块
-                // ==========================================
-                if (entry.notes.isNotEmpty()) {
-                    NotesCard(notes = entry.notes)
+                item("bottom_spacer") {
+                    Spacer(modifier = Modifier.height(80.dp))
                 }
-
-                AnimatedVisibility(
-                    visible = passwordHistory.isNotEmpty(),
-                    enter = expandVertically(),
-                    exit = shrinkVertically()
-                ) {
-                    PasswordHistorySection(
-                        history = passwordHistory,
-                        visibilityState = passwordHistoryVisibility,
-                        context = context,
-                        onDeleteHistoryItem = { item ->
-                            historyItemToDelete = item
-                        },
-                        onClearHistory = {
-                            showClearHistoryDialog = true
-                        }
-                    )
-                }
-
-                val shouldShowBitwardenSnapshotSection =
-                    passwordEntry?.bitwardenVaultId != null &&
-                        !passwordEntry?.bitwardenCipherId.isNullOrBlank()
-
-                AnimatedVisibility(
-                    visible = shouldShowBitwardenSnapshotSection,
-                    enter = expandVertically(),
-                    exit = shrinkVertically()
-                ) {
-                    BitwardenSyncSnapshotSection(
-                        currentPreview = currentBitwardenSnapshotPreview,
-                        history = bitwardenSyncRawHistory,
-                        context = context
-                    )
-                }
-                
-                // 底部间距 (避免 ActionStrip 遮挡)
-                Spacer(modifier = Modifier.height(80.dp))
             }
         }
     }
@@ -936,7 +1004,7 @@ fun PasswordDetailScreen(
                         showArchiveDialog = false
                         if (target != null) {
                             viewModel.archivePassword(target.id)
-                            onNavigateBack()
+                            requestNavigateBack()
                         }
                     }
                 ) {

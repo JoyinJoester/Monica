@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import takagi.ru.monica.R
@@ -80,7 +81,7 @@ fun CustomFieldSectionHeader(
 /**
  * 单个自定义字段编辑卡片 (支持编辑/查看模式切换)
  * 
- * - 编辑模式：显示输入框、敏感开关、保存/删除按钮
+ * - 编辑模式：显示字段名称、字段内容、敏感开关
  * - 查看模式：紧凑显示，只有标题和内容，点击可编辑
  */
 @Composable
@@ -135,87 +136,72 @@ fun CustomFieldEditCard(
     }
     
     ElevatedCard(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+        ),
         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
     ) {
         if (isEditing) {
             // ========== 编辑模式 ==========
             Column(
-                modifier = Modifier.padding(16.dp),
+                modifier = Modifier.padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                // 顶部：标题和关闭按钮
-                Row(
+                // 顶部：字段名称和收起按钮
+                Box(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Text(
-                            text = displayTitle,
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.Medium,
-                            maxLines = 1
-                        )
-                    }
-                    // 关闭按钮（收起编辑，不删除）
-                    // 如果是空字段（未保存过）则删除，否则只收起
-                    IconButton(
-                        onClick = {
-                            if (field.title.isBlank() && field.value.isBlank()) {
-                                // 空字段直接删除
-                                onDelete()
-                            } else {
-                                // 已有内容，收起编辑
-                                isEditing = false
+                    OutlinedTextField(
+                        value = field.title,
+                        onValueChange = {
+                            if (!field.isPreset) {
+                                onFieldChange(field.copy(title = it))
                             }
                         },
-                        modifier = Modifier.size(40.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.KeyboardArrowUp,
-                            contentDescription = stringResource(R.string.collapse),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                
-                // 字段名称输入
-                OutlinedTextField(
-                    value = field.title,
-                    onValueChange = {
-                        if (!field.isPreset) {
-                            onFieldChange(field.copy(title = it))
+                        placeholder = {
+                            Text(
+                                text = stringResource(R.string.custom_field_name_placeholder),
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        readOnly = field.isPreset,
+                        singleLine = true,
+                        shape = RoundedCornerShape(14.dp),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        },
+                        trailingIcon = {
+                            IconButton(
+                                onClick = {
+                                    if (field.title.isBlank() && field.value.isBlank()) {
+                                        onDelete()
+                                    } else {
+                                        isEditing = false
+                                    }
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.KeyboardArrowUp,
+                                    contentDescription = stringResource(R.string.collapse),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
-                    },
-                    label = { Text(stringResource(R.string.custom_field_name)) },
-                    placeholder = { Text(stringResource(R.string.custom_field_name_placeholder)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    readOnly = field.isPreset,
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Label,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                )
-                
+                    )
+                }
+
                 // 字段值输入
                 OutlinedTextField(
                     value = field.value,
@@ -255,68 +241,95 @@ fun CustomFieldEditCard(
                 )
                 
                 // 敏感数据开关
-                Row(
+                Surface(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
-                        .clickable { 
+                        .clickable {
                             onFieldChange(field.copy(isProtected = !field.isProtected))
                             if (!field.isProtected) valueVisible = false
-                        }
-                        .padding(vertical = 8.dp, horizontal = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        },
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest
                 ) {
                     Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Icon(
-                            imageVector = if (field.isProtected) Icons.Default.Lock else Icons.Default.LockOpen,
-                            contentDescription = null,
-                            tint = if (field.isProtected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Column {
-                            Text(
-                                text = stringResource(R.string.custom_field_sensitive),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (field.isProtected) Icons.Default.Lock else Icons.Default.LockOpen,
+                                contentDescription = null,
+                                tint = if (field.isProtected) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                },
+                                modifier = Modifier.size(22.dp)
                             )
-                            Text(
-                                text = stringResource(R.string.custom_field_sensitive_hint),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            Column {
+                                Text(
+                                    text = stringResource(R.string.custom_field_sensitive),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Text(
+                                    text = stringResource(R.string.custom_field_sensitive_hint),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1
+                                )
+                            }
+                        }
+                        Switch(
+                            checked = field.isProtected,
+                            onCheckedChange = {
+                                onFieldChange(field.copy(isProtected = it))
+                                if (it) valueVisible = false
+                            }
+                        )
+                    }
+                }
+
+                if (field.isPreset || field.isRequired) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (field.isPreset) {
+                            AssistChip(
+                                onClick = {},
+                                label = { Text(stringResource(R.string.custom_field_preset)) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Lock,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
+                            )
+                        }
+                        if (field.isRequired) {
+                            AssistChip(
+                                onClick = {},
+                                label = { Text(stringResource(R.string.custom_field_required)) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Star,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                }
                             )
                         }
                     }
-                    Switch(
-                        checked = field.isProtected,
-                        onCheckedChange = { 
-                            onFieldChange(field.copy(isProtected = it))
-                            if (it) valueVisible = false
-                        }
-                    )
-                }
-                
-                // 保存按钮
-                Button(
-                    onClick = { 
-                        if (field.title.isNotBlank()) {
-                            isEditing = false 
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = field.title.isNotBlank(),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(stringResource(R.string.custom_field_save))
                 }
             }
         } else {

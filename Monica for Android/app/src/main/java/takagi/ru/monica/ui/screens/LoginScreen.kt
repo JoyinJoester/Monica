@@ -25,6 +25,7 @@ fun LoginScreen(
     val settings = settingsViewModel?.settings?.collectAsState()?.value
     val disablePasswordVerification = settings?.disablePasswordVerification ?: false
     val biometricEnabled = settings?.biometricEnabled ?: false
+    val autoLockMinutes = settings?.autoLockMinutes ?: 5
 
     LaunchedEffect(Unit) {
         withFrameNanos { }
@@ -40,6 +41,7 @@ fun LoginScreen(
             isFirstTime = isFirstTime,
             disablePasswordVerification = disablePasswordVerification,
             biometricEnabled = biometricEnabled,
+            autoLockMinutes = autoLockMinutes,
             onVerifyPassword = { password -> 
                 viewModel.authenticate(password)
             },

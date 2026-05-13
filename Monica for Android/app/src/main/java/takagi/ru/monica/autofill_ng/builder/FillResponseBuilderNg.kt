@@ -35,6 +35,7 @@ class FillResponseBuilderNg(
         request: AutofillRequest.Fillable,
         filledData: FilledData,
         passwordSuggestionEnabled: Boolean = true,
+        requireAuthentication: Boolean = true,
     ): FillResponse? {
         val fillableAutofillIds = filledData.fillableAutofillIds
         if (fillableAutofillIds.isEmpty()) {
@@ -50,7 +51,8 @@ class FillResponseBuilderNg(
                 buildCipherDataset(
                     request = request,
                     partition = partition,
-                    index = index
+                    index = index,
+                    requireAuthentication = requireAuthentication,
                 )
             )
             cipherDatasetCount++
@@ -98,6 +100,7 @@ class FillResponseBuilderNg(
         request: AutofillRequest.Fillable,
         partition: FilledPartition,
         index: Int,
+        requireAuthentication: Boolean,
     ): android.service.autofill.Dataset {
         val menuPresentation = AutofillDatasetBuilder.RemoteViewsFactory.createPasswordEntry(
             context = context,
@@ -108,11 +111,12 @@ class FillResponseBuilderNg(
         val hasInlinePresentation = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
             partition.inlinePresentationSpec != null
         val callbackTargets = buildLoginCallbackTargets(request.partition.views)
-        val inlinePendingIntent = if (hasInlinePresentation) {
+        val authPendingIntent = if (hasInlinePresentation || requireAuthentication) {
             createCipherAuthPendingIntent(
                 request = request,
                 partition = partition,
                 callbackTargets = callbackTargets,
+                requireAuthentication = requireAuthentication,
             )
         } else {
             null
@@ -121,7 +125,11 @@ class FillResponseBuilderNg(
         val fields = linkedMapOf<AutofillId, AutofillDatasetBuilder.FieldData?>()
         partition.filledItems.forEach { filledItem ->
             fields[filledItem.autofillId] = AutofillDatasetBuilder.FieldData(
-                value = filledItem.value,
+                value = if (requireAuthentication && authPendingIntent != null) {
+                    AutofillValue.forText(MANUAL_PLACEHOLDER_VALUE)
+                } else {
+                    filledItem.value
+                },
                 presentation = menuPresentation
             )
         }
@@ -137,7 +145,7 @@ class FillResponseBuilderNg(
                     spec = spec,
                     specs = request.inlinePresentationSpecs,
                     index = index,
-                    pendingIntent = inlinePendingIntent ?: return@create null,
+                    pendingIntent = authPendingIntent ?: return@create null,
                     title = partition.autofillCipher.name,
                     subtitle = partition.autofillCipher.subtitle,
                     icon = AutofillDatasetBuilder.InlinePresentationBuilder.createAppIcon(
@@ -149,6 +157,10 @@ class FillResponseBuilderNg(
             } else {
                 null
             }
+        }
+
+        if (requireAuthentication && authPendingIntent != null) {
+            datasetBuilder.setAuthentication(authPendingIntent.intentSender)
         }
 
         return datasetBuilder.build()
@@ -254,6 +266,7 @@ class FillResponseBuilderNg(
         request: AutofillRequest.Fillable,
         partition: FilledPartition,
         callbackTargets: List<AutofillCallbackTarget>,
+        requireAuthentication: Boolean,
     ): PendingIntent? {
         val passwordId = partition.autofillCipher.cipherId?.toLongOrNull() ?: return null
         val targets = callbackTargets.ifEmpty {
@@ -273,6 +286,7 @@ class FillResponseBuilderNg(
             autofillHints = ArrayList(targets.map { it.hintName }),
             fieldSignatureKey = request.fieldSignatureKey,
             rememberLastFilled = true,
+            requireAuthentication = requireAuthentication,
         )
         val pickerIntent = AutofillCipherCallbackActivity.getIntent(context, args)
         return PendingIntent.getActivity(

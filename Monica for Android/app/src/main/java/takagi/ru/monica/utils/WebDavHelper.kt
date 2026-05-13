@@ -382,7 +382,7 @@ private data class PageAdjustmentSettingsBackupEntry(
     val validatorVibrationEnabled: Boolean = true,
     val copyNextCodeWhenExpiring: Boolean = false,
     val iconCardsEnabled: Boolean = true,
-    val appLauncherIcon: String = "LOCK_CLASSIC",
+    val appLauncherIcon: String = "MODERN",
     val appLauncherLabel: String = "MONICA_PASS",
     val passwordPageIconEnabled: Boolean = true,
     val authenticatorPageIconEnabled: Boolean = true,
@@ -4953,5 +4953,6 @@ private fun getSystemServiceForUser(context: Context, serviceName: String): Any?
         return context.getSystemService(serviceName)
     }
 }
+
 
 

@@ -144,6 +144,7 @@ internal fun PasswordListTopSection(
     onScanFidoQr: () -> Unit
 ) {
     val appSettings by settingsViewModel.settings.collectAsState()
+    val isAuthenticated by viewModel.isAuthenticated.collectAsState()
     var showCreateCategoryDialog by remember { mutableStateOf(false) }
     var showReunlockDialog by remember { mutableStateOf(false) }
     var reunlockPassword by remember { mutableStateOf("") }
@@ -214,7 +215,10 @@ internal fun PasswordListTopSection(
                 }
 
                 Box {
-                    IconButton(onClick = { onTopActionsMenuExpandedChange(true) }) {
+                    IconButton(
+                        onClick = { onTopActionsMenuExpandedChange(true) },
+                        enabled = isAuthenticated
+                    ) {
                         Icon(
                             imageVector = Icons.Default.MoreVert,
                             contentDescription = stringResource(R.string.more_options),

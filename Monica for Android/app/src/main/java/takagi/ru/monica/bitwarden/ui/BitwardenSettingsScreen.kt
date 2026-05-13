@@ -119,8 +119,12 @@ fun BitwardenSettingsScreen(
                     if (hasUnlockedVault) {
                         // 同步按钮
                         IconButton(
-                            onClick = { viewModel.syncUnlockedVaults() },
-                            enabled = !isAnyVaultSyncing
+                            onClick = {
+                                if (isAnyVaultSyncing) {
+                                    Toast.makeText(context, "正在同步，请稍候", Toast.LENGTH_SHORT).show()
+                                }
+                                viewModel.syncUnlockedVaults()
+                            }
                         ) {
                             if (isAnyVaultSyncing) {
                                 CircularProgressIndicator(
@@ -364,6 +368,7 @@ fun VaultCard(
     onSync: () -> Unit,
     onLogout: () -> Unit
 ) {
+    val context = LocalContext.current
     var expanded by remember { mutableStateOf(false) }
     val rotationAngle by animateFloatAsState(
         targetValue = if (expanded) 180f else 0f,
@@ -481,29 +486,45 @@ fun VaultCard(
                     if (isUnlocked) {
                         OutlinedButton(
                             onClick = onLock,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 52.dp)
+                                .defaultMinSize(minWidth = 0.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
                         ) {
                             Icon(Icons.Outlined.Lock, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text("锁定")
+                            Text("锁定", maxLines = 1, overflow = TextOverflow.Clip)
                         }
                     } else {
                         Button(
                             onClick = onUnlock,
                             enabled = !isUnlocking,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 52.dp)
+                                .defaultMinSize(minWidth = 0.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
                         ) {
                             Icon(Icons.Outlined.LockOpen, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text(if (isUnlocking) "解锁中" else "解锁")
+                            Text(if (isUnlocking) "解锁中" else "解锁", maxLines = 1, overflow = TextOverflow.Clip)
                         }
                     }
 
                     if (isUnlocked) {
                         OutlinedButton(
-                            onClick = onSync,
-                            enabled = !isSyncing,
-                            modifier = Modifier.weight(1f)
+                            onClick = {
+                                if (isSyncing) {
+                                    Toast.makeText(context, "正在同步，请稍候", Toast.LENGTH_SHORT).show()
+                                }
+                                onSync()
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 52.dp)
+                                .defaultMinSize(minWidth = 0.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
                         ) {
                             if (isSyncing) {
                                 CircularProgressIndicator(
@@ -514,17 +535,21 @@ fun VaultCard(
                                 Icon(Icons.Outlined.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
                             }
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text(if (isSyncing) "同步中" else "同步")
+                            Text("同步", maxLines = 1, overflow = TextOverflow.Clip)
                         }
                     } else {
                         OutlinedButton(
                             onClick = onSelect,
                             enabled = !isActive,
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier
+                                .weight(1f)
+                                .heightIn(min = 52.dp)
+                                .defaultMinSize(minWidth = 0.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
                         ) {
                             Icon(Icons.Outlined.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(4.dp))
-                            Text(if (isActive) "当前 Vault" else "选择")
+                            Text(if (isActive) "当前" else "选择", maxLines = 1, overflow = TextOverflow.Clip)
                         }
                     }
                     
@@ -534,11 +559,15 @@ fun VaultCard(
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = MaterialTheme.colorScheme.error
                         ),
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = 52.dp)
+                            .defaultMinSize(minWidth = 0.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp)
                     ) {
                         Icon(Icons.Outlined.Logout, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("登出")
+                        Text("登出", maxLines = 1, overflow = TextOverflow.Clip)
                     }
                 }
             }

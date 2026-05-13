@@ -2537,7 +2537,6 @@ fun IconSettingsScreen(
     onNavigateBack: () -> Unit
 ) {
     val settings by viewModel.settings.collectAsState()
-    var appLauncherExpanded by rememberSaveable { mutableStateOf(true) }
     var pageToggleExpanded by rememberSaveable { mutableStateOf(true) }
     var unmatchedStrategyExpanded by rememberSaveable { mutableStateOf(true) }
 
@@ -2547,17 +2546,9 @@ fun IconSettingsScreen(
             title = stringResource(R.string.icon_settings_app_icon_modern_title),
             subtitle = stringResource(R.string.icon_settings_app_icon_modern_subtitle),
             icon = Icons.Default.Apps
-        ),
-        AppLauncherIconOption(
-            value = AppLauncherIcon.LOCK_CLASSIC,
-            title = stringResource(R.string.icon_settings_app_icon_classic_title),
-            subtitle = stringResource(R.string.icon_settings_app_icon_classic_subtitle),
-            icon = Icons.Default.Lock
         )
     )
-    val selectedAppLauncherLabel = appLauncherOptions
-        .firstOrNull { it.value == settings.appLauncherIcon }
-        ?.title
+    val selectedAppLauncherLabel = appLauncherOptions.first().title
         ?: appLauncherOptions.first().title
 
     val unmatchedStrategyOptions = listOf(
@@ -2650,50 +2641,6 @@ fun IconSettingsScreen(
                         Switch(
                             checked = settings.iconCardsEnabled,
                             onCheckedChange = viewModel::updateIconCardsEnabled
-                        )
-                    }
-                }
-            }
-
-            ExpandableSettingsCard(
-                title = stringResource(R.string.icon_settings_app_icon_title),
-                subtitle = selectedAppLauncherLabel,
-                expanded = appLauncherExpanded,
-                onExpandedChange = { appLauncherExpanded = it }
-            ) {
-                appLauncherOptions.forEachIndexed { index, option ->
-                    ListItem(
-                        headlineContent = { Text(option.title) },
-                        supportingContent = {
-                            Text(
-                                text = option.subtitle,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        },
-                        leadingContent = {
-                            Icon(
-                                imageVector = option.icon,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(32.dp)
-                            )
-                        },
-                        trailingContent = {
-                            RadioButton(
-                                selected = settings.appLauncherIcon == option.value,
-                                onClick = null
-                            )
-                        },
-                        modifier = Modifier.clickable {
-                            viewModel.updateAppLauncherIcon(option.value)
-                        },
-                        colors = ListItemDefaults.colors(containerColor = Color.Transparent)
-                    )
-                    if (index != appLauncherOptions.lastIndex) {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(horizontal = 16.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
                         )
                     }
                 }

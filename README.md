@@ -4,7 +4,7 @@
 
 **中文** | [English](README_EN.md) | [日本語](README_JA.md) | [Tiếng Việt](README_VI.md) | [Русский](README_RU.md) | [黑羽川](readme_Nya.md)
 
-<img src="documentation\image\Monicaico.png" alt="Monica App Icon" width="112" />
+<img src="image/themepng.png" alt="Monica App Icon" width="112" />
 
 <p><strong>聚合 Bitwarden 与 KeePass 的本地优先密码库</strong></p>
 <p>Android / Browser · Local Vault · TOTP · WebDAV Backup</p>
@@ -38,7 +38,9 @@ Monica Pass的开发者就是一个大啥比，现在他为了偷懒连代码都
 
 > Monica for Windows 已归档。历史代码见: [Monica-for-Windows](https://github.com/JoyinJoester/Monica-for-Windows)
 >
-> 由于目前项目主要由我一人维护，时间与精力都比较有限，因此 Monica for Wear 和 Monica for Browser 暂时无法保持持续更新。现阶段我会将主要重心放在 Monica for Android 的功能完善、体验优化与稳定性维护上，也感谢大家的理解与支持。
+> Monica for Browser 已归档。新的 Monica Extension 正在重写开发中，敬请期待。
+>
+> 由于目前项目主要由我一人维护，时间与精力都比较有限，因此 Monica for Wear 暂时无法保持持续更新。现阶段我会将主要重心放在 Monica for Android 的功能完善、体验优化与稳定性维护上，也感谢大家的理解与支持。
 
 ---
 

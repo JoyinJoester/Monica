@@ -117,6 +117,41 @@ internal fun LazyListScope.passwordPageListRows(
         onSelectedItemKeysChange(range.toSet())
     }
 
+    fun selectSwipeRangeToKeys(targetKeys: Set<String>) {
+        if (targetKeys.isEmpty()) return
+
+        if (appSettings.passwordSwipeSelectionMode != PasswordSwipeSelectionMode.CONTINUOUS) {
+            val allSelected = targetKeys.all { it in selectedItemKeys }
+            onSelectedItemKeysChange(
+                if (allSelected) {
+                    selectedItemKeys - targetKeys
+                } else {
+                    onSwipeSelectionAnchorKeyChange(targetKeys.firstOrNull())
+                    selectedItemKeys + targetKeys
+                }
+            )
+            return
+        }
+
+        val orderedTargetKeys = orderedSelectionKeys.filter { it in targetKeys }
+        val targetKey = orderedTargetKeys.lastOrNull() ?: targetKeys.lastOrNull() ?: return
+        val anchorKey = swipeSelectionAnchorKey
+        val anchorIndex = orderedSelectionKeys.indexOf(anchorKey)
+        val targetIndex = orderedSelectionKeys.indexOf(targetKey)
+        if (anchorKey == null || anchorIndex == -1 || targetIndex == -1) {
+            onSelectedItemKeysChange(targetKeys)
+            orderedTargetKeys.firstOrNull()?.let(onSwipeSelectionAnchorKeyChange)
+            return
+        }
+
+        val range = if (anchorIndex <= targetIndex) {
+            orderedSelectionKeys.subList(anchorIndex, targetIndex + 1)
+        } else {
+            orderedSelectionKeys.subList(targetIndex, anchorIndex + 1)
+        }
+        onSelectedItemKeysChange((range + targetKeys).toSet())
+    }
+
     fun openCard(card: PasswordPageCardItemUi) {
         when (card.type) {
             PasswordPageContentType.PASSWORD ->
@@ -254,20 +289,9 @@ internal fun LazyListScope.passwordPageListRows(
                         val groupSelectionKeys = selectionKeysForPasswords(
                             groupPasswords.map(PasswordEntry::id)
                         )
-                        if (appSettings.passwordSwipeSelectionMode == PasswordSwipeSelectionMode.CONTINUOUS) {
-                            groupSelectionKeys.lastOrNull()?.let(::selectSwipeRangeTo)
-                        } else {
-                            val allSelected = groupSelectionKeys.all { it in selectedItemKeys }
-                            onSelectedItemKeysChange(
-                                if (allSelected) {
-                                    selectedItemKeys - groupSelectionKeys
-                                } else {
-                                    onSwipeSelectionAnchorKeyChange(groupSelectionKeys.firstOrNull())
-                                    selectedItemKeys + groupSelectionKeys
-                                }
-                            )
-                        }
+                        selectSwipeRangeToKeys(groupSelectionKeys)
                     },
+
                     onToggleFavorite = { password ->
                         viewModel.toggleFavorite(password.id, !password.isFavorite)
                     },

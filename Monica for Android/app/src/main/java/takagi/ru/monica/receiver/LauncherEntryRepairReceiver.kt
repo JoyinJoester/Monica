@@ -32,7 +32,7 @@ class LauncherEntryRepairReceiver : BroadcastReceiver() {
             runCatching {
                 AppLauncherIconManager.repairLaunchEntryPointsAfterUpgrade(
                     context,
-                    AppLauncherIcon.LOCK_CLASSIC,
+                    AppLauncherIcon.MODERN,
                     AppLauncherLabel.MONICA_PASS
                 )
             }

@@ -746,7 +746,6 @@ fun MonicaContent(
     // 当认证状态变化时处理导航
     LaunchedEffect(isAuthenticated) {
         if (isAuthenticated) {
-            viewModel.refreshKeePassFromSourceForCurrentContext()
             val currentRoute = navController.currentDestination?.route
             if (currentRoute == Screen.Login.route) {
                 navController.navigate(Screen.Main.createRoute()) {
@@ -1803,14 +1802,16 @@ fun MonicaContent(
                     }
                 }
                 // WIFI / SSH_KEY 条目走独立详情页；快速探测 loginType 后重定向，避免打开复杂的密码详情屏。
-                var redirectChecked by androidx.compose.runtime.remember(passwordId) {
+                var redirectChecked by androidx.compose.runtime.saveable.rememberSaveable(passwordId) {
                     androidx.compose.runtime.mutableStateOf(false)
                 }
-                var redirectedToSpecialized by androidx.compose.runtime.remember(passwordId) {
+                var redirectedToSpecialized by androidx.compose.runtime.saveable.rememberSaveable(passwordId) {
                     androidx.compose.runtime.mutableStateOf(false)
                 }
                 androidx.compose.runtime.LaunchedEffect(passwordId) {
-                    val entry = viewModel.getRawPasswordEntryById(passwordId)
+                    val entry = withContext(Dispatchers.IO) {
+                        viewModel.getRawPasswordEntryById(passwordId)
+                    }
                     when {
                         entry?.isWifiEntry() == true -> {
                             redirectedToSpecialized = true

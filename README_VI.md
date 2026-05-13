@@ -4,7 +4,7 @@
 
 [中文](README.md) | [English](README_EN.md) | [日本語](README_JA.md) | **Tiếng Việt** | [Русский](README_RU.md) | [黑羽川](readme_Nya.md)
 
-<img src="documentation\image\Monicaico.png" alt="Monica App Icon" width="112" />
+<img src="image/themepng.png" alt="Monica App Icon" width="112" />
 
 <p><strong>Kho mat khau uu tien local, ket noi Bitwarden va KeePass</strong></p>
 <p>Android / Browser · Local Vault · TOTP · WebDAV Backup</p>
@@ -36,7 +36,9 @@ Trang web: https://joyinjoester.github.io/Monica/
 
 > Monica for Windows da duoc luu tru (archived). Ma nguon lich su: [Monica-for-Windows](https://github.com/JoyinJoester/Monica-for-Windows)
 >
-> Hien tai du an chu yeu do mot minh toi duy tri, nen thoi gian va nguon luc deu rat gioi han. Vi vay, Monica for Wear va Monica for Browser tam thoi chua the duoc cap nhat lien tuc. Trong giai doan nay, toi se tap trung uu tien cho Monica for Android, bao gom hoan thien tinh nang, cai thien trai nghiem va duy tri do on dinh. Cam on ban da thong cam va ung ho.
+> Monica for Browser da duoc luu tru (archived). Monica Extension moi dang duoc viet lai va phat trien tich cuc — hay don cho.
+>
+> Hien tai du an chu yeu do mot minh toi duy tri, nen thoi gian va nguon luc deu rat gioi han. Vi vay, Monica for Wear tam thoi chua the duoc cap nhat lien tuc. Trong giai doan nay, toi se tap trung uu tien cho Monica for Android, bao gom hoan thien tinh nang, cai thien trai nghiem va duy tri do on dinh. Cam on ban da thong cam va ung ho.
 
 ---
 

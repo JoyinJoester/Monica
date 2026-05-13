@@ -1,6 +1,7 @@
 package takagi.ru.monica.bitwarden.sync
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -133,6 +134,12 @@ class BitwardenSyncOrchestrator(
         mutex.withLock {
             val runtime = runtimeOf(vaultId)
 
+            if (force) {
+                runtime.delayedRequestJob?.cancel()
+                runtime.delayedRequestJob = null
+                runtime.pendingReason = null
+            }
+
             if (reason == SyncTriggerReason.LOCAL_MUTATION && !force) {
                 runtime.mutationDebounceJob?.cancel()
                 runtime.mutationDebounceJob = scope.launch {
@@ -193,7 +200,13 @@ class BitwardenSyncOrchestrator(
 
         if (!runNow) return
 
-        val outcome = executeSync(vaultId, silent)
+        val outcome = try {
+            executeSync(vaultId, silent)
+        } catch (error: CancellationException) {
+            SyncExecutionOutcome.RetryableError(error.message ?: "同步被取消")
+        } catch (error: Exception) {
+            SyncExecutionOutcome.RetryableError(error.message ?: "同步失败")
+        }
 
         var pendingReasonToReplay: SyncTriggerReason? = null
         mutex.withLock {

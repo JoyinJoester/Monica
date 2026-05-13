@@ -32,6 +32,7 @@ class AutofillProcessorNg(
         fieldSignatureKey: String? = null,
         preferDirectAutoFill: Boolean = false,
         passwordSuggestionEnabled: Boolean = true,
+        requireAuthentication: Boolean = true,
     ): FillResponse? {
         val request = parser.parse(
             packageName = packageName,
@@ -53,6 +54,7 @@ class AutofillProcessorNg(
             request = request,
             filledData = filledData,
             passwordSuggestionEnabled = passwordSuggestionEnabled,
+            requireAuthentication = requireAuthentication,
         )
     }
 }

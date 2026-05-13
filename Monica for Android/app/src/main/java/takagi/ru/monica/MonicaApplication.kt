@@ -113,7 +113,7 @@ class MonicaApplication : Application() {
             runCatching {
                 AppLauncherIconManager.repairLaunchEntryPointsAfterUpgrade(
                     this,
-                    AppLauncherIcon.LOCK_CLASSIC,
+                    AppLauncherIcon.MODERN,
                     AppLauncherLabel.MONICA_PASS
                 )
             }.onFailure { fallbackError ->

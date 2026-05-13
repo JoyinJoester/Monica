@@ -4,7 +4,7 @@
 
 [中文](README.md) | [English](README_EN.md) | [日本語](README_JA.md) | [Tiếng Việt](README_VI.md) | **Русский** | [黑羽川](readme_Nya.md)
 
-<img src="documentation\image\Monicaico.png" alt="Monica App Icon" width="112" />
+<img src="image/themepng.png" alt="Monica App Icon" width="112" />
 
 <p><strong>Локально‑ориентированное хранилище паролей, объединяющее Bitwarden и KeePass</strong></p>
 <p>Android / Browser · Local Vault · TOTP · WebDAV Backup</p>
@@ -36,7 +36,9 @@ Monica — это локальное хранилище паролей, кото
 
 > Monica for Windows архивирован. Исторический код: [Monica-for-Windows](https://github.com/JoyinJoester/Monica-for-Windows)
 >
-> Сейчас проект в основном поддерживается мной одним, поэтому времени и ресурсов ограниченно. Из-за этого Monica for Wear и Monica for Browser временно не могут обновляться постоянно. Сейчас мой основной фокус — улучшение функций, опыта и стабильности Monica for Android. Спасибо за понимание и поддержку.
+> Monica for Browser архивирован. Новый Monica Extension сейчас переписывается и активно разрабатывается — следите за обновлениями.
+>
+> Сейчас проект в основном поддерживается мной одним, поэтому времени и ресурсов ограниченно. Из-за этого Monica for Wear временно не может обновляться постоянно. Сейчас мой основной фокус — улучшение функций, опыта и стабильности Monica for Android. Спасибо за понимание и поддержку.
 
 ---
 

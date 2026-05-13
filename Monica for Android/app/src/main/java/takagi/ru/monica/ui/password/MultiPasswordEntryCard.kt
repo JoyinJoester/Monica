@@ -204,59 +204,69 @@ fun MultiPasswordEntryCard(
                         )
                     }
 
-                    if (!isSelectionMode && onToggleGroupCover != null) {
-                        passwords.forEach { entry ->
-                            if (entry.isGroupCover) {
+                    if (onToggleGroupCover != null && passwords.any { it.isGroupCover }) {
+                        Box(
+                            modifier = Modifier.size(36.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (!isSelectionMode) {
+                                passwords.firstOrNull { it.isGroupCover }?.let { coverEntry ->
+                                    IconButton(
+                                        onClick = { onToggleGroupCover(coverEntry) },
+                                        modifier = Modifier.size(36.dp),
+                                        enabled = canSetGroupCover
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Star,
+                                            contentDescription = "Remove cover",
+                                            tint = MaterialTheme.colorScheme.tertiary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                            } else {
+                                Icon(
+                                    Icons.Default.Star,
+                                    contentDescription = "Cover",
+                                    tint = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    if (onToggleFavorite != null) {
+                        Box(
+                            modifier = Modifier.size(36.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            val allFavorited = passwords.all { it.isFavorite }
+                            val anyFavorited = passwords.any { it.isFavorite }
+                            if (!isSelectionMode) {
                                 IconButton(
-                                    onClick = { onToggleGroupCover(entry) },
-                                    modifier = Modifier.size(36.dp),
-                                    enabled = canSetGroupCover
+                                    onClick = {
+                                        passwords.forEach { entry ->
+                                            onToggleFavorite(entry)
+                                        }
+                                    },
+                                    modifier = Modifier.size(36.dp)
                                 ) {
                                     Icon(
-                                        Icons.Default.Star,
-                                        contentDescription = "Remove cover",
-                                        tint = MaterialTheme.colorScheme.tertiary,
+                                        if (anyFavorited) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                        contentDescription = if (allFavorited) stringResource(R.string.remove_from_favorites) else stringResource(R.string.add_to_favorites),
+                                        tint = if (anyFavorited) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                         modifier = Modifier.size(20.dp)
                                     )
                                 }
-                                return@forEach
+                            } else if (anyFavorited) {
+                                Icon(
+                                    Icons.Default.Favorite,
+                                    contentDescription = stringResource(R.string.favorite),
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
                             }
                         }
-                    } else if (isSelectionMode && passwords.any { it.isGroupCover }) {
-                        Icon(
-                            Icons.Default.Star,
-                            contentDescription = "Cover",
-                            tint = MaterialTheme.colorScheme.tertiary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-
-                    if (!isSelectionMode && onToggleFavorite != null) {
-                        val allFavorited = passwords.all { it.isFavorite }
-                        val anyFavorited = passwords.any { it.isFavorite }
-
-                        IconButton(
-                            onClick = {
-                                passwords.forEach { entry ->
-                                    onToggleFavorite(entry)
-                                }
-                            },
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Icon(
-                                if (anyFavorited) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                contentDescription = if (allFavorited) stringResource(R.string.remove_from_favorites) else stringResource(R.string.add_to_favorites),
-                                tint = if (anyFavorited) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    } else if (isSelectionMode && passwords.any { it.isFavorite }) {
-                        Icon(
-                            Icons.Default.Favorite,
-                            contentDescription = stringResource(R.string.favorite),
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
                     }
                 }
             }
@@ -350,12 +360,17 @@ fun MultiPasswordEntryCard(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                if (isSelectionMode) {
-                                    Checkbox(
-                                        checked = isSelected,
-                                        onCheckedChange = null,
-                                        modifier = Modifier.size(16.dp)
-                                    )
+                                Box(
+                                    modifier = Modifier.size(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (isSelectionMode) {
+                                        Checkbox(
+                                            checked = isSelected,
+                                            onCheckedChange = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
                                 }
 
                                 Icon(

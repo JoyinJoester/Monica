@@ -16,14 +16,12 @@ object AppLauncherIconManager {
     private const val HOME_CLASSIC_ALIAS = "takagi.ru.monica.ClassicHomeLauncherAlias"
     private const val VISIBLE_MODERN_PASS_ALIAS = "takagi.ru.monica.ModernVisibleLauncherAlias"
     private const val VISIBLE_CLASSIC_PASS_ALIAS = "takagi.ru.monica.ClassicVisibleLauncherAlias"
-    private const val VISIBLE_MODERN_MONICA_ALIAS =
-        "takagi.ru.monica.ModernVisibleLauncherAliasMonica"
-    private const val VISIBLE_CLASSIC_MONICA_ALIAS =
-        "takagi.ru.monica.ClassicVisibleLauncherAliasMonica"
+    private const val VISIBLE_MODERN_MONICA_ALIAS = "takagi.ru.monica.ModernVisibleLauncherAliasMonica"
+    private const val VISIBLE_CLASSIC_MONICA_ALIAS = "takagi.ru.monica.ClassicVisibleLauncherAliasMonica"
 
     fun apply(context: Context, icon: AppLauncherIcon, label: AppLauncherLabel) {
         repairCompatibilityLaunchTargets(context)
-        applyVisibleLauncherSelection(context, icon, label)
+        applyVisibleLauncherSelection(context, label)
     }
 
     fun repairLegacyDisabledComponents(context: Context) {
@@ -36,44 +34,15 @@ object AppLauncherIconManager {
         label: AppLauncherLabel
     ) {
         repairCompatibilityLaunchTargets(context)
-        applyVisibleLauncherSelection(context, icon, label)
+        applyVisibleLauncherSelection(context, label)
     }
 
     fun getCurrentSelection(context: Context): AppLauncherIcon {
-        val packageManager = context.packageManager
-        val classicHomes = listOf(
-            ComponentName(context, VISIBLE_CLASSIC_PASS_ALIAS),
-            ComponentName(context, VISIBLE_CLASSIC_MONICA_ALIAS)
-        )
-        val modernHomes = listOf(
-            ComponentName(context, VISIBLE_MODERN_PASS_ALIAS),
-            ComponentName(context, VISIBLE_MODERN_MONICA_ALIAS)
-        )
-
-        if (classicHomes.any { component ->
-                packageManager.getComponentEnabledSetting(component) ==
-                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-            }
-        ) {
-            return AppLauncherIcon.LOCK_CLASSIC
-        }
-
-        if (modernHomes.any { component ->
-                packageManager.getComponentEnabledSetting(component) ==
-                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED
-            }
-        ) {
-            return AppLauncherIcon.MODERN
-        }
-
-        return AppLauncherIcon.LOCK_CLASSIC
+        return AppLauncherIcon.MODERN
     }
 
     fun resolveBrandingIconRes(context: Context): Int {
-        return when (getCurrentSelection(context)) {
-            AppLauncherIcon.MODERN -> R.drawable.monica_launcher
-            AppLauncherIcon.LOCK_CLASSIC -> R.mipmap.ic_launcher_lock
-        }
+        return R.drawable.monica_launcher
     }
 
     fun applyBiometricPromptBranding(context: Context, promptInfoBuilder: Any) {
@@ -118,23 +87,20 @@ object AppLauncherIconManager {
 
     private fun applyVisibleLauncherSelection(
         context: Context,
-        icon: AppLauncherIcon,
         label: AppLauncherLabel
     ) {
         val packageManager = context.packageManager
         val states = mapOf(
             ComponentName(context, VISIBLE_MODERN_PASS_ALIAS) to componentStateFor(
-                icon == AppLauncherIcon.MODERN && label == AppLauncherLabel.MONICA_PASS
+                label == AppLauncherLabel.MONICA_PASS
             ),
-            ComponentName(context, VISIBLE_CLASSIC_PASS_ALIAS) to componentStateFor(
-                icon == AppLauncherIcon.LOCK_CLASSIC && label == AppLauncherLabel.MONICA_PASS
-            ),
+            ComponentName(context, VISIBLE_CLASSIC_PASS_ALIAS) to
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED,
             ComponentName(context, VISIBLE_MODERN_MONICA_ALIAS) to componentStateFor(
-                icon == AppLauncherIcon.MODERN && label == AppLauncherLabel.MONICA
+                label == AppLauncherLabel.MONICA
             ),
-            ComponentName(context, VISIBLE_CLASSIC_MONICA_ALIAS) to componentStateFor(
-                icon == AppLauncherIcon.LOCK_CLASSIC && label == AppLauncherLabel.MONICA
-            )
+            ComponentName(context, VISIBLE_CLASSIC_MONICA_ALIAS) to
+                PackageManager.COMPONENT_ENABLED_STATE_DISABLED
         )
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {

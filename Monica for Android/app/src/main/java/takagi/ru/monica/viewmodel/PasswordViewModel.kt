@@ -3051,29 +3051,46 @@ class PasswordViewModel(
                 val selectedTargetKeys = distinctTargets
                     .map(StorageTarget::stableKey)
                     .toSet()
-                val existingReplicasByKey = repository.getAllPasswordEntries()
-                    .first()
-                    .asSequence()
+                val allEntries = repository.getAllPasswordEntries().first()
+                val originalEntries = originalIds.mapNotNull { id ->
+                    allEntries.firstOrNull { it.id == id }
+                }
+                val existingReplicasByKey = allEntries
                     .filter {
                         it.replicaGroupId == replicaGroupId &&
                             !it.isDeleted &&
                             !it.isArchived
                     }
-                    .associateBy { it.toStorageTarget().stableKey }
+                    .groupBy { it.toStorageTarget().stableKey }
                 val currentEntryTarget = currentEntry?.toStorageTarget()
                 val currentTarget = currentEntryTarget
                     ?.takeIf { it.stableKey in selectedTargetKeys }
                     ?: distinctTargets.first()
-                val primaryExistingEntry = currentEntry
-                    ?.takeIf { currentEntryTarget?.stableKey in selectedTargetKeys }
-                    ?: existingReplicasByKey[currentTarget.stableKey]
+                val currentTargetOriginalIds = originalEntries
+                    .filter {
+                        it.toStorageTarget().stableKey == currentTarget.stableKey
+                    }
+                    .map { it.id }
+                    .ifEmpty {
+                        existingReplicasByKey[currentTarget.stableKey]
+                            .orEmpty()
+                            .sortedBy { it.id }
+                            .map { it.id }
+                    }
+                    .ifEmpty {
+                        if (currentEntryTarget?.stableKey in selectedTargetKeys && currentEntry != null) {
+                            listOf(currentEntry.id)
+                        } else {
+                            emptyList()
+                        }
+                    }
 
                 val updatedCurrentEntry = currentTarget.applyToPasswordEntry(
                     commonEntry,
                     replicaGroupId = replicaGroupId
                 )
                 val initialId = saveGroupedPasswordsInternal(
-                    originalIds = primaryExistingEntry?.id?.let(::listOf) ?: originalIds,
+                    originalIds = currentTargetOriginalIds.ifEmpty { originalIds },
                     commonEntry = updatedCurrentEntry,
                     passwords = passwords,
                     customFields = customFields,
@@ -3084,28 +3101,27 @@ class PasswordViewModel(
                     return@withContext null
                 }
 
-                val retainedReplicaIds = mutableSetOf(initialId)
                 distinctTargets
                     .filter { target ->
                         target.stableKey != currentTarget.stableKey &&
                             target.stableKey in selectedTargetKeys
                     }
                     .forEach { target ->
-                        val existingTargetEntry = existingReplicasByKey[target.stableKey]
+                        val existingTargetIds = existingReplicasByKey[target.stableKey]
+                            .orEmpty()
+                            .sortedBy { it.id }
+                            .map { it.id }
                         val replicaEntry = target.applyToPasswordEntry(
                             commonEntry,
                             replicaGroupId = replicaGroupId
                         )
                         val createdId = saveGroupedPasswordsInternal(
-                            originalIds = existingTargetEntry?.id?.let(::listOf) ?: emptyList(),
+                            originalIds = existingTargetIds,
                             commonEntry = replicaEntry,
                             passwords = passwords,
                             customFields = customFields,
                             skipCategoryBinding = true
                         )
-                        if (createdId != null) {
-                            retainedReplicaIds += createdId
-                        }
                         if (createdId == null) {
                             Log.e(
                                 "PasswordViewModel",
@@ -3121,23 +3137,8 @@ class PasswordViewModel(
                             !it.isDeleted &&
                             !it.isArchived
                     }
-                val duplicateReplicaIds = activeReplicas
-                    .groupBy { it.toStorageTarget().stableKey }
-                    .values
-                    .flatMap { sameTargetEntries ->
-                        if (sameTargetEntries.size <= 1) {
-                            emptyList()
-                        } else {
-                            val keepId = sameTargetEntries.firstOrNull { it.id in retainedReplicaIds }?.id
-                                ?: sameTargetEntries.minOf { it.id }
-                            sameTargetEntries.filterNot { it.id == keepId }
-                        }
-                    }
-                    .map { it.id }
-                    .toSet()
                 val staleReplicas = activeReplicas.filter {
-                    it.toStorageTarget().stableKey !in selectedTargetKeys ||
-                        it.id in duplicateReplicaIds
+                    it.toStorageTarget().stableKey !in selectedTargetKeys
                 }
                 deletePasswordEntriesBatch(staleReplicas)
 

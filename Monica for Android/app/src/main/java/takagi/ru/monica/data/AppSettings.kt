@@ -519,7 +519,7 @@ data class AppSettings(
     val trashEnabled: Boolean = true, // 回收站功能是否启用
     val trashAutoDeleteDays: Int = 30, // 回收站自动清空天数（0=不自动清空，-1=禁用回收站）
     val iconCardsEnabled: Boolean = true, // 是否启用带图标卡片
-    val appLauncherIcon: AppLauncherIcon = AppLauncherIcon.LOCK_CLASSIC, // 主应用图标样式
+    val appLauncherIcon: AppLauncherIcon = AppLauncherIcon.MODERN, // 主应用图标样式
     val appLauncherLabel: AppLauncherLabel = AppLauncherLabel.MONICA_PASS, // 主应用桌面名称
     val passwordPageIconEnabled: Boolean = true, // 密码页图标开关
     val authenticatorPageIconEnabled: Boolean = true, // 验证器页图标开关
@@ -567,8 +567,7 @@ data class AppSettings(
 )
 
 enum class AppLauncherIcon {
-    MODERN,
-    LOCK_CLASSIC
+    MODERN
 }
 
 enum class AppLauncherLabel {

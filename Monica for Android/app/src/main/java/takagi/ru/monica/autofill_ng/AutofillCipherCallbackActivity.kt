@@ -11,9 +11,11 @@ import android.util.Log
 import android.view.autofill.AutofillId
 import android.view.autofill.AutofillManager
 import android.view.autofill.AutofillValue
-import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.parcelize.Parcelize
@@ -27,8 +29,11 @@ import takagi.ru.monica.autofill_ng.core.AutofillLogger
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.ui.components.MonicaPasswordDialogAuthScreen
+import takagi.ru.monica.utils.BiometricAuthHelper
+import takagi.ru.monica.utils.SettingsManager
 
-class AutofillCipherCallbackActivity : ComponentActivity() {
+class AutofillCipherCallbackActivity : AppCompatActivity() {
 
     companion object {
         private const val EXTRA_ARGS = "extra_args"
@@ -65,18 +70,42 @@ class AutofillCipherCallbackActivity : ComponentActivity() {
         val autofillHints: ArrayList<String>? = null,
         val fieldSignatureKey: String? = null,
         val rememberLastFilled: Boolean = true,
+        val requireAuthentication: Boolean = false,
     ) : Parcelable
 
     private var callbackArgs: Args? = null
     private var callbackArgsToken: String? = null
+    private lateinit var securityManager: SecurityManager
+    private lateinit var settingsManager: SettingsManager
+    private lateinit var biometricAuthHelper: BiometricAuthHelper
+    private var biometricPromptShown = false
+    private var resultPublished = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         overridePendingTransition(0, 0)
+        setContentView(R.layout.activity_transparent)
         callbackArgs = resolveArgsFromIntent(intent)
+        securityManager = SecurityManager(applicationContext)
+        settingsManager = SettingsManager(applicationContext)
+        biometricAuthHelper = BiometricAuthHelper(this)
 
-        lifecycleScope.launch {
-            completeCipherAutofill()
+        val args = callbackArgs
+        AutofillLogger.i(
+            "CALLBACK",
+            "Autofill callback activity started",
+            metadata = mapOf(
+                "hasArgs" to (args != null),
+                "requireAuthentication" to (args?.requireAuthentication ?: false),
+                "passwordId" to (args?.passwordId ?: -1L),
+            )
+        )
+        if (args?.requireAuthentication == true) {
+            startAuthentication()
+        } else {
+            lifecycleScope.launch {
+                completeCipherAutofill()
+            }
         }
     }
 
@@ -84,6 +113,92 @@ class AutofillCipherCallbackActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         callbackArgs = resolveArgsFromIntent(intent)
+    }
+
+    private fun startAuthentication() {
+        lifecycleScope.launch {
+            val biometricEnabled = settingsManager.settingsFlow.first().biometricEnabled
+            val biometricAvailable = biometricAuthHelper.isBiometricAvailable()
+            AutofillLogger.i(
+                "CALLBACK",
+                "Starting autofill authentication",
+                metadata = mapOf(
+                    "biometricEnabled" to biometricEnabled,
+                    "biometricAvailable" to biometricAvailable,
+                )
+            )
+            if (biometricEnabled && biometricAvailable) {
+                showBiometricPrompt()
+            } else {
+                showPasswordAuthentication()
+            }
+        }
+    }
+
+    private fun showBiometricPrompt() {
+        if (biometricPromptShown || resultPublished || isFinishing || isDestroyed) {
+            return
+        }
+        biometricPromptShown = true
+        AutofillLogger.i("CALLBACK", "Showing biometric prompt for autofill")
+        runCatching {
+            biometricAuthHelper.authenticate(
+                activity = this@AutofillCipherCallbackActivity,
+                title = getString(R.string.autofill_auth_title),
+                subtitle = getString(R.string.autofill_auth_subtitle),
+                description = getString(R.string.autofill_auth_description),
+                negativeButtonText = getString(R.string.use_password),
+                onSuccess = {
+                    AutofillLogger.i("CALLBACK", "Biometric prompt succeeded")
+                    if (securityManager.unlockVaultWithBiometric()) {
+                        lifecycleScope.launch { completeCipherAutofill() }
+                    } else {
+                        AutofillLogger.w("CALLBACK", "Biometric unlock failed, falling back to password")
+                        showPasswordAuthentication()
+                    }
+                },
+                onError = { code, message ->
+                    AutofillLogger.w("CALLBACK", "Biometric prompt error: $code $message")
+                    showPasswordAuthentication()
+                },
+                onCancel = {
+                    AutofillLogger.w("CALLBACK", "Biometric prompt cancelled")
+                    cancelAndFinish("authentication_cancelled")
+                },
+            )
+        }.onFailure { error ->
+            biometricPromptShown = false
+            AutofillLogger.w(
+                "CALLBACK",
+                "Biometric prompt failed to show, falling back to password: ${error.message.orEmpty()}"
+            )
+            showPasswordAuthentication()
+        }
+    }
+
+    private fun showPasswordAuthentication() {
+        AutofillLogger.i("CALLBACK", "Showing password authentication for autofill")
+        setContent {
+            MonicaPasswordDialogAuthScreen(
+                settingsFlow = settingsManager.settingsFlow,
+                appName = getString(R.string.app_name),
+                title = getString(R.string.verify_identity),
+                subtitle = getString(R.string.autofill_auth_subtitle),
+                passwordLabel = getString(R.string.master_password),
+                description = getString(R.string.enter_master_password),
+                confirmText = getString(R.string.confirm),
+                cancelText = getString(R.string.cancel),
+                emptyError = getString(R.string.current_password_required),
+                unsupportedCharacterError = getString(R.string.error_password_contains_unsupported_characters),
+                minLengthError = getString(R.string.error_password_too_short),
+                incorrectError = getString(R.string.password_incorrect),
+                verifyPassword = { input -> securityManager.unlockVaultWithPassword(input) },
+                onSuccess = {
+                    lifecycleScope.launch { completeCipherAutofill() }
+                },
+                onCancel = { cancelAndFinish("authentication_cancelled") },
+            )
+        }
     }
 
     private suspend fun completeCipherAutofill() {
@@ -101,7 +216,6 @@ class AutofillCipherCallbackActivity : ComponentActivity() {
             return
         }
 
-        val securityManager = SecurityManager(applicationContext)
         val accountValue = AccountFillPolicy.resolveAccountIdentifier(passwordEntry, securityManager)
         val decryptedPassword = AutofillSecretResolver.decryptPasswordOrNull(
             securityManager = securityManager,
@@ -402,11 +516,13 @@ class AutofillCipherCallbackActivity : ComponentActivity() {
 
     private fun cancelAndFinish(reason: String) {
         AutofillLogger.w("CALLBACK", "Cancel autofill callback: $reason")
+        resultPublished = true
         setResult(Activity.RESULT_CANCELED)
         finishWithoutAnimation()
     }
 
     private fun finishWithoutAnimation() {
+        resultPublished = true
         callbackArgsToken?.let { pendingArgsByToken.remove(it) }
         finish()
         overridePendingTransition(0, 0)

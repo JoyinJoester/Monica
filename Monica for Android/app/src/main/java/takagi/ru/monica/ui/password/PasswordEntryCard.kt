@@ -222,43 +222,61 @@ fun PasswordEntryCard(
                                 )
                             }
 
-                            if (!isSelectionMode && onToggleGroupCover != null) {
-                                IconButton(
-                                    onClick = onToggleGroupCover,
+                            if (onToggleGroupCover != null) {
+                                Box(
                                     modifier = Modifier.size(36.dp),
-                                    enabled = canSetGroupCover
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Icon(
-                                        if (entry.isGroupCover) Icons.Default.Star else Icons.Default.StarBorder,
-                                        contentDescription = if (entry.isGroupCover) "Remove cover" else "Set as cover",
-                                        tint = if (entry.isGroupCover) {
-                                            MaterialTheme.colorScheme.tertiary
-                                        } else if (canSetGroupCover) {
-                                            MaterialTheme.colorScheme.onSurfaceVariant
-                                        } else {
-                                            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                                        },
-                                        modifier = Modifier.size(20.dp)
-                                    )
+                                    if (!isSelectionMode) {
+                                        IconButton(
+                                            onClick = onToggleGroupCover,
+                                            modifier = Modifier.size(36.dp),
+                                            enabled = canSetGroupCover
+                                        ) {
+                                            Icon(
+                                                if (entry.isGroupCover) Icons.Default.Star else Icons.Default.StarBorder,
+                                                contentDescription = if (entry.isGroupCover) "Remove cover" else "Set as cover",
+                                                tint = if (entry.isGroupCover) {
+                                                    MaterialTheme.colorScheme.tertiary
+                                                } else if (canSetGroupCover) {
+                                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                                } else {
+                                                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                                },
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    } else if (entry.isGroupCover) {
+                                        Icon(
+                                            Icons.Default.Star,
+                                            contentDescription = "Cover",
+                                            tint = MaterialTheme.colorScheme.tertiary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
                                 }
                             }
 
-                            if (!isSelectionMode && onToggleFavorite != null) {
-                                IconButton(onClick = onToggleFavorite, modifier = Modifier.size(36.dp)) {
-                                    Icon(
-                                        if (entry.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                        contentDescription = stringResource(R.string.favorite),
-                                        tint = if (entry.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(20.dp)
+                            Box(
+                                modifier = Modifier.size(36.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (isSelectionMode) {
+                                    Checkbox(
+                                        checked = isSelected,
+                                        onCheckedChange = { onClick() },
+                                        modifier = Modifier.size(36.dp)
                                     )
+                                } else if (onToggleFavorite != null) {
+                                    IconButton(onClick = onToggleFavorite, modifier = Modifier.size(36.dp)) {
+                                        Icon(
+                                            if (entry.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                                            contentDescription = stringResource(R.string.favorite),
+                                            tint = if (entry.isFavorite) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
                                 }
-                            }
-
-                            if (isSelectionMode) {
-                                Checkbox(
-                                    checked = isSelected,
-                                    onCheckedChange = { onClick() }
-                                )
                             }
                         }
                     }
