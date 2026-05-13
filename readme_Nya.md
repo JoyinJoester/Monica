@@ -4,7 +4,7 @@
 
 [中文](README.md) | [English](README_EN.md) | [日本語](README_JA.md) | [Tiếng Việt](README_VI.md) | [Русский](README_RU.md) | **黑羽川**
 
-<img src="image/themepng.png" alt="Monica App Icon" width="112" />
+<img src="image/themepng.png" alt="Monica App Icon" width="600" />
 
 <p><strong>把 Bitwarden 和 KeePass 都收进肉球里的本地优先密码库喵</strong></p>
 <p>Android / Browser · Local Vault · TOTP · WebDAV Backup</p>
