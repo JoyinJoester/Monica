@@ -4,7 +4,7 @@
 
 [中文](README.md) | [English](README_EN.md) | [日本語](README_JA.md) | [Tiếng Việt](README_VI.md) | [Русский](README_RU.md) | **黑羽川**
 
-<img src="documentation/image/Monicaico.png" alt="Monica App Icon" width="112" />
+<img src="image/themepng.png" alt="Monica App Icon" width="112" />
 
 <p><strong>把 Bitwarden 和 KeePass 都收进肉球里的本地优先密码库喵</strong></p>
 <p>Android / Browser · Local Vault · TOTP · WebDAV Backup</p>
@@ -43,7 +43,9 @@ Monica 的开发者只是一个会犯懒的大笨蛋铲屎官喵。
 
 > Monica for Windows 已经钻进纸箱里归档了喵。想考古的话看这里喵: [Monica-for-Windows](https://github.com/JoyinJoester/Monica-for-Windows)
 >
-> 现在项目主要由一只猫维护喵，爪子、时间和精力都有限喵。所以 Monica for Wear 和 Monica for Browser 只能暂时趴着休息喵。当前猫力主要集中在 Monica for Android 的功能完善、体验优化和稳定性维护上喵。谢谢你愿意摸摸头理解喵。
+> Monica for Browser 也已经趴进纸箱归档了喵。新的 Monica Extension 正在重新搭窝开发中，敬请期待喵。
+>
+> 现在项目主要由一只猫维护喵，爪子、时间和精力都有限喵。所以 Monica for Wear 只能暂时趴着休息喵。当前猫力主要集中在 Monica for Android 的功能完善、体验优化和稳定性维护上喵。谢谢你愿意摸摸头理解喵。
 
 ---
 
