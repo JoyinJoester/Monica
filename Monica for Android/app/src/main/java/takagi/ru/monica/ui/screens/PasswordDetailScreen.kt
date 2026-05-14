@@ -8,8 +8,6 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.ExperimentalSharedTransitionApi
-import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -172,7 +170,7 @@ private fun resolvePasswordDetailGroupPasswords(
  * @param onNavigateBack 返回导航回调
  * @param onEditPassword 编辑密码回调
  */
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalSharedTransitionApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PasswordDetailScreen(
     viewModel: PasswordViewModel,
@@ -182,7 +180,7 @@ fun PasswordDetailScreen(
     biometricEnabled: Boolean,
     iconCardsEnabled: Boolean = false,
     unmatchedIconHandlingStrategy: UnmatchedIconHandlingStrategy = UnmatchedIconHandlingStrategy.DEFAULT_ICON,
-    enableSharedBounds: Boolean = true,
+    @Suppress("UNUSED_PARAMETER") enableSharedBounds: Boolean = true,
     onNavigateBack: () -> Unit,
     onOpenBoundNote: (Long) -> Unit = {},
     onOpenPassword: (Long) -> Unit = {},
@@ -419,6 +417,7 @@ fun PasswordDetailScreen(
 
     // Initial load: fetch entry directly from DB without waiting for allPasswords Flow
     LaunchedEffect(passwordId) {
+        if (isLeavingDetail) return@LaunchedEffect
         val entry = withContext(Dispatchers.IO) {
             viewModel.getRawPasswordEntryById(passwordId)
         } ?: return@LaunchedEffect
@@ -536,24 +535,8 @@ fun PasswordDetailScreen(
         }
     }
     
-    // 准备共享元素 Modifier
-    val sharedTransitionScope = takagi.ru.monica.ui.LocalSharedTransitionScope.current
-    val animatedVisibilityScope = takagi.ru.monica.ui.LocalAnimatedVisibilityScope.current
-    val reduceAnimations = takagi.ru.monica.ui.LocalReduceAnimations.current
-    var sharedModifier: Modifier = Modifier
-    // 当减少动画模式开启时，不使用 sharedBounds 以解决部分设备上的动画卡顿问题
-    if (enableSharedBounds && !reduceAnimations && sharedTransitionScope != null && animatedVisibilityScope != null) {
-        with(sharedTransitionScope) {
-            sharedModifier = Modifier.sharedBounds(
-                sharedContentState = rememberSharedContentState(key = "password_card_${passwordId}"),
-                animatedVisibilityScope = animatedVisibilityScope,
-                resizeMode = SharedTransitionScope.ResizeMode.RemeasureToBounds
-            )
-        }
-    }
-
     Scaffold(
-        modifier = sharedModifier,
+        modifier = Modifier,
         containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             TopAppBar(

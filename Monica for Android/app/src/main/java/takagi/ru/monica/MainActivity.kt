@@ -17,6 +17,10 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.contract.ActivityResultContracts
+import takagi.ru.monica.ui.navigation.parallaxEnterFromLeft
+import takagi.ru.monica.ui.navigation.parallaxExitToLeft
+import takagi.ru.monica.ui.navigation.slideInFromRight
+import takagi.ru.monica.ui.navigation.slideOutToRight
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInHorizontally
@@ -834,7 +838,9 @@ fun MonicaContent(
                     type = NavType.IntType
                     defaultValue = 0
                 }
-            )
+            ),
+            exitTransition = { parallaxExitToLeft() },
+            popEnterTransition = { parallaxEnterFromLeft() }
         ) { backStackEntry ->
             val tab = backStackEntry.arguments?.getInt("tab") ?: 0
             val scope = rememberCoroutineScope()
@@ -1074,10 +1080,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.AddEditPassword.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) { backStackEntry ->
             val passwordId = backStackEntry.arguments?.getString("passwordId")?.toLongOrNull() ?: -1L
             val pendingStorageDefaults = remember(backStackEntry, passwordId) {
@@ -1158,10 +1164,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.AddEditWifi.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) { backStackEntry ->
             val passwordIdArg = backStackEntry.arguments?.getString("passwordId")?.toLongOrNull() ?: -1L
             val navigateBack = {
@@ -1209,10 +1215,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.WifiDetail.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) { backStackEntry ->
             val wifiId = backStackEntry.arguments?.getString("passwordId")?.toLongOrNull() ?: -1L
             if (wifiId > 0) {
@@ -1240,10 +1246,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.AddEditSshKey.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) { backStackEntry ->
             val passwordIdArg = backStackEntry.arguments?.getString("passwordId")?.toLongOrNull() ?: -1L
             val navigateBack = {
@@ -1290,10 +1296,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.SshKeyDetail.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) { backStackEntry ->
             val sshId = backStackEntry.arguments?.getString("passwordId")?.toLongOrNull() ?: -1L
             if (sshId > 0) {
@@ -1321,10 +1327,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.AddEditTotp.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) { backStackEntry ->
             val totpId = backStackEntry.arguments?.getString("totpId")?.toLongOrNull() ?: -1L
             val currentTotpFilter by totpViewModel.categoryFilter.collectAsState()
@@ -1527,10 +1533,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.WalletAdd.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) { backStackEntry ->
             val initialTypeRaw = backStackEntry.arguments?.getString("initialType").orEmpty()
             val initialType = runCatching {
@@ -1577,10 +1583,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.AddEditBankCard.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) { backStackEntry ->
             val cardId = backStackEntry.arguments?.getString("cardId")?.toLongOrNull() ?: -1L
             val pendingStorageDefaults = remember(backStackEntry, cardId) {
@@ -1608,10 +1614,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.AddEditDocument.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) { backStackEntry ->
             val documentId = backStackEntry.arguments?.getString("documentId")?.toLongOrNull() ?: -1L
             val pendingStorageDefaults = remember(backStackEntry, documentId) {
@@ -1639,10 +1645,10 @@ fun MonicaContent(
 
         composable(
             route = "bank_card_detail/{cardId}",
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) { backStackEntry ->
             val cardId = backStackEntry.arguments?.getString("cardId")?.toLongOrNull() ?: -1L
 
@@ -1662,10 +1668,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.AddEditNote.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) { backStackEntry ->
             val noteId = backStackEntry.arguments?.getString("noteId")?.toLongOrNull() ?: -1L
             val pendingStorageDefaults = remember(backStackEntry, noteId) {
@@ -1693,10 +1699,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.AddEditSend.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) { backStackEntry ->
             val pendingSendDraft = remember(backStackEntry) {
                 navController.previousBackStackEntry?.savedStateHandle?.consumePendingSendDraft()
@@ -1728,10 +1734,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.NoteDetail.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) { backStackEntry ->
             val noteId = backStackEntry.arguments?.getString("noteId")?.toLongOrNull() ?: -1L
 
@@ -1764,10 +1770,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.DocumentDetail.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) { backStackEntry ->
             val documentId = backStackEntry.arguments?.getString("documentId")?.toLongOrNull() ?: -1L
 
@@ -1787,10 +1793,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.PasswordDetail.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) { backStackEntry ->
             val passwordId = backStackEntry.arguments?.getString("passwordId")?.toLongOrNull() ?: -1L
             val scope = rememberCoroutineScope()
@@ -2016,10 +2022,10 @@ fun MonicaContent(
         // 导出数据
         composable(
             route = Screen.ExportData.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             val dataExportImportViewModel: takagi.ru.monica.viewmodel.DataExportImportViewModel = viewModel {
                 takagi.ru.monica.viewmodel.DataExportImportViewModel(
@@ -2073,10 +2079,10 @@ fun MonicaContent(
         // 导入数据
         composable(
             route = Screen.ImportData.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             val dataExportImportViewModel: takagi.ru.monica.viewmodel.DataExportImportViewModel = viewModel {
                 takagi.ru.monica.viewmodel.DataExportImportViewModel(
@@ -2148,10 +2154,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.ChangePassword.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             androidx.compose.runtime.CompositionLocalProvider(
                 takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
@@ -2170,10 +2176,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.SecurityQuestion.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             androidx.compose.runtime.CompositionLocalProvider(
                 takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
@@ -2192,10 +2198,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.Settings.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             val scope = rememberCoroutineScope()
 
@@ -2315,10 +2321,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.MasterPasswordLockingSettings.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             androidx.compose.runtime.CompositionLocalProvider(
                 takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
@@ -2344,10 +2350,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.BottomNavSettings.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             androidx.compose.runtime.CompositionLocalProvider(
                 takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
@@ -2367,10 +2373,10 @@ fun MonicaContent(
                 type = NavType.BoolType
                 defaultValue = false
             }),
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) { backStackEntry ->
             val skipCurrentPassword = backStackEntry.arguments?.getBoolean("skipCurrentPassword") ?: false
             androidx.compose.runtime.CompositionLocalProvider(
@@ -2419,10 +2425,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.SecurityQuestionsSetup.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             androidx.compose.runtime.CompositionLocalProvider(
                 takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
@@ -2441,10 +2447,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.SecurityQuestionsVerification.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             SecurityQuestionsVerificationScreen(
                 securityManager = securityManager,
@@ -2461,10 +2467,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.SupportAuthor.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             SupportAuthorScreen(
                 onNavigateBack = {
@@ -2476,10 +2482,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.WebDavBackup.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             WebDavBackupScreen(
                 passwordRepository = repository,
@@ -2492,10 +2498,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.OneDriveBackup.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             OneDriveBackupScreen(
                 passwordRepository = repository,
@@ -2508,10 +2514,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.AutofillSettings.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             androidx.compose.runtime.CompositionLocalProvider(
                 takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
@@ -2532,10 +2538,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.AutofillBlockedFields.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             androidx.compose.runtime.CompositionLocalProvider(
                 takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
@@ -2550,10 +2556,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.AutofillSaveBlockedTargets.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             androidx.compose.runtime.CompositionLocalProvider(
                 takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
@@ -2568,10 +2574,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.PasskeySettings.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             androidx.compose.runtime.CompositionLocalProvider(
                 takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
@@ -2586,10 +2592,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.PasskeyDetail.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) { backStackEntry ->
             val recordId = backStackEntry.arguments?.getString("recordId")?.toLongOrNull() ?: -1L
             takagi.ru.monica.ui.screens.PasskeyDetailScreen(
@@ -2607,10 +2613,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.SecurityAnalysis.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             val context = LocalContext.current
             val passkeySupportCatalog = remember(context.applicationContext) {
@@ -2659,10 +2665,10 @@ fun MonicaContent(
         
         composable(
             route = Screen.QuickSetup.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             val closeQuickSetup = {
                 quickSetupDismissedThisSession = true
@@ -2712,10 +2718,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.DeveloperSettings.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             androidx.compose.runtime.CompositionLocalProvider(
                 takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
@@ -2731,10 +2737,10 @@ fun MonicaContent(
         
         composable(
             route = Screen.Extensions.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             val settings by settingsViewModel.settings.collectAsState()
             val totpItems by totpViewModel.totpItems.collectAsState()
@@ -2800,10 +2806,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.CommonAccountTemplates.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             androidx.compose.runtime.CompositionLocalProvider(
                 takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
@@ -2818,10 +2824,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.PageAdjustmentCustomization.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             takagi.ru.monica.ui.screens.PageAdjustmentCustomizationScreen(
                 onNavigateBack = {
@@ -2847,10 +2853,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.AddButtonCustomization.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             takagi.ru.monica.ui.screens.AddButtonCustomizationScreen(
                 viewModel = settingsViewModel,
@@ -2862,10 +2868,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.PasswordListCustomization.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             takagi.ru.monica.ui.screens.PasswordListCustomizationScreen(
                 viewModel = settingsViewModel,
@@ -2877,10 +2883,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.PasswordCardAdjustment.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             takagi.ru.monica.ui.screens.PasswordCardAdjustmentScreen(
                 viewModel = settingsViewModel,
@@ -2892,10 +2898,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.AuthenticatorCardAdjustment.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             takagi.ru.monica.ui.screens.AuthenticatorCardAdjustmentScreen(
                 viewModel = settingsViewModel,
@@ -2907,10 +2913,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.IconSettings.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             takagi.ru.monica.ui.screens.IconSettingsScreen(
                 viewModel = settingsViewModel,
@@ -2923,10 +2929,10 @@ fun MonicaContent(
         // 添加密码页面字段定制页面
         composable(
             route = Screen.PasswordFieldCustomization.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             takagi.ru.monica.ui.screens.PasswordFieldCustomizationScreen(
                 viewModel = settingsViewModel,
@@ -2938,10 +2944,10 @@ fun MonicaContent(
         
         composable(
             route = Screen.SyncBackup.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             androidx.compose.runtime.CompositionLocalProvider(
                 takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
@@ -2978,10 +2984,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.DedupEngine.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             val context = LocalContext.current
             val passkeyRepository = remember(context.applicationContext) {
@@ -3062,10 +3068,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.LocalKeePass.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             takagi.ru.monica.ui.screens.LocalKeePassScreen(
                 viewModel = localKeePassViewModel,
@@ -3077,10 +3083,10 @@ fun MonicaContent(
         
         composable(
             route = Screen.ColorSchemeSelection.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             androidx.compose.runtime.CompositionLocalProvider(
                 takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
@@ -3099,10 +3105,10 @@ fun MonicaContent(
         
         composable(
             route = Screen.CustomColorSettings.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             takagi.ru.monica.ui.screens.CustomColorSettingsScreen(
                 settingsViewModel = settingsViewModel,
@@ -3125,10 +3131,10 @@ fun MonicaContent(
         // 权限管理页面
         composable(
             route = Screen.PermissionManagement.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             androidx.compose.runtime.CompositionLocalProvider(
                 takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
@@ -3143,10 +3149,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.MonicaPlus.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             val settings by settingsViewModel.settings.collectAsState()
             androidx.compose.runtime.CompositionLocalProvider(
@@ -3169,10 +3175,10 @@ fun MonicaContent(
 
         composable(
             route = Screen.Payment.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
 
             PaymentScreen(
@@ -3192,10 +3198,10 @@ fun MonicaContent(
         // Bitwarden 登录页面
         composable(
             route = Screen.BitwardenLogin.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             val bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = 
                 androidx.lifecycle.viewmodel.compose.viewModel()
@@ -3215,10 +3221,10 @@ fun MonicaContent(
         // Bitwarden 设置/管理页面
         composable(
             route = Screen.BitwardenSettings.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             val bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = 
                 androidx.lifecycle.viewmodel.compose.viewModel()
@@ -3243,10 +3249,10 @@ fun MonicaContent(
         // 同步队列管理页面
         composable(
             route = Screen.SyncQueue.route,
-            enterTransition = { rightSlideEnterTransition() },
+            enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
-            popExitTransition = { rightSlidePopExitTransition() }
+            popExitTransition = { slideOutToRight() }
         ) {
             // 临时使用空列表，待集成 SyncQueueManager
             var queueItems by remember { mutableStateOf(emptyList<takagi.ru.monica.bitwarden.ui.SyncQueueItem>()) }
@@ -3292,16 +3298,6 @@ fun MonicaContent(
         }
     }
 }
-
-private fun rightSlideEnterTransition() = slideInHorizontally(
-    initialOffsetX = { fullWidth -> fullWidth },
-    animationSpec = tween(220)
-)
-
-private fun rightSlidePopExitTransition() = slideOutHorizontally(
-    targetOffsetX = { fullWidth -> fullWidth },
-    animationSpec = tween(200)
-)
 
 private fun launchSystemFidoQrIntent(context: Context, rawQrData: String): Int? {
     val qrData = rawQrData.trim()
