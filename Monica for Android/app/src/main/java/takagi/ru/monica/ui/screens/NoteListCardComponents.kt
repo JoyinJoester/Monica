@@ -48,6 +48,8 @@ import takagi.ru.monica.notes.ui.model.NoteListItemUiModel
 import takagi.ru.monica.ui.components.MarkdownPreviewText
 import takagi.ru.monica.ui.components.SyncStatusIcon
 import takagi.ru.monica.util.ImageManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -82,10 +84,13 @@ fun ExpressiveNoteCard(
         }
         note.inlineImageIds.take(3).forEach { imageId ->
             if (!cardImageBitmaps.containsKey(imageId)) {
-                imageManager.loadImage(
-                    fileName = imageId,
-                    maxDimension = previewImageMaxDimension
-                )?.let { bitmap ->
+                val bitmap = withContext(Dispatchers.IO) {
+                    imageManager.loadImage(
+                        fileName = imageId,
+                        maxDimension = previewImageMaxDimension
+                    )
+                }
+                bitmap?.let {
                     cardImageBitmaps[imageId] = bitmap
                 }
             }
@@ -217,6 +222,7 @@ fun ExpressiveNoteCard(
                             markdown = markdownForCard,
                             imageBitmaps = cardImageBitmaps,
                             onInlineImageClick = { onClick() },
+                            onNonLinkClick = onClick,
                             renderImages = true,
                             maxElements = 5,
                             modifier = Modifier.fillMaxWidth()

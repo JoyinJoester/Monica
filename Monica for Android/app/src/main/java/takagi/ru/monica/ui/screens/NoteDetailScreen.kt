@@ -46,6 +46,8 @@ import takagi.ru.monica.ui.components.ActionStripItem
 import takagi.ru.monica.ui.components.ImageDialog
 import takagi.ru.monica.ui.components.MarkdownPreviewText
 import takagi.ru.monica.util.ImageManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import takagi.ru.monica.viewmodel.NoteViewModel
 import java.text.DateFormat
 
@@ -116,10 +118,13 @@ fun NoteDetailScreen(
         }
         imageIds.forEach { imageId ->
             if (!imageBitmaps.containsKey(imageId)) {
-                imageManager.loadImage(
-                    fileName = imageId,
-                    maxDimension = detailImageMaxDimension
-                )?.let { bitmap ->
+                val bitmap = withContext(Dispatchers.IO) {
+                    imageManager.loadImage(
+                        fileName = imageId,
+                        maxDimension = detailImageMaxDimension
+                    )
+                }
+                bitmap?.let {
                     imageBitmaps[imageId] = bitmap
                 }
             }

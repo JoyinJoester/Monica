@@ -945,9 +945,13 @@ fun MonicaContent(
                 },
                 onNavigateToAddNote = { noteId ->
                     if (noteId == null) {
-                        navController.navigate(Screen.AddEditNote.createRoute())
+                        navController.navigate(Screen.AddEditNote.createRoute()) {
+                            launchSingleTop = true
+                        }
                     } else {
-                        navController.navigate(Screen.NoteDetail.createRoute(noteId))
+                        navController.navigate(Screen.NoteDetail.createRoute(noteId)) {
+                            launchSingleTop = true
+                        }
                     }
                 },
                 onNavigateToPasswordDetail = { passwordId ->

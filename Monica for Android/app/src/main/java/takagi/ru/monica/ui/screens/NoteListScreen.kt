@@ -1,5 +1,6 @@
 package takagi.ru.monica.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
@@ -50,6 +51,7 @@ import androidx.compose.material.icons.filled.ViewList
 import androidx.compose.material.icons.outlined.CheckCircle
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -112,6 +114,7 @@ import takagi.ru.monica.ui.components.PullGestureIndicator
 import takagi.ru.monica.bitwarden.sync.SyncStatus
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.notes.ui.model.NoteListItemUiModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import takagi.ru.monica.util.VibrationPatterns
 import takagi.ru.monica.utils.SavedCategoryFilterState
@@ -131,9 +134,9 @@ fun NoteListScreen(
     onOpenStandaloneSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    var searchQuery by remember { mutableStateOf("") }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
     var selectedTag by remember { mutableStateOf<String?>(null) }
-    var isSearchExpanded by remember { mutableStateOf(false) }
+    var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
     val settings by settingsViewModel.settings.collectAsState()
     val isGridLayout = settings.noteGridLayout
     var isSelectionMode by remember { mutableStateOf(false) }
@@ -153,6 +156,15 @@ fun NoteListScreen(
     
     // 防止重复点击
     var isNavigating by remember { mutableStateOf(false) }
+
+    fun collapseSearch() {
+        isSearchExpanded = false
+        searchQuery = ""
+    }
+
+    BackHandler(enabled = isSearchExpanded) {
+        collapseSearch()
+    }
 
     LaunchedEffect(isSelectionMode) {
         onSelectionModeChange(isSelectionMode)
@@ -494,7 +506,13 @@ fun NoteListScreen(
                 searchQuery = searchQuery,
                 onSearchQueryChange = { searchQuery = it },
                 isSearchExpanded = isSearchExpanded,
-                onSearchExpandedChange = { isSearchExpanded = it },
+                onSearchExpandedChange = { expanded ->
+                    if (expanded) {
+                        isSearchExpanded = true
+                    } else {
+                        collapseSearch()
+                    }
+                },
                 searchHint = stringResource(R.string.search),
                 onActionPillBoundsChanged = { bounds -> categoryPillBoundsInWindow = bounds },
                 actions = {
@@ -908,7 +926,14 @@ fun NoteListScreen(
                         isSelectionMode = false
                     }
                 } else {
-                    onNavigateToAddNote(noteId)
+                    if (!isNavigating) {
+                        isNavigating = true
+                        onNavigateToAddNote(noteId)
+                        scope.launch {
+                            delay(600)
+                            isNavigating = false
+                        }
+                    }
                 }
             },
             onNoteLongClick = { noteId ->

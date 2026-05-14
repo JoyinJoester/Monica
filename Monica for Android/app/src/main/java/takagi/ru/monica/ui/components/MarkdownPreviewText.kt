@@ -50,6 +50,7 @@ fun MarkdownPreviewText(
     onInlineImageClick: ((String) -> Unit)? = null,
     onTaskItemToggle: ((lineIndex: Int, checked: Boolean) -> Unit)? = null,
     onOpenExternalLink: ((String) -> Unit)? = null,
+    onNonLinkClick: (() -> Unit)? = null,
     codeBlockCollapseMode: NoteCodeBlockCollapseMode = NoteCodeBlockCollapseMode.COMPACT,
     enableCodeHighlight: Boolean = true,
     renderImages: Boolean = true,
@@ -61,6 +62,7 @@ fun MarkdownPreviewText(
     }
     val linkCallback = rememberUpdatedState(onOpenExternalLink)
     val imageCallback = rememberUpdatedState(onInlineImageClick)
+    val nonLinkCallback = rememberUpdatedState(onNonLinkClick)
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
 
@@ -114,7 +116,8 @@ fun MarkdownPreviewText(
                                 completedTask = element.checked,
                                 onOpenExternalLink = { raw ->
                                     openLink(raw, linkCallback.value, context)
-                                }
+                                },
+                                onNonLinkClick = nonLinkCallback.value
                             )
                         }
                     }
@@ -128,7 +131,8 @@ fun MarkdownPreviewText(
                             modifier = Modifier.weight(1f),
                             onOpenExternalLink = { raw ->
                                 openLink(raw, linkCallback.value, context)
-                            }
+                            },
+                            onNonLinkClick = nonLinkCallback.value
                         )
                     }
                 }
@@ -149,7 +153,8 @@ fun MarkdownPreviewText(
                             modifier = Modifier.weight(1f),
                             onOpenExternalLink = { raw ->
                                 openLink(raw, linkCallback.value, context)
-                            }
+                            },
+                            onNonLinkClick = nonLinkCallback.value
                         )
                     }
                 }
@@ -277,7 +282,8 @@ fun MarkdownPreviewText(
                         text = element.text,
                         onOpenExternalLink = { raw ->
                             openLink(raw, linkCallback.value, context)
-                        }
+                        },
+                        onNonLinkClick = nonLinkCallback.value
                     )
                 }
             }
@@ -290,7 +296,8 @@ private fun MarkdownInlineText(
     text: String,
     modifier: Modifier = Modifier,
     completedTask: Boolean = false,
-    onOpenExternalLink: (String) -> Unit
+    onOpenExternalLink: (String) -> Unit,
+    onNonLinkClick: (() -> Unit)? = null
 ) {
     val annotated = remember(text, completedTask) { buildInlineAnnotatedText(text, completedTask) }
     ClickableText(
@@ -298,9 +305,12 @@ private fun MarkdownInlineText(
         style = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
         modifier = modifier
     ) { offset ->
-        annotated.getStringAnnotations(URL_TAG, offset, offset)
-            .firstOrNull()
-            ?.let { annotation -> onOpenExternalLink(annotation.item) }
+        val link = annotated.getStringAnnotations(URL_TAG, offset, offset).firstOrNull()
+        if (link != null) {
+            onOpenExternalLink(link.item)
+        } else {
+            onNonLinkClick?.invoke()
+        }
     }
 }
 
