@@ -72,7 +72,8 @@ internal fun PasswordListCategoryChipMenuModulesSection(
     onDraggingModuleChange: (PasswordListTopModule?) -> Unit,
     onSettlingModuleChange: (PasswordListTopModule?) -> Unit,
     coroutineScope: CoroutineScope,
-    onTopModulesOrderChange: (List<PasswordListTopModule>) -> Unit
+    onTopModulesOrderChange: (List<PasswordListTopModule>) -> Unit,
+    isExpandedStateLoaded: Boolean = true,
 ) {
     val quickFilterBindings = buildCategoryMenuQuickFilterBindings(
         quickFilterFavorite = quickFilterFavorite,
@@ -152,7 +153,8 @@ internal fun PasswordListCategoryChipMenuModulesSection(
             onDragStart = moduleDragCallbacks.onDragStart,
             onDragCancel = moduleDragCallbacks.onDragCancel,
             onDragEnd = moduleDragCallbacks.onDragEnd,
-            onDragDelta = moduleDragCallbacks.onDragDelta
+            onDragDelta = moduleDragCallbacks.onDragDelta,
+            isExpandedStateLoaded = isExpandedStateLoaded,
         )
     )
 }

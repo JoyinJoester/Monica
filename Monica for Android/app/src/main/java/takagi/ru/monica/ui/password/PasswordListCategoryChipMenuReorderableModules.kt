@@ -38,7 +38,8 @@ internal data class PasswordListCategoryChipMenuReorderableModulesParams(
     val onDragStart: (PasswordListTopModule) -> Unit,
     val onDragCancel: (PasswordListTopModule) -> Unit,
     val onDragEnd: (PasswordListTopModule) -> Unit,
-    val onDragDelta: (PasswordListTopModule, Offset) -> Unit
+    val onDragDelta: (PasswordListTopModule, Offset) -> Unit,
+    val isExpandedStateLoaded: Boolean = true,
 )
 
 @Composable
@@ -74,7 +75,8 @@ internal fun PasswordListCategoryChipMenuReorderableModules(
                 onDragStart = { params.onDragStart(module) },
                 onDragCancel = { params.onDragCancel(module) },
                 onDragEnd = { params.onDragEnd(module) },
-                onDragDelta = { dragAmount -> params.onDragDelta(module, dragAmount) }
+                onDragDelta = { dragAmount -> params.onDragDelta(module, dragAmount) },
+                animate = params.isExpandedStateLoaded,
             )
             when (module) {
                 PasswordListTopModule.QUICK_FILTERS -> {

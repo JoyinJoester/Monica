@@ -120,6 +120,7 @@ internal data class MonicaImePasswordEntry(
     val password: String,
     val isFavorite: Boolean,
     val sourceLabel: String,
+    val totpCode: String = "",
     val keepassDatabaseId: Long? = null,
     val bitwardenVaultId: Long? = null
 )
@@ -315,6 +316,10 @@ internal fun MonicaImeContent(
                                         onDatabaseScopeSelected = onDatabaseScopeSelected,
                                         onInsertPassword = onInsertPassword,
                                         onInsertUsername = onInsertUsername,
+                                        onInsertTotp = { entry ->
+                                            val code = entry.totpCode
+                                            if (code.isNotBlank()) onKeyPressed(code)
+                                        },
                                         onSmartFillPassword = onSmartFillPassword
                                     )
                                 }
@@ -694,6 +699,7 @@ private fun UnlockedVaultPane(
     onDatabaseScopeSelected: (MonicaImeDatabaseScope) -> Unit,
     onInsertPassword: (MonicaImePasswordEntry) -> Unit,
     onInsertUsername: (MonicaImePasswordEntry) -> Unit,
+    onInsertTotp: (MonicaImePasswordEntry) -> Unit,
     onSmartFillPassword: (MonicaImePasswordEntry) -> Unit
 ) {
     ElevatedCard(
@@ -785,7 +791,8 @@ private fun UnlockedVaultPane(
                             entry = entry,
                             onSmartFill = { onSmartFillPassword(entry) },
                             onInsertPassword = { onInsertPassword(entry) },
-                            onInsertUsername = { onInsertUsername(entry) }
+                            onInsertUsername = { onInsertUsername(entry) },
+                            onInsertTotp = { onInsertTotp(entry) }
                         )
                     }
                 }
@@ -1223,7 +1230,8 @@ private fun PasswordEntryCard(
     entry: MonicaImePasswordEntry,
     onSmartFill: () -> Unit,
     onInsertPassword: () -> Unit,
-    onInsertUsername: () -> Unit
+    onInsertUsername: () -> Unit,
+    onInsertTotp: () -> Unit
 ) {
     var expanded by rememberSaveable(entry.id) { mutableStateOf(false) }
     val appIcon = entry.packageName
@@ -1314,37 +1322,63 @@ private fun PasswordEntryCard(
                 }
 
                 if (expanded) {
+                    // 紧凑按钮内边距
+                    val compactPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
                     FlowRow(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(start = 14.dp, end = 14.dp, bottom = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        // 立即填充（不折叠，让用户可以继续操作其他字段）
                         OutlinedButton(
-                            onClick = {
-                                expanded = false
-                                onSmartFill()
-                            }
+                            onClick = onSmartFill,
+                            contentPadding = compactPadding
                         ) {
-                            Text(stringResource(R.string.ime_quick_fill))
+                            Text(
+                                text = stringResource(R.string.ime_quick_fill),
+                                style = MaterialTheme.typography.labelMedium
+                            )
                         }
+                        // 密码（点击后不折叠）
                         OutlinedButton(
-                            onClick = {
-                                expanded = false
-                                onInsertPassword()
-                            }
+                            onClick = onInsertPassword,
+                            contentPadding = compactPadding
                         ) {
-                            Text(stringResource(R.string.password))
+                            Text(
+                                text = stringResource(R.string.password),
+                                style = MaterialTheme.typography.labelMedium
+                            )
                         }
+                        // 用户名（点击后不折叠）
                         if (entry.username.isNotBlank()) {
                             OutlinedButton(
-                                onClick = {
-                                    expanded = false
-                                    onInsertUsername()
-                                }
+                                onClick = onInsertUsername,
+                                contentPadding = compactPadding
                             ) {
-                                Text(stringResource(R.string.username))
+                                Text(
+                                    text = stringResource(R.string.username),
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                            }
+                        }
+                        // 2FA 验证码（仅当有 TOTP 时显示，点击后不折叠）
+                        if (entry.totpCode.isNotBlank()) {
+                            OutlinedButton(
+                                onClick = onInsertTotp,
+                                contentPadding = compactPadding
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.VerifiedUser,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = entry.totpCode,
+                                    style = MaterialTheme.typography.labelMedium
+                                )
                             }
                         }
                     }

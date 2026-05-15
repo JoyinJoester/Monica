@@ -512,7 +512,7 @@ class MonicaInputMethodService : InputMethodService() {
                         it.value.title.lowercase()
                     }
                 )
-                .take(if (force || query.isNotBlank()) 50 else 20)
+                // 不限制条目数量，由 LazyColumn 自行处理懒加载渲染。
 
             val authenticatorResults = buildAuthenticatorEntries(
                 secureItems = database.secureItemDao().getActiveItemsByTypeSync(ItemType.TOTP),
@@ -524,7 +524,7 @@ class MonicaInputMethodService : InputMethodService() {
                 bitwardenLabel = bitwardenLabel,
                 query = query,
                 selectedScope = selectedScope
-            ).take(if (force || query.isNotBlank()) 50 else 20)
+            )
 
             val cardWalletResults = buildCardWalletEntries(
                 secureItems = database.secureItemDao().getActiveItemsByTypeSync(ItemType.BANK_CARD) +
@@ -536,7 +536,7 @@ class MonicaInputMethodService : InputMethodService() {
                 bitwardenLabel = bitwardenLabel,
                 query = query,
                 selectedScope = selectedScope
-            ).take(if (force || query.isNotBlank()) 50 else 20)
+            )
 
             ImeRefreshSnapshot(
                 results = results,
@@ -978,6 +978,17 @@ class MonicaInputMethodService : InputMethodService() {
             return null
         }
 
+        // 如果密码条目绑定了验证器密钥，生成当前 TOTP 码
+        val totpCode = runCatching {
+            val parsed = TotpDataResolver.fromAuthenticatorKey(
+                rawKey = authenticatorKey,
+                fallbackIssuer = title,
+                fallbackAccountName = username
+            )
+            val resolved = parsed?.resolveReadableTotpData()
+            if (resolved != null) TotpGenerator.generateOtp(resolved) else ""
+        }.getOrDefault("")
+
         return ImeRefreshResult(
             value = MonicaImePasswordEntry(
                 id = id,
@@ -987,6 +998,7 @@ class MonicaInputMethodService : InputMethodService() {
                 packageName = appPackageName,
                 password = decryptedPassword.orEmpty(),
                 isFavorite = isFavorite,
+                totpCode = totpCode,
                 sourceLabel = resolveSourceLabel(
                     entry = this,
                     keepassLookup = keepassLookup,

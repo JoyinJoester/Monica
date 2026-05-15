@@ -170,7 +170,8 @@ internal fun PasswordListCategoryChipMenu(
             onDraggingModuleChange = moduleDragState.onDraggingModuleChange,
             onSettlingModuleChange = moduleDragState.onSettlingModuleChange,
             coroutineScope = coroutineScope,
-            onTopModulesOrderChange = onTopModulesOrderChange
+            onTopModulesOrderChange = onTopModulesOrderChange,
+            isExpandedStateLoaded = uiState.isExpandedStateLoaded,
         )
 
         PasswordListCategoryChipMenuBottomActions(

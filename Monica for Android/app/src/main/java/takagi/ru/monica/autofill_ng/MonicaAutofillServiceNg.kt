@@ -309,7 +309,7 @@ class MonicaAutofillServiceNg : AutofillService() {
                         allowSubdomainMatch = uriConfig.allowSubdomainMatch,
                         allowBaseDomainMatch = uriConfig.allowBaseDomainMatch,
                         exactDomainOnly = uriConfig.exactDomainOnly,
-                        maxSuggestions = 20,
+                        maxSuggestions = Int.MAX_VALUE,
                     ),
                 )
                 val passwordOnlyLastFilledEntry = if (isPasswordOnlyLogin) {
@@ -343,7 +343,7 @@ class MonicaAutofillServiceNg : AutofillService() {
                     originalRanked = prioritized,
                     allEntries = scopedPasswords,
                     packageName = packageName,
-                    maxSuggestions = 20,
+                    maxSuggestions = Int.MAX_VALUE,
                 )
             }
         } else {

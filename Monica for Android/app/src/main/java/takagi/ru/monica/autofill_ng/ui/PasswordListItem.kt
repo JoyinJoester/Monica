@@ -42,6 +42,15 @@ sealed class PasswordItemAction {
     
     /** 自动填充并保存应用或网站信息 */
     data class AutofillAndSaveUri(val password: PasswordEntry) : PasswordItemAction()
+
+    /** 仅填充用户名 */
+    data class FillUsername(val password: PasswordEntry) : PasswordItemAction()
+
+    /** 仅填充密码 */
+    data class FillPassword(val password: PasswordEntry) : PasswordItemAction()
+
+    /** 填充 2FA 验证码 */
+    data class FillTotp(val password: PasswordEntry) : PasswordItemAction()
     
     /** 复制用户名 */
     data class CopyUsername(val password: PasswordEntry) : PasswordItemAction()

@@ -11,12 +11,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -93,8 +95,10 @@ private fun PasswordQuickFilterEditGridParams.itemSize(
     item: PasswordListQuickFilterItem,
     metrics: PasswordQuickFilterGridMetrics
 ): IntSize {
+    // 首次测量前用一个小的占位尺寸，让 chip 按内容自然撑开测量真实宽度，
+    // 避免被 requiredSize 锁死在两列宽度。
     return measuredSizes[item] ?: IntSize(
-        width = ((metrics.availableWidthPx - metrics.gridSpacingPx) / 2f).roundToInt().coerceAtLeast(120),
+        width = 0,
         height = metrics.itemHeightPx.roundToInt()
     )
 }
@@ -269,17 +273,17 @@ internal fun PasswordQuickFilterEditGrid(params: PasswordQuickFilterEditGridPara
                 Box(
                     modifier = Modifier
                         .offset { animatedOffset }
-                        .requiredSize(
-                            width = with(density) { chipSize.width.toDp() },
-                            height = with(density) { chipSize.height.toDp() }
-                        )
+                        .wrapContentSize(align = Alignment.CenterStart, unbounded = true)
                         .alpha(itemAlpha),
                     contentAlignment = Alignment.CenterStart
                 ) {
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .pointerInput(item, displayOrder) {
+                            .pointerInput(item) {
+                                // key 只用 item，不包含 displayOrder，
+                                // 避免拖拽过程中 displayOrder 变化导致手势检测器被重建而产生抽搐。
+                                // 拖拽开始时通过 dragSnapshotOrder 快照当前顺序，后续操作基于快照进行。
                                 detectDragGesturesAfterLongPress(
                                     onDragStart = { offset ->
                                         val snapshotOrder = displayOrder
@@ -315,15 +319,14 @@ internal fun PasswordQuickFilterEditGrid(params: PasswordQuickFilterEditGridPara
                                         if (draggingItem != item) return@detectDragGesturesAfterLongPress
                                         dragPointerPosition += Offset(dragAmount.x, dragAmount.y)
                                         val snapshotOrder = if (dragSnapshotOrder.isNotEmpty()) dragSnapshotOrder else displayOrder
-                                        val snapshotOffsets = if (dragSnapshotOffsets.isNotEmpty()) {
-                                            dragSnapshotOffsets
-                                        } else {
-                                            params.computeLayout(snapshotOrder, metrics).first
-                                        }
+                                        // 用不含被拖 item 的当前布局来计算插入位置，
+                                        // 这样位置判断与实际预览布局一致，避免奇数 item 时出现空白占位。
+                                        val candidateOrder = snapshotOrder.filter { it != item }
+                                        val candidateOffsets = params.computeLayout(candidateOrder, metrics).first
                                         dragTargetIndex = params.insertionIndexFor(
                                             point = dragPointerPosition,
                                             order = snapshotOrder,
-                                            offsets = snapshotOffsets,
+                                            offsets = candidateOffsets,
                                             metrics = metrics,
                                             currentTargetIndex = dragTargetIndex,
                                             ignoredItem = item

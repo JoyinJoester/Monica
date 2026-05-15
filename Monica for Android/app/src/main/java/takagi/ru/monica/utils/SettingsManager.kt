@@ -264,6 +264,10 @@ class SettingsManager(private val context: Context) {
         private val AUTOFILL_SOURCES_KEY = stringPreferencesKey("autofill_sources")
         private val AUTOFILL_PRIORITY_KEY = stringPreferencesKey("autofill_priority")
 
+        // 分类菜单展开/收缩状态
+        private val CATEGORY_MENU_QUICK_FILTERS_EXPANDED_KEY = booleanPreferencesKey("category_menu_quick_filters_expanded")
+        private val CATEGORY_MENU_FOLDERS_EXPANDED_KEY = booleanPreferencesKey("category_menu_folders_expanded")
+
         private val sharedSettingsScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
         private val sharedSettingsFlowLock = Any()
         @Volatile
@@ -1680,6 +1684,28 @@ class SettingsManager(private val context: Context) {
             preferences[AUTOFILL_PRIORITY_KEY] = priority.joinToString(",") { it.name }
         }
     }
-    
+
+    /** 分类菜单"快捷筛选"展开状态（跨进程持久化） */
+    val categoryMenuQuickFiltersExpandedFlow: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[CATEGORY_MENU_QUICK_FILTERS_EXPANDED_KEY] ?: true
+    }
+
+    suspend fun updateCategoryMenuQuickFiltersExpanded(expanded: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[CATEGORY_MENU_QUICK_FILTERS_EXPANDED_KEY] = expanded
+        }
+    }
+
+    /** 分类菜单"分类文件夹"展开状态（跨进程持久化） */
+    val categoryMenuFoldersExpandedFlow: Flow<Boolean> = dataStore.data.map { preferences ->
+        preferences[CATEGORY_MENU_FOLDERS_EXPANDED_KEY] ?: true
+    }
+
+    suspend fun updateCategoryMenuFoldersExpanded(expanded: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[CATEGORY_MENU_FOLDERS_EXPANDED_KEY] = expanded
+        }
+    }
+
 }
 

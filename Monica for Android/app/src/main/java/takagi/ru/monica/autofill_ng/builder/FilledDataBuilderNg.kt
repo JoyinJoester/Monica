@@ -19,8 +19,9 @@ import takagi.ru.monica.utils.SettingsManager
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 
-private const val MAX_FILLED_PARTITIONS_COUNT = 20
-private const val MAX_INLINE_SUGGESTION_COUNT = 5
+// 不在此处截断条目数量，让系统键盘自行控制横向滚动显示所有条目。
+private const val MAX_FILLED_PARTITIONS_COUNT = Int.MAX_VALUE
+private const val MAX_INLINE_SUGGESTION_COUNT = Int.MAX_VALUE
 
 class FilledDataBuilderNg(
     private val context: Context,

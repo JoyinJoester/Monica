@@ -1425,6 +1425,9 @@ private fun AutofillPickerContent(
             }
             is PasswordItemAction.SmartCopyUsernameFirst -> onSmartCopy(action.password, true)
             is PasswordItemAction.SmartCopyPasswordFirst -> onSmartCopy(action.password, false)
+            is PasswordItemAction.FillUsername -> onAutofill(action.password, false)
+            is PasswordItemAction.FillPassword -> onAutofill(action.password, false)
+            is PasswordItemAction.FillTotp -> onAutofill(action.password, false)
         }
     }
 

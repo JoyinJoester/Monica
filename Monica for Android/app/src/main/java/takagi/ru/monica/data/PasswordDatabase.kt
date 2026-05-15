@@ -1918,6 +1918,9 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_59_60,   // 附件表 (attachments)
                         MIGRATION_60_61   // WIFI 条目扩展元数据 (wifi_metadata)
                     )
+                    // 启用多进程失效通知：IME 跑在 :ime 独立进程，主进程需要
+                    // 感知 IME 进程对数据库的修改（例如最近填充时间戳等）。
+                    .enableMultiInstanceInvalidation()
                     .build()
                 INSTANCE = instance
                 instance

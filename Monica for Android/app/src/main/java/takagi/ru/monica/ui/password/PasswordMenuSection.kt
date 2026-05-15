@@ -36,6 +36,7 @@ internal fun PasswordMenuSection(
     modifier: Modifier = Modifier,
     headerModifier: Modifier = Modifier,
     toggleEnabled: Boolean = true,
+    animate: Boolean = true,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val arrowRotation by animateFloatAsState(
@@ -76,11 +77,21 @@ internal fun PasswordMenuSection(
                 modifier = Modifier.graphicsLayer { rotationZ = arrowRotation }
             )
         }
-        AnimatedVisibility(
-            visible = expanded,
-            enter = expandVertically(animationSpec = tween(180)) + fadeIn(animationSpec = tween(120)),
-            exit = shrinkVertically(animationSpec = tween(140)) + fadeOut(animationSpec = tween(100))
-        ) {
+        if (animate) {
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically(animationSpec = tween(160)) + fadeIn(animationSpec = tween(100)),
+                exit = shrinkVertically(animationSpec = tween(120)) + fadeOut(animationSpec = tween(80))
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    content = content
+                )
+            }
+        } else if (expanded) {
+            // 持久化状态加载完成前用纯 if/else 显示，
+            // 避免 visible 从 true 突变到 false 触发 AnimatedVisibility 的退出动画。
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
