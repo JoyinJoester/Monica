@@ -7,8 +7,13 @@ import ja from "./locales/ja-JP.mjs";
 import vi from "./locales/vi-VN.mjs";
 import ru from "./locales/ru-RU.mjs";
 
+const repoName = process.env.GITHUB_REPOSITORY?.split("/")[1];
+const basePath = repoName ? `/${repoName}/` : "/";
+
 export default defineConfig({
   extends: teekConfig,
+
+  base: basePath,
 
   ...shared,
 
