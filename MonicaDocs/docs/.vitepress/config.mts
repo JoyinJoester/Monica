@@ -9,11 +9,21 @@ import ru from "./locales/ru-RU.mjs";
 
 const repoName = process.env.GITHUB_REPOSITORY?.split("/")[1];
 const basePath = repoName ? `/${repoName}/` : "/";
+const rollupExternal =
+  basePath === "/" ? undefined : (id: string) => id.startsWith(basePath);
 
 export default defineConfig({
   extends: teekConfig,
 
   base: basePath,
+
+  vite: {
+    build: {
+      rollupOptions: {
+        external: rollupExternal,
+      },
+    },
+  },
 
   ...shared,
 
