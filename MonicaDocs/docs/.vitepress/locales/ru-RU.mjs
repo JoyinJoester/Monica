@@ -34,7 +34,7 @@ export default defineConfig({
     ],
     editLink: {
       text: "Редактировать эту страницу на GitHub",
-      pattern: "https://github.com/JoyinJoester/Monica/edit/master/docs/:path",
+      pattern: "https://github.com/JoyinJoester/Monica/edit/main/MonicaDocs/docs/:path",
     },
   },
 });
