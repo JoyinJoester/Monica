@@ -3,6 +3,7 @@ import llmstxt from "vitepress-plugin-llms";
 
 export default defineConfig({
   title: "Monica",
+  outDir: "../dist",
   cleanUrls: false,
   lastUpdated: true,
   sitemap: {
