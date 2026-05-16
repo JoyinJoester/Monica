@@ -20,7 +20,7 @@ export default defineConfig({
     outline: { level: [2, 4], label: "本页导航" },
     docFooter: { prev: "上一页", next: "下一页" },
     nav: [
-      { text: "首页", link: "" },
+      { text: "首页", link: "/" },
       { text: "指南", link: "/guide/intro" },
       { text: "文档", link: "/reference/catalogue" },
       {
