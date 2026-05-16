@@ -29,21 +29,17 @@ jobs:
           cache-dependency-path: MonicaDocs/package-lock.json
 
       - name: Install Dependencies
-        run: npm install
+        run: npm ci
         working-directory: MonicaDocs
-        # Fallback if no package-lock yet
-        continue-on-error: true
 
       - name: Build
-        run: |
-          npm install # Ensure install runs if previous step skipped
-          npm run docs:build
+        run: npm run docs:build
         working-directory: MonicaDocs
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: MonicaDocs/dist
+          path: MonicaDocs/docs/.vitepress/dist
 
   deploy:
     environment:
