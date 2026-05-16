@@ -1,0 +1,2025 @@
+---
+url: /personal.md
+---
+
+# 支持这个项目
+
+## 赞助支持
+
+如果 Monica 对你有帮助，欢迎支持持续开发与安全投入。
+
+![支持作者](/image/support_author.jpg)
+
+你的支持将优先用于:
+
+* 安全审计与加密方案强化。
+* Android 体验优化与稳定性改进。
+* 跨端功能统一与文档维护。
+
+## 致谢
+
+❤️ 感谢支持这个项目的朋友，您的每一份帮助都让这个项目变得更好！
+
+❤️ 感谢为这个项目贡献代码的朋友 → [Contributors](https://github.com/JoyinJoester/Monica/graphs/contributors)
+
+---
+
+---
+url: /02.配置/01.文档地图.md
+---
+
+# 🗺️ Monica 全局文档导航
+
+::: note 摘要
+欢迎来到 `Monica` 本地密码库的官方文档中心。本页面为你提供整个密码库生态的系统架构、核心指南与开发规范的快速跳转入口。
+:::
+
+## 🚀 01. 入门与指南 (Guide)
+
+本章节包含项目的基本介绍、整体设计理念以及面向普通用户的日常使用引导。
+
+* **[📖 项目介绍](/guide/intro)** \* *聚合 Bitwarden 与 KeePass 的本地优先密码库，全景功能亮点、开源致谢与资产声明。*
+* **[🎯 功能总览](/guide/overview)** \* *快速了解客户端与浏览器插件的核心能力边界与 UI 布局。*
+* **[📝 快速上手](/guide/quarkstart)** \* *从零开始，快速上手 Monica*
+
+## 🛠️ 02. 开发者与技术规范 (Developer Specifications)
+
+面向开源贡献者、二次开发者以及关注数据隐私审计的硬核用户。
+
+* **[📦 WebDAV 备份格式规范](reference/webdav-backup-specification)** \* *解密跨设备同步流！标准 `.zip` 与二进制 `.enc.zip` 的归档目录树、JSON 字段详解、AES-256-GCM 加密流与级联降级恢复逻辑。*
+* **[🔄 本地存储与加密技术文档](/reference/android-storage-security)** \* *本地存储与加密技术文档*
+
+## 📈 项目演进状态
+
+::: center
+| 当前核心版本 | 部署平台要求 | 开源许可协议 |
+| :---: | :---: | :---: |
+| `v1.4.0` | Android 8.0+ / Web | [GNU GPL v3.0](LICENSE) |
+:::
+
+---
+
+---
+url: /@papes/articleOverviewPage.md
+---
+
+
+---
+
+---
+url: /@papes/archivesPage.md
+---
+
+
+---
+
+---
+url: /02.配置/02.相关文档/02.Monica Android 本地存储与加密技术文档.md
+---
+
+# 🔒 Monica Android 本地存储与加密技术文档
+
+::: note 零知识保护原则 (Zero-Knowledge Architecture)
+`Monica Android` 采用多层全盘/字段级级联加密架构，确保用户的敏感资产（如密码、信用卡号、2FA 密钥、私密笔记等）在本地持久化与 WebDAV 备份过程中的绝对安全。系统核心遵循**零知识保护**原则：即使设备丢失或数据库文件被提取，攻击者在没有用户主密码的情况下，也绝对无法逆向出任何明文数据。
+:::
+
+***
+
+## 1. 本地数据存储
+
+Monica 拒绝采用明文 SQLite 或不可靠的 KV 存储，而是拥抱 Google 官方推荐的 **Modern Android Development (MAD)** 架构进行结构化数据管理：
+
+* **核心持久层**：基于 `Room Persistence Library` (高级 SQLite 抽象层) 实现高内聚的数据访问对象 (DAO)。
+* **物理物理文件**：存储在沙盒内部的 `password_database.db` 及其 WAL 日志文件中。
+* **物理隔离边界** ：数据严密封锁在 Android 应用私有安全目录 (`/data/data/takagi.ru.monica/databases/`)。在未解锁的非 Root 设备上，外部任何恶意进程均无权也无法越界访问。
+
+***
+
+## 2. 核心加密技术架构
+
+### 2.1 算法选型：AES-256-GCM
+
+Monica 的核心加密引擎采用 **`AES-256-GCM`** (Advanced Encryption Standard with Galois/Counter Mode) 工业级对称加密算法。
+
+::: tip 为什么选择 GCM 模式？
+传统的 CBC 等模式只能提供**保密性**，容易遭受比特翻转（Bit-flipping）等篡改攻击。而 `GCM` 是一种 **AEAD (Authenticated Encryption with Associated Data)** 模式：
+
+1. **认证加密**：在加密数据的同时，生成一个 16 字节的认证标签（Authentication Tag）。
+2. **完整性校验**：解密时系统会自动比对标签，任何对密文或 IV 的微小篡改都会导致解密直接熔断失败，从而彻底防御篡改和中间人注入。
+   :::
+
+### 2.2 敏感数据流水线 (SecurityManager)
+
+对于 `Room` 数据库中 `PasswordEntry` 表的敏感字段（如密码、密保答案等），Monica 在存取时会实时触发以下生命周期：
+
+```
+
+[明文数据] ➔ 加上 12B 随机 IV ➔ [AES-256-GCM 引擎] ➔ 拼装 (IV + CipherText) ➔ Base64 编码 ➔ 写入 DB
+
+```
+
+1. **落盘前加密**：调用 `SecurityManager` 拦截明文字符串，动态生成一个 **12 字节的高熵随机 IV** (初始化向量)。
+2. **混合存储结构**：数据最终以 `Base64(IV + CipherText)` 的复合字符串形式安全存入 SQLite 单元格中。
+3. **读取时解密**：从 Room 取出字符串 ➔ 自动进行 Base64 解碼 ➔ 切割出前 12 字节 IV 与后置密文 ➔ 联动硬件密钥还原明文。
+
+***
+
+## 3. 主密码派生与硬件级密钥托管
+
+### 3.1 主密码高强度派生 (PBKDF2)
+
+为了防止彩虹表撞库与离线暴力破解，用户输入的 App 主密码**绝不落地、绝不存储哈希值**，而是作为动态密钥派生的最高源头：
+
+* **核心算法**：`PBKDF2WithHmacSHA256` (Password-Based Key Derivation Function 2)。
+* **迭代参数** ：配置高额的 **`100,000` 次密码学哈希迭代**，使攻击者的离线暴破算力成本呈指数级上升。
+* **动态盐值 (Salt)**：每个设备在初始化时随机生成 16 字节的安全盐值，确保即使两个用户主密码相同，派生出的底层根密钥也完全独立。
+
+### 3.2 硬件安全区防线 (Android KeyStore)
+
+派生出的工作密钥与敏感配置，均由 Android Jetpack 安全组件（`EncryptedSharedPreferences` 与 `MasterKey`）强力守护：
+
+> \[!IMPORTANT]
+> **硬件隔离 TEE / SE**
+> 核心 Master Key 的生成与加解密运算均在 Android **硬件安全芯片**（TEE 可信执行环境 或 SE 安全元件）中内网闭环运行。这意味着即使 Android 系统被攻破或被恶意 Root，密钥也**无法从物理硬件中被剥离提取**。
+
+> \[!TIP]
+> **生物特征授权（BiometricPrompt）**
+> 支持联动指纹或 3D 结构光面部识别。生物核验成功后，由硬件安全区限时授权释放工作密钥，无需频繁暴露长串主密码，兼顾极致便利。
+
+***
+
+## 4. 远端备份加密规范 (WebDAV)
+
+当触发自动或手动的云端 WebDAV 异步备份任务时，Monica 的 `AutoBackupWorker` 会拉起独立的远端安全沙盒：
+
+::: code-group
+
+```text [加密打包流水线]
+[沙盒核心 JSON 簇] 
+       ⬇
+[打包为标准二进制 ZIP 流] 
+       ⬇
+[提取用户设置的备份密码] ➔ [PBKDF2 100k 迭代派生密钥]
+       ⬇
+[AES-256-GCM 强力注入加密] 
+       ⬇
+[附加魔法字节头 MONICA_ENC_V1] ➔ 生成独立的 .enc.zip ➔ WebDAV 上传
+
+```
+
+:::
+
+* **抗重放与去关联**：每次生成的备份包都会重新生成高熵 Salt 和全新 IV。即使多次备份的数据完全一致，在云端生成的 `.enc.zip` 文件二进制结构也天差地别，防范云端服务商通过文件大小与特征进行隐私逆向。
+
+***
+
+## 5. 安全矩阵总结
+
+| 安全维度 | 采用技术选型 | 防御的攻击类型 |
+| --- | --- | --- |
+| **本地数据持久化** | `AES-256-GCM (256-bit)` | 拖库攻击、物理翻转篡改攻击、中间人旁路注入 |
+| **主密码防暴破** | `PBKDF2 + HMAC-SHA256` (100,000次迭代) | 离线暴力破解、彩虹表碰撞、字典攻击 |
+| **运行时密钥保护** | `Android KeyStore (TEE/SE 保护)` | 内存截取攻击、Root 权限文件越界窃取、物理拆机提取 |
+| **云端数据流转** | `MONICA_ENC_V1` 二进制二进制流强加密 | 坚果云/Nextcloud 等云端基础设施被黑、备份链路监听 |
+
+---
+
+---
+url: /02.配置/02.相关文档/03.Monica-Android-自动填充与保底机制.md
+---
+
+# ⌨️ Monica Android 自动填充方式
+
+::: note 概述
+为了防止因系统或应用兼容性问题导致自动填充无法使用，Monica for Android 提供了三种不同的自动填充方式以及一种最终保底机制，确保用户在各种应用场景下都能顺利完成填充。
+:::
+
+***
+
+## 🛠️ 三种自动填充方式
+
+### 1. 自动填充 autofill
+
+* **原理**：利用 Android 系统提供的标准 autofill 链路进行自动填充。
+* **开启方法**：在系统设置中选择 `Monica autofill` 为自动填充服务。
+
+### 2. Monica 键盘
+
+* **原理**：类似于“密码键盘”应用。需要聚焦表单，然后点击键盘上的填充按钮，通过 Tab 键切换遍历表单，按照字段进行自动填充。
+* **开启方法**：在系统设置的输入法设置中，勾选启用 `Monica 键盘`。
+
+### 3. 控制栏磁贴（无障碍）
+
+* **原理**：利用系统的无障碍权限进行自动填充，作为以上两种方案的保底机制。
+* **开启方法**：在下拉控制栏中添加 Monica 磁贴，并在系统设置的无障碍服务中给予 `Monica Pass` 无障碍权限。
+
+***
+
+## 🛡️ 最终保底机制
+
+如果以上三种填充方式皆不可用，可以通过结合**控制栏磁贴**与**通知权限**来实现快速复制填充。
+
+### 开启方法
+
+* 在下拉控制栏添加磁贴。
+* 在系统设置中给予 `Monica Pass` **通知权限**。
+
+### 操作步骤
+
+1. 下拉控制栏，点击 **Monica 磁贴** 进入密码自动填充页面。
+2. 点击想要填充的密码列表项，选择 **“复制账号稍后复制密码”**。
+3. 此时系统会马上复制账号到剪贴板，同时发送密码到系统通知栏。
+4. 粘贴完账号后，**点击通知栏的该条通知**，即可自动复制密码，完成后续粘贴。
+
+---
+
+---
+url: /01.指南/01.简介/10.快速开始.md
+---
+
+# 快速开始
+
+### 快速安装
+
+Android:
+
+1. 从 [Releases](https://github.com/JoyinJoester/Monica/releases) 下载最新 APK。
+2. 在 Android 8.0+ 设备安装并初始化主密码。
+
+浏览器插件 (Chrome / Edge):
+
+1. 在 `Monica for Browser` 目录构建插件。
+2. 打开 `chrome://extensions/` 并启用开发者模式。
+3. 选择“加载已解压的扩展程序”，导入 `dist` 目录。
+
+### 已知限制
+
+* 由于系统兼容性原因，Monica for Android 目前在部分小米 HyperOS 设备上无法创建通行密钥（Passkey）。
+
+---
+
+---
+url: /01.指南/目录.md
+---
+
+
+---
+
+---
+url: /01.指南/01.简介/02.界面介绍.md
+---
+
+# 界面介绍
+
+## 总览
+
+Monica有7个主页面（也是底栏项）
+
+分别是，密码管理器，2fa验证器，卡包，安全笔记，时间线/回收站，密码生成器，设置页面
+
+![总览](/image/seven_main_pages.jpg)
+
+底栏项是可以根据自己的喜好进行排序或者选择开启的
+
+## 底栏项管理
+
+你可以只选择开启对你来说有用的底栏项，这样可以避免底栏过于拥挤
+
+![底栏项管理](/image/bottom_nav_settings.jpg)
+
+首先介绍一下密码管理器页面
+
+## 密码页面
+
+从左往右分别是：密码页面，密码堆叠卡片展开，密码详情，编辑/添加密码
+
+这个基本上没什么可说的功能很简单，可以创建并管理你的密码
+
+![密码页面](/image/password_page.jpg)
+
+如果你在设置页面配置了“常用账号信息”在创建密码的时候将会会自动填充，也可以选择上图中2图的“第三方登录”引用其他的账号，密码页面的顶栏有两个按钮左侧的是分类，点击后弹出一个底部抽屉，然后可以管理分类，第二个按钮是设置卡片堆叠方式的，不过我觉得默认就很好用啦！
+
+![常用账号信息与分类](/image/autofill_categories.jpg)
+
+然后是右滑卡片进入的多选页面
+
+## 多选页面相关
+
+右滑进入多选页面后底栏会出现一个菜单，左1显示的是选择的数量，然后是全选，收藏，添加到分类，批量删除
+
+![多选页面](/image/multi_select.jpg)
+
+批量删除很重要因为防止误删我并没有做生物识别，就是防止误触后再次误触，不许输入密码才能删除
+
+然后就是多选逻辑，直接右滑堆叠卡片是选择所有的堆叠卡片，如果直接点击堆叠卡片并不会选择而是展开，这样可以进行单项选择
+
+然后就是在非多选状态下左滑是删除卡片，此逻辑在密码和验证器页面中生效
+
+接下来是2fa验证器页面
+
+## 2fa验证器页面
+
+2fa验证器页面没有太多子页面，同样的右滑多选左滑删除
+
+点击右下角的添加按钮可以进入完整的添加验证器页面（图2图3）可以手动配置数据，以及扫码写入信息，或者点击图1顶栏工具栏第一项可直接扫描二维码添加验证器
+
+![2fa验证器页面](/image/authenticator_page.jpg)
+
+点击验证器卡片右上角3个点可以打开一个菜单，里面有很多项可以在这里编辑删除，以及显示二维码方便大家跑路
+
+点击验证器卡片可以直接复制验证码
+
+## 验证器拓展
+
+也可以去设置页面功能拓展里面打开“即将过期时复制新验证码”这样在倒计时5秒的时候点击卡片复制的就是下一个验证码了，也可以开启验证器震动，也是倒计时5s的时候会随着秒数震动，通知设置开启通知栏验证器，会在通知栏常显示已选的验证器（这个功能也属于功能拓展忘记移进去了）
+
+![功能拓展页面](/image/feature_extensions.jpg)
+
+接下来是“生成器页面”
+
+## 生成器页面
+
+生成器页面非常的简单，就是四个生成器以及“历史记录”页面
+
+![生成器页面](/image/generator_page.jpg)
+
+历史记录页面可以记录生成历史，防止使用了生成过的密码又忘记了
+
+## 安全笔记页面
+
+其实安全笔记页面没什么好说的，并不是一个合格的笔记软件，但是作为Monica的附属功能它可以很完美的安全存储一些恢复码之类的信息，它并不需要太完美，只需要安全存储就可以了
+
+![安全笔记页面](/image/notes_page.jpg)
+
+然后是卡包页面
+
+## 卡包
+
+卡包页面可以存储你的银行卡和证件信息，也可以存储证件照片，证件照片可以下载到本地
+
+![卡包页面](/image/cards_page.jpg)
+
+整体功能非常的简单，我主要用来查看护照号码（懒得背）
+
+然后是历史页面
+
+## 历史页面
+
+历史页面有“时间线”和“回收站”两个部分，时间线可以查看你的操作历史，以及恢复编辑过的条目信息，或者将旧条目作为新条目另存，以及一个回收站，可以恢复误删除的数据
+
+![历史页面](/image/timeline_recycle_bin.jpg)
+
+好啦接下来介绍的将是Monica的一些设置项
+
+## 外观搭配
+
+首先呢打开软件你最先看到的是什么，是UI啦！，Monica的UI是M3E设计，所以默认是开启自动取色的，不过Monica也为此提供了很多种配色方案一共选择，配色主要有3类
+
+### 第一类：自然配色
+
+一共有7种配色，分别是：默认，海洋蓝，日落橙，森林绿，科技紫，黑曼巴，小黑紫
+
+![自然配色](/image/natural_theme.jpg)
+
+不过黑man！巴并不黑，小黑紫也并不紫
+
+### 第二类：莫奈
+
+一共有6种，分别是：睡莲，日出-印象，日本桥，甘草队，鲁昂大教堂，议会大厦-雾
+
+![莫奈配色](/image/monet_theme.jpg)
+
+其中睡莲是我最喜欢的一个配色 很清新很耐看
+
+### 第三类：Catppuccin
+
+啊…名字太长了我就不输入了，大名鼎鼎的Catppuccin配色，我的终端也是这个配色，Android studio也是这个配色，jb全家桶都是这个配色，很多很多地方都是这个配色，伟大无需多言，但我还是更喜欢莫奈睡莲
+
+![Catppuccin配色](/image/catppuccin_theme.jpg)
+
+## 其他外观设置
+
+可以在设置页面调整你的语言偏好，以及浅色还是深色模式
+
+![外观设置](/image/language_dark_mode.jpg)
+
+有个重要的点，如果开启了壁纸取色，配色方案是不会生效的
+
+所以如果要选择自己的配色请关闭壁纸取色
+
+## Monica plus
+
+Monica plus并不是付费功能拓展也不是强制收费的项，Monica plus只是一种诚信付款的打赏机制，如果大家角色付款性价比不高的话可以直接点击激活的，大家可以放心免费用！
+
+还有就是plus如果我做了强制付费验证的话，那就会有破解，但是破解者可能会留后门，这一点也是对用户来说的不安全因素
+
+接下来是安全设置项
+
+安全设置项是非常重要的
+
+## 安全
+
+开启“指纹解锁”在很多安全操作中可以省略那不必要的输入密码步骤，一开始是有做人脸识别的，但是很容易误触的时候触发，导致数据误删除，所以只保留了指纹解锁功能
+
+开启“防截屏保护”这样的话在Monica中将无法截屏，也无法被录屏，最大限度保障你的隐私
+
+选择自动锁定app的时间，重设主密码，设置密保问题，如果没有设置密保问题，导致忘记密码，只能清空app的全部数据
+
+在权限管理页面可以看到Monica申请的各项权限的作用，但是Monica没有任何强制权限，如果你不给任何权限Monica也可以正常使用，只是会确实这个页面描述的对应功能而已
+
+使用安全分析，可以分析Monica中存储的所有密码的安全性，此功能需要联网使用（因为调用了第三方网站，不过大家放心这是安全的HIBP提供）
+
+![安全设置项](/image/security_settings.jpg)
+
+接下来是也比较重要的“数据管理”
+
+![数据管理设置项](/image/data_management.jpg)
+
+功能与拓展不属于数据管理，不过当时和朋友约好了出去玩，我就随手塞这了，抱歉抱歉！改天我会改的！明天睡醒了改也行不过现在太晚了
+
+在这里可以设置自动填充，同步与备份，功能拓展，以及管理回收站设置和数据删除，大部分操作都是很简单易用的
+
+不过这里我要介绍一下同步与备份页面
+
+![同步与备份页面](/image/sync_and_backup.jpg)
+
+导出数据页面选择完整备份的时候再次点击一下 可以手动选择要导出的项，这个导出是和webdav的备份是完全一致的
+
+这里也是支持导出为keepass格式验证器的aegis格式，方便大家如果觉得Monica不好用，可以导出数据到这些更优秀的管理器
+
+webdav备份分为普通的Monica自己的webdav备份和keepass兼容的webdav备份，也是这次更新的重点Monica兼容keepass！！！(¯▽¯)/♫恭喜恭喜，距离兼容bitwarden更进一步，毕竟是这个软件要方便自己和大家使用的，所以我也真的在好好做了
+
+然后就是最后的几个没什么用的功能了
+
+![开发者设置与预览功能](/image/dev_settings_preview.jpg)
+
+底部开发者设置里面可以查看日志调试（不过有bug，bug就是日志调试不显示日志，不过因为用的人一直不多我都是在Android studio自己调试让实机再试，一直没用到也懒得修，改天修一修）
+
+还可以关闭密码验证，这样的话开启Monica的时候就不需要输入密码了
+
+预览功能可以预览功能可以拖拽底部导航栏，有用吗？没有，不过可以后面底栏项太多了做个双底栏，默认显示第一行，然后上滑显示第二行（但是现在很稳定了，还是不要给自己找事了）
+
+---
+
+---
+url: /01.指南/01.简介/01.项目介绍.md
+---
+
+# 项目介绍
+
+::: shareCard
+
+```yaml
+- name: 天才程序员 JoyinJoester
+  desc: 让我给你讲讲Ta的传奇故事吧
+  avatar: https://avatars.githubusercontent.com/u/87232423
+  link: https://github.com/JoyinJoester
+  bgColor: '#FFB6C1' 
+  textColor: '#621529'
+
+- name: 赞助与发电
+  desc: 用一杯咖啡支持独立开发者的全职用爱发电！
+  avatar: /image/afdian.svg
+  link: https://afdian.com/a/JoyinJoester
+  bgColor: '#FFEBF2'
+  textColor: '#621529'
+```
+
+:::
+::: navCard
+
+```yaml
+- name: Linux Do
+  desc: L站，记录与分享教程与资讯
+  link: http://www.linux.do/
+  img: https://linux.do/logo-128.svg
+  badge: 友情链接
+  badgeType: tip
+
+- name: QQ 群
+  desc: 加入 QQ 交流群 (1087865010) 一起吹水、反馈 Bug，调教独立开发者。
+  link: https://qm.qq.com/q/2vTdTkHV3u
+  img: https://p.qlogo.cn/gh/1087865010/1087865010/
+  badge: 交流群
+  badgeType: info
+```
+
+:::
+
+::: danger ⚠️ 安全备份提醒
+**数据隐私无价！请务必定期做好多介质备份！**
+
+一定要好好的做好备份，数据隐私无价！不要把所有数据都放到这一个软件里面!
+:::
+
+`Monica` 是一个聚合 **Bitwarden** 与 **KeePass** 的本地密码库（Local Vault）。
+它以本地存储优先为核心，帮助你在 Android 与浏览器端统一管理账号密码、2FA、私密笔记与敏感附件。
+
+::: info 📌 项目近况公告
+
+* **Monica for Windows** 已归档。历史代码见: [`Monica-for-Windows`](https://github.com/JoyinJoester/Monica-for-Windows)
+* :hourglass\_flowing\_sand: 由于目前精力 finite，`Monica for Wear` 和 `Monica for Browser` 暂时**无法保持持续更新**。
+* :dart: 现阶段将全力重心放在 **`Monica for Android`** 的功能完善、体验优化与稳定性维护上，感谢理解。
+  :::
+
+## 🧭 用户指南
+
+### 🎯 Monica 适合谁
+
+* \[x] 需要**本地优先**密码管理，不希望账号数据托管到第三方云的用户。
+* \[x] 既使用 **Bitwarden** 生态，也同时维护 **KeePass** (`.kdbx`) 数据的双修玩家。
+* \[x] 需要 Android 端日常高效使用，同时在浏览器里完成**智能自动填充**。
+
+### 🎁 你可以获得
+
+* **本地加密保险箱**: 登录信息、银行卡、身份信息、私密笔记、附件。
+* **双生态聚合**: Android 端包含 Bitwarden API/同步能力与 KeePass (`.kdbx`) 读写能力。
+* **多元化同步/备份**: 通过自建 WebDAV 基础设施实现跨设备数据安全流转。
+* **内置 TOTP**: 在同一应用内完成密码与二次双重验证码管理。
+
+## 📱 Android 版本重点
+
+### ✨ 核心功能
+
+* **本地 Vault**  — 所有核心凭据均在本地进行高强度加密存储。
+* **聚合导入**  — 完美支持 KeePass 数据无缝迁移与 Bitwarden 兼容接入。
+* **智能检索**  — 支持按标题、域名、标签等多维度快速定位目标凭据。
+* **生物识别**  — 联动系统级生物识别能力（指纹/面容），兼顾极致安全与即开即用。
+* **TOTP 管理**  — 统一存储、管理并动态生成双重认证验证码。
+
+### 🛠️ 技术实现栈
+
+本项目的架构与选型严格遵循 Android 现代开发实践（Modern Android Development）：
+
+| 架构分层 | 技术选型与组件 |
+| :--- | :--- |
+| **UI 表现层** | `Jetpack Compose` + `Material 3` + `Navigation Compose` |
+| **数据持久层** | `Room` (`PasswordDatabase`) + 数据访问对象 (DAO) + Repository 模式 |
+| **异步并发模型** | Kotlin `Coroutines` (协程) + `Flow` 响应式数据流 |
+| **依赖注入 (DI)** | `Koin`（应用启动时于 `MonicaApplication` 进行高内聚挂载） |
+| **后台任务调度** | `WorkManager`（通过 `AutoBackupWorker` 实现轻量、可靠的自动化 WebDAV 备份） |
+| **底层协议与三方集成** | `Retrofit` + `OkHttp` (Bitwarden API)`kotpass` (KeePass 核心解析)`sardine-android` (WebDAV 客户端) |
+
+### 🔒 纯血安全模型
+
+密码库的核心在于安全，Monica 在底层安全防御上做了严苛的架构设计：
+
+> \[!NOTE]
+> **1. 核心加密算法**
+> 采用 **`AES-256-GCM`** 认证加密算法，不仅保证数据的私密性，同时提供全方位的完整性校验，防御篡改。
+
+> \[!NOTE]
+> **2. 密钥派生机制**
+> 引入 **`PBKDF2-HMAC-SHA256`** 算法，并配置高迭代参数，大幅拉高撞库与暴力破解的技术与时间成本。
+
+> \[!NOTE]
+> **3. 硬件级本地保护**
+> 用户的主密码哈希与核心安全配置，均由 Android 系统级安全组件 **`Android Keystore`**、**`EncryptedSharedPreferences`** 以及 **`BiometricPrompt`** 共同托管，密钥不出硬件安全区。
+
+> \[!CAUTION]
+> **4. 明确的网络边界**
+> 应用声明的网络权限**仅且严格**用于 Bitwarden API 联动、自主 WebDAV 备份与同步等用户主动触发的在线能力，绝无任何第三方埋点或未知数据上传。
+
+## 🤝 开源致谢
+
+`Monica` 的设计、兼容性适配与部分功能方向，深深受益于开源社区。我们由衷感谢以下优秀开源项目与软件提供的启发与支持：
+
+* **[Keyguard](https://github.com/AChep/keyguard-app)**  — Android 端密码管理器的交互设计与极致体验参考。
+* **[Bitwarden](https://bitwarden.com/)**  — 开源密码管理生态、Vault 数据模型与多端同步能力的重要参考。
+* **[KeePass](https://keepass.info/)**  — 经典本地密码库理念，是 `.kdbx` 生态兼容与读写的重要基础。
+* **[Stratum Auth](https://github.com/stratumauth/app)**  — 身份验证器（2FA）体验、优质图标资源与相关兼容支持参考。
+
+## 📈 Star History
+
+::: center
+点击下方图表可跳转至项目的完整星标历史看板。
+:::
+
+[![Star History Chart](https://api.star-history.com/svg?repos=JoyinJoester/Monica\&type=Date)](https://star-history.com/#JoyinJoester/Monica\&Date)
+
+## 📑 许可证与资产标注
+
+::: note 许可证声明
+Copyright (c) 2025 JoyinJoester
+
+本项目严格基于 **[GNU General Public License v3.0](LICENSE)** 开源协议发布。你可以在遵守该协议的前提下进行分发、修改与二次开发。
+:::
+
+## 📦 第三方图标及版权标注
+
+为了提供更直观的身份验证器管理体验，本项目本地打包并引用了部分第三方静态资产：
+
+> \[!IMPORTANT]
+>
+> 1. **图标资源引用**：本项目本地打包了来自 [Stratum Auth app](https://github.com/stratumauth/app) 的图标资源（版本 `v1.4.0`，包含 `icons` 与 `extraicons` 目录）。该资源同样基于 GPL-3.0 协议开源，感谢原作者的无私奉献。
+> 2. **商标准则**：文档及应用中提及的所有第三方品牌名称、注册商标与商业 Logo，其所有权与知识产权均归各自合法的权利人所有。
+
+---
+
+---
+url: /ja/@papes/articleOverviewPage.md
+---
+
+
+---
+
+---
+url: /02.配置/目录.md
+---
+
+
+---
+
+---
+url: /en/@papes/archivesPage.md
+---
+
+
+---
+
+---
+url: >-
+  /en/02.Configuration/02.Docs/03.Monica-Android-Autofill Modes & Fallback
+  Mechanics.md
+---
+
+# ⌨️ Monica Android Autofill Methods
+
+::: note Overview
+To prevent instances where autofill routines fail due to system-level quirks or third-party application compatibility issues, Monica for Android provides three unique autofill methods alongside a final failsafe fallback mechanism. This dual-track structure ensures users can cleanly execute credential inputs under any mobile workflow.
+:::
+
+***
+
+## 🛠️ Three Primary Autofill Methods
+
+### 1. Standard System Autofill
+
+* **Underlying Principle**: Leverages standard Android architecture Autofill framework frameworks to deliver password entry matching.
+* **How to Enable**: Navigate to system settings and select `Monica autofill` as the active global autofill framework service provider.
+
+### 2. Monica Custom Keyboard
+
+* **Underlying Principle**: Functions similarly to standalone password-manager soft input methods. Users focus input on a target input block, tap the trigger entry on the custom layout, and use the Tab toggle control to hop through fields and sequentially drop variables.
+* **How to Enable**: Go to system-level Virtual Keyboard settings and toggle the checkbox to enable the `Monica Keyboard` input engine.
+
+### 3. Quick Settings Tile (Accessibility)
+
+* **Underlying Principle**: Harnesses Android Accessibility service primitives to force-inject strings into active layout trees, serving as a secondary backup route when standard framework listeners are suppressed.
+* **How to Enable**: Edit the device Quick Settings panel to append the Monica Tile shortcut, then authorize `Monica Pass` under system Accessibility Services definitions.
+
+***
+
+## 🛡️ Ultimate Failsafe Fallback Mechanism
+
+If all three primary automated pathways are blocked by severe environment limitations, you can deploy a robust manual injection bridge combining the **Quick Settings Tile** with **Notification Engine** listeners.
+
+### Configuration Routes
+
+* Map the custom shortcut shortcut to your hardware drop-down Quick Settings shade panel.
+* Grant `Monica Pass` absolute **Notification Permissions** under Android application settings.
+
+### Execution Steps
+
+1. Pull down your system notification shade and tap the **Monica Tile** to trigger an overlay of your password listings vault.
+2. Identify and tap the credential entry you require, then select **"Copy Username & Queue Password to Notification"**.
+3. Runtimes will immediately copy the account string to your global clipboard while simultaneously pinning a notification item to your shade.
+4. Paste the account into the form field, **pull down your shade and click the pinned Monica notification block**, which triggers a listener that copies your corresponding password string, allowing instant deployment for the remaining block.
+
+---
+
+---
+url: /vi/@papes/articleOverviewPage.md
+---
+
+
+---
+
+---
+url: /en/@papes/articleOverviewPage.md
+---
+
+
+---
+
+---
+url: /en/02.Configuration/01.Documentation Map.md
+---
+
+# 🗺️ Monica Global Documentation Navigation
+
+::: note Abstract
+Welcome to the official documentation center of the `Monica` local vault ecosystem. This matrix serves as your rapid entry point across the core user guides, architectural frameworks, and technical development specifications of our software.
+:::
+
+## 🚀 01. Onboarding & Guides (Guide)
+
+This section contains basic project overviews, global design philosophies, and day-to-day operational directions tailored for end users.
+
+* **[📖 Project Introduction](/en/guide/intro)** \* *A local-first vault aggregating Bitwarden and KeePass. Full feature highlights, open-source credits, and asset notices.*
+* **[🎯 Interface Overview](/en/guide/overview)** \* *Get up to speed with the core capability boundaries and UI wireframe layouts of the client and browser extensions.*
+* **[📝 Quick Start](/en/guide/quickstart)** \* *Start from zero and get Monica running instantly.*
+
+## 🛠️ 02. Developer & Technical Specifications (Developer Specifications)
+
+Tailored specifically for open-source contributors, secondary developers, and power users auditing data privacy structures.
+
+* **[📦 WebDAV Backup Format Specification](/en/reference/webdav-backup-specification)** \* *Demystifying cross-device sync streams! Explanations of standard `.zip` and binary `.enc.zip` archive structures, JSON schema fields, AES-256-GCM crypto streams, and cascading fallback recovery logic.*
+* **[🔄 Local Storage & Encryption Tech Doc](/en/reference/android-storage-security)** \* *Technical implementation analysis covering local storage sandbox controls and low-level cryptographic schemas.*
+
+## 📈 Project Evolution Status
+
+::: center
+| Current Core Version | Target Platform Requirements | Open Source License Type |
+| :---: | :---: | :---: |
+| `v1.4.0` | Android 8.0+ / Web | [GNU GPL v3.0](LICENSE) |
+:::
+
+---
+
+---
+url: /en/01.Guide/Menu.md
+---
+
+
+---
+
+---
+url: /vi/personal.md
+---
+
+# Hỗ trợ dự án này
+
+## Tài trợ & Hỗ trợ
+
+Nếu Monica giúp ích cho bạn, rất hoan nghênh bạn hỗ trợ để chúng tôi duy trì phát triển liên tục và đầu tư vào bảo mật.
+
+![Ủng hộ tác giả](/image/support_author.jpg)
+
+Sự hỗ trợ của bạn sẽ được ưu tiên sử dụng cho:
+
+* Kiểm toán bảo mật và tăng cường các giải pháp mã hóa.
+* Tối ưu hóa trải nghiệm và cải thiện độ ổn định trên Android.
+* Đồng bộ hóa tính năng liên nền tảng và duy trì tài liệu hướng dẫn.
+
+## Lời cảm ơn
+
+❤️ Xin chân thành cảm ơn những người bạn đã hỗ trợ dự án này, mỗi sự giúp đỡ của bạn đều làm cho dự án này trở nên tốt đẹp hơn!
+
+❤️ Xin cảm ơn những người bạn đã đóng góp mã nguồn cho dự án này → [Contributors](https://github.com/JoyinJoester/Monica/graphs/contributors)
+
+---
+
+---
+url: /en/01.Guide/01.Introduction/02.Interface Overview.md
+---
+
+# Interface Overview
+
+## Overview
+
+Monica features 7 main screens accessible via the bottom navigation bar:
+Password Manager, 2FA Authenticator, Card Wallet, Secure Notes, Timeline/Recycle Bin, Password Generator, and Settings.
+
+![Overview](/image/seven_main_pages.jpg)
+
+The bottom navigation items can be reordered or toggled on/off based on your personal preference.
+
+## Navigation Bar Management
+
+You can choose to enable only the tabs that are useful to you, keeping your navigation clean and free from clutter.
+
+![Navigation Management](/image/bottom_nav_settings.jpg)
+
+Let's look at the Password Manager screen first.
+
+## Passwords Screen
+
+From left to right: Passwords main view, expanded stacked item cards, password details, and the edit/add password interface.
+
+The core interface is straightforward and lets you effortlessly create and manage accounts.
+
+![Passwords Screen](/image/password_page.jpg)
+
+If you configure your "Common Account Info" in Settings, it will automatically populate when creating a new password. You can also tap "Third-Party Login" (shown in figure 2) to reference or link other credentials.
+
+The top bar of the Passwords screen houses two buttons: the left one opens a bottom drawer to manage your categories; the second controls card stacking behavior (though the default look is already optimized).
+
+![Common Info & Categories](/image/autofill_categories.jpg)
+
+Next is the multi-select screen, triggered by sliding cards to the right.
+
+## Multi-Select Interface
+
+Swiping right enters the batch action mode, bringing up a bottom utility menu. From left to right, it displays: selected count, select all, add to favorites, add to category, and batch delete.
+
+![Multi-Select Screen](/image/multi_select.jpg)
+
+To safeguard against accidental data loss, batch deletion does not bypass user confirmation with biometrics alone. It deliberately forces a protective prompt layout requiring explicit intent to complete.
+
+As for interaction logic, swiping right directly on a stacked card stack selects the entire group. Tapping a stack expands it instead, allowing for granular single-item selection.
+
+When not in multi-select mode, a simple left-swipe on an item acts as a delete trigger. This swipe-to-delete logic applies across both Passwords and Authenticator tabs.
+
+Let's move on to the 2FA Authenticator screen.
+
+## 2FA Authenticator Screen
+
+The 2FA Authenticator layout is incredibly clean. It follows the same swipe-right to multi-select and swipe-left to delete mechanics.
+
+Tapping the add button in the bottom right corner opens the full Authenticator configuration page (Figures 2 & 3), where you can manually type parameters or scan QR codes. Alternatively, you can tap the very first icon on the top toolbar (Figure 1) to quickly scan a 2FA QR code on the fly.
+
+![2FA Authenticator Screen](/image/authenticator_page.jpg)
+
+Tapping the three dots on the top right of an authenticator card opens an options menu for quick editing, deletion, or viewing the underlying QR code (perfect for migrating your setups elsewhere).
+
+Tapping anywhere on a 2FA card copies the token instantly to your clipboard.
+
+## Authenticator Extensions
+
+Under Settings -> Feature Extensions, you can enable "Copy Next Code Near Expiration." With this on, if you tap the card during the final 5 seconds of a countdown, it will intelligently copy the upcoming code instead of the expiring one.
+
+You can also toggle "Authenticator Vibration," which vibrates in tandem with the final 5-second countdown. Turning on the notification display pins selected verification codes inside your Android notification shade for quick lookups (this setting resides in Extensions for now and will be relocated later).
+
+![Feature Extensions Screen](/image/feature_extensions.jpg)
+
+Next up is the Generator tab.
+
+## Password Generator
+
+The Generator page is simple and clean, grouping four distinct types of generators alongside a dedicated history view.
+
+![Generator Screen](/image/generator_page.jpg)
+
+The History screen records all your generated configurations, ensuring you never lock yourself out if you create a complex password and forget to hit save.
+
+## Secure Notes Screen
+
+The Secure Notes feature doesn't aim to replace fully-fledged text editors. It functions beautifully as a secure side-vault for backing up private text information, recovery keys, and seed codes in an encrypted ecosystem.
+
+![Secure Notes Screen](/image/notes_page.jpg)
+
+Next is the Card Wallet.
+
+## Card Wallet
+
+The Card Wallet holds financial cards and personal identity credentials. It also supports securely attaching image snapshots of physical IDs, which can be downloaded back to local storage whenever needed.
+
+![Card Wallet Screen](/image/cards_page.jpg)
+
+The system keeps it plain and practical. It's a lifesaver for looking up passport numbers quickly when you don't have them memorized.
+
+Let's look at the History tab.
+
+## History Page
+
+The History hub is split into two sections: "Timeline" and "Recycle Bin".
+
+The Timeline keeps a chronological audit trail of your changes, allowing you to review past revisions, revert edits on entry fields, or clone historical records into brand new entries. The Recycle Bin lets you instantly recover items you deleted by mistake.
+
+![History Screen](/image/timeline_recycle_bin.jpg)
+
+Now, let's explore Monica's configuration dashboards.
+
+## Aesthetic Theme Engine
+
+The UI is built entirely on Material 3 (M3) design principles. While it natively samples dynamic accents directly from your system wallpaper, Monica also bundles three distinct preset theme categories:
+
+### Category 1: Natural Themes
+
+Features 7 color variations: Default, Ocean Blue, Sunset Orange, Forest Green, Tech Purple, Black Mamba, and Soft Black Purple.
+
+![Natural Themes](/image/natural_theme.jpg)
+
+*(Fun fact: Black Mamba isn't entirely deep black, and Soft Black Purple leans towards a muted tone.)*
+
+### Category 2: Monet Presets
+
+Features 6 painterly palettes: Water Lilies, Impression Sunrise, The Japanese Bridge, Licorice Team, Rouen Cathedral, and Houses of Parliament - Fog.
+
+![Monet Presets](/image/monet_theme.jpg)
+
+Among these, Water Lilies is my absolute favorite—it's incredibly fresh, soft, and easy on the eyes.
+
+### Category 3: Catppuccin Patches
+
+The famous, beloved Catppuccin color theme ecosystem. If your terminals, Android Studio, and IDE themes use this aesthetic, you will feel right at home.
+
+![Catppuccin Patches](/image/catppuccin_theme.jpg)
+
+## General Appearance Controls
+
+The Appearance menu lets you configure your preferred locale language and toggle between light and dark display modes.
+
+![Appearance Settings](/image/language_dark_mode.jpg)
+
+> \[!IMPORTANT]
+> If "Dynamic Wallpaper Color Sampling" is enabled, chosen preset theme colors will be overridden. Turn off wallpaper sampling to apply your custom presets!
+
+## Monica Plus
+
+Monica Plus is an honor-system contribution option; it is **not** a paywall, nor does it gate software features. If you are not in a position to tip, you can tap the unlock button to activate everything for free. Enjoy it without worries!
+
+Furthermore, enforcing strict server-side licensing checks invites unofficial cracked versions, which often carry unauthorized code adjustments or security backdoors—introducing serious vulnerabilities to users.
+
+Next are the critical Security parameters.
+
+## Security Setup
+
+Enabling "Fingerprint Unlock" eliminates repetitive master password prompts during standard secure workflows. While face recognition was tested, its high sensitivity triggered unintended authentications during sensitive prompts, so the app relies strictly on secure fingerprint sensors.
+
+Turning on "Screen Capture Protection" prevents screenshots or screen recordings anywhere inside Monica, keeping your credentials hidden from background malware.
+
+Here, you can also customize application auto-lock intervals, update your master password, or set security questions. If you forget your master password without setting security questions, your data cannot be recovered, and a complete app data wipe will be required.
+
+The Security Analyzer checks the health of your saved accounts against vulnerable parameters. This analysis links to the secure, third-party Have I Been Pwned (HIBP) API.
+
+![Security Options](/image/security_settings.jpg)
+
+Next is the "Data Management" area.
+
+![Data Management Controls](/image/data_management.jpg)
+
+*(Yes, the "Extensions" tab accidentally wound up nested here because I rushed out to meet a friend the day I built it! I'll refactor its location soon.)*
+
+This menu handles autofill integration, synchronization workflows, extension toggles, recycle bin clearing, and master resets.
+
+Let's look into the Sync and Backup interface.
+
+![Sync & Backup View](/image/sync_and_backup.jpg)
+
+When exporting data via Full Backup, tapping the export target a second time opens advanced options to pick and choose specific entry types. This backup matches the underlying structure used in WebDAV automation.
+
+Exporting formats include standard KeePass structures or Aegis Authenticator schemas, making it easy to transition your data to other software if Monica doesn't suit your needs.
+
+WebDAV operations support standard Monica file backups or KeePass-compatible synchronizations. This implementation brings native KeePass file compatibility directly into Monica! Bitwarden-compatible replication is next on our roadmap, as I want this tool to remain incredibly powerful and versatile for everyone.
+
+Finally, we have the developer utilities.
+
+![Developer Settings & Previews](/image/dev_settings_preview.jpg)
+
+The Developer Options tab includes an active logging terminal for debugging. *(There's a small bug where real-time logs don't refresh reliably in the view. Since I debug directly inside Android Studio anyway, I haven't patched it yet, but it's on my to-do list.)*
+
+You can also toggle off startup password validation completely for rapid testing.
+
+The Preview section offers experimental features like draggable bottom navigation tracks. While it's not strictly necessary right now, it serves as a foundation for implementing a swipeable dual-row dock once our feature sets expand. For now, the system is highly stable, so let's keep it simple!
+
+***
+
+---
+
+---
+url: >-
+  /en/02.Configuration/02.Docs/02.Monica Android Local Storage & Encryption Tech
+  Doc.md
+---
+
+# 🔒 Monica Android Local Storage & Encryption Technical Document
+
+::: note Zero-Knowledge Architecture
+`Monica Android` implements a multi-layered, full-disk and field-level cascading encryption architecture to ensure the absolute security of users' sensitive assets (such as passwords, credit card numbers, 2FA keys, secure notes, etc.) during local persistence and WebDAV backup procedures. The system core adheres strictly to a **Zero-Knowledge Architecture** framework: even if a device is lost or database files are extracted, an adversary cannot reverse-engineer any plaintext data without the user's Master Password.
+:::
+
+***
+
+## 1. Local Data Storage
+
+Monica rejects plaintext SQLite storage or unreliable key-value configurations, fully embracing Google's recommended **Modern Android Development (MAD)** architectural practices for structured data management:
+
+* **Core Persistence Layer**: Implemented via the `Room Persistence Library` (an advanced abstraction layer over SQLite) to maintain highly cohesive Data Access Objects (DAOs).
+* **Physical File Infrastructure**: Data is written directly to the sandbox-contained `password_database.db` file and its associated WAL (Write-Ahead Logging) files.
+* **Physical Isolation Boundary** : Data is strictly confined to the application's private secure directory (`/data/data/takagi.ru.monica/databases/`). On un-rooted devices, external malicious processes have zero permissions and no means to bypass this sandbox boundary.
+
+***
+
+## 2. Core Cryptographic Architecture
+
+### 2.1 Algorithm Selection: AES-256-GCM
+
+Monica's core cryptographic engine utilizes the **`AES-256-GCM`** (Advanced Encryption Standard with Galois/Counter Mode) industry-grade symmetric encryption algorithm.
+
+::: tip Why Choose GCM Mode?
+Traditional modes like CBC only provide **confidentiality** and are vulnerable to tampering vulnerabilities such as bit-flipping attacks. Conversely, `GCM` is an **AEAD (Authenticated Encryption with Associated Data)** mode that delivers:
+
+1. **Authenticated Encryption**: Simultaneously generates a 16-byte authentication tag while encrypting the payload.
+2. **Integrity Verification**: Runtimes automatically verify the tag upon decryption. Any minute tampering with the ciphertext or IV will instantly trip a runtime circuit-breaker, failing decryption and neutralizing tampering or Man-in-the-Middle (MitM) injections.
+   :::
+
+### 2.2 Sensitive Data Pipeline (SecurityManager)
+
+For highly sensitive fields within the `Room` database's `PasswordEntry` table (e.g., password fields, security answers), Monica fires the following lifecycle routines in real time during I/O operations:
+
+```
+
+[Plaintext Data] ➔ Appended with 12B Random IV ➔ [AES-256-GCM Engine] ➔ Assembled as (IV + CipherText) ➔ Base64 Encoding ➔ Written to DB
+
+```
+
+1. **Pre-Persistence Encryption**: The engine intercepts the raw string via the `SecurityManager` and dynamically injects a **12-byte high-entropy random IV** (Initialization Vector).
+2. **Compound Storage Structure**: The payload is safely written to SQLite cells as a composite string formatted as `Base64(IV + CipherText)`.
+3. **Decryption on Retrieval**: Upon fetching data from Room, the engine automatically runs Base64 decoding ➔ splits the 12-byte prefix IV from the trailing ciphertext ➔ interfaces with hardware keys to restore the plaintext.
+
+***
+
+## 3. Master Password Derivation & Hardware Key Custody
+
+### 3.1 High-Strength Key Derivation (PBKDF2)
+
+To neutralize rainbow table matching and offline brute-force attempts, the user's Master Password **is never persisted locally, nor is its hash ever stored**. Instead, it serves solely as the root seed for dynamic key derivation:
+
+* **Core Primitive**: Utilizes the `PBKDF2WithHmacSHA256` (Password-Based Key Derivation Function 2) cryptographic standard.
+* **Iteration Metrics** : Configured with a high parameter of **`100,000` cryptographic hashing iterations**, exponentially driving up processing and time costs for offline attacks.
+* **Dynamic Salt Protection**: A unique 16-byte cryptographic salt is randomly provisioned during device initialization. This ensures that even if two users share identical Master Passwords, their underlying root keys remain fully independent.
+
+### 3.2 Hardware-Level Secure Zones (Android KeyStore)
+
+Derived working keys and sensitive runtime configurations are actively anchored by Jetpack Security infrastructure (`EncryptedSharedPreferences` and `MasterKey`):
+
+> \[!IMPORTANT]
+> **Hardware Isolation via TEE / SE**
+> The generation of the underlying Master Key and its operational cryptographic routines occur entirely in isolated hardware boundaries—either a **TEE (Trusted Execution Environment)** or an **SE (Secure Element)** chips. Consequently, even if the Android OS runtime layer is compromised or maliciously rooted, encryption keys **cannot be extracted from the physical hardware substrate**.
+
+> \[!TIP]
+> **Biometric Authorization (BiometricPrompt)**
+> Runtimes interface smoothly with hardware fingerprint modules or 3D structured-light facial recognition. Upon a successful biometric verification event, the hardware secure zone temporarily releases working keys, bypassing the need to repeatedly expose the Master Password string and balancing convenience with strict safety.
+
+***
+
+## 4. Remote Backup Encryption Standard (WebDAV)
+
+When an automated or manual cloud-bound WebDAV asynchronous backup worker is triggered, Monica's `AutoBackupWorker` spins up an isolated cryptographic pipeline:
+
+::: code-group
+
+```text [Encryption Packaging Pipeline]
+[Sandbox Core JSON Bundles] 
+       ⬇
+[Packed into Standard Binary ZIP Stream] 
+       ⬇
+[Fetch User Backup Password] ➔ [PBKDF2 100k Iterations Key Derivation]
+       ⬇
+[Hardened AES-256-GCM Encryption Injection] 
+       ⬇
+[Prepend Magic Header MONICA_ENC_V1] ➔ Generates Independent .enc.zip ➔ WebDAV Upload
+
+```
+
+:::
+
+* **Anti-Replay & De-correlation**: Every single backup instance independently generates high-entropy salts and unique IVs. Even if backup payloads are sequentially identical, the binary structures of the resulting `.enc.zip` archives in the cloud vary completely, blocking cloud service providers from profiling user data through file footprint sizes.
+
+***
+
+## 5. Cryptographic Security Matrix Summary
+
+| Security Layer | Technical Implementations | Targeted Threat Vectors |
+| --- | --- | --- |
+| **Local Data Persistence** | `AES-256-GCM (256-bit)` | Database extraction attacks, physical bit-flipping tampering, side-channel injections |
+| **Master Password Protection** | `PBKDF2 + HMAC-SHA256` (100,000 iterations) | Offline brute-force attacks, rainbow table matching, dictionary spraying |
+| **Runtime Key Protection** | `Android KeyStore (TEE/SE Boundaries)` | Memory dumping, rooted privilege file boundary escapes, physical chip-stripping extraction |
+| **Cloud Data Pipeline** | `MONICA_ENC_V1` Hard Binary Stream Encryption | Infrastructure compromises on endpoints (Jianguoyun/Nextcloud), backup transmission snooping |
+
+---
+
+---
+url: /vi/@papes/archivesPage.md
+---
+
+
+---
+
+---
+url: /01.指南/02.政策与条款/02.terms.md
+---
+
+# ⚖️ Monica 应用服务条款
+
+::: note 引导说明
+欢迎使用 `Monica`。本服务条款是您与本应用之间关于使用本软件服务所订立的法律协议。请在使用前仔细阅读。
+:::
+
+***
+
+***
+
+## 1. 条款接受&#x20;
+
+使用 Monica 应用即表示你已阅读并同意本服务条款。若你不同意本条款，请停止使用相关功能。
+
+***
+
+## 2. 服务说明&#x20;
+
+Monica 是一款用于本地管理密码、验证码、卡片与笔记数据的工具应用。部分云同步/备份能力（如 Google Drive、WebDAV）仅在你主动启用后生效。
+
+***
+
+## 3. 账号与使用责任&#x20;
+
+你需对自己的设备安全、主密码管理和授权行为负责。请妥善保管账号信息，并避免将敏感数据泄露给他人。
+
+***
+
+## 4. 数据与隐私
+
+Monica 尊重你的数据控制权。数据处理原则以隐私政策为准。对于 Google Drive 集成，Monica 仅在你授权后访问，并仅操作用户选择的目录或应用创建文件。
+
+***
+
+## 5. 第三方服务
+
+当你选择使用第三方服务（例如 Google Drive）时，也应遵守该服务提供方的条款与政策。第三方服务的可用性与变更可能影响相关功能。
+
+***
+
+## 6. 免责声明&#x20;
+
+> \[!CAUTION]
+> **风险自担与备份提醒**
+> Monica 按“现状”提供，不对因设备故障、误操作、第三方服务异常、网络中断等导致的数据风险承担无限责任。请定期进行备份并自行验证备份可用性。
+
+***
+
+## 7. 条款变更
+
+Monica 可能根据功能演进或合规要求更新本条款。更新版本发布后继续使用应用，视为你接受更新后的条款。
+
+***
+
+## 8. 联系方式
+
+如你对本条款有疑问，请通过 Monica GitHub 项目页 联系维护者。
+
+***
+
+::: details 🌐 點擊查看英文摘要 / Terms Summary (EN)
+By using Monica, you agree to these terms. Monica provides local-first data management features and optional cloud integrations initiated by users. Users are responsible for device/account security and backup validation.
+:::
+
+---
+
+---
+url: /01.指南/02.政策与条款/01.privacy.md
+---
+
+# 🛡️ Monica 隐私权政策
+
+::: note 政策前言
+本隐私政策阐明了 `Monica` 在处理、存储和流转您的个人数据时所遵循的规范。作为一款秉承\*\*“本地优先、零知识保护”\*\*理念开发的独立软件，我们致力于保障您的隐私安全。
+:::
+
+***
+
+***
+
+## 1. Google Drive 访问授权&#x20;
+
+Monica 仅会在用户明确同意并授权后访问 Google Drive。未授权时，App 不会主动连接或读取你的 Google Drive 数据。
+
+***
+
+## 2. 访问范围&#x20;
+
+Monica 仅操作用户主动选择的文件夹或由 Monica 创建、用于备份/同步的文件，不会访问与你的使用无关的其他文件内容。
+
+***
+
+## 3. 凭证与账号安全&#x20;
+
+Monica 不会存储你的 Google 账号密码，不会要求你提供第三方平台登录口令。授权凭据仅用于完成你发起的同步功能，并可由你随时撤销。
+
+***
+
+## 4. 数据使用与共享&#x20;
+
+> \[!IMPORTANT]
+> **商业道德与数据合规承诺**
+> Monica 不会出售你的数据，绝对不会将你的个人数据分享给第三方。你的数据仅用于你主动触发的功能（如备份、恢复、同步）。
+
+***
+
+## 5. 数据控制权
+
+你可以随时停止使用相关功能、删除云端备份文件，或在 Google 账号权限管理（安全 ➔ 第三方应用管理）中撤销 Monica 的访问权限。
+
+***
+
+## 6. 联系方式
+
+如对本隐私政策有疑问，请联系项目维护者：Monica GitHub 项目页。
+
+***
+
+---
+
+---
+url: /en/01.Guide/02.Policies & Terms/01.privacy.md
+---
+
+# 🛡️ Monica Privacy Policy
+
+::: note Policy Preamble
+This Privacy Policy clarifies the standards adhered to by `Monica` when processing, storing, and transferring your personal data. As an independent software developed around the core philosophy of **"Local-First, Zero-Knowledge Protection"**, we are deeply committed to safeguarding your privacy security.
+:::
+
+***
+
+***
+
+## 1. Google Drive Authorization&#x20;
+
+Monica will only access Google Drive upon explicit user consent and authorization. Without authorization, the App will never actively connect to or read your Google Drive data.
+
+***
+
+## 2. Scope of Access&#x20;
+
+Monica only operates within folders explicitly selected by the user or on files created by Monica itself for backup/sync purposes. It will never access any other file contents unrelated to your actual use.
+
+***
+
+## 3. Credentials & Account Security&#x20;
+
+Monica never stores your Google account password and will never request login credentials for third-party platforms. Authorization tokens are strictly used to fulfill sync workflows initiated by you and can be revoked at any time.
+
+***
+
+## 4. Data Usage & Sharing&#x20;
+
+> \[!IMPORTANT]
+> **Commercial Ethics & Data Compliance Commitment**
+> Monica will never sell your data, and absolutely never shares your personal data with third parties. Your data is exclusively used to power features actively triggered by you (e.g., backup, restore, and synchronization).
+
+***
+
+## 5. User Data Control
+
+You retain full control over your data. You can stop using associated features, delete cloud backup files, or revoke Monica's access permissions at any time within your Google Account Access Management (Security ➔ Third-party apps with account access).
+
+***
+
+## 6. Contact Information
+
+If you have any questions regarding this Privacy Policy, please reach out to the project maintainer via the Monica GitHub Project Page.
+
+***
+
+---
+
+---
+url: /en/01.Guide/02.Policies & Terms/02.terms.md
+---
+
+# ⚖️ Monica Terms of Service
+
+::: note Introductory Guide
+Welcome to `Monica`. These Terms of Service constitute a legal agreement between you and this application regarding your use of this software and its services. Please read them carefully before proceeding.
+:::
+
+***
+
+***
+
+## 1. Acceptance of Terms&#x20;
+
+By utilizing the Monica application, you acknowledge that you have read, understood, and agreed to be bound by these Terms of Service. If you do not agree to these terms, please immediately terminate your use of associated features.
+
+***
+
+## 2. Description of Service&#x20;
+
+Monica is an application tool built for local management of passwords, authentication codes, card wallets, and secure notes. Optional cloud sync/backup integrations (such as Google Drive or WebDAV) only become active upon explicit activation by the user.
+
+***
+
+## 3. Account & Usage Responsibility&#x20;
+
+You are solely accountable for maintaining your device security, master password management, and authorized activities. Please guard your account information properly and avoid exposing sensitive data to others.
+
+***
+
+## 4. Data & Privacy
+
+Monica highly respects your absolute data control. All data processing frameworks comply strictly with the Privacy Policy. For Google Drive integration, Monica only initiates requests upon user authorization and solely operates within selected pathways or directories created by the app.
+
+***
+
+## 5. Third-Party Services
+
+When opting to leverage third-party services (such as Google Drive), you must simultaneously comply with the terms and policies enforced by those providers. The availability or modification of third-party features may directly affect correlated functions within Monica.
+
+***
+
+## 6. Disclaimer of Warranties&#x20;
+
+> \[!CAUTION]
+> **Risk Assumption & Backup Warning**
+> Monica is provided on an "AS IS" basis. The application carries no infinite liability for data loss or anomalies resulting from hardware failures, human error, third-party operational issues, or network disruptions. Please run regular backups and verify their recoverability independently.
+
+***
+
+## 7. Modifications to Terms
+
+Monica reserves the right to update these terms to reflect functional changes or compliance standards. Continuing to use the application after modified versions are published establishes your acceptance of the updated terms.
+
+***
+
+## 8. Contact Information
+
+Should you have any inquiries regarding these terms, please get in touch with the maintainer through the Monica GitHub Project Page.
+
+---
+
+---
+url: /en/01.Guide/01.Introduction/01.Project Introduction.md
+---
+
+# Project Introduction
+
+::: shareCard
+
+```yaml
+- name: JoyinJoester
+  desc: Let me tell you the legendary story of this passionate developer.
+  avatar: https://avatars.githubusercontent.com/u/87232423
+  link: https://github.com/JoyinJoester
+  bgColor: '#FFB6C1' 
+  textColor: '#621529'
+
+- name: Sponsorship & Support
+  desc: Support an independent developer's full-time passion with a cup of coffee!
+  avatar: /image/afdian.svg
+  link: https://afdian.com/a/JoyinJoester
+  bgColor: '#FFEBF2'
+  textColor: '#621529'
+```
+
+:::
+::: navCard
+
+```yaml
+- name: Linux Do
+  desc: L-Station, a community for sharing tutorials and tech news.
+  link: http://www.linux.do/
+  img: https://linux.do/logo-128.svg
+  badge: Friendly Link
+  badgeType: tip
+
+- name: QQ Group
+  desc: Join the QQ community group (1087865010) to chat, give feedback, and interact with the developer.
+  link: https://qm.qq.com/q/2vTdTkHV3u
+  img: https://p.qlogo.cn/gh/1087865010/1087865010/
+  badge: Chat Group
+  badgeType: info
+```
+
+:::
+
+::: danger ⚠️ Secure Backup Reminder
+**Your data privacy is priceless! Please ensure you make regular backups across multiple storage media!**
+
+Make sure to back up your vault properly. Data privacy is invaluable! Do not keep all your eggs in one basket—avoid relying entirely on a single software application!
+:::
+
+`Monica` is a local password vault (Local Vault) that aggregates **Bitwarden** and **KeePass** ecosystems.
+Built on a local-first architecture, it helps you uniformly manage accounts, passwords, 2FA tokens, private notes, and sensitive attachments across Android and desktop browsers.
+
+::: info 📌 Project Updates Notice
+
+* **Monica for Windows** has been archived. Check historical code here: [`Monica-for-Windows`](https://github.com/JoyinJoester/Monica-for-Windows)
+* :hourglass\_flowing\_sand: Due to finite development bandwidth, `Monica for Wear` and `Monica for Browser` are temporarily **not actively updated**.
+* :dart: At this stage, full focus is dedicated to the feature completeness, user experience optimization, and stability maintenance of **`Monica for Android`**. Thank you for your understanding.
+  :::
+
+## 🧭 User Guide
+
+### 🎯 Who is Monica For?
+
+* \[x] Users who prefer **local-first** credential management and do not want their sensitive account data hosted on third-party cloud servers.
+* \[x] Dual-ecosystem players who use **Bitwarden** features but also maintain **KeePass** (`.kdbx`) databases.
+* \[x] Anyone looking for an efficient Android client combined with **intelligent autofill** capabilities on browsers.
+
+### 🎁 What You Get
+
+* **Local Encrypted Safe**: Securely store login credentials, payment cards, IDs, secure notes, and attachments.
+* **Dual-Ecosystem Aggregation**: Integrates Bitwarden API synchronization alongside native KeePass (`.kdbx`) read/write capabilities on Android.
+* **Diversified Sync & Backup**: Securely transfer data across devices using your own self-hosted WebDAV infrastructure.
+* **Built-in TOTP**: Manage both standard passwords and secondary two-factor authentication codes inside a single application.
+
+## 📱 Android Highlights
+
+### ✨ Core Features
+
+* **Local Vault**  — All core credentials are encrypted natively using high-strength storage algorithms.
+* **Aggregated Import**  — Fully supports seamless migration from KeePass files and flexible integration with Bitwarden ecosystems.
+* **Smart Search**  — Quickly locate your targets using multi-dimensional queries across titles, domains, and custom tags.
+* **Biometric Authentication**  — Leverages system-level biometric prompts (Fingerprint/Face Unlock) for instant yet airtight security.
+* **TOTP Management**  — Consolidates, organizes, and dynamically generates 2FA authentication codes.
+
+### 🛠️ Technical Stack
+
+The architecture strictly follows Modern Android Development (MAD) practices:
+
+| Architectural Layer | Technologies & Components |
+| --- | --- |
+| **UI Presentation Layer** | `Jetpack Compose` + `Material 3` + `Navigation Compose` |
+| **Data Persistence Layer** | `Room` (`PasswordDatabase`) + Data Access Objects (DAO) + Repository Pattern |
+| **Asynchronous/Concurrency** | Kotlin `Coroutines` + `Flow` responsive data streams |
+| **Dependency Injection (DI)** | `Koin` (highly cohesive setup initialized at app startup within `MonicaApplication`) |
+| **Background Scheduling** | `WorkManager` (lightweight, reliable automated WebDAV backups driven by `AutoBackupWorker`) |
+| **Protocols & Integrations** | `Retrofit` + `OkHttp` (Bitwarden API)
+
+`kotpass` (Core KeePass parsing Engine)
+
+`sardine-android` (WebDAV client) |
+
+### 🔒 Pure Security Model
+
+Security is the core foundation of a password manager. Monica implements rigorous architectural defenses at the lowest level:
+
+> \[!NOTE]
+> **1. Core Cryptographic Algorithm**
+> Implements the **`AES-256-GCM`** authenticated encryption scheme, ensuring complete data confidentiality alongside full-scale integrity checks to prevent tampering.
+
+> \[!NOTE]
+> **2. Key Derivation Function (KDF)**
+> Employs the **`PBKDF2-HMAC-SHA256`** algorithm with highly intensive iteration parameters, drastically raising the technical barrier and time-cost for brute-force attacks.
+
+> \[!NOTE]
+> **3. Hardware-Backed Local Protection**
+> The master password hash and core security configurations are securely delegated to the system-level **`Android Keystore`**, **`EncryptedSharedPreferences`**, and **`BiometricPrompt`**, keeping encryption keys entirely within hardware-isolated environments.
+
+> \[!CAUTION]
+> **4. Explicit Network Boundaries**
+> The application's declared network permissions are **exclusively** utilized for user-triggered workflows—such as Bitwarden API interactions and WebDAV synchronization. It contains absolutely zero third-party telemetry, trackers, or hidden analytics.
+
+## 🤝 Open Source Acknowledgements
+
+The design, compatibility design, and features of `Monica` are deeply inspired by the open-source community. We sincerely appreciate the following projects and software:
+
+* **[Keyguard](https://github.com/AChep/keyguard-app)**  — Excellent reference for an exceptional, sleek Android password manager user experience.
+* **[Bitwarden](https://bitwarden.com/)**  — Vital reference for open-source password ecosystems, data schemas, and multi-client synchronization.
+* **[KeePass](https://keepass.info/)**  — The pioneer of local password storage, serving as the baseline foundation for our `.kdbx` file reading and writing.
+* **[Stratum Auth](https://github.com/stratumauth/app)**  — Guidance for 2FA user experiences, beautiful brand icon packages, and verification standards.
+
+## 📈 Star History
+
+::: center
+Click the chart below to navigate to the full star history dashboard.
+:::
+
+## 📑 Licenses & Asset Attributes
+
+::: note License Declaration
+Copyright (c) 2025 JoyinJoester
+
+This project is released strictly under the terms of the **[GNU General Public License v3.0](https://www.google.com/search?q=LICENSE)**. You are free to distribute, modify, and build upon this software in compliance with the license provisions.
+:::
+
+## 📦 Third-Party Icons & Trademark Notices
+
+To deliver a more streamlined 2FA account management experience, this project packs and references several local static assets:
+
+> \[!IMPORTANT]
+>
+> 1. **Icon Asset References**: This project incorporates pre-packaged icon assets (version `v1.4.0`, containing `icons` and `extraicons` folders) courtesy of the [Stratum Auth app](https://github.com/stratumauth/app). These assets are similarly licensed under GPL-3.0. Special thanks to the original creator for their selfless contribution.
+>
+> 2. **Trademarks**: All third-party brand names, registered trademarks, and commercial logos mentioned in the documentation or app remain the exclusive property of their respective legitimate owners.
+
+---
+
+---
+url: /en/01.Guide/01.Introduction/10.Quick Start.md
+---
+
+# Quick Start
+
+### Quick Installation
+
+Android:
+
+1. Download the latest APK build from the official [Releases](https://github.com/JoyinJoester/Monica/releases) page.
+2. Install the package on any device running Android 8.0+ and configure your master password.
+
+Browser Extension (Chrome / Edge):
+
+1. Navigate to the local `Monica for Browser` project directory to build the extension assets.
+2. Open `chrome://extensions/` inside your browser and enable "Developer mode."
+3. Click "Load unpacked" and select the generated `dist` distribution folder.
+
+### Known Limitations
+
+* Due to system-level configuration variances, Monica for Android is currently unable to initialize or generate Passkeys on certain devices running Xiaomi HyperOS.
+
+---
+
+---
+url: /en/02.Configuration/Menu.md
+---
+
+
+---
+
+---
+url: /en/personal.md
+---
+
+# Support this project
+
+## Support & Donation
+
+If Monica has been helpful to you, your support for its continuous development and security investment is highly appreciated.
+
+![Support the author](/image/support_author.jpg)
+
+Your support will be prioritized for:
+
+* Security audits and cryptographic scheme enhancements.
+* Android user experience optimization and stability improvements.
+* Cross-platform feature alignment and documentation maintenance.
+
+## Acknowledgements
+
+❤️ Thank you to everyone who supports this project. Your help makes it better every day!
+
+❤️ Thank you to the brilliant contributors who co-create this project → [Contributors](https://github.com/JoyinJoester/Monica/graphs/contributors)
+
+---
+
+---
+url: /en.md
+---
+
+
+---
+
+---
+url: /ja.md
+---
+
+
+---
+
+---
+url: /ru.md
+---
+
+
+---
+
+---
+url: /vi.md
+---
+
+
+---
+
+---
+url: /02.配置/02.相关文档/01.Monica-Android-WebDAV备份格式规范.md
+---
+
+# 📦 Monica WebDAV 备份格式规范
+
+::: note 摘要
+本规范定义了 `Monica` 本地密码库在进行 WebDAV 自动化备份与数据流转时的归档结构、底层数据格式及加密协议。本规范旨在确保数据的**跨平台解析能力**与**极致的隐私安全**。
+:::
+
+***
+
+## 1. 概述
+
+`Monica` 的 WebDAV 备份机制会将用户选定的核心数据打包成一个标准的 ZIP 压缩包（未加密时为 `.zip`，启用高强度备份加密时为 `.enc.zip`）。
+
+该备份包内部摒弃了传统冗余的二进制数据库直接导出方案，采用了由 **`.json` 核心数据**、**`.csv` 汇总文件** 和 **媒体资源（Images）** 组成的松耦合结构，便于未来的跨平台数据审计与精确恢复。
+
+***
+
+## 2. 备份包目录结构
+
+一个标准的备份 ZIP 包解压后的目录树状结构如下所示：
+
+```text
+/ (根目录)
+├── passwords/                  # 密码条目数据（高内聚分开存储）
+│   ├── password_1_1700000.json
+│   └── password_2_1700001.json
+├── notes/                      # 笔记条目数据
+│   └── note_5_1700002.json
+├── images/                     # 图片资源（如加密存储的证件照、附件等）
+│   └── image_20240101.jpg
+├── trash/                      # 回收站归档（支持软删除数据恢复）
+│   ├── trash_passwords.json
+│   └── trash_secure_items.json
+├── categories.json             # 独立的全局分类排版信息
+├── Monica_20240101_password.csv # 密码扁平化汇总（供人工查阅与兼容导出）
+├── Monica_20240101_totp.csv     # TOTP 双重验证汇总
+├── common_account.json         # 常用账号及自动填充配置
+├── webdav_config.json          # WebDAV 当前节点连接配置（支持无缝迁移）
+├── timeline_history.json       # 审计日志（操作时间线）
+└── generated_history.json      # 强密码生成器历史记录
+
+```
+
+***
+
+## 3. 详细文件格式规范
+
+### 3.1 密码条目 (`passwords/password_{id}_{timestamp}.json`)
+
+每个密码条目单独封装为一个独立的 JSON 文件，避免单一主文件损坏导致的密码库全面崩溃。
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `id` | `Long` | 原始数据库 ID |
+| `title` | `String` | 密码项标题（如 `Google`） |
+| `username` | `String` | 账号 / 用户名 |
+| `password` | `String` | 密码（明文或加密，取决于是否启用了整体备份加密） |
+| `website` | `String` | 关联网址 / Domain |
+| `notes` | `String` | 备注文本 |
+| `isFavorite` | `Boolean` | 是否加入收藏夹 |
+| `categoryId` | `Long?` | 所属分类 ID（可为空） |
+| `categoryName` | `String?` | 分类名称（用于跨设备异地恢复时**自动重建分类树**） |
+| `authenticatorKey` | `String` | 绑定的二阶段双重验证 (TOTP) 密钥 |
+| `loginType` | `String` | 认证类型：`PASSWORD`（传统）或 `SSO`（单点登录） |
+| `ssoRefEntryId` | `Long?` | SSO 关联的父级密码条目 ID |
+
+::: details 💡 点击查看密码条目完整 JSON 示例
+
+```json
+{
+  "id": 1,
+  "title": "Google",
+  "username": "user@gmail.com",
+  "password": "mySecurePassword123",
+  "website": "[https://accounts.google.com](https://accounts.google.com)",
+  "notes": "个人主账号，包含重要的云端数据",
+  "isFavorite": true,
+  "categoryId": 2,
+  "categoryName": "Social",
+  "authenticatorKey": "NBSWY3DPEB3W64TBNQ======",
+  "loginType": "PASSWORD",
+  "ssoRefEntryId": null
+}
+
+```
+
+:::
+
+### 3.2 笔记条目 (`notes/note_{id}_{timestamp}.json`)
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `notes` | `String` | 笔记正文（支持 Markdown 或纯文本） |
+| `imagePaths` | `String` | 关联的图片文件名列表（多个文件以逗号 `,` 分隔） |
+
+### 3.3 配置文件汇总
+
+::: code-group
+
+```json [categories.json]
+// 存储全局分类信息及其前端 UI 排序权重
+[
+  { "id": 1, "name": "Work", "sortOrder": 0 },
+  { "id": 2, "name": "Social", "sortOrder": 1 }
+]
+
+```
+
+```json [common_account.json]
+// 存储用户在设置中配置的用于快速自动填充的个人信息面板
+{
+  "email": "myemail@example.com",
+  "phone": "13800138000",
+  "autoFillEnabled": true
+}
+
+```
+
+```json [webdav_config.json]
+// 用于新旧设备无缝迁移、接管 WebDAV 基础设施
+{
+  "url": "[https://dav.jianguoyun.com/dav/](https://dav.jianguoyun.com/dav/)",
+  "username": "monica_user@dav.com",
+  "encryptedPassword": "U2FsdGVkX19..." // ⚠️ 此密码会使用用户的“备份密码”进行二次硬件级加密
+}
+
+```
+
+:::
+
+### 3.4 回收站机制 (`trash/`)
+
+* **`trash_passwords.json`**：包含所有已进入回收站的密码条目，底层结构与普通密码一致，但额外追加了 `deletedAt` 高精度时间戳。
+* **`trash_secure_items.json`**：包含已软删除的私密笔记、银行卡、安全密钥等其他扩展资产。
+
+### 3.5 兼容性 CSV 文件 (`*.csv`)
+
+> \[!TIP]
+> 这些 CSV 文件（如 `Monica_20240101_password.csv`）主要用于**人工直接查阅**或**应对其他主流密码管理器的格式导入**。Monica 自身的完整跨设备恢复逻辑**完全不依赖** CSV，而是 100% 采用上面定义的 JSON 结构体。
+
+***
+
+## 4. 加密机制
+
+当用户在应用的 设置 ➔ 备份设置 中启用 **「备份加密」** 时，数据流将切换至纯血安全防御模式：
+
+```
+[原始压缩数据流] ➔ [EncryptionHelper] ➔ [AES-256-GCM 加密] ➔ 导出为 .enc.zip 文件
+
+```
+
+1. **二进制流加密**：整个标准 ZIP 文件的数据不会落地为明文，而是直接被视为原始二进制数据流。
+2. **算法选型**：采用具有认证加密特性的 **`AES-256-GCM`** 高阶算法，提供加密防窥与防数据篡改的双重校验能力。
+3. **扩展名标识**：加密生成的物理归档文件扩展名严格限定为 **`.enc.zip`**。
+4. **二进制文件头 (Header)**：文件头部固定包含专属魔法字节群：
+
+* `MONICA_ENC_V1`（版本识别标识）
+* 高熵随机 Salt（盐值）
+* 随机 IV（初始化向量）
+
+***
+
+## 5. 跨设备恢复与冲突降级逻辑
+
+数据恢复阶段，客户端应用将严格执行以下流水线生命周期：
+
+1. **解密与验证**：解码 `.enc.zip` ➔ 校验头部信息 ➔ 通过主密码派生密钥解密流 ➔ 释放至内存沙盒。
+2. **ID 冲突级联降级处理**：
+
+* 若解压读取的原 JSON `id` 在当前设备数据库中已存在，系统**拒绝覆盖**已有数据。
+* 触发自动降级：为新拷贝生成全新物理 `Long ID` 插入数据库。
+
+3. **关联关系重组（ID 映射修复）**：
+
+* 系统将自动扫描并建立一组 `旧 ID ➔ 新 ID` 的内存映射表。
+* 自动修复 `ssoRefEntryId`、绑定账号与对应 TOTP 的关联关系，确保链接完好不中断。
+
+4. **媒体归档转移**：
+
+* 自动解算 `images/` 目录下的所有二进制资产。
+* 安全地将图片与证件附件复制到当前设备应用的沙盒私有目录（`context.filesDir`），并重新绑定对应笔记的内置相对路径。
+
+```
+```
+
+---
+
+---
+url: >-
+  /en/02.Configuration/02.Docs/01.Monica-Android-WebDAV Backup Format
+  Specification.md
+---
+
+# 📦 Monica WebDAV Backup Format Specification
+
+::: note Abstract
+This specification defines the archive structure, underlying data formats, and encryption protocols utilized by the `Monica` local vault during automated WebDAV backups and data transfers. This framework ensures robust **cross-platform parsing capabilities** alongside **compromising-free privacy and security**.
+:::
+
+***
+
+## 1. Overview
+
+Monica's WebDAV backup mechanism bundles the user's core data into a standard ZIP archive (`.zip` when unencrypted, and `.enc.zip` when high-strength backup encryption is enabled).
+
+Instead of traditional, redundant direct binary database exports, the backup archive adopts a loosely coupled architecture consisting of **`.json` core data**, **`.csv` summaries**, and **media resources (Images)**. This ensures simplified data auditing and highly precise restoration workflows across platforms in the future.
+
+***
+
+## 2. Backup Archive Directory Structure
+
+The tree structure of a standard backup ZIP archive upon extraction is detailed below:
+
+```text
+/ (Root Directory)
+├── passwords/                  # Password entries (highly cohesive separate storage)
+│   ├── password_1_1700000.json
+│   └── password_2_1700001.json
+├── notes/                      # Secure notes data
+│   └── note_5_1700002.json
+├── images/                     # Image assets (e.g., encrypted physical ID photos, attachments)
+│   └── image_20240101.jpg
+├── trash/                      # Recycle Bin archives (supports soft-deleted data recovery)
+│   ├── trash_passwords.json
+│   └── trash_secure_items.json
+├── categories.json             # Independent global category layout configurations
+├── Monica_20240101_password.csv # Flattened password summary (for manual inspection & compatibility exports)
+├── Monica_20240101_totp.csv     # TOTP two-factor authentication summary
+├── common_account.json         # Common identities & autofill settings
+├── webdav_config.json          # WebDAV current node connection config (supports seamless migration)
+├── timeline_history.json       # Audit logs (operational timeline)
+└── generated_history.json      # Strong password generator history logs
+
+```
+
+***
+
+## 3. Detailed File Format Specifications
+
+### 3.1 Password Entries (`passwords/password_{id}_{timestamp}.json`)
+
+Each password item is encapsulated within its own independent JSON file to mitigate the risk of catastrophic vault corruption from a single faulty file.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | `Long` | Original database entry ID |
+| `title` | `String` | Title of the password item (e.g., `Google`) |
+| `username` | `String` | Account login / Username |
+| `password` | `String` | Password string (plaintext or encrypted, depending on backup encryption status) |
+| `website` | `String` | Associated URL / Domain |
+| `notes` | `String` | Plaintext description/notes |
+| `isFavorite` | `Boolean` | Whether the item is added to favorites |
+| `categoryId` | `Long?` | Associated category ID (nullable) |
+| `categoryName` | `String?` | Category name (used to **automatically rebuild category trees** during cross-device remote restorations) |
+| `authenticatorKey` | `String` | Associated 2-factor authentication (TOTP) seed secret |
+| `loginType` | `String` | Authentication architecture: `PASSWORD` (traditional) or `SSO` (Single Sign-On) |
+| `ssoRefEntryId` | `Long?` | Associated parent password entry ID for SSO mappings |
+
+::: details 💡 Click to view a complete password entry JSON example
+
+```json
+{
+  "id": 1,
+  "title": "Google",
+  "username": "user@gmail.com",
+  "password": "mySecurePassword123",
+  "website": "[https://accounts.google.com](https://accounts.google.com)",
+  "notes": "Primary personal account containing vital cloud assets.",
+  "isFavorite": true,
+  "categoryId": 2,
+  "categoryName": "Social",
+  "authenticatorKey": "NBSWY3DPEB3W64TBNQ======",
+  "loginType": "PASSWORD",
+  "ssoRefEntryId": null
+}
+
+```
+
+:::
+
+### 3.2 Secure Notes (`notes/note_{id}_{timestamp}.json`)
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `notes` | `String` | Note content body (supports Markdown formatting or pure text) |
+| `imagePaths` | `String` | File name list of associated image assets (comma `,` separated) |
+
+### 3.3 Configuration Summaries
+
+::: code-group
+
+```json [categories.json]
+// Stores global category profiles and front-end UI sorting indices
+[
+  { "id": 1, "name": "Work", "sortOrder": 0 },
+  { "id": 2, "name": "Social", "sortOrder": 1 }
+]
+
+```
+
+```json [common_account.json]
+// Stores identity configuration data used to facilitate quick autofill routines
+{
+  "email": "myemail@example.com",
+  "phone": "13800138000",
+  "autoFillEnabled": true
+}
+
+```
+
+```json [webdav_config.json]
+// Enables seamless device takeovers and configurations of custom WebDAV infrastructures
+{
+  "url": "[https://dav.jianguoyun.com/dav/](https://dav.jianguoyun.com/dav/)",
+  "username": "monica_user@dav.com",
+  "encryptedPassword": "U2FsdGVkX19..." // ⚠️ Secondarily encrypted locally utilizing the user's "Backup Password"
+}
+
+```
+
+:::
+
+### 3.4 Recycle Bin Architectures (`trash/`)
+
+* **`trash_passwords.json`**：Contains all password entries currently moved to the Recycle Bin. The underlying schema mirrors standard items but appends a high-precision `deletedAt` timestamp.
+* **`trash_secure_items.json`**：Tracks soft-deleted secure notes, payment cards, secure tokens, and other auxiliary digital items.
+
+### 3.5 Compatibility CSV Sheets (`*.csv`)
+
+> \[!TIP]
+> These CSV schemas (e.g., `Monica_20240101_password.csv`) are generated **exclusively for manual inspection** or **import compatibility with alternative credential providers**. Monica's complete native cross-device data recovery workflows **do not rely on** CSV streams, operating 100% via the JSON formats defined above.
+
+***
+
+## 4. Encryption Mechanics
+
+When a user toggles **"Backup Encryption"** under Settings ➔ Backup Configurations, the data pipeline transitions into a hardened security defense layout:
+
+```
+[Raw Compressed Stream] ➔ [EncryptionHelper] ➔ [AES-256-GCM Encryption] ➔ Exported as .enc.zip
+
+```
+
+1. **Binary Stream Encryption**: The payload of the standard ZIP folder never hits local storage in plaintext; it is processed explicitly as raw binary blocks.
+2. **Algorithm Selection**: Enforces the **`AES-256-GCM`** authenticated encryption scheme, providing data stealth alongside comprehensive integrity verification against malicious tampering.
+3. **Extension Labeling**: The extensions of physical archive files compiled under encryption are strictly designated as **`.enc.zip`**.
+4. **Binary Header Design**: The file header explicitly bundles a sequence of unique magic bytes:
+
+* `MONICA_ENC_V1` (Format generation version indicator)
+* High-entropy random Salt
+* Random Initialization Vector (IV)
+
+***
+
+## 5. Cross-Device Restoration & Conflict Mitigation Logic
+
+During the data restoration phase, client runtimes strictly execute the following sequential pipeline lifecycle:
+
+1. **Decryption & Validation**: Decode `.enc.zip` ➔ Validate header block integrity ➔ Decrypt stream via master-password-derived keys ➔ Unpack files into an isolated sandbox in memory.
+2. **ID Conflict Resolution**:
+
+* If an extracted JSON entry's `id` is discovered to already exist in the active device database, the engine **rejects direct overwriting**.
+* Triggers a fallback route: Allocates a new physical unique `Long ID` for the incoming record and safely inserts it into the database.
+
+3. **Relational Graph Restructuring (ID Mapping Repairs)**:
+
+* Run-time routines compile a transient map tracing `Old ID ➔ New ID` adjustments.
+* Automatically patches `ssoRefEntryId` parameters, paired account indicators, and related TOTP bindings, preserving graph linkages without breakage.
+
+4. **Media Asset Relocation**:
+
+* Processes all binary records inside the `images/` directory tree.
+* Securely migrates snapshots and document attachments to the host app's isolated local filesystem space (`context.filesDir`), rewriting corresponding internal path bindings within the active note databases.
+
+---
+
+---
+url: /ru/@papes/archivesPage.md
+---
+
+
+---
+
+---
+url: /ru/personal.md
+---
+
+# Поддержать проект
+
+## Донаты и поддержка
+
+Если проект Monica оказался полезен для вас, вы можете поддержать его дальнейшую разработку и инвестиции в безопасность.
+
+![Поддержать автора](/image/support_author.jpg)
+
+Ваша поддержка будет направлена на:
+
+* Аудит безопасности и усиление схем шифрования.
+* Оптимизацию интерфейса и повышение стабильности на Android.
+* Унификацию кроссплатформенных функций и поддержку документации.
+
+## Благодарности
+
+❤️ Спасибо всем, кто поддерживает этот проект. Ваша помощь делает его лучше с каждым днем!
+
+❤️ Спасибо тем, кто вносит вклад в развитие исходного кода проекта → [Contributors](https://github.com/JoyinJoester/Monica/graphs/contributors)
+
+---
+
+---
+url: /ru/@papes/articleOverviewPage.md
+---
+
+
+---
+
+---
+url: /ja/@papes/archivesPage.md
+---
+
+
+---
+
+---
+url: /ja/personal.md
+---
+
+# プロジェクトを支援する
+
+## 寄付・支援
+
+もしMonicaがお役に立ちましたら、継続的な開発とセキュリティ向上のための支援をいただけますと幸いです。
+
+![作者を支援する](/image/support_author.jpg)
+
+いただいた支援は、主に以下の用途に活用されます：
+
+* セキュリティ監査および暗号化スキームの強化。
+* Android版のエクスペリエンス最適化と安定性の向上。
+* クロスプラットフォーム機能の統合とドキュメントの維持。
+
+## 謝辞
+
+❤️ このプロジェクトを支援してくださる皆様に心より感謝申し上げます。皆様のサポートが、このプロジェクトをより良くする原動力となっています！
+
+❤️ このプロジェクトにコードで貢献してくださった皆様に感謝します → [Contributors](https://github.com/JoyinJoester/Monica/graphs/contributors)
