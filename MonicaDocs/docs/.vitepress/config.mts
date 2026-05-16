@@ -1,5 +1,4 @@
 import { defineConfig } from "vitepress";
-import { fileURLToPath } from "node:url";
 import path from "node:path";
 import fs from "node:fs";
 import llmstxt from "vitepress-plugin-llms";
@@ -11,8 +10,8 @@ import ja from "./locales/ja-JP.mjs";
 import vi from "./locales/vi-VN.mjs";
 import ru from "./locales/ru-RU.mjs";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const publicDir = path.resolve(__dirname, "../public");
+// project root = cwd (vitepress build is run from MonicaDocs/)
+const publicDir = path.resolve("docs/public");
 
 const repoName = process.env.GITHUB_REPOSITORY?.split("/")[1];
 const basePath = repoName ? `/${repoName}/` : "/";
@@ -30,17 +29,9 @@ export default defineConfig({
       {
         name: "resolve-base-paths",
         enforce: "pre",
-        config(_, { isSsrBuild }) {
-          if (!hasBase) return;
-          // Only externalize during client build; SSR resolves via resolveId
-          if (isSsrBuild) return;
-          return {
-            build: { rollupOptions: { external: isBasePrefixed } },
-          };
-        },
         resolveId(id) {
           if (!hasBase || !isBasePrefixed(id)) return;
-          // /Monica/image/afdian.svg → resolve to public/image/afdian.svg
+          // /Monica/image/afdian.svg → resolve to docs/public/image/afdian.svg
           const relative = id.slice(basePath.length);
           const filePath = path.resolve(publicDir, relative);
           try {
