@@ -10,7 +10,7 @@ import ru from "./locales/ru-RU.mjs";
 export default defineConfig({
   extends: teekConfig,
   
-  base:'/Monica/'
+  base:'/Monica/',
 
   ...shared,
 
