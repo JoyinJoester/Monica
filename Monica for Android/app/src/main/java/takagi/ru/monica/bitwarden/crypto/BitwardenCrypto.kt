@@ -139,6 +139,8 @@ object BitwardenCrypto {
         memory: Int = 64,
         parallelism: Int = 4
     ): ByteArray {
+        BitwardenArgon2MemoryGuard.requireCanRun(memory)
+
         // 使用 BouncyCastle 的 Argon2 实现
         val passwordBytes = password.toByteArray(StandardCharsets.UTF_8)
         // 注意: salt 应该已经被调用者小写化，这里不再重复处理
@@ -161,7 +163,18 @@ object BitwardenCrypto {
         generator.init(params)
         
         val hash = ByteArray(32)
-        generator.generateBytes(passwordBytes, hash)
+        try {
+            generator.generateBytes(passwordBytes, hash)
+        } catch (error: OutOfMemoryError) {
+            throw BitwardenKdfMemoryException(
+                requestedMemoryMb = memory,
+                maxHeapMb = Runtime.getRuntime().maxMemory() / (1024L * 1024L),
+                safeLimitMb = BitwardenArgon2MemoryGuard.safeLimitMb(
+                    maxHeapBytes = Runtime.getRuntime().maxMemory(),
+                    usedHeapBytes = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()
+                )
+            )
+        }
         
         return hash
     }

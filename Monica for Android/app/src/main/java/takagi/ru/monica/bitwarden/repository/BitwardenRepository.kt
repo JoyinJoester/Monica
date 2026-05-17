@@ -21,6 +21,7 @@ import takagi.ru.monica.bitwarden.BitwardenRestoreQueueOutcome
 import takagi.ru.monica.bitwarden.BitwardenVaultIdentity
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto.SymmetricCryptoKey
+import takagi.ru.monica.bitwarden.crypto.BitwardenKdfMemoryException
 import takagi.ru.monica.bitwarden.mapper.BitwardenSendMapper
 import takagi.ru.monica.bitwarden.service.BitwardenAuthService
 import takagi.ru.monica.bitwarden.service.BitwardenDiagLogger
@@ -101,6 +102,9 @@ class BitwardenRepository(private val context: Context) {
 
                 rawError.contains("captcha", ignoreCase = true) ->
                     "需要 Captcha 验证，请稍后重试或使用官方客户端登录"
+
+                rawError.contains("Bitwarden Argon2id KDF memory is too high", ignoreCase = true) ->
+                    "当前 Bitwarden 账户的 Argon2id KDF 内存参数过高，Monica 当前 Android JVM 加密实现无法安全处理。\n\n请临时降低 Bitwarden Web 中的 KDF 内存后重试，或等待后续 native Bitwarden/Argon2 支持。"
                 
                 // 账户锁定
                 rawError.contains("locked", ignoreCase = true) ||
@@ -269,6 +273,9 @@ class BitwardenRepository(private val context: Context) {
                     RepositoryLoginResult.Error(parseErrorMessage(error.message))
                 }
             )
+        } catch (e: BitwardenKdfMemoryException) {
+            Log.e(TAG, "登录 KDF 内存不足", e)
+            RepositoryLoginResult.Error(parseErrorMessage(e.message))
         } catch (e: Exception) {
             Log.e(TAG, "登录异常", e)
             RepositoryLoginResult.Error(parseErrorMessage(e.message))
@@ -329,6 +336,9 @@ class BitwardenRepository(private val context: Context) {
                     RepositoryLoginResult.Error(parseErrorMessage(error.message))
                 }
             )
+        } catch (e: BitwardenKdfMemoryException) {
+            Log.e(TAG, "两步验证 KDF 内存不足", e)
+            RepositoryLoginResult.Error(parseErrorMessage(e.message))
         } catch (e: Exception) {
             Log.e(TAG, "两步验证异常", e)
             RepositoryLoginResult.Error(parseErrorMessage(e.message))
@@ -533,6 +543,9 @@ class BitwardenRepository(private val context: Context) {
             } finally {
                 masterKey.fill(0)
             }
+        } catch (e: BitwardenKdfMemoryException) {
+            Log.e(TAG, "解锁 KDF 内存不足", e)
+            UnlockResult.Error("当前 Bitwarden 账户的 Argon2id KDF 内存参数过高，Monica 当前 Android JVM 加密实现无法安全处理。请临时降低 Bitwarden Web 中的 KDF 内存后重试，或等待后续 native Bitwarden/Argon2 支持。")
         } catch (e: Exception) {
             Log.e(TAG, "解锁异常", e)
             UnlockResult.Error(e.message ?: "解锁失败")
