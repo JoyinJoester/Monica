@@ -125,6 +125,12 @@ class BitwardenRepository(private val context: Context) {
                 // 其他 400 错误
                 rawError.contains("400") && rawError.contains("invalid_grant") ->
                     "认证失败：可能是服务器区域或自建地址不匹配、SSO 账户限制、或验证流程未完成，请重试"
+
+                // 高内存 Argon2id KDF 在当前设备/ABI/native 库不可用时的明确提示
+                rawError.contains("Bitwarden Argon2id KDF requires", ignoreCase = true) ||
+                rawError.contains("ARGON2_MEMORY_ALLOCATION_ERROR", ignoreCase = true) ||
+                rawError.contains("ARGON2JNI_MALLOC_FAILED", ignoreCase = true) ->
+                    "登录失败：当前设备无法完成该 Bitwarden Argon2id KDF 参数。请降低服务端 KDF 内存参数后重试，或使用支持该参数的官方客户端。"
                 
                 // 默认返回原始错误（截断过长内容）
                 else -> {
