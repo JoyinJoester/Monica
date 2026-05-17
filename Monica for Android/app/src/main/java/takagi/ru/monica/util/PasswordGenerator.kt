@@ -1,6 +1,7 @@
 package takagi.ru.monica.util
 
 import android.content.Context
+import com.nulabinc.zxcvbn.Zxcvbn
 import takagi.ru.monica.data.PasswordEntry
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -8,7 +9,6 @@ import java.security.SecureRandom
 import java.util.Locale
 import kotlin.math.absoluteValue
 import kotlin.math.log2
-import kotlin.math.pow
 
 /**
  * 🔐 增强的密码生成器工具类 (Keyguard + Monica 融合)
@@ -26,8 +26,22 @@ class PasswordGenerator {
         private const val LOWERCASE = "abcdefghijklmnopqrstuvwxyz"
         private const val NUMBERS = "0123456789"
         private const val SYMBOLS = "!@#$%^&*()_+-=[]{}|;:,.<>?"
+        // zxcvbn 在长度超过 32 时会显著变慢（其内部匹配器有超线性复杂度），
+        // 超过此长度直接走熵估算路径。
+        private const val PASSWORD_LENGTH_UPPER_LIMIT = 32
         
         private val random = SecureRandom()
+        private val specialCharacterRegex = "[^a-zA-Z0-9]".toRegex()
+        private val digitCharacterRegex = "[0-9]".toRegex()
+        private val zxcvbn by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+            Zxcvbn()
+        }
+
+        @Volatile
+        private var cachedWordlist: List<String>? = null
+        @Volatile
+        private var cachedWordlistSet: Set<String>? = null
+        private val wordlistLock = Any()
         
         /**
          * 生成密码（保持原有 API，增加 Keyguard 特性）
@@ -116,8 +130,8 @@ class PasswordGenerator {
             val avgLength = passwords.map { it.password.length }
                 .average()
                 .toInt()
-                .coerceIn(4, 32)
-            val mixedLength = ((targetLength * (1 - weight)) + (avgLength * weight)).toInt().coerceIn(4, 32)
+                .coerceIn(4, 128)
+            val mixedLength = ((targetLength * (1 - weight)) + (avgLength * weight)).toInt().coerceIn(4, 128)
 
             // 2) 字符集：尊重用户复选框，历史仅作参考
             val historyUse = analyzeCharUsage(passwords)
@@ -410,9 +424,19 @@ class PasswordGenerator {
         }
         
         /**
-         * 加载词表（优先从资源文件，后备使用内置词表）
+         * 加载词表（优先从资源文件，后备使用内置词表）。结果缓存以避免重复 IO。
          */
         private fun loadWordlist(context: Context?): List<String> {
+            cachedWordlist?.let { return it }
+            synchronized(wordlistLock) {
+                cachedWordlist?.let { return it }
+                val list = readWordlist(context)
+                cachedWordlist = list
+                return list
+            }
+        }
+
+        private fun readWordlist(context: Context?): List<String> {
             // 尝试从资源加载
             context?.let { ctx ->
                 try {
@@ -452,7 +476,10 @@ class PasswordGenerator {
         /**
          * ✨ 增强的密码强度分析（融合 Keyguard 的高级算法）
          */
-        fun analyzePasswordStrength(password: String): PasswordStrengthResult {
+        fun analyzePasswordStrength(
+            password: String,
+            context: Context? = null
+        ): PasswordStrengthResult {
             if (password.isEmpty()) {
                 return PasswordStrengthResult(
                     score = 0,
@@ -462,85 +489,14 @@ class PasswordGenerator {
                     feedback = listOf("密码不能为空")
                 )
             }
-            
-            // 1. 计算熵值（信息论基础）
+
             val charset = detectCharset(password)
             val entropy = calculateEntropy(password.length, charset.size)
-            val length = password.length
-            val typeCount = listOf(
-                charset.hasLowercase,
-                charset.hasUppercase,
-                charset.hasDigits,
-                charset.hasSymbols
-            ).count { it }
-            
-            // 2. 计算基础得分
-            var score = 0
-            
-            // 长度得分（长度权重更高，短密码不会被其他项轻易拉高）
-            score += when {
-                length <= 4 -> length * 4
-                length <= 7 -> 16 + (length - 4) * 5
-                length <= 11 -> 31 + (length - 7) * 6
-                length <= 16 -> 55 + (length - 11) * 5
-                else -> 80 + ((length - 16) * 2).coerceAtMost(10)
-            }
-            
-            // 字符类型多样性得分
-            score += when (typeCount) {
-                1 -> 0
-                2 -> 10
-                3 -> 18
-                4 -> 24
-                else -> 0
-            }
-            
-            // 字符唯一性得分
-            val uniqueChars = password.toSet().size
-            val uniqueRatio = uniqueChars.toDouble() / length
-            score += (uniqueRatio * 12).toInt()
-            
-            // 熵值加分
-            score += (entropy / 2.4).toInt().coerceAtMost(24)
-            
-            // 惩罚项
-            val penalties = calculatePenalties(password)
-            score -= penalties
-            if (length < 8) score -= 20
-            if (length < 10) score -= 10
-            if (typeCount <= 2 && length < 12) score -= 10
-            
-            val rawScore = score.coerceIn(0, 100)
-            val maxScoreByLength = when {
-                length < 6 -> 19
-                length < 8 -> 39
-                length < 10 -> 59
-                length < 12 -> 79
-                else -> 100
-            }
-            val finalScore = rawScore.coerceAtMost(maxScoreByLength)
-            
-            // 3. 确定强度等级
-            val baseLevel = when {
-                finalScore < 20 -> StrengthLevel.VERY_WEAK
-                finalScore < 40 -> StrengthLevel.WEAK
-                finalScore < 60 -> StrengthLevel.FAIR
-                finalScore < 80 -> StrengthLevel.STRONG
-                else -> StrengthLevel.VERY_STRONG
-            }
-            val maxLevelByLength = when {
-                length < 6 -> StrengthLevel.VERY_WEAK
-                length < 8 -> StrengthLevel.WEAK
-                length < 10 -> StrengthLevel.FAIR
-                length < 12 -> StrengthLevel.STRONG
-                else -> StrengthLevel.VERY_STRONG
-            }
-            val level = if (baseLevel.ordinal <= maxLevelByLength.ordinal) baseLevel else maxLevelByLength
-            
-            // 4. 估算破解时间
-            val crackTime = estimateCrackTime(entropy)
-            
-            // 5. 生成改进建议
+
+            val crackTimeSeconds = calculateKeyguardCrackTimeSeconds(password, context)
+            val level = keyguardLevel(crackTimeSeconds)
+            val finalScore = keyguardScore(level)
+            val crackTime = formatCrackTimeSeconds(crackTimeSeconds)
             val feedback = generateFeedback(password, finalScore, entropy)
             
             return PasswordStrengthResult(finalScore, level, entropy, crackTime, feedback)
@@ -601,45 +557,107 @@ class PasswordGenerator {
             }
         }
         
-        /**
-         * 估算破解时间
-         */
-        private fun estimateCrackTime(entropy: Double): String {
-            // 假设每秒 10^9 次尝试（现代 GPU）
-            val seconds = 2.0.pow(entropy) / 2_000_000_000.0  // 平均需要一半时间
-            
-            return when {
-                seconds < 1 -> "瞬间"
-                seconds < 60 -> "${seconds.toInt()}秒"
-                seconds < 3600 -> "${(seconds / 60).toInt()}分钟"
-                seconds < 86400 -> "${(seconds / 3600).toInt()}小时"
-                seconds < 2_592_000 -> "${(seconds / 86400).toInt()}天"
-                seconds < 31_536_000 -> "${(seconds / 2_592_000).toInt()}个月"
-                seconds < 3_155_760_000.0 -> "${(seconds / 31_536_000).toInt()}年"
-                else -> "数千年"
+        private fun calculateKeyguardCrackTimeSeconds(
+            password: String,
+            context: Context?
+        ): Long {
+            passphraseCrackTimeSeconds(password, context)?.let { return it }
+
+            // 对于长密码，跳过 zxcvbn（其匹配器在长输入下非常慢，可能阻塞主线程），
+            // 直接用熵估算。短密码继续走 zxcvbn 以获得更精确的字典/模式分析。
+            if (password.length > PASSWORD_LENGTH_UPPER_LIMIT) {
+                return entropyBasedCrackTimeSeconds(password)
+            }
+
+            return runCatching {
+                zxcvbn.measure(password)
+                    .crackTimeSeconds
+                    .offlineSlowHashing1e4perSecond
+                    .toLong()
+                    .coerceAtLeast(0L)
+            }.getOrElse {
+                entropyBasedCrackTimeSeconds(password)
             }
         }
-        
+
         /**
-         * 计算惩罚分数
+         * 基于熵估算破解时间（offline slow hashing @ 1e4 guesses/sec）。
+         * 对超长密码直接返回上限值避免 Math.pow 溢出。
          */
-        private fun calculatePenalties(password: String): Int {
-            var penalties = 0
-            
-            // 重复字符惩罚
-            val charCounts = password.groupingBy { it }.eachCount()
-            penalties += charCounts.values.count { it > 1 } * 3
-            
-            // 连续字符惩罚
-            penalties += detectSequentialChars(password) * 5
-            
-            // 常见模式惩罚
-            penalties += detectCommonPatterns(password) * 10
-            
-            // 键盘模式惩罚
-            penalties += detectKeyboardPatterns(password) * 8
-            
-            return penalties
+        private fun entropyBasedCrackTimeSeconds(password: String): Long {
+            val charset = detectCharset(password)
+            val entropy = calculateEntropy(password.length, charset.size)
+            return when {
+                entropy <= 0 -> 0L
+                entropy > 60 -> 100_000_000_001L // 视为不可破解
+                else -> (Math.pow(2.0, entropy) / 1e4).toLong().coerceAtLeast(1L)
+            }
+        }
+
+        private fun passphraseCrackTimeSeconds(
+            password: String,
+            context: Context?
+        ): Long? {
+            val parts = password
+                .splitToSequence(specialCharacterRegex)
+                .filter { it.isNotEmpty() }
+                .toList()
+            if (parts.size < 2) return null
+            if (parts.any { it.length < 3 }) return null
+
+            val wordList = cachedWordlistSet ?: synchronized(wordlistLock) {
+                cachedWordlistSet ?: loadWordlist(context)
+                    .asSequence()
+                    .map { it.lowercase(Locale.ROOT) }
+                    .toSet()
+                    .also { cachedWordlistSet = it }
+            }
+            if (wordList.isEmpty()) return null
+
+            fun inWordList(word: String) = word
+                .replace(digitCharacterRegex, "")
+                .lowercase(Locale.ROOT) in wordList
+
+            val hasDigit = password.contains(digitCharacterRegex)
+            val isPassphrase = inWordList(parts.first()) && inWordList(parts.last())
+            if (!isPassphrase) return null
+
+            return when {
+                parts.size <= 3 -> 1_000L
+                parts.size <= 4 -> if (hasDigit) 1_000_000L else 100_000L
+                parts.size <= 5 -> if (hasDigit) 100_000_000_000L else 1_000_000L
+                parts.size <= 6 -> if (hasDigit) 100_000_000_001L else 100_000_000_000L
+                else -> 100_000_000_001L
+            }
+        }
+
+        private fun keyguardLevel(crackTimeSeconds: Long): StrengthLevel = when {
+            crackTimeSeconds <= 1_000L -> StrengthLevel.WEAK
+            crackTimeSeconds <= 100_000L -> StrengthLevel.FAIR
+            crackTimeSeconds <= 100_000_000L -> StrengthLevel.STRONG
+            crackTimeSeconds <= 100_000_000_000L -> StrengthLevel.STRONG
+            else -> StrengthLevel.VERY_STRONG
+        }
+
+        private fun keyguardScore(level: StrengthLevel): Int = when (level) {
+            StrengthLevel.VERY_WEAK -> 0
+            StrengthLevel.WEAK -> 10
+            StrengthLevel.FAIR -> 35
+            StrengthLevel.STRONG -> 75
+            StrengthLevel.VERY_STRONG -> 100
+        }
+
+        private fun formatCrackTimeSeconds(seconds: Long): String {
+            return when {
+                seconds < 1 -> "瞬间"
+                seconds < 60 -> "${seconds}秒"
+                seconds < 3600 -> "${seconds / 60}分钟"
+                seconds < 86400 -> "${seconds / 3600}小时"
+                seconds < 2_592_000 -> "${seconds / 86400}天"
+                seconds < 31_536_000 -> "${seconds / 2_592_000}个月"
+                seconds < 3_155_760_000L -> "${seconds / 31_536_000}年"
+                else -> "数千年"
+            }
         }
         
         /**

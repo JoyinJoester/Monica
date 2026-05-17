@@ -10,7 +10,10 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -113,16 +116,7 @@ fun SecurityAnalysisScreen(
     onSelectScope: (String) -> Unit
 ) {
     var selectedIssue by rememberSaveable { mutableStateOf<SecurityIssueType?>(null) }
-
-    if (selectedIssue != null) {
-        SecurityIssueDetailScreen(
-            issueType = selectedIssue ?: SecurityIssueType.DUPLICATE_PASSWORDS,
-            analysisData = analysisData,
-            onNavigateBack = { selectedIssue = null },
-            onNavigateToPassword = onNavigateToPassword
-        )
-        return
-    }
+    var lastSelectedIssue by rememberSaveable { mutableStateOf(SecurityIssueType.DUPLICATE_PASSWORDS) }
 
     val duplicatePasswordGroupCount = analysisData.duplicatePasswords.size
     val duplicatePasswordItemCount = analysisData.duplicatePasswords.sumOf { it.count }
@@ -159,53 +153,54 @@ fun SecurityAnalysisScreen(
         loopingProgress
     }
 
-    Scaffold(
-        topBar = {
-            Column {
-                TopAppBar(
-                    title = {},
-                    navigationIcon = {
-                        IconButton(onClick = onNavigateBack) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(R.string.back)
-                            )
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            topBar = {
+                Column {
+                    TopAppBar(
+                        title = {},
+                        navigationIcon = {
+                            IconButton(onClick = onNavigateBack) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = stringResource(R.string.back)
+                                )
+                            }
+                        },
+                        actions = {
+                            if (showAnalyzingUi) {
+                                AssistChip(
+                                    onClick = {},
+                                    enabled = false,
+                                    label = { Text(stringResource(R.string.security_analysis_in_progress_short)) }
+                                )
+                            }
+                            IconButton(onClick = onStartAnalysis) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = stringResource(R.string.refresh)
+                                )
+                            }
                         }
-                    },
-                    actions = {
-                        if (showAnalyzingUi) {
-                            AssistChip(
-                                onClick = {},
-                                enabled = false,
-                                label = { Text(stringResource(R.string.security_analysis_in_progress_short)) }
-                            )
-                        }
-                        IconButton(onClick = onStartAnalysis) {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = stringResource(R.string.refresh)
-                            )
-                        }
-                    }
-                )
-                if (showAnalyzingUi) {
-                    LinearProgressIndicator(
-                        progress = { effectiveProgress },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(2.dp)
                     )
+                    if (showAnalyzingUi) {
+                        LinearProgressIndicator(
+                            progress = { effectiveProgress },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(2.dp)
+                        )
+                    }
                 }
             }
-        }
-    ) { paddingValues ->
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues),
-            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
+        ) { paddingValues ->
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
+                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
             item {
                 SecurityOverviewHeader(
                     score = analysisData.securityScore,
@@ -283,15 +278,38 @@ fun SecurityAnalysisScreen(
                             issueType = SecurityIssueType.INACTIVE_PASSKEY
                         )
                     ),
-                    onSelectIssue = { selectedIssue = it }
+                    onSelectIssue = {
+                        lastSelectedIssue = it
+                        selectedIssue = it
+                    }
                 )
             }
         }
 
-        analysisData.error?.let { error ->
-            Snackbar(modifier = Modifier.padding(16.dp)) {
-                Text(error)
+            analysisData.error?.let { error ->
+                Snackbar(modifier = Modifier.padding(16.dp)) {
+                    Text(error)
+                }
             }
+        }
+
+        AnimatedVisibility(
+            visible = selectedIssue != null,
+            enter = slideInHorizontally(
+                animationSpec = tween(durationMillis = 300),
+                initialOffsetX = { fullWidth -> fullWidth / 8 }
+            ) + fadeIn(animationSpec = tween(durationMillis = 280)),
+            exit = slideOutHorizontally(
+                animationSpec = tween(durationMillis = 280),
+                targetOffsetX = { fullWidth -> fullWidth / 8 }
+            ) + fadeOut(animationSpec = tween(durationMillis = 150))
+        ) {
+            SecurityIssueDetailScreen(
+                issueType = selectedIssue ?: lastSelectedIssue,
+                analysisData = analysisData,
+                onNavigateBack = { selectedIssue = null },
+                onNavigateToPassword = onNavigateToPassword
+            )
         }
     }
 }

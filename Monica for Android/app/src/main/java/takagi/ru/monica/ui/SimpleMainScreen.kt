@@ -1948,16 +1948,13 @@ fun SimpleMainScreen(
                     onOpenNote = { handleNoteOpen(it) },
                     onOpenPasskey = onNavigateToPasskeyDetail,
                     onOpenHistory = {
-                        selectedTabKey = BottomNavItem.Passwords.key
                         openHistoryPage()
                     },
                     onOpenTrashPage = {
-                        selectedTabKey = BottomNavItem.Passwords.key
                         openTrashPage()
                     },
                     onOpenArchivePage = {
                         closeHistoryPage()
-                        selectedTabKey = BottomNavItem.Passwords.key
                         passwordViewModel.setCategoryFilter(CategoryFilter.Archived)
                     },
                     onOpenCommonAccountTemplates = onNavigateToCommonAccountTemplates,
@@ -1965,6 +1962,8 @@ fun SimpleMainScreen(
                     onOpenStandaloneSettings = onNavigateToStandaloneSettings,
                     showStandaloneSettingsEntry = shouldHideBottomNavigation,
                     appSettings = appSettings,
+                    securityManager = securityManager,
+                    biometricEnabled = appSettings.biometricEnabled,
                     modifier = Modifier.fillMaxSize(),
                 )
                 }

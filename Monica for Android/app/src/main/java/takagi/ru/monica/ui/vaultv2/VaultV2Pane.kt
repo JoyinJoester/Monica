@@ -155,6 +155,9 @@ import takagi.ru.monica.ui.PasswordQuickFilterChipState
 import takagi.ru.monica.ui.supportsQuickFolders
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.ui.common.selection.SelectionActionBar
+import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
+import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
+import takagi.ru.monica.ui.components.UnifiedMoveAction
 import takagi.ru.monica.ui.password.PasswordAuthenticatorDisplayState
 import takagi.ru.monica.ui.password.BitwardenClearCacheTopActionsMenuItem
 import takagi.ru.monica.ui.password.BitwardenLockTopActionsMenuItem
@@ -745,7 +748,7 @@ private fun VaultV2Item.matchesStorageFilter(selection: UnifiedCategoryFilterSel
 		UnifiedCategoryFilterSelection.Uncategorized -> categoryId() == null
 		UnifiedCategoryFilterSelection.LocalStarred -> isLocalOnly() && isFavorite
 		UnifiedCategoryFilterSelection.LocalUncategorized -> isLocalOnly() && categoryId() == null
-		is UnifiedCategoryFilterSelection.Custom -> categoryId() == selection.categoryId
+		is UnifiedCategoryFilterSelection.Custom -> isLocalOnly() && categoryId() == selection.categoryId
 		is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> {
 			keepassDatabaseId() == selection.databaseId
 		}
@@ -1003,8 +1006,40 @@ fun VaultV2Pane(
 	showStandaloneSettingsEntry: Boolean = false,
 	showOnlyLocalData: Boolean = false,
 	appSettings: AppSettings = AppSettings(),
+	securityManager: takagi.ru.monica.security.SecurityManager? = null,
+	biometricEnabled: Boolean = false,
 	modifier: Modifier = Modifier,
 ) {
+	// 内嵌历史/回收站页面状态（不切换底部 tab）
+	// 0 = 无, 1 = 时间线, 2 = 回收站
+	var vaultHistoryPageMode by rememberSaveable { mutableStateOf(0) }
+	val timelineViewModel: takagi.ru.monica.viewmodel.TimelineViewModel = viewModel()
+
+	// 历史/回收站页面优先渲染，覆盖整个 VaultV2Pane
+	if (vaultHistoryPageMode != 0) {
+		takagi.ru.monica.ui.screens.TimelineScreen(
+			viewModel = timelineViewModel,
+			onLogSelected = {},
+			splitPaneMode = false,
+			initialTab = if (vaultHistoryPageMode == 2) {
+				takagi.ru.monica.ui.screens.HistoryTab.TRASH
+			} else {
+				takagi.ru.monica.ui.screens.HistoryTab.TIMELINE
+			},
+			initialTrashScopeKey = null,
+			enableTabSwitch = false,
+			showBackButton = true,
+			onNavigateBack = { vaultHistoryPageMode = 0 }
+		)
+		return
+	}
+
+	// 覆盖外部传入的导航回调，改为在 VaultV2 内部处理
+	val handleOpenHistory: () -> Unit = { vaultHistoryPageMode = 1 }
+	val handleOpenTrashPage: () -> Unit = { vaultHistoryPageMode = 2 }
+	// 归档页面沿用外部回调（密码页面有完整的归档视图）
+	val handleOpenArchivePage: () -> Unit = onOpenArchivePage
+
 	var searchQuery by rememberSaveable { mutableStateOf("") }
 	var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
 	var isStorageFilterSheetVisible by rememberSaveable { mutableStateOf(false) }
@@ -1739,9 +1774,11 @@ fun VaultV2Pane(
 	val showVaultLoadingIndicator = sectionedItems.isEmpty() && !showVaultEmptyState
 
 	val selectedCount by remember { derivedStateOf { selectedKeys.size } }
-	val selectedItems = remember(selectedKeys, allItems) {
-		val keySet = selectedKeys.toSet()
-		allItems.filter { it.key in keySet }
+	val selectedItems by remember(allItems) {
+		derivedStateOf {
+			val keySet = selectedKeys.toSet()
+			allItems.filter { it.key in keySet }
+		}
 	}
 	val currentSectionIndicatorLabel by remember(listState, sectionLayouts) {
 		derivedStateOf {
@@ -2110,9 +2147,9 @@ fun VaultV2Pane(
 								onShowDisplayOptions = {},
 								onOpenCommonAccountTemplates = onOpenCommonAccountTemplates,
 								onScanFidoQr = onScanFidoQr,
-								onOpenHistory = onOpenHistory,
-								onOpenTrash = onOpenTrashPage,
-								onOpenArchive = onOpenArchivePage,
+								onOpenHistory = handleOpenHistory,
+								onOpenTrash = handleOpenTrashPage,
+								onOpenArchive = handleOpenArchivePage,
 								showDisplayOptionsEntry = false,
 								showSettingsEntry = showStandaloneSettingsEntry,
 								onOpenSettings = onOpenStandaloneSettings,
@@ -2395,6 +2432,9 @@ fun VaultV2Pane(
 		}
 
 		if (selectedCount > 0) {
+			var showVaultMoveSheet by remember { mutableStateOf(false) }
+			var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+
 			SelectionActionBar(
 				modifier = Modifier
 					.align(Alignment.BottomStart)
@@ -2405,94 +2445,249 @@ fun VaultV2Pane(
 					selectedKeys.clear()
 					selectedKeys.addAll(filteredItems.map { it.key })
 				},
+				onMoveToCategory = { showVaultMoveSheet = true },
 				onFavorite = {
-					selectedItems.forEach { item ->
-						when (item.type) {
-							VaultV2ItemType.PASSWORD -> {
-								item.passwordEntry?.let { entry ->
-									passwordViewModel.toggleFavorite(entry.id, !entry.isFavorite)
+					// 全部异步执行，避免主线程卡顿
+					scope.launch {
+						selectedItems.forEach { item ->
+							when (item.type) {
+								VaultV2ItemType.PASSWORD -> {
+									item.passwordEntry?.let { entry ->
+										passwordViewModel.toggleFavorite(entry.id, !entry.isFavorite)
+									}
 								}
-							}
 
-							VaultV2ItemType.AUTHENTICATOR -> {
-								val id = item.totpItem?.id ?: return@forEach
-								if (id > 0) {
-									totpViewModel.toggleFavorite(id, !item.isFavorite)
+								VaultV2ItemType.AUTHENTICATOR -> {
+									// 注意：不能用 return@forEach，改用 if 判断
+									val id = item.totpItem?.id
+									if (id != null && id > 0) {
+										totpViewModel.toggleFavorite(id, !item.isFavorite)
+									}
 								}
-							}
 
-							VaultV2ItemType.NOTE -> {
-								item.secureItem?.let { note ->
-									val decoded = NoteContentCodec.decodeFromItem(note)
-									noteViewModel.updateNote(
-										id = note.id,
-										content = decoded.content,
-										title = note.title,
-										tags = decoded.tags,
-										isMarkdown = decoded.isMarkdown,
-										isFavorite = !note.isFavorite,
-										createdAt = note.createdAt,
-										categoryId = note.categoryId,
-										imagePaths = note.imagePaths,
-										keepassDatabaseId = note.keepassDatabaseId,
-										keepassGroupPath = note.keepassGroupPath,
-										bitwardenVaultId = note.bitwardenVaultId,
-										bitwardenFolderId = note.bitwardenFolderId,
-									)
+								VaultV2ItemType.NOTE -> {
+									item.secureItem?.let { note ->
+										val decoded = NoteContentCodec.decodeFromItem(note)
+										noteViewModel.updateNote(
+											id = note.id,
+											content = decoded.content,
+											title = note.title,
+											tags = decoded.tags,
+											isMarkdown = decoded.isMarkdown,
+											isFavorite = !note.isFavorite,
+											createdAt = note.createdAt,
+											categoryId = note.categoryId,
+											imagePaths = note.imagePaths,
+											keepassDatabaseId = note.keepassDatabaseId,
+											keepassGroupPath = note.keepassGroupPath,
+											bitwardenVaultId = note.bitwardenVaultId,
+											bitwardenFolderId = note.bitwardenFolderId,
+										)
+									}
 								}
-							}
 
-							VaultV2ItemType.PASSKEY -> Unit
+								VaultV2ItemType.PASSKEY -> Unit
 
-							VaultV2ItemType.BANK_CARD -> {
-								item.secureItem?.id?.let(bankCardViewModel::toggleFavorite)
-							}
+								VaultV2ItemType.BANK_CARD -> {
+									item.secureItem?.id?.let(bankCardViewModel::toggleFavorite)
+								}
 
-							VaultV2ItemType.DOCUMENT -> {
-								item.secureItem?.id?.let(documentViewModel::toggleFavorite)
+								VaultV2ItemType.DOCUMENT -> {
+									item.secureItem?.id?.let(documentViewModel::toggleFavorite)
+								}
 							}
 						}
+						// 必须在协程内、所有操作完成后再清空，否则 selectedItems 会提前变空
+						selectedKeys.clear()
 					}
-					selectedKeys.clear()
 				},
 				onDelete = {
+					// 先弹确认对话框，不直接删除
+					showDeleteConfirmDialog = true
+				},
+			)
+
+			// 删除二次确认对话框（带指纹/密码验证）
+			if (showDeleteConfirmDialog) {
+				val doDelete = {
 					selectedItems.forEach { item ->
 						when (item.type) {
 							VaultV2ItemType.PASSWORD -> {
 								item.passwordEntry?.let(passwordViewModel::deletePasswordEntry)
 							}
-
 							VaultV2ItemType.AUTHENTICATOR -> {
 								item.totpItem?.let { totp ->
-									if (totp.id > 0) {
-										totpViewModel.deleteTotpItem(totp)
-									}
+									if (totp.id > 0) totpViewModel.deleteTotpItem(totp)
 								}
 							}
-
 							VaultV2ItemType.NOTE -> {
 								item.secureItem?.let(noteViewModel::deleteNote)
 							}
-
 							VaultV2ItemType.PASSKEY -> {
 								item.passkeyEntry?.let { passkey ->
-									scope.launch {
-										passkeyViewModel.deletePasskey(passkey)
-									}
+									scope.launch { passkeyViewModel.deletePasskey(passkey) }
 								}
 							}
-
 							VaultV2ItemType.BANK_CARD -> {
 								item.secureItem?.id?.let(bankCardViewModel::deleteCard)
 							}
-
 							VaultV2ItemType.DOCUMENT -> {
 								item.secureItem?.id?.let(documentViewModel::deleteDocument)
 							}
 						}
 					}
 					selectedKeys.clear()
-				},
+				}
+				takagi.ru.monica.ui.common.dialog.DeleteConfirmDialog(
+					itemTitle = stringResource(R.string.selected_items, selectedCount),
+					itemType = stringResource(R.string.vault_batch_delete_item_type),
+					biometricEnabled = biometricEnabled,
+					onDismiss = { showDeleteConfirmDialog = false },
+					onConfirmWithPassword = { password ->
+						val sm = securityManager
+						if (sm != null && sm.unlockVaultWithPassword(password)) {
+							showDeleteConfirmDialog = false
+							doDelete()
+						}
+					},
+					onConfirmWithBiometric = {
+						showDeleteConfirmDialog = false
+						doDelete()
+					}
+				)
+			}
+
+			// 移动/复制到其他文件夹/数据库
+			UnifiedMoveToCategoryBottomSheet(
+				visible = showVaultMoveSheet,
+				onDismiss = { showVaultMoveSheet = false },
+				categories = categories,
+				keepassDatabases = keepassDatabases,
+				bitwardenVaults = bitwardenVaults,
+				getBitwardenFolders = passwordViewModel::getBitwardenFolders,
+				getKeePassGroups = localKeePassViewModel::getGroups,
+				allowCopy = false,
+				allowMove = true,
+				allowArchiveTarget = false,
+				onTargetSelected = { target, _ ->
+					showVaultMoveSheet = false
+					val passwordIds = selectedItems
+						.filter { it.type == VaultV2ItemType.PASSWORD }
+						.mapNotNull { it.passwordEntry?.id }
+					val totpIds = selectedItems
+						.filter { it.type == VaultV2ItemType.AUTHENTICATOR }
+						.mapNotNull { it.totpItem?.id?.takeIf { id -> id > 0 } }
+					val noteItems = selectedItems
+						.filter { it.type == VaultV2ItemType.NOTE }
+						.mapNotNull { it.secureItem }
+					val bankCardIds = selectedItems
+						.filter { it.type == VaultV2ItemType.BANK_CARD }
+						.mapNotNull { it.secureItem?.id }
+					val documentIds = selectedItems
+						.filter { it.type == VaultV2ItemType.DOCUMENT }
+						.mapNotNull { it.secureItem?.id }
+
+					when (target) {
+						is UnifiedMoveCategoryTarget.Uncategorized -> {
+							if (passwordIds.isNotEmpty()) passwordViewModel.movePasswordsToCategory(passwordIds, null)
+							if (totpIds.isNotEmpty()) totpViewModel.moveToCategory(totpIds, null)
+							scope.launch {
+								noteItems.forEach { note ->
+									noteViewModel.moveNoteToStorage(note, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null)
+								}
+								bankCardIds.forEach { id ->
+									bankCardViewModel.moveCardToStorage(id, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null)
+								}
+								documentIds.forEach { id ->
+									documentViewModel.moveDocumentToStorage(id, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null)
+								}
+							}
+						}
+						is UnifiedMoveCategoryTarget.MonicaCategory -> {
+							val catId = target.categoryId
+							if (passwordIds.isNotEmpty()) passwordViewModel.movePasswordsToCategory(passwordIds, catId)
+							if (totpIds.isNotEmpty()) totpViewModel.moveToCategory(totpIds, catId)
+							scope.launch {
+								noteItems.forEach { note ->
+									noteViewModel.moveNoteToStorage(note, categoryId = catId, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null)
+								}
+								bankCardIds.forEach { id ->
+									bankCardViewModel.moveCardToStorage(id, categoryId = catId, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null)
+								}
+								documentIds.forEach { id ->
+									documentViewModel.moveDocumentToStorage(id, categoryId = catId, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null)
+								}
+							}
+						}
+						is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> {
+							val dbId = target.databaseId
+							if (passwordIds.isNotEmpty()) passwordViewModel.movePasswordsToKeePassDatabase(passwordIds, dbId)
+							if (totpIds.isNotEmpty()) totpViewModel.moveToKeePassDatabase(totpIds, dbId)
+							scope.launch {
+								noteItems.forEach { note ->
+									noteViewModel.moveNoteToStorage(note, categoryId = null, keepassDatabaseId = dbId, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null)
+								}
+								bankCardIds.forEach { id ->
+									bankCardViewModel.moveCardToStorage(id, categoryId = null, keepassDatabaseId = dbId, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null)
+								}
+								documentIds.forEach { id ->
+									documentViewModel.moveDocumentToStorage(id, categoryId = null, keepassDatabaseId = dbId, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null)
+								}
+							}
+						}
+						is UnifiedMoveCategoryTarget.KeePassGroupTarget -> {
+							val dbId = target.databaseId
+							val groupPath = target.groupPath
+							if (passwordIds.isNotEmpty()) passwordViewModel.movePasswordsToKeePassGroup(passwordIds, dbId, groupPath)
+							if (totpIds.isNotEmpty()) totpViewModel.moveToKeePassGroup(totpIds, dbId, groupPath)
+							scope.launch {
+								noteItems.forEach { note ->
+									noteViewModel.moveNoteToStorage(note, categoryId = null, keepassDatabaseId = dbId, keepassGroupPath = groupPath, bitwardenVaultId = null, bitwardenFolderId = null)
+								}
+								bankCardIds.forEach { id ->
+									bankCardViewModel.moveCardToStorage(id, categoryId = null, keepassDatabaseId = dbId, keepassGroupPath = groupPath, bitwardenVaultId = null, bitwardenFolderId = null)
+								}
+								documentIds.forEach { id ->
+									documentViewModel.moveDocumentToStorage(id, categoryId = null, keepassDatabaseId = dbId, keepassGroupPath = groupPath, bitwardenVaultId = null, bitwardenFolderId = null)
+								}
+							}
+						}
+						is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> {
+							val vaultId = target.vaultId
+							if (passwordIds.isNotEmpty()) passwordViewModel.movePasswordsToBitwardenFolder(passwordIds, vaultId, "")
+							if (totpIds.isNotEmpty()) totpViewModel.moveToBitwardenFolder(totpIds, vaultId, "")
+							scope.launch {
+								noteItems.forEach { note ->
+									noteViewModel.moveNoteToStorage(note, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = vaultId, bitwardenFolderId = null)
+								}
+								bankCardIds.forEach { id ->
+									bankCardViewModel.moveCardToStorage(id, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = vaultId, bitwardenFolderId = null)
+								}
+								documentIds.forEach { id ->
+									documentViewModel.moveDocumentToStorage(id, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = vaultId, bitwardenFolderId = null)
+								}
+							}
+						}
+						is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> {
+							val vaultId = target.vaultId
+							val folderId = target.folderId
+							if (passwordIds.isNotEmpty()) passwordViewModel.movePasswordsToBitwardenFolder(passwordIds, vaultId, folderId)
+							if (totpIds.isNotEmpty()) totpViewModel.moveToBitwardenFolder(totpIds, vaultId, folderId)
+							scope.launch {
+								noteItems.forEach { note ->
+									noteViewModel.moveNoteToStorage(note, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = vaultId, bitwardenFolderId = folderId)
+								}
+								bankCardIds.forEach { id ->
+									bankCardViewModel.moveCardToStorage(id, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = vaultId, bitwardenFolderId = folderId)
+								}
+								documentIds.forEach { id ->
+									documentViewModel.moveDocumentToStorage(id, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = vaultId, bitwardenFolderId = folderId)
+								}
+							}
+						}
+					}
+					selectedKeys.clear()
+				}
 			)
 		}
 

@@ -24,7 +24,6 @@ import takagi.ru.monica.ui.navigation.slideOutToRight
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
@@ -1802,6 +1801,13 @@ fun MonicaContent(
             val scope = rememberCoroutineScope()
 
             if (passwordId > 0) {
+                // WIFI / SSH_KEY 条目走独立详情页；快速探测 loginType 后重定向，避免打开复杂的密码详情屏。
+                var redirectChecked by androidx.compose.runtime.saveable.rememberSaveable(passwordId) {
+                    androidx.compose.runtime.mutableStateOf(false)
+                }
+                var redirectedToSpecialized by androidx.compose.runtime.saveable.rememberSaveable(passwordId) {
+                    androidx.compose.runtime.mutableStateOf(false)
+                }
                 val navigateBackFromPasswordDetail = {
                     val popped = navController.popBackStack()
                     if (!popped) {
@@ -1810,13 +1816,6 @@ fun MonicaContent(
                             launchSingleTop = true
                         }
                     }
-                }
-                // WIFI / SSH_KEY 条目走独立详情页；快速探测 loginType 后重定向，避免打开复杂的密码详情屏。
-                var redirectChecked by androidx.compose.runtime.saveable.rememberSaveable(passwordId) {
-                    androidx.compose.runtime.mutableStateOf(false)
-                }
-                var redirectedToSpecialized by androidx.compose.runtime.saveable.rememberSaveable(passwordId) {
-                    androidx.compose.runtime.mutableStateOf(false)
                 }
                 androidx.compose.runtime.LaunchedEffect(passwordId) {
                     val entry = withContext(Dispatchers.IO) {
@@ -1840,7 +1839,13 @@ fun MonicaContent(
                     }
                     redirectChecked = true
                 }
-                if (redirectChecked && !redirectedToSpecialized) {
+                AnimatedVisibility(
+                    visible = redirectChecked && !redirectedToSpecialized,
+                    enter = slideInHorizontally(
+                        animationSpec = tween(durationMillis = 260),
+                        initialOffsetX = { fullWidth -> fullWidth / 8 }
+                    ) + fadeIn(animationSpec = tween(durationMillis = 220))
+                ) {
                     androidx.compose.runtime.CompositionLocalProvider(
                         takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
                     ) {
@@ -1877,7 +1882,7 @@ fun MonicaContent(
                             }
                         }
                     )
-                }
+                    }
                 }
             }
         }
@@ -2615,7 +2620,7 @@ fun MonicaContent(
             route = Screen.SecurityAnalysis.route,
             enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
-            popEnterTransition = { EnterTransition.None },
+            popEnterTransition = { parallaxEnterFromLeft() },
             popExitTransition = { slideOutToRight() }
         ) {
             val context = LocalContext.current

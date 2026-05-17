@@ -460,10 +460,28 @@ class PasskeyAuthActivity : FragmentActivity() {
             val challenge = Base64.decode(challengeB64, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
             
             val rpId = json.optString("rpId", passkey.rpId)
-            
-            // 更新签名计数
-            val newSignCount = passkey.signCount + 1L
-            
+
+            // 签名计数器永远写 0：
+            //
+            // WebAuthn spec §6.1.1 明确允许 authenticator 始终返回 signCount = 0，
+            // 表示"该 authenticator 不实现计数器"，RP 不应再做单调性校验。
+            // Bitwarden / 1Password / iCloud Keychain 这类“同步型 passkey”都走这条路。
+            //
+            // Monica 的 passkey 是私钥可漫游 + WebDAV 全量备份，没有实时双向同步。
+            // 如果还按 signCount + 1 推进，多设备 / 跨设备恢复后必然分叉：A 设备签到
+            // 6，B 设备恢复后还是 5，B 再签 6，RP 端看到 6 ≤ 6 直接拒签 ——
+            // 表现就是用户长期反映的"用了若干次后 passkey 突然失效"。
+            //
+            // 把 newSignCount 固定为 0 就彻底回避这个分叉问题。下面同时把数据库里
+            // 这条记录的 sign_count 也写 0，让 useCount/lastUsedAt 这种"使用统计"
+            // 字段的语义和签名计数器解耦。
+            val newSignCount = 0L
+            Log.i(
+                TAG,
+                "signCount: forcing 0 per spec §6.1.1 (was ${passkey.signCount}) " +
+                    "credentialId=${passkey.credentialId}"
+            )
+
             // 创建 authenticator data
             val authenticatorData = createAuthenticatorData(rpId, newSignCount.toInt())
             

@@ -13,7 +13,7 @@ android {
 
     def previewVersionSuffix = project.findProperty('previewVersionSuffix')?.toString()?.trim()
     def appVersionCode = 10
-    def baseVersionName = previewVersionSuffix ? "1.0.286-${previewVersionSuffix}" : "1.0.286"
+    def baseVersionName = previewVersionSuffix ? "1.0.287-${previewVersionSuffix}" : "1.0.287"
     def workspaceRootDir = rootDir?.parentFile ?: rootDir
     def buildBakRootDir = new File(workspaceRootDir, 'Build bak')
 
@@ -407,6 +407,9 @@ dependencies {
     
     // Scrypt for Aegis decryption
     implementation libs.scrypt
+
+    // Password strength analysis, same engine used by Keyguard
+    implementation 'com.nulab-inc:zxcvbn:1.9.0'
     
     // ==== Bitwarden Integration ====
     // Retrofit for API calls

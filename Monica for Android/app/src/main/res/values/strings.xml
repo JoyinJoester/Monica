@@ -788,6 +788,9 @@
     <string name="verify_master_password_desc">Please enter your master password to continue</string>
     <string name="wrong_password">Wrong password</string>
     <string name="notes_delete_selected_confirm">Are you sure you want to delete %d selected notes?</string>
+    <string name="vault_batch_delete_title">Delete %d items?</string>
+    <string name="vault_batch_delete_message">This will move the selected items to the recycle bin. You can restore them later.</string>
+    <string name="vault_batch_delete_item_type">items</string>
     <string name="back_to_login">Back to Login</string>
     
     <!-- Main Screen Bottom Navigation -->
@@ -1071,7 +1074,7 @@
     <string name="all_navigation_items">All Navigation Items</string>
     <string name="category_all">All</string>
     <string name="hidden">Hidden</string>
-    <string name="settings_version_number">V1.0.286</string>
+    <string name="settings_version_number">V1.0.287</string>
     <string name="settings_support_author">Support Author</string>
     <string name="settings_support_author_description">Thank you for your support</string>
     <string name="settings_privacy_policy">Privacy Policy</string>

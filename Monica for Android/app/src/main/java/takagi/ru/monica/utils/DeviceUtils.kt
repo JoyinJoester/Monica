@@ -203,6 +203,32 @@ object DeviceUtils {
     fun isHyperOsSystemPropertyPresent(): Boolean {
         return hasSystemProperty("ro.mi.os.version.name")
     }
+
+    /**
+     * Returns true if the device is running Xiaomi HyperOS.
+     *
+     * Uses reflection to read the system property directly (same approach as Bitwarden PR #6316),
+     * which is more reliable than spawning a `getprop` process and avoids the overhead of
+     * process creation on every call.
+     */
+    fun isHyperOS(): Boolean {
+        return !getSystemPropertyViaReflection("ro.mi.os.version.name").isNullOrEmpty()
+    }
+
+    /**
+     * Reads an Android system property via reflection on android.os.SystemProperties.
+     * Returns null if the property is absent or reflection fails for any reason.
+     */
+    @Suppress("SameParameterValue", "PrivateApi")
+    private fun getSystemPropertyViaReflection(key: String): String? {
+        return try {
+            val systemProperties = Class.forName("android.os.SystemProperties")
+            val getMethod = systemProperties.getMethod("get", String::class.java)
+            getMethod.invoke(null, key) as? String
+        } catch (_: Throwable) {
+            null
+        }
+    }
     
     /**
      * 是否是中国厂商的 ROM

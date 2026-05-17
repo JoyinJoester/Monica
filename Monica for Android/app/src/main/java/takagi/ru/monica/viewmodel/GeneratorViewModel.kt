@@ -74,7 +74,7 @@ class GeneratorViewModel : ViewModel() {
     val symbolResult: StateFlow<String> = _symbolResult.asStateFlow()
     
     // ✨ 密码短语生成器状态（重新设计）
-    private val _passphraseWordCount = MutableStateFlow(4)
+    private val _passphraseWordCount = MutableStateFlow(5)
     val passphraseWordCount: StateFlow<Int> = _passphraseWordCount.asStateFlow()
     
     private val _passphraseDelimiter = MutableStateFlow("-")
@@ -148,7 +148,7 @@ class GeneratorViewModel : ViewModel() {
     
     // 更新随机符号生成器状态
     fun updateSymbolLength(length: Int) {
-        _symbolLength.value = length
+        _symbolLength.value = length.coerceIn(4, 128)
     }
     
     fun updateIncludeUppercase(include: Boolean) {
@@ -252,7 +252,7 @@ class GeneratorViewModel : ViewModel() {
     
     // 更新口令生成器状态
     fun updatePasswordLength(length: Int) {
-        _passwordLength.value = length
+        _passwordLength.value = length.coerceIn(4, 128)
     }
     
     fun updateFirstLetterUppercase(uppercase: Boolean) {
@@ -281,7 +281,7 @@ class GeneratorViewModel : ViewModel() {
     
     // 更新PIN码生成器状态
     fun updatePinLength(length: Int) {
-        _pinLength.value = length
+        _pinLength.value = length.coerceIn(3, 9)
     }
     
     fun updatePinResult(result: String) {
@@ -290,7 +290,7 @@ class GeneratorViewModel : ViewModel() {
     
     // ✨ 密码短语更新方法
     fun updatePassphraseWordCount(count: Int) {
-        _passphraseWordCount.value = count.coerceIn(2, 8)
+        _passphraseWordCount.value = count.coerceIn(1, 20)
     }
     
     fun updatePassphraseDelimiter(delimiter: String) {

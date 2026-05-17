@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
@@ -27,9 +28,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.AnimatedContent
@@ -44,6 +47,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
@@ -80,8 +85,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.ToggleButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -92,6 +99,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
@@ -757,45 +766,210 @@ private fun UnlockedVaultPane(
                     }
                 }
             } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f, fill = true),
-                    contentPadding = PaddingValues(
-                        start = 14.dp,
-                        top = 8.dp,
-                        end = 14.dp,
-                        bottom = 10.dp
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    if (uiState.databaseOptions.isNotEmpty()) {
-                        item(key = "database_filters") {
-                            LazyRow(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                contentPadding = PaddingValues(horizontal = 2.dp)
-                            ) {
-                                items(uiState.databaseOptions, key = { it.label }) { option ->
-                                    MonicaExpressiveFilterChip(
-                                        selected = uiState.selectedDatabaseScope == option.scope,
-                                        onClick = { onDatabaseScopeSelected(option.scope) },
-                                        label = option.label,
-                                        leadingIcon = option.scope.icon()
-                                    )
-                                }
-                            }
+                val lazyListState = rememberLazyListState()
+                // 计算字母索引：每个首字母对应的第一个条目在列表中的位置
+                // 注意：如果有 database_filters item，条目从 index 1 开始
+                val filterItemOffset = if (uiState.databaseOptions.isNotEmpty()) 1 else 0
+                val letterIndex: List<Pair<String, Int>> = remember(uiState.entries) {
+                    val result = mutableListOf<Pair<String, Int>>()
+                    var lastLetter = ""
+                    uiState.entries.forEachIndexed { idx, entry ->
+                        val letter = entry.title.firstOrNull()
+                            ?.uppercaseChar()
+                            ?.let { if (it.isLetter()) it.toString() else "#" }
+                            ?: "#"
+                        if (letter != lastLetter) {
+                            result.add(letter to (idx + filterItemOffset))
+                            lastLetter = letter
                         }
                     }
-                    items(uiState.entries, key = { it.id }) { entry ->
-                        PasswordEntryCard(
-                            entry = entry,
-                            onSmartFill = { onSmartFillPassword(entry) },
-                            onInsertPassword = { onInsertPassword(entry) },
-                            onInsertUsername = { onInsertUsername(entry) },
-                            onInsertTotp = { onInsertTotp(entry) }
+                    result
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = true)
+                ) {
+                    Row(modifier = Modifier.fillMaxSize()) {
+                        LazyColumn(
+                            state = lazyListState,
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
+                            contentPadding = PaddingValues(
+                                start = 14.dp,
+                                top = 8.dp,
+                                end = 6.dp,
+                                bottom = 10.dp
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            if (uiState.databaseOptions.isNotEmpty()) {
+                                item(key = "database_filters") {
+                                    LazyRow(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        contentPadding = PaddingValues(horizontal = 2.dp)
+                                    ) {
+                                        items(uiState.databaseOptions, key = { it.label }) { option ->
+                                            MonicaExpressiveFilterChip(
+                                                selected = uiState.selectedDatabaseScope == option.scope,
+                                                onClick = { onDatabaseScopeSelected(option.scope) },
+                                                label = option.label,
+                                                leadingIcon = option.scope.icon()
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            items(uiState.entries, key = { it.id }) { entry ->
+                                PasswordEntryCard(
+                                    entry = entry,
+                                    onSmartFill = { onSmartFillPassword(entry) },
+                                    onInsertPassword = { onInsertPassword(entry) },
+                                    onInsertUsername = { onInsertUsername(entry) },
+                                    onInsertTotp = { onInsertTotp(entry) }
+                                )
+                            }
+                        }
+                        VelocityScrollBar(
+                            lazyListState = lazyListState,
+                            letterIndex = letterIndex,
+                            modifier = Modifier
+                                .width(24.dp)
+                                .fillMaxHeight()
+                                .padding(end = 4.dp)
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun VelocityScrollBar(
+    lazyListState: LazyListState,
+    letterIndex: List<Pair<String, Int>>,  // letter -> item index
+    modifier: Modifier = Modifier
+) {
+    val coroutineScope = rememberCoroutineScope()
+    var isDragging by remember { mutableStateOf(false) }
+    var anchorY by remember { mutableFloatStateOf(0f) }
+    var currentDragDelta by remember { mutableFloatStateOf(0f) }
+    // 当前手指在滚动条上的绝对 Y（用于字母跳转）
+    var fingerY by remember { mutableFloatStateOf(0f) }
+    var barHeightPx by remember { mutableFloatStateOf(1f) }
+    // 当前显示的首字母（拖动时）
+    var currentLetter by remember { mutableStateOf("") }
+
+    // 根据手指 Y 位置映射到字母索引
+    fun letterAtY(y: Float): Pair<String, Int>? {
+        if (letterIndex.isEmpty()) return null
+        val ratio = (y / barHeightPx).coerceIn(0f, 1f)
+        val idx = (ratio * letterIndex.size).toInt().coerceIn(0, letterIndex.size - 1)
+        return letterIndex[idx]
+    }
+
+    val trackColor by animateColorAsState(
+        targetValue = if (isDragging) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
+        } else {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+        },
+        animationSpec = tween(durationMillis = 200),
+        label = "scrollBarColor"
+    )
+
+    // 速度滚动循环（仅在没有字母索引时或字母数量少时作为补充）
+    LaunchedEffect(isDragging) {
+        if (!isDragging) return@LaunchedEffect
+        while (isDragging) {
+            // 只有字母索引为空时才用速度模式
+            if (letterIndex.isEmpty()) {
+                val speed = currentDragDelta * 0.15f
+                lazyListState.scrollBy(speed)
+            }
+            delay(16L)
+        }
+    }
+
+    Box(
+        modifier = modifier
+            .onSizeChanged { barHeightPx = it.height.toFloat().coerceAtLeast(1f) }
+            .pointerInput(letterIndex) {
+                detectDragGestures(
+                    onDragStart = { offset ->
+                        anchorY = offset.y
+                        fingerY = offset.y
+                        isDragging = true
+                        currentDragDelta = 0f
+                        // 立即跳转到对应字母
+                        val target = letterAtY(offset.y)
+                        if (target != null) {
+                            currentLetter = target.first
+                            coroutineScope.launch {
+                                lazyListState.scrollToItem(target.second)
+                            }
+                        }
+                    },
+                    onDrag = { change, _ ->
+                        change.consume()
+                        fingerY = change.position.y
+                        currentDragDelta = change.position.y - anchorY
+                        val target = letterAtY(change.position.y)
+                        if (target != null) {
+                            if (target.first != currentLetter) {
+                                currentLetter = target.first
+                                coroutineScope.launch {
+                                    lazyListState.scrollToItem(target.second)
+                                }
+                            }
+                        } else {
+                            currentLetter = ""
+                        }
+                    },
+                    onDragEnd = {
+                        isDragging = false
+                        currentDragDelta = 0f
+                        currentLetter = ""
+                    },
+                    onDragCancel = {
+                        isDragging = false
+                        currentDragDelta = 0f
+                        currentLetter = ""
+                    }
+                )
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        // 轨道竖条
+        Box(
+            modifier = Modifier
+                .width(4.dp)
+                .fillMaxHeight(0.7f)
+                .clip(RoundedCornerShape(2.dp))
+                .background(trackColor)
+        )
+
+        // 拖动时：在滚动条左侧显示首字母气泡
+        if (isDragging && currentLetter.isNotEmpty()) {
+            val bubbleOffsetY = (fingerY - barHeightPx / 2f)
+                .coerceIn(-barHeightPx / 2f + 16f, barHeightPx / 2f - 16f)
+            Box(
+                modifier = Modifier
+                    .offset(x = (-36).dp, y = with(LocalDensity.current) { bubbleOffsetY.toDp() })
+                    .size(28.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(MaterialTheme.colorScheme.primary),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = currentLetter,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onPrimary
+                )
             }
         }
     }

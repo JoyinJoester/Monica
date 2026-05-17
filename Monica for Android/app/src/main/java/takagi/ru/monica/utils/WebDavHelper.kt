@@ -102,6 +102,8 @@ private data class PasswordBackupEntry(
     val customIconType: String = "NONE",
     val customIconValue: String? = null,
     val customIconUpdatedAt: Long = 0L,
+    // WIFI 条目扩展元数据（JSON 序列化的 WifiData），仅 loginType=WIFI 时有值
+    val wifiMetadata: String = "",
     // 
     val customFields: List<CustomFieldBackupEntry> = emptyList()
 )
@@ -614,7 +616,8 @@ class WebDavHelper(
             ssoRefEntryId = backup.ssoRefEntryId,
             customIconType = backup.customIconType,
             customIconValue = normalizedIconValue,
-            customIconUpdatedAt = backup.customIconUpdatedAt
+            customIconUpdatedAt = backup.customIconUpdatedAt,
+            wifiMetadata = backup.wifiMetadata
         )
     }
 
@@ -1179,6 +1182,8 @@ class WebDavHelper(
                                 customIconType = password.customIconType,
                                 customIconValue = normalizeBackupIconValue(password.customIconType, password.customIconValue),
                                 customIconUpdatedAt = password.customIconUpdatedAt,
+                                // ✅ WIFI 扩展元数据
+                                wifiMetadata = password.wifiMetadata,
                                 // ✅ 自定义字段
                                 customFields = fields
                             )
