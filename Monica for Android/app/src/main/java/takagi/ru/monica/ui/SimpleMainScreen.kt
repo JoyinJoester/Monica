@@ -2162,8 +2162,9 @@ fun SimpleMainScreen(
                         isAddingSendInline = isAddingSendInline,
                         onSendClick = handleSendOpen,
                         onInlineSendEditorBack = handleInlineSendEditorBack,
-                        onCreateSend = { title, text, notes, password, maxAccessCount, hideEmail, hiddenText, expireInDays ->
+                        onCreateSend = { vaultId, title, text, notes, password, maxAccessCount, hideEmail, hiddenText, expireInDays ->
                             bitwardenViewModel.createTextSend(
+                                vaultId = vaultId,
                                 title = title,
                                 text = text,
                                 notes = notes,

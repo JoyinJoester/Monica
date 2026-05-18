@@ -27,6 +27,10 @@
     <string name="yes">Yes</string>
     <string name="no">No</string>
     <string name="share">Share</string>
+    <string name="field_action_more">More field actions</string>
+    <string name="field_action_show_large">Show in large text</string>
+    <string name="field_action_show_barcode">Show as QR code</string>
+    <string name="field_action_barcode_failed">Could not create QR code for this value.</string>
     <string name="no_results">No results found</string>
     <string name="note_placeholder">Write something...</string>
     <string name="new_note">New Note</string>
@@ -2526,6 +2530,9 @@
     <string name="send_copy_link">Copy link</string>
     <string name="send_create_title">Create Send</string>
     <string name="send_text_send_heading">Text Send</string>
+    <string name="send_account_section_title">Account</string>
+    <string name="send_account_locked_hint">Unlock a Bitwarden account before creating Send.</string>
+    <string name="send_options_section_title">Options</string>
     <string name="send_content_label">Content</string>
     <string name="send_access_password_optional">Access password (optional)</string>
     <string name="send_max_access_count">Maximum access count</string>

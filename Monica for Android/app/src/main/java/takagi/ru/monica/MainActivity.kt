@@ -1709,14 +1709,18 @@ fun MonicaContent(
 
             AddEditSendScreen(
                 sendState = bitwardenViewModel.sendState.collectAsState().value,
+                vaults = bitwardenViewModel.vaults.collectAsState().value,
+                activeVault = bitwardenViewModel.activeVault.collectAsState().value,
+                unlockStateByVault = bitwardenViewModel.unlockStateByVault.collectAsState().value,
                 initialTitle = pendingSendDraft?.title.orEmpty(),
                 initialText = pendingSendDraft?.text.orEmpty(),
                 initialNotes = pendingSendDraft?.notes.orEmpty(),
                 onNavigateBack = {
                     navController.popBackStack()
                 },
-                onCreate = { title, text, notes, password, maxAccessCount, hideEmail, hiddenText, expireInDays ->
+                onCreate = { vaultId, title, text, notes, password, maxAccessCount, hideEmail, hiddenText, expireInDays ->
                     bitwardenViewModel.createTextSend(
+                        vaultId = vaultId,
                         title = title,
                         text = text,
                         notes = notes,
@@ -1872,6 +1876,19 @@ fun MonicaContent(
                                     popUpTo(Screen.PasswordDetail.route) { inclusive = true }
                                     launchSingleTop = true
                                 }
+                            }
+                        },
+                        onCreateSend = { title, text ->
+                            navController.currentBackStackEntry
+                                ?.savedStateHandle
+                                ?.setPendingSendDraft(
+                                    PendingSendDraft(
+                                        title = title,
+                                        text = text
+                                    )
+                                )
+                            navController.navigate(Screen.AddEditSend.createRoute()) {
+                                launchSingleTop = true
                             }
                         },
                         onEditPassword = { id ->

@@ -87,6 +87,8 @@ import kotlinx.coroutines.withContext
 import takagi.ru.monica.ui.components.InfoField
 import takagi.ru.monica.ui.components.InfoFieldWithCopy
 import takagi.ru.monica.ui.components.PasswordField
+import takagi.ru.monica.ui.components.PasswordFieldActionMenuHost
+import takagi.ru.monica.ui.components.rememberPasswordFieldActionMenuState
 import takagi.ru.monica.data.CustomField
 import takagi.ru.monica.data.LoginType
 import takagi.ru.monica.data.SsoProvider
@@ -184,6 +186,7 @@ fun PasswordDetailScreen(
     onNavigateBack: () -> Unit,
     onOpenBoundNote: (Long) -> Unit = {},
     onOpenPassword: (Long) -> Unit = {},
+    onCreateSend: ((title: String, text: String) -> Unit)? = null,
     onEditPassword: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -735,7 +738,8 @@ fun PasswordDetailScreen(
                             entry = entry,
                             context = context,
                             separateUsernameAccountEnabled = settings.separateUsernameAccountEnabled,
-                            separatedUsername = separatedUsername
+                            separatedUsername = separatedUsername,
+                            onCreateSend = onCreateSend
                         )
                     }
                 }
@@ -779,7 +783,8 @@ fun PasswordDetailScreen(
                                 itemToDelete = targetEntry
                                 showDeleteDialog = true
                             },
-                            context = context
+                            context = context,
+                            onCreateSend = onCreateSend
                         )
                     }
                 }
@@ -812,7 +817,8 @@ fun PasswordDetailScreen(
                         CustomFieldsCard(
                             fields = displayCustomFields,
                             visibilityState = customFieldVisibility,
-                            context = context
+                            context = context,
+                            onCreateSend = onCreateSend
                         )
                     }
                 }
@@ -893,7 +899,7 @@ fun PasswordDetailScreen(
                             expanded = personalInfoExpanded,
                             onToggle = { personalInfoExpanded = !personalInfoExpanded }
                         ) {
-                            PersonalInfoContent(entry = entry, context = context)
+                            PersonalInfoContent(entry = entry, context = context, onCreateSend = onCreateSend)
                         }
                     }
                 }
@@ -923,7 +929,8 @@ fun PasswordDetailScreen(
                                 entry = entry,
                                 cvvVisible = cvvVisible,
                                 onToggleCvvVisibility = { cvvVisible = !cvvVisible },
-                                context = context
+                                context = context,
+                                onCreateSend = onCreateSend
                             )
                         }
                     }
@@ -2053,7 +2060,8 @@ private fun BasicInfoCard(
     entry: PasswordEntry,
     context: Context,
     separateUsernameAccountEnabled: Boolean,
-    separatedUsername: String
+    separatedUsername: String,
+    onCreateSend: ((title: String, text: String) -> Unit)?
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -2071,14 +2079,16 @@ private fun BasicInfoCard(
                     InfoFieldWithCopy(
                         label = stringResource(R.string.field_account),
                         value = entry.username,
-                        context = context
+                        context = context,
+                        onCreateSend = onCreateSend
                     )
                 }
                 if (separatedUsername.isNotEmpty()) {
                     InfoFieldWithCopy(
                         label = stringResource(R.string.autofill_username),
                         value = separatedUsername,
-                        context = context
+                        context = context,
+                        onCreateSend = onCreateSend
                     )
                 }
             } else {
@@ -2086,7 +2096,8 @@ private fun BasicInfoCard(
                     InfoFieldWithCopy(
                         label = stringResource(R.string.username),
                         value = entry.username,
-                        context = context
+                        context = context,
+                        onCreateSend = onCreateSend
                     )
                 }
             }
@@ -2470,7 +2481,8 @@ private fun PasskeyFormatBadge(
 @Composable
 private fun PersonalInfoContent(
     entry: PasswordEntry,
-    context: Context
+    context: Context,
+    onCreateSend: ((title: String, text: String) -> Unit)?
 ) {
     Column(
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -2481,14 +2493,16 @@ private fun PersonalInfoContent(
                 InfoFieldWithCopy(
                     label = "${stringResource(R.string.email)}${index + 1}",
                     value = email,
-                    context = context
+                    context = context,
+                    onCreateSend = onCreateSend
                 )
             }
         } else if (emails.isNotEmpty()) {
             InfoFieldWithCopy(
                 label = stringResource(R.string.email),
                 value = emails[0],
-                context = context
+                context = context,
+                onCreateSend = onCreateSend
             )
         }
         
@@ -2498,14 +2512,16 @@ private fun PersonalInfoContent(
                 InfoFieldWithCopy(
                     label = "${stringResource(R.string.phone)}${index + 1}",
                     value = FieldValidation.formatPhone(phone),
-                    context = context
+                    context = context,
+                    onCreateSend = onCreateSend
                 )
             }
         } else if (phones.isNotEmpty()) {
             InfoFieldWithCopy(
                 label = stringResource(R.string.phone),
                 value = FieldValidation.formatPhone(phones[0]),
-                context = context
+                context = context,
+                onCreateSend = onCreateSend
             )
         }
     }
@@ -2586,7 +2602,8 @@ private fun PaymentInfoContent(
     entry: PasswordEntry,
     cvvVisible: Boolean,
     onToggleCvvVisibility: () -> Unit,
-    context: Context
+    context: Context,
+    onCreateSend: ((title: String, text: String) -> Unit)?
 ) {
     Column(
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -2596,7 +2613,8 @@ private fun PaymentInfoContent(
                 label = stringResource(R.string.credit_card_number),
                 value = FieldValidation.maskCreditCard(entry.creditCardNumber),
                 copyValue = entry.creditCardNumber,
-                context = context
+                context = context,
+                onCreateSend = onCreateSend
             )
         }
         
@@ -2628,7 +2646,8 @@ private fun PaymentInfoContent(
                             value = entry.creditCardCVV,
                             visible = cvvVisible,
                             onToggleVisibility = onToggleCvvVisibility,
-                            context = context
+                            context = context,
+                            onCreateSend = onCreateSend
                         )
                     }
                 }
@@ -2808,7 +2827,8 @@ private fun BoundNoteCard(
 private fun CustomFieldsCard(
     fields: List<CustomField>,
     visibilityState: MutableMap<Long, Boolean>,
-    context: Context
+    context: Context,
+    onCreateSend: ((title: String, text: String) -> Unit)?
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -2854,13 +2874,15 @@ private fun CustomFieldsCard(
                         onToggleVisibility = {
                             visibilityState[field.id] = !isVisible
                         },
-                        context = context
+                        context = context,
+                        onCreateSend = onCreateSend
                     )
                 } else {
                     InfoFieldWithCopy(
                         label = label,
                         value = field.value,
-                        context = context
+                        context = context,
+                        onCreateSend = onCreateSend
                     )
                 }
             }
@@ -3099,7 +3121,8 @@ private fun PasswordListCard(
     isResyncingUnreadable: Boolean,
     showSecurityAnalysis: Boolean,
     onDelete: (PasswordEntry) -> Unit,
-    context: Context
+    context: Context,
+    onCreateSend: ((title: String, text: String) -> Unit)?
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -3131,7 +3154,8 @@ private fun PasswordListCard(
                     showIndex = passwords.size > 1,
                     onDelete = { onDelete(entry) },
                     context = context,
-                    canDelete = passwords.size > 1 
+                    canDelete = passwords.size > 1,
+                    onCreateSend = onCreateSend
                 )
                 if (index < passwords.size - 1) {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -3153,9 +3177,11 @@ private fun PasswordItemRow(
     showIndex: Boolean,
     onDelete: () -> Unit,
     context: Context,
-    canDelete: Boolean
+    canDelete: Boolean,
+    onCreateSend: ((title: String, text: String) -> Unit)?
 ) {
     var visible by remember { mutableStateOf(false) }
+    val actionMenuState = rememberPasswordFieldActionMenuState()
     val isUnavailable = unavailableSource != null
     val recoverableBitwardenSource = (unavailableSource as? PasswordSource.Bitwarden)
         ?.takeIf { it.vaultId != null && !it.cipherId.isNullOrBlank() }
@@ -3241,7 +3267,25 @@ private fun PasswordItemRow(
             }
         }
         
-        Text(
+        Box {
+            if (hasPasswordValue && !isUnavailable) {
+                PasswordFieldActionMenuHost(
+                    state = actionMenuState,
+                    label = if (showIndex) stringResource(R.string.password) + " $index" else stringResource(R.string.password),
+                    value = displayPassword,
+                    displayValue = if (visible) displayPassword else "•".repeat(8),
+                    context = context,
+                    includeVisibilityToggle = true,
+                    isVisible = visible,
+                    onToggleVisibility = { visible = !visible },
+                    onCreateSend = onCreateSend
+                )
+            }
+            Text(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(enabled = hasPasswordValue && !isUnavailable) { actionMenuState.open() }
+                .padding(vertical = 6.dp),
             text = when {
                 isUnavailable -> unavailableMessage
                 !hasPasswordValue -> stringResource(R.string.permission_status_unavailable)
@@ -3252,7 +3296,8 @@ private fun PasswordItemRow(
                 fontFamily = if (visible && hasPasswordValue) androidx.compose.ui.text.font.FontFamily.Monospace else androidx.compose.ui.text.font.FontFamily.Default
             ),
             color = MaterialTheme.colorScheme.onSurface
-        )
+            )
+        }
 
         if (showSecurityAnalysis && hasPasswordValue && !isUnavailable) {
             Surface(

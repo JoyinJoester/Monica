@@ -97,6 +97,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -121,6 +122,7 @@ import takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel
 import takagi.ru.monica.bitwarden.sync.buildHeadline
 import takagi.ru.monica.ui.common.pull.calculateDampedPullOffset
 import takagi.ru.monica.data.bitwarden.BitwardenSend
+import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.ui.components.ExpressiveTopBar
 import takagi.ru.monica.util.VibrationPatterns
 import java.time.Instant
@@ -759,11 +761,15 @@ private fun MetaTag(
 fun AddEditSendScreen(
     modifier: Modifier = Modifier,
     sendState: BitwardenViewModel.SendState,
+    vaults: List<BitwardenVault> = emptyList(),
+    activeVault: BitwardenVault? = null,
+    unlockStateByVault: Map<Long, BitwardenViewModel.UnlockState> = emptyMap(),
     initialTitle: String = "",
     initialText: String = "",
     initialNotes: String = "",
     onNavigateBack: () -> Unit,
     onCreate: (
+        vaultId: Long,
         title: String,
         text: String,
         notes: String?,
@@ -782,9 +788,26 @@ fun AddEditSendScreen(
     var expireDaysText by remember { mutableStateOf("7") }
     var hideEmail by remember { mutableStateOf(false) }
     var hiddenText by remember { mutableStateOf(false) }
+    var selectedVaultId by remember(activeVault?.id, vaults) {
+        mutableStateOf(activeVault?.id ?: vaults.firstOrNull()?.id)
+    }
 
     val creating = sendState is BitwardenViewModel.SendState.Creating
-    val canSave = !creating && title.isNotBlank() && text.isNotBlank()
+    val availableVaults = remember(vaults, activeVault, unlockStateByVault) {
+        val knownVaults = if (vaults.isNotEmpty()) vaults else listOfNotNull(activeVault)
+        knownVaults.filter { vault ->
+            unlockStateByVault[vault.id] == BitwardenViewModel.UnlockState.Unlocked ||
+                (vault.id == activeVault?.id && unlockStateByVault[vault.id] == null)
+        }
+    }
+    LaunchedEffect(availableVaults, selectedVaultId) {
+        if (selectedVaultId == null || availableVaults.none { it.id == selectedVaultId }) {
+            selectedVaultId = availableVaults.firstOrNull { it.id == activeVault?.id }?.id
+                ?: availableVaults.firstOrNull()?.id
+        }
+    }
+    val selectedVault = availableVaults.firstOrNull { it.id == selectedVaultId }
+    val canSave = !creating && selectedVault != null && title.isNotBlank() && text.isNotBlank()
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -810,7 +833,9 @@ fun AddEditSendScreen(
             FloatingActionButton(
                 onClick = {
                     if (!canSave) return@FloatingActionButton
+                    val targetVaultId = selectedVault?.id ?: return@FloatingActionButton
                     onCreate(
+                        targetVaultId,
                         title.trim(),
                         text.trim(),
                         notes.takeIf { it.isNotBlank() }?.trim(),
@@ -850,105 +875,198 @@ fun AddEditSendScreen(
                 .imePadding()
                 .padding(horizontal = 16.dp)
                 .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            SendFormSectionCard(title = stringResource(R.string.send_account_section_title)) {
+                if (availableVaults.isEmpty()) {
+                    StateBanner(stringResource(R.string.send_account_locked_hint))
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        availableVaults.forEach { vault ->
+                            SendVaultChoiceRow(
+                                vault = vault,
+                                selected = vault.id == selectedVaultId,
+                                onClick = { selectedVaultId = vault.id }
+                            )
+                        }
+                    }
+                }
+            }
+
+            SendFormSectionCard(title = stringResource(R.string.send_text_send_heading)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = title,
+                        onValueChange = { title = it },
+                        label = { Text(stringResource(R.string.title)) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    OutlinedTextField(
+                        value = text,
+                        onValueChange = { text = it },
+                        label = { Text(stringResource(R.string.send_content_label)) },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(130.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = notes,
+                        onValueChange = { notes = it },
+                        label = { Text(stringResource(R.string.notes_optional)) },
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+
+            SendFormSectionCard(title = stringResource(R.string.send_options_section_title)) {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it },
+                        label = { Text(stringResource(R.string.send_access_password_optional)) },
+                        singleLine = true,
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = maxAccessCount,
+                            onValueChange = { maxAccessCount = it.filter(Char::isDigit) },
+                            label = { Text(stringResource(R.string.send_max_access_count)) },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f)
+                        )
+                        OutlinedTextField(
+                            value = expireDaysText,
+                            onValueChange = { expireDaysText = it.filter(Char::isDigit) },
+                            label = { Text(stringResource(R.string.send_valid_days)) },
+                            singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+
+                    SendSwitchRow(
+                        title = stringResource(R.string.send_hide_email),
+                        description = stringResource(R.string.send_hide_email_desc),
+                        checked = hideEmail,
+                        onCheckedChange = { hideEmail = it }
+                    )
+
+                    SendSwitchRow(
+                        title = stringResource(R.string.send_hide_text),
+                        description = stringResource(R.string.send_hide_text_desc),
+                        checked = hiddenText,
+                        onCheckedChange = { hiddenText = it }
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(76.dp))
+        }
+    }
+}
+
+@Composable
+private fun SendFormSectionCard(
+    title: String,
+    content: @Composable () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = stringResource(R.string.send_text_send_heading),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
             )
+            content()
+        }
+    }
+}
 
-            OutlinedTextField(
-                value = title,
-                onValueChange = { title = it },
-                label = { Text(stringResource(R.string.title)) },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = text,
-                onValueChange = { text = it },
-                label = { Text(stringResource(R.string.send_content_label)) },
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(130.dp)
-            )
-
-            OutlinedTextField(
-                value = notes,
-                onValueChange = { notes = it },
-                label = { Text(stringResource(R.string.notes_optional)) },
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
-                label = { Text(stringResource(R.string.send_access_password_optional)) },
-                singleLine = true,
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = maxAccessCount,
-                    onValueChange = { maxAccessCount = it.filter(Char::isDigit) },
-                    label = { Text(stringResource(R.string.send_max_access_count)) },
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.weight(1f)
+@Composable
+private fun SendVaultChoiceRow(
+    vault: BitwardenVault,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(Icons.Default.Key, contentDescription = null)
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = vault.displayName?.takeIf { it.isNotBlank() } ?: vault.email,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold
                 )
-                OutlinedTextField(
-                    value = expireDaysText,
-                    onValueChange = { expireDaysText = it.filter(Char::isDigit) },
-                    label = { Text(stringResource(R.string.send_valid_days)) },
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.weight(1f)
+                Text(
+                    text = vault.email,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.send_hide_email))
-                    Text(
-                        text = stringResource(R.string.send_hide_email_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(
-                    checked = hideEmail,
-                    onCheckedChange = { hideEmail = it }
-                )
-            }
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.send_hide_text))
-                    Text(
-                        text = stringResource(R.string.send_hide_text_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(
-                    checked = hiddenText,
-                    onCheckedChange = { hiddenText = it }
-                )
+            if (selected) {
+                Icon(Icons.Default.Check, contentDescription = null)
             }
         }
+    }
+}
+
+@Composable
+private fun SendSwitchRow(
+    title: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title)
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange
+        )
     }
 }
 

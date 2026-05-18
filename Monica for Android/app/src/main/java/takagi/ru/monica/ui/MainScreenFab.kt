@@ -976,9 +976,13 @@ internal fun MainScreenAddFab(
                             BottomNavItem.Send -> {
                                 AddEditSendScreen(
                                     sendState = sendState,
+                                    vaults = bitwardenViewModel.vaults.collectAsState().value,
+                                    activeVault = bitwardenViewModel.activeVault.collectAsState().value,
+                                    unlockStateByVault = bitwardenViewModel.unlockStateByVault.collectAsState().value,
                                     onNavigateBack = collapse,
-                                    onCreate = { title, text, notes, password, maxAccessCount, hideEmail, hiddenText, expireInDays ->
+                                    onCreate = { vaultId, title, text, notes, password, maxAccessCount, hideEmail, hiddenText, expireInDays ->
                                         bitwardenViewModel.createTextSend(
+                                            vaultId = vaultId,
                                             title = title,
                                             text = text,
                                             notes = notes,
@@ -1138,4 +1142,3 @@ internal fun VaultV2FabMenu(
         }
     }
 }
-

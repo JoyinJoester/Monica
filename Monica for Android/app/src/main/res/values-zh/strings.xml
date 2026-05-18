@@ -27,6 +27,10 @@
     <string name="yes">是</string>
     <string name="no">否</string>
     <string name="share">分享</string>
+    <string name="field_action_more">更多字段操作</string>
+    <string name="field_action_show_large">以大号字体显示</string>
+    <string name="field_action_show_barcode">显示为二维码</string>
+    <string name="field_action_barcode_failed">无法为该内容生成二维码。</string>
     <string name="no_results">未找到结果</string>
     <string name="note_placeholder">记点什么...</string>
     <string name="new_note">新建笔记</string>
@@ -2353,6 +2357,9 @@
     <string name="send_copy_link">复制链接</string>
     <string name="send_create_title">创建 Send</string>
     <string name="send_text_send_heading">文本发送</string>
+    <string name="send_account_section_title">账号</string>
+    <string name="send_account_locked_hint">请先解锁一个 Bitwarden 账号后再创建 Send。</string>
+    <string name="send_options_section_title">选项</string>
     <string name="send_content_label">发送内容</string>
     <string name="send_access_password_optional">访问密码（可选）</string>
     <string name="send_max_access_count">最大访问次数</string>

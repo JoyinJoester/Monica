@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
@@ -29,6 +31,7 @@ internal fun SendPane(
     onSendClick: (BitwardenSend) -> Unit,
     onInlineSendEditorBack: () -> Unit,
     onCreateSend: (
+        vaultId: Long,
         title: String,
         text: String,
         notes: String?,
@@ -42,6 +45,10 @@ internal fun SendPane(
     showStandaloneSettingsEntry: Boolean = false,
     onOpenStandaloneSettings: () -> Unit = {}
 ) {
+    val vaults by bitwardenViewModel.vaults.collectAsState()
+    val activeVault by bitwardenViewModel.activeVault.collectAsState()
+    val unlockStateByVault by bitwardenViewModel.unlockStateByVault.collectAsState()
+
     if (isCompactWidth) {
         SendScreen(
             bitwardenViewModel = bitwardenViewModel,
@@ -73,6 +80,9 @@ internal fun SendPane(
                 if (isAddingSendInline) {
                     AddEditSendScreen(
                         sendState = sendState,
+                        vaults = vaults,
+                        activeVault = activeVault,
+                        unlockStateByVault = unlockStateByVault,
                         onNavigateBack = onInlineSendEditorBack,
                         onCreate = onCreateSend,
                         modifier = Modifier.fillMaxSize()

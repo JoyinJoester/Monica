@@ -652,6 +652,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
      * 创建文本 Send
      */
     fun createTextSend(
+        vaultId: Long? = null,
         title: String,
         text: String,
         notes: String?,
@@ -661,7 +662,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
         hiddenText: Boolean,
         expireInDays: Int
     ) {
-        val vault = _activeVault.value ?: return
+        val vault = vaultId?.let(::resolveVault) ?: _activeVault.value ?: return
         if (!repository.isVaultUnlocked(vault.id)) {
             _sendState.value = SendState.Locked
             return
@@ -689,8 +690,10 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                 )
             ) {
                 is BitwardenRepository.SendMutationResult.Success -> {
-                    _sends.value = listOf(result.send) + _sends.value.filterNot {
-                        it.bitwardenSendId == result.send.bitwardenSendId
+                    if (_activeVault.value?.id == vault.id) {
+                        _sends.value = listOf(result.send) + _sends.value.filterNot {
+                            it.bitwardenSendId == result.send.bitwardenSendId
+                        }
                     }
                     _sendState.value = SendState.Idle
                     logBitwardenSendCreate(vault.id, result.send)

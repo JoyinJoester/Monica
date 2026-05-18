@@ -79,6 +79,40 @@ class BiometricUnlockRegressionGuardTest {
         )
     }
 
+    @Test
+    fun emptyRuntimeMdkCacheCannotMaskReadableKeystoreWrapper() {
+        val source = projectFile(
+            "app/src/main/java/takagi/ru/monica/security/SecurityManager.kt"
+        ).readText()
+        val getMdkBody = source.substringAfter("private fun getMdkForCrypto(): ByteArray? {")
+            .substringBefore("private val DATA_PREFIX_MDK")
+        val getOrCreateBody = source.substringAfter("private fun getOrCreateMdkBytes(): ByteArray {")
+            .substringBefore("private fun getMdkForCrypto()")
+        val ensureBody = source.substringAfter("private fun ensureMdkInitializedWithPassword(")
+            .substringBefore("private fun ensureMdkKeystoreWrapper()")
+
+        assertTrue(
+            "An empty runtime MDK cache must be ignored so a freshly persisted wrapper can still be read.",
+            getMdkBody.contains("cached.isNotEmpty()")
+        )
+        assertTrue(
+            "Clearing an empty runtime MDK cache prevents repeated false locked states.",
+            getMdkBody.contains("processCachedMdk = null")
+        )
+        assertTrue(
+            "MDK recovery should also ignore empty runtime cache before falling back to the keystore wrapper.",
+            getOrCreateBody.contains("cached.isNotEmpty()")
+        )
+        assertTrue(
+            "Correct-password unlock must repair historical empty password-wrapped MDK blobs.",
+            ensureBody.contains("password-wrapped MDK is empty; attempting recovery")
+        )
+        assertTrue(
+            "Recovered or freshly generated MDK must be written back to the password blob.",
+            ensureBody.contains("shouldRewritePasswordBlob = true")
+        )
+    }
+
     private fun projectFile(relativePath: String): File {
         val candidates = mutableListOf<File>()
         var dir: File? = File(System.getProperty("user.dir") ?: ".")
