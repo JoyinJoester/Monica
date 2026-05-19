@@ -279,6 +279,17 @@ interface BitwardenSendDao {
     @Query("SELECT * FROM bitwarden_sends WHERE vault_id = :vaultId ORDER BY updated_at DESC")
     suspend fun getSendsByVault(vaultId: Long): List<BitwardenSend>
 
+    /**
+     * 跨多个已解锁 Vault 的合并查询。
+     *
+     * 用于 Send 标签页同时展示多个账号下的 Send。
+     */
+    @Query("SELECT * FROM bitwarden_sends WHERE vault_id IN (:vaultIds) ORDER BY updated_at DESC")
+    fun getSendsByVaultsFlow(vaultIds: List<Long>): Flow<List<BitwardenSend>>
+
+    @Query("SELECT * FROM bitwarden_sends WHERE vault_id IN (:vaultIds) ORDER BY updated_at DESC")
+    suspend fun getSendsByVaults(vaultIds: List<Long>): List<BitwardenSend>
+
     @Query("SELECT * FROM bitwarden_sends WHERE vault_id = :vaultId AND bitwarden_send_id = :sendId LIMIT 1")
     suspend fun getBySendId(vaultId: Long, sendId: String): BitwardenSend?
 
@@ -300,8 +311,53 @@ interface BitwardenSendDao {
     @Query("DELETE FROM bitwarden_sends WHERE vault_id = :vaultId AND bitwarden_send_id = :sendId")
     suspend fun deleteBySendId(vaultId: Long, sendId: String)
 
-    @Query("DELETE FROM bitwarden_sends WHERE vault_id = :vaultId AND bitwarden_send_id NOT IN (:keepIds)")
-    suspend fun deleteNotIn(vaultId: Long, keepIds: List<String>)
+    /**
+     * 清理服务器上已不存在的 Send。
+     *
+     * 双重保护：
+     * - is_dirty = 1：本地刚创建/修改但还没和服务器对账的行（防 Vaultwarden / Cloudflare 写后读延迟）
+     * - created_at >= :syncStartedAtMs：本次 sync 开始之后才落地的行（兜底，防止 dirty 标记被遗漏）
+     *
+     * 满足任一条件即跳过删除。
+     */
+    @Query(
+        """
+        DELETE FROM bitwarden_sends
+        WHERE vault_id = :vaultId
+          AND bitwarden_send_id NOT IN (:keepIds)
+          AND is_dirty = 0
+          AND created_at < :syncStartedAtMs
+        """
+    )
+    suspend fun deleteNotInProtectingDirty(
+        vaultId: Long,
+        keepIds: List<String>,
+        syncStartedAtMs: Long
+    )
+
+    /**
+     * 清空 vault 所有 Send 时仍保留尚未对账的本地新建条目。
+     */
+    @Query(
+        """
+        DELETE FROM bitwarden_sends
+        WHERE vault_id = :vaultId
+          AND is_dirty = 0
+          AND created_at < :syncStartedAtMs
+        """
+    )
+    suspend fun deleteByVaultProtectingDirty(vaultId: Long, syncStartedAtMs: Long)
+
+    @Query(
+        """
+        UPDATE bitwarden_sends SET is_dirty = 0
+        WHERE vault_id = :vaultId AND bitwarden_send_id = :sendId
+        """
+    )
+    suspend fun clearDirty(vaultId: Long, sendId: String)
+
+    @Query("SELECT bitwarden_send_id FROM bitwarden_sends WHERE vault_id = :vaultId AND is_dirty = 1")
+    suspend fun getDirtySendIds(vaultId: Long): List<String>
 }
 
 /**

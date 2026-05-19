@@ -37,7 +37,7 @@ import takagi.ru.monica.data.bitwarden.*
         // 附件（仅挂在 PasswordEntry 上，跨 Local/Bitwarden/KeePass 三个来源统一元数据）
         Attachment::class
     ],
-    version = 61,
+    version = 62,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -1849,6 +1849,30 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        // Migration 61 → 62 - 为 bitwarden_sends 增加 is_dirty 标志
+        //
+        // 修复：在 Vaultwarden / 官方 sync API 写后读不一致的窗口期，本地刚创建 / 修改的
+        // Send 不会立刻出现在服务器返回的 sync 列表里。原 deleteNotIn 路径会把这些行立即
+        // 清除，造成"新建后短时间内再次同步就消失"的问题。
+        //
+        // 修复策略：写路径置 is_dirty = 1，sync 路径在服务器侧确认到来后清 0；同时
+        // 删除清理改用 deleteNotInProtectingDirty，对 dirty 行 + 本次 sync 后才落地的
+        // 行（双重保护）跳过删除。
+        private val MIGRATION_61_62 = object : androidx.room.migration.Migration(61, 62) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 61→62: bitwarden_sends.is_dirty")
+                    database.execSQL(
+                        "ALTER TABLE bitwarden_sends ADD COLUMN is_dirty INTEGER NOT NULL DEFAULT 0"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 61→62 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 61→62 failed: ${e.message}")
+                    throw e
+                }
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -1916,7 +1940,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_57_58,  // Bitwarden Vault 身份稳定化
                         MIGRATION_58_59,  // KeePass Passkey 去重与唯一约束
                         MIGRATION_59_60,   // 附件表 (attachments)
-                        MIGRATION_60_61   // WIFI 条目扩展元数据 (wifi_metadata)
+                        MIGRATION_60_61,   // WIFI 条目扩展元数据 (wifi_metadata)
+                        MIGRATION_61_62    // bitwarden_sends.is_dirty 防止本地新建被清理
                     )
                     // 启用多进程失效通知：IME 跑在 :ime 独立进程，主进程需要
                     // 感知 IME 进程对数据库的修改（例如最近填充时间戳等）。

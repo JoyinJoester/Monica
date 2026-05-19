@@ -1238,6 +1238,19 @@ fun MonicaContent(
                         navController.navigate(Screen.AddEditWifi.createRoute(id)) {
                             launchSingleTop = true
                         }
+                    },
+                    onCreateSend = { title, text ->
+                        navController.currentBackStackEntry
+                            ?.savedStateHandle
+                            ?.setPendingSendDraft(
+                                PendingSendDraft(
+                                    title = title,
+                                    text = text
+                                )
+                            )
+                        navController.navigate(Screen.AddEditSend.createRoute()) {
+                            launchSingleTop = true
+                        }
                     }
                 )
             }
@@ -1317,6 +1330,19 @@ fun MonicaContent(
                     onNavigateBack = navigateBack,
                     onEdit = { id ->
                         navController.navigate(Screen.AddEditSshKey.createRoute(id)) {
+                            launchSingleTop = true
+                        }
+                    },
+                    onCreateSend = { title, text ->
+                        navController.currentBackStackEntry
+                            ?.savedStateHandle
+                            ?.setPendingSendDraft(
+                                PendingSendDraft(
+                                    title = title,
+                                    text = text
+                                )
+                            )
+                        navController.navigate(Screen.AddEditSend.createRoute()) {
                             launchSingleTop = true
                         }
                     }
@@ -1728,6 +1754,20 @@ fun MonicaContent(
                         maxAccessCount = maxAccessCount,
                         hideEmail = hideEmail,
                         hiddenText = hiddenText,
+                        expireInDays = expireInDays
+                    )
+                    navController.popBackStack()
+                },
+                onCreateFile = { vaultId, title, fileUri, fileName, notes, password, maxAccessCount, hideEmail, expireInDays ->
+                    bitwardenViewModel.createFileSend(
+                        vaultId = vaultId,
+                        title = title,
+                        fileUri = fileUri,
+                        fileName = fileName,
+                        notes = notes,
+                        password = password,
+                        maxAccessCount = maxAccessCount,
+                        hideEmail = hideEmail,
                         expireInDays = expireInDays
                     )
                     navController.popBackStack()
@@ -2791,6 +2831,10 @@ fun MonicaContent(
                 smartDeduplicationEnabled = settings.smartDeduplicationEnabled,
                 onSmartDeduplicationEnabledChange = { enabled ->
                     settingsViewModel.updateSmartDeduplicationEnabled(enabled)
+                },
+                clipboardAutoClearSeconds = settings.clipboardAutoClearSeconds,
+                onClipboardAutoClearSecondsChange = { seconds ->
+                    settingsViewModel.updateClipboardAutoClearSeconds(seconds)
                 },
                 passwordDetailSecurityAnalysisEnabled = settings.passwordDetailSecurityAnalysisEnabled,
                 onPasswordDetailSecurityAnalysisEnabledChange = { enabled ->

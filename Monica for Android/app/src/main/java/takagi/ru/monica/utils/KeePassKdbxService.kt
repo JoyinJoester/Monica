@@ -82,7 +82,21 @@ data class KeePassEntryData(
     /** 取值 `PASSWORD` / `SSO` / `WIFI`；用于还原 [PasswordEntry.loginType]。 */
     val loginType: String = "PASSWORD",
     /** [takagi.ru.monica.data.model.WifiData] 的 JSON，仅在 WIFI 条目上有值。 */
-    val wifiMetadata: String = ""
+    val wifiMetadata: String = "",
+    val customFields: List<KeePassCustomFieldData> = emptyList()
+)
+
+data class KeePassCustomFieldData(
+    val title: String,
+    val value: String,
+    val isProtected: Boolean,
+    val sortOrder: Int = 0
+)
+
+internal data class KeePassRawStringField(
+    val key: String,
+    val value: String,
+    val isProtected: Boolean
 )
 
 data class KeePassGroupInfo(
@@ -169,6 +183,60 @@ private data class KeePassPasswordEntryAnalysis(
     val hasNotes: Boolean,
     val fieldNames: List<String>
 )
+
+internal fun extractKeePassCustomFieldsForPasswordEntry(
+    fields: List<KeePassRawStringField>
+): List<KeePassCustomFieldData> {
+    return fields
+        .asSequence()
+        .filter { field ->
+            val normalizedKey = field.key.trim()
+            normalizedKey.isNotBlank() &&
+                field.value.isNotBlank() &&
+                !isReservedKeePassPasswordFieldName(normalizedKey)
+        }
+        .mapIndexed { index, field ->
+            KeePassCustomFieldData(
+                title = field.key.trim(),
+                value = field.value,
+                isProtected = field.isProtected,
+                sortOrder = index
+            )
+        }
+        .toList()
+}
+
+private fun isReservedKeePassPasswordFieldName(key: String): Boolean {
+    val normalized = key.trim()
+    if (normalized.isBlank()) return true
+    if (normalized.startsWith("_etm_")) return true
+
+    val reservedFields = setOf(
+        "Title", "Name",
+        "UserName", "Username", "User", "Login",
+        "Password", "Pass", "pass", "pwd", "PWD", "密码", "口令",
+        "URL", "Url", "Website", "URI",
+        "Notes", "Note", "Comment",
+        "otp", "TOTP Seed", "TOTP Settings",
+        "MonicaLocalId", "MonicaSecureItemId", "MonicaItemType", "MonicaItemData",
+        "MonicaImagePaths", "MonicaIsFavorite",
+        "MonicaPasskeyCredentialId", "MonicaPasskeyData", "MonicaPasskeyMode",
+        "MonicaSshAlgorithm", "MonicaSshKeySize", "MonicaSshPublicKey",
+        "MonicaSshPrivateKey", "MonicaSshFingerprint", "MonicaSshComment",
+        "MonicaSshFormat",
+        "SSID", "MonicaWifiData", "MonicaLoginType",
+        KeePassDxPasskeyCodec.FIELD_PASSKEY,
+        KeePassDxPasskeyCodec.FIELD_USERNAME,
+        KeePassDxPasskeyCodec.FIELD_PRIVATE_KEY,
+        KeePassDxPasskeyCodec.FIELD_CREDENTIAL_ID,
+        KeePassDxPasskeyCodec.FIELD_USER_HANDLE,
+        KeePassDxPasskeyCodec.FIELD_RELYING_PARTY,
+        KeePassDxPasskeyCodec.FIELD_FLAG_BE,
+        KeePassDxPasskeyCodec.FIELD_FLAG_BS
+    )
+    val reservedLower = reservedFields.mapTo(mutableSetOf()) { it.lowercase(Locale.ROOT) }
+    return normalized.lowercase(Locale.ROOT) in reservedLower
+}
 
 class KeePassKdbxService(
     private val context: Context,
@@ -2162,6 +2230,15 @@ class KeePassKdbxService(
         val monicaLoginType = getFieldValue(entry, FIELD_MONICA_LOGIN_TYPE, resolutionContext)
         val monicaWifiJson = getFieldValue(entry, FIELD_MONICA_WIFI_DATA, resolutionContext)
         val ssidField = getFieldValue(entry, FIELD_WIFI_SSID, resolutionContext)
+        val customFields = extractKeePassCustomFieldsForPasswordEntry(
+            entry.fields.map { (key, value) ->
+                KeePassRawStringField(
+                    key = key,
+                    value = getFieldValue(entry, key, resolutionContext),
+                    isProtected = value is EntryValue.Encrypted
+                )
+            }
+        )
         val (resolvedLoginType, resolvedWifiJson) = when {
             monicaLoginType.equals("WIFI", ignoreCase = true) && monicaWifiJson.isNotBlank() ->
                 "WIFI" to monicaWifiJson
@@ -2191,7 +2268,8 @@ class KeePassKdbxService(
             groupUuid = groupUuid?.toString(),
             isInRecycleBin = inRecycleBin,
             loginType = resolvedLoginType,
-            wifiMetadata = resolvedWifiJson
+            wifiMetadata = resolvedWifiJson,
+            customFields = customFields
         )
         return result(
             data = data,

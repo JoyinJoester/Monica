@@ -2,6 +2,8 @@ package takagi.ru.monica.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material3.ButtonDefaults
@@ -50,6 +52,7 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
@@ -70,6 +73,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -118,6 +122,9 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import takagi.ru.monica.R
+import takagi.ru.monica.attachments.facade.AttachmentUriMetadata
+import takagi.ru.monica.bitwarden.BitwardenVaultPremiumStore
+import takagi.ru.monica.bitwarden.api.BitwardenApiFactory
 import takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel
 import takagi.ru.monica.bitwarden.sync.buildHeadline
 import takagi.ru.monica.ui.common.pull.calculateDampedPullOffset
@@ -129,6 +136,11 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.launch
+
+private enum class SendCreateType {
+    Text,
+    File
+}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
@@ -142,16 +154,23 @@ fun SendScreen(
     bitwardenViewModel: BitwardenViewModel = viewModel(),
     onBitwardenEvent: ((BitwardenViewModel.BitwardenEvent) -> Boolean)? = null
 ) {
-    val sends by bitwardenViewModel.sends.collectAsState()
+    val sends by bitwardenViewModel.sendsAcrossVaults.collectAsState()
     val activeVault by bitwardenViewModel.activeVault.collectAsState()
     val unlockState by bitwardenViewModel.unlockState.collectAsState()
+    val unlockStateByVault by bitwardenViewModel.unlockStateByVault.collectAsState()
+    val allVaults by bitwardenViewModel.vaults.collectAsState()
     val sendState by bitwardenViewModel.sendState.collectAsState()
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+
+    // 多账号场景下：只要有任一已解锁 Vault 就允许操作；空账号 / 全锁定时禁用刷新按钮
+    val anyVaultUnlocked = unlockStateByVault.any { it.value == BitwardenViewModel.UnlockState.Unlocked }
     val canCreateSend = activeVault != null && unlockState == BitwardenViewModel.UnlockState.Unlocked
+
+    val vaultLookup = remember(allVaults) { allVaults.associateBy { it.id } }
 
     var deletingSend by remember { mutableStateOf<BitwardenSend?>(null) }
     var searchQuery by remember { mutableStateOf("") }
@@ -171,17 +190,21 @@ fun SendScreen(
         }
     }
 
-    val filteredSends = remember(sends, searchQuery) {
+    val filteredSends = remember(sends, searchQuery, vaultLookup) {
         val query = searchQuery.trim()
         if (query.isBlank()) {
             sends
         } else {
             sends.filter { send ->
+                val vaultLabel = vaultLookup[send.vaultId]?.let { v ->
+                    v.displayName?.takeIf { it.isNotBlank() } ?: v.email
+                }.orEmpty()
                 send.name.contains(query, ignoreCase = true) ||
                     send.shareUrl.contains(query, ignoreCase = true) ||
                     (send.textContent?.contains(query, ignoreCase = true) == true) ||
                     (send.fileName?.contains(query, ignoreCase = true) == true) ||
-                    send.notes.contains(query, ignoreCase = true)
+                    send.notes.contains(query, ignoreCase = true) ||
+                    vaultLabel.contains(query, ignoreCase = true)
             }
         }
     }
@@ -191,9 +214,13 @@ fun SendScreen(
         searchQuery = ""
     }
 
-    LaunchedEffect(activeVault?.id, unlockState) {
-        if (canCreateSend) {
-            bitwardenViewModel.requestPageEnterAutoSync()
+    LaunchedEffect(activeVault?.id, unlockState, anyVaultUnlocked) {
+        if (anyVaultUnlocked) {
+            // 至少有一个已解锁账号就允许刷新视图：当前活跃账号触发自动同步，
+            // 其它账号通过 sendsAcrossVaults 直接复用本地缓存。
+            if (canCreateSend) {
+                bitwardenViewModel.requestPageEnterAutoSync()
+            }
             bitwardenViewModel.loadSends(forceRemoteSync = false)
         }
     }
@@ -234,8 +261,8 @@ fun SendScreen(
                     searchHint = stringResource(R.string.send_search_hint),
                     actions = {
                         IconButton(
-                            onClick = { bitwardenViewModel.loadSends(forceRemoteSync = true) },
-                            enabled = canCreateSend &&
+                            onClick = { bitwardenViewModel.refreshAllUnlockedSends() },
+                            enabled = anyVaultUnlocked &&
                                 sendState !is BitwardenViewModel.SendState.Syncing
                         ) {
                             Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.refresh))
@@ -297,13 +324,15 @@ fun SendScreen(
                 }
 
                 when {
-                    activeVault == null -> {
+                    // 没有任何已连接 Vault：保留原"未连接"提示
+                    allVaults.isEmpty() -> {
                         EmptyStateCard(
                             title = stringResource(R.string.send_empty_no_connection_title),
                             message = stringResource(R.string.send_empty_no_connection_message)
                         )
                     }
-                    unlockState != BitwardenViewModel.UnlockState.Unlocked -> {
+                    // 有 Vault 但没有任何已解锁、并且本地也没有跨账号的 Send 缓存可用
+                    !anyVaultUnlocked && sends.isEmpty() -> {
                         EmptyStateCard(
                             title = stringResource(R.string.send_empty_vault_locked_title),
                             message = stringResource(R.string.send_empty_vault_locked_message)
@@ -402,21 +431,22 @@ fun SendScreen(
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                             contentPadding = PaddingValues(bottom = 96.dp)
                         ) {
-                            item(key = "send_hero") {
-                                SendHeroCard(
-                                    sendCount = sends.size,
-                                    textCount = sends.count { it.isTextType },
-                                    fileCount = sends.count { it.isFileType }
-                                )
-                                Spacer(modifier = Modifier.height(12.dp))
-                            }
                             items(
                                 items = filteredSends,
-                                key = { it.bitwardenSendId }
+                                // 跨账号视图下，单独的 sendId 不再唯一（不同 vault 间会重复），
+                                // 用 vaultId+sendId 复合键避免 LazyColumn key 冲突。
+                                key = { "${it.vaultId}:${it.bitwardenSendId}" }
                             ) { send ->
+                                val vault = vaultLookup[send.vaultId]
+                                val vaultLabel = vault?.let {
+                                    it.displayName?.takeIf { name -> name.isNotBlank() } ?: it.email
+                                }.orEmpty()
+                                val vaultServer = vault?.serverUrl.orEmpty()
                                 SendItemCard(
                                     send = send,
                                     selected = selectedSendId == send.bitwardenSendId,
+                                    vaultLabel = vaultLabel,
+                                    vaultServerUrl = vaultServer,
                                     onClick = { onSendClick(send) },
                                     onCopyLink = {
                                         clipboardManager.setText(AnnotatedString(send.shareUrl))
@@ -446,7 +476,8 @@ fun SendScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        bitwardenViewModel.deleteSend(send.bitwardenSendId)
+                        // 多账号场景下必须把 send 自身的 vaultId 传进去，否则会落到错误的 Vault
+                        bitwardenViewModel.deleteSend(send.bitwardenSendId, send.vaultId)
                         deletingSend = null
                     }
                 ) {
@@ -536,6 +567,10 @@ private fun HeroChip(label: String) {
 private fun SendItemCard(
     send: BitwardenSend,
     selected: Boolean,
+    /** 例如 "joyinsana@163.com" 或 displayName。空串时不展示账号信息。 */
+    vaultLabel: String,
+    /** 当前 vault 的 serverUrl，仅用于展开后的细节展示。空串时省略。 */
+    vaultServerUrl: String,
     onClick: () -> Unit,
     onCopyLink: () -> Unit,
     onOpenLink: () -> Unit,
@@ -609,10 +644,18 @@ private fun SendItemCard(
                             stringResource(R.string.send_type_file)
                         }
                         
+                        // 多账号场景下，副标题同时展示类型和所属账号，便于一眼区分两个 Vault 下同名 Send。
+                        val subtitle = if (vaultLabel.isNotBlank()) {
+                            "$typeLabel · $vaultLabel"
+                        } else {
+                            typeLabel
+                        }
                         Text(
-                            text = typeLabel,
+                            text = subtitle,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
                 }
@@ -636,7 +679,40 @@ private fun SendItemCard(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-                
+
+                if (vaultLabel.isNotBlank()) {
+                    // 展开后展示创建该 Send 的账号 / 服务器，回答"这条 Send 来自哪个账号"。
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AccountCircle,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = vaultLabel,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (vaultServerUrl.isNotBlank()) {
+                                Text(
+                                    text = vaultServerUrl,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+
                 val body = when {
                     send.isTextType && !send.textContent.isNullOrBlank() -> send.textContent
                     send.isFileType -> send.fileName ?: stringResource(R.string.send_file_fallback_name)
@@ -778,6 +854,17 @@ fun AddEditSendScreen(
         hideEmail: Boolean,
         hiddenText: Boolean,
         expireInDays: Int
+    ) -> Unit,
+    onCreateFile: (
+        vaultId: Long,
+        title: String,
+        fileUri: Uri,
+        fileName: String,
+        notes: String?,
+        password: String?,
+        maxAccessCount: Int?,
+        hideEmail: Boolean,
+        expireInDays: Int
     ) -> Unit
 ) {
     var title by remember(initialTitle) { mutableStateOf(initialTitle) }
@@ -788,8 +875,24 @@ fun AddEditSendScreen(
     var expireDaysText by remember { mutableStateOf("7") }
     var hideEmail by remember { mutableStateOf(false) }
     var hiddenText by remember { mutableStateOf(false) }
+    var sendType by remember { mutableStateOf(SendCreateType.Text) }
+    var selectedFileUri by remember { mutableStateOf<Uri?>(null) }
+    var selectedFileMeta by remember { mutableStateOf<AttachmentUriMetadata.Metadata?>(null) }
     var selectedVaultId by remember(activeVault?.id, vaults) {
         mutableStateOf(activeVault?.id ?: vaults.firstOrNull()?.id)
+    }
+    val context = LocalContext.current
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+            selectedFileUri = uri
+            selectedFileMeta = AttachmentUriMetadata.resolve(context, uri)
+        }
     }
 
     val creating = sendState is BitwardenViewModel.SendState.Creating
@@ -807,7 +910,24 @@ fun AddEditSendScreen(
         }
     }
     val selectedVault = availableVaults.firstOrNull { it.id == selectedVaultId }
-    val canSave = !creating && selectedVault != null && title.isNotBlank() && text.isNotBlank()
+    val fileSendAllowed = remember(selectedVault?.id, selectedVault?.serverUrl) {
+        val vault = selectedVault ?: return@remember false
+        val official = BitwardenApiFactory.isOfficialServer(vault.serverUrl) ||
+            BitwardenApiFactory.isOfficialEuServer(vault.serverUrl)
+        !official || BitwardenVaultPremiumStore.isPremium(context, vault.id)
+    }
+    LaunchedEffect(selectedFileMeta?.fileName) {
+        if (sendType == SendCreateType.File && title.isBlank()) {
+            title = selectedFileMeta?.fileName.orEmpty()
+        }
+    }
+    val canSave = !creating && selectedVault != null && title.isNotBlank() && when (sendType) {
+        SendCreateType.Text -> text.isNotBlank()
+        // fileSendAllowed 已经在文件选择按钮的 enabled 上做了门控，
+        // 如果用户能选到文件说明已经允许。这里不再重复检查，避免
+        // remember 缓存时序问题导致按钮灰色。
+        SendCreateType.File -> selectedFileUri != null && selectedFileMeta != null
+    }
 
     Scaffold(
         modifier = modifier.fillMaxSize(),
@@ -834,17 +954,33 @@ fun AddEditSendScreen(
                 onClick = {
                     if (!canSave) return@FloatingActionButton
                     val targetVaultId = selectedVault?.id ?: return@FloatingActionButton
-                    onCreate(
-                        targetVaultId,
-                        title.trim(),
-                        text.trim(),
-                        notes.takeIf { it.isNotBlank() }?.trim(),
-                        password.takeIf { it.isNotBlank() }?.trim(),
-                        maxAccessCount.toIntOrNull(),
-                        hideEmail,
-                        hiddenText,
-                        expireDaysText.toIntOrNull()?.coerceIn(1, 30) ?: 7
-                    )
+                    if (sendType == SendCreateType.File) {
+                        val uri = selectedFileUri ?: return@FloatingActionButton
+                        val meta = selectedFileMeta ?: return@FloatingActionButton
+                        onCreateFile(
+                            targetVaultId,
+                            title.trim(),
+                            uri,
+                            meta.fileName,
+                            notes.takeIf { it.isNotBlank() }?.trim(),
+                            password.takeIf { it.isNotBlank() }?.trim(),
+                            maxAccessCount.toIntOrNull(),
+                            hideEmail,
+                            expireDaysText.toIntOrNull()?.coerceIn(1, 30) ?: 7
+                        )
+                    } else {
+                        onCreate(
+                            targetVaultId,
+                            title.trim(),
+                            text.trim(),
+                            notes.takeIf { it.isNotBlank() }?.trim(),
+                            password.takeIf { it.isNotBlank() }?.trim(),
+                            maxAccessCount.toIntOrNull(),
+                            hideEmail,
+                            hiddenText,
+                            expireDaysText.toIntOrNull()?.coerceIn(1, 30) ?: 7
+                        )
+                    }
                 },
                 containerColor = if (canSave) {
                     MaterialTheme.colorScheme.primaryContainer
@@ -893,7 +1029,40 @@ fun AddEditSendScreen(
                 }
             }
 
-            SendFormSectionCard(title = stringResource(R.string.send_text_send_heading)) {
+            SendFormSectionCard(title = stringResource(R.string.send_type_section_title)) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = sendType == SendCreateType.Text,
+                            onClick = { sendType = SendCreateType.Text },
+                            label = { Text(stringResource(R.string.send_type_text)) },
+                            leadingIcon = if (sendType == SendCreateType.Text) {
+                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                            } else null
+                        )
+                        FilterChip(
+                            selected = sendType == SendCreateType.File,
+                            enabled = fileSendAllowed,
+                            onClick = { sendType = SendCreateType.File },
+                            label = { Text(stringResource(R.string.send_type_file)) },
+                            leadingIcon = if (sendType == SendCreateType.File) {
+                                { Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
+                            } else null
+                        )
+                    }
+                    if (!fileSendAllowed) {
+                        StateBanner(stringResource(R.string.send_file_premium_required_hint))
+                    }
+                }
+            }
+
+            SendFormSectionCard(
+                title = if (sendType == SendCreateType.File) {
+                    stringResource(R.string.send_file_send_heading)
+                } else {
+                    stringResource(R.string.send_text_send_heading)
+                }
+            ) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     OutlinedTextField(
                         value = title,
@@ -904,15 +1073,32 @@ fun AddEditSendScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
 
-                    OutlinedTextField(
-                        value = text,
-                        onValueChange = { text = it },
-                        label = { Text(stringResource(R.string.send_content_label)) },
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(130.dp)
-                    )
+                    if (sendType == SendCreateType.File) {
+                        OutlinedButton(
+                            onClick = { filePicker.launch(arrayOf("*/*")) },
+                            enabled = fileSendAllowed && !creating,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(selectedFileMeta?.fileName ?: stringResource(R.string.send_select_file))
+                        }
+                        selectedFileMeta?.let { meta ->
+                            Text(
+                                text = stringResource(R.string.send_selected_file_meta, meta.fileName, formatFileSize(meta.sizeBytes)),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    } else {
+                        OutlinedTextField(
+                            value = text,
+                            onValueChange = { text = it },
+                            label = { Text(stringResource(R.string.send_content_label)) },
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(130.dp)
+                        )
+                    }
 
                     OutlinedTextField(
                         value = notes,
@@ -961,12 +1147,14 @@ fun AddEditSendScreen(
                         onCheckedChange = { hideEmail = it }
                     )
 
-                    SendSwitchRow(
-                        title = stringResource(R.string.send_hide_text),
-                        description = stringResource(R.string.send_hide_text_desc),
-                        checked = hiddenText,
-                        onCheckedChange = { hiddenText = it }
-                    )
+                    if (sendType == SendCreateType.Text) {
+                        SendSwitchRow(
+                            title = stringResource(R.string.send_hide_text),
+                            description = stringResource(R.string.send_hide_text_desc),
+                            checked = hiddenText,
+                            onCheckedChange = { hiddenText = it }
+                        )
+                    }
                 }
             }
 
@@ -1134,4 +1322,17 @@ private fun formatDate(raw: String): String {
     } catch (_: Exception) {
         raw
     }
+}
+
+private fun formatFileSize(sizeBytes: Long): String {
+    if (sizeBytes < 0) return "unknown size"
+    if (sizeBytes < 1024) return "$sizeBytes B"
+    val units = listOf("KB", "MB", "GB")
+    var size = sizeBytes.toDouble() / 1024.0
+    var index = 0
+    while (size >= 1024.0 && index < units.lastIndex) {
+        size /= 1024.0
+        index += 1
+    }
+    return "%.1f %s".format(java.util.Locale.US, size, units[index])
 }

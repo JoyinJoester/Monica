@@ -1937,6 +1937,11 @@
     <string name="extensions_title">功能拓展</string>
     <string name="extensions_description">管理各类扩展功能与系统集成</string>
     <string name="extensions_account_settings">账号信息设置</string>
+    <string name="extensions_security_settings">安全</string>
+    <string name="clipboard_auto_clear_title">清除剪贴板</string>
+    <string name="clipboard_auto_clear_description">复制账号和密码后，自动从剪贴板清除。</string>
+    <string name="clipboard_auto_clear_never">永不</string>
+    <string name="clipboard_auto_clear_seconds">%1$d 秒</string>
     <string name="extensions_totp_settings">验证器设置</string>
     <string name="extensions_more_coming_soon">更多功能即将推出…</string>
     <string name="copy_next_code_when_expiring">即将过期时复制新验证码</string>
@@ -2356,7 +2361,12 @@
     <string name="send_tag_expire">过期 %1$s</string>
     <string name="send_copy_link">复制链接</string>
     <string name="send_create_title">创建 Send</string>
+    <string name="send_type_section_title">类型</string>
     <string name="send_text_send_heading">文本发送</string>
+    <string name="send_file_send_heading">文件发送</string>
+    <string name="send_select_file">选择文件</string>
+    <string name="send_selected_file_meta">%1$s · %2$s</string>
+    <string name="send_file_premium_required_hint">官方 Bitwarden 服务器的文件 Send 需要会员账号；自建 Bitwarden 可直接使用文件 Send。</string>
     <string name="send_account_section_title">账号</string>
     <string name="send_account_locked_hint">请先解锁一个 Bitwarden 账号后再创建 Send。</string>
     <string name="send_options_section_title">选项</string>

@@ -2,6 +2,7 @@ package takagi.ru.monica.bitwarden.viewmodel
 
 import android.app.Application
 import android.net.ConnectivityManager
+import android.net.Uri
 import android.net.NetworkCapabilities
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
@@ -106,9 +107,13 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     private val _folders = MutableStateFlow<List<BitwardenFolder>>(emptyList())
     val folders: StateFlow<List<BitwardenFolder>> = _folders.asStateFlow()
 
-    // Send 列表
+    // Send 列表（仅当前活跃 Vault；保留以兼容旧调用方，新代码请使用 sendsAcrossVaults）
     private val _sends = MutableStateFlow<List<BitwardenSend>>(emptyList())
     val sends: StateFlow<List<BitwardenSend>> = _sends.asStateFlow()
+
+    // Send 跨 Vault 列表（合并所有已解锁账号下的 Send）
+    private val _sendsAcrossVaults = MutableStateFlow<List<BitwardenSend>>(emptyList())
+    val sendsAcrossVaults: StateFlow<List<BitwardenSend>> = _sendsAcrossVaults.asStateFlow()
 
     // Send 页面状态
     private val _sendState = MutableStateFlow<SendState>(SendState.Idle)
@@ -608,24 +613,37 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     /**
-     * 加载 Send 列表
+     * 加载 Send 列表。
+     *
+     * 多账号视图改造后：本方法默认刷新当前活跃 Vault 的 Send；与此同时也会刷新跨账号
+     * 视图（[sendsAcrossVaults]）以保持两侧一致。如果当前没有活跃 Vault，跨账号视图
+     * 仍会从所有已解锁账号读取，以满足"用户切走当前活跃 vault 但仍要看到所有 send"的
+     * 需求。
      */
     fun loadSends(forceRemoteSync: Boolean = false) {
         val vault = _activeVault.value
-        if (vault == null) {
-            _sends.value = emptyList()
-            _sendState.value = SendState.Error("请先连接 Bitwarden Vault")
-            return
-        }
-        if (!repository.isVaultUnlocked(vault.id)) {
-            _sendState.value = SendState.Locked
-            return
-        }
-
         viewModelScope.launch {
+            // 跨账号视图先刷新一次（即便没有活跃 Vault 也能展示其它已解锁账号下的 Send）
+            refreshSendsAcrossVaults()
+
+            if (vault == null) {
+                _sends.value = emptyList()
+                if (_sendsAcrossVaults.value.isEmpty()) {
+                    _sendState.value = SendState.Error("请先连接 Bitwarden Vault")
+                } else {
+                    _sendState.value = SendState.Idle
+                }
+                return@launch
+            }
+            if (!repository.isVaultUnlocked(vault.id)) {
+                _sendState.value = SendState.Locked
+                return@launch
+            }
+
             if (!forceRemoteSync) {
                 _sendState.value = SendState.Loading
                 _sends.value = repository.getSends(vault.id)
+                refreshSendsAcrossVaults()
                 _sendState.value = SendState.Idle
                 return@launch
             }
@@ -634,16 +652,61 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
             when (val result = repository.refreshSends(vault.id)) {
                 is BitwardenRepository.SendSyncResult.Success -> {
                     _sends.value = result.sends
+                    refreshSendsAcrossVaults()
                     _sendState.value = SendState.Idle
                 }
                 is BitwardenRepository.SendSyncResult.Warning -> {
                     _sends.value = result.sends
+                    refreshSendsAcrossVaults()
                     _sendState.value = SendState.Warning(result.message)
                 }
                 is BitwardenRepository.SendSyncResult.Error -> {
                     _sends.value = repository.getSends(vault.id)
+                    refreshSendsAcrossVaults()
                     _sendState.value = SendState.Error(result.message)
                 }
+            }
+        }
+    }
+
+    /**
+     * 强制刷新所有已解锁 Vault 的 Send。供 Send 标签页"全量下拉同步"使用。
+     */
+    fun refreshAllUnlockedSends() {
+        val vaults = _vaults.value
+        val unlockedVaultIds = _unlockStateByVault.value
+            .filterValues { it == UnlockState.Unlocked }
+            .keys
+        if (unlockedVaultIds.isEmpty()) {
+            return
+        }
+        viewModelScope.launch {
+            _sendState.value = SendState.Syncing
+            var anyError: String? = null
+            var anyWarning: String? = null
+            unlockedVaultIds.forEach { vaultId ->
+                val vault = vaults.firstOrNull { it.id == vaultId } ?: return@forEach
+                when (val result = repository.refreshSends(vault.id)) {
+                    is BitwardenRepository.SendSyncResult.Success -> Unit
+                    is BitwardenRepository.SendSyncResult.Warning -> {
+                        if (anyWarning == null) anyWarning = result.message
+                    }
+                    is BitwardenRepository.SendSyncResult.Error -> {
+                        if (anyError == null) anyError = result.message
+                    }
+                }
+            }
+            // 同步后刷新本地状态
+            _activeVault.value?.let { active ->
+                if (repository.isVaultUnlocked(active.id)) {
+                    _sends.value = repository.getSends(active.id)
+                }
+            }
+            refreshSendsAcrossVaults()
+            _sendState.value = when {
+                anyError != null -> SendState.Error(anyError!!)
+                anyWarning != null -> SendState.Warning(anyWarning!!)
+                else -> SendState.Idle
             }
         }
     }
@@ -695,9 +758,10 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                             it.bitwardenSendId == result.send.bitwardenSendId
                         }
                     }
+                    refreshSendsAcrossVaults()
                     _sendState.value = SendState.Idle
                     logBitwardenSendCreate(vault.id, result.send)
-                    requestLocalMutationSync()
+                    requestLocalMutationSync(vault.id)
                     _events.emit(BitwardenEvent.SendCreated("Send 已创建"))
                 }
                 is BitwardenRepository.SendMutationResult.Error -> {
@@ -711,29 +775,99 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    /**
-     * 删除 Send
-     */
-    fun deleteSend(sendId: String) {
-        val vault = _activeVault.value ?: return
+    fun createFileSend(
+        vaultId: Long? = null,
+        title: String,
+        fileUri: Uri,
+        fileName: String,
+        notes: String?,
+        password: String?,
+        maxAccessCount: Int?,
+        hideEmail: Boolean,
+        expireInDays: Int
+    ) {
+        val vault = vaultId?.let(::resolveVault) ?: _activeVault.value ?: return
         if (!repository.isVaultUnlocked(vault.id)) {
             _sendState.value = SendState.Locked
             return
         }
 
         viewModelScope.launch {
-            val deletingSend = _sends.value.firstOrNull { it.bitwardenSendId == sendId }
+            _sendState.value = SendState.Creating
+            val now = System.currentTimeMillis()
+            val days = expireInDays.coerceIn(1, 30)
+            val expirationMillis = now + days * 24L * 60L * 60L * 1000L
+            val deletionMillis = now + (days + 1).coerceAtMost(31) * 24L * 60L * 60L * 1000L
+
+            when (
+                val result = repository.createFileSend(
+                    vaultId = vault.id,
+                    title = title.trim(),
+                    fileUri = fileUri,
+                    fileName = fileName.trim(),
+                    notes = notes?.trim(),
+                    password = password?.trim(),
+                    maxAccessCount = maxAccessCount,
+                    hideEmail = hideEmail,
+                    deletionMillis = deletionMillis,
+                    expirationMillis = expirationMillis
+                )
+            ) {
+                is BitwardenRepository.SendMutationResult.Success -> {
+                    if (_activeVault.value?.id == vault.id) {
+                        _sends.value = listOf(result.send) + _sends.value.filterNot {
+                            it.bitwardenSendId == result.send.bitwardenSendId
+                        }
+                    }
+                    refreshSendsAcrossVaults()
+                    _sendState.value = SendState.Idle
+                    logBitwardenSendCreate(vault.id, result.send)
+                    requestLocalMutationSync(vault.id)
+                    _events.emit(BitwardenEvent.SendCreated("文件 Send 已创建"))
+                }
+                is BitwardenRepository.SendMutationResult.Error -> {
+                    _sendState.value = SendState.Error(result.message)
+                    _events.emit(BitwardenEvent.ShowError(result.message))
+                }
+                is BitwardenRepository.SendMutationResult.Deleted -> {
+                    _sendState.value = SendState.Idle
+                }
+            }
+        }
+    }
+
+    /**
+     * 删除 Send。
+     *
+     * 支持跨 Vault 场景：[vaultId] 不传时回退到 [_activeVault]，但跨 vault 删除时
+     * 调用方应显式传入 send 所属的 vault id（来自 [BitwardenSend.vaultId]），否则
+     * 在多账号视图里对非活跃 Vault 的 Send 调用 deleteSend 会落到错误的 vault。
+     */
+    fun deleteSend(sendId: String, vaultId: Long? = null) {
+        val vault = vaultId?.let(::resolveVault) ?: _activeVault.value ?: return
+        if (!repository.isVaultUnlocked(vault.id)) {
+            _sendState.value = SendState.Locked
+            return
+        }
+
+        viewModelScope.launch {
+            val deletingSend = _sendsAcrossVaults.value.firstOrNull {
+                it.vaultId == vault.id && it.bitwardenSendId == sendId
+            } ?: _sends.value.firstOrNull { it.bitwardenSendId == sendId }
             _sendState.value = SendState.Deleting
             when (val result = repository.deleteSend(vault.id, sendId)) {
                 is BitwardenRepository.SendMutationResult.Deleted -> {
-                    _sends.value = _sends.value.filterNot { it.bitwardenSendId == result.sendId }
+                    if (_activeVault.value?.id == vault.id) {
+                        _sends.value = _sends.value.filterNot { it.bitwardenSendId == result.sendId }
+                    }
+                    refreshSendsAcrossVaults()
                     _sendState.value = SendState.Idle
                     logBitwardenSendDelete(
                         vaultId = vault.id,
                         sendId = result.sendId,
                         sendName = deletingSend?.name
                     )
-                    requestLocalMutationSync()
+                    requestLocalMutationSync(vault.id)
                     _events.emit(BitwardenEvent.SendDeleted("Send 已删除"))
                 }
                 is BitwardenRepository.SendMutationResult.Error -> {
@@ -888,20 +1022,29 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
 
     private fun setUnlockState(vaultId: Long, state: UnlockState) {
         val updated = _unlockStateByVault.value.toMutableMap()
+        val previous = updated[vaultId]
         updated[vaultId] = state
         _unlockStateByVault.value = updated
+        // 解锁状态变化（解锁 / 锁定）会改变跨账号 Send 视图能看到的范围
+        if (previous != state && (state == UnlockState.Unlocked || previous == UnlockState.Unlocked)) {
+            viewModelScope.launch { refreshSendsAcrossVaults() }
+        }
     }
 
     private fun removeUnlockState(vaultId: Long) {
         val updated = _unlockStateByVault.value.toMutableMap()
-        updated.remove(vaultId)
+        val previous = updated.remove(vaultId)
         _unlockStateByVault.value = updated
+        if (previous == UnlockState.Unlocked) {
+            viewModelScope.launch { refreshSendsAcrossVaults() }
+        }
     }
 
     private fun replaceUnlockStates(vaults: List<BitwardenVault>) {
         _unlockStateByVault.value = vaults.associate { vault ->
             vault.id to currentRepositoryUnlockState(vault.id)
         }
+        viewModelScope.launch { refreshSendsAcrossVaults() }
     }
 
     private fun collectUnlockedVaultIds(vaults: List<BitwardenVault> = _vaults.value): List<Long> {
@@ -960,6 +1103,9 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
         _folders.value = emptyList()
         _sends.value = emptyList()
         _sendState.value = sendState
+        // 当前 Vault 的内容被清空时，跨账号 Send 视图仍可能含有其它已解锁账号的 Send，
+        // 因此刷新而非清空。
+        viewModelScope.launch { refreshSendsAcrossVaults() }
     }
 
     private fun logBitwardenSendCreate(vaultId: Long, send: BitwardenSend) {
@@ -1054,10 +1200,31 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
             _entries.value = repository.getPasswordEntries(vaultId)
             _folders.value = repository.getFolders(vaultId)
             _sends.value = repository.getSends(vaultId)
+            refreshSendsAcrossVaults()
             loadConflicts()
         } catch (e: Exception) {
             Log.e(TAG, "加载 Vault 数据失败", e)
             _events.emit(BitwardenEvent.ShowError("加载数据失败: ${e.message}"))
+        }
+    }
+
+    /**
+     * 重新拉取所有已解锁 Vault 下的 Send，合并到 [sendsAcrossVaults]。
+     *
+     * 多账号场景下，Send 标签页展示来自任意已解锁账号的 Send，因此这个集合
+     * 不受 [activeVault] 限制。任何会改变本地 Send 库的入口（创建 / 删除 /
+     * sync 完成 / 解锁 / 锁定）都需要触发一次刷新。
+     */
+    private suspend fun refreshSendsAcrossVaults() {
+        val unlockedVaultIds = _unlockStateByVault.value
+            .filterValues { it == UnlockState.Unlocked }
+            .keys
+            .toList()
+        _sendsAcrossVaults.value = if (unlockedVaultIds.isEmpty()) {
+            emptyList()
+        } else {
+            repository.getSendsForVaults(unlockedVaultIds)
+                .sortedByDescending { it.updatedAt }
         }
     }
     
@@ -1175,6 +1342,9 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                 refreshVaultListSnapshot()
                 if (_activeVault.value?.id == vault.id) {
                     loadVaultData(vault.id)
+                } else {
+                    // 即使同步的不是当前活跃 Vault，跨账号 Send 视图也要随之刷新。
+                    refreshSendsAcrossVaults()
                 }
 
                 if (!silent) {

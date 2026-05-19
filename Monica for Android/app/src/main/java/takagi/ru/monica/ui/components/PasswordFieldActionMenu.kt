@@ -9,8 +9,6 @@
 
 package takagi.ru.monica.ui.components
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
@@ -26,11 +24,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
@@ -74,6 +75,7 @@ import com.google.zxing.BarcodeFormat
 import com.journeyapps.barcodescanner.BarcodeEncoder
 import takagi.ru.monica.R
 import takagi.ru.monica.ui.icons.MonicaIcons
+import takagi.ru.monica.utils.ClipboardUtils
 
 private val PasswordFieldActionMenuShape = RoundedCornerShape(20.dp)
 private val PasswordFieldActionMenuOffset = DpOffset(x = (-236).dp, y = 8.dp)
@@ -314,16 +316,24 @@ private fun LargeFieldValueDialog(
         onDismissRequest = onDismiss,
         title = { Text(label) },
         text = {
-            SelectionContainer {
-                Text(
-                    text = value,
-                    style = MaterialTheme.typography.displaySmall.copy(
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold
-                    ),
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
+            val scrollState = rememberScrollState()
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 520.dp)
+                    .verticalScroll(scrollState)
+            ) {
+                SelectionContainer {
+                    Text(
+                        text = value,
+                        style = MaterialTheme.typography.displaySmall.copy(
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold
+                        ),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         },
         confirmButton = {
@@ -433,9 +443,7 @@ private fun FieldBarcodePage(
 }
 
 fun copyPasswordDetailFieldValue(context: Context, label: String, value: String) {
-    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    val clip = ClipData.newPlainText(label, value)
-    clipboard.setPrimaryClip(clip)
+    ClipboardUtils.copyToClipboard(context, value, label)
     Toast.makeText(context, context.getString(R.string.copied, label), Toast.LENGTH_SHORT).show()
 }
 

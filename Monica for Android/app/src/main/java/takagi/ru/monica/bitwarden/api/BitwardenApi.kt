@@ -298,6 +298,27 @@ interface BitwardenVaultApi {
     ): Response<SendApiResponse>
 
     /**
+     * 创建文件 Send，并返回后续文件密文上传凭据。
+     */
+    @POST("sends/file/v2")
+    suspend fun createFileSend(
+        @Header("Authorization") authorization: String,
+        @Body send: SendCreateRequest
+    ): Response<SendFileUploadDataResponse>
+
+    /**
+     * Direct 模式上传文件 Send 密文。
+     */
+    @Multipart
+    @POST("sends/{id}/file/{fileId}")
+    suspend fun uploadSendFileDirect(
+        @Header("Authorization") authorization: String,
+        @Path("id") sendId: String,
+        @Path("fileId") fileId: String,
+        @Part data: okhttp3.MultipartBody.Part
+    ): Response<Unit>
+
+    /**
      * 获取单个 Send
      */
     @GET("sends/{id}")
@@ -468,6 +489,9 @@ data class ProfileResponse(
     @JsonNames("premium")
     @SerialName("Premium")
     val premium: Boolean = false,
+    @JsonNames("premiumFromOrganization")
+    @SerialName("PremiumFromOrganization")
+    val premiumFromOrganization: Boolean = false,
     @JsonNames("key")
     @SerialName("Key")
     val key: String? = null,
@@ -477,7 +501,10 @@ data class ProfileResponse(
     @JsonNames("securityStamp")
     @SerialName("SecurityStamp")
     val securityStamp: String? = null
-)
+) {
+    /** 与官方 Bitwarden 客户端一致：premium 或 premiumFromOrganization 任一为 true 即视为 Premium。 */
+    val hasPremium: Boolean get() = premium || premiumFromOrganization
+}
 
 @Serializable
 data class FolderApiResponse(
@@ -858,6 +885,19 @@ data class SendFileApiData(
     val key: String? = null
 )
 
+@Serializable
+data class SendFileUploadDataResponse(
+    @JsonNames("fileUploadType")
+    @SerialName("FileUploadType")
+    val fileUploadType: Int = 0,
+    @JsonNames("sendResponse")
+    @SerialName("SendResponse")
+    val sendResponse: SendApiResponse? = null,
+    @JsonNames("url")
+    @SerialName("Url")
+    val url: String? = null
+)
+
 // ========== 创建/更新请求 ==========
 
 @Serializable
@@ -1061,6 +1101,8 @@ data class SendCreateRequest(
     val key: String,
     @SerialName("type")
     val type: Int, // 0=Text, 1=File
+    @SerialName("fileLength")
+    val fileLength: Long? = null,
     @SerialName("name")
     val name: String,
     @SerialName("notes")

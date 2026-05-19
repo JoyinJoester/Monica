@@ -40,6 +40,8 @@ fun ExtensionsScreen(
     onCopyNextCodeWhenExpiringChange: (Boolean) -> Unit = {},
     smartDeduplicationEnabled: Boolean = false,
     onSmartDeduplicationEnabledChange: (Boolean) -> Unit = {},
+    clipboardAutoClearSeconds: Int = 0,
+    onClipboardAutoClearSecondsChange: (Int) -> Unit = {},
     passwordDetailSecurityAnalysisEnabled: Boolean = true,
     onPasswordDetailSecurityAnalysisEnabledChange: (Boolean) -> Unit = {},
     passwordSwipeSelectionMode: PasswordSwipeSelectionMode = PasswordSwipeSelectionMode.DEFAULT,
@@ -61,6 +63,8 @@ fun ExtensionsScreen(
     
     // 密码卡片显示模式选择对话框
     var showDisplayModeDialog by remember { mutableStateOf(false) }
+    var showClipboardAutoClearDialog by remember { mutableStateOf(false) }
+    val clipboardAutoClearOptions = remember { listOf(0, 10, 20, 30, 60) }
     
     if (showDisplayModeDialog) {
         AlertDialog(
@@ -103,6 +107,44 @@ fun ExtensionsScreen(
             },
             confirmButton = {
                 TextButton(onClick = { showDisplayModeDialog = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
+    }
+
+    if (showClipboardAutoClearDialog) {
+        AlertDialog(
+            onDismissRequest = { showClipboardAutoClearDialog = false },
+            title = { Text(stringResource(R.string.clipboard_auto_clear_title)) },
+            text = {
+                Column {
+                    clipboardAutoClearOptions.forEach { seconds ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onClipboardAutoClearSecondsChange(seconds)
+                                    showClipboardAutoClearDialog = false
+                                }
+                                .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = seconds == clipboardAutoClearSeconds,
+                                onClick = {
+                                    onClipboardAutoClearSecondsChange(seconds)
+                                    showClipboardAutoClearDialog = false
+                                }
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(clipboardAutoClearLabel(seconds))
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showClipboardAutoClearDialog = false }) {
                     Text(stringResource(R.string.cancel))
                 }
             }
@@ -195,6 +237,16 @@ fun ExtensionsScreen(
                     title = stringResource(R.string.re_quick_init_title),
                     description = stringResource(R.string.re_quick_init_desc),
                     onClick = onNavigateToQuickSetup
+                )
+            }
+
+            ExtensionSection(title = stringResource(R.string.extensions_security_settings)) {
+                ExtensionChoiceItem(
+                    icon = Icons.Default.ContentPaste,
+                    title = stringResource(R.string.clipboard_auto_clear_title),
+                    description = stringResource(R.string.clipboard_auto_clear_description),
+                    value = clipboardAutoClearLabel(clipboardAutoClearSeconds),
+                    onClick = { showClipboardAutoClearDialog = true }
                 )
             }
             
@@ -321,6 +373,15 @@ fun ExtensionsScreen(
     }
 }
 
+@Composable
+private fun clipboardAutoClearLabel(seconds: Int): String {
+    return if (seconds <= 0) {
+        stringResource(R.string.clipboard_auto_clear_never)
+    } else {
+        stringResource(R.string.clipboard_auto_clear_seconds, seconds)
+    }
+}
+
 /**
  * 功能分类区块
  */
@@ -408,6 +469,68 @@ private fun ExtensionClickableItem(
         // 右箭头
         Icon(
             Icons.Default.ChevronRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+@Composable
+private fun ExtensionChoiceItem(
+    icon: ImageVector,
+    title: String,
+    description: String,
+    value: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Surface(
+            shape = MaterialTheme.shapes.medium,
+            color = MaterialTheme.colorScheme.primaryContainer,
+            modifier = Modifier.size(48.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.width(16.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Spacer(modifier = Modifier.width(12.dp))
+
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.SemiBold
+        )
+        Icon(
+            Icons.Default.KeyboardArrowDown,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.onSurfaceVariant
         )

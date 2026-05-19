@@ -2091,6 +2091,11 @@
     <string name="extensions_title">Extensions</string>
     <string name="extensions_description">Manage extensions and system integrations</string>
     <string name="extensions_account_settings">Account Settings</string>
+    <string name="extensions_security_settings">Security</string>
+    <string name="clipboard_auto_clear_title">Clear clipboard</string>
+    <string name="clipboard_auto_clear_description">Automatically clear copied usernames and passwords from the clipboard.</string>
+    <string name="clipboard_auto_clear_never">Never</string>
+    <string name="clipboard_auto_clear_seconds">%1$d seconds</string>
     <string name="extensions_totp_settings">Authenticator Settings</string>
     <string name="extensions_more_coming_soon">More features coming soon…</string>
     <string name="copy_next_code_when_expiring">Copy next code when expiring</string>
@@ -2529,7 +2534,12 @@
     <string name="send_tag_expire">Expire %1$s</string>
     <string name="send_copy_link">Copy link</string>
     <string name="send_create_title">Create Send</string>
+    <string name="send_type_section_title">Type</string>
     <string name="send_text_send_heading">Text Send</string>
+    <string name="send_file_send_heading">File Send</string>
+    <string name="send_select_file">Select file</string>
+    <string name="send_selected_file_meta">%1$s · %2$s</string>
+    <string name="send_file_premium_required_hint">File Sends require Bitwarden Premium on official Bitwarden servers. Self-hosted Bitwarden vaults can use File Sends.</string>
     <string name="send_account_section_title">Account</string>
     <string name="send_account_locked_hint">Unlock a Bitwarden account before creating Send.</string>
     <string name="send_options_section_title">Options</string>

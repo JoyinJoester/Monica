@@ -1,7 +1,5 @@
 package takagi.ru.monica.autofill_ng.ui
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
@@ -23,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.utils.ClipboardUtils
 
 /**
  * 内嵌密码详情内容
@@ -297,9 +296,7 @@ private fun DetailField(
  * 复制到剪贴板
  */
 private fun copyToClipboard(context: Context, label: String, text: String) {
-    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    val clip = ClipData.newPlainText(label, text)
-    clipboard.setPrimaryClip(clip)
+    ClipboardUtils.copyToClipboard(context, text, label)
     Toast.makeText(context, context.getString(R.string.copied, label), Toast.LENGTH_SHORT).show()
 }
 

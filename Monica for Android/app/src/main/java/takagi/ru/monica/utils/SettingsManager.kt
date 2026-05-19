@@ -153,6 +153,7 @@ class SettingsManager(private val context: Context) {
         private val QUICK_SETUP_COMPLETED_KEY = booleanPreferencesKey("quick_setup_completed")
         private val AUTO_LOCK_MINUTES_KEY = intPreferencesKey("auto_lock_minutes")
         private val SCREENSHOT_PROTECTION_KEY = booleanPreferencesKey("screenshot_protection_enabled")
+        private val CLIPBOARD_AUTO_CLEAR_SECONDS_KEY = intPreferencesKey("clipboard_auto_clear_seconds")
         private val SHOW_PASSWORDS_TAB_KEY = booleanPreferencesKey("show_passwords_tab")
         private val SHOW_VAULT_V2_TAB_KEY = booleanPreferencesKey("show_vault_v2_tab")
         private val SHOW_AUTHENTICATOR_TAB_KEY = booleanPreferencesKey("show_authenticator_tab")
@@ -504,6 +505,7 @@ class SettingsManager(private val context: Context) {
             quickSetupCompleted = preferences[QUICK_SETUP_COMPLETED_KEY] ?: false,
             autoLockMinutes = preferences[AUTO_LOCK_MINUTES_KEY] ?: 5,
             screenshotProtectionEnabled = preferences[SCREENSHOT_PROTECTION_KEY] ?: true,
+            clipboardAutoClearSeconds = preferences[CLIPBOARD_AUTO_CLEAR_SECONDS_KEY] ?: 0,
             dynamicColorEnabled = preferences[DYNAMIC_COLOR_ENABLED_KEY] ?: true,
             bottomNavVisibility = BottomNavVisibility(
                 vaultV2 = preferences[SHOW_VAULT_V2_TAB_KEY] ?: false,
@@ -733,6 +735,12 @@ class SettingsManager(private val context: Context) {
     suspend fun updateScreenshotProtectionEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[SCREENSHOT_PROTECTION_KEY] = enabled
+        }
+    }
+
+    suspend fun updateClipboardAutoClearSeconds(seconds: Int) {
+        dataStore.edit { preferences ->
+            preferences[CLIPBOARD_AUTO_CLEAR_SECONDS_KEY] = seconds.coerceAtLeast(0)
         }
     }
 
@@ -1708,4 +1716,3 @@ class SettingsManager(private val context: Context) {
     }
 
 }
-

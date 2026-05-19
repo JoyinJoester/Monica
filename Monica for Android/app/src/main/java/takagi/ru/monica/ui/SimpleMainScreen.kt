@@ -2176,6 +2176,20 @@ fun SimpleMainScreen(
                             )
                             handleInlineSendEditorBack()
                         },
+                        onCreateFileSend = { vaultId, title, fileUri, fileName, notes, password, maxAccessCount, hideEmail, expireInDays ->
+                            bitwardenViewModel.createFileSend(
+                                vaultId = vaultId,
+                                title = title,
+                                fileUri = fileUri,
+                                fileName = fileName,
+                                notes = notes,
+                                password = password,
+                                maxAccessCount = maxAccessCount,
+                                hideEmail = hideEmail,
+                                expireInDays = expireInDays
+                            )
+                            handleInlineSendEditorBack()
+                        },
                         onBitwardenEvent = handleSendBitwardenEvent,
                         showStandaloneSettingsEntry = shouldHideBottomNavigation,
                         onOpenStandaloneSettings = onNavigateToStandaloneSettings

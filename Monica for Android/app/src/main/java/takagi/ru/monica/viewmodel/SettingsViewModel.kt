@@ -105,6 +105,12 @@ class SettingsViewModel(
         }
     }
 
+    fun updateClipboardAutoClearSeconds(seconds: Int) {
+        viewModelScope.launch {
+            settingsManager.updateClipboardAutoClearSeconds(seconds)
+        }
+    }
+
     fun updateDynamicColorEnabled(enabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updateDynamicColorEnabled(enabled)

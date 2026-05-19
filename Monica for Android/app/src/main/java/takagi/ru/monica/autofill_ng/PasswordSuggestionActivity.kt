@@ -23,10 +23,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -35,6 +33,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import takagi.ru.monica.autofill_ng.core.AutofillLogger
 import takagi.ru.monica.ui.theme.MonicaTheme
+import takagi.ru.monica.utils.ClipboardUtils
 import takagi.ru.monica.utils.PasswordGenerator
 import takagi.ru.monica.utils.PasswordStrengthCalculator
 import takagi.ru.monica.R
@@ -198,7 +197,6 @@ fun PasswordSuggestionDialog(
     var showPassword by remember { mutableStateOf(false) }
     var showCopiedSnackbar by remember { mutableStateOf(false) }
     
-    val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
     
     // 计算密码强度
@@ -357,7 +355,12 @@ fun PasswordSuggestionDialog(
                                     // 复制按钮
                                     IconButton(
                                         onClick = {
-                                            clipboardManager.setText(AnnotatedString(currentPassword))
+                                            ClipboardUtils.copyToClipboard(
+                                                context = context,
+                                                text = currentPassword,
+                                                label = context.getString(R.string.password),
+                                                sensitive = true
+                                            )
                                             showCopiedSnackbar = true
                                         },
                                         modifier = Modifier.size(32.dp)

@@ -1,7 +1,5 @@
 package takagi.ru.monica.ui.screens
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
@@ -15,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -45,6 +44,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -56,8 +56,11 @@ import takagi.ru.monica.data.model.WifiData
 import takagi.ru.monica.data.model.WifiSecurity
 import takagi.ru.monica.data.model.toStorageTarget
 import takagi.ru.monica.ui.components.CustomFieldDetailCard
+import takagi.ru.monica.ui.components.PasswordFieldActionMenuHost
 import takagi.ru.monica.ui.components.TextQrCodeDialog
+import takagi.ru.monica.ui.components.rememberPasswordFieldActionMenuState
 import takagi.ru.monica.ui.icons.MonicaIcons
+import takagi.ru.monica.utils.ClipboardUtils
 import takagi.ru.monica.utils.WifiConnectLauncher
 import takagi.ru.monica.utils.WifiQrPayload
 import takagi.ru.monica.viewmodel.PasswordViewModel
@@ -71,7 +74,8 @@ fun WifiDetailScreen(
     viewModel: PasswordViewModel,
     passwordId: Long,
     onNavigateBack: () -> Unit,
-    onEdit: (Long) -> Unit
+    onEdit: (Long) -> Unit,
+    onCreateSend: ((title: String, text: String) -> Unit)? = null
 ) {
     val context = LocalContext.current
     var entry by remember { mutableStateOf<PasswordEntry?>(null) }
@@ -206,7 +210,8 @@ fun WifiDetailScreen(
                     DetailRow(
                         label = stringResource(R.string.wifi_ssid_label),
                         value = wifi.ssid.ifBlank { current.title },
-                        context = context
+                        context = context,
+                        onCreateSend = onCreateSend
                     )
 
                     // 安全性
@@ -214,7 +219,8 @@ fun WifiDetailScreen(
                         label = stringResource(R.string.wifi_security_label),
                         value = securityLabel(wifi.security),
                         copyLabel = null,
-                        context = context
+                        context = context,
+                        onCreateSend = onCreateSend
                     )
 
                     // 密码
@@ -223,7 +229,8 @@ fun WifiDetailScreen(
                             label = stringResource(R.string.wifi_password_label),
                             value = current.password,
                             copyLabel = stringResource(R.string.wifi_detail_copy_password),
-                            context = context
+                            context = context,
+                            onCreateSend = onCreateSend
                         )
                     }
 
@@ -233,7 +240,8 @@ fun WifiDetailScreen(
                             label = stringResource(R.string.wifi_hidden_network),
                             value = "✓",
                             copyLabel = null,
-                            context = context
+                            context = context,
+                            onCreateSend = onCreateSend
                         )
                     }
 
@@ -249,7 +257,8 @@ fun WifiDetailScreen(
                         label = stringResource(R.string.wifi_detail_storage),
                         value = storageLabel,
                         copyLabel = null,
-                        context = context
+                        context = context,
+                        onCreateSend = onCreateSend
                     )
                 }
             }
@@ -306,11 +315,38 @@ private fun securityLabel(security: WifiSecurity): String = when (security) {
 }
 
 @Composable
-private fun DetailRow(label: String, value: String, context: Context, copyLabel: String? = label) {
+private fun DetailRow(
+    label: String,
+    value: String,
+    context: Context,
+    copyLabel: String? = label,
+    onCreateSend: ((title: String, text: String) -> Unit)? = null
+) {
+    val actionMenuState = rememberPasswordFieldActionMenuState()
+    val menuEnabled = copyLabel != null && value.isNotBlank()
+
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(modifier = Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(value, style = MaterialTheme.typography.bodyLarge)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(4.dp))
+                    .clickable(enabled = menuEnabled) { actionMenuState.open() }
+                    .padding(vertical = 6.dp)
+            ) {
+                if (menuEnabled) {
+                    PasswordFieldActionMenuHost(
+                        state = actionMenuState,
+                        label = label,
+                        value = value,
+                        displayValue = value,
+                        context = context,
+                        onCreateSend = onCreateSend
+                    )
+                }
+                Text(value, style = MaterialTheme.typography.bodyLarge)
+            }
         }
         if (copyLabel != null && value.isNotBlank()) {
             IconButton(onClick = { copyToClipboard(context, label, value) }) {
@@ -321,15 +357,40 @@ private fun DetailRow(label: String, value: String, context: Context, copyLabel:
 }
 
 @Composable
-private fun SecretRow(label: String, value: String, context: Context, copyLabel: String) {
+private fun SecretRow(
+    label: String,
+    value: String,
+    context: Context,
+    copyLabel: String,
+    onCreateSend: ((title: String, text: String) -> Unit)? = null
+) {
     var revealed by remember { mutableStateOf(false) }
+    val actionMenuState = rememberPasswordFieldActionMenuState()
+    val displayValue = if (revealed) value else "••••••••"
+
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Column(modifier = Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(
-                if (revealed) value else "••••••••",
-                style = MaterialTheme.typography.bodyLarge
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(4.dp))
+                    .clickable { actionMenuState.open() }
+                    .padding(vertical = 6.dp)
+            ) {
+                PasswordFieldActionMenuHost(
+                    state = actionMenuState,
+                    label = label,
+                    value = value,
+                    displayValue = displayValue,
+                    context = context,
+                    includeVisibilityToggle = true,
+                    isVisible = revealed,
+                    onToggleVisibility = { revealed = !revealed },
+                    onCreateSend = onCreateSend
+                )
+                Text(displayValue, style = MaterialTheme.typography.bodyLarge)
+            }
         }
         IconButton(onClick = { revealed = !revealed }) {
             Icon(if (revealed) Icons.Default.VisibilityOff else Icons.Default.Visibility, contentDescription = null)
@@ -341,7 +402,6 @@ private fun SecretRow(label: String, value: String, context: Context, copyLabel:
 }
 
 private fun copyToClipboard(context: Context, label: String, value: String) {
-    val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager ?: return
-    cm.setPrimaryClip(ClipData.newPlainText(label, value))
+    ClipboardUtils.copyToClipboard(context, value, label)
     Toast.makeText(context, label, Toast.LENGTH_SHORT).show()
 }

@@ -12,6 +12,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import android.net.Uri
 import androidx.compose.ui.unit.Dp
 import takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel
 import takagi.ru.monica.data.bitwarden.BitwardenSend
@@ -39,6 +40,17 @@ internal fun SendPane(
         maxAccessCount: Int?,
         hideEmail: Boolean,
         hiddenText: Boolean,
+        expireInDays: Int
+    ) -> Unit,
+    onCreateFileSend: (
+        vaultId: Long,
+        title: String,
+        fileUri: Uri,
+        fileName: String,
+        notes: String?,
+        password: String?,
+        maxAccessCount: Int?,
+        hideEmail: Boolean,
         expireInDays: Int
     ) -> Unit,
     onBitwardenEvent: ((BitwardenViewModel.BitwardenEvent) -> Boolean)? = null,
@@ -85,6 +97,7 @@ internal fun SendPane(
                         unlockStateByVault = unlockStateByVault,
                         onNavigateBack = onInlineSendEditorBack,
                         onCreate = onCreateSend,
+                        onCreateFile = onCreateFileSend,
                         modifier = Modifier.fillMaxSize()
                     )
                 } else if (selectedSend == null) {
@@ -99,9 +112,15 @@ internal fun SendPane(
                         )
                     }
                 } else {
+                    val labelVault = vaults.firstOrNull { it.id == selectedSend.vaultId }
+                        ?: activeVault?.takeIf { it.id == selectedSend.vaultId }
+                    val vaultLabel = labelVault?.let {
+                        it.displayName?.takeIf { name -> name.isNotBlank() } ?: it.email
+                    }.orEmpty()
                     SendDetailPane(
                         send = selectedSend,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
+                        vaultLabel = vaultLabel
                     )
                 }
             }

@@ -1,13 +1,11 @@
 package takagi.ru.monica.autofill_ng.utils
 
 import android.content.BroadcastReceiver
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.widget.Toast
 import takagi.ru.monica.R
+import takagi.ru.monica.utils.ClipboardUtils
 
 /**
  * Broadcast Receiver for Smart Copy notification actions.
@@ -28,15 +26,12 @@ class SmartCopyReceiver : BroadcastReceiver() {
         val value = intent.getStringExtra(EXTRA_VALUE) ?: return
         val label = intent.getStringExtra(EXTRA_LABEL) ?: "Credential"
 
-        // Copy to clipboard
-        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText(label, value)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            clip.description.extras = android.os.PersistableBundle().apply {
-                putBoolean("android.content.extra.IS_SENSITIVE", true)
-            }
-        }
-        clipboard.setPrimaryClip(clip)
+        ClipboardUtils.copyToClipboard(
+            context = context,
+            text = value,
+            label = label,
+            sensitive = true
+        )
 
         // Show toast
         val message = if (label.contains("密码") || label.lowercase().contains("password")) {

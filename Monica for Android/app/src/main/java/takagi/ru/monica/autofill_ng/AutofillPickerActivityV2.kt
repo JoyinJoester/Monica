@@ -108,6 +108,7 @@ import takagi.ru.monica.security.SessionManager
 import takagi.ru.monica.util.TotpDataResolver
 import takagi.ru.monica.util.TotpGenerator
 import takagi.ru.monica.utils.AppLauncherIconManager
+import takagi.ru.monica.utils.ClipboardUtils
 import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
@@ -1288,15 +1289,12 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
      */
     private fun copyToClipboard(label: String, text: String, isSensitive: Boolean = false) {
         try {
-            val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-            val clip = android.content.ClipData.newPlainText(label, text).apply {
-                if (isSensitive && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    description.extras = android.os.PersistableBundle().apply {
-                        putBoolean(android.content.ClipDescription.EXTRA_IS_SENSITIVE, true)
-                    }
-                }
-            }
-            clipboard.setPrimaryClip(clip)
+            ClipboardUtils.copyToClipboard(
+                context = this,
+                text = text,
+                label = label,
+                sensitive = isSensitive || ClipboardUtils.isCredentialLabel(label)
+            )
             
             val messageRes = if (isSensitive) R.string.password_copied else R.string.username_copied
             android.widget.Toast.makeText(this, messageRes, android.widget.Toast.LENGTH_SHORT).show()

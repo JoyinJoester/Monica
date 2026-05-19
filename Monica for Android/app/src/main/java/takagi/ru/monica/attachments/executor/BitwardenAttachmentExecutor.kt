@@ -382,8 +382,8 @@ class BitwardenAttachmentExecutor(
     private fun bearer(token: String): String = "Bearer $token"
 
     companion object {
-        private const val FILE_UPLOAD_TYPE_AZURE = 0
-        private const val FILE_UPLOAD_TYPE_DIRECT = 1
+        private const val FILE_UPLOAD_TYPE_DIRECT = 0
+        private const val FILE_UPLOAD_TYPE_AZURE = 1
         private const val OCTET = "application/octet-stream"
 
         /** 便于调用方构造上传返回值时生成稳定的临时 attachmentId（若服务端没给）。 */

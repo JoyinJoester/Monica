@@ -2,8 +2,6 @@ package takagi.ru.monica.ui.screens
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.animation.core.Spring
@@ -120,6 +118,7 @@ import takagi.ru.monica.ui.password.buildUsernameSuggestionState
 import takagi.ru.monica.util.TotpDataResolver
 import takagi.ru.monica.utils.PasswordGenerator
 import takagi.ru.monica.utils.PasswordStrengthAnalyzer
+import takagi.ru.monica.utils.ClipboardUtils
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
 import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.CategoryFilter
@@ -1985,9 +1984,12 @@ fun AddEditPasswordScreen(
                                         // 复制按钮
                                         if (username.isNotEmpty()) {
                                             IconButton(onClick = {
-                                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                                val clip = ClipData.newPlainText("username", username)
-                                                clipboard.setPrimaryClip(clip)
+                                                ClipboardUtils.copyToClipboard(
+                                                    context = context,
+                                                    text = username,
+                                                    label = context.getString(R.string.username),
+                                                    sensitive = true
+                                                )
                                                 Toast.makeText(context, context.getString(R.string.username_copied), Toast.LENGTH_SHORT).show()
                                             }) {
                                                 Icon(Icons.Default.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(20.dp))

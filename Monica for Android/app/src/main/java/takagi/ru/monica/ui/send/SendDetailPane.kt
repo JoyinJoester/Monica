@@ -21,7 +21,9 @@ import takagi.ru.monica.data.bitwarden.BitwardenSend
 @Composable
 internal fun SendDetailPane(
     send: BitwardenSend,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Vault 显示名（displayName 优先，否则 email）。多账号场景下用于在详情顶部清晰标识来源。 */
+    vaultLabel: String = ""
 ) {
     Column(
         modifier = modifier
@@ -35,6 +37,14 @@ internal fun SendDetailPane(
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.SemiBold
         )
+
+        if (vaultLabel.isNotBlank()) {
+            Text(
+                text = vaultLabel,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
 
         Text(
             text = send.shareUrl,

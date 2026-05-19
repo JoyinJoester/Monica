@@ -226,7 +226,7 @@ class BitwardenSyncService(
             BitwardenVaultPremiumStore.setPremium(
                 context = context,
                 vaultId = vault.id,
-                premium = syncResponse.profile.premium
+                premium = syncResponse.profile.hasPremium
             )
             
             android.util.Log.i(TAG, "Full sync completed: $result")
@@ -246,6 +246,9 @@ class BitwardenSyncService(
         response: SyncResponse,
         symmetricKey: SymmetricCryptoKey
     ): SyncResult {
+        // Send 防回收的双重保护基线：本次 sync 启动时刻。
+        // 任何 created_at >= 这个值的 send，都会被 deleteNotInProtectingDirty 视作"本次 sync 之后才出现"。
+        val syncStartedAtMs = System.currentTimeMillis()
         val forensicsSession = BitwardenSyncForensicsLogger.startSession(
             context = context,
             vaultId = vault.id,
@@ -383,10 +386,11 @@ class BitwardenSyncService(
             }
             response.sends?.let { sends ->
                 val serverSendIds = sends.map { it.id }
+                // 双重保护：保留 is_dirty=1 行（写后读不一致）+ 本次 sync 之后落地的行（兜底）
                 if (serverSendIds.isEmpty()) {
-                    sendDao.deleteByVault(vault.id)
+                    sendDao.deleteByVaultProtectingDirty(vault.id, syncStartedAtMs)
                 } else {
-                    sendDao.deleteNotIn(vault.id, serverSendIds)
+                    sendDao.deleteNotInProtectingDirty(vault.id, serverSendIds, syncStartedAtMs)
                 }
             }
 
@@ -431,14 +435,18 @@ class BitwardenSyncService(
             mapped.copy(
                 createdAt = now,
                 updatedAt = now,
-                lastSyncedAt = now
+                lastSyncedAt = now,
+                // 服务器返回了这条 Send，说明已对账完成
+                isDirty = false
             )
         } else {
             mapped.copy(
                 id = existing.id,
                 createdAt = existing.createdAt,
                 updatedAt = now,
-                lastSyncedAt = now
+                lastSyncedAt = now,
+                // 一旦服务器确认这条 send，本地 dirty 标记失效
+                isDirty = false
             )
         }
         sendDao.upsert(entity)

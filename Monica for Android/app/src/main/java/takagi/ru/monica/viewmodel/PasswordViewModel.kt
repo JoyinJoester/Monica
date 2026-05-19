@@ -1223,6 +1223,7 @@ class PasswordViewModel(
                     updatedAt = Date()
                 )
                 repository.updatePasswordEntry(updated)
+                saveKeePassCustomFields(existing.id, item)
             } else {
                 val isInRecycleBin = item.isInRecycleBin
                 val newEntry = PasswordEntry(
@@ -1243,11 +1244,26 @@ class PasswordViewModel(
                     isDeleted = isInRecycleBin,
                     deletedAt = if (isInRecycleBin) Date() else null
                 )
-                repository.insertPasswordEntry(newEntry)
+                val insertedId = repository.insertPasswordEntry(newEntry)
+                saveKeePassCustomFields(insertedId, item)
             }
         }
 
         reconcileKeePassEntries(databaseId, incomingKeys)
+    }
+
+    private suspend fun saveKeePassCustomFields(entryId: Long, item: KeePassEntryData) {
+        val fieldRepository = customFieldRepository ?: return
+        val fields = item.customFields.map { field ->
+            CustomField(
+                entryId = entryId,
+                title = field.title,
+                value = field.value,
+                isProtected = field.isProtected,
+                sortOrder = field.sortOrder
+            )
+        }
+        fieldRepository.saveFieldsForEntries(mapOf(entryId to fields))
     }
 
     private suspend fun syncKeePassTotpEntries(databaseId: Long) {

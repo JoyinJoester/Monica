@@ -212,11 +212,16 @@ object BitwardenApiFactory {
     
     /**
      * 检查是否为官方服务
+     *
+     * 使用严格的域名后缀匹配，避免自建 Vaultwarden 的 URL 中偶然包含 "bitwarden" 子串
+     * （例如路径、子域名等）被误判为官方服务器。
      */
     fun isOfficialServer(url: String): Boolean {
         val normalized = url.lowercase().trimEnd('/')
-        return normalized == OFFICIAL_VAULT_URL.lowercase() ||
-               normalized.contains("bitwarden.com")
+        if (normalized == OFFICIAL_VAULT_URL.lowercase()) return true
+        // 严格匹配：域名部分以 bitwarden.com 结尾（不是 URL 任意位置 contains）
+        val host = runCatching { java.net.URI(normalized).host }.getOrNull() ?: return false
+        return host == "bitwarden.com" || host.endsWith(".bitwarden.com")
     }
 
     /**
@@ -224,8 +229,9 @@ object BitwardenApiFactory {
      */
     fun isOfficialEuServer(url: String): Boolean {
         val normalized = url.lowercase().trimEnd('/')
-        return normalized == OFFICIAL_EU_VAULT_URL.lowercase() ||
-            normalized.contains("bitwarden.eu")
+        if (normalized == OFFICIAL_EU_VAULT_URL.lowercase()) return true
+        val host = runCatching { java.net.URI(normalized).host }.getOrNull() ?: return false
+        return host == "bitwarden.eu" || host.endsWith(".bitwarden.eu")
     }
     
     private fun ensureTrailingSlash(url: String): String {

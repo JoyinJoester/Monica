@@ -44,6 +44,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
 import androidx.fragment.app.FragmentActivity
 import takagi.ru.monica.utils.BiometricHelper
+import takagi.ru.monica.utils.ClipboardUtils
 import takagi.ru.monica.utils.PasskeySupportCatalog
 import takagi.ru.monica.utils.PasswordStrengthAnalyzer
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
@@ -1368,13 +1369,12 @@ private fun HistoryPasswordValue(
                     }
                     IconButton(
                         onClick = {
-                            val clipboard =
-                                context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            val clip = ClipData.newPlainText(
-                                context.getString(R.string.password),
-                                value
+                            ClipboardUtils.copyToClipboard(
+                                context = context,
+                                text = value,
+                                label = context.getString(R.string.password),
+                                sensitive = true
                             )
-                            clipboard.setPrimaryClip(clip)
                             Toast.makeText(
                                 context,
                                 context.getString(R.string.password_copied),
@@ -3246,9 +3246,12 @@ private fun PasswordItemRow(
                         ).show()
                         return@IconButton
                     }
-                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    val clip = ClipData.newPlainText("password", displayPassword)
-                    clipboard.setPrimaryClip(clip)
+                    ClipboardUtils.copyToClipboard(
+                        context = context,
+                        text = displayPassword,
+                        label = context.getString(R.string.password),
+                        sensitive = true
+                    )
                     Toast.makeText(context, context.getString(R.string.password_copied), Toast.LENGTH_SHORT).show()
                 }) {
                     Icon(MonicaIcons.Action.copy, contentDescription = null, modifier = Modifier.size(20.dp))
@@ -3284,6 +3287,7 @@ private fun PasswordItemRow(
             Text(
             modifier = Modifier
                 .fillMaxWidth()
+                .clip(RoundedCornerShape(4.dp))
                 .clickable(enabled = hasPasswordValue && !isUnavailable) { actionMenuState.open() }
                 .padding(vertical = 6.dp),
             text = when {

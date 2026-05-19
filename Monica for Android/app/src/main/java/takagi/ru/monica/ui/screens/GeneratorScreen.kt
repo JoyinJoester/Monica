@@ -74,6 +74,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import takagi.ru.monica.ui.components.OutlinedTextField
 import takagi.ru.monica.ui.components.SshKeyGenerationProgressIndicator
+import takagi.ru.monica.utils.ClipboardUtils
 
 /**
  * 将密码转换为彩色文本
@@ -2166,9 +2167,12 @@ private fun GeneratorHistorySheet(
                                     // 复制按钮
                                     IconButton(
                                         onClick = {
-                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                            val clip = ClipData.newPlainText("password", historyItem.password)
-                                            clipboard.setPrimaryClip(clip)
+                                            ClipboardUtils.copyToClipboard(
+                                                context = context,
+                                                text = historyItem.password,
+                                                label = context.getString(R.string.password),
+                                                sensitive = true
+                                            )
                                             copied = true
                                         }
                                     ) {
