@@ -118,6 +118,9 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
     // Send 页面状态
     private val _sendState = MutableStateFlow<SendState>(SendState.Idle)
     val sendState: StateFlow<SendState> = _sendState.asStateFlow()
+
+    private val _sendCreateSuccessVersion = MutableStateFlow(0)
+    val sendCreateSuccessVersion: StateFlow<Int> = _sendCreateSuccessVersion.asStateFlow()
     
     // 冲突列表
     private val _conflicts = MutableStateFlow<List<BitwardenConflictBackup>>(emptyList())
@@ -760,6 +763,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                     }
                     refreshSendsAcrossVaults()
                     _sendState.value = SendState.Idle
+                    _sendCreateSuccessVersion.value = _sendCreateSuccessVersion.value + 1
                     logBitwardenSendCreate(vault.id, result.send)
                     requestLocalMutationSync(vault.id)
                     _events.emit(BitwardenEvent.SendCreated("Send 已创建"))
@@ -821,6 +825,7 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
                     }
                     refreshSendsAcrossVaults()
                     _sendState.value = SendState.Idle
+                    _sendCreateSuccessVersion.value = _sendCreateSuccessVersion.value + 1
                     logBitwardenSendCreate(vault.id, result.send)
                     requestLocalMutationSync(vault.id)
                     _events.emit(BitwardenEvent.SendCreated("文件 Send 已创建"))

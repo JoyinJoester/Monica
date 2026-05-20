@@ -838,6 +838,7 @@ private fun MetaTag(
 fun AddEditSendScreen(
     modifier: Modifier = Modifier,
     sendState: BitwardenViewModel.SendState,
+    sendCreateSuccessVersion: Int = 0,
     vaults: List<BitwardenVault> = emptyList(),
     activeVault: BitwardenVault? = null,
     unlockStateByVault: Map<Long, BitwardenViewModel.UnlockState> = emptyMap(),
@@ -884,6 +885,7 @@ fun AddEditSendScreen(
     }
     var submitRequested by rememberSaveable { mutableStateOf(false) }
     var submitStarted by rememberSaveable { mutableStateOf(false) }
+    var submitSuccessBaseline by rememberSaveable { mutableStateOf(sendCreateSuccessVersion) }
     val context = LocalContext.current
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -918,6 +920,15 @@ fun AddEditSendScreen(
             title = selectedFileMeta?.fileName.orEmpty()
         }
     }
+    LaunchedEffect(sendCreateSuccessVersion, submitRequested) {
+        if (!submitRequested) return@LaunchedEffect
+        if (sendCreateSuccessVersion != submitSuccessBaseline) {
+            submitRequested = false
+            submitStarted = false
+            submitSuccessBaseline = sendCreateSuccessVersion
+            onNavigateBack()
+        }
+    }
     LaunchedEffect(sendState, submitRequested, submitStarted) {
         if (!submitRequested) return@LaunchedEffect
         when (sendState) {
@@ -925,9 +936,10 @@ fun AddEditSendScreen(
                 submitStarted = true
             }
             is BitwardenViewModel.SendState.Idle -> {
-                if (submitStarted) {
+                if (submitStarted && sendCreateSuccessVersion != submitSuccessBaseline) {
                     submitRequested = false
                     submitStarted = false
+                    submitSuccessBaseline = sendCreateSuccessVersion
                     onNavigateBack()
                 }
             }
@@ -985,6 +997,7 @@ fun AddEditSendScreen(
                     if (!canSave) return@FloatingActionButton
                     submitRequested = true
                     submitStarted = false
+                    submitSuccessBaseline = sendCreateSuccessVersion
                     val targetVaultId = selectedVault?.id ?: return@FloatingActionButton
                     if (sendType == SendCreateType.File) {
                         val uri = selectedFileUri ?: return@FloatingActionButton

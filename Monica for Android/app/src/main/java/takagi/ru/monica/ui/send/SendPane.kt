@@ -60,6 +60,7 @@ internal fun SendPane(
     val vaults by bitwardenViewModel.vaults.collectAsState()
     val activeVault by bitwardenViewModel.activeVault.collectAsState()
     val unlockStateByVault by bitwardenViewModel.unlockStateByVault.collectAsState()
+    val sendCreateSuccessVersion by bitwardenViewModel.sendCreateSuccessVersion.collectAsState()
 
     if (isCompactWidth) {
         SendScreen(
@@ -92,6 +93,7 @@ internal fun SendPane(
                 if (isAddingSendInline) {
                     AddEditSendScreen(
                         sendState = sendState,
+                        sendCreateSuccessVersion = sendCreateSuccessVersion,
                         vaults = vaults,
                         activeVault = activeVault,
                         unlockStateByVault = unlockStateByVault,

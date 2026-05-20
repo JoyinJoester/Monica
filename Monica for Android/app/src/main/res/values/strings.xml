@@ -3688,4 +3688,8 @@
     <string name="attachment_move_dialog_confirm">Continue</string>
     <string name="attachment_move_dialog_cancel">Cancel</string>
     <string name="attachment_move_dialog_details">View details</string>
+    <string name="attachment_preview_unsupported">Preview not available for this file type</string>
+    <string name="attachment_preview_unsupported_hint">Tap the open button to view with an external app</string>
+    <string name="previous">Previous</string>
+    <string name="next">Next</string>
 </resources>

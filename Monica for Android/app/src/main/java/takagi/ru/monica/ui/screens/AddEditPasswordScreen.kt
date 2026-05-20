@@ -117,6 +117,7 @@ import takagi.ru.monica.ui.password.UsernameSuggestionState
 import takagi.ru.monica.ui.password.buildUsernameSuggestionState
 import takagi.ru.monica.util.TotpDataResolver
 import takagi.ru.monica.utils.PasswordGenerator
+import takagi.ru.monica.utils.PasswordWebsiteCodec
 import takagi.ru.monica.utils.PasswordStrengthAnalyzer
 import takagi.ru.monica.utils.ClipboardUtils
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
@@ -3997,29 +3998,14 @@ private fun buildPasswordSiblingGroupKey(entry: PasswordEntry): String {
 }
 
 private fun parsePasswordWebsiteUrls(rawValue: String): List<String> {
-    val urls = rawValue
-        .split(',')
-        .map { it.trim() }
-        .filter { it.isNotBlank() }
-    return urls.ifEmpty { listOf("") }
+    return PasswordWebsiteCodec.parse(rawValue)
 }
 
 private fun encodePasswordWebsiteUrls(urls: List<String>): String {
-    return urls
-        .map { it.trim() }
-        .filter { it.isNotBlank() }
-        .distinctBy { it.lowercase(Locale.ROOT) }
-        .joinToString(", ")
+    return PasswordWebsiteCodec.encode(urls)
 }
 
 private fun normalizeWebsiteForSiblingGroupKey(value: String): String {
-    val raw = value.trim()
-    if (raw.isEmpty()) return ""
-    return raw
-        .lowercase(Locale.ROOT)
-        .removePrefix("http://")
-        .removePrefix("https://")
-        .removePrefix("www.")
-        .trimEnd('/')
+    return PasswordWebsiteCodec.normalizeForKey(value)
 }
 

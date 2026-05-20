@@ -46,6 +46,7 @@ import androidx.fragment.app.FragmentActivity
 import takagi.ru.monica.utils.BiometricHelper
 import takagi.ru.monica.utils.ClipboardUtils
 import takagi.ru.monica.utils.PasskeySupportCatalog
+import takagi.ru.monica.utils.PasswordWebsiteCodec
 import takagi.ru.monica.utils.PasswordStrengthAnalyzer
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
 
@@ -94,6 +95,7 @@ import takagi.ru.monica.data.CustomField
 import takagi.ru.monica.data.LoginType
 import takagi.ru.monica.data.SsoProvider
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
+import takagi.ru.monica.attachments.facade.AttachmentFacade
 import takagi.ru.monica.ui.icons.UnmatchedIconFallback
 import takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon
 import takagi.ru.monica.ui.icons.rememberSimpleIconBitmap
@@ -825,8 +827,27 @@ fun PasswordDetailScreen(
                 }
 
                 item("attachments") {
+                    // 构造附件下载/预览所需上下文
+                    val bwVault = entry.bitwardenVaultId?.let { vaultId ->
+                        bitwardenVaults.firstOrNull { it.id == vaultId }
+                    }
+                    val bwContext = if (bwVault != null) {
+                        remember(bwVault, entry.bitwardenCipherId) {
+                            viewModel.getAttachmentBitwardenContext(bwVault, entry.bitwardenCipherId)
+                        }
+                    } else null
+                    val kpContext = if (entry.keepassDatabaseId != null && !entry.keepassEntryUuid.isNullOrBlank()) {
+                        remember(entry.keepassDatabaseId, entry.keepassEntryUuid) {
+                            AttachmentFacade.KeePassContext(
+                                databaseId = entry.keepassDatabaseId,
+                                entryUuid = entry.keepassEntryUuid!!
+                            )
+                        }
+                    } else null
                     takagi.ru.monica.attachments.ui.AttachmentsDetailSection(
-                        passwordId = entry.id
+                        passwordId = entry.id,
+                        bitwardenContext = bwContext,
+                        keepassContext = kpContext
                     )
                 }
 
@@ -2987,33 +3008,12 @@ private fun openWebsiteInBrowser(context: Context, website: String) {
     }
 }
 
-private fun splitWebsiteCandidates(input: String): List<String> {
-    return input
-        .split(',', '，')
-        .asSequence()
-        .map { it.trim() }
-        .filter { it.isNotEmpty() }
-        .toList()
-}
-
-private fun normalizeSingleWebsiteUrl(value: String): String {
-    return if (value.startsWith("http://", ignoreCase = true) ||
-        value.startsWith("https://", ignoreCase = true)
-    ) {
-        value
-    } else {
-        "https://$value"
-    }
-}
-
 internal fun normalizeWebsiteUrls(input: String): List<String> {
-    return splitWebsiteCandidates(input)
-        .map(::normalizeSingleWebsiteUrl)
-        .distinct()
+    return PasswordWebsiteCodec.normalizeForDisplay(input)
 }
 
 internal fun normalizeWebsiteUrl(input: String): String? {
-    return normalizeWebsiteUrls(input).firstOrNull()
+    return PasswordWebsiteCodec.normalizeSingleOrNull(input)
 }
 
 private fun buildPasswordStorageInfo(

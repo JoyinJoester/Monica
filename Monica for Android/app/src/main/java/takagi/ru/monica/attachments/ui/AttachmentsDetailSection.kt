@@ -3,13 +3,14 @@ package takagi.ru.monica.attachments.ui
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
@@ -24,7 +25,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -36,28 +36,31 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import takagi.ru.monica.R
 import takagi.ru.monica.attachments.AttachmentContainer
+import takagi.ru.monica.attachments.facade.AttachmentFacade
 import takagi.ru.monica.attachments.model.Attachment
 import takagi.ru.monica.attachments.model.AttachmentDownloadState
 import takagi.ru.monica.attachments.model.AttachmentError
 import takagi.ru.monica.attachments.model.AttachmentSource
 
 /**
- * 密码详情页的附件区块（只读 + 下载/打开）。
+ * 密码详情页的附件区块（只读 + 下载/预览/保存）。
  *
- * 当前实现限定为 `LOCAL` 附件：
- * - Bitwarden/KeePass 附件需要调用方提供 context（token/kdbx 数据库 id 等），
- *   未来在密码列表/详情屏支持时可扩展 `BitwardenContext` / `KeePassContext` 参数。
+ * - LOCAL 附件打开即预览/分享；
+ * - Bitwarden / KeePass 附件在 PENDING 状态下可点击触发下载，下载完成后自动预览。
+ * - 预览对话框中提供"保存到设备"按钮，通过系统文件选择器导出。
  * - 无附件时不渲染，避免给没有附件的密码造成视觉噪音。
- *
- * 对应 requirements.md Requirement 7.1 / 7.2（基础形态）。
  */
 @Composable
 fun AttachmentsDetailSection(
     passwordId: Long,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    bitwardenContext: AttachmentFacade.BitwardenContext? = null,
+    keepassContext: AttachmentFacade.KeePassContext? = null
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -65,6 +68,62 @@ fun AttachmentsDetailSection(
     val attachments by facade.observeByPassword(passwordId).collectAsState(initial = emptyList())
 
     if (attachments.isEmpty()) return
+
+    // 预览对话框状态
+    var previewState by remember { mutableStateOf<PreviewState?>(null) }
+
+    // 保存到设备的文件选择器
+    val saveLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("*/*")
+    ) { targetUri ->
+        if (targetUri == null) return@rememberLauncherForActivityResult
+        val sourceUri = previewState?.uri ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                        context.contentResolver.openOutputStream(targetUri)?.use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                }
+                Toast.makeText(
+                    context,
+                    context.getString(R.string.attachment_save_to_device) + " OK",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }.onFailure { e ->
+                Toast.makeText(
+                    context,
+                    resolveErrorMessage(context, e),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+    }
+
+    // 预览对话框
+    previewState?.let { state ->
+        AttachmentPreviewDialog(
+            previewUri = state.uri,
+            mimeType = state.mimeType,
+            fileName = state.fileName,
+            onDismiss = { previewState = null },
+            onOpenExternally = {
+                val uri = state.uri
+                previewState = null
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, state.mimeType)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            },
+            onSaveToDevice = {
+                saveLauncher.launch(state.fileName)
+            }
+        )
+    }
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -87,18 +146,47 @@ fun AttachmentsDetailSection(
                 )
             }
             attachments.forEach { attachment ->
+                val isDownloading = attachment.downloadStateEnum == AttachmentDownloadState.DOWNLOADING
                 AttachmentRow(
                     attachment = attachment,
-                    onOpen = {
+                    enabled = !isDownloading,
+                    onClick = {
+                        scope.launch {
+                            handleAttachmentClick(
+                                facade = facade,
+                                attachment = attachment,
+                                bitwardenContext = bitwardenContext,
+                                keepassContext = keepassContext,
+                                onPreviewReady = { uri, mimeType, fileName ->
+                                    if (isPreviewable(mimeType)) {
+                                        previewState = PreviewState(uri, mimeType, fileName)
+                                    } else {
+                                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                                            setDataAndType(uri, mimeType)
+                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        }
+                                        context.startActivity(intent)
+                                    }
+                                },
+                                onError = { e ->
+                                    Toast.makeText(
+                                        context,
+                                        resolveErrorMessage(context, e),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            )
+                        }
+                    },
+                    onRetry = {
                         scope.launch {
                             runCatching {
-                                val uri = facade.openForPreview(attachment.id)
-                                val intent = Intent(Intent.ACTION_VIEW).apply {
-                                    setDataAndType(uri, attachment.mimeType)
-                                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                context.startActivity(intent)
+                                facade.retryFailed(
+                                    attachment.id,
+                                    bitwardenContext = bitwardenContext,
+                                    keepassContext = keepassContext
+                                )
                             }.onFailure { e ->
                                 Toast.makeText(
                                     context,
@@ -107,18 +195,6 @@ fun AttachmentsDetailSection(
                                 ).show()
                             }
                         }
-                    },
-                    onRetry = {
-                        scope.launch {
-                            runCatching { facade.retryFailed(attachment.id) }
-                                .onFailure { e ->
-                                    Toast.makeText(
-                                        context,
-                                        resolveErrorMessage(context, e),
-                                        Toast.LENGTH_SHORT
-                                    ).show()
-                                }
-                        }
                     }
                 )
             }
@@ -126,17 +202,62 @@ fun AttachmentsDetailSection(
     }
 }
 
+private data class PreviewState(
+    val uri: Uri,
+    val mimeType: String,
+    val fileName: String
+)
+
+private suspend fun handleAttachmentClick(
+    facade: AttachmentFacade,
+    attachment: Attachment,
+    bitwardenContext: AttachmentFacade.BitwardenContext?,
+    keepassContext: AttachmentFacade.KeePassContext?,
+    onPreviewReady: (Uri, String, String) -> Unit,
+    onError: (Throwable) -> Unit
+) {
+    runCatching {
+        val ready = facade.ensureDownloaded(
+            attachment.id,
+            bitwardenContext = bitwardenContext,
+            keepassContext = keepassContext
+        )
+        val uri = facade.openForPreview(
+            ready.id,
+            bitwardenContext = bitwardenContext,
+            keepassContext = keepassContext
+        )
+        onPreviewReady(uri, ready.mimeType, ready.fileName)
+    }.onFailure { e ->
+        onError(e)
+    }
+}
+
+private fun isPreviewable(mimeType: String): Boolean {
+    return mimeType.startsWith("image/") ||
+        mimeType == "application/pdf" ||
+        mimeType.startsWith("text/")
+}
+
 @Composable
 private fun AttachmentRow(
     attachment: Attachment,
-    onOpen: () -> Unit,
+    enabled: Boolean,
+    onClick: () -> Unit,
     onRetry: () -> Unit
 ) {
+    val isPending = attachment.downloadStateEnum == AttachmentDownloadState.PENDING
+    val isDownloaded = attachment.downloadStateEnum == AttachmentDownloadState.DOWNLOADED
+    val isDownloading = attachment.downloadStateEnum == AttachmentDownloadState.DOWNLOADING
+    val isFailed = attachment.downloadStateEnum == AttachmentDownloadState.FAILED
+
+    val clickable = (isPending || isDownloaded) && enabled
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = attachment.downloadStateEnum == AttachmentDownloadState.DOWNLOADED) {
-                onOpen()
+            .clickable(enabled = clickable) {
+                onClick()
             }
             .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -148,26 +269,40 @@ private fun AttachmentRow(
                 text = attachment.fileName,
                 style = MaterialTheme.typography.bodyMedium
             )
-            Text(
-                text = formatSecondary(attachment),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = formatSecondary(attachment),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (isPending) {
+                    Spacer(modifier = Modifier.size(4.dp))
+                    Text(
+                        text = "· ${stringResource(R.string.attachment_download)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
         }
-        when (attachment.downloadStateEnum) {
-            AttachmentDownloadState.DOWNLOADING ->
+        when {
+            isDownloading ->
                 CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-            AttachmentDownloadState.PENDING ->
+            isPending ->
                 Icon(
                     Icons.Default.CloudDownload,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp)
+                    contentDescription = stringResource(R.string.attachment_download),
+                    modifier = Modifier.size(20.dp),
+                    tint = MaterialTheme.colorScheme.primary
                 )
-            AttachmentDownloadState.FAILED ->
+            isFailed ->
                 IconButton(onClick = onRetry) {
-                    Icon(Icons.Default.Refresh, contentDescription = null)
+                    Icon(
+                        Icons.Default.Refresh,
+                        contentDescription = stringResource(R.string.attachment_retry)
+                    )
                 }
-            AttachmentDownloadState.DOWNLOADED -> Unit
+            isDownloaded -> Unit
         }
     }
 }

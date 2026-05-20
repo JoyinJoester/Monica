@@ -438,6 +438,25 @@ class BitwardenApiManager {
     }
     
     /**
+     * 获取与指定 vault 关联的 OkHttpClient。
+     * 用于附件下载等需要直接 HTTP 访问的场景。
+     */
+    fun getOkHttpClient(vault: BitwardenVault): OkHttpClient {
+        val tlsConfig = BitwardenTlsConfig(
+            certificateAlias = vault.tlsCertificateAlias,
+            caCertificatePem = vault.tlsCaCertificatePem,
+            mtlsEnabled = vault.tlsMtlsEnabled,
+            clientCertPkcs12Base64 = vault.tlsClientCertPkcs12Base64,
+            clientCertPassword = vault.tlsEncryptedClientCertPassword
+        )
+        return getOrCreateOkHttpClient(
+            refererUrl = vault.serverUrl,
+            headerProfile = BitwardenApiFactory.HeaderProfile.MONICA_DEFAULT,
+            tlsConfig = tlsConfig
+        )
+    }
+
+    /**
      * 清除缓存的客户端
      */
     fun clearCache() {
@@ -454,7 +473,7 @@ class BitwardenApiManager {
         val cacheKey = "${headerProfile.name}|${refererUrl?.trim().orEmpty()}|${tlsConfig?.cacheFingerprint().orEmpty()}"
         return okHttpClientCache.getOrPut(cacheKey) {
             BitwardenApiFactory.createOkHttpClient(
-                enableLogging = true,
+                enableLogging = false,
                 refererUrl = refererUrl,
                 headerProfile = headerProfile,
                 tlsConfig = tlsConfig

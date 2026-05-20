@@ -976,6 +976,7 @@ internal fun MainScreenAddFab(
                             BottomNavItem.Send -> {
                                 AddEditSendScreen(
                                     sendState = sendState,
+                                    sendCreateSuccessVersion = bitwardenViewModel.sendCreateSuccessVersion.collectAsState().value,
                                     vaults = bitwardenViewModel.vaults.collectAsState().value,
                                     activeVault = bitwardenViewModel.activeVault.collectAsState().value,
                                     unlockStateByVault = bitwardenViewModel.unlockStateByVault.collectAsState().value,

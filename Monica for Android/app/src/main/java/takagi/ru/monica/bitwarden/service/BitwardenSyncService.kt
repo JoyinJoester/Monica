@@ -20,6 +20,7 @@ import takagi.ru.monica.data.model.SshKeyData
 import takagi.ru.monica.data.model.SshKeyDataCodec
 import takagi.ru.monica.data.bitwarden.*
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.utils.PasswordWebsiteCodec
 import takagi.ru.monica.utils.FieldChange
 import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.util.TotpDataResolver
@@ -85,6 +86,10 @@ class BitwardenSyncService(
         val website: String = "",
         val appPackageName: String = ""
     )
+
+    private fun normalizeWebsiteKey(rawWebsite: String): String {
+        return PasswordWebsiteCodec.normalizeForKey(normalizeBitwardenWebsite(rawWebsite))
+    }
     
     /**
      * 执行全量同步
@@ -1761,15 +1766,18 @@ class BitwardenSyncService(
     ): List<CipherUriApiData>? {
         val crypto = takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
         val uris = mutableListOf<CipherUriApiData>()
-        if (entry.website.isNotBlank()) {
-            val normalizedWebsite = normalizeBitwardenWebsite(entry.website)
-            uris.add(
-                CipherUriApiData(
-                    uri = crypto.encryptString(normalizedWebsite, symmetricKey),
-                    match = null
+        PasswordWebsiteCodec.parse(entry.website)
+            .filter { it.isNotBlank() }
+            .map(::normalizeBitwardenWebsite)
+            .distinct()
+            .forEach { normalizedWebsite ->
+                uris.add(
+                    CipherUriApiData(
+                        uri = crypto.encryptString(normalizedWebsite, symmetricKey),
+                        match = null
+                    )
                 )
-            )
-        }
+            }
         if (entry.appPackageName.isNotBlank()) {
             val pkg = entry.appPackageName.removePrefix("androidapp://")
             uris.add(
@@ -1868,10 +1876,15 @@ class BitwardenSyncService(
         val remoteNotes = decryptString(cipher.notes, symmetricKey).orEmpty()
         val remoteTotp = decryptString(login.totp, symmetricKey).orEmpty()
         val remoteUris = parseLoginUris(login.uris, symmetricKey)
-        val remoteWebsite = remoteUris.website.trim()
         val remoteAppPackage = remoteUris.appPackageName.trim()
-        val localWebsite = normalizeBitwardenWebsite(entry.website).trim()
-        val remoteNormalizedWebsite = normalizeBitwardenWebsite(remoteWebsite).trim()
+        val localWebsites = PasswordWebsiteCodec.parse(entry.website)
+            .filter { it.isNotBlank() }
+            .map(::normalizeWebsiteKey)
+            .distinct()
+        val remoteWebsites = PasswordWebsiteCodec.parse(remoteUris.website)
+            .filter { it.isNotBlank() }
+            .map(::normalizeWebsiteKey)
+            .distinct()
         val localPassword = resolvePlainPasswordForBitwardenUpload(entry.password, entry.id)
 
         return entry.title == remoteTitle &&
@@ -1882,7 +1895,7 @@ class BitwardenSyncService(
             entry.isFavorite == cipher.favorite &&
             entry.bitwardenFolderId == cipher.folderId &&
             entry.appPackageName.trim() == remoteAppPackage &&
-            localWebsite == remoteNormalizedWebsite
+            localWebsites == remoteWebsites
     }
 
     private fun appendPasswordUploadFailureLog(
@@ -1908,7 +1921,13 @@ class BitwardenSyncService(
             append(", hasFolder=")
             append(!entry.bitwardenFolderId.isNullOrBlank())
             append(", website=")
-            append(normalizeBitwardenWebsite(entry.website).take(120))
+            append(
+                PasswordWebsiteCodec.parse(entry.website)
+                    .filter { it.isNotBlank() }
+                    .map(::normalizeBitwardenWebsite)
+                    .joinToString(", ")
+                    .take(120)
+            )
             responseCode?.let {
                 append(", code=")
                 append(it)
@@ -2019,7 +2038,7 @@ class BitwardenSyncService(
     ): ParsedLoginUris {
         if (uris.isNullOrEmpty()) return ParsedLoginUris()
 
-        var website = ""
+        val websites = linkedSetOf<String>()
         var appPackageName = ""
         uris.forEach { uriData ->
             val uri = decryptString(uriData.uri, symmetricKey) ?: return@forEach
@@ -2029,10 +2048,13 @@ class BitwardenSyncService(
                         appPackageName = uri.removePrefix("androidapp://")
                     }
                 }
-                website.isBlank() -> website = uri
+                else -> websites += normalizeBitwardenWebsite(uri)
             }
         }
-        return ParsedLoginUris(website = website, appPackageName = appPackageName)
+        return ParsedLoginUris(
+            website = PasswordWebsiteCodec.encode(websites.toList()),
+            appPackageName = appPackageName
+        )
     }
 
     private fun parsePasswordCustomFieldMap(
