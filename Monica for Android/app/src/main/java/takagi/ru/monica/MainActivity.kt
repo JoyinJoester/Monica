@@ -1756,7 +1756,6 @@ fun MonicaContent(
                         hiddenText = hiddenText,
                         expireInDays = expireInDays
                     )
-                    navController.popBackStack()
                 },
                 onCreateFile = { vaultId, title, fileUri, fileName, notes, password, maxAccessCount, hideEmail, expireInDays ->
                     bitwardenViewModel.createFileSend(
@@ -1770,7 +1769,6 @@ fun MonicaContent(
                         hideEmail = hideEmail,
                         expireInDays = expireInDays
                     )
-                    navController.popBackStack()
                 }
             )
         }

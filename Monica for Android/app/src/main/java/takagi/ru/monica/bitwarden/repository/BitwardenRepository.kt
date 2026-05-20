@@ -18,12 +18,19 @@ import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
-import java.util.concurrent.ConcurrentHashMap
 import java.io.File
+import java.io.InputStream
 import java.io.IOException
+import java.io.RandomAccessFile
 import java.net.HttpURLConnection
-import takagi.ru.monica.attachments.crypto.BitwardenAttachmentCrypto
+import java.security.SecureRandom
+import java.util.concurrent.ConcurrentHashMap
+import javax.crypto.Cipher
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
+import javax.crypto.spec.IvParameterSpec
 import takagi.ru.monica.attachments.facade.AttachmentUriMetadata
+import takagi.ru.monica.attachments.facade.AttachmentSizeValidator
 import takagi.ru.monica.bitwarden.BitwardenVaultPremiumStore
 import takagi.ru.monica.bitwarden.api.BitwardenApiFactory
 import takagi.ru.monica.bitwarden.api.BitwardenApiManager
@@ -1505,15 +1512,16 @@ class BitwardenRepository(private val context: Context) {
             }
 
             val metadata = AttachmentUriMetadata.resolve(context, fileUri, fileName)
+            if (metadata.sizeBytes > AttachmentSizeValidator.HARD_LIMIT_BYTES) {
+                return@withContext SendMutationResult.Error("文件 Send 不能超过 100 MB")
+            }
             encryptedTmp = File.createTempFile("bw_send_", ".bin", context.cacheDir)
             val keyMaterial = BitwardenCrypto.generateSendKeyMaterial()
             val sendKey = BitwardenCrypto.deriveSendKey(keyMaterial)
             sendKeyToClear = sendKey
             try {
                 context.contentResolver.openInputStream(fileUri)?.use { input ->
-                    encryptedTmp.outputStream().buffered().use { output ->
-                        BitwardenAttachmentCrypto.encryptStream(input, output, sendKey)
-                    }
+                    encryptSendFileData(input, encryptedTmp, sendKey)
                 } ?: return@withContext SendMutationResult.Error("无法读取所选文件")
 
                 val payload = BitwardenSendMapper.buildCreateFileSendPayload(
@@ -1627,6 +1635,55 @@ class BitwardenRepository(private val context: Context) {
         val resolved = apiBase.toHttpUrlOrNull()?.resolve(trimmed)
         return resolved?.toString()
             ?: throw IOException("服务器返回了无效的上传地址: $trimmed")
+    }
+
+    private fun encryptSendFileData(
+        source: InputStream,
+        target: File,
+        sendKey: SymmetricCryptoKey
+    ) {
+        val macOffset = 1L + 16L
+        val iv = ByteArray(16).also { SecureRandom().nextBytes(it) }
+        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding").apply {
+            init(
+                Cipher.ENCRYPT_MODE,
+                SecretKeySpec(sendKey.encKey, "AES"),
+                IvParameterSpec(iv)
+            )
+        }
+        val mac = Mac.getInstance("HmacSHA256").apply {
+            init(SecretKeySpec(sendKey.macKey, "HmacSHA256"))
+            update(iv)
+        }
+
+        target.outputStream().buffered().use { output ->
+            output.write(byteArrayOf(BitwardenCrypto.CIPHER_TYPE_AES_CBC_HMAC.toByte()))
+            output.write(iv)
+            output.write(ByteArray(32))
+
+            val buffer = ByteArray(16 * 1024)
+            while (true) {
+                val read = source.read(buffer)
+                if (read <= 0) break
+                val encryptedChunk = cipher.update(buffer, 0, read)
+                if (encryptedChunk != null && encryptedChunk.isNotEmpty()) {
+                    output.write(encryptedChunk)
+                    mac.update(encryptedChunk)
+                }
+            }
+
+            val finalChunk = cipher.doFinal()
+            if (finalChunk.isNotEmpty()) {
+                output.write(finalChunk)
+                mac.update(finalChunk)
+            }
+            output.flush()
+        }
+
+        RandomAccessFile(target, "rw").use { file ->
+            file.seek(macOffset)
+            file.write(mac.doFinal())
+        }
     }
 
     private suspend fun uploadSendFile(

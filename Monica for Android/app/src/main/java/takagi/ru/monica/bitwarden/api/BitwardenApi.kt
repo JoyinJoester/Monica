@@ -812,6 +812,9 @@ data class SendApiResponse(
     @JsonNames("accessId")
     @SerialName("AccessId")
     val accessId: String = "",
+    @JsonNames("urlB64Key")
+    @SerialName("UrlB64Key")
+    val urlB64Key: String? = null,
     @JsonNames("key")
     @SerialName("Key")
     val key: String = "",

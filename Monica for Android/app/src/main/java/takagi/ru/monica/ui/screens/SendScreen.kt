@@ -98,27 +98,28 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import takagi.ru.monica.R
@@ -127,10 +128,10 @@ import takagi.ru.monica.bitwarden.BitwardenVaultPremiumStore
 import takagi.ru.monica.bitwarden.api.BitwardenApiFactory
 import takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel
 import takagi.ru.monica.bitwarden.sync.buildHeadline
-import takagi.ru.monica.ui.common.pull.calculateDampedPullOffset
 import takagi.ru.monica.data.bitwarden.BitwardenSend
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.ui.components.ExpressiveTopBar
+import takagi.ru.monica.ui.common.pull.calculateDampedPullOffset
 import takagi.ru.monica.util.VibrationPatterns
 import java.time.Instant
 import java.time.ZoneId
@@ -878,9 +879,11 @@ fun AddEditSendScreen(
     var sendType by remember { mutableStateOf(SendCreateType.Text) }
     var selectedFileUri by remember { mutableStateOf<Uri?>(null) }
     var selectedFileMeta by remember { mutableStateOf<AttachmentUriMetadata.Metadata?>(null) }
-    var selectedVaultId by remember(activeVault?.id, vaults) {
+    var selectedVaultId by rememberSaveable {
         mutableStateOf(activeVault?.id ?: vaults.firstOrNull()?.id)
     }
+    var submitRequested by rememberSaveable { mutableStateOf(false) }
+    var submitStarted by rememberSaveable { mutableStateOf(false) }
     val context = LocalContext.current
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -896,6 +899,7 @@ fun AddEditSendScreen(
     }
 
     val creating = sendState is BitwardenViewModel.SendState.Creating
+    val isSubmitting = submitRequested || creating
     val availableVaults = remember(vaults, activeVault, unlockStateByVault) {
         val knownVaults = if (vaults.isNotEmpty()) vaults else listOfNotNull(activeVault)
         knownVaults.filter { vault ->
@@ -909,6 +913,34 @@ fun AddEditSendScreen(
                 ?: availableVaults.firstOrNull()?.id
         }
     }
+    LaunchedEffect(selectedFileMeta?.fileName) {
+        if (sendType == SendCreateType.File && title.isBlank()) {
+            title = selectedFileMeta?.fileName.orEmpty()
+        }
+    }
+    LaunchedEffect(sendState, submitRequested, submitStarted) {
+        if (!submitRequested) return@LaunchedEffect
+        when (sendState) {
+            is BitwardenViewModel.SendState.Creating -> {
+                submitStarted = true
+            }
+            is BitwardenViewModel.SendState.Idle -> {
+                if (submitStarted) {
+                    submitRequested = false
+                    submitStarted = false
+                    onNavigateBack()
+                }
+            }
+            is BitwardenViewModel.SendState.Error,
+            is BitwardenViewModel.SendState.Warning,
+            is BitwardenViewModel.SendState.Locked -> {
+                submitRequested = false
+                submitStarted = false
+            }
+            else -> Unit
+        }
+    }
+
     val selectedVault = availableVaults.firstOrNull { it.id == selectedVaultId }
     val fileSendAllowed = remember(selectedVault?.id, selectedVault?.serverUrl) {
         val vault = selectedVault ?: return@remember false
@@ -916,12 +948,10 @@ fun AddEditSendScreen(
             BitwardenApiFactory.isOfficialEuServer(vault.serverUrl)
         !official || BitwardenVaultPremiumStore.isPremium(context, vault.id)
     }
-    LaunchedEffect(selectedFileMeta?.fileName) {
-        if (sendType == SendCreateType.File && title.isBlank()) {
-            title = selectedFileMeta?.fileName.orEmpty()
-        }
-    }
-    val canSave = !creating && selectedVault != null && title.isNotBlank() && when (sendType) {
+
+    BackHandler(enabled = isSubmitting) {}
+
+    val canSave = !isSubmitting && selectedVault != null && title.isNotBlank() && when (sendType) {
         SendCreateType.Text -> text.isNotBlank()
         // fileSendAllowed 已经在文件选择按钮的 enabled 上做了门控，
         // 如果用户能选到文件说明已经允许。这里不再重复检查，避免
@@ -935,7 +965,7 @@ fun AddEditSendScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.send_create_title)) },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    IconButton(onClick = onNavigateBack, enabled = !isSubmitting) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.back)
@@ -953,6 +983,8 @@ fun AddEditSendScreen(
             FloatingActionButton(
                 onClick = {
                     if (!canSave) return@FloatingActionButton
+                    submitRequested = true
+                    submitStarted = false
                     val targetVaultId = selectedVault?.id ?: return@FloatingActionButton
                     if (sendType == SendCreateType.File) {
                         val uri = selectedFileUri ?: return@FloatingActionButton
@@ -1013,6 +1045,10 @@ fun AddEditSendScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            if (isSubmitting) {
+                StateBanner("正在创建 Send，请稍候…")
+            }
+
             SendFormSectionCard(title = stringResource(R.string.send_account_section_title)) {
                 if (availableVaults.isEmpty()) {
                     StateBanner(stringResource(R.string.send_account_locked_hint))

@@ -992,7 +992,6 @@ internal fun MainScreenAddFab(
                                             hiddenText = hiddenText,
                                             expireInDays = expireInDays
                                         )
-                                        collapse()
                                     },
                                     onCreateFile = { vaultId, title, fileUri, fileName, notes, password, maxAccessCount, hideEmail, expireInDays ->
                                         bitwardenViewModel.createFileSend(
@@ -1006,7 +1005,6 @@ internal fun MainScreenAddFab(
                                             hideEmail = hideEmail,
                                             expireInDays = expireInDays
                                         )
-                                        collapse()
                                     }
                                 )
                             }

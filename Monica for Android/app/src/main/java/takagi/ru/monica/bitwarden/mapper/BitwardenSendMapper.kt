@@ -68,7 +68,8 @@ object BitwardenSendMapper {
                 shareUrl = buildShareUrl(
                     serverUrl = serverUrl,
                     accessId = api.accessId,
-                    keyMaterial = keyMaterial
+                    keyMaterial = keyMaterial,
+                    urlB64Key = api.urlB64Key
                 ),
                 lastSyncedAt = now,
                 createdAt = now,
@@ -188,10 +189,11 @@ object BitwardenSendMapper {
     fun buildShareUrl(
         serverUrl: String,
         accessId: String,
-        keyMaterial: ByteArray
+        keyMaterial: ByteArray,
+        urlB64Key: String? = null
     ): String {
         val baseUrl = buildSendBaseUrl(serverUrl)
-        val key = Base64.encodeToString(
+        val key = urlB64Key?.takeIf { it.isNotBlank() } ?: Base64.encodeToString(
             keyMaterial,
             Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
         )
