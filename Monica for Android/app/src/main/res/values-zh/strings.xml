@@ -1565,6 +1565,8 @@
     <string name="autofill_blacklist_dialog_title">黑名单管理</string>
     <string name="autofill_blacklist_dialog_desc">黑名单中的应用将无法使用自动填充功能</string>
     <string name="autofill_blacklist_dialog_done">完成</string>
+    <string name="autofill_blacklist_no_apps">未找到已安装的应用</string>
+    <string name="autofill_blacklist_no_match">未找到匹配"%s"的应用</string>
     
     <!-- 自动填充设置 - 信息卡片 -->
     <string name="autofill_info_card_text">自动填充功能需要Android 8.0及以上版本。启用后，Monica将在您访问应用和网站时自动填充保存的密码。</string>

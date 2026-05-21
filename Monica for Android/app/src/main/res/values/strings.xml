@@ -1733,6 +1733,8 @@
     <string name="autofill_blacklist_dialog_title">Blacklist Management</string>
     <string name="autofill_blacklist_dialog_desc">Apps in blacklist will not be able to use autofill</string>
     <string name="autofill_blacklist_dialog_done">Done</string>
+    <string name="autofill_blacklist_no_apps">No installed apps found</string>
+    <string name="autofill_blacklist_no_match">No apps matching "%s"</string>
     
     <!-- Autofill Settings - Info Card -->
     <string name="autofill_info_card_text">Autofill works on Android 8+. Once enabled, Monica can fill saved logins in apps and websites.</string>
