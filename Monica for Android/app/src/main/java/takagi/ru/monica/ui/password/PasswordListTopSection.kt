@@ -68,19 +68,24 @@ import takagi.ru.monica.ui.password.BitwardenReunlockTopActionsMenuItem
 import takagi.ru.monica.ui.password.BitwardenSyncTopActionsMenuItem
 import takagi.ru.monica.ui.password.CommonPasswordTopActionsMenuItems
 import takagi.ru.monica.ui.password.KeepassRefreshTopActionsMenuItem
+import takagi.ru.monica.ui.password.MdbxRefreshTopActionsMenuItem
 import takagi.ru.monica.ui.password.PasswordTopActionsDropdownMenu
+import takagi.ru.monica.viewmodel.MdbxViewModel
 
 @Composable
 internal fun PasswordListTopSection(
     currentFilter: CategoryFilter,
     categories: List<Category>,
     keepassDatabases: List<takagi.ru.monica.data.LocalKeePassDatabase>,
+    mdbxDatabases: List<takagi.ru.monica.data.LocalMdbxDatabase>,
     bitwardenVaults: List<takagi.ru.monica.data.bitwarden.BitwardenVault>,
     viewModel: PasswordViewModel,
     localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
     bitwardenViewModel: BitwardenViewModel,
+    mdbxViewModel: MdbxViewModel? = null,
     selectedBitwardenVaultId: Long?,
     selectedKeePassDatabaseId: Long?,
+    selectedMdbxDatabaseId: Long?,
     isTopBarSyncing: Boolean,
     isArchiveView: Boolean,
     isKeePassDatabaseView: Boolean,
@@ -175,6 +180,7 @@ internal fun PasswordListTopSection(
             is CategoryFilter.BitwardenFolderFilter -> "Bitwarden"
             is CategoryFilter.BitwardenVaultStarred -> "${stringResource(R.string.filter_bitwarden)} · ${stringResource(R.string.filter_starred)}"
             is CategoryFilter.BitwardenVaultUncategorized -> "${stringResource(R.string.filter_bitwarden)} · ${stringResource(R.string.filter_uncategorized)}"
+            is CategoryFilter.MdbxDatabase -> mdbxDatabases.find { it.id == filter.databaseId }?.name ?: "MDBX"
         }
 
         ExpressiveTopBar(
@@ -234,6 +240,7 @@ internal fun PasswordListTopSection(
                             PasswordListCategoryChipMenu(
                                 currentFilter = currentFilter,
                                 keepassDatabases = keepassDatabases,
+                                mdbxDatabases = mdbxDatabases,
                                 bitwardenVaults = bitwardenVaults,
                                 configuredQuickFilterItems = configuredQuickFilterItems,
                                 quickFilterFavorite = quickFilterFavorite,
@@ -329,6 +336,17 @@ internal fun PasswordListTopSection(
                                                 Toast.LENGTH_SHORT
                                             ).show()
                                         }
+
+                                        is StorageTarget.Mdbx -> {
+                                            Toast.makeText(
+                                                context,
+                                                context.getString(
+                                                    R.string.save_failed_with_error,
+                                                    "当前暂不支持将分类移动到 MDBX 数据库"
+                                                ),
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        }
                                     }
                                 },
                                 getBitwardenFolders = viewModel::getBitwardenFolders,
@@ -347,6 +365,14 @@ internal fun PasswordListTopSection(
                                     onClick = {
                                         onTopActionsMenuExpandedChange(false)
                                         viewModel.refreshKeePassFromSourceForCurrentContext()
+                                    }
+                                )
+                            }
+                            if (selectedMdbxDatabaseId != null && mdbxViewModel != null) {
+                                MdbxRefreshTopActionsMenuItem(
+                                    onClick = {
+                                        onTopActionsMenuExpandedChange(false)
+                                        mdbxViewModel.syncVault(selectedMdbxDatabaseId)
                                     }
                                 )
                             }
@@ -703,6 +729,7 @@ internal fun PasswordListTopSection(
             is CategoryFilter.KeePassGroupFilter -> UnifiedCategoryFilterSelection.KeePassGroupFilter(filter.databaseId, filter.groupPath)
             is CategoryFilter.KeePassDatabaseStarred -> UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter(filter.databaseId)
             is CategoryFilter.KeePassDatabaseUncategorized -> UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter(filter.databaseId)
+            is CategoryFilter.MdbxDatabase -> null
         }
         if (showDisplayOptionsSheet) {
             PasswordDisplayOptionsSheet(

@@ -43,6 +43,7 @@ data class RememberedStorageTarget(
     val categoryId: Long? = null,
     val keepassDatabaseId: Long? = null,
     val keepassGroupPath: String? = null,
+    val mdbxDatabaseId: Long? = null,
     val bitwardenVaultId: Long? = null,
     val bitwardenFolderId: String? = null
 )
@@ -293,6 +294,7 @@ class SettingsManager(private val context: Context) {
     private fun storageCategoryKey(scope: String) = longPreferencesKey("last_storage_${scope}_category_id")
     private fun storageKeePassKey(scope: String) = longPreferencesKey("last_storage_${scope}_keepass_database_id")
     private fun storageKeePassGroupPathKey(scope: String) = stringPreferencesKey("last_storage_${scope}_keepass_group_path")
+    private fun storageMdbxKey(scope: String) = longPreferencesKey("last_storage_${scope}_mdbx_database_id")
     private fun storageBitwardenVaultKey(scope: String) = longPreferencesKey("last_storage_${scope}_bitwarden_vault_id")
     private fun storageBitwardenFolderKey(scope: String) = stringPreferencesKey("last_storage_${scope}_bitwarden_folder_id")
 
@@ -1631,6 +1633,7 @@ class SettingsManager(private val context: Context) {
             categoryId = preferences[storageCategoryKey(scope)],
             keepassDatabaseId = preferences[storageKeePassKey(scope)],
             keepassGroupPath = preferences[storageKeePassGroupPathKey(scope)],
+            mdbxDatabaseId = preferences[storageMdbxKey(scope)],
             bitwardenVaultId = preferences[storageBitwardenVaultKey(scope)],
             bitwardenFolderId = preferences[storageBitwardenFolderKey(scope)]
         )
@@ -1641,12 +1644,14 @@ class SettingsManager(private val context: Context) {
             val categoryKey = storageCategoryKey(scope)
             val keepassKey = storageKeePassKey(scope)
             val keepassGroupPathKey = storageKeePassGroupPathKey(scope)
+            val mdbxKey = storageMdbxKey(scope)
             val bitwardenVaultKey = storageBitwardenVaultKey(scope)
             val bitwardenFolderKey = storageBitwardenFolderKey(scope)
 
             if (target.categoryId != null) preferences[categoryKey] = target.categoryId else preferences.remove(categoryKey)
             if (target.keepassDatabaseId != null) preferences[keepassKey] = target.keepassDatabaseId else preferences.remove(keepassKey)
             if (target.keepassGroupPath.isNullOrBlank()) preferences.remove(keepassGroupPathKey) else preferences[keepassGroupPathKey] = target.keepassGroupPath
+            if (target.mdbxDatabaseId != null) preferences[mdbxKey] = target.mdbxDatabaseId else preferences.remove(mdbxKey)
             if (target.bitwardenVaultId != null) preferences[bitwardenVaultKey] = target.bitwardenVaultId else preferences.remove(bitwardenVaultKey)
             if (target.bitwardenFolderId.isNullOrBlank()) preferences.remove(bitwardenFolderKey) else preferences[bitwardenFolderKey] = target.bitwardenFolderId
         }

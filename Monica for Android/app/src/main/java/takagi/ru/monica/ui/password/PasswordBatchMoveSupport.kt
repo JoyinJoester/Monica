@@ -29,6 +29,7 @@ import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.LocalMdbxDatabase
 import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.model.TIMELINE_FIELD_BATCH_COPY_PAYLOAD
@@ -127,6 +128,7 @@ internal fun toLocationState(entry: PasswordEntry): TimelinePasswordLocationStat
         categoryId = entry.categoryId,
         keepassDatabaseId = entry.keepassDatabaseId,
         keepassGroupPath = entry.keepassGroupPath,
+        mdbxDatabaseId = entry.mdbxDatabaseId,
         bitwardenVaultId = entry.bitwardenVaultId,
         bitwardenCipherId = entry.bitwardenCipherId,
         bitwardenFolderId = entry.bitwardenFolderId,
@@ -243,6 +245,21 @@ internal fun toMovedLocationState(
             categoryId = null,
             keepassDatabaseId = target.databaseId,
             keepassGroupPath = target.groupPath,
+            bitwardenVaultId = null,
+            bitwardenCipherId = null,
+            bitwardenFolderId = null,
+            bitwardenRevisionDate = null,
+            bitwardenLocalModified = false,
+            isArchived = false,
+            archivedAtMillis = null
+        )
+
+        is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> TimelinePasswordLocationState(
+            id = entry.id,
+            categoryId = null,
+            keepassDatabaseId = null,
+            keepassGroupPath = null,
+            mdbxDatabaseId = target.databaseId,
             bitwardenVaultId = null,
             bitwardenCipherId = null,
             bitwardenFolderId = null,
@@ -403,6 +420,27 @@ internal fun buildCopiedEntryForTarget(
             isDeleted = false,
             deletedAt = null
         )
+
+        is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> entry.copy(
+            id = 0,
+            createdAt = now,
+            updatedAt = now,
+            categoryId = null,
+            keepassDatabaseId = null,
+            keepassGroupPath = null,
+            keepassEntryUuid = null,
+            keepassGroupUuid = null,
+            mdbxDatabaseId = target.databaseId,
+            bitwardenVaultId = null,
+            bitwardenCipherId = null,
+            bitwardenFolderId = null,
+            bitwardenRevisionDate = null,
+            bitwardenLocalModified = false,
+            isArchived = false,
+            archivedAt = null,
+            isDeleted = false,
+            deletedAt = null
+        )
     }
 }
 
@@ -410,7 +448,8 @@ internal fun buildMoveTargetLabel(
     context: Context,
     target: UnifiedMoveCategoryTarget,
     categories: List<Category>,
-    keepassDatabases: List<LocalKeePassDatabase>
+    keepassDatabases: List<LocalKeePassDatabase>,
+    mdbxDatabases: List<LocalMdbxDatabase> = emptyList()
 ): String {
     return when (target) {
         UnifiedMoveCategoryTarget.Uncategorized -> context.getString(R.string.category_none)
@@ -431,6 +470,10 @@ internal fun buildMoveTargetLabel(
         }
 
         is UnifiedMoveCategoryTarget.KeePassGroupTarget -> decodeKeePassPathForDisplay(target.groupPath)
+
+        is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> {
+            mdbxDatabases.find { it.id == target.databaseId }?.name ?: "MDBX"
+        }
     }
 }
 
@@ -1144,6 +1187,12 @@ internal fun PasswordBatchMoveSheet(
                                         target.databaseId,
                                         target.groupPath
                                     )
+                                }
+
+                                target is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> {
+                                    viewModel.unarchivePasswordsAwait(selectedIds)
+                                    viewModel.movePasswordsToMdbxDatabaseAwait(selectedIds, target.databaseId)
+                                    onProgressUpdate(selectedEntries.size, selectedEntries.size)
                                 }
                             }
 

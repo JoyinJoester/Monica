@@ -3,10 +3,14 @@ package takagi.ru.monica.viewmodel
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.StorageTarget
 import takagi.ru.monica.data.model.normalizedStorageTargets
@@ -14,6 +18,7 @@ import takagi.ru.monica.data.model.toStorageTarget
 import takagi.ru.monica.data.model.withStorageTargetSelected
 import takagi.ru.monica.data.model.withoutStorageTarget
 import takagi.ru.monica.notes.domain.NoteContentCodec
+import takagi.ru.monica.notes.domain.NoteDraftStore
 import takagi.ru.monica.utils.RememberedStorageTarget
 import java.util.Date
 
@@ -26,6 +31,7 @@ data class NoteEditorUiState(
     val selectedCategoryId: Long? = null,
     val keepassDatabaseId: Long? = null,
     val keepassGroupPath: String? = null,
+    val mdbxDatabaseId: Long? = null,
     val bitwardenVaultId: Long? = null,
     val bitwardenFolderId: String? = null,
     val selectedStorageTargets: List<StorageTarget> = emptyList(),
@@ -56,6 +62,7 @@ private data class NoteEditDraft(
     val categoryId: Long?,
     val keepassDatabaseId: Long?,
     val keepassGroupPath: String?,
+    val mdbxDatabaseId: Long?,
     val bitwardenVaultId: Long?,
     val bitwardenFolderId: String?,
     val imagePaths: List<String>,
@@ -63,8 +70,15 @@ private data class NoteEditDraft(
 )
 
 class NoteEditorViewModel : ViewModel() {
+    companion object {
+        private const val AUTO_SAVE_DEBOUNCE_MS = 2000L
+    }
+
+    private val draftStore by lazy { NoteDraftStore.get() }
     private val _uiState = MutableStateFlow(NoteEditorUiState())
     val uiState: StateFlow<NoteEditorUiState> = _uiState.asStateFlow()
+    private var draftSaveJob: Job? = null
+    private var currentNoteId: Long = -1L
 
     fun resetForNewNote() {
         _uiState.value = NoteEditorUiState()
@@ -88,6 +102,7 @@ class NoteEditorViewModel : ViewModel() {
                 selectedCategoryId = draft.categoryId,
                 keepassDatabaseId = draft.keepassDatabaseId,
                 keepassGroupPath = draft.keepassGroupPath,
+                mdbxDatabaseId = draft.mdbxDatabaseId,
                 bitwardenVaultId = draft.bitwardenVaultId,
                 bitwardenFolderId = draft.bitwardenFolderId,
                 selectedStorageTargets = listOf(note.toStorageTarget()),
@@ -106,6 +121,7 @@ class NoteEditorViewModel : ViewModel() {
         initialCategoryId: Long?,
         initialKeePassDatabaseId: Long?,
         initialKeePassGroupPath: String?,
+        initialMdbxDatabaseId: Long?,
         initialBitwardenVaultId: Long?,
         initialBitwardenFolderId: String?,
         draftStorageTarget: NoteDraftStorageTarget,
@@ -123,6 +139,7 @@ class NoteEditorViewModel : ViewModel() {
         val hasExplicitInitialStorage = initialCategoryId != null ||
             initialKeePassDatabaseId != null ||
             normalizedInitialKeePassGroupPath != null ||
+            initialMdbxDatabaseId != null ||
             initialBitwardenVaultId != null ||
             normalizedInitialBitwardenFolderId != null
 
@@ -141,6 +158,11 @@ class NoteEditorViewModel : ViewModel() {
         } else {
             normalizedInitialKeePassGroupPath ?: normalizedDraftKeePassGroupPath ?: normalizedRememberedKeePassGroupPath
         }
+        val resolvedMdbxDatabaseId = if (hasExplicitInitialStorage) {
+            initialMdbxDatabaseId
+        } else {
+            initialMdbxDatabaseId ?: draftStorageTarget.mdbxDatabaseId ?: rememberedStorageTarget?.mdbxDatabaseId
+        }
         val resolvedBitwardenVaultId = if (hasExplicitInitialStorage) {
             initialBitwardenVaultId
         } else {
@@ -155,6 +177,7 @@ class NoteEditorViewModel : ViewModel() {
         val hasResolvedStorage = resolvedCategoryId != null ||
             resolvedKeepassDatabaseId != null ||
             resolvedKeepassGroupPath != null ||
+            resolvedMdbxDatabaseId != null ||
             resolvedBitwardenVaultId != null ||
             resolvedBitwardenFolderId != null
         if (!hasResolvedStorage) {
@@ -164,6 +187,7 @@ class NoteEditorViewModel : ViewModel() {
                     selectedCategoryId = null,
                     keepassDatabaseId = null,
                     keepassGroupPath = null,
+                    mdbxDatabaseId = null,
                     bitwardenVaultId = null,
                     bitwardenFolderId = null,
                     selectedStorageTargets = listOf(defaultTarget),
@@ -184,6 +208,7 @@ class NoteEditorViewModel : ViewModel() {
                 databaseId = resolvedKeepassDatabaseId,
                 groupPath = resolvedKeepassGroupPath
             )
+            resolvedMdbxDatabaseId != null -> StorageTarget.Mdbx(resolvedMdbxDatabaseId)
             else -> StorageTarget.MonicaLocal(resolvedCategoryId)
         }
 
@@ -192,6 +217,7 @@ class NoteEditorViewModel : ViewModel() {
                 selectedCategoryId = resolvedCategoryId,
                 keepassDatabaseId = resolvedKeepassDatabaseId,
                 keepassGroupPath = resolvedKeepassGroupPath,
+                mdbxDatabaseId = resolvedMdbxDatabaseId,
                 bitwardenVaultId = resolvedBitwardenVaultId,
                 bitwardenFolderId = resolvedBitwardenFolderId,
                 selectedStorageTargets = listOf(initialTarget),
@@ -204,10 +230,12 @@ class NoteEditorViewModel : ViewModel() {
 
     fun updateTitle(title: String) {
         _uiState.update { it.copy(title = title) }
+        scheduleDraftSave()
     }
 
     fun updateContent(content: TextFieldValue) {
         applyContentField(content)
+        scheduleDraftSave()
     }
 
     fun updatePreviewMode(isPreview: Boolean) {
@@ -216,6 +244,7 @@ class NoteEditorViewModel : ViewModel() {
 
     fun updateTagsText(tags: String) {
         _uiState.update { it.copy(tagsText = tags) }
+        scheduleDraftSave()
     }
 
     fun toggleFavorite() {
@@ -223,7 +252,12 @@ class NoteEditorViewModel : ViewModel() {
     }
 
     fun selectCategory(categoryId: Long?) {
-        _uiState.update { it.copy(selectedCategoryId = categoryId) }
+        _uiState.update {
+            it.copy(
+                selectedCategoryId = categoryId,
+                mdbxDatabaseId = null
+            )
+        }
     }
 
     fun selectKeePassDatabase(databaseId: Long?) {
@@ -231,8 +265,22 @@ class NoteEditorViewModel : ViewModel() {
             it.copy(
                 keepassDatabaseId = databaseId,
                 keepassGroupPath = if (databaseId == it.keepassDatabaseId) it.keepassGroupPath else null,
+                mdbxDatabaseId = null,
                 bitwardenVaultId = if (databaseId != null) null else it.bitwardenVaultId,
                 bitwardenFolderId = if (databaseId != null) null else it.bitwardenFolderId
+            )
+        }
+    }
+
+    fun selectMdbxDatabase(databaseId: Long?) {
+        _uiState.update {
+            it.copy(
+                selectedCategoryId = null,
+                keepassDatabaseId = null,
+                keepassGroupPath = null,
+                mdbxDatabaseId = databaseId,
+                bitwardenVaultId = null,
+                bitwardenFolderId = null
             )
         }
     }
@@ -241,6 +289,7 @@ class NoteEditorViewModel : ViewModel() {
         _uiState.update {
             it.copy(
                 bitwardenVaultId = vaultId,
+                mdbxDatabaseId = null,
                 keepassGroupPath = if (vaultId != null) null else it.keepassGroupPath,
                 keepassDatabaseId = if (vaultId != null) null else it.keepassDatabaseId
             )
@@ -269,6 +318,7 @@ class NoteEditorViewModel : ViewModel() {
                 selectedCategoryId = (primaryTarget as? StorageTarget.MonicaLocal)?.categoryId,
                 keepassDatabaseId = (primaryTarget as? StorageTarget.KeePass)?.databaseId,
                 keepassGroupPath = (primaryTarget as? StorageTarget.KeePass)?.groupPath,
+                mdbxDatabaseId = (primaryTarget as? StorageTarget.Mdbx)?.databaseId,
                 bitwardenVaultId = (primaryTarget as? StorageTarget.Bitwarden)?.vaultId,
                 bitwardenFolderId = (primaryTarget as? StorageTarget.Bitwarden)?.folderId,
                 selectedStorageTargets = normalizedTargets,
@@ -334,6 +384,35 @@ class NoteEditorViewModel : ViewModel() {
         _uiState.update { it.copy(isSaving = false) }
     }
 
+    fun saveDraftImmediate(noteId: Long) {
+        currentNoteId = noteId
+        draftSaveJob?.cancel()
+        val state = _uiState.value
+        if (state.title.isBlank() && state.contentField.text.isBlank() && state.tagsText.isBlank()) return
+        draftStore.saveDraft(noteId, state.title, state.contentField.text, state.tagsText)
+    }
+
+    fun restoreDraft(noteId: Long) {
+        currentNoteId = noteId
+        val draft = draftStore.loadDraft(noteId) ?: return
+        val content = draft.content
+        val hydratedField = TextFieldValue(content)
+        val inlineImagePaths = NoteContentCodec.extractInlineImageIds(content)
+        _uiState.update {
+            it.copy(
+                title = draft.title,
+                contentField = hydratedField,
+                tagsText = draft.tagsText,
+                noteImagePaths = inlineImagePaths
+            )
+        }
+    }
+
+    fun clearDraft(noteId: Long) {
+        draftSaveJob?.cancel()
+        draftStore.clearDraft(noteId)
+    }
+
     fun buildSavePayload(isMarkdown: Boolean): NoteSavePayload {
         val state = _uiState.value
         val tags = state.tagsText
@@ -355,6 +434,16 @@ class NoteEditorViewModel : ViewModel() {
             isMarkdown = isMarkdown,
             tags = tags
         )
+    }
+
+    private fun scheduleDraftSave() {
+        draftSaveJob?.cancel()
+        draftSaveJob = viewModelScope.launch {
+            delay(AUTO_SAVE_DEBOUNCE_MS)
+            val state = _uiState.value
+            if (state.title.isBlank() && state.contentField.text.isBlank() && state.tagsText.isBlank()) return@launch
+            draftStore.saveDraft(currentNoteId, state.title, state.contentField.text, state.tagsText)
+        }
     }
 
     private fun applyContentField(
@@ -393,6 +482,7 @@ private fun SecureItem.toNoteEditDraft(): NoteEditDraft {
         categoryId = categoryId,
         keepassDatabaseId = keepassDatabaseId,
         keepassGroupPath = keepassGroupPath,
+        mdbxDatabaseId = mdbxDatabaseId,
         bitwardenVaultId = bitwardenVaultId,
         bitwardenFolderId = bitwardenFolderId,
         imagePaths = NoteContentCodec.decodeImagePaths(imagePaths),

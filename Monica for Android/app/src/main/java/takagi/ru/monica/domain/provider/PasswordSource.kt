@@ -12,8 +12,13 @@ sealed class PasswordSource {
         val entryUuid: String?
     ) : PasswordSource()
 
+    data class Mdbx(
+        val databaseId: Long?
+    ) : PasswordSource()
+
     data class Conflict(
         val hasKeePassBinding: Boolean,
-        val hasBitwardenBinding: Boolean
+        val hasBitwardenBinding: Boolean,
+        val hasMdbxBinding: Boolean = false
     ) : PasswordSource()
 }

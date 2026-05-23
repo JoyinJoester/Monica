@@ -35,9 +35,12 @@ import takagi.ru.monica.data.bitwarden.*
         BitwardenPendingOperation::class,
         BitwardenSyncRawEntryRecord::class,
         // 附件（仅挂在 PasswordEntry 上，跨 Local/Bitwarden/KeePass 三个来源统一元数据）
-        Attachment::class
+        Attachment::class,
+        // MDBX 数据库格式
+        LocalMdbxDatabase::class,
+        MdbxRemoteSource::class
     ],
-    version = 62,
+    version = 66,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -51,6 +54,8 @@ abstract class PasswordDatabase : RoomDatabase() {
     abstract fun keepassRemoteSourceDao(): KeepassRemoteSourceDao
     abstract fun keepassRemoteSyncStateDao(): KeepassRemoteSyncStateDao
     abstract fun keepassGroupSyncConfigDao(): KeepassGroupSyncConfigDao
+    abstract fun localMdbxDatabaseDao(): LocalMdbxDatabaseDao
+    abstract fun mdbxRemoteSourceDao(): MdbxRemoteSourceDao
     abstract fun customFieldDao(): CustomFieldDao  // 自定义字段 DAO
     abstract fun passwordPageAggregateStackDao(): PasswordPageAggregateStackDao
     abstract fun passwordArchiveSyncMetaDao(): PasswordArchiveSyncMetaDao
@@ -1873,6 +1878,160 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_62_63 = object : androidx.room.migration.Migration(62, 63) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 62→63: MDBX database tables")
+                    database.execSQL("""
+                        CREATE TABLE IF NOT EXISTS local_mdbx_databases (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            name TEXT NOT NULL,
+                            file_path TEXT NOT NULL,
+                            storage_location TEXT NOT NULL,
+                            source_type TEXT NOT NULL,
+                            source_id INTEGER,
+                            tiga_mode TEXT NOT NULL DEFAULT 'MULTI',
+                            encrypted_password TEXT,
+                            unlock_method TEXT NOT NULL DEFAULT 'password',
+                            kdf_profile TEXT NOT NULL DEFAULT 'argon2id',
+                            key_file_name TEXT,
+                            key_file_uri TEXT,
+                            key_file_fingerprint TEXT,
+                            description TEXT,
+                            created_at INTEGER NOT NULL,
+                            last_accessed_at INTEGER NOT NULL,
+                            last_synced_at INTEGER,
+                            is_default INTEGER NOT NULL,
+                            project_count INTEGER NOT NULL DEFAULT 0,
+                            sort_order INTEGER NOT NULL DEFAULT 0,
+                            working_copy_path TEXT,
+                            cache_copy_path TEXT,
+                            is_offline_available INTEGER NOT NULL DEFAULT 0,
+                            last_sync_status TEXT NOT NULL DEFAULT 'LOCAL_ONLY',
+                            last_sync_error TEXT
+                        )
+                    """.trimIndent())
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_local_mdbx_databases_storage_location ON local_mdbx_databases(storage_location)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_local_mdbx_databases_source_type ON local_mdbx_databases(source_type)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_local_mdbx_databases_source_id ON local_mdbx_databases(source_id)")
+
+                    database.execSQL("""
+                        CREATE TABLE IF NOT EXISTS mdbx_remote_sources (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                            display_name TEXT NOT NULL,
+                            remote_path TEXT NOT NULL,
+                            remote_parent_path TEXT,
+                            base_url TEXT,
+                            username_encrypted TEXT,
+                            password_encrypted TEXT,
+                            created_at INTEGER NOT NULL,
+                            updated_at INTEGER NOT NULL
+                        )
+                    """.trimIndent())
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_mdbx_remote_sources_display_name ON mdbx_remote_sources(display_name)")
+
+                    android.util.Log.i("PasswordDatabase", "Migration 62→63 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 62→63 failed: ${e.message}")
+                    throw e
+                }
+            }
+        }
+
+        private val MIGRATION_63_64 = object : androidx.room.migration.Migration(63, 64) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 63→64: MDBX item ownership")
+                    addColumnIfMissing(database, "password_entries", "mdbx_database_id", "INTEGER DEFAULT NULL")
+                    addColumnIfMissing(database, "secure_items", "mdbx_database_id", "INTEGER DEFAULT NULL")
+                    addColumnIfMissing(database, "passkeys", "mdbx_database_id", "INTEGER DEFAULT NULL")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_password_entries_mdbx_database_id ON password_entries(mdbx_database_id)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_secure_items_mdbx_database_id ON secure_items(mdbx_database_id)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_passkeys_mdbx_database_id ON passkeys(mdbx_database_id)")
+                    android.util.Log.i("PasswordDatabase", "Migration 63→64 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 63→64 failed: ${e.message}")
+                    throw e
+                }
+            }
+        }
+
+        private val MIGRATION_64_65 = object : androidx.room.migration.Migration(64, 65) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 64→65: MDBX unlock metadata")
+                    addColumnIfMissing(
+                        database,
+                        "local_mdbx_databases",
+                        "unlock_method",
+                        "TEXT NOT NULL DEFAULT 'password'"
+                    )
+                    addColumnIfMissing(
+                        database,
+                        "local_mdbx_databases",
+                        "kdf_profile",
+                        "TEXT NOT NULL DEFAULT 'argon2id'"
+                    )
+                    addColumnIfMissing(
+                        database,
+                        "local_mdbx_databases",
+                        "key_file_name",
+                        "TEXT DEFAULT NULL"
+                    )
+                    addColumnIfMissing(
+                        database,
+                        "local_mdbx_databases",
+                        "key_file_fingerprint",
+                        "TEXT DEFAULT NULL"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 64→65 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 64→65 failed: ${e.message}")
+                    throw e
+                }
+            }
+        }
+
+        private val MIGRATION_65_66 = object : androidx.room.migration.Migration(65, 66) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 65→66: MDBX key file URI")
+                    addColumnIfMissing(
+                        database,
+                        "local_mdbx_databases",
+                        "key_file_uri",
+                        "TEXT DEFAULT NULL"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 65→66 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 65→66 failed: ${e.message}")
+                    throw e
+                }
+            }
+        }
+
+        private fun addColumnIfMissing(
+            database: androidx.sqlite.db.SupportSQLiteDatabase,
+            tableName: String,
+            columnName: String,
+            definition: String
+        ) {
+            val exists = database.query("PRAGMA table_info($tableName)").use { cursor ->
+                var found = false
+                val nameIndex = cursor.getColumnIndex("name")
+                while (cursor.moveToNext()) {
+                    if (nameIndex >= 0 && cursor.getString(nameIndex) == columnName) {
+                        found = true
+                        break
+                    }
+                }
+                found
+            }
+            if (!exists) {
+                database.execSQL("ALTER TABLE $tableName ADD COLUMN $columnName $definition")
+            }
+        }
+
         fun getDatabase(context: Context): PasswordDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -1941,7 +2100,11 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_58_59,  // KeePass Passkey 去重与唯一约束
                         MIGRATION_59_60,   // 附件表 (attachments)
                         MIGRATION_60_61,   // WIFI 条目扩展元数据 (wifi_metadata)
-                        MIGRATION_61_62    // bitwarden_sends.is_dirty 防止本地新建被清理
+                        MIGRATION_61_62,   // bitwarden_sends.is_dirty 防止本地新建被清理
+                        MIGRATION_62_63,   // MDBX 数据库格式 (local_mdbx_databases + mdbx_remote_sources)
+                        MIGRATION_63_64,   // MDBX 条目归属字段 (passwords/secure_items/passkeys)
+                        MIGRATION_64_65,   // MDBX 解锁方式元数据 (password/key file/device key)
+                        MIGRATION_65_66    // MDBX key file URI for real unlock flows
                     )
                     // 启用多进程失效通知：IME 跑在 :ime 独立进程，主进程需要
                     // 感知 IME 进程对数据库的修改（例如最近填充时间戳等）。

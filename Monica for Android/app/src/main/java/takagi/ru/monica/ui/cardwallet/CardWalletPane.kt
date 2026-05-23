@@ -38,6 +38,7 @@ internal fun CardWalletPane(
     initialCategoryId: Long? = null,
     initialKeePassDatabaseId: Long? = null,
     initialKeePassGroupPath: String? = null,
+    initialMdbxDatabaseId: Long? = null,
     initialBitwardenVaultId: Long? = null,
     initialBitwardenFolderId: String? = null,
     showStandaloneSettingsEntry: Boolean = false,
@@ -91,6 +92,7 @@ internal fun CardWalletPane(
                     initialCategoryId = initialCategoryId,
                     initialKeePassDatabaseId = initialKeePassDatabaseId,
                     initialKeePassGroupPath = initialKeePassGroupPath,
+                    initialMdbxDatabaseId = initialMdbxDatabaseId,
                     initialBitwardenVaultId = initialBitwardenVaultId,
                     initialBitwardenFolderId = initialBitwardenFolderId
                 )

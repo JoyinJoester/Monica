@@ -11,6 +11,7 @@ import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.LocalMdbxDatabase
 import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.PasswordPageContentType
@@ -149,6 +150,10 @@ internal suspend fun executeMixedPasswordBatchMove(
     }
     val targetKeepassGroupPath = when (target) {
         is UnifiedMoveCategoryTarget.KeePassGroupTarget -> target.groupPath
+        else -> null
+    }
+    val targetMdbxDatabaseId = when (target) {
+        is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> target.databaseId
         else -> null
     }
     val targetBitwardenVaultId = when (target) {
@@ -551,6 +556,14 @@ internal suspend fun executeMixedPasswordBatchMove(
                     failedCount += selectedEntries.size
                 }
             }
+
+            target is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> {
+                if (selectedIds.isNotEmpty()) {
+                    viewModel.unarchivePasswordsAwait(selectedIds)
+                    viewModel.movePasswordsToMdbxDatabaseAwait(selectedIds, target.databaseId)
+                    successCount += selectedEntries.size
+                }
+            }
         }
 
         if (!passwordProgressHandledByCallback) {
@@ -727,6 +740,13 @@ internal suspend fun executeMixedPasswordBatchMove(
                     }
                 }
 
+                is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> {
+                    if (totpIds.isNotEmpty()) {
+                        successCount += totpIds.size
+                        reportProgress(totpIds.size)
+                    }
+                }
+
                 else -> Unit
             }
         }
@@ -882,12 +902,14 @@ private suspend fun applyPasswordPagePasskeyStorageTarget(
             bitwardenVaultId = target.vaultId,
             bitwardenFolderId = target.folderId,
             keepassGroupPath = null,
-            keepassDatabaseId = null
+            keepassDatabaseId = null,
+            mdbxDatabaseId = null
         )
 
         is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> passkey.copy(
             keepassDatabaseId = target.databaseId,
             keepassGroupPath = null,
+            mdbxDatabaseId = null,
             bitwardenFolderId = null,
             bitwardenVaultId = null
         )
@@ -895,8 +917,19 @@ private suspend fun applyPasswordPagePasskeyStorageTarget(
         is UnifiedMoveCategoryTarget.KeePassGroupTarget -> passkey.copy(
             keepassDatabaseId = target.databaseId,
             keepassGroupPath = target.groupPath,
+            mdbxDatabaseId = null,
             bitwardenFolderId = null,
             bitwardenVaultId = null
+        )
+
+        is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> passkey.copy(
+            categoryId = null,
+            keepassDatabaseId = null,
+            keepassGroupPath = null,
+            mdbxDatabaseId = target.databaseId,
+            bitwardenFolderId = null,
+            bitwardenVaultId = null,
+            bitwardenCipherId = null
         )
     }
 
@@ -916,6 +949,7 @@ private suspend fun applyPasswordPagePasskeyStorageTarget(
         is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> PasskeyEntry.MODE_BW_COMPAT
         is UnifiedMoveCategoryTarget.KeePassDatabaseTarget,
         is UnifiedMoveCategoryTarget.KeePassGroupTarget -> PasskeyEntry.MODE_KEEPASS_COMPAT
+        is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> passkey.passkeyMode
         else -> if (passkey.isKeePassCompatible()) {
             PasskeyEntry.MODE_KEEPASS_COMPAT
         } else {

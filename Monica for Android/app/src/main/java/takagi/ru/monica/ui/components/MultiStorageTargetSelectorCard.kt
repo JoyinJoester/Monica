@@ -35,6 +35,7 @@ import takagi.ru.monica.R
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.KeePassOperationBlockReason
 import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.LocalMdbxDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenFolderDao
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.StorageTarget
@@ -47,6 +48,7 @@ fun MultiStorageTargetSelectorCard(
     existingTargetKeys: Set<String>,
     categories: List<Category>,
     keepassDatabases: List<LocalKeePassDatabase>,
+    mdbxDatabases: List<LocalMdbxDatabase> = emptyList(),
     bitwardenVaults: List<BitwardenVault>,
     bitwardenFolderDao: BitwardenFolderDao,
     isEditing: Boolean,
@@ -71,10 +73,12 @@ fun MultiStorageTargetSelectorCard(
 
     val monicaLabel = stringResource(R.string.app_name)
     val keepassLabel = stringResource(R.string.create_target_keepass)
+    val mdbxLabel = "MDBX"
     val bitwardenLabel = stringResource(R.string.create_target_bitwarden)
     val uncategorizedLabel = stringResource(R.string.multi_storage_uncategorized)
     val keepassRootLabel = stringResource(R.string.multi_storage_keepass_root)
     val noFolderLabel = stringResource(R.string.multi_storage_bitwarden_no_folder)
+    val mdbxVaultLabel = stringResource(R.string.category_selection_menu_databases)
     val emptyHint = stringResource(R.string.multi_storage_empty_hint)
     val selectedSummaryFormat = stringResource(R.string.multi_storage_selected_summary)
     val keepOriginalSuffix = stringResource(R.string.multi_storage_preserved_existing_suffix)
@@ -88,6 +92,8 @@ fun MultiStorageTargetSelectorCard(
                 is StorageTarget.MonicaLocal -> monicaLabel
                 is StorageTarget.KeePass -> keepassDatabases.firstOrNull { it.id == target.databaseId }?.name
                     ?: keepassLabel
+                is StorageTarget.Mdbx -> mdbxDatabases.firstOrNull { it.id == target.databaseId }?.name
+                    ?: mdbxLabel
                 is StorageTarget.Bitwarden -> bitwardenVaults.firstOrNull { it.id == target.vaultId }?.displayName
                     ?: bitwardenVaults.firstOrNull { it.id == target.vaultId }?.email
                     ?: bitwardenLabel
@@ -99,6 +105,8 @@ fun MultiStorageTargetSelectorCard(
         is StorageTarget.MonicaLocal -> monicaLabel
         is StorageTarget.KeePass -> keepassDatabases.firstOrNull { it.id == primaryTarget.databaseId }?.name
             ?: keepassLabel
+        is StorageTarget.Mdbx -> mdbxDatabases.firstOrNull { it.id == primaryTarget.databaseId }?.name
+            ?: mdbxLabel
         is StorageTarget.Bitwarden -> bitwardenVaults.firstOrNull { it.id == primaryTarget.vaultId }?.displayName
             ?: bitwardenVaults.firstOrNull { it.id == primaryTarget.vaultId }?.email
             ?: bitwardenLabel
@@ -110,6 +118,7 @@ fun MultiStorageTargetSelectorCard(
             ?.takeIf { it.isNotBlank() }
             ?.let(::decodeKeePassPathForDisplay)
             ?: keepassRootLabel
+        is StorageTarget.Mdbx -> mdbxVaultLabel
         is StorageTarget.Bitwarden -> bitwardenFolderName ?: noFolderLabel
     }
     val keepassConnectionHint = (primaryTarget as? StorageTarget.KeePass)
@@ -244,6 +253,13 @@ private fun storageCardVisuals(
             iconContainerColor = MaterialTheme.colorScheme.primary,
             iconTint = MaterialTheme.colorScheme.onPrimary
         )
+        is StorageTarget.Mdbx -> StorageCardVisuals(
+            icon = Icons.Default.Key,
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            iconContainerColor = MaterialTheme.colorScheme.primary,
+            iconTint = MaterialTheme.colorScheme.onPrimary
+        )
         is StorageTarget.Bitwarden -> StorageCardVisuals(
             icon = Icons.Default.Cloud,
             containerColor = MaterialTheme.colorScheme.tertiaryContainer,
@@ -268,12 +284,14 @@ fun buildMultiStorageTarget(
     categoryId: Long?,
     keepassDatabaseId: Long?,
     keepassGroupPath: String?,
+    mdbxDatabaseId: Long? = null,
     bitwardenVaultId: Long?,
     bitwardenFolderId: String?
 ): StorageTarget {
     return when {
         bitwardenVaultId != null -> StorageTarget.Bitwarden(bitwardenVaultId, bitwardenFolderId)
         keepassDatabaseId != null -> StorageTarget.KeePass(keepassDatabaseId, keepassGroupPath)
+        mdbxDatabaseId != null -> StorageTarget.Mdbx(mdbxDatabaseId)
         else -> StorageTarget.MonicaLocal(categoryId)
     }
 }
@@ -284,6 +302,7 @@ fun UnifiedMoveCategoryTarget.toMultiStorageTargetOrNull(): StorageTarget? {
         is UnifiedMoveCategoryTarget.MonicaCategory -> StorageTarget.MonicaLocal(categoryId)
         is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> StorageTarget.KeePass(databaseId, null)
         is UnifiedMoveCategoryTarget.KeePassGroupTarget -> StorageTarget.KeePass(databaseId, groupPath)
+        is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> StorageTarget.Mdbx(databaseId)
         is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> StorageTarget.Bitwarden(vaultId, null)
         is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> StorageTarget.Bitwarden(vaultId, folderId)
     }

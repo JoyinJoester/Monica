@@ -33,6 +33,7 @@ internal fun CardWalletDetailPaneContent(
     initialCategoryId: Long? = null,
     initialKeePassDatabaseId: Long? = null,
     initialKeePassGroupPath: String? = null,
+    initialMdbxDatabaseId: Long? = null,
     initialBitwardenVaultId: Long? = null,
     initialBitwardenFolderId: String? = null
 ) {
@@ -44,6 +45,7 @@ internal fun CardWalletDetailPaneContent(
                 initialCategoryId = initialCategoryId,
                 initialKeePassDatabaseId = initialKeePassDatabaseId,
                 initialKeePassGroupPath = initialKeePassGroupPath,
+                initialMdbxDatabaseId = initialMdbxDatabaseId,
                 initialBitwardenVaultId = initialBitwardenVaultId,
                 initialBitwardenFolderId = initialBitwardenFolderId,
                 onNavigateBack = onInlineBankCardEditorBack,
@@ -57,6 +59,7 @@ internal fun CardWalletDetailPaneContent(
                 initialCategoryId = initialCategoryId,
                 initialKeePassDatabaseId = initialKeePassDatabaseId,
                 initialKeePassGroupPath = initialKeePassGroupPath,
+                initialMdbxDatabaseId = initialMdbxDatabaseId,
                 initialBitwardenVaultId = initialBitwardenVaultId,
                 initialBitwardenFolderId = initialBitwardenFolderId,
                 onNavigateBack = onInlineDocumentEditorBack,

@@ -46,6 +46,7 @@ internal data class NewItemStorageDefaults(
     val categoryId: Long? = null,
     val keepassDatabaseId: Long? = null,
     val keepassGroupPath: String? = null,
+    val mdbxDatabaseId: Long? = null,
     val bitwardenVaultId: Long? = null,
     val bitwardenFolderId: String? = null
 )
@@ -54,6 +55,7 @@ internal fun NewItemStorageDefaults.hasAnyValue(): Boolean {
     return categoryId != null ||
         keepassDatabaseId != null ||
         !keepassGroupPath.isNullOrBlank() ||
+        mdbxDatabaseId != null ||
         bitwardenVaultId != null ||
         !bitwardenFolderId.isNullOrBlank()
 }
@@ -80,6 +82,9 @@ internal fun defaultsFromTotpFilter(filter: takagi.ru.monica.viewmodel.TotpCateg
                 bitwardenVaultId = filter.vaultId,
                 bitwardenFolderId = filter.folderId
             )
+        }
+        is takagi.ru.monica.viewmodel.TotpCategoryFilter.MdbxDatabase -> {
+            NewItemStorageDefaults(mdbxDatabaseId = filter.databaseId)
         }
         is takagi.ru.monica.viewmodel.TotpCategoryFilter.KeePassDatabaseStarred -> {
             NewItemStorageDefaults(keepassDatabaseId = filter.databaseId)
@@ -125,6 +130,9 @@ internal fun defaultsFromPasswordFilter(filter: CategoryFilter): NewItemStorageD
                 bitwardenVaultId = filter.vaultId,
                 bitwardenFolderId = filter.folderId
             )
+        }
+        is CategoryFilter.MdbxDatabase -> {
+            NewItemStorageDefaults(mdbxDatabaseId = filter.databaseId)
         }
         is CategoryFilter.BitwardenVaultStarred -> {
             NewItemStorageDefaults(bitwardenVaultId = filter.vaultId)

@@ -13,20 +13,27 @@ sealed class PasswordOwnership {
         val cipherId: String?
     ) : PasswordOwnership()
 
+    data class Mdbx(
+        val databaseId: Long
+    ) : PasswordOwnership()
+
     data class Conflict(
         val hasKeePassBinding: Boolean,
-        val hasBitwardenBinding: Boolean
+        val hasBitwardenBinding: Boolean,
+        val hasMdbxBinding: Boolean = false
     ) : PasswordOwnership()
 }
 
 fun isLocalPasswordOwnership(
     keepassDatabaseId: Long?,
-    bitwardenVaultId: Long?
-): Boolean = keepassDatabaseId == null && bitwardenVaultId == null
+    bitwardenVaultId: Long?,
+    mdbxDatabaseId: Long? = null
+): Boolean = keepassDatabaseId == null && bitwardenVaultId == null && mdbxDatabaseId == null
 
 fun PasswordEntry.resolveOwnership(): PasswordOwnership {
     val hasKeePassBinding = keepassDatabaseId != null
     val hasBitwardenBinding = bitwardenVaultId != null
+    val hasMdbxBinding = mdbxDatabaseId != null
     val hasConcreteKeePassBinding =
         !keepassEntryUuid.isNullOrBlank() ||
             !keepassGroupUuid.isNullOrBlank() ||
@@ -36,6 +43,14 @@ fun PasswordEntry.resolveOwnership(): PasswordOwnership {
             !bitwardenRevisionDate.isNullOrBlank() ||
             !bitwardenFolderId.isNullOrBlank() ||
             bitwardenLocalModified
+
+    if (hasMdbxBinding && (hasKeePassBinding || hasBitwardenBinding)) {
+        return PasswordOwnership.Conflict(
+            hasKeePassBinding = hasKeePassBinding,
+            hasBitwardenBinding = hasBitwardenBinding,
+            hasMdbxBinding = true
+        )
+    }
 
     return when {
         hasKeePassBinding && hasBitwardenBinding -> when {
@@ -56,6 +71,8 @@ fun PasswordEntry.resolveOwnership(): PasswordOwnership {
                 hasBitwardenBinding = true
             )
         }
+
+        hasMdbxBinding -> PasswordOwnership.Mdbx(mdbxDatabaseId!!)
 
         hasKeePassBinding -> PasswordOwnership.KeePass(
             databaseId = keepassDatabaseId!!,

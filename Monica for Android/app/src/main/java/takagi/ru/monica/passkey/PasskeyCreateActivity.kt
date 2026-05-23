@@ -56,6 +56,7 @@ import takagi.ru.monica.keepass.KeePassPasskeyCreateExecutor
 import takagi.ru.monica.keepass.KeePassPasskeyDeleteExecutor
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
+import takagi.ru.monica.repository.MdbxVaultStore
 import takagi.ru.monica.repository.PasskeyRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.components.MasterPasswordDialog
@@ -111,7 +112,17 @@ class PasskeyCreateActivity : FragmentActivity() {
     }
     
     private val repository: PasskeyRepository by lazy {
-        PasskeyRepository(database.passkeyDao())
+        PasskeyRepository(
+            database.passkeyDao(),
+            MdbxVaultStore(
+                applicationContext,
+                database.localMdbxDatabaseDao(),
+                securityManager,
+                database.mdbxRemoteSourceDao(),
+                database.passwordEntryDao(),
+                database.secureItemDao()
+            )
+        )
     }
 
     private val securityManager: SecurityManager by lazy {
@@ -152,13 +163,15 @@ class PasskeyCreateActivity : FragmentActivity() {
     private var pendingKeepassGroupPath: String? = null
     private var pendingBitwardenVaultId: Long? = null
     private var pendingBitwardenFolderId: String? = null
+    private var pendingMdbxDatabaseId: Long? = null
 
     private data class ResolvedStorageTarget(
         val categoryId: Long?,
         val keepassDatabaseId: Long?,
         val keepassGroupPath: String?,
         val bitwardenVaultId: Long?,
-        val bitwardenFolderId: String?
+        val bitwardenFolderId: String?,
+        val mdbxDatabaseId: Long? = null
     )
     
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -338,6 +351,7 @@ class PasskeyCreateActivity : FragmentActivity() {
                 var selectedKeePassGroupPath by remember { mutableStateOf<String?>(pendingKeepassGroupPath) }
                 var selectedBitwardenVaultId by remember { mutableStateOf<Long?>(pendingBitwardenVaultId) }
                 var selectedBitwardenFolderId by remember { mutableStateOf<String?>(pendingBitwardenFolderId) }
+                var selectedMdbxDatabaseId by remember { mutableStateOf<Long?>(pendingMdbxDatabaseId) }
                 val context = LocalContext.current
                 val scope = rememberCoroutineScope()
                 val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
@@ -408,6 +422,7 @@ class PasskeyCreateActivity : FragmentActivity() {
                         pendingKeepassGroupPath = selectedKeePassGroupPath
                         pendingBitwardenVaultId = selectedBitwardenVaultId
                         pendingBitwardenFolderId = selectedBitwardenFolderId
+                        pendingMdbxDatabaseId = selectedMdbxDatabaseId
                         requestPasskeyUserVerificationBeforeCreate()
                     },
                     onBindToPassword = {
@@ -443,11 +458,13 @@ class PasskeyCreateActivity : FragmentActivity() {
                         selectedKeePassGroupPath = resolvedTarget.keepassGroupPath
                         selectedBitwardenVaultId = resolvedTarget.bitwardenVaultId
                         selectedBitwardenFolderId = resolvedTarget.bitwardenFolderId
+                        selectedMdbxDatabaseId = resolvedTarget.mdbxDatabaseId
                         pendingCategoryId = selectedCategoryId
                         pendingKeepassDatabaseId = selectedKeePassDatabaseId
                         pendingKeepassGroupPath = selectedKeePassGroupPath
                         pendingBitwardenVaultId = selectedBitwardenVaultId
                         pendingBitwardenFolderId = selectedBitwardenFolderId
+                        pendingMdbxDatabaseId = selectedMdbxDatabaseId
                         showPasswordPicker = false
                         requestPasskeyUserVerificationBeforeCreate()
                     }
@@ -601,6 +618,14 @@ class PasskeyCreateActivity : FragmentActivity() {
                 bitwardenVaultId = null,
                 bitwardenFolderId = null
             )
+            password.mdbxDatabaseId != null -> ResolvedStorageTarget(
+                categoryId = null,
+                keepassDatabaseId = null,
+                keepassGroupPath = null,
+                bitwardenVaultId = null,
+                bitwardenFolderId = null,
+                mdbxDatabaseId = password.mdbxDatabaseId
+            )
             else -> ResolvedStorageTarget(
                 categoryId = password.categoryId,
                 keepassDatabaseId = null,
@@ -700,7 +725,8 @@ class PasskeyCreateActivity : FragmentActivity() {
             val initialKeepassGroupPath = resolvedBoundTarget?.keepassGroupPath ?: pendingKeepassGroupPath
             val initialBitwardenVaultId = resolvedBoundTarget?.bitwardenVaultId ?: pendingBitwardenVaultId
             val initialBitwardenFolderId = resolvedBoundTarget?.bitwardenFolderId ?: pendingBitwardenFolderId
-             
+            val initialMdbxDatabaseId = resolvedBoundTarget?.mdbxDatabaseId ?: pendingMdbxDatabaseId
+
             val passkeyMode = if (initialKeepassDatabaseId != null) {
                 PasskeyEntry.MODE_KEEPASS_COMPAT
             } else {
@@ -733,6 +759,7 @@ class PasskeyCreateActivity : FragmentActivity() {
                 keepassGroupPath = initialKeepassGroupPath,
                 bitwardenVaultId = initialBitwardenVaultId,
                 bitwardenFolderId = initialBitwardenFolderId,
+                mdbxDatabaseId = initialMdbxDatabaseId,
                 syncStatus = if (initialBitwardenVaultId != null && passkeyMode == PasskeyEntry.MODE_BW_COMPAT) {
                     "PENDING"
                 } else {
@@ -1561,6 +1588,13 @@ private fun PasskeyCreateScreen(
                             onKeePassDatabaseSelected(target.databaseId)
                             onKeePassGroupPathSelected(target.groupPath)
                         }
+                        is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> {
+                            onCategorySelected(null)
+                            onKeePassDatabaseSelected(null)
+                            onKeePassGroupPathSelected(null)
+                            onBitwardenVaultSelected(null)
+                            onBitwardenFolderSelected(null)
+                        }
                     }
                     showStoragePicker = false
                 }
@@ -1601,5 +1635,3 @@ private fun PasskeyInfoRow(
         }
     }
 }
-
-

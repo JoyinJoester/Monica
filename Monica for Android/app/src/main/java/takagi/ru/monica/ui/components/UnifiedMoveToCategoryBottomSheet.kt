@@ -66,6 +66,7 @@ import takagi.ru.monica.data.KeePassOperationBlockReason
 import takagi.ru.monica.data.KeePassStorageLocation
 import takagi.ru.monica.data.writeOperationAvailability
 import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.LocalMdbxDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.utils.KEEPASS_DISPLAY_PATH_SEPARATOR
@@ -79,6 +80,7 @@ sealed interface UnifiedMoveCategoryTarget {
     data class BitwardenFolderTarget(val vaultId: Long, val folderId: String) : UnifiedMoveCategoryTarget
     data class KeePassDatabaseTarget(val databaseId: Long) : UnifiedMoveCategoryTarget
     data class KeePassGroupTarget(val databaseId: Long, val groupPath: String) : UnifiedMoveCategoryTarget
+    data class MdbxDatabaseTarget(val databaseId: Long) : UnifiedMoveCategoryTarget
 }
 
 // Sentinel target id for "Archive" in move sheet without introducing a new persisted category.
@@ -96,6 +98,7 @@ fun UnifiedMoveToCategoryBottomSheet(
     onDismiss: () -> Unit,
     categories: List<Category>,
     keepassDatabases: List<LocalKeePassDatabase>,
+    mdbxDatabases: List<LocalMdbxDatabase> = emptyList(),
     bitwardenVaults: List<BitwardenVault>,
     getBitwardenFolders: (Long) -> Flow<List<BitwardenFolder>>,
     getKeePassGroups: (Long) -> Flow<List<KeePassGroupInfo>>,
@@ -477,6 +480,30 @@ fun UnifiedMoveToCategoryBottomSheet(
                                     }
                                 }
                                 if (index < localKeePassDatabases.lastIndex) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (mdbxDatabases.isNotEmpty()) {
+                    item {
+                        MoveSectionCard(title = "MDBX") {
+                            mdbxDatabases.forEachIndexed { index, database ->
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    MoveTargetItem(
+                                        title = database.name,
+                                        icon = Icons.Default.Key,
+                                        onClick = {
+                                            onTargetSelected(
+                                                UnifiedMoveCategoryTarget.MdbxDatabaseTarget(database.id),
+                                                selectedAction.value
+                                            )
+                                        }
+                                    )
+                                }
+                                if (index < mdbxDatabases.lastIndex) {
                                     Spacer(modifier = Modifier.height(6.dp))
                                 }
                             }

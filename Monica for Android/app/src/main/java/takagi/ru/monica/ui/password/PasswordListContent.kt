@@ -112,6 +112,9 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.fragment.app.FragmentActivity
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -131,6 +134,7 @@ import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.CategorySelectionUiMode
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.PasskeyEntry
+import takagi.ru.monica.data.PasswordListQuickFilterItem
 import takagi.ru.monica.data.PasswordListTopModule
 import takagi.ru.monica.data.PasswordPageContentType
 import takagi.ru.monica.data.PasswordEntry
@@ -313,8 +317,10 @@ fun PasswordListContent(
     settingsViewModel: SettingsViewModel,
     securityManager: SecurityManager,
     keepassDatabases: List<takagi.ru.monica.data.LocalKeePassDatabase>,
+    mdbxDatabases: List<takagi.ru.monica.data.LocalMdbxDatabase>,
     bitwardenVaults: List<takagi.ru.monica.data.bitwarden.BitwardenVault>,
     localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
+    mdbxViewModel: takagi.ru.monica.viewmodel.MdbxViewModel? = null,
     groupMode: String = "none",
     stackCardMode: StackCardMode,
     onRenameCategory: (Category) -> Unit,
@@ -351,6 +357,9 @@ fun PasswordListContent(
     val currentFilter by viewModel.categoryFilter.collectAsState()
     // settings
     val appSettings by settingsViewModel.settings.collectAsState()
+    val mdbxDatabasesLoaded by remember(mdbxViewModel) {
+        mdbxViewModel?.allDatabasesLoaded ?: kotlinx.coroutines.flow.flowOf(true)
+    }.collectAsState(initial = mdbxViewModel == null)
     val aggregateUiState = rememberPasswordAggregateUiState(
         aggregateConfig = aggregateConfig,
         searchQuery = searchQuery,
@@ -385,6 +394,27 @@ fun PasswordListContent(
         is CategoryFilter.KeePassDatabaseStarred -> filter.databaseId
         is CategoryFilter.KeePassDatabaseUncategorized -> filter.databaseId
         else -> null
+    }
+    val selectedMdbxDatabaseId = when (val filter = currentFilter) {
+        is CategoryFilter.MdbxDatabase -> filter.databaseId
+        else -> null
+    }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, mdbxViewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                mdbxViewModel?.pruneMissingLocalVaults()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(selectedMdbxDatabaseId, mdbxDatabasesLoaded, mdbxDatabases.map { it.id }) {
+        val selectedId = selectedMdbxDatabaseId ?: return@LaunchedEffect
+        if (!mdbxDatabasesLoaded) return@LaunchedEffect
+        if (mdbxDatabases.none { it.id == selectedId }) {
+            viewModel.setCategoryFilter(CategoryFilter.All)
+        }
     }
     val keepassGroupsForSelectedDbFlow = remember(selectedKeePassDatabaseId, localKeePassViewModel) {
         selectedKeePassDatabaseId?.let { databaseId ->
@@ -554,12 +584,11 @@ fun PasswordListContent(
     var noStackEntryIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var lastCustomFieldEntryIds by remember { mutableStateOf<List<Long>>(emptyList()) }
     val configuredQuickFilterItems = remember(
-        appSettings.passwordListQuickFilterItems,
         appSettings.passwordPageAggregateEnabled,
         aggregateUiState.visibleContentTypes
     ) {
         appendAggregateContentQuickFilterItems(
-            configuredItems = appSettings.passwordListQuickFilterItems,
+            configuredItems = PasswordListQuickFilterItem.DEFAULT_ORDER,
             visibleTypes = aggregateUiState.visibleContentTypes,
             aggregateEnabled = appSettings.passwordPageAggregateEnabled
         )
@@ -1497,11 +1526,14 @@ fun PasswordListContent(
         categories = categories,
         keepassDatabases = keepassDatabases,
         bitwardenVaults = bitwardenVaults,
+        mdbxDatabases = mdbxDatabases,
         viewModel = viewModel,
         localKeePassViewModel = localKeePassViewModel,
         bitwardenViewModel = bitwardenViewModel,
+        mdbxViewModel = mdbxViewModel,
         selectedBitwardenVaultId = selectedBitwardenVaultId,
         selectedKeePassDatabaseId = selectedKeePassDatabaseId,
+        selectedMdbxDatabaseId = selectedMdbxDatabaseId,
         isTopBarSyncing = isTopBarSyncing,
         isArchiveView = isArchiveView,
         isKeePassDatabaseView = isKeePassDatabaseView,

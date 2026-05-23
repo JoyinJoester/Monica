@@ -1,4 +1,4 @@
-﻿package takagi.ru.monica.ui
+package takagi.ru.monica.ui
 
 import android.app.Activity
 import android.content.Context
@@ -235,6 +235,7 @@ fun UnifiedWalletAddScreen(
     initialCategoryId: Long? = null,
     initialKeePassDatabaseId: Long? = null,
     initialKeePassGroupPath: String? = null,
+    initialMdbxDatabaseId: Long? = null,
     initialBitwardenVaultId: Long? = null,
     initialBitwardenFolderId: String? = null,
     modifier: Modifier = Modifier
@@ -347,6 +348,7 @@ fun UnifiedWalletAddScreen(
                         initialCategoryId = initialCategoryId,
                         initialKeePassDatabaseId = initialKeePassDatabaseId,
                         initialKeePassGroupPath = initialKeePassGroupPath,
+                        initialMdbxDatabaseId = initialMdbxDatabaseId,
                         initialBitwardenVaultId = initialBitwardenVaultId,
                         initialBitwardenFolderId = initialBitwardenFolderId,
                         showTopBar = false,
@@ -367,6 +369,7 @@ fun UnifiedWalletAddScreen(
                         initialCategoryId = initialCategoryId,
                         initialKeePassDatabaseId = initialKeePassDatabaseId,
                         initialKeePassGroupPath = initialKeePassGroupPath,
+                        initialMdbxDatabaseId = initialMdbxDatabaseId,
                         initialBitwardenVaultId = initialBitwardenVaultId,
                         initialBitwardenFolderId = initialBitwardenFolderId,
                         showTopBar = false,
@@ -683,6 +686,7 @@ fun SimpleMainScreen(
     bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel(),
     passkeyViewModel: PasskeyViewModel,  // Passkey ViewModel
     localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
+    mdbxViewModel: takagi.ru.monica.viewmodel.MdbxViewModel,
     securityManager: SecurityManager,
     onNavigateToAddPassword: (Long?) -> Unit,
     onNavigateToAddWifi: (Long?) -> Unit = {},
@@ -693,10 +697,10 @@ fun SimpleMainScreen(
     onNavigateToAddBankCard: (Long?) -> Unit,
     onNavigateToAddDocument: (Long?) -> Unit,
     onNavigateToWalletAdd: (CardWalletTab) -> Unit,
-    onPreparePasswordAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit = { _, _, _, _, _ -> },
-    onPrepareTotpAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit = { _, _, _, _, _ -> },
-    onPrepareNoteAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit = { _, _, _, _, _ -> },
-    onPrepareWalletAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit = { _, _, _, _, _ -> },
+    onPreparePasswordAddStorageDefaults: (Long?, Long?, String?, Long?, Long?, String?) -> Unit = { _, _, _, _, _, _ -> },
+    onPrepareTotpAddStorageDefaults: (Long?, Long?, String?, Long?, Long?, String?) -> Unit = { _, _, _, _, _, _ -> },
+    onPrepareNoteAddStorageDefaults: (Long?, Long?, String?, Long?, Long?, String?) -> Unit = { _, _, _, _, _, _ -> },
+    onPrepareWalletAddStorageDefaults: (Long?, Long?, String?, Long?, Long?, String?) -> Unit = { _, _, _, _, _, _ -> },
     onNavigateToAddNote: (Long?) -> Unit,
     onNavigateToNoteDetail: (Long) -> Unit = {},
     onNavigateToPasswordDetail: (Long) -> Unit = {},
@@ -1193,6 +1197,7 @@ fun SimpleMainScreen(
         }
     }
     val keepassDatabases by localKeePassViewModel.allDatabases.collectAsState()
+    val mdbxDatabases by mdbxViewModel.allDatabases.collectAsState()
     val bitwardenVaults by bitwardenViewModel.vaults.collectAsState()
     // 可拖拽导航栏模式开关 (将来可从设置中读取)
     val useDraggableNav = appSettings.useDraggableBottomNav
@@ -1228,6 +1233,7 @@ fun SimpleMainScreen(
                     resolvedDefaults?.categoryId,
                     resolvedDefaults?.keepassDatabaseId,
                     resolvedDefaults?.keepassGroupPath,
+                    resolvedDefaults?.mdbxDatabaseId,
                     resolvedDefaults?.bitwardenVaultId,
                     resolvedDefaults?.bitwardenFolderId
                 )
@@ -1730,8 +1736,10 @@ fun SimpleMainScreen(
                     settingsViewModel = settingsViewModel,
                     securityManager = securityManager,
                     keepassDatabases = keepassDatabases,
+						mdbxDatabases = mdbxDatabases,
                     bitwardenVaults = bitwardenVaults,
                     localKeePassViewModel = localKeePassViewModel,
+                    mdbxViewModel = mdbxViewModel,
                     passwordGroupMode = passwordGroupMode,
                     stackCardMode = stackCardMode,
                     onPasswordOpen = handlePasswordDetailOpen,
@@ -1937,8 +1945,10 @@ fun SimpleMainScreen(
                         noteViewModel = noteViewModel,
                         passkeyViewModel = passkeyViewModel,
                     keepassDatabases = keepassDatabases,
+                    mdbxDatabases = mdbxDatabases,
                     bitwardenVaults = bitwardenVaults,
                     localKeePassViewModel = localKeePassViewModel,
+                    mdbxViewModel = mdbxViewModel,
                     settingsViewModel = settingsViewModel,
                     state = vaultV2PaneState,
                     onOpenPassword = handlePasswordDetailOpen,
@@ -1975,8 +1985,10 @@ fun SimpleMainScreen(
                         settingsViewModel = settingsViewModel,
                         securityManager = securityManager,
                         keepassDatabases = keepassDatabases,
+						mdbxDatabases = mdbxDatabases,
                         bitwardenVaults = bitwardenVaults,
                         localKeePassViewModel = localKeePassViewModel,
+                        mdbxViewModel = mdbxViewModel,
                         timelineViewModel = timelineViewModel,
                         groupMode = passwordGroupMode,
                         stackCardMode = stackCardMode,
@@ -2089,6 +2101,7 @@ fun SimpleMainScreen(
                         initialCategoryId = pendingInlineWalletAddStorageDefaults?.categoryId,
                         initialKeePassDatabaseId = pendingInlineWalletAddStorageDefaults?.keepassDatabaseId,
                         initialKeePassGroupPath = pendingInlineWalletAddStorageDefaults?.keepassGroupPath,
+                        initialMdbxDatabaseId = pendingInlineWalletAddStorageDefaults?.mdbxDatabaseId,
                         initialBitwardenVaultId = pendingInlineWalletAddStorageDefaults?.bitwardenVaultId,
                         initialBitwardenFolderId = pendingInlineWalletAddStorageDefaults?.bitwardenFolderId,
                         showStandaloneSettingsEntry = shouldHideBottomNavigation,
@@ -2127,6 +2140,7 @@ fun SimpleMainScreen(
                         initialCategoryId = pendingInlineNoteAddStorageDefaults?.categoryId,
                         initialKeePassDatabaseId = pendingInlineNoteAddStorageDefaults?.keepassDatabaseId,
                         initialKeePassGroupPath = pendingInlineNoteAddStorageDefaults?.keepassGroupPath,
+                        initialMdbxDatabaseId = pendingInlineNoteAddStorageDefaults?.mdbxDatabaseId,
                         initialBitwardenVaultId = pendingInlineNoteAddStorageDefaults?.bitwardenVaultId,
                         initialBitwardenFolderId = pendingInlineNoteAddStorageDefaults?.bitwardenFolderId,
                         showStandaloneSettingsEntry = shouldHideBottomNavigation,
@@ -2314,57 +2328,61 @@ fun SimpleMainScreen(
     }
     }
 
-    val prepareTotpAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit = { categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
+    val prepareTotpAddStorageDefaults: (Long?, Long?, String?, Long?, Long?, String?) -> Unit = { categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, bitwardenVaultId, bitwardenFolderId ->
         if (isCompactWidth) {
             pendingInlineTotpAddStorageDefaults = null
-            onPrepareTotpAddStorageDefaults(categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId)
+            onPrepareTotpAddStorageDefaults(categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, bitwardenVaultId, bitwardenFolderId)
         } else {
             pendingInlineTotpAddStorageDefaults = NewItemStorageDefaults(
                 categoryId = categoryId,
                 keepassDatabaseId = keepassDatabaseId,
                 keepassGroupPath = keepassGroupPath,
+                mdbxDatabaseId = mdbxDatabaseId,
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenFolderId = bitwardenFolderId
             ).takeIf { it.hasAnyValue() }
         }
     }
-    val preparePasswordAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit = { categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
+    val preparePasswordAddStorageDefaults: (Long?, Long?, String?, Long?, Long?, String?) -> Unit = { categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, bitwardenVaultId, bitwardenFolderId ->
         if (isCompactWidth) {
             pendingInlinePasswordAddStorageDefaults = null
-            onPreparePasswordAddStorageDefaults(categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId)
+            onPreparePasswordAddStorageDefaults(categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, bitwardenVaultId, bitwardenFolderId)
         } else {
             pendingInlinePasswordAddStorageDefaults = NewItemStorageDefaults(
                 categoryId = categoryId,
                 keepassDatabaseId = keepassDatabaseId,
                 keepassGroupPath = keepassGroupPath,
+                mdbxDatabaseId = mdbxDatabaseId,
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenFolderId = bitwardenFolderId
             ).takeIf { it.hasAnyValue() }
         }
     }
-    val prepareNoteAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit = { categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
+    val prepareNoteAddStorageDefaults: (Long?, Long?, String?, Long?, Long?, String?) -> Unit = { categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, bitwardenVaultId, bitwardenFolderId ->
         if (isCompactWidth) {
             pendingInlineNoteAddStorageDefaults = null
-            onPrepareNoteAddStorageDefaults(categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId)
+            onPrepareNoteAddStorageDefaults(categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, bitwardenVaultId, bitwardenFolderId)
         } else {
             pendingInlineNoteAddStorageDefaults = NewItemStorageDefaults(
                 categoryId = categoryId,
                 keepassDatabaseId = keepassDatabaseId,
                 keepassGroupPath = keepassGroupPath,
+                mdbxDatabaseId = mdbxDatabaseId,
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenFolderId = bitwardenFolderId
             ).takeIf { it.hasAnyValue() }
         }
     }
-    val prepareWalletAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit = { categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
+    val prepareWalletAddStorageDefaults: (Long?, Long?, String?, Long?, Long?, String?) -> Unit = { categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, bitwardenVaultId, bitwardenFolderId ->
         if (isCompactWidth) {
             pendingInlineWalletAddStorageDefaults = null
-            onPrepareWalletAddStorageDefaults(categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId)
+            onPrepareWalletAddStorageDefaults(categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, bitwardenVaultId, bitwardenFolderId)
         } else {
             pendingInlineWalletAddStorageDefaults = NewItemStorageDefaults(
                 categoryId = categoryId,
                 keepassDatabaseId = keepassDatabaseId,
                 keepassGroupPath = keepassGroupPath,
+                mdbxDatabaseId = mdbxDatabaseId,
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenFolderId = bitwardenFolderId
             ).takeIf { it.hasAnyValue() }

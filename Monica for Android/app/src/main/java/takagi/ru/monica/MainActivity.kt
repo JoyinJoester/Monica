@@ -85,7 +85,9 @@ import takagi.ru.monica.data.dedup.DedupEngine
 import takagi.ru.monica.data.dedup.DedupIgnoreStore
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.PasskeyRepository
+import takagi.ru.monica.repository.MdbxRepository
 import takagi.ru.monica.repository.SecureItemRepository
+import takagi.ru.monica.repository.MdbxVaultStore
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.security.lock.MainAppAccessState
 import takagi.ru.monica.security.lock.MainAppLockPolicy
@@ -120,6 +122,8 @@ import takagi.ru.monica.ui.screens.PaymentScreen
 import takagi.ru.monica.ui.screens.SupportAuthorScreen
 import takagi.ru.monica.ui.screens.OneDriveBackupScreen
 import takagi.ru.monica.ui.screens.WebDavBackupScreen
+import takagi.ru.monica.ui.screens.MdbxManagerScreen
+import takagi.ru.monica.ui.screens.MdbxCreateVaultScreen
 import takagi.ru.monica.ui.screens.KeePassKdbxViewModel
 import takagi.ru.monica.ui.theme.MonicaTheme
 import takagi.ru.monica.utils.LocaleHelper
@@ -149,6 +153,7 @@ private data class PendingAddStorageDefaults(
     val categoryId: Long? = null,
     val keepassDatabaseId: Long? = null,
     val keepassGroupPath: String? = null,
+    val mdbxDatabaseId: Long? = null,
     val bitwardenVaultId: Long? = null,
     val bitwardenFolderId: String? = null
 )
@@ -162,6 +167,7 @@ private data class PendingSendDraft(
 private const val KEY_PENDING_ADD_CATEGORY_ID = "pending_add_category_id"
 private const val KEY_PENDING_ADD_KEEPASS_DATABASE_ID = "pending_add_keepass_database_id"
 private const val KEY_PENDING_ADD_KEEPASS_GROUP_PATH = "pending_add_keepass_group_path"
+private const val KEY_PENDING_ADD_MDBX_DATABASE_ID = "pending_add_mdbx_database_id"
 private const val KEY_PENDING_ADD_BITWARDEN_VAULT_ID = "pending_add_bitwarden_vault_id"
 private const val KEY_PENDING_ADD_BITWARDEN_FOLDER_ID = "pending_add_bitwarden_folder_id"
 private const val KEY_PENDING_SEND_TITLE = "pending_send_title"
@@ -172,6 +178,7 @@ private fun PendingAddStorageDefaults.hasAnyValue(): Boolean {
     return categoryId != null ||
         keepassDatabaseId != null ||
         !keepassGroupPath.isNullOrBlank() ||
+        mdbxDatabaseId != null ||
         bitwardenVaultId != null ||
         !bitwardenFolderId.isNullOrBlank()
 }
@@ -186,6 +193,7 @@ private fun SavedStateHandle.clearPendingAddStorageDefaults() {
     remove<Long>(KEY_PENDING_ADD_CATEGORY_ID)
     remove<Long>(KEY_PENDING_ADD_KEEPASS_DATABASE_ID)
     remove<String>(KEY_PENDING_ADD_KEEPASS_GROUP_PATH)
+    remove<Long>(KEY_PENDING_ADD_MDBX_DATABASE_ID)
     remove<Long>(KEY_PENDING_ADD_BITWARDEN_VAULT_ID)
     remove<String>(KEY_PENDING_ADD_BITWARDEN_FOLDER_ID)
 }
@@ -217,6 +225,11 @@ private fun SavedStateHandle.setPendingAddStorageDefaults(defaults: PendingAddSt
         set(KEY_PENDING_ADD_KEEPASS_GROUP_PATH, keepassGroupPath)
     } else {
         remove<String>(KEY_PENDING_ADD_KEEPASS_GROUP_PATH)
+    }
+    if (defaults.mdbxDatabaseId != null) {
+        set(KEY_PENDING_ADD_MDBX_DATABASE_ID, defaults.mdbxDatabaseId)
+    } else {
+        remove<Long>(KEY_PENDING_ADD_MDBX_DATABASE_ID)
     }
     if (defaults.bitwardenVaultId != null) {
         set(KEY_PENDING_ADD_BITWARDEN_VAULT_ID, defaults.bitwardenVaultId)
@@ -262,6 +275,7 @@ private fun SavedStateHandle.consumePendingAddStorageDefaults(): PendingAddStora
         categoryId = get<Long>(KEY_PENDING_ADD_CATEGORY_ID),
         keepassDatabaseId = get<Long>(KEY_PENDING_ADD_KEEPASS_DATABASE_ID),
         keepassGroupPath = get<String>(KEY_PENDING_ADD_KEEPASS_GROUP_PATH)?.takeIf { it.isNotBlank() },
+        mdbxDatabaseId = get<Long>(KEY_PENDING_ADD_MDBX_DATABASE_ID),
         bitwardenVaultId = get<Long>(KEY_PENDING_ADD_BITWARDEN_VAULT_ID),
         bitwardenFolderId = get<String>(KEY_PENDING_ADD_BITWARDEN_FOLDER_ID)?.takeIf { it.isNotBlank() }
     )
@@ -294,14 +308,22 @@ class MainActivity : BaseMonicaActivity() {
     // attachBaseContext 已由 BaseMonicaActivity 统一处理（语言、超时保护）
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState) // BaseMonicaActivity 已调用 enableEdgeToEdge()
 
         // 注意：enableEdgeToEdge() 已在基类调用，这里不再重复
 
-        installSplashScreen()
-
         // Initialize dependencies
         val database = PasswordDatabase.getDatabase(this)
+        val securityManager = SecurityManager(this)
+        val mdbxRepository: MdbxRepository = MdbxVaultStore(
+            this.applicationContext,
+            database.localMdbxDatabaseDao(),
+            securityManager,
+            database.mdbxRemoteSourceDao(),
+            database.passwordEntryDao(),
+            database.secureItemDao()
+        )
         val repository = PasswordRepository(
             database.passwordEntryDao(), 
             database.categoryDao(),
@@ -309,10 +331,13 @@ class MainActivity : BaseMonicaActivity() {
             database.secureItemDao(),
             database.passkeyDao(),
             database.passwordArchiveSyncMetaDao(),
-            database.passwordHistoryDao()
+            database.passwordHistoryDao(),
+            mdbxRepository = mdbxRepository
         )
-        val secureItemRepository = takagi.ru.monica.repository.SecureItemRepository(database.secureItemDao())
-        val securityManager = SecurityManager(this)
+        val secureItemRepository = takagi.ru.monica.repository.SecureItemRepository(
+            database.secureItemDao(),
+            mdbxRepository
+        )
         val settingsManager = SettingsManager(this)
         
         // Initialize OperationLogger for timeline tracking
@@ -331,7 +356,7 @@ class MainActivity : BaseMonicaActivity() {
         }
 
         setContent {
-            MonicaApp(repository, secureItemRepository, securityManager, settingsManager, database)
+            MonicaApp(repository, secureItemRepository, securityManager, settingsManager, database, mdbxRepository)
         }
     }
     
@@ -409,7 +434,8 @@ fun MonicaApp(
     secureItemRepository: takagi.ru.monica.repository.SecureItemRepository,
     securityManager: SecurityManager,
     settingsManager: SettingsManager,
-    database: PasswordDatabase
+    database: PasswordDatabase,
+    mdbxRepository: MdbxRepository
 ) {
     val context = LocalContext.current
     val activity = context as ComponentActivity
@@ -481,7 +507,7 @@ fun MonicaApp(
     )
     
     // Passkey 通行密钥
-    val passkeyRepository = remember { takagi.ru.monica.repository.PasskeyRepository(database.passkeyDao()) }
+    val passkeyRepository = remember { takagi.ru.monica.repository.PasskeyRepository(database.passkeyDao(), mdbxRepository) }
     val passkeyViewModel: takagi.ru.monica.viewmodel.PasskeyViewModel = viewModel {
         takagi.ru.monica.viewmodel.PasskeyViewModel(
             repository = passkeyRepository,
@@ -499,6 +525,20 @@ fun MonicaApp(
         takagi.ru.monica.viewmodel.LocalKeePassViewModel(
             context.applicationContext as android.app.Application,
             database.localKeePassDatabaseDao(),
+            securityManager
+        )
+    }
+
+    // MDBX 数据库管理
+    val mdbxViewModel: takagi.ru.monica.viewmodel.MdbxViewModel = viewModel {
+        takagi.ru.monica.viewmodel.MdbxViewModel(
+            context.applicationContext as android.app.Application,
+            database.localMdbxDatabaseDao(),
+            database.mdbxRemoteSourceDao(),
+            database.passwordEntryDao(),
+            database.secureItemDao(),
+            database.passkeyDao(),
+            database.attachmentDao(),
             securityManager
         )
     }
@@ -595,6 +635,8 @@ fun MonicaApp(
                     passkeyViewModel = passkeyViewModel,
                     keePassViewModel = keePassViewModel,
                     localKeePassViewModel = localKeePassViewModel,
+                    mdbxViewModel = mdbxViewModel,
+                    mdbxRepository = mdbxRepository,
                     securityManager = securityManager,
                     repository = repository,
                     database = database,
@@ -625,6 +667,8 @@ fun MonicaContent(
     passkeyViewModel: takagi.ru.monica.viewmodel.PasskeyViewModel,
     keePassViewModel: KeePassKdbxViewModel,
     localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
+    mdbxViewModel: takagi.ru.monica.viewmodel.MdbxViewModel,
+    mdbxRepository: MdbxRepository,
     securityManager: SecurityManager,
     repository: PasswordRepository,
     database: PasswordDatabase,
@@ -859,6 +903,7 @@ fun MonicaContent(
                 bitwardenViewModel = bitwardenViewModel,
                 passkeyViewModel = passkeyViewModel,
                 localKeePassViewModel = localKeePassViewModel,
+                mdbxViewModel = mdbxViewModel,
                 securityManager = securityManager,
                 onNavigateToStandaloneSettings = {
                     navController.navigate(Screen.Settings.route)
@@ -896,7 +941,7 @@ fun MonicaContent(
                 onNavigateToWalletAdd = { initialType ->
                     navController.navigate(Screen.WalletAdd.createRoute(initialType.name))
                 },
-                onPreparePasswordAddStorageDefaults = { categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
+                onPreparePasswordAddStorageDefaults = { categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, bitwardenVaultId, bitwardenFolderId ->
                     navController.currentBackStackEntry
                         ?.savedStateHandle
                         ?.setPendingAddStorageDefaults(
@@ -904,12 +949,13 @@ fun MonicaContent(
                                 categoryId = categoryId,
                                 keepassDatabaseId = keepassDatabaseId,
                                 keepassGroupPath = keepassGroupPath,
+                                mdbxDatabaseId = mdbxDatabaseId,
                                 bitwardenVaultId = bitwardenVaultId,
                                 bitwardenFolderId = bitwardenFolderId
                             )
                         )
                 },
-                onPrepareTotpAddStorageDefaults = { categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
+                onPrepareTotpAddStorageDefaults = { categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, bitwardenVaultId, bitwardenFolderId ->
                     navController.currentBackStackEntry
                         ?.savedStateHandle
                         ?.setPendingAddStorageDefaults(
@@ -917,12 +963,13 @@ fun MonicaContent(
                                 categoryId = categoryId,
                                 keepassDatabaseId = keepassDatabaseId,
                                 keepassGroupPath = keepassGroupPath,
+                                mdbxDatabaseId = mdbxDatabaseId,
                                 bitwardenVaultId = bitwardenVaultId,
                                 bitwardenFolderId = bitwardenFolderId
                             )
                         )
                 },
-                onPrepareNoteAddStorageDefaults = { categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
+                onPrepareNoteAddStorageDefaults = { categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, bitwardenVaultId, bitwardenFolderId ->
                     navController.currentBackStackEntry
                         ?.savedStateHandle
                         ?.setPendingAddStorageDefaults(
@@ -930,12 +977,13 @@ fun MonicaContent(
                                 categoryId = categoryId,
                                 keepassDatabaseId = keepassDatabaseId,
                                 keepassGroupPath = keepassGroupPath,
+                                mdbxDatabaseId = mdbxDatabaseId,
                                 bitwardenVaultId = bitwardenVaultId,
                                 bitwardenFolderId = bitwardenFolderId
                             )
                         )
                 },
-                onPrepareWalletAddStorageDefaults = { categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
+                onPrepareWalletAddStorageDefaults = { categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, bitwardenVaultId, bitwardenFolderId ->
                     navController.currentBackStackEntry
                         ?.savedStateHandle
                         ?.setPendingAddStorageDefaults(
@@ -943,6 +991,7 @@ fun MonicaContent(
                                 categoryId = categoryId,
                                 keepassDatabaseId = keepassDatabaseId,
                                 keepassGroupPath = keepassGroupPath,
+                                mdbxDatabaseId = mdbxDatabaseId,
                                 bitwardenVaultId = bitwardenVaultId,
                                 bitwardenFolderId = bitwardenFolderId
                             )
@@ -1123,10 +1172,12 @@ fun MonicaContent(
                 bankCardViewModel = bankCardViewModel,
                 noteViewModel = noteViewModel,
                 localKeePassViewModel = localKeePassViewModel,
+                localMdbxViewModel = mdbxViewModel,
                 passwordId = if (passwordId == -1L) null else passwordId,
                 initialCategoryId = pendingStorageDefaults?.categoryId,
                 initialKeePassDatabaseId = pendingStorageDefaults?.keepassDatabaseId,
                 initialKeePassGroupPath = pendingStorageDefaults?.keepassGroupPath,
+                initialMdbxDatabaseId = pendingStorageDefaults?.mdbxDatabaseId,
                 initialBitwardenVaultId = pendingStorageDefaults?.bitwardenVaultId,
                 initialBitwardenFolderId = pendingStorageDefaults?.bitwardenFolderId,
                 pendingQrResult = qrResult,
@@ -1454,6 +1505,7 @@ fun MonicaContent(
                     val categoryId: Long? = null,
                     val keepassDatabaseId: Long? = null,
                     val keepassGroupPath: String? = null,
+                    val mdbxDatabaseId: Long? = null,
                     val bitwardenVaultId: Long? = null,
                     val bitwardenFolderId: String? = null
                 )
@@ -1476,6 +1528,9 @@ fun MonicaContent(
                                 keepassDatabaseId = filter.databaseId,
                                 keepassGroupPath = filter.groupPath
                             )
+                        }
+                        is takagi.ru.monica.viewmodel.TotpCategoryFilter.MdbxDatabase -> {
+                            TotpStorageDefaults(mdbxDatabaseId = filter.databaseId)
                         }
                         is takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenVault -> {
                             TotpStorageDefaults(bitwardenVaultId = filter.vaultId)
@@ -1511,6 +1566,10 @@ fun MonicaContent(
                     hasPendingStorageDefaults -> pendingStorageDefaults?.keepassGroupPath
                     else -> filterDefaults.keepassGroupPath
                 }
+                val initialMdbxDatabaseId = when {
+                    hasPendingStorageDefaults -> pendingStorageDefaults?.mdbxDatabaseId
+                    else -> filterDefaults.mdbxDatabaseId
+                }
                 val initialVaultId = when {
                     initialBitwardenVaultId != null -> initialBitwardenVaultId
                     hasPendingStorageDefaults -> pendingStorageDefaults?.bitwardenVaultId
@@ -1529,6 +1588,7 @@ fun MonicaContent(
                     initialCategoryId = initialCategoryId,
                     initialKeePassDatabaseId = initialKeePassDatabaseId,
                     initialKeePassGroupPath = resolvedInitialKeePassGroupPath,
+                    initialMdbxDatabaseId = initialMdbxDatabaseId,
                     initialBitwardenVaultId = initialVaultId,
                     initialBitwardenFolderId = initialFolderId,
                     initialReplicaGroupId = initialReplicaGroupId,
@@ -1600,6 +1660,7 @@ fun MonicaContent(
                     initialCategoryId = pendingStorageDefaults?.categoryId,
                     initialKeePassDatabaseId = pendingStorageDefaults?.keepassDatabaseId,
                     initialKeePassGroupPath = pendingStorageDefaults?.keepassGroupPath,
+                    initialMdbxDatabaseId = pendingStorageDefaults?.mdbxDatabaseId,
                     initialBitwardenVaultId = pendingStorageDefaults?.bitwardenVaultId,
                     initialBitwardenFolderId = pendingStorageDefaults?.bitwardenFolderId
                 )
@@ -1629,6 +1690,7 @@ fun MonicaContent(
                 initialCategoryId = pendingStorageDefaults?.categoryId,
                 initialKeePassDatabaseId = pendingStorageDefaults?.keepassDatabaseId,
                 initialKeePassGroupPath = pendingStorageDefaults?.keepassGroupPath,
+                initialMdbxDatabaseId = pendingStorageDefaults?.mdbxDatabaseId,
                 initialBitwardenVaultId = pendingStorageDefaults?.bitwardenVaultId,
                 initialBitwardenFolderId = pendingStorageDefaults?.bitwardenFolderId,
                 onNavigateBack = {
@@ -1660,6 +1722,7 @@ fun MonicaContent(
                 initialCategoryId = pendingStorageDefaults?.categoryId,
                 initialKeePassDatabaseId = pendingStorageDefaults?.keepassDatabaseId,
                 initialKeePassGroupPath = pendingStorageDefaults?.keepassGroupPath,
+                initialMdbxDatabaseId = pendingStorageDefaults?.mdbxDatabaseId,
                 initialBitwardenVaultId = pendingStorageDefaults?.bitwardenVaultId,
                 initialBitwardenFolderId = pendingStorageDefaults?.bitwardenFolderId,
                 onNavigateBack = {
@@ -1713,6 +1776,7 @@ fun MonicaContent(
                 initialCategoryId = pendingStorageDefaults?.categoryId,
                 initialKeePassDatabaseId = pendingStorageDefaults?.keepassDatabaseId,
                 initialKeePassGroupPath = pendingStorageDefaults?.keepassGroupPath,
+                initialMdbxDatabaseId = pendingStorageDefaults?.mdbxDatabaseId,
                 initialBitwardenVaultId = pendingStorageDefaults?.bitwardenVaultId,
                 initialBitwardenFolderId = pendingStorageDefaults?.bitwardenFolderId,
                 onNavigateBack = {
@@ -2322,6 +2386,9 @@ fun MonicaContent(
                 onNavigateToPageCustomization = {
                     navController.navigate(Screen.PageAdjustmentCustomization.route)
                 },
+                onNavigateToMdbx = {
+                    navController.navigate(Screen.MdbxManager.route)
+                },
                 onClearAllData = { clearPasswords: Boolean, clearTotp: Boolean, clearNotes: Boolean, clearDocuments: Boolean, clearBankCards: Boolean, clearGeneratorHistory: Boolean ->
                     // 清空所有数据
                     android.util.Log.d(
@@ -2574,6 +2641,39 @@ fun MonicaContent(
         }
 
         composable(
+            route = Screen.MdbxManager.route,
+            enterTransition = { slideInFromRight() },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { slideOutToRight() }
+        ) {
+            MdbxManagerScreen(
+                viewModel = mdbxViewModel,
+                onNavigateBack = {
+                    navController.popBackStack()
+                },
+                onNavigateToCreateVault = {
+                    navController.navigate(Screen.MdbxCreateVault.route)
+                }
+            )
+        }
+
+        composable(
+            route = Screen.MdbxCreateVault.route,
+            enterTransition = { slideInFromRight() },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { slideOutToRight() }
+        ) {
+            MdbxCreateVaultScreen(
+                viewModel = mdbxViewModel,
+                onNavigateBack = {
+                    navController.popBackStack()
+                }
+            )
+        }
+
+        composable(
             route = Screen.AutofillSettings.route,
             enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
@@ -2791,6 +2891,9 @@ fun MonicaContent(
                 viewModel = settingsViewModel,
                 onNavigateBack = {
                     navController.popBackStack()
+                },
+                onNavigateToMdbx = {
+                    navController.navigate(Screen.MdbxManager.route)
                 }
             )
             }
@@ -3056,7 +3159,7 @@ fun MonicaContent(
         ) {
             val context = LocalContext.current
             val passkeyRepository = remember(context.applicationContext) {
-                PasskeyRepository(database.passkeyDao())
+                PasskeyRepository(database.passkeyDao(), mdbxRepository)
             }
             val dedupViewModel: DedupEngineViewModel = viewModel {
                 DedupEngineViewModel(

@@ -11,6 +11,7 @@ import takagi.ru.monica.data.PasswordPageContentType
 import takagi.ru.monica.data.UnmatchedIconHandlingStrategy
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.LocalMdbxDatabase
 import takagi.ru.monica.data.model.TimelineEvent
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.common.layout.DetailPane
@@ -28,6 +29,7 @@ import takagi.ru.monica.viewmodel.PasskeyViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.SettingsViewModel
 import takagi.ru.monica.viewmodel.TimelineViewModel
+import takagi.ru.monica.viewmodel.MdbxViewModel
 
 @OptIn(androidx.compose.animation.ExperimentalSharedTransitionApi::class)
 @Composable
@@ -38,8 +40,10 @@ internal fun PasswordTabPane(
     settingsViewModel: SettingsViewModel,
     securityManager: SecurityManager,
     keepassDatabases: List<LocalKeePassDatabase>,
+    mdbxDatabases: List<LocalMdbxDatabase> = emptyList(),
     bitwardenVaults: List<BitwardenVault>,
     localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
+    mdbxViewModel: MdbxViewModel? = null,
     timelineViewModel: TimelineViewModel,
     groupMode: String,
     stackCardMode: StackCardMode,
@@ -101,8 +105,10 @@ internal fun PasswordTabPane(
             settingsViewModel = settingsViewModel,
             securityManager = securityManager,
             keepassDatabases = keepassDatabases,
+            mdbxDatabases = mdbxDatabases,
             bitwardenVaults = bitwardenVaults,
             localKeePassViewModel = localKeePassViewModel,
+            mdbxViewModel = mdbxViewModel,
             groupMode = groupMode,
             stackCardMode = stackCardMode,
             onRenameCategory = { category ->
@@ -186,6 +192,8 @@ internal fun PasswordTabPane(
                         initialKeePassGroupPath = passwordNewItemDefaults.keepassGroupPath,
                         initialBitwardenVaultId = passwordNewItemDefaults.bitwardenVaultId,
                         initialBitwardenFolderId = passwordNewItemDefaults.bitwardenFolderId,
+                        initialMdbxDatabaseId = passwordNewItemDefaults.mdbxDatabaseId,
+                        mdbxDatabasesFallback = mdbxDatabases,
                         onSwitchToWifi = { targetId ->
                             onInlinePasswordEditorBack()
                             onNavigateToAddWifi(targetId)

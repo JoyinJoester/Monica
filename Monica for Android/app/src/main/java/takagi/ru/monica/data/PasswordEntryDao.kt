@@ -167,6 +167,26 @@ interface PasswordEntryDao {
     )
     suspend fun updateKeePassDatabaseForPasswords(ids: List<Long>, databaseId: Long?)
 
+
+    @Query(
+        """
+        UPDATE password_entries
+        SET mdbx_database_id = :databaseId,
+            keepassDatabaseId = NULL,
+            keepassGroupPath = NULL,
+            keepass_entry_uuid = NULL,
+            keepass_group_uuid = NULL,
+            bitwarden_vault_id = NULL,
+            bitwarden_cipher_id = NULL,
+            bitwarden_folder_id = NULL,
+            bitwarden_revision_date = NULL,
+            bitwarden_local_modified = 0,
+            updatedAt = :now
+        WHERE id IN (:ids)
+        """
+    )
+    suspend fun updateMdbxDatabaseForPasswords(ids: List<Long>, databaseId: Long?, now: Long = System.currentTimeMillis())
+
     @Query(
         """
         UPDATE password_entries
@@ -260,6 +280,9 @@ interface PasswordEntryDao {
         """
     )
     suspend fun deleteAllLocalPasswordEntries()
+
+    @Query("DELETE FROM password_entries WHERE mdbx_database_id = :databaseId")
+    suspend fun deleteAllByMdbxDatabaseId(databaseId: Long)
     
     /**
      * 检查是否存在相同的密码条目(根据title、username、website匹配)

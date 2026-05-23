@@ -128,6 +128,7 @@ import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.TotpViewModel
 
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
+import takagi.ru.monica.viewmodel.MdbxViewModel
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.KeePassOperationBlockReason
 import takagi.ru.monica.data.bitwarden.BitwardenVault
@@ -179,12 +180,15 @@ fun AddEditPasswordScreen(
     bankCardViewModel: BankCardViewModel? = null,
     noteViewModel: NoteViewModel? = null,
     localKeePassViewModel: LocalKeePassViewModel? = null,
+    localMdbxViewModel: MdbxViewModel? = null,
+    mdbxDatabasesFallback: List<takagi.ru.monica.data.LocalMdbxDatabase> = emptyList(),
     passwordId: Long?,
     initialDraft: AddEditPasswordInitialDraft? = null,
     forceShowAppBinding: Boolean = false,
     initialCategoryId: Long? = null,
     initialKeePassDatabaseId: Long? = null,
     initialKeePassGroupPath: String? = null,
+    initialMdbxDatabaseId: Long? = null,
     initialBitwardenVaultId: Long? = null,
     initialBitwardenFolderId: String? = null,
     pendingQrResult: String? = null,
@@ -310,7 +314,13 @@ fun AddEditPasswordScreen(
     var keepassDatabaseId by rememberSaveable { mutableStateOf<Long?>(null) }
     var keepassGroupPath by rememberSaveable { mutableStateOf<String?>(null) }
     val keepassDatabases by (localKeePassViewModel?.allDatabases ?: kotlinx.coroutines.flow.flowOf(emptyList())).collectAsState(initial = emptyList())
-    
+
+    // MDBX 数据库选择
+    var mdbxDatabaseId by rememberSaveable { mutableStateOf<Long?>(null) }
+    val mdbxDatabases by (localMdbxViewModel?.allDatabases
+        ?: database.localMdbxDatabaseDao().getAllDatabases()
+    ).collectAsState(initial = mdbxDatabasesFallback)
+
     // Bitwarden Vault 选择
     var bitwardenVaultId by rememberSaveable { mutableStateOf<Long?>(null) }
     var bitwardenFolderId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -319,6 +329,7 @@ fun AddEditPasswordScreen(
     val hasExplicitInitialStorage = initialCategoryId != null ||
         initialKeePassDatabaseId != null ||
         initialKeePassGroupPath != null ||
+        initialMdbxDatabaseId != null ||
         initialBitwardenVaultId != null ||
         initialBitwardenFolderId != null
     val selectedStorageTargets = remember { mutableStateListOf<StorageTarget>() }
@@ -537,6 +548,7 @@ fun AddEditPasswordScreen(
                 categoryId = primaryTarget.categoryId
                 keepassDatabaseId = null
                 keepassGroupPath = null
+                mdbxDatabaseId = null
                 bitwardenVaultId = null
                 bitwardenFolderId = null
             }
@@ -544,6 +556,7 @@ fun AddEditPasswordScreen(
                 categoryId = null
                 keepassDatabaseId = primaryTarget.databaseId
                 keepassGroupPath = primaryTarget.groupPath
+                mdbxDatabaseId = null
                 bitwardenVaultId = null
                 bitwardenFolderId = null
             }
@@ -551,13 +564,23 @@ fun AddEditPasswordScreen(
                 categoryId = null
                 keepassDatabaseId = null
                 keepassGroupPath = null
+                mdbxDatabaseId = null
                 bitwardenVaultId = primaryTarget.vaultId
                 bitwardenFolderId = primaryTarget.folderId
+            }
+            is StorageTarget.Mdbx -> {
+                categoryId = null
+                keepassDatabaseId = null
+                keepassGroupPath = null
+                mdbxDatabaseId = primaryTarget.databaseId
+                bitwardenVaultId = null
+                bitwardenFolderId = null
             }
             null -> {
                 categoryId = null
                 keepassDatabaseId = null
                 keepassGroupPath = null
+                mdbxDatabaseId = null
                 bitwardenVaultId = null
                 bitwardenFolderId = null
             }
@@ -1065,6 +1088,7 @@ fun AddEditPasswordScreen(
                     categoryId = entry.categoryId
                     keepassDatabaseId = entry.keepassDatabaseId
                     keepassGroupPath = entry.keepassGroupPath
+                    mdbxDatabaseId = entry.mdbxDatabaseId
                     bitwardenVaultId = entry.bitwardenVaultId
                     bitwardenFolderId = entry.bitwardenFolderId
                     currentReplicaGroupId = entry.replicaGroupId
@@ -1328,6 +1352,7 @@ fun AddEditPasswordScreen(
                 boundNoteId = boundNoteId,
                 keepassDatabaseId = keepassDatabaseId,
                 keepassGroupPath = keepassGroupPath,
+                mdbxDatabaseId = mdbxDatabaseId,
                 bitwardenVaultId = bitwardenVaultId,  // ✅ 保存到 Bitwarden Vault
                 bitwardenFolderId = bitwardenFolderId,
                 authenticatorKey = currentAuthKey,  // ✅ 保存验证器密钥
@@ -1508,6 +1533,7 @@ fun AddEditPasswordScreen(
         initialCategoryId,
         initialKeePassDatabaseId,
         initialKeePassGroupPath,
+        initialMdbxDatabaseId,
         initialBitwardenVaultId,
         initialBitwardenFolderId
     ) {
@@ -1521,6 +1547,7 @@ fun AddEditPasswordScreen(
                         categoryId = initialCategoryId,
                         keepassDatabaseId = initialKeePassDatabaseId,
                         keepassGroupPath = initialKeePassGroupPath,
+                        mdbxDatabaseId = initialMdbxDatabaseId,
                         bitwardenVaultId = initialBitwardenVaultId,
                         bitwardenFolderId = initialBitwardenFolderId
                     )
@@ -1534,6 +1561,7 @@ fun AddEditPasswordScreen(
             is CategoryFilter.KeePassGroupFilter -> StorageTarget.KeePass(filter.databaseId, filter.groupPath)
             is CategoryFilter.KeePassDatabaseStarred -> StorageTarget.KeePass(filter.databaseId, null)
             is CategoryFilter.KeePassDatabaseUncategorized -> StorageTarget.KeePass(filter.databaseId, null)
+            is CategoryFilter.MdbxDatabase -> StorageTarget.Mdbx(filter.databaseId)
             is CategoryFilter.BitwardenVault -> StorageTarget.Bitwarden(filter.vaultId, null)
             is CategoryFilter.BitwardenFolderFilter -> StorageTarget.Bitwarden(filter.vaultId, filter.folderId)
             is CategoryFilter.BitwardenVaultStarred -> StorageTarget.Bitwarden(filter.vaultId, null)
@@ -1634,6 +1662,7 @@ fun AddEditPasswordScreen(
                     existingTargetKeys = existingReplicaTargetKeys,
                     categories = categories,
                     keepassDatabases = keepassDatabases,
+                    mdbxDatabases = mdbxDatabases,
                     bitwardenVaults = bitwardenVaults,
                     bitwardenFolderDao = database.bitwardenFolderDao(),
                     isEditing = isEditing,
@@ -3172,6 +3201,7 @@ fun AddEditPasswordScreen(
         lockedTargetKeys = existingReplicaTargetKeys,
         categories = categories,
         keepassDatabases = keepassDatabases,
+        mdbxDatabases = mdbxDatabases,
         bitwardenVaults = bitwardenVaults,
         getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
         getKeePassGroups = localKeePassViewModel?.let { keepassVm -> keepassVm::getGroups }

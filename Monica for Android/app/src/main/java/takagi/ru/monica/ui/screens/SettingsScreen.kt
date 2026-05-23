@@ -89,6 +89,7 @@ fun SettingsScreen(
     onNavigateToMonicaPlus: () -> Unit = {},
     onNavigateToExtensions: () -> Unit = {},
     onNavigateToPageCustomization: () -> Unit = {},
+    onNavigateToMdbx: () -> Unit = {},
     onClearAllData: (Boolean, Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit = { _, _, _, _, _, _ -> },
     showTopBar: Boolean = true  // 添加参数控制是否显示顶栏
 ) {

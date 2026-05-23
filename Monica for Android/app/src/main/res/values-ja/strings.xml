@@ -612,7 +612,7 @@
     <string name="settings_import_data_description">バックアップファイルから復元</string>
     <string name="settings_version_info">バージョン情報</string>
     <string name="version_info_full_version_label">完全版バージョン</string>
-    <string name="settings_version_number">V1.0.287</string>
+    <string name="settings_version_number">V1.0.288</string>
     <string name="settings_support_author">作者をサポート</string>
     <string name="settings_support_author_description">ご支援ありがとうございます</string>
     <string name="settings_privacy_policy">プライバシーポリシー</string>
@@ -2575,11 +2575,6 @@
     <string name="preview_features_title">プレビュー機能</string>
     <string name="preview_features_description">実験的な機能を試してみる</string>
     <string name="developer_settings_subtitle">ログ表示および開発者デバッグ ツール</string>
-    <string name="developer_mndx_create_demo_onedrive">OneDrive で MNDX デモ ボールトを作成する</string>
-    <string name="developer_mndx_create_demo_onedrive_desc">実験的: OneDrive に読み取り可能な .mndx デモを作成します。暗号化されません。実データには使わないでください。</string>
-    <string name="developer_mndx_create_demo_running">OneDrive で MNDX デモ ボールトを作成しています...</string>
-    <string name="developer_mndx_create_demo_success">%2$d ファイルを使用して %1$s を作成しました</string>
-    <string name="developer_mndx_create_demo_failed">MNDX デモの作成に失敗しました: %1$s</string>
     <string name="developer_filter_all">全て</string>
     <string name="developer_filter_errors">エラー</string>
     <string name="developer_filter_warnings">警告</string>

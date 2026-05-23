@@ -56,6 +56,7 @@ interface PasskeyDao {
         WHERE credential_id = :credentialId
           AND bitwarden_vault_id IS NULL
           AND keepass_database_id IS NULL
+          AND mdbx_database_id IS NULL
         LIMIT 1
     """)
     suspend fun getLocalPasskeyById(credentialId: String): PasskeyEntry?
@@ -116,6 +117,7 @@ interface PasskeyDao {
         SELECT COUNT(*) FROM passkeys
         WHERE bitwarden_vault_id IS NULL
           AND keepass_database_id IS NULL
+          AND mdbx_database_id IS NULL
     """)
     suspend fun getLocalPasskeyCount(): Int
     
@@ -205,6 +207,7 @@ interface PasskeyDao {
         DELETE FROM passkeys
         WHERE bitwarden_vault_id IS NULL
           AND keepass_database_id IS NULL
+          AND mdbx_database_id IS NULL
         """
     )
     suspend fun deleteAllLocalPasskeys()
@@ -402,6 +405,27 @@ interface PasskeyDao {
         credentialIds: List<String>,
         passkeyMode: String = PasskeyEntry.MODE_KEEPASS_COMPAT
     )
+
+    @Query("SELECT * FROM passkeys WHERE mdbx_database_id = :databaseId ORDER BY last_used_at DESC")
+    suspend fun getByMdbxDatabaseId(databaseId: Long): List<PasskeyEntry>
+
+    @Query("DELETE FROM passkeys WHERE mdbx_database_id = :databaseId")
+    suspend fun deleteAllByMdbxDatabaseId(databaseId: Long)
+
+    @Query(
+        """
+        UPDATE passkeys
+        SET mdbx_database_id = :databaseId,
+            keepass_database_id = NULL,
+            keepass_group_path = NULL,
+            bitwarden_vault_id = NULL,
+            bitwarden_folder_id = NULL,
+            bitwarden_cipher_id = NULL,
+            sync_status = 'NONE'
+        WHERE id IN (:recordIds)
+        """
+    )
+    suspend fun updateMdbxDatabaseForPasskeys(recordIds: List<Long>, databaseId: Long?)
     
     /**
      * 获取待上传到 Bitwarden 的 Passkeys

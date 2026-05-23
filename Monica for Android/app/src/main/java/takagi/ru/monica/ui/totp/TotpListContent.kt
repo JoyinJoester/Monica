@@ -231,6 +231,7 @@ fun TotpListContent(
     val database = remember { takagi.ru.monica.data.PasswordDatabase.getDatabase(context) }
     val scope = rememberCoroutineScope()
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
+    val mdbxDatabases by database.localMdbxDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
     val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
     val keepassBridge = remember {
         KeePassCompatibilityBridge(
@@ -288,6 +289,7 @@ fun TotpListContent(
         is takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenFolderFilter -> UnifiedCategoryFilterSelection.BitwardenFolderFilter(filter.vaultId, filter.folderId)
         is takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenVaultStarred -> UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter(filter.vaultId)
         is takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenVaultUncategorized -> UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter(filter.vaultId)
+        is takagi.ru.monica.viewmodel.TotpCategoryFilter.MdbxDatabase -> UnifiedCategoryFilterSelection.MdbxDatabaseFilter(filter.databaseId)
     }
     val handleCategorySelection: (UnifiedCategoryFilterSelection) -> Unit = { selection ->
         when (selection) {
@@ -306,6 +308,7 @@ fun TotpListContent(
             is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> viewModel.setCategoryFilter(takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenFolderFilter(selection.folderId, selection.vaultId))
             is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> viewModel.setCategoryFilter(takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenVaultStarred(selection.vaultId))
             is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> viewModel.setCategoryFilter(takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenVaultUncategorized(selection.vaultId))
+            is UnifiedCategoryFilterSelection.MdbxDatabaseFilter -> viewModel.setCategoryFilter(takagi.ru.monica.viewmodel.TotpCategoryFilter.MdbxDatabase(selection.databaseId))
         }
     }
 
@@ -438,6 +441,7 @@ fun TotpListContent(
         onDismiss = { showMoveToCategoryDialog = false },
         categories = categories,
         keepassDatabases = keepassDatabases,
+        mdbxDatabases = mdbxDatabases,
         bitwardenVaults = bitwardenVaults,
         getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
         getKeePassGroups = getKeePassGroups,
@@ -494,6 +498,10 @@ fun TotpListContent(
                             is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> ""
                             else -> null
                         }
+                        val targetMdbxDatabaseId = when (target) {
+                            is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> target.databaseId
+                            else -> null
+                        }
                         viewModel.saveTotpItem(
                             id = null,
                             title = item.title,
@@ -503,7 +511,8 @@ fun TotpListContent(
                             categoryId = targetCategoryId,
                             keepassDatabaseId = targetKeepassDatabaseId,
                             bitwardenVaultId = targetBitwardenVaultId,
-                            bitwardenFolderId = targetBitwardenFolderId
+                            bitwardenFolderId = targetBitwardenFolderId,
+                            mdbxDatabaseId = targetMdbxDatabaseId
                         )
                         copiedCount++
                     }
@@ -560,6 +569,11 @@ fun TotpListContent(
                             val groupName = decodeKeePassPathForDisplay(target.groupPath)
                             Toast.makeText(context, "${context.getString(R.string.move_to_category)} $groupName", Toast.LENGTH_SHORT).show()
                         }
+                        is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> {
+                            viewModel.moveToMdbxDatabase(movableIds, target.databaseId)
+                            val name = mdbxDatabases.find { it.id == target.databaseId }?.name ?: "MDBX"
+                            Toast.makeText(context, "${context.getString(R.string.move_to_category)} $name", Toast.LENGTH_SHORT).show()
+                        }
                     }
                 }
             }
@@ -587,6 +601,7 @@ fun TotpListContent(
             is takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenFolderFilter -> stringResource(R.string.filter_bitwarden)
             is takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenVaultStarred -> "${stringResource(R.string.filter_bitwarden)} · ${stringResource(R.string.filter_starred)}"
             is takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenVaultUncategorized -> "${stringResource(R.string.filter_bitwarden)} · ${stringResource(R.string.filter_uncategorized)}"
+            is takagi.ru.monica.viewmodel.TotpCategoryFilter.MdbxDatabase -> mdbxDatabases.find { it.id == filter.databaseId }?.name ?: "MDBX"
         }
 
         ExpressiveTopBar(
@@ -645,6 +660,7 @@ fun TotpListContent(
                                 onSelect = handleCategorySelection,
                                 categories = categories,
                                 keepassDatabases = keepassDatabases,
+                                mdbxDatabases = mdbxDatabases,
                                 bitwardenVaults = bitwardenVaults,
                                 getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
                                 getKeePassGroups = getKeePassGroups,
@@ -1180,6 +1196,7 @@ fun TotpListContent(
         currentFilter = totpSelectedFilter,
         categories = categories,
         keepassDatabases = keepassDatabases,
+        mdbxDatabases = mdbxDatabases,
         bitwardenVaults = bitwardenVaults,
         getKeePassGroups = getKeePassGroups,
         passwordViewModel = passwordViewModel,

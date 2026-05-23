@@ -134,6 +134,8 @@ sealed class Screen(val route: String) {
     object SupportAuthor : Screen("support_author")
     object WebDavBackup : Screen("webdav_backup")
     object OneDriveBackup : Screen("onedrive_backup")
+    object MdbxManager : Screen("mdbx_manager")
+    object MdbxCreateVault : Screen("mdbx_create_vault")
     object ExportData : Screen("export_data")
     object ImportData : Screen("import_data")
     object ChangePassword : Screen("change_password")

@@ -14,6 +14,7 @@ import takagi.ru.monica.domain.provider.KeePassPasswordProvider
 import takagi.ru.monica.domain.provider.PasswordCommandStateFactory
 import takagi.ru.monica.domain.provider.PasswordProviderRegistry
 import takagi.ru.monica.domain.provider.PasswordSource
+import takagi.ru.monica.domain.provider.MdbxPasswordProvider
 import takagi.ru.monica.keepass.KeePassPasswordCreateExecutor
 import takagi.ru.monica.keepass.KeePassPasswordUpdateExecutor
 import takagi.ru.monica.keepass.KeePassPasswordDeleteExecutor
@@ -75,6 +76,7 @@ sealed class CategoryFilter {
     data class KeePassGroupFilter(val databaseId: Long, val groupPath: String) : CategoryFilter()
     data class KeePassDatabaseStarred(val databaseId: Long) : CategoryFilter()
     data class KeePassDatabaseUncategorized(val databaseId: Long) : CategoryFilter()
+    data class MdbxDatabase(val databaseId: Long) : CategoryFilter()
     data class BitwardenVault(val vaultId: Long) : CategoryFilter()
     data class BitwardenFolderFilter(val folderId: String, val vaultId: Long) : CategoryFilter()
     data class BitwardenVaultStarred(val vaultId: Long) : CategoryFilter()
@@ -134,6 +136,7 @@ class PasswordViewModel(
         private const val SAVED_FILTER_BITWARDEN_FOLDER = "bitwarden_folder"
         private const val SAVED_FILTER_BITWARDEN_VAULT_STARRED = "bitwarden_vault_starred"
         private const val SAVED_FILTER_BITWARDEN_VAULT_UNCATEGORIZED = "bitwarden_vault_uncategorized"
+        private const val SAVED_FILTER_MDBX_DATABASE = "mdbx_database"
         private const val MONICA_MANUAL_STACK_GROUP_FIELD_TITLE = "__monica_manual_stack_group"
         private const val MONICA_NO_STACK_FIELD_TITLE = "__monica_no_stack"
         private const val MONICA_KEEPASS_ARCHIVE_ROOT_GROUP_NAME = ".Monica"
@@ -176,6 +179,10 @@ class PasswordViewModel(
     private val passwordProviderRegistry = PasswordProviderRegistry(
         providers = listOf(
             KeePassPasswordProvider(
+                decodePassword = ::decodePasswordOrNull,
+                encryptPassword = securityManager::encryptData
+            ),
+            MdbxPasswordProvider(
                 decodePassword = ::decodePasswordOrNull,
                 encryptPassword = securityManager::encryptData
             ),
@@ -421,6 +428,9 @@ class PasswordViewModel(
                     is CategoryFilter.BitwardenVaultUncategorized -> repository.getAllPasswordEntries().map { list ->
                         list.filter { it.bitwardenVaultId == filter.vaultId && it.bitwardenFolderId == null }
                     }
+                    is CategoryFilter.MdbxDatabase -> repository.getAllPasswordEntries().map { list ->
+                        list.filter { it.mdbxDatabaseId == filter.databaseId }
+                    }
                 }
             }
             // Combine with settings for smart deduplication logic
@@ -441,6 +451,7 @@ class PasswordViewModel(
                     is CategoryFilter.LocalUncategorized -> true
                     is CategoryFilter.BitwardenVaultStarred -> true
                     is CategoryFilter.BitwardenVaultUncategorized -> true
+                    is CategoryFilter.MdbxDatabase -> true
                     else -> false
                 }
                 
@@ -616,6 +627,7 @@ class PasswordViewModel(
             is CategoryFilter.BitwardenVaultUncategorized -> entries.filter {
                 it.bitwardenVaultId == filter.vaultId && it.bitwardenFolderId == null
             }
+            is CategoryFilter.MdbxDatabase -> entries.filter { it.mdbxDatabaseId == filter.databaseId }
         }
     }
 
@@ -662,6 +674,7 @@ class PasswordViewModel(
         val sourceKey = when (val ownership = entry.resolveOwnership()) {
             is PasswordOwnership.KeePass -> "kp:${ownership.databaseId}:${entry.keepassEntryUuid.orEmpty()}:${entry.keepassGroupPath.orEmpty()}"
             is PasswordOwnership.Bitwarden -> "bw:${ownership.vaultId}:${entry.bitwardenCipherId.orEmpty()}:${entry.bitwardenFolderId.orEmpty()}"
+            is PasswordOwnership.Mdbx -> "mdbx:${ownership.databaseId}"
             is PasswordOwnership.Conflict -> "conflict:${entry.keepassDatabaseId}:${entry.bitwardenVaultId}:${entry.keepassEntryUuid.orEmpty()}:${entry.bitwardenCipherId.orEmpty()}"
             PasswordOwnership.MonicaLocal -> "local:${entry.categoryId ?: -1}"
         }
@@ -687,6 +700,8 @@ class PasswordViewModel(
                 }
             is PasswordOwnership.KeePass ->
                 "kp:${ownership.databaseId}:${entry.keepassGroupPath.orEmpty()}"
+            is PasswordOwnership.Mdbx ->
+                "mdbx:${ownership.databaseId}"
             PasswordOwnership.MonicaLocal -> "local"
         }
 
@@ -1529,6 +1544,9 @@ class PasswordViewModel(
                     CategoryFilter.All
                 }
             }
+            SAVED_FILTER_MDBX_DATABASE -> settings.lastPasswordCategoryFilterPrimaryId
+                ?.let { CategoryFilter.MdbxDatabase(it) }
+                ?: CategoryFilter.All
             else -> CategoryFilter.All
         }
     }
@@ -1600,6 +1618,10 @@ class PasswordViewModel(
                         type = SAVED_FILTER_BITWARDEN_FOLDER,
                         secondaryId = filter.vaultId,
                         text = filter.folderId
+                    )
+                    is CategoryFilter.MdbxDatabase -> manager.updateLastPasswordCategoryFilter(
+                        type = SAVED_FILTER_MDBX_DATABASE,
+                        primaryId = filter.databaseId
                     )
                 }
             }.onFailure { error ->
@@ -1722,6 +1744,19 @@ class PasswordViewModel(
             }
         )
     }
+
+    fun movePasswordsToMdbxDatabase(ids: List<Long>, databaseId: Long?) {
+        viewModelScope.launch {
+            movePasswordsToMdbxDatabaseAwait(ids, databaseId)
+        }
+    }
+
+    suspend fun movePasswordsToMdbxDatabaseAwait(ids: List<Long>, databaseId: Long?) {
+        if (ids.isEmpty()) return
+        val targetId = databaseId ?: return
+        repository.updateMdbxDatabaseForPasswords(ids, targetId)
+    }
+
 
     private suspend fun movePasswordsToKeePassInternal(
         ids: List<Long>,
@@ -2022,7 +2057,20 @@ class PasswordViewModel(
     fun updateBoundNoteId(id: Long, noteId: Long?) {
         viewModelScope.launch {
             repository.getPasswordEntryById(id)?.let { entry ->
-                updatePasswordEntryInternal(entry.copy(boundNoteId = noteId))
+                val resolvedNoteId = if (noteId != null && entry.mdbxDatabaseId != null) {
+                    val note = secureItemRepository?.getItemById(noteId)
+                    if (note != null && note.itemType == ItemType.NOTE) {
+                        secureItemRepository.ensureMdbxCopyForBinding(
+                            source = note,
+                            databaseId = entry.mdbxDatabaseId
+                        ).id
+                    } else {
+                        noteId
+                    }
+                } else {
+                    noteId
+                }
+                updatePasswordEntryInternal(entry.copy(boundNoteId = resolvedNoteId))
             }
         }
     }
@@ -2817,16 +2865,28 @@ class PasswordViewModel(
      * Get linked TOTP data for a password entry
      */
     fun getLinkedTotpFlow(passwordId: Long): Flow<TotpData?> {
-        return secureItemRepository?.getItemsByType(ItemType.TOTP)
-            ?.map { items ->
-                items.mapNotNull { item ->
-                    try {
-                        Json.decodeFromString<TotpData>(item.itemData)
-                    } catch (e: Exception) {
-                        null
-                    }
-                }.find { it.boundPasswordId == passwordId }
-            } ?: flowOf(null)
+        val itemFlow = secureItemRepository?.getItemsByType(ItemType.TOTP) ?: return flowOf(null)
+        return combine(itemFlow, repository.getAllPasswordEntries()) { items, passwords ->
+            val boundPassword = passwords.firstOrNull { it.id == passwordId }
+            val candidates = items.mapNotNull { item ->
+                val data = try {
+                    Json.decodeFromString<TotpData>(item.itemData)
+                } catch (e: Exception) {
+                    null
+                }
+                if (data?.boundPasswordId == passwordId) item to data else null
+            }
+            val preferred = if (boundPassword?.mdbxDatabaseId != null) {
+                candidates.firstOrNull { (item, _) ->
+                    item.mdbxDatabaseId == boundPassword.mdbxDatabaseId
+                }
+            } else {
+                candidates.firstOrNull { (item, _) ->
+                    item.mdbxDatabaseId == null
+                }
+            } ?: candidates.firstOrNull()
+            preferred?.second
+        }
     }
     
     /**
@@ -2965,6 +3025,9 @@ class PasswordViewModel(
             }
             is CategoryFilter.KeePassDatabaseUncategorized -> {
                 if (entry.keepassDatabaseId == null) entry.copy(keepassDatabaseId = filter.databaseId) else entry
+            }
+            is CategoryFilter.MdbxDatabase -> {
+                if (entry.mdbxDatabaseId == null) entry.copy(mdbxDatabaseId = filter.databaseId) else entry
             }
             is CategoryFilter.KeePassGroupFilter -> {
                 if (entry.keepassDatabaseId == null) {
@@ -3259,6 +3322,7 @@ class PasswordViewModel(
                     boundNoteId = draftEntry.boundNoteId,
                     keepassDatabaseId = draftEntry.keepassDatabaseId,
                     keepassGroupPath = draftEntry.keepassGroupPath,
+                    mdbxDatabaseId = draftEntry.mdbxDatabaseId,
                     authenticatorKey = draftEntry.authenticatorKey,
                     passkeyBindings = draftEntry.passkeyBindings,
                     sshKeyData = draftEntry.sshKeyData,

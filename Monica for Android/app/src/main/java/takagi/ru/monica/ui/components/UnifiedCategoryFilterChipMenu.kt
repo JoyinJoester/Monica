@@ -69,6 +69,7 @@ import kotlinx.coroutines.flow.flowOf
 import takagi.ru.monica.R
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.LocalMdbxDatabase
 import takagi.ru.monica.data.writeOperationAvailability
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenVault
@@ -224,6 +225,7 @@ fun UnifiedCategoryFilterChipMenu(
     launchAnchorBounds: Rect? = null,
     categories: List<Category>,
     keepassDatabases: List<LocalKeePassDatabase>,
+    mdbxDatabases: List<LocalMdbxDatabase> = emptyList(),
     bitwardenVaults: List<BitwardenVault>,
     getBitwardenFolders: (Long) -> Flow<List<BitwardenFolder>>,
     getKeePassGroups: ((Long) -> Flow<List<KeePassGroupInfo>>)? = null,
@@ -391,6 +393,15 @@ fun UnifiedCategoryFilterChipMenu(
                             }
                         )
                     }
+                    mdbxDatabases.forEach { database ->
+                        MonicaExpressiveFilterChip(
+                            selected = selected.isMdbxScope(database.id),
+                            onClick = { onSelect(UnifiedCategoryFilterSelection.MdbxDatabaseFilter(database.id)) },
+                            label = database.name,
+                            leadingIcon = Icons.Default.Key,
+                            statusDotColor = StorageHealthyGreen
+                        )
+                    }
                     bitwardenVaults.forEach { vault ->
                         MonicaExpressiveFilterChip(
                             selected = selected.isBitwardenScope(vault.id),
@@ -436,6 +447,15 @@ fun UnifiedCategoryFilterChipMenu(
                             } else {
                                 null
                             }
+                        )
+                    }
+                    mdbxDatabases.forEach { database ->
+                        MonicaExpressiveFilterChip(
+                            selected = selected.isMdbxScope(database.id),
+                            onClick = { onSelect(UnifiedCategoryFilterSelection.MdbxDatabaseFilter(database.id)) },
+                            label = database.name,
+                            leadingIcon = Icons.Default.Key,
+                            statusDotColor = StorageHealthyGreen
                         )
                     }
                     bitwardenVaults.forEach { vault ->
@@ -574,6 +594,7 @@ private fun buildFolderChips(
         UnifiedCategoryFilterSelection.Uncategorized,
         UnifiedCategoryFilterSelection.LocalStarred,
         UnifiedCategoryFilterSelection.LocalUncategorized,
+        is UnifiedCategoryFilterSelection.MdbxDatabaseFilter,
         is UnifiedCategoryFilterSelection.Custom -> {
             val currentPath = localCurrentPath
             val chips = mutableListOf<FolderChipItem>()
@@ -690,6 +711,11 @@ private fun UnifiedCategoryFilterSelection.isKeePassScope(databaseId: Long): Boo
     is UnifiedCategoryFilterSelection.KeePassGroupFilter -> this.databaseId == databaseId
     is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> this.databaseId == databaseId
     is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> this.databaseId == databaseId
+    else -> false
+}
+
+private fun UnifiedCategoryFilterSelection.isMdbxScope(databaseId: Long): Boolean = when (this) {
+    is UnifiedCategoryFilterSelection.MdbxDatabaseFilter -> this.databaseId == databaseId
     else -> false
 }
 

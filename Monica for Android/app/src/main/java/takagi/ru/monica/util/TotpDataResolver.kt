@@ -6,6 +6,9 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.TotpData
+import java.net.URLDecoder
+import java.net.URLEncoder
+import java.util.Base64
 
 /**
  * 统一处理 Base32 secret 与 otpauth URI 两种验证器密钥格式。
@@ -42,6 +45,11 @@ object TotpDataResolver {
     }
 
     fun normalizeTotpData(data: TotpData): TotpData {
+        // 修复历史损坏数据：secret 字段误存了完整 URI（如 "steam://BASE64..."）
+        if (data.secret.contains("://")) {
+            reparseCorruptedSecret(data)?.let { return normalizeTotpData(it) }
+        }
+
         val mergedData = parseUriTotpData(data.secret)?.let { parsed ->
             mergeParsedData(data, parsed)
         } ?: data
@@ -138,7 +146,15 @@ object TotpDataResolver {
     }
 
     fun toBitwardenPayload(title: String, data: TotpData): String {
+        val rawSteamSharedSecret = data.steamSharedSecretBase64.trim()
         val normalized = normalizeTotpData(data)
+        if (normalized.otpType == OtpType.STEAM && rawSteamSharedSecret.isNotBlank()) {
+            return "steam://$rawSteamSharedSecret"
+        }
+        if (normalized.otpType == OtpType.STEAM) {
+            return buildSteamOtpAuthPayload(title, normalized)
+        }
+
         val shouldUseOtpAuthPayload =
             normalized.otpType != OtpType.TOTP ||
                 !normalized.algorithm.equals(DEFAULT_ALGORITHM, ignoreCase = true) ||
@@ -183,7 +199,38 @@ object TotpDataResolver {
 
     private fun parseUriTotpData(raw: String): TotpData? {
         if (!raw.contains("://")) return null
+        parseBitwardenSteamUri(raw)?.let { return it }
         return TotpUriParser.parseUri(raw.trim())?.totpData
+    }
+
+    private fun parseBitwardenSteamUri(raw: String): TotpData? {
+        val normalized = raw.trim()
+        if (!normalized.startsWith("steam://", ignoreCase = true)) return null
+        val secretPart = normalized
+            .substringAfter("://", "")
+            .substringBefore("?")
+            .substringBefore("#")
+            .trim()
+            .trim('/')
+            .takeIf { it.isNotBlank() }
+            ?: return null
+        val decodedSecret = runCatching {
+            URLDecoder.decode(secretPart.replace("+", "%2B"), Charsets.UTF_8.name())
+        }.getOrDefault(secretPart)
+        val base64Bytes = decodeSteamSharedSecret(decodedSecret)
+        val secretBase32 = base64Bytes?.let(::base32Encode)
+            ?: normalizeBase32Secret(decodedSecret)
+
+        return TotpData(
+            secret = secretBase32,
+            issuer = "Steam",
+            accountName = "",
+            period = DEFAULT_PERIOD,
+            digits = 5,
+            algorithm = DEFAULT_ALGORITHM,
+            otpType = OtpType.STEAM,
+            steamSharedSecretBase64 = decodedSecret.takeIf { base64Bytes != null }.orEmpty()
+        )
     }
 
     private fun applyContextualOtpType(source: TotpData): TotpData {
@@ -237,9 +284,110 @@ object TotpDataResolver {
         )
     }
 
+    /**
+     * 修复历史损坏数据：旧代码无法解析 steam:// 等 URI，
+     * 导致整个 URI 字符串被误存为 Base32 secret。
+     * 尝试从 secret 中重新解析正确的 TotpData。
+     */
+    private fun reparseCorruptedSecret(data: TotpData): TotpData? {
+        val raw = data.secret.trim()
+        if (!raw.contains("://")) return null
+
+        val reparsed = fromAuthenticatorKey(
+            rawKey = raw,
+            fallbackIssuer = data.issuer.ifBlank { data.accountName },
+            fallbackAccountName = data.accountName
+        ) ?: return null
+
+        // 仅当解析结果与原数据有实质差异时才采用
+        if (reparsed.otpType == data.otpType &&
+            reparsed.secret == data.secret
+        ) return null
+
+        return data.copy(
+            secret = reparsed.secret,
+            otpType = reparsed.otpType,
+            digits = reparsed.digits,
+            period = reparsed.period,
+            algorithm = reparsed.algorithm,
+            issuer = data.issuer.ifBlank { reparsed.issuer },
+            accountName = data.accountName.ifBlank { reparsed.accountName },
+            steamSharedSecretBase64 = reparsed.steamSharedSecretBase64
+                .ifBlank { data.steamSharedSecretBase64 }
+        )
+    }
+
     private fun normalizeAlgorithm(algorithm: String): String {
         return algorithm.trim().uppercase().ifBlank { DEFAULT_ALGORITHM }
     }
+
+    private fun decodeSteamSharedSecret(secret: String): ByteArray? {
+        val compact = secret.trim().replace("\\s".toRegex(), "")
+        if (compact.isBlank()) return null
+        val hasBase64OnlyChars = compact.all {
+            it.isLetterOrDigit() || it == '+' || it == '/' || it == '=' || it == '-' || it == '_'
+        }
+        val hasNonBase32Marker = compact.any {
+            val upper = it.uppercaseChar()
+            !(upper in 'A'..'Z' || upper in '2'..'7')
+        }
+        if (!hasBase64OnlyChars || !hasNonBase32Marker) return null
+
+        val padded = compact + "=".repeat((4 - compact.length % 4) % 4)
+        return sequenceOf(
+            { Base64.getDecoder().decode(padded) },
+            { Base64.getUrlDecoder().decode(padded) }
+        ).firstNotNullOfOrNull { decode ->
+            runCatching { decode() }
+                .getOrNull()
+                ?.takeIf { it.size >= 10 }
+        }
+    }
+
+    private fun base32Encode(data: ByteArray): String {
+        if (data.isEmpty()) return ""
+        val alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"
+        val output = StringBuilder((data.size * 8 + 4) / 5)
+        var buffer = 0
+        var bitsLeft = 0
+
+        for (byte in data) {
+            buffer = (buffer shl 8) or (byte.toInt() and 0xFF)
+            bitsLeft += 8
+            while (bitsLeft >= 5) {
+                output.append(alphabet[(buffer shr (bitsLeft - 5)) and 0x1F])
+                bitsLeft -= 5
+            }
+        }
+
+        if (bitsLeft > 0) {
+            output.append(alphabet[(buffer shl (5 - bitsLeft)) and 0x1F])
+        }
+
+        return output.toString()
+    }
+
+    private fun buildSteamOtpAuthPayload(title: String, data: TotpData): String {
+        val label = encodeUriComponent(
+            buildTotpLabel(
+                title = title,
+                issuer = data.issuer,
+                accountName = data.accountName
+            )
+        )
+        val query = buildList {
+            add("secret=${encodeUriComponent(data.secret)}")
+            if (data.issuer.isNotBlank()) {
+                add("issuer=${encodeUriComponent(data.issuer)}")
+            }
+            add("digits=5")
+            add("encoder=steam")
+        }.joinToString("&")
+        return "otpauth://totp/$label?$query"
+    }
+
+    private fun encodeUriComponent(value: String): String =
+        URLEncoder.encode(value, Charsets.UTF_8.name()).replace("+", "%20")
 
     private fun buildTotpLabel(title: String, issuer: String, accountName: String): String {
         val normalizedIssuer = issuer.trim()

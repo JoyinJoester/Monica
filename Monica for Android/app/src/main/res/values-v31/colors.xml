@@ -1,11 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.Monica" parent="android:Theme.Material.Light.NoActionBar">
-        <!-- Android 12+ 沉浸式状态栏配置 -->
-        <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:navigationBarColor">@android:color/transparent</item>
-        <item name="android:windowLightStatusBar">true</item>
-        <item name="android:windowLightNavigationBar">true</item>
+        <!-- Android 12+ 启动画面和启动预览窗口使用深色背景，避免冷启动闪白 -->
+        <item name="android:windowBackground">@color/monica_startup_background</item>
+        <item name="android:windowSplashScreenBackground">@color/monica_startup_background</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/monica_startup_background</item>
+        <item name="android:statusBarColor">@color/monica_startup_background</item>
+        <item name="android:navigationBarColor">@color/monica_startup_background</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
         <item name="android:enforceStatusBarContrast">false</item>
         <item name="android:enforceNavigationBarContrast">false</item>
     </style>

@@ -25,6 +25,7 @@ import takagi.ru.monica.viewmodel.CategoryFilter
 internal fun PasswordListCategoryChipMenu(
     currentFilter: CategoryFilter,
     keepassDatabases: List<takagi.ru.monica.data.LocalKeePassDatabase>,
+    mdbxDatabases: List<takagi.ru.monica.data.LocalMdbxDatabase>,
     bitwardenVaults: List<takagi.ru.monica.data.bitwarden.BitwardenVault>,
     configuredQuickFilterItems: List<takagi.ru.monica.data.PasswordListQuickFilterItem>,
     quickFilterFavorite: Boolean,
@@ -105,6 +106,7 @@ internal fun PasswordListCategoryChipMenu(
             params = PasswordDatabaseFiltersSectionParams(
                 currentFilter = currentFilter,
                 keepassDatabases = keepassDatabases,
+                mdbxDatabases = mdbxDatabases,
                 bitwardenVaults = bitwardenVaults,
                 onSelectFilter = onSelectFilter
             )

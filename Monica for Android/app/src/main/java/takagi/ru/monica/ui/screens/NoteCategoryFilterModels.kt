@@ -19,6 +19,7 @@ internal sealed interface NoteCategoryFilter {
     data class KeePassGroupFilter(val databaseId: Long, val groupPath: String) : NoteCategoryFilter
     data class KeePassDatabaseStarred(val databaseId: Long) : NoteCategoryFilter
     data class KeePassDatabaseUncategorized(val databaseId: Long) : NoteCategoryFilter
+    data class MdbxDatabase(val databaseId: Long) : NoteCategoryFilter
 }
 
 internal fun NoteCategoryFilter.toDraftStorageTarget(): NoteDraftStorageTarget = when (this) {
@@ -43,6 +44,7 @@ internal fun NoteCategoryFilter.toDraftStorageTarget(): NoteDraftStorageTarget =
     )
     is NoteCategoryFilter.KeePassDatabaseStarred -> NoteDraftStorageTarget(keepassDatabaseId = databaseId)
     is NoteCategoryFilter.KeePassDatabaseUncategorized -> NoteDraftStorageTarget(keepassDatabaseId = databaseId)
+    is NoteCategoryFilter.MdbxDatabase -> NoteDraftStorageTarget(mdbxDatabaseId = databaseId)
 }
 
 internal fun encodeNoteCategoryFilter(filter: NoteCategoryFilter): SavedCategoryFilterState = when (filter) {
@@ -61,6 +63,7 @@ internal fun encodeNoteCategoryFilter(filter: NoteCategoryFilter): SavedCategory
     is NoteCategoryFilter.KeePassGroupFilter -> SavedCategoryFilterState(type = "keepass_group", primaryId = filter.databaseId, text = filter.groupPath)
     is NoteCategoryFilter.KeePassDatabaseStarred -> SavedCategoryFilterState(type = "keepass_database_starred", primaryId = filter.databaseId)
     is NoteCategoryFilter.KeePassDatabaseUncategorized -> SavedCategoryFilterState(type = "keepass_database_uncategorized", primaryId = filter.databaseId)
+    is NoteCategoryFilter.MdbxDatabase -> SavedCategoryFilterState(type = "mdbx_database", primaryId = filter.databaseId)
 }
 
 internal fun decodeNoteCategoryFilter(state: SavedCategoryFilterState): NoteCategoryFilter {
@@ -88,6 +91,7 @@ internal fun decodeNoteCategoryFilter(state: SavedCategoryFilterState): NoteCate
         }
         "keepass_database_starred" -> state.primaryId?.let { NoteCategoryFilter.KeePassDatabaseStarred(it) } ?: NoteCategoryFilter.All
         "keepass_database_uncategorized" -> state.primaryId?.let { NoteCategoryFilter.KeePassDatabaseUncategorized(it) } ?: NoteCategoryFilter.All
+        "mdbx_database" -> state.primaryId?.let { NoteCategoryFilter.MdbxDatabase(it) } ?: NoteCategoryFilter.All
         else -> NoteCategoryFilter.All
     }
 }

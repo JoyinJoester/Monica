@@ -163,12 +163,11 @@ internal fun rememberPasswordAggregateUiState(
     }
     val aggregateSelectedContentTypes = aggregateConfig?.selectedContentTypes ?: emptySet()
     val effectiveQuickFilterItems = remember(
-        appSettings.passwordListQuickFilterItems,
         appSettings.passwordPageAggregateEnabled,
         aggregateVisibleContentTypes
     ) {
         appendAggregateContentQuickFilterItems(
-            configuredItems = appSettings.passwordListQuickFilterItems,
+            configuredItems = PasswordListQuickFilterItem.DEFAULT_ORDER,
             visibleTypes = aggregateVisibleContentTypes,
             aggregateEnabled = appSettings.passwordPageAggregateEnabled
         )

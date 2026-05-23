@@ -100,10 +100,10 @@ internal fun BoxScope.MainScreenFabOverlay(
     onNavigateToWalletAdd: (CardWalletTab) -> Unit,
     passwordPageAggregateEnabled: Boolean,
     passwordNewItemDefaults: NewItemStorageDefaults,
-    onPreparePasswordAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit,
-    onPrepareTotpAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit,
-    onPrepareNoteAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit,
-    onPrepareWalletAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit,
+    onPreparePasswordAddStorageDefaults: (Long?, Long?, String?, Long?, Long?, String?) -> Unit,
+    onPrepareTotpAddStorageDefaults: (Long?, Long?, String?, Long?, Long?, String?) -> Unit,
+    onPrepareNoteAddStorageDefaults: (Long?, Long?, String?, Long?, Long?, String?) -> Unit,
+    onPrepareWalletAddStorageDefaults: (Long?, Long?, String?, Long?, Long?, String?) -> Unit,
     onNoteAddOpen: () -> Unit,
     onSendAddOpen: () -> Unit,
     onGeneratorRefresh: () -> Unit,
@@ -615,10 +615,10 @@ internal fun MainScreenAddFab(
     onNavigateToWalletAdd: (CardWalletTab) -> Unit,
     passwordPageAggregateEnabled: Boolean,
     passwordNewItemDefaults: NewItemStorageDefaults,
-    onPreparePasswordAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit,
-    onPrepareTotpAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit,
-    onPrepareNoteAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit,
-    onPrepareWalletAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit,
+    onPreparePasswordAddStorageDefaults: (Long?, Long?, String?, Long?, Long?, String?) -> Unit,
+    onPrepareTotpAddStorageDefaults: (Long?, Long?, String?, Long?, Long?, String?) -> Unit,
+    onPrepareNoteAddStorageDefaults: (Long?, Long?, String?, Long?, Long?, String?) -> Unit,
+    onPrepareWalletAddStorageDefaults: (Long?, Long?, String?, Long?, Long?, String?) -> Unit,
     onNoteAddOpen: () -> Unit,
     onSendAddOpen: () -> Unit,
     onGeneratorRefresh: () -> Unit,
@@ -652,7 +652,7 @@ internal fun MainScreenAddFab(
         CardWalletTab.ALL -> walletUnifiedAddType
     }
     val shouldApplyPasswordAggregateDefaults =
-        currentTab == BottomNavItem.Passwords
+        currentTab == BottomNavItem.Passwords || currentTab == BottomNavItem.VaultV2
     val aggregateStorageDefaults = if (shouldApplyPasswordAggregateDefaults) {
         passwordNewItemDefaults
     } else {
@@ -701,6 +701,7 @@ internal fun MainScreenAddFab(
                                                 aggregateStorageDefaults.categoryId,
                                                 aggregateStorageDefaults.keepassDatabaseId,
                                                 aggregateStorageDefaults.keepassGroupPath,
+                                                aggregateStorageDefaults.mdbxDatabaseId,
                                                 aggregateStorageDefaults.bitwardenVaultId,
                                                 aggregateStorageDefaults.bitwardenFolderId
                                             )
@@ -720,6 +721,7 @@ internal fun MainScreenAddFab(
                                                 aggregateStorageDefaults.categoryId,
                                                 aggregateStorageDefaults.keepassDatabaseId,
                                                 aggregateStorageDefaults.keepassGroupPath,
+                                                aggregateStorageDefaults.mdbxDatabaseId,
                                                 aggregateStorageDefaults.bitwardenVaultId,
                                                 aggregateStorageDefaults.bitwardenFolderId
                                             )
@@ -739,6 +741,7 @@ internal fun MainScreenAddFab(
                                                 aggregateStorageDefaults.categoryId,
                                                 aggregateStorageDefaults.keepassDatabaseId,
                                                 aggregateStorageDefaults.keepassGroupPath,
+                                                aggregateStorageDefaults.mdbxDatabaseId,
                                                 aggregateStorageDefaults.bitwardenVaultId,
                                                 aggregateStorageDefaults.bitwardenFolderId
                                             )
@@ -758,6 +761,7 @@ internal fun MainScreenAddFab(
                                                 aggregateStorageDefaults.categoryId,
                                                 aggregateStorageDefaults.keepassDatabaseId,
                                                 aggregateStorageDefaults.keepassGroupPath,
+                                                aggregateStorageDefaults.mdbxDatabaseId,
                                                 aggregateStorageDefaults.bitwardenVaultId,
                                                 aggregateStorageDefaults.bitwardenFolderId
                                             )
@@ -789,6 +793,7 @@ internal fun MainScreenAddFab(
                         initialCategoryId = aggregateStorageDefaults?.categoryId,
                         initialKeePassDatabaseId = aggregateStorageDefaults?.keepassDatabaseId,
                         initialKeePassGroupPath = aggregateStorageDefaults?.keepassGroupPath,
+                        initialMdbxDatabaseId = aggregateStorageDefaults?.mdbxDatabaseId,
                         initialBitwardenVaultId = aggregateStorageDefaults?.bitwardenVaultId,
                         initialBitwardenFolderId = aggregateStorageDefaults?.bitwardenFolderId
                     )
@@ -830,6 +835,7 @@ internal fun MainScreenAddFab(
                                 initialCategoryId = aggregateStorageDefaults?.categoryId,
                                 initialKeePassDatabaseId = aggregateStorageDefaults?.keepassDatabaseId,
                                 initialKeePassGroupPath = aggregateStorageDefaults?.keepassGroupPath,
+                                initialMdbxDatabaseId = aggregateStorageDefaults?.mdbxDatabaseId,
                                 initialBitwardenVaultId = aggregateStorageDefaults?.bitwardenVaultId,
                                 initialBitwardenFolderId = aggregateStorageDefaults?.bitwardenFolderId,
                                 onSwitchToWifi = { targetId ->
@@ -910,6 +916,7 @@ internal fun MainScreenAddFab(
                                     initialCategoryId = aggregateStorageDefaults?.categoryId,
                                     initialKeePassDatabaseId = aggregateStorageDefaults?.keepassDatabaseId,
                                     initialKeePassGroupPath = aggregateStorageDefaults?.keepassGroupPath,
+                                    initialMdbxDatabaseId = aggregateStorageDefaults?.mdbxDatabaseId,
                                     initialBitwardenVaultId = aggregateStorageDefaults?.bitwardenVaultId,
                                     initialBitwardenFolderId = aggregateStorageDefaults?.bitwardenFolderId,
                                     onSwitchToWifi = { targetId ->
@@ -933,6 +940,7 @@ internal fun MainScreenAddFab(
                                     initialCategoryId = totpNewItemDefaults.categoryId,
                                     initialKeePassDatabaseId = totpNewItemDefaults.keepassDatabaseId,
                                     initialKeePassGroupPath = totpNewItemDefaults.keepassGroupPath,
+                                    initialMdbxDatabaseId = totpNewItemDefaults.mdbxDatabaseId,
                                     initialBitwardenVaultId = totpNewItemDefaults.bitwardenVaultId,
                                     initialBitwardenFolderId = totpNewItemDefaults.bitwardenFolderId,
                                     categories = totpCategories,

@@ -40,6 +40,7 @@ import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.ThemeMode
+import takagi.ru.monica.repository.MdbxVaultStore
 import takagi.ru.monica.repository.PasskeyRepository
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.components.MasterPasswordDialog
@@ -73,7 +74,17 @@ class PasskeyAuthActivity : FragmentActivity() {
     }
     
     private val repository: PasskeyRepository by lazy {
-        PasskeyRepository(database.passkeyDao())
+        PasskeyRepository(
+            database.passkeyDao(),
+            MdbxVaultStore(
+                applicationContext,
+                database.localMdbxDatabaseDao(),
+                securityManager,
+                database.mdbxRemoteSourceDao(),
+                database.passwordEntryDao(),
+                database.secureItemDao()
+            )
+        )
     }
 
     private val securityManager: SecurityManager by lazy {

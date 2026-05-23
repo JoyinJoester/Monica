@@ -50,7 +50,8 @@ import androidx.room.PrimaryKey
             value = ["keepass_database_id", "passkey_mode", "credential_id"],
             name = "index_passkeys_keepass_scope_credential",
             unique = true
-        )
+        ),
+        Index(value = ["mdbx_database_id"], name = "index_passkeys_mdbx_database_id")
     ]
 )
 data class PasskeyEntry(
@@ -132,6 +133,10 @@ data class PasskeyEntry(
     // KeePass 分组路径（为空表示数据库根目录）
     @ColumnInfo(name = "keepass_group_path", defaultValue = "NULL")
     val keepassGroupPath: String? = null,
+
+    // MDBX project-centric 数据库归属
+    @ColumnInfo(name = "mdbx_database_id", defaultValue = "NULL")
+    val mdbxDatabaseId: Long? = null,
     
     // Bitwarden 同步字段（仅同步元数据，私钥无法导出）
     @ColumnInfo(name = "bitwarden_vault_id", defaultValue = "NULL")

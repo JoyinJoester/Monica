@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.WarningAmber
@@ -86,7 +87,6 @@ import takagi.ru.monica.data.AppLauncherLabel
 import takagi.ru.monica.passkey.PasskeyValidationDiagnostics
 import takagi.ru.monica.security.SecurityDiagLogger
 import takagi.ru.monica.security.SessionManager
-import takagi.ru.monica.utils.MndxDeveloperVaultHelper
 import takagi.ru.monica.viewmodel.SettingsViewModel
 
 /**
@@ -97,7 +97,8 @@ import takagi.ru.monica.viewmodel.SettingsViewModel
 @Composable
 fun DeveloperSettingsScreen(
     viewModel: SettingsViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onNavigateToMdbx: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val settings by viewModel.settings.collectAsState()
@@ -118,8 +119,6 @@ fun DeveloperSettingsScreen(
     var appLauncherLabel by remember {
         mutableStateOf(settings.appLauncherLabel)
     }
-    var isCreatingMndxDemo by remember { mutableStateOf(false) }
-
     LaunchedEffect(
         settings.disablePasswordVerification,
         settings.bitwardenSyncForensicsEnabled,
@@ -366,49 +365,12 @@ fun DeveloperSettingsScreen(
                 )
 
                 SettingsItem(
-                    icon = Icons.Default.AutoAwesome,
-                    title = stringResource(R.string.developer_mndx_create_demo_onedrive),
-                    subtitle = if (isCreatingMndxDemo) {
-                        stringResource(R.string.developer_mndx_create_demo_running)
-                    } else {
-                        stringResource(R.string.developer_mndx_create_demo_onedrive_desc)
-                    },
-                    onClick = {
-                        if (isCreatingMndxDemo) return@SettingsItem
-                        isCreatingMndxDemo = true
-                        scope.launch {
-                            val result = MndxDeveloperVaultHelper(context)
-                                .createDemoVaultInOneDrive()
-                            isCreatingMndxDemo = false
-                            result.fold(
-                                onSuccess = { created ->
-                                    Toast.makeText(
-                                        context,
-                                        context.getString(
-                                            R.string.developer_mndx_create_demo_success,
-                                            created.vaultName,
-                                            created.fileCount
-                                        ),
-                                        Toast.LENGTH_LONG
-                                    ).show()
-                                },
-                                onFailure = { error ->
-                                    Toast.makeText(
-                                        context,
-                                        context.getString(
-                                            R.string.developer_mndx_create_demo_failed,
-                                            error.message ?: "unknown"
-                                        ),
-                                        Toast.LENGTH_LONG
-                                    ).show()
-                                }
-                            )
-                        }
-                    }
+                    icon = Icons.Default.Science,
+                    title = stringResource(R.string.mdbx_format_title),
+                    subtitle = stringResource(R.string.mdbx_format_description),
+                    onClick = onNavigateToMdbx
                 )
             }
-
-            // 自动填充调试区域
             SettingsSection(
                 title = stringResource(R.string.developer_autofill_debug)
             ) {

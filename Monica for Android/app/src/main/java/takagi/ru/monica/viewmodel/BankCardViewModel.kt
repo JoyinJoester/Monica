@@ -176,6 +176,7 @@ class BankCardViewModel(
         categoryId: Long? = null,
         keepassDatabaseId: Long? = null,
         keepassGroupPath: String? = null,
+        mdbxDatabaseId: Long? = null,
         bitwardenVaultId: Long? = null,
         bitwardenFolderId: String? = null,
         replicaGroupId: String? = null
@@ -198,6 +199,7 @@ class BankCardViewModel(
                 keepassGroupPath = keepassIdentity.groupPath,
                 keepassEntryUuid = keepassIdentity.entryUuid,
                 keepassGroupUuid = keepassIdentity.groupUuid,
+                mdbxDatabaseId = mdbxDatabaseId,
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenFolderId = bitwardenFolderId,
                 syncStatus = if (bitwardenVaultId != null) "PENDING" else "NONE",
@@ -232,6 +234,7 @@ class BankCardViewModel(
         categoryId: Long? = null,
         keepassDatabaseId: Long? = null,
         keepassGroupPath: String? = null,
+        mdbxDatabaseId: Long? = null,
         bitwardenVaultId: Long? = null,
         bitwardenFolderId: String? = null,
         replicaGroupId: String? = null
@@ -277,6 +280,7 @@ class BankCardViewModel(
                     keepassGroupPath = keepassIdentity.groupPath,
                     keepassEntryUuid = keepassIdentity.entryUuid,
                     keepassGroupUuid = keepassIdentity.groupUuid,
+                    mdbxDatabaseId = mdbxDatabaseId,
                     bitwardenVaultId = bitwardenVaultId,
                     bitwardenFolderId = bitwardenFolderId,
                     replicaGroupId = replicaGroupId ?: existingItem.replicaGroupId,
@@ -331,12 +335,14 @@ class BankCardViewModel(
         keepassDatabaseId: Long?,
         keepassGroupPath: String?,
         bitwardenVaultId: Long?,
-        bitwardenFolderId: String?
+        bitwardenFolderId: String?,
+        mdbxDatabaseId: Long? = null
     ): Boolean {
         val existingItem = repository.getItemById(id) ?: return false
         val target = when {
             bitwardenVaultId != null -> StorageTarget.Bitwarden(bitwardenVaultId, bitwardenFolderId)
             keepassDatabaseId != null -> StorageTarget.KeePass(keepassDatabaseId, keepassGroupPath)
+            mdbxDatabaseId != null -> StorageTarget.Mdbx(mdbxDatabaseId)
             else -> StorageTarget.MonicaLocal(categoryId)
         }
         if (hasReplicaTargetConflict(
@@ -361,6 +367,7 @@ class BankCardViewModel(
             keepassGroupUuid = keepassIdentity.groupUuid,
             bitwardenVaultId = bitwardenVaultId,
             bitwardenFolderId = bitwardenFolderId,
+            mdbxDatabaseId = mdbxDatabaseId,
             updatedAt = Date()
         )
         val transition = SecureItemBitwardenTransitionResolver.resolve(
@@ -476,6 +483,30 @@ class BankCardViewModel(
                         )
                     }
                 }
+                is StorageTarget.Mdbx -> {
+                    if (existingItem == null) {
+                        addCard(
+                            title = title,
+                            cardData = cardData,
+                            notes = notes,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            mdbxDatabaseId = currentTarget.databaseId,
+                            replicaGroupId = replicaGroupId
+                        )
+                    } else {
+                        updateCard(
+                            id = existingItem.id,
+                            title = title,
+                            cardData = cardData,
+                            notes = notes,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            mdbxDatabaseId = currentTarget.databaseId,
+                            replicaGroupId = replicaGroupId
+                        )
+                    }
+                }
                 is StorageTarget.Bitwarden -> {
                     if (existingItem == null) {
                         addCard(
@@ -567,6 +598,24 @@ class BankCardViewModel(
                             bitwardenFolderId = target.folderId,
                             replicaGroupId = replicaGroupId
                         )
+                        is StorageTarget.Mdbx -> if (existingReplica == null) addCard(
+                            title = title,
+                            cardData = cardData,
+                            notes = notes,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            mdbxDatabaseId = target.databaseId,
+                            replicaGroupId = replicaGroupId
+                        ) else updateCard(
+                            id = existingReplica.id,
+                            title = title,
+                            cardData = cardData,
+                            notes = notes,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            mdbxDatabaseId = target.databaseId,
+                            replicaGroupId = replicaGroupId
+                        )
                     }
                 }
 
@@ -631,6 +680,7 @@ class BankCardViewModel(
                 }
             }
             is SecureItemOwnership.MonicaLocal -> Result.success(Unit)
+            is SecureItemOwnership.Mdbx -> Result.success(Unit)
             is SecureItemOwnership.Conflict -> Result.failure(IllegalStateException("银行卡来源冲突，无法移动到 Monica 本地"))
         }
 

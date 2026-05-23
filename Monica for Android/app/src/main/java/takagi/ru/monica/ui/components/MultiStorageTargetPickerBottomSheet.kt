@@ -54,6 +54,7 @@ import kotlinx.coroutines.flow.Flow
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.KeePassOperationBlockReason
 import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.LocalMdbxDatabase
 import takagi.ru.monica.data.writeOperationAvailability
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenVault
@@ -86,6 +87,11 @@ private sealed interface StoragePickerSource {
         override val icon: ImageVector = Icons.Default.Key
     }
 
+    data class MdbxDatabase(val database: LocalMdbxDatabase) : StoragePickerSource {
+        override val key: String = "mdbx:${database.id}"
+        override val icon: ImageVector = Icons.Default.Key
+    }
+
     data class BitwardenVaultSource(val vault: BitwardenVault) : StoragePickerSource {
         override val key: String = "bitwarden:${vault.id}"
         override val icon: ImageVector = Icons.Default.Cloud
@@ -111,6 +117,7 @@ fun MultiStorageTargetPickerBottomSheet(
     lockedTargetKeys: Set<String>,
     categories: List<Category>,
     keepassDatabases: List<LocalKeePassDatabase>,
+    mdbxDatabases: List<LocalMdbxDatabase> = emptyList(),
     bitwardenVaults: List<BitwardenVault>,
     getBitwardenFolders: (Long) -> Flow<List<BitwardenFolder>>,
     getKeePassGroups: (Long) -> Flow<List<KeePassGroupInfo>>,
@@ -135,10 +142,11 @@ fun MultiStorageTargetPickerBottomSheet(
         minSheetHeight
     }
 
-    val sources = remember(keepassDatabases, bitwardenVaults) {
+    val sources = remember(keepassDatabases, mdbxDatabases, bitwardenVaults) {
         buildList {
             add(StoragePickerSource.MonicaLocal)
             keepassDatabases.forEach { add(StoragePickerSource.KeePassDatabase(it)) }
+            mdbxDatabases.forEach { add(StoragePickerSource.MdbxDatabase(it)) }
             bitwardenVaults.forEach { add(StoragePickerSource.BitwardenVaultSource(it)) }
         }
     }
@@ -191,6 +199,7 @@ fun MultiStorageTargetPickerBottomSheet(
         return when (source) {
             StoragePickerSource.MonicaLocal -> StorageTarget.MonicaLocal(null)
             is StoragePickerSource.KeePassDatabase -> StorageTarget.KeePass(source.database.id, null)
+            is StoragePickerSource.MdbxDatabase -> StorageTarget.Mdbx(source.database.id)
             is StoragePickerSource.BitwardenVaultSource -> StorageTarget.Bitwarden(source.vault.id, null)
         }
     }
@@ -214,6 +223,7 @@ fun MultiStorageTargetPickerBottomSheet(
                     "${source.database.name} · ${keepassUnavailableFormat.format(reason)}"
                 }
             }
+            is StoragePickerSource.MdbxDatabase -> source.database.name
             is StoragePickerSource.BitwardenVaultSource -> source.vault.displayName ?: source.vault.email
         }
     }
@@ -224,6 +234,7 @@ fun MultiStorageTargetPickerBottomSheet(
             is StoragePickerSource.KeePassDatabase -> {
                 if (source.database.writeOperationAvailability().canOperate) StorageHealthyGreen else null
             }
+            is StoragePickerSource.MdbxDatabase -> StorageHealthyGreen
             is StoragePickerSource.BitwardenVaultSource -> {
                 if (source.vault.hasHealthyConnection()) StorageHealthyGreen else null
             }
@@ -277,6 +288,17 @@ fun MultiStorageTargetPickerBottomSheet(
                         )
                     )
                 }
+            }
+
+            is StoragePickerSource.MdbxDatabase -> buildList {
+                add(
+                    StorageTargetChip(
+                        target = StorageTarget.Mdbx(source.database.id),
+                        label = source.database.name,
+                        icon = Icons.Default.FolderOff,
+                        sourceKey = source.key
+                    )
+                )
             }
 
             is StoragePickerSource.BitwardenVaultSource -> buildList {
@@ -349,6 +371,7 @@ fun MultiStorageTargetPickerBottomSheet(
         activeSourceKeys.toList(),
         categories,
         keepassDatabases,
+        mdbxDatabases,
         bitwardenVaults,
         bitwardenFoldersByVault,
         keepassGroupsByDatabase
@@ -367,6 +390,7 @@ fun MultiStorageTargetPickerBottomSheet(
         activeSourceKeys.toList(),
         categories,
         keepassDatabases,
+        mdbxDatabases,
         bitwardenVaults,
         bitwardenFoldersByVault,
         keepassGroupsByDatabase
@@ -677,6 +701,7 @@ private fun StorageTarget.toSourceKey(): String {
     return when (this) {
         is StorageTarget.MonicaLocal -> "monica"
         is StorageTarget.KeePass -> "keepass:$databaseId"
+        is StorageTarget.Mdbx -> "mdbx:$databaseId"
         is StorageTarget.Bitwarden -> "bitwarden:$vaultId"
     }
 }

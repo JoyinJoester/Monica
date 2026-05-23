@@ -151,6 +151,7 @@ sealed interface UnifiedCategoryFilterSelection {
     data class KeePassGroupFilter(val databaseId: Long, val groupPath: String) : UnifiedCategoryFilterSelection
     data class KeePassDatabaseStarredFilter(val databaseId: Long) : UnifiedCategoryFilterSelection
     data class KeePassDatabaseUncategorizedFilter(val databaseId: Long) : UnifiedCategoryFilterSelection
+    data class MdbxDatabaseFilter(val databaseId: Long) : UnifiedCategoryFilterSelection
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -1302,6 +1303,7 @@ private fun rememberCategoryFilterLabel(
         is UnifiedCategoryFilterSelection.KeePassGroupFilter -> keepass
         is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> "$keepass · $starred"
         is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> "$keepass · $uncategorized"
+        is UnifiedCategoryFilterSelection.MdbxDatabaseFilter -> "MDBX"
     }
 }
 

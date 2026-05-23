@@ -80,6 +80,7 @@ fun AddEditBankCardScreen(
     initialCategoryId: Long? = null,
     initialKeePassDatabaseId: Long? = null,
     initialKeePassGroupPath: String? = null,
+    initialMdbxDatabaseId: Long? = null,
     initialBitwardenVaultId: Long? = null,
     initialBitwardenFolderId: String? = null,
     showTypeSwitcher: Boolean = false,
@@ -150,6 +151,7 @@ fun AddEditBankCardScreen(
     var selectedCategoryId by rememberSaveable { mutableStateOf<Long?>(null) }
     var keepassDatabaseId by rememberSaveable { mutableStateOf<Long?>(null) }
     var keepassGroupPath by rememberSaveable { mutableStateOf<String?>(null) }
+    var mdbxDatabaseId by rememberSaveable { mutableStateOf(initialMdbxDatabaseId) }
     var bitwardenVaultId by rememberSaveable { mutableStateOf<Long?>(null) }
     var bitwardenFolderId by rememberSaveable { mutableStateOf<String?>(null) }
     var hasAppliedInitialStorage by rememberSaveable { mutableStateOf(false) }
@@ -168,6 +170,7 @@ fun AddEditBankCardScreen(
         inlineCardholderSuggestion != null
     val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList())
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
+    val mdbxDatabases by database.localMdbxDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
     val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
     val allCards by viewModel.allCards.collectAsState(initial = emptyList())
     val rememberedStorageTarget by settingsManager
@@ -183,6 +186,7 @@ fun AddEditBankCardScreen(
                 selectedCategoryId = primaryTarget.categoryId
                 keepassDatabaseId = null
                 keepassGroupPath = null
+                mdbxDatabaseId = null
                 bitwardenVaultId = null
                 bitwardenFolderId = null
             }
@@ -190,6 +194,15 @@ fun AddEditBankCardScreen(
                 selectedCategoryId = null
                 keepassDatabaseId = primaryTarget.databaseId
                 keepassGroupPath = primaryTarget.groupPath
+                mdbxDatabaseId = null
+                bitwardenVaultId = null
+                bitwardenFolderId = null
+            }
+            is StorageTarget.Mdbx -> {
+                selectedCategoryId = null
+                keepassDatabaseId = null
+                keepassGroupPath = null
+                mdbxDatabaseId = primaryTarget.databaseId
                 bitwardenVaultId = null
                 bitwardenFolderId = null
             }
@@ -197,6 +210,7 @@ fun AddEditBankCardScreen(
                 selectedCategoryId = null
                 keepassDatabaseId = null
                 keepassGroupPath = null
+                mdbxDatabaseId = null
                 bitwardenVaultId = primaryTarget.vaultId
                 bitwardenFolderId = primaryTarget.folderId
             }
@@ -204,6 +218,7 @@ fun AddEditBankCardScreen(
                 selectedCategoryId = null
                 keepassDatabaseId = null
                 keepassGroupPath = null
+                mdbxDatabaseId = null
                 bitwardenVaultId = null
                 bitwardenFolderId = null
             }
@@ -232,6 +247,7 @@ fun AddEditBankCardScreen(
         initialCategoryId,
         initialKeePassDatabaseId,
         initialKeePassGroupPath,
+        initialMdbxDatabaseId,
         initialBitwardenVaultId,
         initialBitwardenFolderId,
         rememberedStorageTarget,
@@ -244,6 +260,7 @@ fun AddEditBankCardScreen(
         val hasExplicitInitialStorage = initialCategoryId != null ||
             initialKeePassDatabaseId != null ||
             explicitGroupPath != null ||
+            initialMdbxDatabaseId != null ||
             initialBitwardenVaultId != null ||
             explicitFolderId != null
         val filterKeepassDatabaseId = when (cardWalletCategoryFilterState?.type) {
@@ -275,6 +292,11 @@ fun AddEditBankCardScreen(
         } else {
             filterKeepassGroupPath ?: remembered?.keepassGroupPath
         }
+        mdbxDatabaseId = if (hasExplicitInitialStorage) {
+            initialMdbxDatabaseId
+        } else {
+            remembered?.mdbxDatabaseId
+        }
         bitwardenVaultId = if (hasExplicitInitialStorage) {
             initialBitwardenVaultId
         } else {
@@ -291,6 +313,7 @@ fun AddEditBankCardScreen(
                     categoryId = selectedCategoryId,
                     keepassDatabaseId = keepassDatabaseId,
                     keepassGroupPath = keepassGroupPath,
+                    mdbxDatabaseId = mdbxDatabaseId,
                     bitwardenVaultId = bitwardenVaultId,
                     bitwardenFolderId = bitwardenFolderId
                 )
@@ -426,6 +449,7 @@ fun AddEditBankCardScreen(
                     categoryId = selectedCategoryId,
                     keepassDatabaseId = keepassDatabaseId,
                     keepassGroupPath = keepassGroupPath,
+                    mdbxDatabaseId = mdbxDatabaseId,
                     bitwardenVaultId = bitwardenVaultId,
                     bitwardenFolderId = bitwardenFolderId
                 )
@@ -484,6 +508,7 @@ fun AddEditBankCardScreen(
                     categoryId = (primaryTarget as? StorageTarget.MonicaLocal)?.categoryId,
                     keepassDatabaseId = (primaryTarget as? StorageTarget.KeePass)?.databaseId,
                     keepassGroupPath = (primaryTarget as? StorageTarget.KeePass)?.groupPath,
+                    mdbxDatabaseId = (primaryTarget as? StorageTarget.Mdbx)?.databaseId,
                     bitwardenVaultId = (primaryTarget as? StorageTarget.Bitwarden)?.vaultId,
                     bitwardenFolderId = (primaryTarget as? StorageTarget.Bitwarden)?.folderId
                 )
@@ -519,6 +544,7 @@ fun AddEditBankCardScreen(
                 existingTargetKeys = existingReplicaTargetKeys,
                 categories = categories,
                 keepassDatabases = keepassDatabases,
+                mdbxDatabases = mdbxDatabases,
                 bitwardenVaults = bitwardenVaults,
                 bitwardenFolderDao = database.bitwardenFolderDao(),
                 isEditing = cardId != null,
@@ -1175,6 +1201,7 @@ fun AddEditBankCardScreen(
         lockedTargetKeys = existingReplicaTargetKeys,
         categories = categories,
         keepassDatabases = keepassDatabases,
+        mdbxDatabases = mdbxDatabases,
         bitwardenVaults = bitwardenVaults,
         getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
         getKeePassGroups = localKeePassViewModel::getGroups,

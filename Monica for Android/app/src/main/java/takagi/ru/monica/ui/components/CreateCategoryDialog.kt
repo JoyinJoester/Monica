@@ -35,7 +35,6 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOff
-import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material3.AlertDialog
@@ -67,6 +66,7 @@ import kotlinx.coroutines.flow.flowOf
 import takagi.ru.monica.R
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.LocalMdbxDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.utils.KEEPASS_DISPLAY_PATH_SEPARATOR
 import takagi.ru.monica.utils.KeePassGroupInfo
@@ -79,15 +79,18 @@ internal fun CreateCategoryDialog(
     onDismiss: () -> Unit,
     categories: List<Category>,
     keepassDatabases: List<LocalKeePassDatabase>,
+    mdbxDatabases: List<LocalMdbxDatabase> = emptyList(),
     bitwardenVaults: List<BitwardenVault>,
     getKeePassGroups: ((Long) -> Flow<List<KeePassGroupInfo>>)? = null,
     onCreateCategory: (() -> Unit)? = null,
     onCreateCategoryWithName: ((String) -> Unit)? = null,
     onCreateBitwardenFolder: ((Long, String) -> Unit)? = null,
     onCreateKeePassGroup: ((databaseId: Long, parentPath: String?, name: String) -> Unit)? = null,
+    onCreateMdbxProject: ((databaseId: Long, name: String) -> Unit)? = null,
     initialLocalParentPath: String? = null,
     initialTarget: CreateDialogTarget? = null,
     initialKeePassDbId: Long? = null,
+    initialMdbxDbId: Long? = null,
     initialBitwardenVaultId: Long? = null
 ) {
     if (!visible) return
@@ -95,7 +98,8 @@ internal fun CreateCategoryDialog(
     val canCreateLocal = onCreateCategoryWithName != null || onCreateCategory != null
     val canCreateBitwarden = onCreateBitwardenFolder != null && bitwardenVaults.isNotEmpty()
     val canCreateKeePass = onCreateKeePassGroup != null && keepassDatabases.isNotEmpty()
-    if (!canCreateLocal && !canCreateBitwarden && !canCreateKeePass) return
+    val canCreateMdbx = onCreateMdbxProject != null && mdbxDatabases.isNotEmpty()
+    if (!canCreateLocal && !canCreateBitwarden && !canCreateKeePass && !canCreateMdbx) return
 
     val localCategoryNodes = remember(categories) { buildCreateDialogLocalCategoryNodes(categories) }
 
@@ -105,6 +109,7 @@ internal fun CreateCategoryDialog(
     var createKeePassParentPath by remember { mutableStateOf<String?>(null) }
     var selectedCreateVaultId by remember { mutableStateOf<Long?>(null) }
     var selectedCreateKeePassDbId by remember { mutableStateOf<Long?>(null) }
+    var selectedCreateMdbxDbId by remember { mutableStateOf<Long?>(null) }
     var createOptionsExpanded by remember { mutableStateOf(true) }
 
     val expandCollapseSpec = spring<IntSize>(
@@ -112,7 +117,7 @@ internal fun CreateCategoryDialog(
         stiffness = Spring.StiffnessMediumLow
     )
 
-    LaunchedEffect(visible, canCreateLocal, canCreateBitwarden, canCreateKeePass, initialLocalParentPath, initialTarget, initialKeePassDbId, initialBitwardenVaultId) {
+    LaunchedEffect(visible, canCreateLocal, canCreateBitwarden, canCreateKeePass, canCreateMdbx, initialLocalParentPath, initialTarget, initialKeePassDbId, initialMdbxDbId, initialBitwardenVaultId) {
         if (!visible) return@LaunchedEffect
         createNameInput = ""
         createLocalParentPath = initialLocalParentPath
@@ -124,10 +129,14 @@ internal fun CreateCategoryDialog(
             canCreateLocal -> CreateDialogTarget.Local
             canCreateBitwarden -> CreateDialogTarget.Bitwarden
             canCreateKeePass -> CreateDialogTarget.KeePass
+            canCreateMdbx -> CreateDialogTarget.Mdbx
             else -> CreateDialogTarget.Local
         }
         if (initialKeePassDbId != null) {
             selectedCreateKeePassDbId = initialKeePassDbId
+        }
+        if (initialMdbxDbId != null) {
+            selectedCreateMdbxDbId = initialMdbxDbId
         }
         if (initialBitwardenVaultId != null) {
             selectedCreateVaultId = initialBitwardenVaultId
@@ -142,6 +151,11 @@ internal fun CreateCategoryDialog(
     LaunchedEffect(keepassDatabases) {
         if (selectedCreateKeePassDbId == null || keepassDatabases.none { it.id == selectedCreateKeePassDbId }) {
             selectedCreateKeePassDbId = keepassDatabases.firstOrNull()?.id
+        }
+    }
+    LaunchedEffect(mdbxDatabases) {
+        if (selectedCreateMdbxDbId == null || mdbxDatabases.none { it.id == selectedCreateMdbxDbId }) {
+            selectedCreateMdbxDbId = mdbxDatabases.firstOrNull()?.id
         }
     }
 
@@ -193,22 +207,26 @@ internal fun CreateCategoryDialog(
         CreateDialogTarget.Local -> localPreviewPath
         CreateDialogTarget.Bitwarden -> createNameInput.trim()
         CreateDialogTarget.KeePass -> keepassPreviewPath
+        CreateDialogTarget.Mdbx -> createNameInput.trim()
     }
 
     val targetLabel = when (createTarget) {
         CreateDialogTarget.Local -> stringResource(R.string.create_target_local)
         CreateDialogTarget.Bitwarden -> stringResource(R.string.create_target_bitwarden)
         CreateDialogTarget.KeePass -> stringResource(R.string.create_target_keepass)
+        CreateDialogTarget.Mdbx -> "MDBX"
     }
     val targetIcon = when (createTarget) {
         CreateDialogTarget.Local -> Icons.Default.Smartphone
         CreateDialogTarget.Bitwarden -> Icons.Default.CloudSync
         CreateDialogTarget.KeePass -> Icons.Default.Key
+        CreateDialogTarget.Mdbx -> Icons.Default.Key
     }
     val targetTint = when (createTarget) {
         CreateDialogTarget.Local -> MaterialTheme.colorScheme.primary
         CreateDialogTarget.Bitwarden -> MaterialTheme.colorScheme.secondary
         CreateDialogTarget.KeePass -> MaterialTheme.colorScheme.tertiary
+        CreateDialogTarget.Mdbx -> MaterialTheme.colorScheme.primary
     }
 
     val createChipColors = FilterChipDefaults.filterChipColors(
@@ -221,6 +239,7 @@ internal fun CreateCategoryDialog(
         CreateDialogTarget.Local -> canCreateLocal
         CreateDialogTarget.Bitwarden -> canCreateBitwarden && selectedCreateVaultId != null
         CreateDialogTarget.KeePass -> canCreateKeePass && selectedCreateKeePassDbId != null
+        CreateDialogTarget.Mdbx -> canCreateMdbx && selectedCreateMdbxDbId != null
     } && createNameInput.trim().isNotBlank()
 
     AlertDialog(
@@ -306,6 +325,19 @@ internal fun CreateCategoryDialog(
                             leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) }
                         )
                     }
+                    if (canCreateMdbx) {
+                        FilterChip(
+                            selected = createTarget == CreateDialogTarget.Mdbx,
+                            onClick = {
+                                createTarget = CreateDialogTarget.Mdbx
+                                createLocalParentPath = null
+                                createKeePassParentPath = null
+                            },
+                            colors = createChipColors,
+                            label = { Text("MDBX") },
+                            leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) }
+                        )
+                    }
                 }
 
                 Text(
@@ -313,6 +345,7 @@ internal fun CreateCategoryDialog(
                         CreateDialogTarget.Local -> stringResource(R.string.create_select_local_parent)
                         CreateDialogTarget.Bitwarden -> stringResource(R.string.create_select_bitwarden_vault)
                         CreateDialogTarget.KeePass -> stringResource(R.string.create_select_keepass_database)
+                        CreateDialogTarget.Mdbx -> stringResource(R.string.create_select_keepass_database)
                     },
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.primary
@@ -371,7 +404,7 @@ internal fun CreateCategoryDialog(
                                             modifier = Modifier.widthIn(max = 200.dp)
                                         )
                                     },
-                                    leadingIcon = { Icon(Icons.Default.Inventory2, contentDescription = null) }
+                                    leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) }
                                 )
                             }
                         }
@@ -441,6 +474,32 @@ internal fun CreateCategoryDialog(
                             }
                         }
                     }
+
+                    CreateDialogTarget.Mdbx -> {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(createKeePassDbScroll),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            mdbxDatabases.forEach { db ->
+                                FilterChip(
+                                    selected = selectedCreateMdbxDbId == db.id,
+                                    onClick = { selectedCreateMdbxDbId = db.id },
+                                    colors = createChipColors,
+                                    label = {
+                                        Text(
+                                            text = db.name,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.widthIn(max = 180.dp)
+                                        )
+                                    },
+                                    leadingIcon = { Icon(Icons.Default.Key, contentDescription = null) }
+                                )
+                            }
+                        }
+                    }
                 }
 
                 OutlinedTextField(
@@ -482,6 +541,13 @@ internal fun CreateCategoryDialog(
                             val dbId = selectedCreateKeePassDbId
                             if (dbId != null) {
                                 onCreateKeePassGroup?.invoke(dbId, createKeePassParentPath, name)
+                            }
+                        }
+
+                        CreateDialogTarget.Mdbx -> {
+                            val dbId = selectedCreateMdbxDbId
+                            if (dbId != null) {
+                                onCreateMdbxProject?.invoke(dbId, name)
                             }
                         }
                     }
@@ -554,5 +620,6 @@ private fun CreateDialogAnimatedVisibility(
 enum class CreateDialogTarget {
     Local,
     Bitwarden,
-    KeePass
+    KeePass,
+    Mdbx
 }

@@ -65,6 +65,7 @@ sealed class TotpCategoryFilter {
     data class BitwardenFolderFilter(val folderId: String, val vaultId: Long) : TotpCategoryFilter()
     data class BitwardenVaultStarred(val vaultId: Long) : TotpCategoryFilter()
     data class BitwardenVaultUncategorized(val vaultId: Long) : TotpCategoryFilter()
+    data class MdbxDatabase(val databaseId: Long) : TotpCategoryFilter()
 }
 
 /**
@@ -113,6 +114,7 @@ class TotpViewModel(
         private const val FILTER_BITWARDEN_FOLDER = "bitwarden_folder"
         private const val FILTER_BITWARDEN_VAULT_STARRED = "bitwarden_vault_starred"
         private const val FILTER_BITWARDEN_VAULT_UNCATEGORIZED = "bitwarden_vault_uncategorized"
+        private const val FILTER_MDBX_DATABASE = "mdbx_database"
     }
 
     private val keepassBridge = if (context != null && localKeePassDatabaseDao != null && securityManager != null) {
@@ -204,7 +206,8 @@ class TotpViewModel(
                 keepassDatabaseId = password.keepassDatabaseId,
                 keepassGroupPath = password.keepassGroupPath,
                 bitwardenVaultId = password.bitwardenVaultId,
-                bitwardenFolderId = password.bitwardenFolderId
+                bitwardenFolderId = password.bitwardenFolderId,
+                mdbxDatabaseId = password.mdbxDatabaseId
             )
         }
 
@@ -301,6 +304,9 @@ class TotpViewModel(
                 (it.resolveOwnership() as? SecureItemOwnership.Bitwarden)?.vaultId == filter.vaultId &&
                     it.bitwardenFolderId == null
             }
+            is TotpCategoryFilter.MdbxDatabase -> allTotps.filter {
+                (it.resolveOwnership() as? SecureItemOwnership.Mdbx)?.databaseId == filter.databaseId
+            }
         }
         
         // 然后应用搜索过滤
@@ -343,6 +349,7 @@ class TotpViewModel(
             is TotpCategoryFilter.KeePassGroupFilter -> syncKeePassTotp(filter.databaseId)
             is TotpCategoryFilter.KeePassDatabaseStarred -> syncKeePassTotp(filter.databaseId)
             is TotpCategoryFilter.KeePassDatabaseUncategorized -> syncKeePassTotp(filter.databaseId)
+            is TotpCategoryFilter.MdbxDatabase -> Unit
             else -> Unit
         }
     }
@@ -537,6 +544,7 @@ class TotpViewModel(
         is TotpCategoryFilter.BitwardenFolderFilter -> SavedCategoryFilterState(type = FILTER_BITWARDEN_FOLDER, primaryId = filter.vaultId, text = filter.folderId)
         is TotpCategoryFilter.BitwardenVaultStarred -> SavedCategoryFilterState(type = FILTER_BITWARDEN_VAULT_STARRED, primaryId = filter.vaultId)
         is TotpCategoryFilter.BitwardenVaultUncategorized -> SavedCategoryFilterState(type = FILTER_BITWARDEN_VAULT_UNCATEGORIZED, primaryId = filter.vaultId)
+        is TotpCategoryFilter.MdbxDatabase -> SavedCategoryFilterState(type = FILTER_MDBX_DATABASE, primaryId = filter.databaseId)
     }
 
     private fun decodeCategoryFilter(state: SavedCategoryFilterState): TotpCategoryFilter {
@@ -564,6 +572,7 @@ class TotpViewModel(
             }
             FILTER_BITWARDEN_VAULT_STARRED -> state.primaryId?.let { TotpCategoryFilter.BitwardenVaultStarred(it) } ?: TotpCategoryFilter.All
             FILTER_BITWARDEN_VAULT_UNCATEGORIZED -> state.primaryId?.let { TotpCategoryFilter.BitwardenVaultUncategorized(it) } ?: TotpCategoryFilter.All
+            FILTER_MDBX_DATABASE -> state.primaryId?.let { TotpCategoryFilter.MdbxDatabase(it) } ?: TotpCategoryFilter.All
             else -> TotpCategoryFilter.All
         }
     }
@@ -671,6 +680,7 @@ class TotpViewModel(
         categoryId: Long? = null,
         keepassDatabaseId: Long? = null,
         keepassGroupPath: String? = null,
+        mdbxDatabaseId: Long? = null,
         bitwardenVaultId: Long? = null,
         bitwardenFolderId: String? = null
     ) {
@@ -685,6 +695,7 @@ class TotpViewModel(
                     categoryId = categoryId,
                     keepassDatabaseId = keepassDatabaseId,
                     keepassGroupPath = keepassGroupPath,
+                    mdbxDatabaseId = mdbxDatabaseId,
                     bitwardenVaultId = bitwardenVaultId,
                     bitwardenFolderId = bitwardenFolderId,
                     followBoundPasswordStorage = totpData.boundPasswordId != null
@@ -741,6 +752,7 @@ class TotpViewModel(
                             categoryId = target.categoryId,
                             keepassDatabaseId = null,
                             keepassGroupPath = null,
+                            mdbxDatabaseId = null,
                             bitwardenVaultId = null,
                             bitwardenFolderId = null,
                             followBoundPasswordStorage = false,
@@ -755,6 +767,22 @@ class TotpViewModel(
                             categoryId = null,
                             keepassDatabaseId = target.databaseId,
                             keepassGroupPath = target.groupPath,
+                            mdbxDatabaseId = null,
+                            bitwardenVaultId = null,
+                            bitwardenFolderId = null,
+                            followBoundPasswordStorage = false,
+                            replicaGroupId = replicaGroupId
+                        )
+                        is StorageTarget.Mdbx -> saveTotpItemInternal(
+                            id = targetId,
+                            title = title,
+                            notes = notes,
+                            totpData = totpData,
+                            isFavorite = isFavorite,
+                            categoryId = null,
+                            keepassDatabaseId = null,
+                            keepassGroupPath = null,
+                            mdbxDatabaseId = target.databaseId,
                             bitwardenVaultId = null,
                             bitwardenFolderId = null,
                             followBoundPasswordStorage = false,
@@ -769,6 +797,7 @@ class TotpViewModel(
                             categoryId = null,
                             keepassDatabaseId = null,
                             keepassGroupPath = null,
+                            mdbxDatabaseId = null,
                             bitwardenVaultId = target.vaultId,
                             bitwardenFolderId = target.folderId,
                             followBoundPasswordStorage = false,
@@ -809,6 +838,7 @@ class TotpViewModel(
         categoryId: Long?,
         keepassDatabaseId: Long?,
         keepassGroupPath: String?,
+        mdbxDatabaseId: Long?,
         bitwardenVaultId: Long?,
         bitwardenFolderId: String?,
         followBoundPasswordStorage: Boolean,
@@ -836,6 +866,11 @@ class TotpViewModel(
         } else {
             keepassDatabaseId
         }
+        val resolvedMdbxDatabaseId = if (shouldFollowBoundPassword) {
+            boundPassword?.mdbxDatabaseId ?: mdbxDatabaseId
+        } else {
+            mdbxDatabaseId
+        }
         val resolvedKeepassGroupPath = when {
             resolvedKeepassDatabaseId == null -> null
             shouldFollowBoundPassword -> boundPassword?.keepassGroupPath
@@ -851,6 +886,29 @@ class TotpViewModel(
             keepassDatabaseId = resolvedKeepassDatabaseId
         )
         val itemDataJson = Json.encodeToString(updatedTotpData)
+
+        if (
+            shouldFollowBoundPassword &&
+            boundPassword?.mdbxDatabaseId != null &&
+            existingItem != null &&
+            existingItem.mdbxDatabaseId != boundPassword.mdbxDatabaseId
+        ) {
+            repository.ensureMdbxCopyForBinding(
+                source = existingItem,
+                databaseId = boundPassword.mdbxDatabaseId,
+                title = title,
+                notes = notes,
+                itemData = itemDataJson,
+                imagePaths = existingItem.imagePaths,
+                isFavorite = isFavorite,
+                categoryId = null
+            )
+            val authenticatorPayload = TotpDataResolver.toBitwardenPayload(title, updatedTotpData)
+            if (authenticatorPayload.isNotBlank()) {
+                passwordRepository.updateAuthenticatorKey(boundPassword.id, authenticatorPayload)
+            }
+            return
+        }
 
         val resolvedBitwardenVaultId = if (shouldFollowBoundPassword) null else bitwardenVaultId
         val resolvedBitwardenFolderId = if (shouldFollowBoundPassword) null else bitwardenFolderId
@@ -876,6 +934,7 @@ class TotpViewModel(
                 keepassGroupPath = keepassIdentity.groupPath,
                 keepassEntryUuid = keepassIdentity.entryUuid,
                 keepassGroupUuid = keepassIdentity.groupUuid,
+                mdbxDatabaseId = resolvedMdbxDatabaseId,
                 bitwardenVaultId = resolvedBitwardenVaultId,
                 bitwardenFolderId = resolvedBitwardenFolderId,
                 bitwardenCipherId = transition.cipherId,
@@ -897,6 +956,7 @@ class TotpViewModel(
                 keepassGroupPath = keepassIdentity.groupPath,
                 keepassEntryUuid = keepassIdentity.entryUuid,
                 keepassGroupUuid = keepassIdentity.groupUuid,
+                mdbxDatabaseId = resolvedMdbxDatabaseId,
                 bitwardenVaultId = resolvedBitwardenVaultId,
                 bitwardenFolderId = resolvedBitwardenFolderId,
                 bitwardenCipherId = transition.cipherId,
@@ -1227,6 +1287,17 @@ class TotpViewModel(
                     val updatedItem = item.copy(
                         itemData = updatedItemData,
                         categoryId = categoryId,
+                        keepassDatabaseId = null,
+                        keepassGroupPath = null,
+                        keepassEntryUuid = null,
+                        keepassGroupUuid = null,
+                        bitwardenVaultId = null,
+                        bitwardenFolderId = null,
+                        bitwardenCipherId = null,
+                        bitwardenRevisionDate = null,
+                        bitwardenLocalModified = false,
+                        mdbxDatabaseId = null,
+                        syncStatus = "NONE",
                         updatedAt = Date()
                     )
                     repository.updateItem(updatedItem)
@@ -1293,6 +1364,7 @@ class TotpViewModel(
                 }
             }
             is SecureItemOwnership.MonicaLocal -> Result.success(Unit)
+            is SecureItemOwnership.Mdbx -> Result.success(Unit)
             is SecureItemOwnership.Conflict -> Result.failure(IllegalStateException("验证器来源冲突，无法移动到 Monica 本地"))
         }
 
@@ -1327,6 +1399,7 @@ class TotpViewModel(
                         keepassGroupUuid = keepassIdentity.groupUuid,
                         bitwardenVaultId = null,
                         bitwardenFolderId = null,
+                        mdbxDatabaseId = null,
                         updatedAt = Date()
                     )
                     val transition = resolveBitwardenTransition(
@@ -1371,6 +1444,7 @@ class TotpViewModel(
                         keepassGroupUuid = keepassIdentity.groupUuid,
                         bitwardenVaultId = null,
                         bitwardenFolderId = null,
+                        mdbxDatabaseId = null,
                         updatedAt = Date()
                     )
                     val transition = resolveBitwardenTransition(
@@ -1415,6 +1489,7 @@ class TotpViewModel(
                         keepassGroupUuid = keepassIdentity.groupUuid,
                         bitwardenVaultId = vaultId,
                         bitwardenFolderId = folderId,
+                        mdbxDatabaseId = null,
                         updatedAt = Date()
                     )
                     val transition = resolveBitwardenTransition(
@@ -1423,6 +1498,56 @@ class TotpViewModel(
                         targetFolderId = folderId,
                         forcePendingWhenKeepingCipher =
                             item.bitwardenVaultId == vaultId && !item.bitwardenCipherId.isNullOrBlank(),
+                        abortOnQueueFailure = true
+                    ) ?: return@forEach
+                    val finalUpdatedItem = updatedItem.copy(
+                        bitwardenCipherId = transition.cipherId,
+                        bitwardenRevisionDate = transition.revisionDate,
+                        bitwardenLocalModified = transition.localModified,
+                        syncStatus = transition.syncStatus
+                    )
+                    repository.updateItem(finalUpdatedItem)
+                    keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = item, updatedItem = finalUpdatedItem)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            }
+        }
+    }
+
+    fun moveToMdbxDatabase(ids: List<Long>, databaseId: Long) {
+        viewModelScope.launch {
+            ids.forEach { id ->
+                try {
+                    val item = repository.getItemById(id) ?: return@forEach
+                    val totpData = runCatching { Json.decodeFromString<TotpData>(item.itemData) }.getOrNull() ?: return@forEach
+                    val updatedData = totpData.copy(
+                        boundPasswordId = null,
+                        categoryId = null,
+                        keepassDatabaseId = null
+                    )
+                    val keepassIdentity = resolveKeePassMutationIdentity(
+                        existingItem = item,
+                        targetDatabaseId = null,
+                        requestedGroupPath = null
+                    )
+                    val updatedItem = item.copy(
+                        itemData = Json.encodeToString(updatedData),
+                        categoryId = null,
+                        keepassDatabaseId = null,
+                        keepassGroupPath = keepassIdentity.groupPath,
+                        keepassEntryUuid = keepassIdentity.entryUuid,
+                        keepassGroupUuid = keepassIdentity.groupUuid,
+                        bitwardenVaultId = null,
+                        bitwardenFolderId = null,
+                        mdbxDatabaseId = databaseId,
+                        updatedAt = Date()
+                    )
+                    val transition = resolveBitwardenTransition(
+                        existingItem = item,
+                        targetVaultId = null,
+                        targetFolderId = null,
+                        forcePendingWhenKeepingCipher = false,
                         abortOnQueueFailure = true
                     ) ?: return@forEach
                     val finalUpdatedItem = updatedItem.copy(

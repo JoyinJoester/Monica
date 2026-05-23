@@ -167,6 +167,7 @@ fun CardWalletScreen(
     val database = remember { PasswordDatabase.getDatabase(context) }
     val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList<Category>())
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
+    val mdbxDatabases by database.localMdbxDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
     val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
     val keepassBridge = remember {
         KeePassCompatibilityBridge(
@@ -612,6 +613,10 @@ fun CardWalletScreen(
                 is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> target.folderId
                 else -> null
             }
+            val targetMdbxDatabaseId: Long? = when (target) {
+                is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> target.databaseId
+                else -> null
+            }
             val isMonicaLocalTarget = target == UnifiedMoveCategoryTarget.Uncategorized ||
                 target is UnifiedMoveCategoryTarget.MonicaCategory
 
@@ -649,7 +654,8 @@ fun CardWalletScreen(
                             keepassDatabaseId = targetKeepassDatabaseId,
                             keepassGroupPath = targetKeepassGroupPath,
                             bitwardenVaultId = targetBitwardenVaultId,
-                            bitwardenFolderId = targetBitwardenFolderId
+                            bitwardenFolderId = targetBitwardenFolderId,
+                            mdbxDatabaseId = targetMdbxDatabaseId
                         )
                         successCount++
                     }
@@ -671,7 +677,8 @@ fun CardWalletScreen(
                             keepassDatabaseId = targetKeepassDatabaseId,
                             keepassGroupPath = targetKeepassGroupPath,
                             bitwardenVaultId = targetBitwardenVaultId,
-                            bitwardenFolderId = targetBitwardenFolderId
+                            bitwardenFolderId = targetBitwardenFolderId,
+                            mdbxDatabaseId = targetMdbxDatabaseId
                         )
                         successCount++
                     }
@@ -683,7 +690,8 @@ fun CardWalletScreen(
                                 keepassDatabaseId = null,
                                 keepassGroupPath = null,
                                 bitwardenVaultId = null,
-                                bitwardenFolderId = null
+                                bitwardenFolderId = null,
+                                mdbxDatabaseId = null
                             )
                         } else {
                             bankCardViewModel.moveCardToMonicaLocal(item, targetCategoryId).isSuccess
@@ -697,7 +705,8 @@ fun CardWalletScreen(
                             keepassDatabaseId = targetKeepassDatabaseId,
                             keepassGroupPath = targetKeepassGroupPath,
                             bitwardenVaultId = targetBitwardenVaultId,
-                            bitwardenFolderId = targetBitwardenFolderId
+                            bitwardenFolderId = targetBitwardenFolderId,
+                            mdbxDatabaseId = targetMdbxDatabaseId
                         )
                         if (moved) successCount++ else failedCount++
                     }
@@ -709,7 +718,8 @@ fun CardWalletScreen(
                                 keepassDatabaseId = null,
                                 keepassGroupPath = null,
                                 bitwardenVaultId = null,
-                                bitwardenFolderId = null
+                                bitwardenFolderId = null,
+                                mdbxDatabaseId = null
                             )
                         } else {
                             documentViewModel.moveDocumentToMonicaLocal(item, targetCategoryId).isSuccess
@@ -723,7 +733,8 @@ fun CardWalletScreen(
                             keepassDatabaseId = targetKeepassDatabaseId,
                             keepassGroupPath = targetKeepassGroupPath,
                             bitwardenVaultId = targetBitwardenVaultId,
-                            bitwardenFolderId = targetBitwardenFolderId
+                            bitwardenFolderId = targetBitwardenFolderId,
+                            mdbxDatabaseId = targetMdbxDatabaseId
                         )
                         if (moved) successCount++ else failedCount++
                     }
@@ -865,6 +876,8 @@ fun CardWalletScreen(
             val name = keepassDatabases.find { it.id == filter.databaseId }?.name ?: stringResource(R.string.filter_keepass)
             "$name · ${stringResource(R.string.filter_uncategorized)}"
         }
+        is UnifiedCategoryFilterSelection.MdbxDatabaseFilter ->
+            mdbxDatabases.find { it.id == filter.databaseId }?.name ?: "MDBX"
         is UnifiedCategoryFilterSelection.BitwardenVaultFilter ->
             stringResource(R.string.filter_bitwarden)
         is UnifiedCategoryFilterSelection.BitwardenFolderFilter ->
@@ -941,6 +954,7 @@ fun CardWalletScreen(
                                 onSelect = { selection -> selectedCategoryFilter = selection },
                                 categories = categories,
                                 keepassDatabases = keepassDatabases,
+                                mdbxDatabases = mdbxDatabases,
                                 bitwardenVaults = bitwardenVaults,
                                 getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
                                 getKeePassGroups = getKeePassGroups,
@@ -1408,6 +1422,7 @@ fun CardWalletScreen(
             onDismiss = { showBatchMoveCategoryDialog = false },
             categories = categories,
             keepassDatabases = keepassDatabases,
+            mdbxDatabases = mdbxDatabases,
             bitwardenVaults = bitwardenVaults,
             getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
             getKeePassGroups = getKeePassGroups,
@@ -1422,6 +1437,7 @@ fun CardWalletScreen(
         currentFilter = selectedCategoryFilter,
         categories = categories,
         keepassDatabases = keepassDatabases,
+        mdbxDatabases = mdbxDatabases,
         bitwardenVaults = bitwardenVaults,
         getKeePassGroups = getKeePassGroups,
         passwordViewModel = passwordViewModel,
@@ -1448,6 +1464,7 @@ private fun encodeCardWalletCategoryFilter(filter: UnifiedCategoryFilterSelectio
         is UnifiedCategoryFilterSelection.KeePassGroupFilter -> SavedCategoryFilterState(type = "keepass_group", primaryId = filter.databaseId, text = filter.groupPath)
         is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> SavedCategoryFilterState(type = "keepass_database_starred", primaryId = filter.databaseId)
         is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> SavedCategoryFilterState(type = "keepass_database_uncategorized", primaryId = filter.databaseId)
+        is UnifiedCategoryFilterSelection.MdbxDatabaseFilter -> SavedCategoryFilterState(type = "mdbx_database", primaryId = filter.databaseId)
         else -> SavedCategoryFilterState(type = "all")
     }
 }
@@ -1501,6 +1518,7 @@ private fun decodeCardWalletCategoryFilter(state: SavedCategoryFilterState): Uni
         }
         "keepass_database_starred" -> state.primaryId?.let { UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter(it) } ?: UnifiedCategoryFilterSelection.All
         "keepass_database_uncategorized" -> state.primaryId?.let { UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter(it) } ?: UnifiedCategoryFilterSelection.All
+        "mdbx_database" -> state.primaryId?.let { UnifiedCategoryFilterSelection.MdbxDatabaseFilter(it) } ?: UnifiedCategoryFilterSelection.All
         else -> UnifiedCategoryFilterSelection.All
     }
 }
@@ -1540,7 +1558,8 @@ private fun itemMatchesCategoryFilter(
     val folderId = item.bitwardenFolderId
     val keePassId = item.keepassDatabaseId
     val groupPath = item.keepassGroupPath
-    val isLocal = vaultId == null && keePassId == null
+    val mdbxId = item.mdbxDatabaseId
+    val isLocal = vaultId == null && keePassId == null && mdbxId == null
     return when (filter) {
         UnifiedCategoryFilterSelection.All -> true
         UnifiedCategoryFilterSelection.Local -> isLocal
@@ -1563,5 +1582,6 @@ private fun itemMatchesCategoryFilter(
             keePassId == filter.databaseId && item.isFavorite
         is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter ->
             keePassId == filter.databaseId && item.categoryId == null
+        is UnifiedCategoryFilterSelection.MdbxDatabaseFilter -> mdbxId == filter.databaseId
     }
 }

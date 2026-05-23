@@ -13,7 +13,10 @@ import java.security.KeyStore
  * 提供 Passkey 数据的访问接口，封装 DAO 操作
  * 负责在删除 Passkey 时同步清理 Android Keystore 中的私钥
  */
-class PasskeyRepository(private val passkeyDao: PasskeyDao) {
+class PasskeyRepository(
+    private val passkeyDao: PasskeyDao,
+    private val mdbxRepository: MdbxRepository? = null
+) {
     
     companion object {
         private const val TAG = "PasskeyRepository"
@@ -122,12 +125,18 @@ class PasskeyRepository(private val passkeyDao: PasskeyDao) {
     /**
      * 保存 Passkey（插入或更新）
      */
-    suspend fun savePasskey(passkey: PasskeyEntry) = passkeyDao.insert(passkey)
+    suspend fun savePasskey(passkey: PasskeyEntry) {
+        mdbxRepository?.upsertPasskey(passkey)
+        passkeyDao.insert(passkey)
+    }
     
     /**
      * 批量保存 Passkeys
      */
-    suspend fun saveAllPasskeys(passkeys: List<PasskeyEntry>) = passkeyDao.insertAll(passkeys)
+    suspend fun saveAllPasskeys(passkeys: List<PasskeyEntry>) {
+        mdbxRepository?.upsertPasskeys(passkeys)
+        passkeyDao.insertAll(passkeys)
+    }
     
     /**
      * 更新 Passkey
@@ -139,7 +148,41 @@ class PasskeyRepository(private val passkeyDao: PasskeyDao) {
         } else {
             normalizeBitwardenSyncState(existing, passkey)
         }
+        if (
+            normalized.mdbxDatabaseId != null
+        ) {
+            mdbxRepository?.upsertPasskey(normalized)
+        }
+        if (
+            existing?.mdbxDatabaseId != null &&
+            existing.mdbxDatabaseId != normalized.mdbxDatabaseId
+        ) {
+            mdbxRepository?.deletePasskey(existing)
+        }
         passkeyDao.update(normalized)
+    }
+
+    suspend fun updateMdbxDatabaseForPasskeys(recordIds: List<Long>, databaseId: Long?) {
+        if (recordIds.isEmpty()) return
+        val existingPasskeys = recordIds.mapNotNull { passkeyDao.getPasskeyByRecordId(it) }
+        if (databaseId != null) {
+            val passkeysForMdbx = existingPasskeys.map { passkey ->
+                passkey.copy(
+                    mdbxDatabaseId = databaseId,
+                    keepassDatabaseId = null,
+                    keepassGroupPath = null,
+                    bitwardenVaultId = null,
+                    bitwardenFolderId = null,
+                    bitwardenCipherId = null,
+                    syncStatus = "NONE"
+                )
+            }
+            mdbxRepository?.upsertPasskeys(passkeysForMdbx)
+        }
+        mdbxRepository?.deletePasskeys(
+            existingPasskeys.filter { it.mdbxDatabaseId != null && it.mdbxDatabaseId != databaseId }
+        )
+        passkeyDao.updateMdbxDatabaseForPasskeys(recordIds, databaseId)
     }
 
     suspend fun syncKeePassPasskeys(
@@ -214,6 +257,7 @@ class PasskeyRepository(private val passkeyDao: PasskeyDao) {
     suspend fun deletePasskeysByRpId(rpId: String) {
         // 获取所有匹配的 Passkey
         val passkeys = passkeyDao.getPasskeysByRpIdSync(rpId)
+        mdbxRepository?.deletePasskeys(passkeys)
         for (passkey in passkeys) {
             deletePrivateKey(passkey.privateKeyAlias)
             logAudit("PASSKEY_DELETED", "${passkey.credentialId}|rpId=$rpId")
@@ -227,6 +271,7 @@ class PasskeyRepository(private val passkeyDao: PasskeyDao) {
     suspend fun deleteAllPasskeys() {
         // 获取所有 Passkey
         val passkeys = passkeyDao.getAllPasskeysSync()
+        mdbxRepository?.deletePasskeys(passkeys)
         for (passkey in passkeys) {
             deletePrivateKey(passkey.privateKeyAlias)
         }
@@ -235,6 +280,7 @@ class PasskeyRepository(private val passkeyDao: PasskeyDao) {
     }
 
     suspend fun deletePasskeyLocalOnly(passkey: PasskeyEntry) {
+        mdbxRepository?.deletePasskey(passkey)
         deletePrivateKey(passkey.privateKeyAlias)
         logAudit("PASSKEY_DELETED", "${passkey.credentialId}|rpId=${passkey.rpId}")
         passkeyDao.delete(passkey)

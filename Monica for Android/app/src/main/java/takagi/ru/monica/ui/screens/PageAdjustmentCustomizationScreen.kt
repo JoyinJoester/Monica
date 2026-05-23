@@ -641,12 +641,11 @@ fun PasswordListCustomizationScreen(
         )
     }
     val effectiveQuickFilterItems = remember(
-        settings.passwordListQuickFilterItems,
         settings.passwordPageVisibleContentTypes,
         settings.passwordPageAggregateEnabled
     ) {
         appendAggregateContentQuickFilterItems(
-            configuredItems = settings.passwordListQuickFilterItems,
+            configuredItems = PasswordListQuickFilterItem.DEFAULT_ORDER,
             visibleTypes = settings.passwordPageVisibleContentTypes,
             aggregateEnabled = settings.passwordPageAggregateEnabled
         )
@@ -660,87 +659,7 @@ fun PasswordListCustomizationScreen(
             )
         }
     }
-    LaunchedEffect(effectiveQuickFilterItems) {
-        val normalized = effectiveQuickFilterItems
-            .filter { supportedQuickFilterItems.contains(it) }
-            .distinct()
-        if (normalized != settings.passwordListQuickFilterItems) {
-            viewModel.updatePasswordListQuickFilterItems(normalized)
-        }
-    }
-    var quickFilterOrder by remember(effectiveQuickFilterItems) {
-        mutableStateOf(
-            buildList {
-                effectiveQuickFilterItems
-                    .filter { supportedQuickFilterItems.contains(it) }
-                    .forEach { add(it) }
-                supportedQuickFilterItems
-                    .filter { !contains(it) }
-                    .forEach { add(it) }
-            }
-        )
-    }
-    val quickFilterOptions = listOf(
-        PasswordListQuickFilterOption(
-            item = PasswordListQuickFilterItem.FAVORITE,
-            title = stringResource(R.string.password_list_quick_filter_favorite),
-            icon = if (selectedQuickFilterItems.contains(PasswordListQuickFilterItem.FAVORITE)) {
-                Icons.Default.Favorite
-            } else {
-                Icons.Default.FilterList
-            }
-        ),
-        PasswordListQuickFilterOption(
-            item = PasswordListQuickFilterItem.TWO_FA,
-            title = stringResource(R.string.password_list_quick_filter_2fa),
-            icon = Icons.Default.Security
-        ),
-        PasswordListQuickFilterOption(
-            item = PasswordListQuickFilterItem.NOTES,
-            title = stringResource(R.string.password_list_quick_filter_notes),
-            icon = Icons.Default.Description
-        ),
-        PasswordListQuickFilterOption(
-            item = PasswordListQuickFilterItem.UNCATEGORIZED,
-            title = stringResource(R.string.password_list_quick_filter_uncategorized),
-            icon = Icons.Default.Folder
-        ),
-        PasswordListQuickFilterOption(
-            item = PasswordListQuickFilterItem.LOCAL_ONLY,
-            title = stringResource(R.string.password_list_quick_filter_local_only),
-            icon = Icons.Default.Key
-        ),
-        PasswordListQuickFilterOption(
-            item = PasswordListQuickFilterItem.MANUAL_STACK_ONLY,
-            title = stringResource(R.string.password_list_quick_filter_manual_stack_only),
-            icon = Icons.Default.Apps
-        ),
-        PasswordListQuickFilterOption(
-            item = PasswordListQuickFilterItem.NEVER_STACK,
-            title = stringResource(R.string.password_list_quick_filter_never_stack),
-            icon = Icons.Default.LinearScale
-        ),
-        PasswordListQuickFilterOption(
-            item = PasswordListQuickFilterItem.UNSTACKED,
-            title = stringResource(R.string.password_list_quick_filter_unstacked),
-            icon = Icons.Default.Straighten
-        ),
-        PasswordListQuickFilterOption(
-            item = PasswordListQuickFilterItem.CARD_WALLET,
-            title = stringResource(R.string.nav_card_wallet),
-            icon = Icons.Default.CreditCard
-        ),
-        PasswordListQuickFilterOption(
-            item = PasswordListQuickFilterItem.PASSKEY,
-            title = stringResource(R.string.nav_passkey),
-            icon = Icons.Default.VpnKey
-        ),
-        PasswordListQuickFilterOption(
-            item = PasswordListQuickFilterItem.NOTE,
-            title = stringResource(R.string.nav_notes),
-            icon = Icons.Default.Description
-        )
-    )
+
 
     var previewAggregateEnabled by remember(settings.passwordPageAggregateEnabled) {
         mutableStateOf(settings.passwordPageAggregateEnabled)
@@ -762,7 +681,6 @@ fun PasswordListCustomizationScreen(
     }
 
     var aggregateSectionExpanded by rememberSaveable { mutableStateOf(false) }
-    var quickFiltersSectionExpanded by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(
         previewAggregateEnabled,
@@ -771,9 +689,6 @@ fun PasswordListCustomizationScreen(
     ) {
         if (!previewAggregateEnabled) {
             aggregateSectionExpanded = false
-        }
-        if (!previewQuickFiltersEnabled) {
-            quickFiltersSectionExpanded = false
         }
     }
 
@@ -1267,129 +1182,15 @@ fun PasswordListCustomizationScreen(
                 }
             }
 
-            ExpandableSettingsCard(
+            SwitchSettingsCard(
                 title = stringResource(R.string.password_list_quick_filters_switch_title),
                 subtitle = stringResource(R.string.password_list_quick_filters_switch_desc),
-                expanded = quickFiltersSectionExpanded,
-                onExpandedChange = { quickFiltersSectionExpanded = it },
-                expansionEnabled = previewQuickFiltersEnabled,
-                headerTrailing = {
-                    Switch(
-                        checked = previewQuickFiltersEnabled,
-                        onCheckedChange = { checked ->
-                            previewQuickFiltersEnabled = checked
-                            if (!checked) {
-                                quickFiltersSectionExpanded = false
-                            }
-                            viewModel.updatePasswordListQuickFiltersEnabled(checked)
-                        }
-                    )
+                checked = previewQuickFiltersEnabled,
+                onCheckedChange = { checked ->
+                    previewQuickFiltersEnabled = checked
+                    viewModel.updatePasswordListQuickFiltersEnabled(checked)
                 }
-            ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
-                    )
-                    Text(
-                        text = stringResource(R.string.password_list_quick_filters_content_title),
-                        style = MaterialTheme.typography.titleSmall
-                    )
-                    Text(
-                        text = stringResource(R.string.password_list_quick_filters_content_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    val lazyListState = rememberLazyListState()
-                    val reorderableState = rememberReorderableLazyListState(lazyListState) { from, to ->
-                        quickFilterOrder = quickFilterOrder.toMutableList().apply {
-                            add(to.index, removeAt(from.index))
-                        }
-                        val newSelected = quickFilterOrder.filter { selectedQuickFilterItems.contains(it) }
-                        selectedQuickFilterItems.clear()
-                        selectedQuickFilterItems.addAll(newSelected)
-                        viewModel.updatePasswordListQuickFilterItems(newSelected)
-                    }
-
-                    LazyColumn(
-                        state = lazyListState,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height((quickFilterOrder.size * 92).dp),
-                        userScrollEnabled = false,
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        items(quickFilterOrder, key = { it.name }) { item ->
-                            val option = quickFilterOptions.first { it.item == item }
-                            val enabled = selectedQuickFilterItems.contains(item)
-                            val selectedIndex = selectedQuickFilterItems.indexOf(item)
-
-                            ReorderableItem(reorderableState, key = item.name, enabled = true) { isDragging ->
-                                val elevation by animateDpAsState(
-                                    if (isDragging) 6.dp else 0.dp,
-                                    label = "password_list_quick_filter_drag_elevation"
-                                )
-
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .graphicsLayer { shadowElevation = elevation.toPx() },
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = if (enabled) {
-                                            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)
-                                        } else {
-                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                                        }
-                                    )
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(option.icon, contentDescription = null)
-                                        Spacer(modifier = Modifier.size(10.dp))
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = option.title,
-                                                style = MaterialTheme.typography.bodyMedium
-                                            )
-                                        }
-                                        Text(
-                                            text = if (enabled) "${selectedIndex + 1}" else stringResource(R.string.hide),
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Box(
-                                            modifier = Modifier
-                                                .size(36.dp)
-                                                .longPressDraggableHandle(),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(Icons.Default.DragIndicator, contentDescription = null)
-                                        }
-                                        Switch(
-                                            checked = enabled,
-                                            onCheckedChange = { checked ->
-                                                val newSelected = quickFilterOrder.filter { current ->
-                                                    if (current == item) checked else selectedQuickFilterItems.contains(current)
-                                                }
-                                                selectedQuickFilterItems.clear()
-                                                selectedQuickFilterItems.addAll(newSelected)
-                                                viewModel.updatePasswordListQuickFilterItems(newSelected)
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            )
 
             SwitchSettingsCard(
                 title = stringResource(R.string.password_list_category_quick_filters_switch_title),
@@ -1495,12 +1296,6 @@ private data class GroupModeOption(
     val mode: String,
     val title: String,
     val description: String,
-    val icon: ImageVector
-)
-
-private data class PasswordListQuickFilterOption(
-    val item: PasswordListQuickFilterItem,
-    val title: String,
     val icon: ImageVector
 )
 

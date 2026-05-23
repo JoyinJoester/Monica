@@ -23,24 +23,33 @@ sealed interface StorageTarget {
     ) : StorageTarget {
         override val stableKey: String = "bitwarden:$vaultId:${folderId.orEmpty()}"
     }
+
+    data class Mdbx(
+        val databaseId: Long
+    ) : StorageTarget {
+        override val stableKey: String = "mdbx:$databaseId"
+    }
 }
 
 fun StorageTarget.storageScopeKey(): String = when (this) {
     is StorageTarget.MonicaLocal -> "local"
     is StorageTarget.KeePass -> "keepass:$databaseId"
     is StorageTarget.Bitwarden -> "bitwarden:$vaultId"
+    is StorageTarget.Mdbx -> "mdbx:$databaseId"
 }
 
 fun StorageTarget.uncategorizedPeer(): StorageTarget = when (this) {
     is StorageTarget.MonicaLocal -> StorageTarget.MonicaLocal(null)
     is StorageTarget.KeePass -> StorageTarget.KeePass(databaseId, null)
     is StorageTarget.Bitwarden -> StorageTarget.Bitwarden(vaultId, null)
+    is StorageTarget.Mdbx -> StorageTarget.Mdbx(databaseId)
 }
 
 fun StorageTarget.isUncategorizedTarget(): Boolean = when (this) {
     is StorageTarget.MonicaLocal -> categoryId == null
     is StorageTarget.KeePass -> groupPath.isNullOrBlank()
     is StorageTarget.Bitwarden -> folderId.isNullOrBlank()
+    is StorageTarget.Mdbx -> true
 }
 
 fun List<StorageTarget>.normalizedStorageTargets(
@@ -89,6 +98,9 @@ fun PasswordEntry.toStorageTarget(): StorageTarget = when {
         databaseId = keepassDatabaseId,
         groupPath = keepassGroupPath
     )
+    mdbxDatabaseId != null -> StorageTarget.Mdbx(
+        databaseId = mdbxDatabaseId
+    )
     else -> StorageTarget.MonicaLocal(categoryId = categoryId)
 }
 
@@ -100,6 +112,9 @@ fun SecureItem.toStorageTarget(): StorageTarget = when {
     keepassDatabaseId != null -> StorageTarget.KeePass(
         databaseId = keepassDatabaseId,
         groupPath = keepassGroupPath
+    )
+    mdbxDatabaseId != null -> StorageTarget.Mdbx(
+        databaseId = mdbxDatabaseId
     )
     else -> StorageTarget.MonicaLocal(categoryId = categoryId)
 }
@@ -146,6 +161,20 @@ fun StorageTarget.applyToPasswordEntry(
             bitwardenFolderId = folderId,
             bitwardenRevisionDate = null,
             bitwardenLocalModified = false,
+            replicaGroupId = replicaGroupId
+        )
+        is StorageTarget.Mdbx -> entry.copy(
+            categoryId = null,
+            keepassDatabaseId = null,
+            keepassGroupPath = null,
+            keepassEntryUuid = null,
+            keepassGroupUuid = null,
+            bitwardenVaultId = null,
+            bitwardenCipherId = null,
+            bitwardenFolderId = null,
+            bitwardenRevisionDate = null,
+            bitwardenLocalModified = false,
+            mdbxDatabaseId = databaseId,
             replicaGroupId = replicaGroupId
         )
     }
@@ -196,6 +225,21 @@ fun StorageTarget.applyToSecureItem(
             bitwardenRevisionDate = null,
             bitwardenLocalModified = false,
             syncStatus = "PENDING",
+            replicaGroupId = replicaGroupId
+        )
+        is StorageTarget.Mdbx -> item.copy(
+            categoryId = null,
+            keepassDatabaseId = null,
+            keepassGroupPath = null,
+            keepassEntryUuid = null,
+            keepassGroupUuid = null,
+            bitwardenVaultId = null,
+            bitwardenCipherId = null,
+            bitwardenFolderId = null,
+            bitwardenRevisionDate = null,
+            bitwardenLocalModified = false,
+            mdbxDatabaseId = databaseId,
+            syncStatus = "NONE",
             replicaGroupId = replicaGroupId
         )
     }

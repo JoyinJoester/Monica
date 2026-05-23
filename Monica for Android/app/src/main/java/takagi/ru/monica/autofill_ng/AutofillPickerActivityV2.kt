@@ -2728,7 +2728,7 @@ private fun SecureItem.matchesAutofillSourceFilter(
     return when (sourceFilter) {
         AutofillStorageSourceFilter.ALL -> true
         AutofillStorageSourceFilter.LOCAL ->
-            isLocalPasswordOwnership(keepassDatabaseId, bitwardenVaultId)
+            isLocalPasswordOwnership(keepassDatabaseId, bitwardenVaultId, mdbxDatabaseId)
         AutofillStorageSourceFilter.KEEPASS -> {
             val keepassId = keepassDatabaseId
             keepassId != null &&
