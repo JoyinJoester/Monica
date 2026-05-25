@@ -7,6 +7,8 @@ import android.database.sqlite.SQLiteDatabase
 import android.util.Base64
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import takagi.ru.monica.data.ItemType
@@ -23,7 +25,9 @@ import takagi.ru.monica.data.PasswordEntryDao
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.SecureItemDao
 import takagi.ru.monica.attachments.model.Attachment
+import takagi.ru.monica.mdbx.MdbxDiagLogger
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.utils.OneDriveMdbxFileSource
 import takagi.ru.monica.utils.WebDavMdbxFileSource
 import java.io.File
 import java.security.MessageDigest
@@ -48,6 +52,7 @@ data class MdbxVaultDiagnostics(
     val integrityOk: Boolean = false,
     val integrityMessage: String? = null,
     val unresolvedConflictCount: Int = 0,
+    val pendingSyncCount: Int = 0,
     val commitCount: Int = 0,
     val tombstoneCount: Int = 0,
     val branchCount: Int = 0,
@@ -226,6 +231,7 @@ class MdbxVaultStore(
     private val secureItemDao: SecureItemDao? = null
 ) : MdbxRepository {
     private val epochKeyCache = ConcurrentHashMap<Long, ByteArray>()
+    private val vaultWriteLocks = ConcurrentHashMap<String, Mutex>()
 
     private val requiredCoreTables = listOf(
         "vault_meta",
@@ -269,6 +275,158 @@ class MdbxVaultStore(
         }
         file
     }
+
+    override suspend fun createFolder(
+        databaseId: Long,
+        name: String,
+        parentFolderId: String?
+    ): MdbxStoredFolderEntry = withContext(Dispatchers.IO) {
+        var fileForLog: File? = null
+        try {
+            val dbInfo = databaseDao.getDatabaseById(databaseId)
+                ?: throw IllegalStateException("MDBX vault not found: $databaseId")
+            val file = resolveWritableFile(dbInfo)
+                ?: throw IllegalStateException("MDBX vault has no writable local copy: ${dbInfo.name}")
+            fileForLog = file
+            if (!file.exists()) {
+                throw IllegalStateException("MDBX local copy is missing: ${file.absolutePath}")
+            }
+
+            val normalizedName = name.trim()
+            require(normalizedName.isNotEmpty()) { "Folder name cannot be empty" }
+
+            withVaultWriteLock(file) {
+                var createdFolder: MdbxStoredFolderEntry? = null
+                openExistingWritableVault(file).use { db ->
+                    db.beginTransaction()
+                    try {
+                        ensureSchema(db)
+                        ensureDeviceRegistration(db)
+                        val epochKey = requireEpochKey(db, dbInfo)
+                        val resolvedParentFolderId = parentFolderId?.takeIf { it.isNotBlank() } ?: "root"
+                        val parentPathKey = queryString(
+                            db,
+                            "SELECT path_key FROM folders WHERE folder_id = ? AND deleted = 0 LIMIT 1",
+                            arrayOf(resolvedParentFolderId)
+                        ) ?: throw IllegalArgumentException("Parent MDBX folder not found: $resolvedParentFolderId")
+
+                        val duplicateExists = db.rawQuery(
+                            """
+                            SELECT name_ct
+                            FROM folders
+                            WHERE parent_folder_id = ? AND deleted = 0
+                            """.trimIndent(),
+                            arrayOf(resolvedParentFolderId)
+                        ).use { cursor ->
+                            var found = false
+                            while (cursor.moveToNext()) {
+                                val existingName = decodeVaultText(cursor.getBlob(0), epochKey)
+                                if (existingName.equals(normalizedName, ignoreCase = true)) {
+                                    found = true
+                                    break
+                                }
+                            }
+                            found
+                        }
+                        if (duplicateExists) {
+                            throw IllegalArgumentException("MDBX 文件夹已存在: $normalizedName")
+                        }
+
+                        val folderId = UUID.randomUUID().toString()
+                        val commitId = appendCommit(db, "folder", folderId, epochKey)
+                        val now = now()
+                        val pathKey = if (parentPathKey == "/") "/$folderId" else "$parentPathKey/$folderId"
+                        val nameCt = encrypt(normalizedName, epochKey)
+
+                        db.execSQL(
+                            """
+                            INSERT INTO folders (
+                                folder_id, parent_folder_id, name_ct, path_key, object_clock, head_commit_id,
+                                deleted, created_at, updated_at, created_by_device_id, updated_by_device_id
+                            ) VALUES (?, ?, ?, ?, '1', ?, 0, ?, ?, ?, ?)
+                            """.trimIndent(),
+                            arrayOf(folderId, resolvedParentFolderId, nameCt, pathKey, commitId, now, now, deviceId, deviceId)
+                        )
+                        upsertObjectIndex(
+                            db = db,
+                            objectType = "folder",
+                            objectId = folderId,
+                            parentFolderId = resolvedParentFolderId,
+                            title = normalizedName,
+                            entryType = "folder",
+                            commitId = commitId,
+                            deleted = false
+                        )
+                        db.execSQL(
+                            """
+                            INSERT INTO object_versions (
+                                object_type, object_id, commit_id, project_id, entry_type,
+                                title_ct, payload_ct, deleted, created_at, created_by_device_id
+                            ) VALUES ('folder', ?, ?, NULL, NULL, ?, NULL, 0, ?, ?)
+                            """.trimIndent(),
+                            arrayOf(folderId, commitId, nameCt, now, deviceId)
+                        )
+                        createdFolder = MdbxStoredFolderEntry(
+                            folderId = folderId,
+                            parentFolderId = resolvedParentFolderId,
+                            name = normalizedName,
+                            pathKey = pathKey,
+                            objectClock = 1L
+                        )
+                        db.setTransactionSuccessful()
+                    } finally {
+                        db.endTransaction()
+                    }
+                }
+
+                markWorkingCopyDirtyAndFlushLocked(dbInfo, file)
+                createdFolder ?: throw IllegalStateException("Failed to create MDBX folder")
+            }
+        } catch (error: Throwable) {
+            MdbxDiagLogger.append(
+                "createFolder failed databaseId=$databaseId parentFolderId=${parentFolderId ?: "null"} " +
+                    "nameLength=${name.trim().length} file=${fileForLog?.absolutePath ?: "unresolved"} " +
+                    "error=${error.javaClass.simpleName}: ${error.message ?: "unknown error"}"
+            )
+            throw error
+        }
+    }
+
+    override suspend fun listFolders(databaseId: Long): List<MdbxStoredFolderEntry> =
+        withContext(Dispatchers.IO) {
+            val dbInfo = databaseDao.getDatabaseById(databaseId) ?: return@withContext emptyList()
+            val file = resolveWritableFile(dbInfo) ?: return@withContext emptyList()
+            if (!file.exists()) return@withContext emptyList()
+            runCatching {
+                openReadOnly(file).use { db ->
+                    if (missingRequiredTables(db).isNotEmpty()) return@withContext emptyList()
+                    val epochKey = readEpochKeyOrNull(db, dbInfo)
+                    db.rawQuery(
+                        """
+                        SELECT folder_id, parent_folder_id, name_ct, path_key, object_clock
+                        FROM folders
+                        WHERE deleted = 0 AND folder_id != 'root'
+                        ORDER BY path_key ASC
+                        """.trimIndent(),
+                        emptyArray()
+                    ).use { cursor ->
+                        buildList {
+                            while (cursor.moveToNext()) {
+                                add(
+                                    MdbxStoredFolderEntry(
+                                        folderId = cursor.getString(0),
+                                        parentFolderId = if (cursor.isNull(1)) null else cursor.getString(1),
+                                        name = decodeVaultText(cursor.getBlob(2), epochKey),
+                                        pathKey = cursor.getString(3),
+                                        objectClock = cursor.getString(4).toLongOrNull() ?: 0L
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            }.getOrDefault(emptyList())
+        }
 
     suspend fun validateExistingVaultFile(file: File): Unit = withContext(Dispatchers.IO) {
         if (!file.exists()) {
@@ -469,6 +627,7 @@ class MdbxVaultStore(
                 db,
                 "SELECT COUNT(*) FROM conflicts WHERE resolution = 'unresolved'"
             ).toInt(),
+            pendingSyncCount = calculatePendingSyncCount(db, dbInfo),
             commitCount = queryLong(db, "SELECT COUNT(*) FROM commits").toInt(),
             tombstoneCount = queryLong(db, "SELECT COUNT(*) FROM tombstones").toInt(),
             branchCount = queryLong(db, "SELECT COUNT(*) FROM branches").toInt(),
@@ -570,6 +729,21 @@ class MdbxVaultStore(
                 )
             }
         }
+
+    suspend fun getPendingSyncCount(databaseId: Long): Int = withContext(Dispatchers.IO) {
+        val dbInfo = databaseDao.getDatabaseById(databaseId) ?: return@withContext 0
+        val status = runCatching { MdbxSyncStatus.valueOf(dbInfo.lastSyncStatus) }.getOrNull()
+        if (status == MdbxSyncStatus.LOCAL_ONLY || status == MdbxSyncStatus.IN_SYNC) {
+            return@withContext 0
+        }
+        val file = resolveWritableFile(dbInfo) ?: return@withContext 1
+        if (!file.exists()) return@withContext 1
+        runCatching {
+            openReadOnly(file).use { db ->
+                calculatePendingSyncCount(db, dbInfo)
+            }
+        }.getOrDefault(1).coerceAtLeast(1)
+    }
 
     suspend fun listDeltaHistory(databaseId: Long): List<MdbxDeltaSummary> =
         withContext(Dispatchers.IO) {
@@ -776,7 +950,7 @@ class MdbxVaultStore(
         openExistingWritableVault(file).use { db ->
             db.execSQL("DELETE FROM snapshots WHERE snapshot_id = ?", arrayOf(snapshotId))
         }
-        markWorkingCopyDirty(dbInfo)
+        markWorkingCopyDirtyAndFlush(dbInfo, file)
     }
 
     suspend fun revertToSnapshot(databaseId: Long, snapshotId: String): Int =
@@ -899,7 +1073,7 @@ class MdbxVaultStore(
                 try {
                     ensureSchema(db)
                     val epochKey = requireEpochKey(db, dbInfo)
-                    importBundleRows(db, payload)
+                    applied += importBundleRows(db, payload, epochKey)
                     val latestVersions = latestBundleEntryVersions(payload)
                     latestVersions.forEach { version ->
                         when (applyBundleEntryVersion(db, version, epochKey)) {
@@ -1017,7 +1191,7 @@ class MdbxVaultStore(
                 db.endTransaction()
             }
         }
-        markWorkingCopyDirty(dbInfo)
+        markWorkingCopyDirtyAndFlush(dbInfo, file)
     }
 
     suspend fun runBenchmark(
@@ -1198,7 +1372,7 @@ class MdbxVaultStore(
                 db.endTransaction()
             }
         }
-        markWorkingCopyDirty(dbInfo)
+        markWorkingCopyDirtyAndFlush(dbInfo, file)
     }
 
     suspend fun applyIncomingVaultFile(
@@ -1539,7 +1713,7 @@ class MdbxVaultStore(
                 db.endTransaction()
             }
         }
-        markWorkingCopyDirty(dbInfo)
+        markWorkingCopyDirtyAndFlush(dbInfo, file)
     }
 
     suspend fun deleteAttachment(
@@ -1594,7 +1768,7 @@ class MdbxVaultStore(
                 db.endTransaction()
             }
         }
-        markWorkingCopyDirty(dbInfo)
+        markWorkingCopyDirtyAndFlush(dbInfo, file)
     }
 
     private suspend fun upsertEntryMutations(mutations: List<MdbxEntryMutation>) =
@@ -1629,7 +1803,7 @@ class MdbxVaultStore(
                     db.endTransaction()
                 }
             }
-            markWorkingCopyDirty(dbInfo)
+            markWorkingCopyDirtyAndFlush(dbInfo, file)
         }
     }
 
@@ -1948,6 +2122,36 @@ class MdbxVaultStore(
                     )
                 }
             }
+            MdbxSourceType.REMOTE_ONEDRIVE -> {
+                runCatching {
+                    checkpointWorkingCopyForFlush(database, workingCopy)
+                    val sourceId = database.sourceId
+                        ?: throw IllegalStateException("MDBX OneDrive source is not linked")
+                    val sourceDao = remoteSourceDao
+                        ?: throw IllegalStateException("MDBX OneDrive source DAO is unavailable")
+                    val source = sourceDao.getSourceById(sourceId)
+                        ?: throw IllegalStateException("MDBX OneDrive source not found: $sourceId")
+                    val accountId = source.usernameEncrypted?.let(securityManager::decryptData)
+                        ?: throw IllegalStateException("MDBX OneDrive account ID is missing")
+                    OneDriveMdbxFileSource(context, accountId)
+                        .writeFile(
+                            parentPath = source.remoteParentPath,
+                            name = source.remotePath.substringAfterLast('/'),
+                            bytes = workingCopy.readBytes()
+                        )
+                    databaseDao.updateSyncStatus(database.id, MdbxSyncStatus.IN_SYNC.name, null)
+                }.onFailure { error ->
+                    databaseDao.updateSyncStatus(
+                        database.id,
+                        MdbxSyncStatus.FAILED.name,
+                        error.message
+                    )
+                    throw IllegalStateException(
+                        "Failed to upload MDBX vault to OneDrive: ${error.message}",
+                        error
+                    )
+                }
+            }
         }
     }
 
@@ -1955,9 +2159,27 @@ class MdbxVaultStore(
         val status = when (database.sourceTypeEnum) {
             MdbxSourceType.LOCAL_INTERNAL -> MdbxSyncStatus.LOCAL_ONLY
             MdbxSourceType.LOCAL_EXTERNAL,
-            MdbxSourceType.REMOTE_WEBDAV -> MdbxSyncStatus.PENDING_UPLOAD
+            MdbxSourceType.REMOTE_WEBDAV,
+            MdbxSourceType.REMOTE_ONEDRIVE -> MdbxSyncStatus.PENDING_UPLOAD
         }
         databaseDao.updateSyncStatus(database.id, status.name, null)
+    }
+
+    private suspend fun markWorkingCopyDirtyAndFlush(
+        database: LocalMdbxDatabase,
+        workingCopy: File
+    ) {
+        withVaultWriteLock(workingCopy) {
+            markWorkingCopyDirtyAndFlushLocked(database, workingCopy)
+        }
+    }
+
+    private suspend fun markWorkingCopyDirtyAndFlushLocked(
+        database: LocalMdbxDatabase,
+        workingCopy: File
+    ) {
+        markWorkingCopyDirty(database)
+        flushWorkingCopyToSourceIfNeeded(database, workingCopy)
     }
 
     private fun checkpointWorkingCopyForFlush(
@@ -1978,14 +2200,23 @@ class MdbxVaultStore(
                 "Unable to create MDBX directory: ${parent.absolutePath}"
             }
         }
-        return SQLiteDatabase.openOrCreateDatabase(file, null).apply {
-            rawQuery("PRAGMA journal_mode=WAL", emptyArray()).use { cursor ->
-                if (cursor.moveToFirst()) {
-                    cursor.getString(0)
-                }
-            }
-            execSQL("PRAGMA synchronous=NORMAL")
+        val flags = SQLiteDatabase.OPEN_READWRITE or
+            SQLiteDatabase.CREATE_IF_NECESSARY or
+            SQLiteDatabase.NO_LOCALIZED_COLLATORS or
+            SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING
+        return SQLiteDatabase.openDatabase(file.absolutePath, null, flags).apply {
+            applyConnectionPragma("PRAGMA synchronous=NORMAL")
+            applyConnectionPragma("PRAGMA busy_timeout=5000")
+            applyConnectionPragma("PRAGMA secure_delete=ON")
             setForeignKeyConstraintsEnabled(true)
+        }
+    }
+
+    private fun SQLiteDatabase.applyConnectionPragma(sql: String) {
+        rawQuery(sql, emptyArray()).use { cursor ->
+            if (cursor.moveToFirst()) {
+                cursor.getString(0)
+            }
         }
     }
 
@@ -2007,7 +2238,20 @@ class MdbxVaultStore(
     }
 
     private fun openReadOnly(file: File): SQLiteDatabase =
-        SQLiteDatabase.openDatabase(file.absolutePath, null, SQLiteDatabase.OPEN_READONLY)
+        SQLiteDatabase.openDatabase(
+            file.absolutePath,
+            null,
+            SQLiteDatabase.OPEN_READONLY or SQLiteDatabase.NO_LOCALIZED_COLLATORS
+        )
+
+    private suspend fun <T> withVaultWriteLock(
+        file: File,
+        block: suspend () -> T
+    ): T {
+        val key = file.absoluteFile.path
+        val lock = vaultWriteLocks.getOrPut(key) { Mutex() }
+        return lock.withLock { block() }
+    }
 
     private fun openExistingWritableVault(file: File): SQLiteDatabase {
         if (!file.exists()) {
@@ -4393,6 +4637,35 @@ class MdbxVaultStore(
                 }
             )
             .put(
+                "folders",
+                queryJsonArray(
+                    db,
+                    """
+                    SELECT f.folder_id, f.parent_folder_id, f.name_ct, f.path_key, f.object_clock,
+                           f.head_commit_id, f.deleted, f.created_at, f.updated_at,
+                           f.created_by_device_id, f.updated_by_device_id
+                    FROM folders f
+                    JOIN commits c ON c.commit_id = f.head_commit_id
+                    $joinedCommitWhere
+                    ORDER BY f.path_key ASC
+                    """.trimIndent(),
+                    commitArgs
+                ) { cursor ->
+                    JSONObject()
+                        .put("folder_id", cursor.getString(0))
+                        .put("parent_folder_id", if (cursor.isNull(1)) null else cursor.getString(1))
+                        .put("name_ct", blobToBase64(cursor.getBlob(2)))
+                        .put("path_key", cursor.getString(3))
+                        .put("object_clock", cursor.getString(4))
+                        .put("head_commit_id", cursor.getString(5))
+                        .put("deleted", cursor.getInt(6))
+                        .put("created_at", cursor.getString(7))
+                        .put("updated_at", cursor.getString(8))
+                        .put("created_by_device_id", cursor.getString(9))
+                        .put("updated_by_device_id", cursor.getString(10))
+                }
+            )
+            .put(
                 "tombstones",
                 queryJsonArray(
                     db,
@@ -4470,7 +4743,12 @@ class MdbxVaultStore(
             )
     }
 
-    private fun importBundleRows(db: SQLiteDatabase, payload: JSONObject) {
+    private fun importBundleRows(
+        db: SQLiteDatabase,
+        payload: JSONObject,
+        epochKey: ByteArray
+    ): Int {
+        var appliedFolders = 0
         payload.optJSONArray("commits")?.forEachObject { item ->
             db.execSQL(
                 """
@@ -4520,6 +4798,57 @@ class MdbxVaultStore(
                     item.getString("created_by_device_id")
                 )
             )
+        }
+        payload.optJSONArray("folders")?.forEachObject { item ->
+            val folderId = item.getString("folder_id")
+            val incomingHeadCommitId = item.getString("head_commit_id")
+            val nameCt = base64ToBlob(item.getString("name_ct"))
+            val localHeadCommitId = queryString(
+                db,
+                "SELECT head_commit_id FROM folders WHERE folder_id = ? LIMIT 1",
+                arrayOf(folderId)
+            )
+            if (localHeadCommitId != incomingHeadCommitId) {
+                db.execSQL(
+                    """
+                    INSERT OR REPLACE INTO folders (
+                        folder_id, parent_folder_id, name_ct, path_key, object_clock,
+                        head_commit_id, deleted, created_at, updated_at,
+                        created_by_device_id, updated_by_device_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """.trimIndent(),
+                    arrayOf(
+                        folderId,
+                        item.optNullableString("parent_folder_id"),
+                        nameCt,
+                        item.getString("path_key"),
+                        item.getString("object_clock"),
+                        incomingHeadCommitId,
+                        item.getInt("deleted"),
+                        item.getString("created_at"),
+                        item.getString("updated_at"),
+                        item.getString("created_by_device_id"),
+                        item.getString("updated_by_device_id")
+                    )
+                )
+                db.execSQL(
+                    """
+                    INSERT OR REPLACE INTO object_index (
+                        object_type, object_id, parent_id, title_key, entry_type,
+                        head_commit_id, updated_at, deleted
+                    ) VALUES ('folder', ?, ?, ?, 'folder', ?, ?, ?)
+                    """.trimIndent(),
+                    arrayOf(
+                        folderId,
+                        item.optNullableString("parent_folder_id") ?: "root",
+                        decodeVaultText(nameCt, epochKey).lowercase(Locale.ROOT),
+                        incomingHeadCommitId,
+                        item.getString("updated_at"),
+                        item.getInt("deleted")
+                    )
+                )
+                appliedFolders++
+            }
         }
         payload.optJSONArray("tombstones")?.forEachObject { item ->
             db.execSQL(
@@ -4582,6 +4911,7 @@ class MdbxVaultStore(
                 )
             )
         }
+        return appliedFolders
     }
 
     private fun latestBundleEntryVersions(payload: JSONObject): List<BundleEntryVersion> {
@@ -4728,6 +5058,47 @@ class MdbxVaultStore(
             lastSyncStatus = lastSyncStatus,
             lastSyncError = lastSyncError
         )
+
+    private fun calculatePendingSyncCount(
+        db: SQLiteDatabase,
+        database: LocalMdbxDatabase
+    ): Int {
+        val status = runCatching { MdbxSyncStatus.valueOf(database.lastSyncStatus) }.getOrNull()
+        if (status == MdbxSyncStatus.LOCAL_ONLY || status == MdbxSyncStatus.IN_SYNC) {
+            return 0
+        }
+        val conflictCount = queryLongIfTableExists(
+            db,
+            "conflicts",
+            "SELECT COUNT(*) FROM conflicts WHERE resolution = 'unresolved'"
+        )
+        if (status == MdbxSyncStatus.CONFLICT) {
+            return conflictCount.coerceAtLeast(1)
+        }
+        val localOperationCount = queryPendingLocalOperationCount(db, database)
+        return maxOf(conflictCount, localOperationCount, 1)
+    }
+
+    private fun queryPendingLocalOperationCount(
+        db: SQLiteDatabase,
+        database: LocalMdbxDatabase
+    ): Int {
+        if (!tableExists(db, "oplog")) return 0
+        val lastSyncedIso = database.lastSyncedAt?.let {
+            Instant.ofEpochMilli(it).toString()
+        }
+        val sql = if (lastSyncedIso == null) {
+            "SELECT COUNT(*) FROM oplog WHERE device_id = ?"
+        } else {
+            "SELECT COUNT(*) FROM oplog WHERE device_id = ? AND created_at > ?"
+        }
+        val args = if (lastSyncedIso == null) {
+            arrayOf(deviceId)
+        } else {
+            arrayOf(deviceId, lastSyncedIso)
+        }
+        return queryLong(db, sql, args).toInt()
+    }
 
     private fun queryLong(
         db: SQLiteDatabase,

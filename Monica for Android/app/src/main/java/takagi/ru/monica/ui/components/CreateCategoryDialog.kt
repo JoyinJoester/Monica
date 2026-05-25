@@ -67,6 +67,7 @@ import takagi.ru.monica.R
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.LocalMdbxDatabase
+import takagi.ru.monica.data.isMonicaLocalCategory
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.utils.KEEPASS_DISPLAY_PATH_SEPARATOR
 import takagi.ru.monica.utils.KeePassGroupInfo
@@ -575,7 +576,7 @@ private data class CreateDialogLocalCategoryNode(
 )
 
 private fun buildCreateDialogLocalCategoryNodes(categories: List<Category>): List<CreateDialogLocalCategoryNode> {
-    return buildLocalCategoryPathOptions(categories)
+    return buildLocalCategoryPathOptions(categories.filter(Category::isMonicaLocalCategory))
         .map { option -> CreateDialogLocalCategoryNode(fullPath = option.path) }
 }
 

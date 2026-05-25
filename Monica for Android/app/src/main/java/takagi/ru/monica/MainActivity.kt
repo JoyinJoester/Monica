@@ -123,7 +123,12 @@ import takagi.ru.monica.ui.screens.SupportAuthorScreen
 import takagi.ru.monica.ui.screens.OneDriveBackupScreen
 import takagi.ru.monica.ui.screens.WebDavBackupScreen
 import takagi.ru.monica.ui.screens.MdbxManagerScreen
-import takagi.ru.monica.ui.screens.MdbxCreateVaultScreen
+import takagi.ru.monica.ui.screens.MdbxLocalCreateScreen
+import takagi.ru.monica.ui.screens.MdbxLocalOpenScreen
+import takagi.ru.monica.ui.screens.MdbxOneDriveCreateScreen
+import takagi.ru.monica.ui.screens.MdbxOneDriveOpenScreen
+import takagi.ru.monica.ui.screens.MdbxWebDavCreateScreen
+import takagi.ru.monica.ui.screens.MdbxWebDavOpenScreen
 import takagi.ru.monica.ui.screens.KeePassKdbxViewModel
 import takagi.ru.monica.ui.theme.MonicaTheme
 import takagi.ru.monica.utils.LocaleHelper
@@ -487,11 +492,12 @@ fun MonicaApp(
         )
     }
     val passwordHistoryManager = remember { PasswordHistoryManager(navController.context) }
+    val generatorPreferencesManager = remember { takagi.ru.monica.data.GeneratorPreferencesManager(navController.context) }
     val settingsViewModel: SettingsViewModel = viewModel {
         SettingsViewModel(settingsManager, secureItemRepository)
     }
     val generatorViewModel: GeneratorViewModel = viewModel {
-        GeneratorViewModel()
+        GeneratorViewModel(generatorPreferencesManager)
     }
     val noteViewModel: takagi.ru.monica.viewmodel.NoteViewModel = viewModel {
         takagi.ru.monica.viewmodel.NoteViewModel(
@@ -2652,24 +2658,102 @@ fun MonicaContent(
                 onNavigateBack = {
                     navController.popBackStack()
                 },
-                onNavigateToCreateVault = {
-                    navController.navigate(Screen.MdbxCreateVault.route)
+                onNavigateToLocalCreate = {
+                    navController.navigate(Screen.MdbxLocalCreate.route)
+                },
+                onNavigateToLocalOpen = {
+                    navController.navigate(Screen.MdbxLocalOpen.route)
+                },
+                onNavigateToWebDavCreate = {
+                    navController.navigate(Screen.MdbxWebDavCreate.route)
+                },
+                onNavigateToWebDavOpen = {
+                    navController.navigate(Screen.MdbxWebDavOpen.route)
+                },
+                onNavigateToOneDriveCreate = {
+                    navController.navigate(Screen.MdbxOneDriveCreate.route)
+                },
+                onNavigateToOneDriveOpen = {
+                    navController.navigate(Screen.MdbxOneDriveOpen.route)
                 }
             )
         }
 
         composable(
-            route = Screen.MdbxCreateVault.route,
+            route = Screen.MdbxLocalCreate.route,
             enterTransition = { slideInFromRight() },
             exitTransition = { ExitTransition.None },
             popEnterTransition = { EnterTransition.None },
             popExitTransition = { slideOutToRight() }
         ) {
-            MdbxCreateVaultScreen(
+            MdbxLocalCreateScreen(
                 viewModel = mdbxViewModel,
-                onNavigateBack = {
-                    navController.popBackStack()
-                }
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = Screen.MdbxLocalOpen.route,
+            enterTransition = { slideInFromRight() },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { slideOutToRight() }
+        ) {
+            MdbxLocalOpenScreen(
+                viewModel = mdbxViewModel,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = Screen.MdbxWebDavCreate.route,
+            enterTransition = { slideInFromRight() },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { slideOutToRight() }
+        ) {
+            MdbxWebDavCreateScreen(
+                viewModel = mdbxViewModel,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = Screen.MdbxWebDavOpen.route,
+            enterTransition = { slideInFromRight() },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { slideOutToRight() }
+        ) {
+            MdbxWebDavOpenScreen(
+                viewModel = mdbxViewModel,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = Screen.MdbxOneDriveCreate.route,
+            enterTransition = { slideInFromRight() },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { slideOutToRight() }
+        ) {
+            MdbxOneDriveCreateScreen(
+                viewModel = mdbxViewModel,
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(
+            route = Screen.MdbxOneDriveOpen.route,
+            enterTransition = { slideInFromRight() },
+            exitTransition = { ExitTransition.None },
+            popEnterTransition = { EnterTransition.None },
+            popExitTransition = { slideOutToRight() }
+        ) {
+            MdbxOneDriveOpenScreen(
+                viewModel = mdbxViewModel,
+                onNavigateBack = { navController.popBackStack() }
             )
         }
 
@@ -3141,6 +3225,9 @@ fun MonicaContent(
                 },
                 onNavigateToLocalKeePass = {
                     navController.navigate(Screen.LocalKeePass.route)
+                },
+                onNavigateToMdbx = {
+                    navController.navigate(Screen.MdbxManager.route)
                 },
                 onNavigateToBitwarden = {
                     navController.navigate(Screen.BitwardenSettings.route)

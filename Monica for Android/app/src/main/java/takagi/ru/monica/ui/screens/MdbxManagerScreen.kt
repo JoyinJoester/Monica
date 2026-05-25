@@ -3,6 +3,14 @@ package takagi.ru.monica.ui.screens
 import android.content.Context
 import android.net.Uri
 import android.provider.OpenableColumns
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -15,6 +23,7 @@ import androidx.compose.material.icons.automirrored.filled.CallMerge
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.ContentCopy
@@ -37,6 +46,7 @@ import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,7 +76,12 @@ import java.util.Locale
 fun MdbxManagerScreen(
     viewModel: MdbxViewModel,
     onNavigateBack: () -> Unit,
-    onNavigateToCreateVault: () -> Unit
+    onNavigateToLocalCreate: () -> Unit,
+    onNavigateToLocalOpen: () -> Unit,
+    onNavigateToWebDavCreate: () -> Unit,
+    onNavigateToWebDavOpen: () -> Unit,
+    onNavigateToOneDriveCreate: () -> Unit,
+    onNavigateToOneDriveOpen: () -> Unit
 ) {
     val databases by viewModel.allDatabases.collectAsState()
     val operationState by viewModel.operationState.collectAsState()
@@ -76,50 +91,117 @@ fun MdbxManagerScreen(
     val deltaDialogState by viewModel.deltaDialogState.collectAsState()
     val advancedDialogState by viewModel.advancedDialogState.collectAsState()
     var showDeleteDialog by remember { mutableStateOf<LocalMdbxDatabase?>(null) }
-    var selectedDatabase by remember { mutableStateOf<LocalMdbxDatabase?>(null) }
-    val internalDatabases = remember(databases) {
-        databases.filter { it.sourceTypeEnum == MdbxSourceType.LOCAL_INTERNAL }
+    var page by rememberSaveable(stateSaver = MdbxManagerPageSaver) {
+        mutableStateOf<MdbxManagerPage>(MdbxManagerPage.Hub)
     }
-    val externalDatabases = remember(databases) {
-        databases.filter { it.sourceTypeEnum == MdbxSourceType.LOCAL_EXTERNAL }
+    val localDatabases = remember(databases) {
+        databases.filter {
+            it.sourceTypeEnum == MdbxSourceType.LOCAL_INTERNAL ||
+                it.sourceTypeEnum == MdbxSourceType.LOCAL_EXTERNAL
+        }
     }
-    val remoteDatabases = remember(databases) {
+    val webDavDatabases = remember(databases) {
         databases.filter { it.sourceTypeEnum == MdbxSourceType.REMOTE_WEBDAV }
+    }
+    val oneDriveDatabases = remember(databases) {
+        databases.filter { it.sourceTypeEnum == MdbxSourceType.REMOTE_ONEDRIVE }
+    }
+    val selectedDatabase = (page as? MdbxManagerPage.DatabasePage)?.databaseId?.let { databaseId ->
+        databases.firstOrNull { it.id == databaseId }
     }
 
     LaunchedEffect(Unit) {
-        viewModel.clearOperationState()
         viewModel.pruneMissingLocalVaults()
     }
     LaunchedEffect(databases) {
         viewModel.refreshConflictCounts(databases)
-        if (selectedDatabase != null && databases.none { it.id == selectedDatabase?.id }) {
-            selectedDatabase = null
+        val databasePage = page as? MdbxManagerPage.DatabasePage
+        if (databasePage != null && databases.none { it.id == databasePage.databaseId }) {
+            page = MdbxManagerPage.Hub
         }
     }
+    LaunchedEffect(page) {
+        when (page) {
+            is MdbxManagerPage.Conflict -> viewModel.dismissDeltaDialog()
+            is MdbxManagerPage.History -> viewModel.dismissConflictDialog()
+            is MdbxManagerPage.Advanced -> {
+                viewModel.dismissConflictDialog()
+                viewModel.dismissDeltaDialog()
+            }
+            is MdbxManagerPage.Maintenance -> {
+                viewModel.dismissConflictDialog()
+                viewModel.dismissDeltaDialog()
+                viewModel.dismissAdvancedTools()
+            }
+            else -> Unit
+        }
+    }
+
+    val goBack: () -> Unit = {
+        page = when (val current = page) {
+            MdbxManagerPage.Hub -> {
+                onNavigateBack()
+                MdbxManagerPage.Hub
+            }
+            is MdbxManagerPage.Source -> MdbxManagerPage.Hub
+            is MdbxManagerPage.Detail -> current.source?.let { MdbxManagerPage.Source(it) } ?: MdbxManagerPage.Hub
+            is MdbxManagerPage.Conflict -> {
+                viewModel.dismissConflictDialog()
+                MdbxManagerPage.Detail(current.databaseId, current.source)
+            }
+            is MdbxManagerPage.History -> {
+                viewModel.dismissDeltaDialog()
+                MdbxManagerPage.Detail(current.databaseId, current.source)
+            }
+            is MdbxManagerPage.Advanced -> {
+                viewModel.dismissAdvancedTools()
+                MdbxManagerPage.Detail(current.databaseId, current.source)
+            }
+            is MdbxManagerPage.Maintenance -> MdbxManagerPage.Detail(current.databaseId, current.source)
+        }
+    }
+    BackHandler(onBack = goBack)
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.mdbx_format_title)) },
+                title = { Text(page.title(selectedDatabase)) },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    IconButton(onClick = goBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back))
                     }
                 },
                 actions = {
-                    IconButton(onClick = onNavigateToCreateVault) {
-                        Icon(Icons.Default.Add, contentDescription = stringResource(R.string.create))
+                    if (page is MdbxManagerPage.Source) {
+                        val current = page as MdbxManagerPage.Source
+                        IconButton(onClick = {
+                            when (current.source) {
+                                MdbxManagerSource.LOCAL -> onNavigateToLocalOpen()
+                                MdbxManagerSource.WEBDAV -> onNavigateToWebDavOpen()
+                                MdbxManagerSource.ONEDRIVE -> onNavigateToOneDriveOpen()
+                            }
+                        }) {
+                            Icon(Icons.Default.Folder, contentDescription = "打开已有数据库")
+                        }
                     }
                 }
             )
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = onNavigateToCreateVault,
-                icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                text = { Text(stringResource(R.string.mdbx_create_new_vault_button)) }
-            )
+            if (page is MdbxManagerPage.Source) {
+                val current = page as MdbxManagerPage.Source
+                ExtendedFloatingActionButton(
+                    onClick = {
+                        when (current.source) {
+                            MdbxManagerSource.LOCAL -> onNavigateToLocalCreate()
+                            MdbxManagerSource.WEBDAV -> onNavigateToWebDavCreate()
+                            MdbxManagerSource.ONEDRIVE -> onNavigateToOneDriveCreate()
+                        }
+                    },
+                    icon = { Icon(Icons.Default.Add, contentDescription = null) },
+                    text = { Text(stringResource(R.string.mdbx_create_new_vault_button)) }
+                )
+            }
         }
     ) { padding ->
         Box(
@@ -127,86 +209,183 @@ fun MdbxManagerScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            if (databases.isEmpty()) {
-                EmptyMdbxState(onCreateClick = onNavigateToCreateVault)
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(
-                        start = 16.dp,
-                        end = 16.dp,
-                        top = 8.dp,
-                        bottom = 96.dp
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    item {
-                        MdbxOperationsDashboard(
-                            databases = databases,
-                            diagnostics = vaultDiagnostics
-                        )
+            AnimatedContent(
+                targetState = page,
+                transitionSpec = {
+                    val forward = targetState.depth() > initialState.depth()
+                    val slideDistance = 60
+                    if (forward) {
+                        (slideInHorizontally(tween(300)) { slideDistance } + fadeIn(tween(300)))
+                            .togetherWith(slideOutHorizontally(tween(300)) { -slideDistance } + fadeOut(tween(200)))
+                    } else {
+                        (slideInHorizontally(tween(300)) { -slideDistance } + fadeIn(tween(300)))
+                            .togetherWith(slideOutHorizontally(tween(300)) { slideDistance } + fadeOut(tween(200)))
                     }
-                    if (internalDatabases.isNotEmpty()) {
-                        item {
-                            MdbxSectionHeader(
-                                icon = Icons.Default.Security,
-                                title = "Monica 私有目录",
-                                subtitle = "应用内部保存的 MDBX vault",
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        items(items = internalDatabases, key = { it.id }) { db ->
-                            MdbxVaultSmallCard(
-                                database = db,
-                                isDefault = db.isDefault,
-                                conflictCount = conflictCounts[db.id] ?: 0,
-                                diagnostics = vaultDiagnostics[db.id],
-                                onOpen = { selectedDatabase = db }
-                            )
-                        }
-                    }
-                    if (externalDatabases.isNotEmpty()) {
-                        item {
-                            MdbxSectionHeader(
-                                icon = Icons.Default.Folder,
-                                title = "本地文件",
-                                subtitle = "通过系统文件选择器连接的 MDBX vault",
-                                color = MaterialTheme.colorScheme.secondary
-                            )
-                        }
-                        items(items = externalDatabases, key = { it.id }) { db ->
-                            MdbxVaultSmallCard(
-                                database = db,
-                                isDefault = db.isDefault,
-                                conflictCount = conflictCounts[db.id] ?: 0,
-                                diagnostics = vaultDiagnostics[db.id],
-                                onOpen = { selectedDatabase = db }
-                            )
-                        }
-                    }
-                    if (remoteDatabases.isNotEmpty()) {
-                        item {
-                            MdbxSectionHeader(
-                                icon = Icons.Default.CloudSync,
-                                title = "WebDAV",
-                                subtitle = "远程 MDBX vault 的本地工作副本",
-                                color = MaterialTheme.colorScheme.tertiary
-                            )
-                        }
-                        items(items = remoteDatabases, key = { it.id }) { db ->
-                            MdbxVaultSmallCard(
-                                database = db,
-                                isDefault = db.isDefault,
-                                conflictCount = conflictCounts[db.id] ?: 0,
-                                diagnostics = vaultDiagnostics[db.id],
-                                onOpen = { selectedDatabase = db }
-                            )
-                        }
-                    }
-                    item {
-                        MdbxQuickActionsCard(onCreateClick = onNavigateToCreateVault)
-                    }
+                },
+                contentKey = { it::class }
+            ) { current ->
+            when (current) {
+                MdbxManagerPage.Hub -> {
+                    MdbxManagerHubPage(
+                        localCount = localDatabases.size,
+                        webDavCount = webDavDatabases.size,
+                        oneDriveCount = oneDriveDatabases.size,
+                        onOpenLocal = { page = MdbxManagerPage.Source(MdbxManagerSource.LOCAL) },
+                        onOpenWebDav = { page = MdbxManagerPage.Source(MdbxManagerSource.WEBDAV) },
+                        onOpenOneDrive = { page = MdbxManagerPage.Source(MdbxManagerSource.ONEDRIVE) }
+                    )
                 }
+                is MdbxManagerPage.Source -> {
+                    val sourceDatabases = when (current.source) {
+                        MdbxManagerSource.LOCAL -> localDatabases
+                        MdbxManagerSource.WEBDAV -> webDavDatabases
+                        MdbxManagerSource.ONEDRIVE -> oneDriveDatabases
+                    }
+                    MdbxSourceManagementPage(
+                        source = current.source,
+                        databases = sourceDatabases,
+                        conflictCounts = conflictCounts,
+                        diagnostics = vaultDiagnostics,
+                        onCreateClick = {
+                            when (current.source) {
+                                MdbxManagerSource.LOCAL -> onNavigateToLocalCreate()
+                                MdbxManagerSource.WEBDAV -> onNavigateToWebDavCreate()
+                                MdbxManagerSource.ONEDRIVE -> onNavigateToOneDriveCreate()
+                            }
+                        },
+                        onOpenClick = {
+                            when (current.source) {
+                                MdbxManagerSource.LOCAL -> onNavigateToLocalOpen()
+                                MdbxManagerSource.WEBDAV -> onNavigateToWebDavOpen()
+                                MdbxManagerSource.ONEDRIVE -> onNavigateToOneDriveOpen()
+                            }
+                        },
+                        onOpenDatabase = { db ->
+                            page = MdbxManagerPage.Detail(db.id, current.source)
+                        }
+                    )
+                }
+                is MdbxManagerPage.Detail -> {
+                    selectedDatabase?.let { db ->
+                        MdbxVaultDetailPage(
+                            database = db,
+                            isDefault = db.isDefault,
+                            conflictCount = conflictCounts[db.id] ?: 0,
+                            diagnostics = vaultDiagnostics[db.id],
+                            onSync = { viewModel.syncVault(db.id) },
+                            onShowConflicts = {
+                                viewModel.showConflicts(db)
+                                page = MdbxManagerPage.Conflict(db.id, current.source)
+                            },
+                            onShowDeltas = {
+                                viewModel.showDeltaHistory(db)
+                                page = MdbxManagerPage.History(db.id, current.source)
+                            },
+                            onShowAdvanced = {
+                                viewModel.showAdvancedTools(db)
+                                page = MdbxManagerPage.Advanced(db.id, current.source)
+                            },
+                            onShowMaintenance = {
+                                viewModel.refreshVaultDiagnostics(listOf(db))
+                                page = MdbxManagerPage.Maintenance(db.id, current.source)
+                            },
+                            onSetDefault = { viewModel.setAsDefault(db.id) },
+                            onDelete = { showDeleteDialog = db }
+                        )
+                    } ?: EmptyMdbxState(
+                        onCreateClick = {
+                            when (current.source) {
+                                MdbxManagerSource.LOCAL -> onNavigateToLocalCreate()
+                                MdbxManagerSource.WEBDAV -> onNavigateToWebDavCreate()
+                                else -> onNavigateToLocalCreate()
+                            }
+                        },
+                        onOpenClick = {
+                            when (current.source) {
+                                MdbxManagerSource.LOCAL -> onNavigateToLocalOpen()
+                                MdbxManagerSource.WEBDAV -> onNavigateToWebDavOpen()
+                                else -> onNavigateToLocalOpen()
+                            }
+                        }
+                    )
+                }
+                is MdbxManagerPage.Conflict -> {
+                    val state = conflictDialogState as? MdbxViewModel.MdbxConflictDialogState.Visible
+                    MdbxConflictPage(
+                        state = state,
+                        databaseName = selectedDatabase?.name ?: "MDBX",
+                        onResolve = { conflictId, resolution ->
+                            viewModel.resolveConflict(current.databaseId, conflictId, resolution)
+                        }
+                    )
+                }
+                is MdbxManagerPage.History -> {
+                    val state = deltaDialogState as? MdbxViewModel.MdbxDeltaDialogState.Visible
+                    MdbxDeltaPage(
+                        state = state,
+                        databaseName = selectedDatabase?.name ?: "MDBX",
+                        onShowDiff = { commitId -> viewModel.showCommitDiff(current.databaseId, commitId) },
+                        onRevert = { commitId -> viewModel.revertCommit(current.databaseId, commitId) },
+                        onCreateSnapshot = { name, fullSnapshot ->
+                            viewModel.createSnapshot(current.databaseId, name, fullSnapshot)
+                        },
+                        onDeleteSnapshot = { snapshotId ->
+                            viewModel.deleteSnapshot(current.databaseId, snapshotId)
+                        },
+                        onRevertSnapshot = { snapshotId ->
+                            viewModel.revertToSnapshot(current.databaseId, snapshotId)
+                        },
+                        onPruneAutomaticSnapshots = {
+                            viewModel.pruneAutomaticSnapshots(current.databaseId)
+                        }
+                    )
+                }
+                is MdbxManagerPage.Advanced -> {
+                    val state = advancedDialogState as? MdbxViewModel.MdbxAdvancedDialogState.Visible
+                    MdbxAdvancedToolsPage(
+                        state = state,
+                        databaseName = selectedDatabase?.name ?: "MDBX",
+                        onExportBundle = { baseCommitId ->
+                            viewModel.exportSyncBundle(current.databaseId, baseCommitId)
+                        },
+                        onImportBundle = { payload ->
+                            viewModel.importSyncBundleFromJson(current.databaseId, payload)
+                        },
+                        onFlushPendingUpload = {
+                            viewModel.flushPendingVaultUpload(current.databaseId)
+                        },
+                        onRunBenchmark = { operationCount ->
+                            viewModel.runBenchmark(current.databaseId, operationCount)
+                        }
+                    )
+                }
+                is MdbxManagerPage.Maintenance -> {
+                    selectedDatabase?.let { db ->
+                        MdbxMaintenancePage(
+                            database = db,
+                            diagnostics = vaultDiagnostics[db.id],
+                            onRefreshDiagnostics = { viewModel.refreshVaultDiagnostics(listOf(db)) },
+                            onSync = { viewModel.syncVault(db.id) },
+                            onFlushPendingUpload = { viewModel.flushPendingVaultUpload(db.id) }
+                        )
+                    } ?: EmptyMdbxState(
+                        onCreateClick = {
+                            when (current.source) {
+                                MdbxManagerSource.LOCAL -> onNavigateToLocalCreate()
+                                MdbxManagerSource.WEBDAV -> onNavigateToWebDavCreate()
+                                else -> onNavigateToLocalCreate()
+                            }
+                        },
+                        onOpenClick = {
+                            when (current.source) {
+                                MdbxManagerSource.LOCAL -> onNavigateToLocalOpen()
+                                MdbxManagerSource.WEBDAV -> onNavigateToWebDavOpen()
+                                else -> onNavigateToLocalOpen()
+                            }
+                        }
+                    )
+                }
+            }
             }
 
             when (val state = operationState) {
@@ -234,40 +413,6 @@ fun MdbxManagerScreen(
         }
     }
 
-    selectedDatabase?.let { db ->
-        MdbxVaultDetailBottomSheet(
-            database = db,
-            isDefault = db.isDefault,
-            conflictCount = conflictCounts[db.id] ?: 0,
-            diagnostics = vaultDiagnostics[db.id],
-            onDismiss = { selectedDatabase = null },
-            onSync = {
-                selectedDatabase = null
-                viewModel.syncVault(db.id)
-            },
-            onShowConflicts = {
-                selectedDatabase = null
-                viewModel.showConflicts(db)
-            },
-            onShowDeltas = {
-                selectedDatabase = null
-                viewModel.showDeltaHistory(db)
-            },
-            onShowAdvanced = {
-                selectedDatabase = null
-                viewModel.showAdvancedTools(db)
-            },
-            onSetDefault = {
-                selectedDatabase = null
-                viewModel.setAsDefault(db.id)
-            },
-            onDelete = {
-                selectedDatabase = null
-                showDeleteDialog = db
-            }
-        )
-    }
-
     showDeleteDialog?.let { db ->
         AlertDialog(
             onDismissRequest = { showDeleteDialog = null },
@@ -278,8 +423,10 @@ fun MdbxManagerScreen(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        if (selectedDatabase?.id == db.id) selectedDatabase = null
                         viewModel.deleteVault(db.id)
+                        if ((page as? MdbxManagerPage.DatabasePage)?.databaseId == db.id) {
+                            page = MdbxManagerPage.Hub
+                        }
                         showDeleteDialog = null
                     },
                     colors = ButtonDefaults.textButtonColors(
@@ -296,70 +443,1097 @@ fun MdbxManagerScreen(
             }
         )
     }
+}
 
-    when (val state = deltaDialogState) {
-        MdbxViewModel.MdbxDeltaDialogState.Hidden -> Unit
-        is MdbxViewModel.MdbxDeltaDialogState.Visible -> {
-            MdbxDeltaDialog(
-                state = state,
-                onDismiss = viewModel::dismissDeltaDialog,
-                onShowDiff = { commitId -> viewModel.showCommitDiff(state.databaseId, commitId) },
-                onRevert = { commitId -> viewModel.revertCommit(state.databaseId, commitId) },
-                onCreateSnapshot = { name, fullSnapshot ->
-                    viewModel.createSnapshot(state.databaseId, name, fullSnapshot)
-                },
-                onDeleteSnapshot = { snapshotId ->
-                    viewModel.deleteSnapshot(state.databaseId, snapshotId)
-                },
-                onRevertSnapshot = { snapshotId ->
-                    viewModel.revertToSnapshot(state.databaseId, snapshotId)
-                },
-                onPruneAutomaticSnapshots = {
-                    viewModel.pruneAutomaticSnapshots(state.databaseId)
-                }
-            )
+private enum class MdbxManagerSource {
+    LOCAL,
+    WEBDAV,
+    ONEDRIVE
+}
+
+private sealed class MdbxManagerPage {
+    data object Hub : MdbxManagerPage()
+    data class Source(val source: MdbxManagerSource) : MdbxManagerPage()
+    sealed class DatabasePage(open val databaseId: Long, open val source: MdbxManagerSource?) : MdbxManagerPage()
+    data class Detail(override val databaseId: Long, override val source: MdbxManagerSource?) : DatabasePage(databaseId, source)
+    data class Conflict(override val databaseId: Long, override val source: MdbxManagerSource?) : DatabasePage(databaseId, source)
+    data class History(override val databaseId: Long, override val source: MdbxManagerSource?) : DatabasePage(databaseId, source)
+    data class Advanced(override val databaseId: Long, override val source: MdbxManagerSource?) : DatabasePage(databaseId, source)
+    data class Maintenance(override val databaseId: Long, override val source: MdbxManagerSource?) : DatabasePage(databaseId, source)
+}
+
+private fun MdbxManagerPage.depth(): Int = when (this) {
+    MdbxManagerPage.Hub -> 0
+    is MdbxManagerPage.Source -> 1
+    is MdbxManagerPage.Detail -> 2
+    is MdbxManagerPage.Conflict -> 3
+    is MdbxManagerPage.History -> 3
+    is MdbxManagerPage.Advanced -> 3
+    is MdbxManagerPage.Maintenance -> 3
+}
+
+private val MdbxManagerPageSaver: Saver<MdbxManagerPage, Any> = Saver(
+    save = { page ->
+        when (page) {
+            MdbxManagerPage.Hub -> listOf("Hub")
+            is MdbxManagerPage.Source -> listOf("Source", page.source.name)
+            is MdbxManagerPage.Detail -> listOf("Detail", page.databaseId, page.source?.name ?: "")
+            is MdbxManagerPage.Conflict -> listOf("Conflict", page.databaseId, page.source?.name ?: "")
+            is MdbxManagerPage.History -> listOf("History", page.databaseId, page.source?.name ?: "")
+            is MdbxManagerPage.Advanced -> listOf("Advanced", page.databaseId, page.source?.name ?: "")
+            is MdbxManagerPage.Maintenance -> listOf("Maintenance", page.databaseId, page.source?.name ?: "")
+        }
+    },
+    restore = { value ->
+        val list = value as? List<*> ?: return@Saver null
+        when (list.firstOrNull()) {
+            "Hub" -> MdbxManagerPage.Hub
+            "Source" -> {
+                val source = runCatching { MdbxManagerSource.valueOf(list[1] as String) }.getOrNull() ?: return@Saver null
+                MdbxManagerPage.Source(source)
+            }
+            "Detail" -> MdbxManagerPage.Detail(list[1] as Long, parseMdbxManagerSourceOrNull(list[2] as String))
+            "Conflict" -> MdbxManagerPage.Conflict(list[1] as Long, parseMdbxManagerSourceOrNull(list[2] as String))
+            "History" -> MdbxManagerPage.History(list[1] as Long, parseMdbxManagerSourceOrNull(list[2] as String))
+            "Advanced" -> MdbxManagerPage.Advanced(list[1] as Long, parseMdbxManagerSourceOrNull(list[2] as String))
+            "Maintenance" -> MdbxManagerPage.Maintenance(list[1] as Long, parseMdbxManagerSourceOrNull(list[2] as String))
+            else -> null
         }
     }
+)
 
-    when (val state = advancedDialogState) {
-        MdbxViewModel.MdbxAdvancedDialogState.Hidden -> Unit
-        is MdbxViewModel.MdbxAdvancedDialogState.Visible -> {
-            MdbxAdvancedToolsDialog(
-                state = state,
-                onDismiss = viewModel::dismissAdvancedTools,
-                onExportBundle = { baseCommitId ->
-                    viewModel.exportSyncBundle(state.databaseId, baseCommitId)
-                },
-                onImportBundle = { payload ->
-                    viewModel.importSyncBundleFromJson(state.databaseId, payload)
-                },
-                onFlushPendingUpload = {
-                    viewModel.flushPendingVaultUpload(state.databaseId)
-                },
-                onRunBenchmark = { operationCount ->
-                    viewModel.runBenchmark(state.databaseId, operationCount)
-                }
+private fun parseMdbxManagerSourceOrNull(raw: String): MdbxManagerSource? =
+    raw.takeIf { it.isNotBlank() }?.let { runCatching { MdbxManagerSource.valueOf(it) }.getOrNull() }
+
+private fun MdbxManagerPage.title(database: LocalMdbxDatabase?): String = when (this) {
+    MdbxManagerPage.Hub -> "MDBX（测试）"
+    is MdbxManagerPage.Source -> when (source) {
+        MdbxManagerSource.LOCAL -> "本地 MDBX 管理"
+        MdbxManagerSource.WEBDAV -> "WebDAV MDBX 管理"
+        MdbxManagerSource.ONEDRIVE -> "OneDrive MDBX 管理"
+    }
+    is MdbxManagerPage.Detail -> database?.name ?: "MDBX 数据库详情"
+    is MdbxManagerPage.Conflict -> "冲突管理"
+    is MdbxManagerPage.History -> "历史 / 快照"
+    is MdbxManagerPage.Advanced -> "高级工具"
+    is MdbxManagerPage.Maintenance -> "诊断 / 维护"
+}
+
+@Composable
+private fun MdbxManagerHubPage(
+    localCount: Int,
+    webDavCount: Int,
+    oneDriveCount: Int,
+    onOpenLocal: () -> Unit,
+    onOpenWebDav: () -> Unit,
+    onOpenOneDrive: () -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Text(
+                "MDBX（测试）",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                "按存储位置管理 MDBX 数据库。数据库诊断、冲突、历史、快照和高级工具都在数据库详情页继续进入。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-    }
-
-    when (val state = conflictDialogState) {
-        MdbxViewModel.MdbxConflictDialogState.Hidden -> Unit
-        is MdbxViewModel.MdbxConflictDialogState.Visible -> {
-            MdbxConflictDialog(
-                state = state,
-                onDismiss = viewModel::dismissConflictDialog,
-                onResolve = { conflictId, resolution ->
-                    viewModel.resolveConflict(state.databaseId, conflictId, resolution)
-                }
+        item {
+            MdbxManagerEntryCard(
+                icon = Icons.Default.Storage,
+                title = "本地 MDBX 管理",
+                subtitle = "管理 Monica 私有目录和系统文件中的 .mdbx 数据库",
+                count = localCount,
+                color = MaterialTheme.colorScheme.primary,
+                onClick = onOpenLocal
+            )
+        }
+        item {
+            MdbxManagerEntryCard(
+                icon = Icons.Default.CloudSync,
+                title = "WebDAV MDBX 管理",
+                subtitle = "绑定 WebDAV 后创建或打开远程 .mdbx，保留本地工作副本",
+                count = webDavCount,
+                color = MaterialTheme.colorScheme.tertiary,
+                onClick = onOpenWebDav
+            )
+        }
+        item {
+            MdbxManagerEntryCard(
+                icon = Icons.Default.Cloud,
+                title = "OneDrive MDBX 管理",
+                subtitle = "通过 Microsoft 账户创建或打开 OneDrive 上的 .mdbx 数据库",
+                count = oneDriveCount,
+                color = MaterialTheme.colorScheme.secondary,
+                onClick = onOpenOneDrive
             )
         }
     }
 }
 
 @Composable
+private fun MdbxManagerEntryCard(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    count: Int,
+    color: Color,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = color.copy(alpha = 0.14f),
+                modifier = Modifier.size(52.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(26.dp))
+                }
+            }
+            Spacer(modifier = Modifier.width(14.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Surface(
+                        shape = MaterialTheme.shapes.small,
+                        color = MaterialTheme.colorScheme.surfaceVariant
+                    ) {
+                        Text(
+                            "$count",
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                            style = MaterialTheme.typography.labelMedium
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun MdbxSourceManagementPage(
+    source: MdbxManagerSource,
+    databases: List<LocalMdbxDatabase>,
+    conflictCounts: Map<Long, Int>,
+    diagnostics: Map<Long, MdbxVaultDiagnostics>,
+    onCreateClick: () -> Unit,
+    onOpenClick: () -> Unit,
+    onOpenDatabase: (LocalMdbxDatabase) -> Unit
+) {
+    val header = when (source) {
+        MdbxManagerSource.LOCAL -> Triple(Icons.Default.Storage, "本地数据库", "像 KeePass 本地管理一样直接列出已连接的 MDBX 数据库。")
+        MdbxManagerSource.WEBDAV -> Triple(Icons.Default.CloudSync, "WebDAV 工作副本", "绑定 WebDAV 账号后，可创建或手动打开远程 MDBX。同步会通过本地工作副本完成。")
+        MdbxManagerSource.ONEDRIVE -> Triple(Icons.Default.Cloud, "OneDrive 工作副本", "通过 Microsoft 账户在 OneDrive 上创建或打开 MDBX 数据库，保留本地工作副本用于离线访问。")
+    }
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 96.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            MdbxSectionHeader(
+                icon = header.first,
+                title = header.second,
+                subtitle = header.third,
+                color = when (source) {
+                    MdbxManagerSource.LOCAL -> MaterialTheme.colorScheme.primary
+                    MdbxManagerSource.WEBDAV -> MaterialTheme.colorScheme.tertiary
+                    MdbxManagerSource.ONEDRIVE -> MaterialTheme.colorScheme.secondary
+                }
+            )
+        }
+        if (databases.isEmpty()) {
+            item {
+                MdbxSourceEmptyCard(source = source, onCreateClick = onCreateClick, onOpenClick = onOpenClick)
+            }
+        } else {
+            items(items = databases, key = { it.id }) { db ->
+                MdbxVaultSmallCard(
+                    database = db,
+                    isDefault = db.isDefault,
+                    conflictCount = conflictCounts[db.id] ?: 0,
+                    diagnostics = diagnostics[db.id],
+                    onOpen = { onOpenDatabase(db) }
+                )
+            }
+            item {
+                MdbxQuickActionsCard(onCreateClick = onCreateClick, onOpenClick = onOpenClick)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MdbxSourceEmptyCard(
+    source: MdbxManagerSource,
+    onCreateClick: () -> Unit,
+    onOpenClick: () -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                when (source) {
+                    MdbxManagerSource.LOCAL -> "还没有本地 MDBX 数据库"
+                    MdbxManagerSource.WEBDAV -> "还没有 WebDAV MDBX 数据库"
+                    MdbxManagerSource.ONEDRIVE -> "还没有 OneDrive MDBX 数据库"
+                },
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                when (source) {
+                    MdbxManagerSource.LOCAL -> "可以创建新的本地 .mdbx，或通过系统文件选择器打开已有数据库。"
+                    MdbxManagerSource.WEBDAV -> "进入创建页面后选择 WebDAV，填写并测试账号，再创建或打开远程 .mdbx。"
+                    MdbxManagerSource.ONEDRIVE -> "通过 Microsoft 账户登录 OneDrive，即可创建或打开远程 .mdbx 数据库。"
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                    OutlinedButton(
+                        onClick = onOpenClick,
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                    ) {
+                        Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("打开")
+                    }
+                    Button(
+                        onClick = onCreateClick,
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(stringResource(R.string.mdbx_create_new_vault_button))
+                    }
+                }
+            }
+        }
+    }
+
+@Composable
+private fun MdbxVaultDetailPage(
+    database: LocalMdbxDatabase,
+    isDefault: Boolean,
+    conflictCount: Int,
+    diagnostics: MdbxVaultDiagnostics?,
+    onSync: () -> Unit,
+    onShowConflicts: () -> Unit,
+    onShowDeltas: () -> Unit,
+    onShowAdvanced: () -> Unit,
+    onShowMaintenance: () -> Unit,
+    onSetDefault: () -> Unit,
+    onDelete: () -> Unit
+) {
+    val context = LocalContext.current
+    val tigaLabel = runCatching { MdbxTigaMode.valueOf(database.tigaMode).label }.getOrDefault(database.tigaMode)
+    val healthIssueCount = diagnostics?.healthIssueCount ?: 0
+    val hasUnavailableCopy = diagnostics?.isReadable == false
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Surface(
+                        shape = MaterialTheme.shapes.medium,
+                        color = sourceColor(database).copy(alpha = 0.12f),
+                        modifier = Modifier.size(56.dp)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                sourceIcon(database),
+                                contentDescription = null,
+                                tint = sourceColor(database),
+                                modifier = Modifier.size(28.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                database.name,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            if (isDefault) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Icon(
+                                    Icons.Default.Star,
+                                    contentDescription = stringResource(R.string.mdbx_default_badge),
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                        Text(
+                            "Tiga: $tigaLabel · ${mdbxSourceLabel(database)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            database.displayPath(context),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+        }
+
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                StatusTile(
+                    modifier = Modifier.weight(1f),
+                    icon = if (conflictCount > 0) Icons.AutoMirrored.Filled.CallMerge else Icons.Default.CheckCircle,
+                    label = stringResource(R.string.mdbx_status_conflicts),
+                    value = if (conflictCount > 0) {
+                        stringResource(R.string.mdbx_conflict_count_short, conflictCount)
+                    } else {
+                        stringResource(R.string.mdbx_no_conflicts_short)
+                    },
+                    isWarning = conflictCount > 0
+                )
+                StatusTile(
+                    modifier = Modifier.weight(1f),
+                    icon = if (healthIssueCount > 0) Icons.Default.Warning else Icons.Default.CheckCircle,
+                    label = stringResource(R.string.mdbx_status_health),
+                    value = if (healthIssueCount > 0) {
+                        stringResource(R.string.mdbx_health_issues_short, healthIssueCount)
+                    } else {
+                        stringResource(R.string.mdbx_health_ok_short)
+                    },
+                    isWarning = healthIssueCount > 0
+                )
+            }
+        }
+
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                StatusTile(
+                    modifier = Modifier.weight(1f),
+                    icon = Icons.Default.History,
+                    label = stringResource(R.string.mdbx_status_delta),
+                    value = diagnostics?.let {
+                        stringResource(R.string.mdbx_commit_tombstone_short, it.commitCount, it.tombstoneCount)
+                    } ?: stringResource(R.string.mdbx_status_loading),
+                    isWarning = false
+                )
+                StatusTile(
+                    modifier = Modifier.weight(1f),
+                    icon = Icons.Default.Storage,
+                    label = stringResource(R.string.mdbx_status_attachments),
+                    value = diagnostics?.let {
+                        stringResource(
+                            R.string.mdbx_attachment_short,
+                            it.attachmentCount,
+                            it.externalAttachmentCount,
+                            formatBytes(it.storedAttachmentBytes)
+                        )
+                    } ?: stringResource(R.string.mdbx_status_loading),
+                    isWarning = false
+                )
+            }
+        }
+
+        diagnostics?.let { diagnostic ->
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        DiagnosticLine(
+                            icon = if (diagnostic.isReadable) Icons.Default.CloudSync else Icons.Default.CloudOff,
+                            label = stringResource(R.string.mdbx_sync_status_label),
+                            value = diagnostic.lastSyncStatus
+                        )
+                        DiagnosticLine(
+                            icon = Icons.Default.Security,
+                            label = stringResource(R.string.mdbx_compatibility_label),
+                            value = stringResource(
+                                R.string.mdbx_format_tiga_value,
+                                diagnostic.formatVersion ?: "MDBX-?",
+                                diagnostic.defaultTigaMode ?: database.tigaMode
+                            )
+                        )
+                        DiagnosticLine(
+                            icon = Icons.Default.Sync,
+                            label = stringResource(R.string.mdbx_recovery_label),
+                            value = if (diagnostic.structuralIssueCount == 0 && diagnostic.integrityOk) {
+                                stringResource(R.string.mdbx_recovery_clean)
+                            } else {
+                                stringResource(
+                                    R.string.mdbx_recovery_issue_value,
+                                    diagnostic.structuralIssueCount,
+                                    diagnostic.integrityMessage ?: "-"
+                                )
+                            }
+                        )
+                        DiagnosticLine(
+                            icon = Icons.Default.Info,
+                            label = stringResource(R.string.mdbx_file_size_label),
+                            value = formatBytes(diagnostic.fileSizeBytes)
+                        )
+                        DiagnosticLine(
+                            icon = Icons.Default.Storage,
+                            label = "客户端",
+                            value = diagnostic.currentDeviceId ?: "-"
+                        )
+                        DiagnosticLine(
+                            icon = Icons.Default.Folder,
+                            label = "目录/索引",
+                            value = "${diagnostic.folderCount} folders · ${diagnostic.indexedObjectCount} indexed"
+                        )
+                    }
+                }
+            }
+            if (hasUnavailableCopy) {
+                item {
+                    Text(
+                        diagnostic.unavailableReason ?: stringResource(R.string.mdbx_unavailable_local_copy),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            }
+        }
+
+        item {
+            MdbxDetailActionList(
+                isDefault = isDefault,
+                conflictCount = conflictCount,
+                onSync = onSync,
+                onShowConflicts = onShowConflicts,
+                onShowDeltas = onShowDeltas,
+                onShowAdvanced = onShowAdvanced,
+                onShowMaintenance = onShowMaintenance,
+                onSetDefault = onSetDefault,
+                onDelete = onDelete
+            )
+        }
+    }
+}
+
+@Composable
+private fun MdbxDetailActionList(
+    isDefault: Boolean,
+    conflictCount: Int,
+    onSync: () -> Unit,
+    onShowConflicts: () -> Unit,
+    onShowDeltas: () -> Unit,
+    onShowAdvanced: () -> Unit,
+    onShowMaintenance: () -> Unit,
+    onSetDefault: () -> Unit,
+    onDelete: () -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column {
+            if (!isDefault) {
+                MdbxNavigationActionRow(Icons.Default.Star, stringResource(R.string.mdbx_set_default), onSetDefault)
+                HorizontalDivider(modifier = Modifier.padding(start = 56.dp))
+            }
+            MdbxNavigationActionRow(Icons.Default.Sync, "同步", onSync)
+            HorizontalDivider(modifier = Modifier.padding(start = 56.dp))
+            MdbxNavigationActionRow(
+                Icons.AutoMirrored.Filled.CallMerge,
+                if (conflictCount > 0) "冲突管理($conflictCount)" else "冲突管理",
+                onShowConflicts
+            )
+            HorizontalDivider(modifier = Modifier.padding(start = 56.dp))
+            MdbxNavigationActionRow(Icons.Default.History, "历史 / 快照", onShowDeltas)
+            HorizontalDivider(modifier = Modifier.padding(start = 56.dp))
+            MdbxNavigationActionRow(Icons.Default.Science, "高级工具", onShowAdvanced)
+            HorizontalDivider(modifier = Modifier.padding(start = 56.dp))
+            MdbxNavigationActionRow(Icons.Default.ReportProblem, "诊断 / 维护", onShowMaintenance)
+            HorizontalDivider(modifier = Modifier.padding(start = 56.dp))
+            MdbxNavigationActionRow(
+                icon = Icons.Default.Delete,
+                title = stringResource(R.string.mdbx_delete),
+                onClick = onDelete,
+                isDestructive = true,
+                showChevron = false
+            )
+        }
+    }
+}
+
+@Composable
+private fun MdbxNavigationActionRow(
+    icon: ImageVector,
+    title: String,
+    onClick: () -> Unit,
+    isDestructive: Boolean = false,
+    showChevron: Boolean = true
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        val tint = if (isDestructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
+        Spacer(modifier = Modifier.width(18.dp))
+        Text(
+            title,
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (isDestructive) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f)
+        )
+        if (showChevron) {
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun MdbxConflictPage(
+    state: MdbxViewModel.MdbxConflictDialogState.Visible?,
+    databaseName: String,
+    onResolve: (String, MdbxConflictResolution) -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item {
+            Text(
+                "冲突管理 · ${state?.databaseName ?: databaseName}",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        if (state == null || state.isLoading) {
+            item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
+        }
+        if (state != null && state.conflicts.isEmpty() && !state.isLoading) {
+            item {
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        stringResource(R.string.mdbx_conflict_queue_empty),
+                        modifier = Modifier.padding(16.dp),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        }
+        state?.conflicts?.let { conflicts ->
+            items(items = conflicts, key = { it.conflictId }) { conflict ->
+                ConflictRow(
+                    conflict = conflict,
+                    enabled = !state.isLoading,
+                    onResolve = onResolve
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MdbxDeltaPage(
+    state: MdbxViewModel.MdbxDeltaDialogState.Visible?,
+    databaseName: String,
+    onShowDiff: (String) -> Unit,
+    onRevert: (String) -> Unit,
+    onCreateSnapshot: (String, Boolean) -> Unit,
+    onDeleteSnapshot: (String) -> Unit,
+    onRevertSnapshot: (String) -> Unit,
+    onPruneAutomaticSnapshots: () -> Unit
+) {
+    var snapshotName by rememberSaveable(state?.databaseId ?: -1L) { mutableStateOf("") }
+    var fullSnapshot by rememberSaveable(state?.databaseId ?: -1L) { mutableStateOf(false) }
+    val manualSnapshots = state?.snapshots?.filterNot { it.autoPrune }.orEmpty()
+    val automaticSnapshots = state?.snapshots?.filter { it.autoPrune }.orEmpty()
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item {
+            Text(
+                "历史 / 快照 · ${state?.databaseName ?: databaseName}",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        if (state == null || state.isLoading || state.isDiffLoading || state.isSnapshotLoading) {
+            item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
+        }
+        state?.let { visibleState ->
+            if (visibleState.deltas.isNotEmpty()) {
+                item { DeltaSummaryHeader(visibleState.deltas) }
+            }
+            item {
+                SnapshotManagerPanel(
+                    snapshotName = snapshotName,
+                    onSnapshotNameChange = { snapshotName = it },
+                    fullSnapshot = fullSnapshot,
+                    onFullSnapshotChange = { fullSnapshot = it },
+                    snapshots = visibleState.snapshots,
+                    manualSnapshotCount = manualSnapshots.size,
+                    automaticSnapshotCount = automaticSnapshots.size,
+                    enabled = !visibleState.isLoading && !visibleState.isSnapshotLoading,
+                    onCreateSnapshot = {
+                        onCreateSnapshot(snapshotName, fullSnapshot)
+                        snapshotName = ""
+                    },
+                    onPruneAutomaticSnapshots = onPruneAutomaticSnapshots,
+                    onDeleteSnapshot = onDeleteSnapshot,
+                    onRevertSnapshot = onRevertSnapshot
+                )
+            }
+            visibleState.selectedDiffCommitId?.let { commitId ->
+                item {
+                    CommitDiffPanel(
+                        commitId = commitId,
+                        diffItems = visibleState.diffItems,
+                        isLoading = visibleState.isDiffLoading
+                    )
+                }
+            }
+            if (visibleState.deltas.isEmpty() && !visibleState.isLoading) {
+                item {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Text("还没有增量提交记录", modifier = Modifier.padding(16.dp))
+                    }
+                }
+            }
+            items(items = visibleState.deltas, key = { it.commitId }) { delta ->
+                DeltaRow(
+                    delta = delta,
+                    onShowDiff = { onShowDiff(delta.commitId) },
+                    onRevert = { onRevert(delta.commitId) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MdbxAdvancedToolsPage(
+    state: MdbxViewModel.MdbxAdvancedDialogState.Visible?,
+    databaseName: String,
+    onExportBundle: (String?) -> Unit,
+    onImportBundle: (String) -> Unit,
+    onFlushPendingUpload: () -> Unit,
+    onRunBenchmark: (Int) -> Unit
+) {
+    val context = LocalContext.current
+    var baseCommitId by rememberSaveable(state?.databaseId ?: -1L) { mutableStateOf("") }
+    var importJson by rememberSaveable(state?.databaseId ?: -1L) { mutableStateOf("") }
+    var benchmarkCountText by rememberSaveable(state?.databaseId ?: -1L) { mutableStateOf("10") }
+    val benchmarkCount = benchmarkCountText.toIntOrNull()?.coerceIn(1, 500) ?: 10
+    val diagnostics = state?.diagnostics
+    val isLoading = state?.isLoading == true
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Text(
+                "高级工具 · ${state?.databaseName ?: databaseName}",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        if (state == null || isLoading) {
+            item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
+        }
+        state?.message?.takeIf { it.isNotBlank() }?.let { message ->
+            item {
+                Text(message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            }
+        }
+        item {
+            AdvancedToolSection(title = "Oplog / Sync bundle") {
+                OutlinedTextField(
+                    value = baseCommitId,
+                    onValueChange = { baseCommitId = it },
+                    label = { Text("Base commit ID，可留空") },
+                    singleLine = true,
+                    enabled = !isLoading,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(
+                        onClick = { onExportBundle(baseCommitId.trim().takeIf { it.isNotBlank() }) },
+                        enabled = !isLoading,
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                    ) {
+                        Icon(Icons.Default.Download, contentDescription = null)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("导出")
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            state?.exportedBundleJson?.let {
+                                ClipboardUtils.copyToClipboard(context, it, "MDBX sync bundle")
+                            }
+                        },
+                        enabled = !state?.exportedBundleJson.isNullOrBlank(),
+                        modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                    ) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = null)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("复制")
+                    }
+                }
+                state?.lastExportedBundle?.let { bundle ->
+                    Text(
+                        "head ${shortId(bundle.headCommitId)} · ${bundle.commitCount} commits · ${bundle.payloadHash.take(12)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                OutlinedTextField(
+                    value = importJson,
+                    onValueChange = { importJson = it },
+                    label = { Text("粘贴 bundle JSON 导入") },
+                    minLines = 3,
+                    maxLines = 6,
+                    enabled = !isLoading,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Button(
+                    onClick = { onImportBundle(importJson) },
+                    enabled = !isLoading && importJson.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                ) {
+                    Icon(Icons.Default.Upload, contentDescription = null)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("导入 bundle")
+                }
+            }
+        }
+        item {
+            AdvancedToolSection(title = "后台合并上传") {
+                DiagnosticLine(Icons.Default.Sync, "同步状态", diagnostics?.lastSyncStatus ?: "-")
+                Button(
+                    onClick = onFlushPendingUpload,
+                    enabled = !isLoading,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                ) {
+                    Icon(Icons.Default.CloudSync, contentDescription = null)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("立即上传待处理写入")
+                }
+            }
+        }
+        item {
+            AdvancedToolSection(title = "附件 chunk / external-hash-ref") {
+                DiagnosticLine(
+                    Icons.Default.Storage,
+                    "附件",
+                    diagnostics?.let { "${it.attachmentCount} total · ${it.externalAttachmentCount} external" } ?: "-"
+                )
+                DiagnosticLine(
+                    Icons.Default.Folder,
+                    "存储",
+                    diagnostics?.let {
+                        "${formatBytes(it.originalAttachmentBytes)} original · ${formatBytes(it.storedAttachmentBytes)} stored"
+                    } ?: "-"
+                )
+                DiagnosticLine(
+                    if ((diagnostics?.attachmentChunkMismatchCount ?: 0) > 0) Icons.Default.Warning else Icons.Default.CheckCircle,
+                    "Chunk 校验",
+                    diagnostics?.let { "${it.attachmentChunkMismatchCount} mismatch" } ?: "-"
+                )
+            }
+        }
+        item {
+            AdvancedToolSection(title = "性能 benchmark") {
+                OutlinedTextField(
+                    value = benchmarkCountText,
+                    onValueChange = { value -> benchmarkCountText = value.filter { it.isDigit() }.take(3) },
+                    label = { Text("Commit 数量") },
+                    singleLine = true,
+                    enabled = !isLoading,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Button(
+                    onClick = { onRunBenchmark(benchmarkCount) },
+                    enabled = !isLoading,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                ) {
+                    Icon(Icons.Default.Speed, contentDescription = null)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("运行 benchmark")
+                }
+                state?.lastBenchmarkResult?.let { result ->
+                    Text(
+                        "${result.operationCount} commits · ${result.elapsedMs} ms · ${formatBytes(result.fileDeltaBytes)} file delta",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MdbxMaintenancePage(
+    database: LocalMdbxDatabase,
+    diagnostics: MdbxVaultDiagnostics?,
+    onRefreshDiagnostics: () -> Unit,
+    onSync: () -> Unit,
+    onFlushPendingUpload: () -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            Text(
+                "诊断 / 维护 · ${database.name}",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                "用于 MDBX 格式升级后检查 schema、commit 图、设备 head、快照、附件 chunk 和同步状态。",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        item {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("维护操作", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(
+                            onClick = onRefreshDiagnostics,
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                        ) {
+                            Icon(Icons.Default.Visibility, contentDescription = null)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("刷新诊断")
+                        }
+                        OutlinedButton(
+                            onClick = onSync,
+                            modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+                        ) {
+                            Icon(Icons.Default.Sync, contentDescription = null)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("同步")
+                        }
+                    }
+                    Button(
+                        onClick = onFlushPendingUpload,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                    ) {
+                        Icon(Icons.Default.CloudSync, contentDescription = null)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("上传待处理写入")
+                    }
+                }
+            }
+        }
+
+        item {
+            MdbxDiagnosticOverviewCard(database = database, diagnostics = diagnostics)
+        }
+
+        diagnostics?.let { diagnostic ->
+            item {
+                MdbxDiagnosticSection(title = "格式 / 加密") {
+                    DiagnosticLine(Icons.Default.Security, "格式版本", diagnostic.formatVersion ?: "MDBX-?")
+                    DiagnosticLine(Icons.Default.Security, "Tiga", diagnostic.defaultTigaMode ?: database.tigaMode)
+                    DiagnosticLine(Icons.Default.Info, "完整性", if (diagnostic.integrityOk) "OK" else (diagnostic.integrityMessage ?: "异常"))
+                    DiagnosticLine(Icons.Default.Security, "字段级 AAD", "crypto_contexts · mdbx:v1:<type>:<id>:<field>")
+                }
+            }
+            item {
+                MdbxDiagnosticSection(title = "Commit / Merge / Conflict") {
+                    DiagnosticLine(Icons.Default.History, "Commits", diagnostic.commitCount.toString())
+                    DiagnosticLine(Icons.Default.Delete, "Tombstones", diagnostic.tombstoneCount.toString())
+                    DiagnosticLine(Icons.AutoMirrored.Filled.CallMerge, "未解决冲突", diagnostic.unresolvedConflictCount.toString())
+                    DiagnosticLine(Icons.Default.Storage, "Branches", diagnostic.branchCount.toString())
+                    DiagnosticLine(Icons.Default.Storage, "Devices", diagnostic.deviceCount.toString())
+                    DiagnosticLine(Icons.Default.Warning, "dangling parents", diagnostic.danglingParentCount.toString())
+                    DiagnosticLine(Icons.Default.Warning, "dangling branch heads", diagnostic.danglingBranchHeadCount.toString())
+                    DiagnosticLine(Icons.Default.Warning, "dangling device heads", diagnostic.danglingDeviceHeadCount.toString())
+                }
+            }
+            item {
+                MdbxDiagnosticSection(title = "快照 / 恢复") {
+                    DiagnosticLine(Icons.Default.Restore, "Snapshots", diagnostic.snapshotCount.toString())
+                    DiagnosticLine(Icons.Default.Folder, "Folders", diagnostic.folderCount.toString())
+                    DiagnosticLine(Icons.Default.Storage, "Indexed objects", diagnostic.indexedObjectCount.toString())
+                    DiagnosticLine(Icons.Default.History, "Entries", "${diagnostic.entryCount} active · ${diagnostic.deletedEntryCount} deleted")
+                }
+            }
+            item {
+                MdbxDiagnosticSection(title = "附件 / Chunk") {
+                    DiagnosticLine(Icons.Default.Storage, "附件", "${diagnostic.attachmentCount} total · ${diagnostic.externalAttachmentCount} external")
+                    DiagnosticLine(Icons.Default.Storage, "大小", "${formatBytes(diagnostic.originalAttachmentBytes)} original · ${formatBytes(diagnostic.storedAttachmentBytes)} stored")
+                    DiagnosticLine(
+                        if (diagnostic.attachmentChunkMismatchCount > 0) Icons.Default.Warning else Icons.Default.CheckCircle,
+                        "Chunk mismatch",
+                        diagnostic.attachmentChunkMismatchCount.toString()
+                    )
+                    DiagnosticLine(Icons.Default.Storage, "external-hash-ref", "按 content hash 绑定外部附件引用")
+                }
+            }
+            item {
+                MdbxDiagnosticSection(title = "同步 / 本地副本") {
+                    DiagnosticLine(Icons.Default.Sync, "状态", diagnostic.lastSyncStatus)
+                    DiagnosticLine(Icons.Default.Warning, "错误", diagnostic.lastSyncError ?: "-")
+                    DiagnosticLine(Icons.Default.Folder, "文件", diagnostic.filePath ?: "-")
+                    DiagnosticLine(Icons.Default.Storage, "大小", formatBytes(diagnostic.fileSizeBytes))
+                    DiagnosticLine(
+                        if (diagnostic.isReadable) Icons.Default.CheckCircle else Icons.Default.CloudOff,
+                        "可读",
+                        if (diagnostic.isReadable) "是" else (diagnostic.unavailableReason ?: "否")
+                    )
+                }
+            }
+        } ?: item {
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    Text("正在等待诊断数据", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MdbxDiagnosticOverviewCard(
+    database: LocalMdbxDatabase,
+    diagnostics: MdbxVaultDiagnostics?
+) {
+    val healthIssueCount = diagnostics?.healthIssueCount ?: 0
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(
+                    shape = MaterialTheme.shapes.medium,
+                    color = sourceColor(database).copy(alpha = 0.12f),
+                    modifier = Modifier.size(44.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(sourceIcon(database), contentDescription = null, tint = sourceColor(database))
+                    }
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(database.name, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text(
+                        "${mdbxSourceLabel(database)} · ${diagnostics?.lastSyncStatus ?: database.lastSyncStatus}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StatusTile(
+                    modifier = Modifier.weight(1f),
+                    icon = if (healthIssueCount > 0) Icons.Default.Warning else Icons.Default.CheckCircle,
+                    label = "健康",
+                    value = if (healthIssueCount > 0) "$healthIssueCount 项" else "正常",
+                    isWarning = healthIssueCount > 0
+                )
+                StatusTile(
+                    modifier = Modifier.weight(1f),
+                    icon = Icons.Default.History,
+                    label = "Commit",
+                    value = diagnostics?.commitCount?.toString() ?: "-",
+                    isWarning = false
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MdbxDiagnosticSection(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            content()
+        }
+    }
+}
+
+@Composable
 private fun EmptyMdbxState(
-    onCreateClick: () -> Unit
+    onCreateClick: () -> Unit,
+    onOpenClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -395,13 +1569,26 @@ private fun EmptyMdbxState(
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Spacer(modifier = Modifier.height(28.dp))
-        Button(
-            onClick = onCreateClick,
-            modifier = Modifier.fillMaxWidth(0.82f).heightIn(min = 48.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(0.88f),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Icon(Icons.Default.Add, contentDescription = null)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(stringResource(R.string.mdbx_create_new_vault_button))
+            OutlinedButton(
+                onClick = onOpenClick,
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+            ) {
+                Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("打开")
+            }
+            Button(
+                onClick = onCreateClick,
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(stringResource(R.string.mdbx_create_new_vault_button))
+            }
         }
     }
 }
@@ -453,41 +1640,79 @@ private fun MdbxSectionHeader(
 
 @Composable
 private fun MdbxQuickActionsCard(
-    onCreateClick: () -> Unit
+    onCreateClick: () -> Unit,
+    onOpenClick: () -> Unit
 ) {
-    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onCreateClick)
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                Icons.Default.Add,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    stringResource(R.string.mdbx_create_new_vault_button),
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold
+    Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onCreateClick)
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
                 )
-                Text(
-                    "创建本地 MDBX、打开本地文件，或连接 WebDAV vault",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        stringResource(R.string.mdbx_create_new_vault_button),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        "创建新的本地或 WebDAV MDBX 数据库",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+        }
+        OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onOpenClick)
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Folder,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.tertiary
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        "打开已有数据库",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        "从本地文件或 WebDAV 服务器打开已有 .mdbx 数据库",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }
@@ -545,6 +1770,7 @@ private fun sourceColor(database: LocalMdbxDatabase): Color =
         MdbxSourceType.LOCAL_INTERNAL -> MaterialTheme.colorScheme.primary
         MdbxSourceType.LOCAL_EXTERNAL -> MaterialTheme.colorScheme.secondary
         MdbxSourceType.REMOTE_WEBDAV -> MaterialTheme.colorScheme.tertiary
+        MdbxSourceType.REMOTE_ONEDRIVE -> MaterialTheme.colorScheme.secondary
     }
 
 private fun sourceIcon(database: LocalMdbxDatabase): ImageVector =
@@ -552,6 +1778,7 @@ private fun sourceIcon(database: LocalMdbxDatabase): ImageVector =
         MdbxSourceType.LOCAL_INTERNAL -> Icons.Default.Security
         MdbxSourceType.LOCAL_EXTERNAL -> Icons.Default.Folder
         MdbxSourceType.REMOTE_WEBDAV -> Icons.Default.CloudSync
+        MdbxSourceType.REMOTE_ONEDRIVE -> Icons.Default.Cloud
     }
 
 private fun mdbxSourceLabel(database: LocalMdbxDatabase): String =
@@ -559,6 +1786,7 @@ private fun mdbxSourceLabel(database: LocalMdbxDatabase): String =
         MdbxSourceType.LOCAL_INTERNAL -> "Monica 私有目录"
         MdbxSourceType.LOCAL_EXTERNAL -> "本地文件"
         MdbxSourceType.REMOTE_WEBDAV -> "WebDAV"
+        MdbxSourceType.REMOTE_ONEDRIVE -> "OneDrive"
     }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -1981,6 +3209,7 @@ private fun LocalMdbxDatabase.displayPath(context: Context): String {
                 .joinToString(" · ")
                 .ifBlank { raw }
         }
+        MdbxSourceType.REMOTE_ONEDRIVE -> "OneDrive · $raw"
     }
 }
 

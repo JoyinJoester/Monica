@@ -309,6 +309,7 @@ fun TotpListContent(
             is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> viewModel.setCategoryFilter(takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenVaultStarred(selection.vaultId))
             is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> viewModel.setCategoryFilter(takagi.ru.monica.viewmodel.TotpCategoryFilter.BitwardenVaultUncategorized(selection.vaultId))
             is UnifiedCategoryFilterSelection.MdbxDatabaseFilter -> viewModel.setCategoryFilter(takagi.ru.monica.viewmodel.TotpCategoryFilter.MdbxDatabase(selection.databaseId))
+            is UnifiedCategoryFilterSelection.MdbxFolderFilter -> viewModel.setCategoryFilter(takagi.ru.monica.viewmodel.TotpCategoryFilter.MdbxDatabase(selection.databaseId))
         }
     }
 

@@ -12,6 +12,7 @@ import takagi.ru.monica.data.PasswordHistoryDao
 import takagi.ru.monica.data.PasswordHistoryEntry
 import takagi.ru.monica.data.SecureItemDao
 import takagi.ru.monica.bitwarden.BitwardenMutationStateHelper
+import takagi.ru.monica.repository.MdbxStoredFolderEntry
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenFolderDao
 import takagi.ru.monica.data.bitwarden.BitwardenSyncRawEntryRecord
@@ -82,6 +83,18 @@ class PasswordRepository(
 
     suspend fun insertCategory(category: Category): Long {
         return categoryDao?.insert(category) ?: -1
+    }
+
+    suspend fun createMdbxFolder(
+        databaseId: Long,
+        name: String,
+        parentFolderId: String? = "root"
+    ): MdbxStoredFolderEntry? {
+        return mdbxRepository?.createFolder(databaseId, name, parentFolderId)
+    }
+
+    suspend fun listMdbxFolders(databaseId: Long): List<MdbxStoredFolderEntry> {
+        return mdbxRepository?.listFolders(databaseId).orEmpty()
     }
 
     suspend fun updateCategory(category: Category) {

@@ -878,6 +878,8 @@ fun CardWalletScreen(
         }
         is UnifiedCategoryFilterSelection.MdbxDatabaseFilter ->
             mdbxDatabases.find { it.id == filter.databaseId }?.name ?: "MDBX"
+        is UnifiedCategoryFilterSelection.MdbxFolderFilter ->
+            mdbxDatabases.find { it.id == filter.databaseId }?.name ?: "MDBX"
         is UnifiedCategoryFilterSelection.BitwardenVaultFilter ->
             stringResource(R.string.filter_bitwarden)
         is UnifiedCategoryFilterSelection.BitwardenFolderFilter ->
@@ -1583,5 +1585,6 @@ private fun itemMatchesCategoryFilter(
         is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter ->
             keePassId == filter.databaseId && item.categoryId == null
         is UnifiedCategoryFilterSelection.MdbxDatabaseFilter -> mdbxId == filter.databaseId
+        is UnifiedCategoryFilterSelection.MdbxFolderFilter -> mdbxId == filter.databaseId
     }
 }

@@ -41,6 +41,7 @@ internal fun PasswordListMainPane(
     density: Density,
     showPinnedQuickFolderPathBanner: Boolean,
     quickFolderBreadcrumbs: List<PasswordQuickFolderBreadcrumb>,
+    mdbxPathSyncState: MdbxPathSyncState? = null,
     currentFilter: CategoryFilter,
     onNavigateFilter: (CategoryFilter) -> Unit,
     shouldGateInitialPasswordFirstFrame: Boolean,
@@ -112,7 +113,8 @@ internal fun PasswordListMainPane(
                 PasswordQuickFolderBreadcrumbBanner(
                     breadcrumbs = quickFolderBreadcrumbs,
                     currentFilter = currentFilter,
-                    onNavigate = onNavigateFilter
+                    onNavigate = onNavigateFilter,
+                    mdbxSyncState = mdbxPathSyncState
                 )
             }
 

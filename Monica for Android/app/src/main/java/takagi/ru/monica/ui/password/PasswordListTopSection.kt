@@ -46,6 +46,7 @@ import takagi.ru.monica.data.PasswordCardDisplayMode
 import takagi.ru.monica.data.PasswordPageContentType
 import takagi.ru.monica.data.PasswordListQuickFilterItem
 import takagi.ru.monica.data.model.StorageTarget
+import takagi.ru.monica.repository.MdbxStoredFolderEntry
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.components.CreateCategoryDialog
 import takagi.ru.monica.ui.components.CreateDialogTarget
@@ -68,7 +69,7 @@ import takagi.ru.monica.ui.password.BitwardenReunlockTopActionsMenuItem
 import takagi.ru.monica.ui.password.BitwardenSyncTopActionsMenuItem
 import takagi.ru.monica.ui.password.CommonPasswordTopActionsMenuItems
 import takagi.ru.monica.ui.password.KeepassRefreshTopActionsMenuItem
-import takagi.ru.monica.ui.password.MdbxRefreshTopActionsMenuItem
+import takagi.ru.monica.ui.password.MdbxSyncTopActionsMenuItem
 import takagi.ru.monica.ui.password.PasswordTopActionsDropdownMenu
 import takagi.ru.monica.viewmodel.MdbxViewModel
 
@@ -86,6 +87,7 @@ internal fun PasswordListTopSection(
     selectedBitwardenVaultId: Long?,
     selectedKeePassDatabaseId: Long?,
     selectedMdbxDatabaseId: Long?,
+    selectedMdbxFolders: List<MdbxStoredFolderEntry>,
     isTopBarSyncing: Boolean,
     isArchiveView: Boolean,
     isKeePassDatabaseView: Boolean,
@@ -181,6 +183,9 @@ internal fun PasswordListTopSection(
             is CategoryFilter.BitwardenVaultStarred -> "${stringResource(R.string.filter_bitwarden)} · ${stringResource(R.string.filter_starred)}"
             is CategoryFilter.BitwardenVaultUncategorized -> "${stringResource(R.string.filter_bitwarden)} · ${stringResource(R.string.filter_uncategorized)}"
             is CategoryFilter.MdbxDatabase -> mdbxDatabases.find { it.id == filter.databaseId }?.name ?: "MDBX"
+            is CategoryFilter.MdbxFolderFilter -> selectedMdbxFolders.firstOrNull {
+                it.folderId == filter.folderId
+            }?.name ?: "MDBX"
         }
 
         ExpressiveTopBar(
@@ -350,6 +355,7 @@ internal fun PasswordListTopSection(
                                     }
                                 },
                                 getBitwardenFolders = viewModel::getBitwardenFolders,
+                                getMdbxFolders = viewModel::getMdbxFolders,
                                 getKeePassGroups = localKeePassViewModel::getGroups,
                                 onRenameCategory = onRenameCategory,
                                 onDeleteCategory = onDeleteCategory
@@ -369,10 +375,16 @@ internal fun PasswordListTopSection(
                                 )
                             }
                             if (selectedMdbxDatabaseId != null && mdbxViewModel != null) {
-                                MdbxRefreshTopActionsMenuItem(
+                                val selectedMdbxDatabase = mdbxDatabases
+                                    .firstOrNull { it.id == selectedMdbxDatabaseId }
+                                MdbxSyncTopActionsMenuItem(
                                     onClick = {
                                         onTopActionsMenuExpandedChange(false)
-                                        mdbxViewModel.syncVault(selectedMdbxDatabaseId)
+                                        if (selectedMdbxDatabase?.mdbxPathShouldFlushPendingUpload() == true) {
+                                            mdbxViewModel.flushPendingVaultUpload(selectedMdbxDatabaseId)
+                                        } else {
+                                            mdbxViewModel.syncVault(selectedMdbxDatabaseId)
+                                        }
                                     }
                                 )
                             }
@@ -729,7 +741,8 @@ internal fun PasswordListTopSection(
             is CategoryFilter.KeePassGroupFilter -> UnifiedCategoryFilterSelection.KeePassGroupFilter(filter.databaseId, filter.groupPath)
             is CategoryFilter.KeePassDatabaseStarred -> UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter(filter.databaseId)
             is CategoryFilter.KeePassDatabaseUncategorized -> UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter(filter.databaseId)
-            is CategoryFilter.MdbxDatabase -> null
+            is CategoryFilter.MdbxDatabase -> UnifiedCategoryFilterSelection.MdbxDatabaseFilter(filter.databaseId)
+            is CategoryFilter.MdbxFolderFilter -> UnifiedCategoryFilterSelection.MdbxFolderFilter(filter.databaseId, filter.folderId)
         }
         if (showDisplayOptionsSheet) {
             PasswordDisplayOptionsSheet(
@@ -781,6 +794,15 @@ internal fun PasswordListTopSection(
                         }
                         Triple(CreateDialogTarget.Bitwarden, null, vaultId)
                     }
+                    is CategoryFilter.MdbxDatabase,
+                    is CategoryFilter.MdbxFolderFilter -> {
+                        val databaseId = when (currentFilter) {
+                            is CategoryFilter.MdbxDatabase -> currentFilter.databaseId
+                            is CategoryFilter.MdbxFolderFilter -> currentFilter.databaseId
+                            else -> null
+                        }
+                        Triple(CreateDialogTarget.Mdbx, databaseId, null)
+                    }
                     else -> Triple(null, null, null)
                 }
             }
@@ -789,6 +811,7 @@ internal fun PasswordListTopSection(
                 onDismiss = { showCreateCategoryDialog = false },
                 categories = categories,
                 keepassDatabases = keepassDatabases,
+                mdbxDatabases = mdbxDatabases,
                 bitwardenVaults = bitwardenVaults,
                 getKeePassGroups = localKeePassViewModel::getGroups,
                 onCreateCategoryWithName = { name -> viewModel.addCategory(name) },
@@ -820,6 +843,19 @@ internal fun PasswordListTopSection(
                                 context.getString(R.string.webdav_operation_failed, error.message ?: ""),
                                 Toast.LENGTH_SHORT
                             ).show()
+                        }
+                    }
+                },
+                onCreateMdbxProject = { databaseId, name ->
+                    coroutineScope.launch {
+                        viewModel.createMdbxFolder(databaseId, name) { result ->
+                            result.exceptionOrNull()?.let { error ->
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.save_failed_with_error, error.message ?: ""),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
                         }
                     }
                 }

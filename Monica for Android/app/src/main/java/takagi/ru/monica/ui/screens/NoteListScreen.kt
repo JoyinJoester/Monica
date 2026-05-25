@@ -272,10 +272,11 @@ fun NoteListScreen(
             is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> NoteCategoryFilter.BitwardenVaultUncategorized(selection.vaultId)
             is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> NoteCategoryFilter.KeePassDatabase(selection.databaseId)
             is UnifiedCategoryFilterSelection.KeePassGroupFilter -> NoteCategoryFilter.KeePassGroupFilter(selection.databaseId, selection.groupPath)
-            is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> NoteCategoryFilter.KeePassDatabaseStarred(selection.databaseId)
-            is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> NoteCategoryFilter.KeePassDatabaseUncategorized(selection.databaseId)
-            is UnifiedCategoryFilterSelection.MdbxDatabaseFilter -> NoteCategoryFilter.MdbxDatabase(selection.databaseId)
-        }
+        is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> NoteCategoryFilter.KeePassDatabaseStarred(selection.databaseId)
+        is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> NoteCategoryFilter.KeePassDatabaseUncategorized(selection.databaseId)
+        is UnifiedCategoryFilterSelection.MdbxDatabaseFilter -> NoteCategoryFilter.MdbxDatabase(selection.databaseId)
+        is UnifiedCategoryFilterSelection.MdbxFolderFilter -> NoteCategoryFilter.MdbxDatabase(selection.databaseId)
+    }
         when (selection) {
             is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> viewModel.syncKeePassNotes(selection.databaseId)
             is UnifiedCategoryFilterSelection.KeePassGroupFilter -> viewModel.syncKeePassNotes(selection.databaseId)
@@ -964,6 +965,7 @@ fun NoteListScreen(
         currentFilter = selectedUnifiedFilter,
         categories = categories,
         keepassDatabases = keepassDatabases,
+        mdbxDatabases = mdbxDatabases,
         bitwardenVaults = bitwardenVaults,
         getKeePassGroups = getKeePassGroups,
         passwordViewModel = resolvedPasswordViewModel,

@@ -40,7 +40,7 @@ import takagi.ru.monica.data.bitwarden.*
         LocalMdbxDatabase::class,
         MdbxRemoteSource::class
     ],
-    version = 66,
+    version = 67,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -2010,6 +2010,24 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_66_67 = object : androidx.room.migration.Migration(66, 67) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 66→67: MDBX category linkage")
+                    addColumnIfMissing(
+                        database,
+                        "categories",
+                        "mdbx_database_id",
+                        "INTEGER DEFAULT NULL"
+                    )
+                    android.util.Log.i("PasswordDatabase", "Migration 66→67 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 66→67 failed: ${e.message}")
+                    throw e
+                }
+            }
+        }
+
         private fun addColumnIfMissing(
             database: androidx.sqlite.db.SupportSQLiteDatabase,
             tableName: String,
@@ -2104,7 +2122,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_62_63,   // MDBX 数据库格式 (local_mdbx_databases + mdbx_remote_sources)
                         MIGRATION_63_64,   // MDBX 条目归属字段 (passwords/secure_items/passkeys)
                         MIGRATION_64_65,   // MDBX 解锁方式元数据 (password/key file/device key)
-                        MIGRATION_65_66    // MDBX key file URI for real unlock flows
+                        MIGRATION_65_66,   // MDBX key file URI for real unlock flows
+                        MIGRATION_66_67    // MDBX category linkage
                     )
                     // 启用多进程失效通知：IME 跑在 :ime 独立进程，主进程需要
                     // 感知 IME 进程对数据库的修改（例如最近填充时间戳等）。

@@ -55,6 +55,7 @@ import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.KeePassOperationBlockReason
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.LocalMdbxDatabase
+import takagi.ru.monica.data.isMonicaLocalCategory
 import takagi.ru.monica.data.writeOperationAvailability
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenVault
@@ -256,7 +257,10 @@ fun MultiStorageTargetPickerBottomSheet(
                         sourceKey = source.key
                     )
                 )
-                buildLocalCategoryPathOptions(categories, includeVirtualParents = false).forEach { option ->
+                buildLocalCategoryPathOptions(
+                    categories.filter(Category::isMonicaLocalCategory),
+                    includeVirtualParents = false
+                ).forEach { option ->
                     val category = option.category ?: return@forEach
                     add(
                         StorageTargetChip(

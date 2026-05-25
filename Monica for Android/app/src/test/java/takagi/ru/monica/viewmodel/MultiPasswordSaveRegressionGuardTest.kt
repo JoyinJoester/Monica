@@ -122,7 +122,7 @@ class MultiPasswordSaveRegressionGuardTest {
     }
 
     @Test
-    fun mdbxLocalMutationsDoNotFlushWholeVaultToRemoteSynchronously() {
+    fun mdbxLocalMutationsPublishWorkingCopyToSourceAfterCommit() {
         val source = projectFile(
             "app/src/main/java/takagi/ru/monica/repository/MdbxVaultStore.kt"
         ).readText()
@@ -138,27 +138,27 @@ class MultiPasswordSaveRegressionGuardTest {
                 .substringBefore("suspend fun readStoredEntries(")
         ).forEach { mutationBody ->
             assertTrue(
-                "Local MDBX mutations should mark the working copy dirty instead of waiting for a full source upload.",
-                mutationBody.contains("markWorkingCopyDirty(dbInfo)")
-            )
-            assertFalse(
-                "Local MDBX mutations must not synchronously flush the whole vault to SAF/WebDAV.",
-                mutationBody.contains("flushWorkingCopyToSourceIfNeeded")
-            )
-            assertFalse(
-                "Local MDBX mutations must not force a full checkpoint before returning to the UI.",
-                mutationBody.contains("checkpointForFlush(db, dbInfo)")
+                "User-visible MDBX mutations should publish the working copy to SAF/WebDAV before reporting success.",
+                mutationBody.contains("markWorkingCopyDirtyAndFlush(dbInfo, file)")
             )
         }
+
+        val dirtyAndFlushBody = source.substringAfter("private suspend fun markWorkingCopyDirtyAndFlush(")
+            .substringBefore("private fun checkpointWorkingCopyForFlush(")
+        assertTrue(
+            "MDBX publish helper must first mark pending upload so a failed upload is visible.",
+            dirtyAndFlushBody.contains("markWorkingCopyDirty(database)") &&
+                dirtyAndFlushBody.contains("flushWorkingCopyToSourceIfNeeded(database, workingCopy)")
+        )
 
         val flushBody = source.substringAfter("private suspend fun flushWorkingCopyToSourceIfNeeded(")
             .substringBefore("private suspend fun markWorkingCopyDirty(")
         assertTrue(
-            "Explicit sync must checkpoint the working copy before copying or uploading the MDBX file.",
+            "MDBX source publishing must checkpoint the working copy before copying or uploading the MDBX file.",
             flushBody.contains("checkpointWorkingCopyForFlush(database, workingCopy)")
         )
         assertTrue(
-            "Dirty external/WebDAV MDBX vaults must be visible as pending upload.",
+            "Failed external/WebDAV publishes must leave sync status visible instead of silently dropping the local commit.",
             source.contains("MdbxSyncStatus.PENDING_UPLOAD")
         )
     }
@@ -179,9 +179,10 @@ class MultiPasswordSaveRegressionGuardTest {
         ).readText()
 
         assertTrue(
-            "MDBX repository methods must report success only after local working-copy commit.",
-            repositorySource.contains("must only return after the local .mdbx working copy has") &&
-                repositorySource.contains("External SAF/WebDAV propagation is a later sync")
+            "MDBX repository methods must report success only after local commit and source publish.",
+            repositorySource.contains("commit the local .mdbx working copy") &&
+                repositorySource.contains("publish") &&
+                repositorySource.contains("next manual sync")
         )
         assertTrue(
             "MDBX repository should expose batch operations so bulk moves avoid opening the same vault repeatedly.",
@@ -194,16 +195,12 @@ class MultiPasswordSaveRegressionGuardTest {
         val batchedMutationBody = storeSource.substringAfter("private suspend fun <T : Any> mutateEntriesByVault(")
             .substringBefore("private fun mutationDatabaseId(")
         assertTrue(
-            "Batched MDBX mutations must still commit a local SQLite transaction before returning.",
+            "Batched MDBX mutations must commit a local SQLite transaction and publish once per vault before returning.",
             batchedMutationBody.contains("openExistingWritableVault(file).use") &&
                 batchedMutationBody.contains("db.beginTransaction()") &&
                 batchedMutationBody.contains("vaultMutations.forEach") &&
                 batchedMutationBody.contains("db.setTransactionSuccessful()") &&
-                batchedMutationBody.contains("markWorkingCopyDirty(dbInfo)")
-        )
-        assertFalse(
-            "Batched local MDBX mutations must not synchronously upload the whole vault.",
-            batchedMutationBody.contains("flushWorkingCopyToSourceIfNeeded")
+                batchedMutationBody.contains("markWorkingCopyDirtyAndFlush(dbInfo, file)")
         )
 
         assertTrue(
@@ -331,12 +328,23 @@ class MultiPasswordSaveRegressionGuardTest {
         ).readText()
 
         assertTrue(
-            "MDBX should keep WAL enabled for small incremental writes.",
-            storeSource.contains("PRAGMA journal_mode=WAL")
+            "MDBX should request WAL in SQLite open flags before Android can mutate journal mode on an already-open vault.",
+            storeSource.contains("SQLiteDatabase.ENABLE_WRITE_AHEAD_LOGGING") &&
+                storeSource.contains("SQLiteDatabase.openDatabase(file.absolutePath, null, flags)")
+        )
+        assertFalse(
+            "MDBX writable open must not use openOrCreateDatabase because Android may try to switch an existing WAL vault back to TRUNCATE before our PRAGMA runs.",
+            storeSource.contains("openOrCreateDatabase(file")
         )
         assertTrue(
             "MDBX WAL should use synchronous=NORMAL to avoid full fsync cost on every write.",
             storeSource.contains("PRAGMA synchronous=NORMAL")
+        )
+        assertTrue(
+            "MDBX user-visible writes and publish/checkpoint work should be serialized per vault file.",
+            storeSource.contains("private val vaultWriteLocks") &&
+                storeSource.contains("withVaultWriteLock(file)") &&
+                storeSource.contains("markWorkingCopyDirtyAndFlushLocked(dbInfo, file)")
         )
         assertTrue(
             "Unlock should derive the credential key once, verify it, and unwrap the epoch key in one pass.",
@@ -522,37 +530,61 @@ class MultiPasswordSaveRegressionGuardTest {
     }
 
     @Test
-    fun mdbxManagerUsesKeepassStyleListAndDetailSheet() {
+    fun mdbxManagerLivesUnderDatabaseBackupAndUsesStandalonePages() {
         val managerSource = projectFile(
             "app/src/main/java/takagi/ru/monica/ui/screens/MdbxManagerScreen.kt"
         ).readText()
+        val syncBackupSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/SyncBackupScreen.kt"
+        ).readText()
+        val mainActivitySource = projectFile(
+            "app/src/main/java/takagi/ru/monica/MainActivity.kt"
+        ).readText()
 
         assertTrue(
-            "MDBX manager should stay list-first like KeePass management.",
-            managerSource.contains("LazyColumn(") &&
-                managerSource.contains("MdbxSectionHeader(") &&
-                managerSource.contains("MdbxVaultSmallCard(")
+            "Database and backup settings must expose MDBX as its own testing category.",
+            syncBackupSource.contains("onNavigateToMdbx") &&
+                syncBackupSource.contains("MDBX（测试）") &&
+                syncBackupSource.contains("MDBX 格式管理") &&
+                mainActivitySource.contains("onNavigateToMdbx = {") &&
+                mainActivitySource.contains("navController.navigate(Screen.MdbxManager.route)")
         )
         assertTrue(
-            "MDBX vault actions should live in a detail bottom sheet, not a full page mode.",
-            managerSource.contains("private fun MdbxVaultDetailBottomSheet(") &&
-                managerSource.contains("ModalBottomSheet(") &&
-                managerSource.contains("历史 / 快照") &&
-                managerSource.contains("冲突管理")
+            "MDBX manager should open to a hub and then branch into local, WebDAV, and OneDrive management pages.",
+            managerSource.contains("MdbxManagerHubPage(") &&
+                managerSource.contains("本地 MDBX 管理") &&
+                managerSource.contains("WebDAV MDBX 管理") &&
+                managerSource.contains("OneDrive MDBX 管理") &&
+                managerSource.contains("MdbxManagerSource.LOCAL") &&
+                managerSource.contains("MdbxManagerSource.WEBDAV") &&
+                managerSource.contains("MdbxManagerSource.ONEDRIVE")
         )
         assertTrue(
-            "MDBX manager should group databases by local internal, local external, and WebDAV source.",
-            managerSource.contains("val internalDatabases = remember(databases)") &&
-                managerSource.contains("val externalDatabases = remember(databases)") &&
-                managerSource.contains("val remoteDatabases = remember(databases)")
+            "MDBX source pages should stay list-first like KeePass management and open databases as standalone detail pages.",
+            managerSource.contains("MdbxSourceManagementPage(") &&
+                managerSource.contains("MdbxVaultSmallCard(") &&
+                managerSource.contains("MdbxVaultDetailPage(") &&
+                managerSource.contains("page = MdbxManagerPage.Detail")
         )
-        assertFalse(
-            "MDBX manager should not switch the whole screen into a selected-vault detail page.",
-            managerSource.contains("selectedVaultId")
+        assertTrue(
+            "MDBX conflict, history/snapshot, and advanced tools must be standalone manager subpages instead of transient sheets.",
+            managerSource.contains("MdbxConflictPage(") &&
+                managerSource.contains("MdbxDeltaPage(") &&
+                managerSource.contains("MdbxAdvancedToolsPage(") &&
+                managerSource.contains("MdbxMaintenancePage(") &&
+                managerSource.contains("BackHandler(") &&
+                managerSource.contains("MdbxManagerPage.Conflict") &&
+                managerSource.contains("MdbxManagerPage.History") &&
+                managerSource.contains("MdbxManagerPage.Advanced") &&
+                managerSource.contains("MdbxManagerPage.Maintenance")
         )
-        assertFalse(
-            "MDBX manager should not need BackHandler for an in-page selected-vault detail mode.",
-            managerSource.contains("BackHandler(")
+        assertTrue(
+            "MDBX detail page must expose a diagnostics and maintenance page for format upgrade troubleshooting.",
+            managerSource.contains("诊断 / 维护") &&
+                managerSource.contains("onShowMaintenance") &&
+                managerSource.contains("onRefreshDiagnostics") &&
+                managerSource.contains("onFlushPendingUpload") &&
+                managerSource.contains("schema、commit 图、设备 head、快照、附件 chunk 和同步状态")
         )
     }
 
@@ -603,13 +635,13 @@ class MultiPasswordSaveRegressionGuardTest {
         )
 
         assertTrue(
-            "MDBX detail sheet must expose the advanced tools entry.",
+            "MDBX detail page must expose the advanced tools entry.",
             managerSource.contains("onShowAdvanced") &&
                 managerSource.contains("高级工具")
         )
         assertTrue(
             "Android manager must provide controls for bundle export/import, upload flush, chunk status, and benchmark.",
-            managerSource.contains("MdbxAdvancedToolsDialog(") &&
+            managerSource.contains("MdbxAdvancedToolsPage(") &&
                 managerSource.contains("onExportBundle") &&
                 managerSource.contains("onImportBundle") &&
                 managerSource.contains("onFlushPendingUpload") &&
@@ -619,6 +651,18 @@ class MultiPasswordSaveRegressionGuardTest {
                 managerSource.contains("benchmark")
         )
         assertTrue(
+            "Android manager must expose later MDBX diagnostics in a standalone maintenance page.",
+            managerSource.contains("MdbxMaintenancePage(") &&
+                managerSource.contains("字段级 AAD") &&
+                managerSource.contains("crypto_contexts") &&
+                managerSource.contains("dangling parents") &&
+                managerSource.contains("dangling branch heads") &&
+                managerSource.contains("dangling device heads") &&
+                managerSource.contains("Chunk mismatch") &&
+                managerSource.contains("external-hash-ref") &&
+                managerSource.contains("上传待处理写入")
+        )
+        assertTrue(
             "Exported sync bundles should be copyable from the Android UI.",
             managerSource.contains("ClipboardUtils.copyToClipboard") &&
                 managerSource.contains("MDBX sync bundle")
@@ -626,9 +670,33 @@ class MultiPasswordSaveRegressionGuardTest {
     }
 
     @Test
-    fun vaultV2TopActionsCanRefreshSelectedMdbxVault() {
+    fun mdbxDatabaseViewsExposePathNavigationAndSyncAction() {
         val vaultV2Source = projectFile(
             "app/src/main/java/takagi/ru/monica/ui/vaultv2/VaultV2Pane.kt"
+        ).readText()
+        val passwordListContentSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordListContent.kt"
+        ).readText()
+        val quickFolderSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordQuickFolderSupport.kt"
+        ).readText()
+        val quickFolderSectionsSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordQuickFolderSections.kt"
+        ).readText()
+        val passwordListMainPaneSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordListMainPane.kt"
+        ).readText()
+        val topActionsSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordTopActionsMenu.kt"
+        ).readText()
+        val passwordListTopSectionSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordListTopSection.kt"
+        ).readText()
+        val mdbxStoreSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/repository/MdbxVaultStore.kt"
+        ).readText()
+        val mdbxViewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/MdbxViewModel.kt"
         ).readText()
         val simpleMainSource = projectFile(
             "app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt"
@@ -647,14 +715,190 @@ class MultiPasswordSaveRegressionGuardTest {
                 vaultV2Source.contains("is UnifiedCategoryFilterSelection.MdbxDatabaseFilter -> storageSelection.databaseId")
         )
         assertTrue(
-            "VaultV2 top-right menu must expose MDBX refresh and call syncVault for the selected vault.",
-            vaultV2Source.contains("MdbxRefreshTopActionsMenuItem(") &&
+            "VaultV2 top-right menu must expose MDBX sync and call syncVault for the selected vault.",
+            vaultV2Source.contains("MdbxSyncTopActionsMenuItem(") &&
                 vaultV2Source.contains("mdbxViewModel.syncVault(selectedMdbxDatabaseId)")
+        )
+        assertTrue(
+            "MDBX selected database views should auto-sync on entry so another client's published writes are pulled without visiting settings.",
+            mdbxViewModelSource.contains("fun autoSyncVisibleVault(") &&
+                mdbxViewModelSource.contains("database.lastSyncStatus != MdbxSyncStatus.PENDING_UPLOAD.name") &&
+                passwordListContentSource.contains("autoSyncVisibleVault(selectedId)") &&
+                vaultV2Source.contains("autoSyncVisibleVault(databaseId)")
+        )
+        assertTrue(
+            "MDBX database pages must participate in the same path breadcrumb builder as KeePass and Bitwarden pages.",
+            quickFolderSource.contains("is CategoryFilter.MdbxDatabase -> true") &&
+                quickFolderSource.contains("root_mdbx_") &&
+                quickFolderSource.contains("mdbxDatabases.find { it.id == filter.databaseId }?.name")
+        )
+        assertTrue(
+            "Password list and VaultV2 must pass MDBX databases into breadcrumb building so the current path shows the vault name.",
+            passwordListContentSource.contains("mdbxDatabases = mdbxDatabases") &&
+                vaultV2Source.contains("mdbxDatabases = mdbxDatabases")
+        )
+        assertTrue(
+            "The user-facing MDBX menu action should say sync, not refresh.",
+            topActionsSource.contains("MdbxSyncTopActionsMenuItem") &&
+                topActionsSource.contains("同步 MDBX 数据库") &&
+                !topActionsSource.contains("\"${'$'}{stringResource(R.string.refresh)} MDBX\"")
+        )
+        assertTrue(
+            "MDBX database pages must show a path-level sync affordance beside the breadcrumb path.",
+            quickFolderSectionsSource.contains("data class MdbxPathSyncState") &&
+                quickFolderSectionsSource.contains("fun MdbxPathSyncActions") &&
+                quickFolderSectionsSource.contains("mdbxPathPendingSyncCount") &&
+                quickFolderSectionsSource.contains("AnimatedVisibility") &&
+                quickFolderSectionsSource.contains("expandHorizontally") &&
+                quickFolderSectionsSource.contains("shrinkHorizontally") &&
+                quickFolderSectionsSource.contains("未同步${'$'}{state.pendingCount}条")
+        )
+        assertTrue(
+            "The MDBX unsynced chip must use store diagnostics instead of a hard-coded status-only count.",
+            mdbxStoreSource.contains("val pendingSyncCount: Int") &&
+                mdbxStoreSource.contains("calculatePendingSyncCount(") &&
+                mdbxStoreSource.contains("queryPendingLocalOperationCount(") &&
+                mdbxViewModelSource.contains("val pendingSyncCounts") &&
+                passwordListContentSource.contains("pendingSyncCounts")
+        )
+        assertTrue(
+            "The path-level MDBX sync action must stay a circular icon-only button that is always available on MDBX pages.",
+            quickFolderSectionsSource.contains("shape = CircleShape") &&
+                quickFolderSectionsSource.contains("IconButton(") &&
+                quickFolderSectionsSource.contains("imageVector = Icons.Default.Sync") &&
+                quickFolderSectionsSource.contains("contentDescription = \"同步 MDBX 数据库\"") &&
+                !quickFolderSectionsSource.contains("TextButton")
+        )
+        assertTrue(
+            "The MDBX path sync UI must squeeze the breadcrumb path when the pending status appears.",
+            quickFolderSectionsSource.contains(".weight(1f)") &&
+                quickFolderSectionsSource.contains(".height(36.dp)") &&
+                quickFolderSectionsSource.contains(".width(104.dp)") &&
+                quickFolderSectionsSource.contains("animateContentSize") &&
+                quickFolderSectionsSource.contains("expandFrom = Alignment.End")
+        )
+        assertTrue(
+            "Password list must pass the MDBX path sync state into its breadcrumb banner.",
+            passwordListContentSource.contains("mdbxPathSyncState = mdbxPathSyncState") &&
+                passwordListMainPaneSource.contains("mdbxSyncState = mdbxPathSyncState")
+        )
+        assertTrue(
+            "The MDBX path sync button must flush pending uploads first and otherwise run the normal vault sync.",
+            passwordListContentSource.contains("flushPendingVaultUpload(database.id)") &&
+                passwordListContentSource.contains("syncVault(database.id)") &&
+                vaultV2Source.contains("flushPendingVaultUpload(selectedMdbxDatabaseId)") &&
+                vaultV2Source.contains("syncVault(selectedMdbxDatabaseId)")
+        )
+        assertTrue(
+            "The top-right MDBX sync menu must share the same pending-upload-first behavior as the path sync button.",
+            passwordListTopSectionSource.contains("selectedMdbxDatabase?.mdbxPathShouldFlushPendingUpload() == true") &&
+                passwordListTopSectionSource.contains("flushPendingVaultUpload(selectedMdbxDatabaseId)") &&
+                vaultV2Source.contains("selectedMdbxDatabase?.mdbxPathShouldFlushPendingUpload() == true") &&
+                vaultV2Source.contains("flushPendingVaultUpload(selectedMdbxDatabaseId)")
         )
         assertTrue(
             "All VaultV2 hosts must pass through the shared MdbxViewModel.",
             simpleMainSource.contains("mdbxViewModel = mdbxViewModel") &&
                 compactTabsSource.contains("mdbxViewModel = mdbxViewModel")
+        )
+    }
+
+    @Test
+    fun mdbxCreatedFoldersAreLoadedIntoPasswordCategoryMenus() {
+        val viewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/PasswordViewModel.kt"
+        ).readText()
+        val quickFolderSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordQuickFolderSupport.kt"
+        ).readText()
+        val listContentSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordListContent.kt"
+        ).readText()
+        val bottomSheetSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/components/UnifiedCategoryFilterBottomSheet.kt"
+        ).readText()
+        val chipMenuSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/components/UnifiedCategoryFilterChipMenu.kt"
+        ).readText()
+        val topSectionSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordListTopSection.kt"
+        ).readText()
+
+        assertTrue(
+            "Password filtering must represent a concrete MDBX folder, not only the MDBX database root.",
+            viewModelSource.contains("data class MdbxFolderFilter(val databaseId: Long, val folderId: String)") &&
+                bottomSheetSource.contains("data class MdbxFolderFilter(val databaseId: Long, val folderId: String)")
+        )
+        assertTrue(
+            "Creating an MDBX folder must refresh the cached folder list so menus show the new folder immediately.",
+            viewModelSource.contains("private val _mdbxFoldersByDatabase") &&
+                viewModelSource.contains("fun getMdbxFolders(databaseId: Long)") &&
+                viewModelSource.contains("fun refreshMdbxFolders(databaseId: Long)") &&
+                viewModelSource.substringAfter("fun createMdbxFolder(")
+                    .substringBefore("fun updateCategory(")
+                    .contains("refreshMdbxFolders(databaseId)")
+        )
+        assertTrue(
+            "Password list must load MDBX folders for the selected MDBX database or folder filter.",
+            listContentSource.contains("is CategoryFilter.MdbxFolderFilter -> filter.databaseId") &&
+                listContentSource.contains("selectedMdbxDatabaseId?.let(viewModel::getMdbxFolders)") &&
+                listContentSource.contains("viewModel.refreshMdbxFolders(selectedId)")
+        )
+        assertTrue(
+            "Quick-folder builders must receive MDBX folders and navigate to MdbxFolderFilter targets.",
+            quickFolderSource.contains("selectedMdbxFolders: List<MdbxStoredFolderEntry>") &&
+                quickFolderSource.contains("buildMdbxFolderQuickFolderShortcuts") &&
+                quickFolderSource.contains("targetFilter = CategoryFilter.MdbxFolderFilter(databaseId, folder.folderId)") &&
+                quickFolderSource.contains("is CategoryFilter.MdbxFolderFilter -> true")
+        )
+        assertTrue(
+            "Both category menu surfaces must read MDBX folders from the shared folder flow.",
+            bottomSheetSource.contains("getMdbxFolders: (Long) -> Flow<List<MdbxStoredFolderEntry>>") &&
+                bottomSheetSource.contains("val folders by getMdbxFolders(database.id).collectAsState") &&
+                chipMenuSource.contains("getMdbxFolders: (Long) -> Flow<List<MdbxStoredFolderEntry>>") &&
+                chipMenuSource.contains("selectedMdbxDatabaseId?.let(getMdbxFolders)")
+        )
+        assertTrue(
+            "Top-level password controls must pass MDBX folder loading into the chip menu and keep folder labels visible.",
+            topSectionSource.contains("selectedMdbxFolders: List<MdbxStoredFolderEntry>") &&
+                topSectionSource.contains("getMdbxFolders = viewModel::getMdbxFolders") &&
+                topSectionSource.contains("UnifiedCategoryFilterSelection.MdbxFolderFilter(filter.databaseId, filter.folderId)")
+        )
+    }
+
+    @Test
+    fun mdbxFolderCreationUsesAndroidSafePragmasAndPersistentFailureLogs() {
+        val storeSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/repository/MdbxVaultStore.kt"
+        ).readText()
+
+        val openBody = storeSource.substringAfter("private fun open(file: File): SQLiteDatabase")
+            .substringBefore("private fun checkpoint(db: SQLiteDatabase)")
+        assertFalse(
+            "Android API 36 rejects query-like PRAGMA statements through execSQL; connection PRAGMA must use rawQuery.",
+            openBody.contains("execSQL(\"PRAGMA")
+        )
+        assertTrue(
+            "MDBX open should still apply the SQLite connection PRAGMAs required by the Rust storage contract.",
+            openBody.contains("applyConnectionPragma(\"PRAGMA synchronous=NORMAL\")") &&
+                openBody.contains("applyConnectionPragma(\"PRAGMA busy_timeout=5000\")") &&
+                openBody.contains("applyConnectionPragma(\"PRAGMA secure_delete=ON\")")
+        )
+        assertTrue(
+            "Connection PRAGMA helper must consume the returned cursor with rawQuery instead of execSQL.",
+            storeSource.substringAfter("private fun SQLiteDatabase.applyConnectionPragma(sql: String)")
+                .substringBefore("private fun checkpoint(db: SQLiteDatabase)")
+                .contains("rawQuery(sql, emptyArray()).use")
+        )
+
+        val createFolderBody = storeSource.substringAfter("override suspend fun createFolder(")
+            .substringBefore("override suspend fun listFolders(")
+        assertTrue(
+            "MDBX folder creation failures must be persisted to the MDBX diagnostic log so exported logs are actionable.",
+            createFolderBody.contains("MdbxDiagLogger.append(") &&
+                createFolderBody.contains("\"createFolder failed databaseId=") &&
+                createFolderBody.contains("error=\${error.javaClass.simpleName}") &&
+                createFolderBody.contains("throw error")
         )
     }
 

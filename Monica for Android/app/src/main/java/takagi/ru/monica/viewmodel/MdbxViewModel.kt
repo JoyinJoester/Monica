@@ -39,6 +39,7 @@ import takagi.ru.monica.data.PasswordEntryDao
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.SecureItemDao
 import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.mdbx.MdbxDiagLogger
 import takagi.ru.monica.repository.MdbxConflictResolution
 import takagi.ru.monica.repository.MdbxConflictSummary
 import takagi.ru.monica.repository.MdbxCommitDiff
@@ -55,6 +56,9 @@ import takagi.ru.monica.repository.MdbxVaultStore
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.FileSourceEntry
 import takagi.ru.monica.utils.WebDavKeePassFileSource
+import takagi.ru.monica.utils.OneDriveAuthManager
+import takagi.ru.monica.utils.OneDriveKeePassFileSource
+import takagi.ru.monica.utils.OneDriveMdbxFileSource
 import takagi.ru.monica.utils.WebDavMdbxFileSource
 import java.io.File
 import java.text.Normalizer
@@ -98,6 +102,9 @@ class MdbxViewModel(
     private val _conflictCounts = MutableStateFlow<Map<Long, Int>>(emptyMap())
     val conflictCounts: StateFlow<Map<Long, Int>> = _conflictCounts.asStateFlow()
 
+    private val _pendingSyncCounts = MutableStateFlow<Map<Long, Int>>(emptyMap())
+    val pendingSyncCounts: StateFlow<Map<Long, Int>> = _pendingSyncCounts.asStateFlow()
+
     private val _vaultDiagnostics = MutableStateFlow<Map<Long, MdbxVaultDiagnostics>>(emptyMap())
     val vaultDiagnostics: StateFlow<Map<Long, MdbxVaultDiagnostics>> =
         _vaultDiagnostics.asStateFlow()
@@ -116,6 +123,8 @@ class MdbxViewModel(
         MutableStateFlow<MdbxAdvancedDialogState>(MdbxAdvancedDialogState.Hidden)
     val advancedDialogState: StateFlow<MdbxAdvancedDialogState> =
         _advancedDialogState.asStateFlow()
+
+    private val autoSyncLastStartedAt = mutableMapOf<Long, Long>()
 
     // --- WebDAV connection ---
 
@@ -195,6 +204,10 @@ class MdbxViewModel(
     ) {
         viewModelScope.launch {
             _operationState.value = OperationState.Loading("Creating local MDBX vault...")
+            val requestedName = name.trim()
+            MdbxDiagLogger.append(
+                "[MDBX][createLocalVault] start name=${requestedName.ifBlank { "<blank>" }} customDir=${customDirectoryUri != null} uri=${customDirectoryUri ?: "-"} unlock=${unlockMethod.name} tiga=${tigaMode.name}"
+            )
 
             try {
                 withContext(Dispatchers.IO) {
@@ -249,12 +262,21 @@ class MdbxViewModel(
                             lastSyncStatus = MdbxSyncStatus.LOCAL_ONLY.name
                         )
                     )
+                    MdbxDiagLogger.append(
+                        "[MDBX][createLocalVault] inserted name=$displayName sourceType=${sourceType.name} storage=${storageLocation.name} filePath=$filePath workingCopy=${localVaultFile.absolutePath}"
+                    )
                 }
 
                 _operationState.value = OperationState.Success(
                     "Local MDBX vault \"$name\" created"
                 )
+                MdbxDiagLogger.append(
+                    "[MDBX][createLocalVault] success name=${requestedName.ifBlank { "<blank>" }}"
+                )
             } catch (e: Exception) {
+                MdbxDiagLogger.append(
+                    "[MDBX][createLocalVault] failure name=${requestedName.ifBlank { "<blank>" }} error=${e::class.java.simpleName}:${e.message}"
+                )
                 _operationState.value = OperationState.Error(
                     "Failed to create local vault: ${e.message ?: "unknown error"}"
                 )
@@ -568,6 +590,225 @@ class MdbxViewModel(
         }
     }
 
+    data class OneDriveMdbxDirectoryListing(
+        val currentPath: String,
+        val entries: List<FileSourceEntry>
+    )
+
+    suspend fun listOneDriveMdbxDirectory(
+        accountId: String,
+        currentPath: String?
+    ): Result<OneDriveMdbxDirectoryListing> = withContext(Dispatchers.IO) {
+        runCatching {
+            val normalizedPath = OneDriveKeePassFileSource.normalizeOptionalRemotePath(currentPath)
+            val entries = OneDriveMdbxFileSource(context, accountId).listDirectory(normalizedPath)
+            OneDriveMdbxDirectoryListing(
+                currentPath = normalizedPath,
+                entries = entries
+            )
+        }
+    }
+
+    fun createOneDriveVault(
+        name: String,
+        masterPassword: String,
+        unlockMethod: MdbxUnlockMethod,
+        keyFile: MdbxKeyFileSelection?,
+        tigaMode: MdbxTigaMode,
+        accountId: String,
+        accountLabel: String,
+        directoryPath: String?,
+        description: String?
+    ) {
+        viewModelScope.launch {
+            _operationState.value = OperationState.Loading("Creating MDBX vault on OneDrive...")
+
+            try {
+                withContext(Dispatchers.IO) {
+                    val normalizedDir = OneDriveKeePassFileSource.normalizeOptionalRemotePath(directoryPath)
+                    val fileSource = OneDriveMdbxFileSource(context, accountId)
+
+                    fileSource.testConnection().getOrThrow()
+
+                    val displayName = name.trim().ifBlank {
+                        throw IllegalArgumentException("Vault name cannot be empty")
+                    }
+                    val credential = buildCredential(unlockMethod, masterPassword, keyFile)
+                    val remoteFileName = if (displayName.endsWith(".mdbx", ignoreCase = true)) {
+                        displayName
+                    } else {
+                        "$displayName.mdbx"
+                    }
+
+                    val localVaultFile = vaultStore.createInitializedVaultFile(
+                        displayName = displayName,
+                        tigaMode = tigaMode.name,
+                        unlockMethod = unlockMethod,
+                        credential = credential
+                    )
+
+                    fileSource.writeFile(
+                        parentPath = normalizedDir.ifBlank { null },
+                        name = remoteFileName,
+                        bytes = localVaultFile.readBytes()
+                    )
+
+                    val remotePath = OneDriveKeePassFileSource.buildChildPath(normalizedDir, remoteFileName)
+
+                    val encryptedAccountId = securityManager.encryptData(accountId)
+                    val accessTokenSession = OneDriveAuthManager(context).acquireAccessToken(accountId)
+                    val encryptedAccessToken = securityManager.encryptData(
+                        accessTokenSession.accessToken ?: throw IllegalStateException("OneDrive access token unavailable")
+                    )
+
+                    val sourceId = remoteSourceDao.insertSource(
+                        MdbxRemoteSource(
+                            displayName = displayName,
+                            remotePath = remotePath,
+                            remoteParentPath = normalizedDir.ifBlank { null },
+                            baseUrl = null,
+                            usernameEncrypted = encryptedAccountId,
+                            passwordEncrypted = encryptedAccessToken
+                        )
+                    )
+
+                    val encryptedMasterPassword =
+                        masterPassword.takeIf { credential.requiresPassword() }
+                            ?.let { securityManager.encryptData(normalizeMdbxPassword(it)) }
+
+                    databaseDao.insertDatabase(
+                        LocalMdbxDatabase(
+                            name = displayName,
+                            filePath = remotePath,
+                            storageLocation = MdbxStorageLocation.REMOTE_WEBDAV.name,
+                            sourceType = MdbxSourceType.REMOTE_ONEDRIVE.name,
+                            sourceId = sourceId,
+                            tigaMode = tigaMode.name,
+                            encryptedPassword = encryptedMasterPassword,
+                            unlockMethod = unlockMethod.storedValue,
+                            kdfProfile = "pbkdf2-sha256",
+                            keyFileName = keyFile?.name,
+                            keyFileUri = keyFile?.uri,
+                            keyFileFingerprint = keyFile?.fingerprint,
+                            description = description,
+                            lastSyncedAt = System.currentTimeMillis(),
+                            workingCopyPath = localVaultFile.absolutePath,
+                            cacheCopyPath = localVaultFile.absolutePath,
+                            isOfflineAvailable = true,
+                            lastSyncStatus = MdbxSyncStatus.IN_SYNC.name
+                        )
+                    ).also { databaseId ->
+                        importEntriesFromVault(databaseId)
+                    }
+                }
+
+                _operationState.value = OperationState.Success(
+                    "MDBX vault \"$name\" created on OneDrive"
+                )
+            } catch (e: Exception) {
+                _operationState.value = OperationState.Error(
+                    "Failed to create vault on OneDrive: ${e.message ?: "unknown error"}"
+                )
+            }
+        }
+    }
+
+    fun connectToOneDriveVault(
+        name: String,
+        masterPassword: String,
+        unlockMethod: MdbxUnlockMethod,
+        keyFile: MdbxKeyFileSelection?,
+        tigaMode: MdbxTigaMode,
+        accountId: String,
+        accountLabel: String,
+        remoteFilePath: String,
+        description: String?
+    ) {
+        viewModelScope.launch {
+            _operationState.value = OperationState.Loading("Connecting to OneDrive MDBX vault...")
+
+            try {
+                withContext(Dispatchers.IO) {
+                    val displayName = name.trim().ifBlank {
+                        throw IllegalArgumentException("Vault name cannot be empty")
+                    }
+                    val fileSource = OneDriveMdbxFileSource(context, accountId)
+                    fileSource.testConnection().getOrThrow()
+
+                    val remoteBytes = fileSource.readFile(remoteFilePath)
+
+                    val vaultDir = File(context.filesDir, "mdbx")
+                    check(vaultDir.mkdirs() || vaultDir.exists()) {
+                        "Unable to create MDBX directory"
+                    }
+                    val localFile = File(vaultDir, "onedrive_${UUID.randomUUID()}.mdbx")
+                    localFile.writeBytes(remoteBytes)
+
+                    vaultStore.validateExistingVaultFile(localFile)
+                    val detectedMode = vaultStore.readTigaModeFromVaultFile(localFile)
+                    val detectedUnlockMethod = vaultStore.readUnlockMethodFromVaultFile(localFile)
+                    val credential = buildCredential(detectedUnlockMethod, masterPassword, keyFile)
+                    vaultStore.validateVaultCredentialFile(localFile, credential)
+
+                    val remoteParentPath = OneDriveKeePassFileSource.parentPathOf(remoteFilePath)
+
+                    val encryptedAccountId = securityManager.encryptData(accountId)
+                    val accessTokenSession = OneDriveAuthManager(context).acquireAccessToken(accountId)
+                    val encryptedAccessToken = securityManager.encryptData(
+                        accessTokenSession.accessToken ?: throw IllegalStateException("OneDrive access token unavailable")
+                    )
+
+                    val sourceId = remoteSourceDao.insertSource(
+                        MdbxRemoteSource(
+                            displayName = displayName,
+                            remotePath = remoteFilePath,
+                            remoteParentPath = remoteParentPath,
+                            baseUrl = null,
+                            usernameEncrypted = encryptedAccountId,
+                            passwordEncrypted = encryptedAccessToken
+                        )
+                    )
+
+                    val encryptedMasterPassword =
+                        masterPassword.takeIf { credential.requiresPassword() }
+                            ?.let { securityManager.encryptData(normalizeMdbxPassword(it)) }
+                    databaseDao.insertDatabase(
+                        LocalMdbxDatabase(
+                            name = displayName,
+                            filePath = remoteFilePath,
+                            storageLocation = MdbxStorageLocation.REMOTE_WEBDAV.name,
+                            sourceType = MdbxSourceType.REMOTE_ONEDRIVE.name,
+                            sourceId = sourceId,
+                            tigaMode = detectedMode.name,
+                            encryptedPassword = encryptedMasterPassword,
+                            unlockMethod = detectedUnlockMethod.storedValue,
+                            kdfProfile = "pbkdf2-sha256",
+                            keyFileName = keyFile?.name,
+                            keyFileUri = keyFile?.uri,
+                            keyFileFingerprint = keyFile?.fingerprint,
+                            description = description,
+                            lastSyncedAt = System.currentTimeMillis(),
+                            workingCopyPath = localFile.absolutePath,
+                            cacheCopyPath = localFile.absolutePath,
+                            isOfflineAvailable = true,
+                            lastSyncStatus = MdbxSyncStatus.IN_SYNC.name
+                        )
+                    ).also { databaseId ->
+                        importEntriesFromVault(databaseId)
+                    }
+                }
+
+                _operationState.value = OperationState.Success(
+                    "Connected to OneDrive MDBX vault \"$name\""
+                )
+            } catch (e: Exception) {
+                _operationState.value = OperationState.Error(
+                    "Failed to connect to OneDrive vault: ${e.message ?: "unknown error"}"
+                )
+            }
+        }
+    }
+
     /**
      * Push the working copy of an EXTERNAL vault back to its source URI,
      * so changes are visible in the user's synced folder.
@@ -591,17 +832,44 @@ class MdbxViewModel(
 
     fun syncVault(databaseId: Long) {
         viewModelScope.launch {
-            _operationState.value = OperationState.Loading("Refreshing MDBX vault...")
+            _operationState.value = OperationState.Loading("Syncing MDBX vault...")
             try {
                 withContext(Dispatchers.IO) {
                     refreshVaultFromSource(databaseId)
                     refreshSingleVaultState(databaseId)
                 }
-                _operationState.value = OperationState.Success("Vault refreshed")
+                _operationState.value = OperationState.Success("MDBX vault synced")
             } catch (e: Exception) {
                 _operationState.value = OperationState.Error(
-                    "Failed to refresh vault: ${e.message ?: "unknown error"}"
+                    "Failed to sync vault: ${e.message ?: "unknown error"}"
                 )
+            }
+        }
+    }
+
+    fun autoSyncVisibleVault(databaseId: Long) {
+        viewModelScope.launch {
+            val now = System.currentTimeMillis()
+            val lastStarted = autoSyncLastStartedAt[databaseId] ?: 0L
+            if (now - lastStarted < 15_000L) return@launch
+            if (_operationState.value is OperationState.Loading) return@launch
+            val shouldSync = withContext(Dispatchers.IO) {
+                val database = databaseDao.getDatabaseById(databaseId) ?: return@withContext false
+                database.lastSyncStatus != MdbxSyncStatus.PENDING_UPLOAD.name &&
+                    database.sourceTypeEnum != MdbxSourceType.LOCAL_INTERNAL
+            }
+            if (!shouldSync) {
+                refreshSingleVaultState(databaseId)
+                return@launch
+            }
+            autoSyncLastStartedAt[databaseId] = now
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    refreshVaultFromSource(databaseId)
+                    refreshSingleVaultState(databaseId)
+                }
+            }.onFailure {
+                refreshSingleVaultState(databaseId)
             }
         }
     }
@@ -644,9 +912,7 @@ class MdbxViewModel(
             val refreshedDiagnostic = withContext(Dispatchers.IO) {
                 vaultStore.getVaultDiagnostics(database.id)
             }
-            _vaultDiagnostics.value = _vaultDiagnostics.value + (database.id to refreshedDiagnostic)
-            _conflictCounts.value =
-                _conflictCounts.value + (database.id to refreshedDiagnostic.unresolvedConflictCount)
+            applyVaultDiagnostic(database.id, refreshedDiagnostic)
             val current = _advancedDialogState.value as? MdbxAdvancedDialogState.Visible
             if (current?.databaseId == database.id) {
                 _advancedDialogState.value = current.copy(
@@ -706,10 +972,7 @@ class MdbxViewModel(
                 val refreshedDiagnostic = withContext(Dispatchers.IO) {
                     vaultStore.getVaultDiagnostics(databaseId)
                 }
-                _vaultDiagnostics.value =
-                    _vaultDiagnostics.value + (databaseId to refreshedDiagnostic)
-                _conflictCounts.value =
-                    _conflictCounts.value + (databaseId to refreshedDiagnostic.unresolvedConflictCount)
+                applyVaultDiagnostic(databaseId, refreshedDiagnostic)
                 val latest = _advancedDialogState.value as? MdbxAdvancedDialogState.Visible
                 if (latest?.databaseId == databaseId) {
                     _advancedDialogState.value = latest.copy(
@@ -747,10 +1010,7 @@ class MdbxViewModel(
                 val refreshedDiagnostic = withContext(Dispatchers.IO) {
                     vaultStore.getVaultDiagnostics(databaseId)
                 }
-                _vaultDiagnostics.value =
-                    _vaultDiagnostics.value + (databaseId to refreshedDiagnostic)
-                _conflictCounts.value =
-                    _conflictCounts.value + (databaseId to refreshedDiagnostic.unresolvedConflictCount)
+                applyVaultDiagnostic(databaseId, refreshedDiagnostic)
                 val latest = _advancedDialogState.value as? MdbxAdvancedDialogState.Visible
                 if (latest?.databaseId == databaseId) {
                     _advancedDialogState.value = latest.copy(
@@ -787,10 +1047,7 @@ class MdbxViewModel(
                 val refreshedDiagnostic = withContext(Dispatchers.IO) {
                     vaultStore.getVaultDiagnostics(databaseId)
                 }
-                _vaultDiagnostics.value =
-                    _vaultDiagnostics.value + (databaseId to refreshedDiagnostic)
-                _conflictCounts.value =
-                    _conflictCounts.value + (databaseId to refreshedDiagnostic.unresolvedConflictCount)
+                applyVaultDiagnostic(databaseId, refreshedDiagnostic)
                 val latest = _advancedDialogState.value as? MdbxAdvancedDialogState.Visible
                 if (latest?.databaseId == databaseId) {
                     _advancedDialogState.value = latest.copy(
@@ -817,9 +1074,15 @@ class MdbxViewModel(
 
     private suspend fun refreshSingleVaultState(databaseId: Long) {
         val diagnostic = vaultStore.getVaultDiagnostics(databaseId)
+        applyVaultDiagnostic(databaseId, diagnostic)
+    }
+
+    private fun applyVaultDiagnostic(databaseId: Long, diagnostic: MdbxVaultDiagnostics) {
         _vaultDiagnostics.value = _vaultDiagnostics.value + (databaseId to diagnostic)
         _conflictCounts.value =
             _conflictCounts.value + (databaseId to diagnostic.unresolvedConflictCount)
+        _pendingSyncCounts.value =
+            _pendingSyncCounts.value + (databaseId to diagnostic.pendingSyncCount)
     }
 
     private fun normalizeMdbxPassword(password: String): String =
@@ -840,6 +1103,7 @@ class MdbxViewModel(
                     }
                 }
                 _conflictCounts.value = _conflictCounts.value - databaseId
+                _pendingSyncCounts.value = _pendingSyncCounts.value - databaseId
                 _vaultDiagnostics.value = _vaultDiagnostics.value - databaseId
                 if ((_conflictDialogState.value as? MdbxConflictDialogState.Visible)
                         ?.databaseId == databaseId
@@ -865,8 +1129,15 @@ class MdbxViewModel(
             val removedIds = withContext(Dispatchers.IO) {
                 databaseDao.getAllDatabasesSnapshot()
                     .filter { database ->
-                        database.sourceTypeEnum != MdbxSourceType.REMOTE_WEBDAV &&
-                            !database.hasAccessibleLocalSource()
+                        val shouldPrune =
+                            database.sourceTypeEnum != MdbxSourceType.REMOTE_WEBDAV &&
+                                !database.hasAccessibleLocalSource()
+                        if (shouldPrune) {
+                            MdbxDiagLogger.append(
+                                "[MDBX][pruneMissingLocalVaults] removing id=${database.id} name=${database.name} sourceType=${database.sourceType} filePath=${database.filePath} workingCopy=${database.workingCopyPath ?: "-"}"
+                            )
+                        }
+                        shouldPrune
                     }
                     .map { database ->
                         clearImportedEntries(database.id)
@@ -877,6 +1148,7 @@ class MdbxViewModel(
             if (removedIds.isNotEmpty()) {
                 val removedSet = removedIds.toSet()
                 _conflictCounts.value = _conflictCounts.value - removedSet
+                _pendingSyncCounts.value = _pendingSyncCounts.value - removedSet
                 _vaultDiagnostics.value = _vaultDiagnostics.value - removedSet
                 val visibleConflict = _conflictDialogState.value as? MdbxConflictDialogState.Visible
                 if (visibleConflict?.databaseId in removedSet) {
@@ -908,6 +1180,9 @@ class MdbxViewModel(
             _vaultDiagnostics.value = diagnostics
             _conflictCounts.value = diagnostics.mapValues { (_, diagnostic) ->
                 diagnostic.unresolvedConflictCount
+            }
+            _pendingSyncCounts.value = diagnostics.mapValues { (_, diagnostic) ->
+                diagnostic.pendingSyncCount
             }
         }
     }
@@ -996,10 +1271,7 @@ class MdbxViewModel(
                 val refreshedDiagnostic = withContext(Dispatchers.IO) {
                     vaultStore.getVaultDiagnostics(databaseId)
                 }
-                _vaultDiagnostics.value =
-                    _vaultDiagnostics.value + (databaseId to refreshedDiagnostic)
-                _conflictCounts.value =
-                    _conflictCounts.value + (databaseId to refreshedDiagnostic.unresolvedConflictCount)
+                applyVaultDiagnostic(databaseId, refreshedDiagnostic)
                 _deltaDialogState.value = current?.copy(
                     deltas = refreshedDeltas,
                     snapshots = refreshedSnapshots,
@@ -1133,10 +1405,7 @@ class MdbxViewModel(
         val refreshedDiagnostic = withContext(Dispatchers.IO) {
             vaultStore.getVaultDiagnostics(databaseId)
         }
-        _vaultDiagnostics.value =
-            _vaultDiagnostics.value + (databaseId to refreshedDiagnostic)
-        _conflictCounts.value =
-            _conflictCounts.value + (databaseId to refreshedDiagnostic.unresolvedConflictCount)
+        applyVaultDiagnostic(databaseId, refreshedDiagnostic)
         _deltaDialogState.value = previousState?.copy(
             deltas = refreshedDeltas,
             snapshots = refreshedSnapshots,
@@ -1168,10 +1437,7 @@ class MdbxViewModel(
                 val refreshedDiagnostic = withContext(Dispatchers.IO) {
                     vaultStore.getVaultDiagnostics(databaseId)
                 }
-                _vaultDiagnostics.value =
-                    _vaultDiagnostics.value + (databaseId to refreshedDiagnostic)
-                _conflictCounts.value =
-                    _conflictCounts.value + (databaseId to refreshedDiagnostic.unresolvedConflictCount)
+                applyVaultDiagnostic(databaseId, refreshedDiagnostic)
                 _conflictDialogState.value = current?.copy(
                     conflicts = refreshedConflicts,
                     isLoading = false
@@ -1252,6 +1518,9 @@ class MdbxViewModel(
         tigaMode: String,
         credential: MdbxVaultCredential
     ): CustomDirectoryVault {
+        MdbxDiagLogger.append(
+            "[MDBX][createVaultFileInCustomDir] start name=$displayName treeUri=$treeUri tiga=$tigaMode unlock=${credential.unlockMethod.name}"
+        )
         val documentFile = DocumentFile.fromTreeUri(context, treeUri)
             ?: throw IllegalArgumentException("Cannot access selected directory")
 
@@ -1284,6 +1553,10 @@ class MdbxViewModel(
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             )
         }
+
+        MdbxDiagLogger.append(
+            "[MDBX][createVaultFileInCustomDir] success name=$displayName externalUri=${createdFile.uri} localCopy=${localVaultFile.absolutePath}"
+        )
 
         return CustomDirectoryVault(
             localCopy = localVaultFile,
@@ -1360,18 +1633,30 @@ class MdbxViewModel(
         return when (sourceTypeEnum) {
             MdbxSourceType.LOCAL_INTERNAL -> {
                 val activePath = workingCopyPath?.takeIf { it.isNotBlank() } ?: filePath
-                File(activePath).isFile && File(activePath).canRead()
+                hasReadableFile(activePath)
             }
             MdbxSourceType.LOCAL_EXTERNAL -> {
-                runCatching {
-                    val uri = Uri.parse(filePath)
-                    context.contentResolver.openInputStream(uri)?.use { input ->
-                        input.read(ByteArray(1))
-                    } != null
-                }.getOrDefault(false)
+                hasReadableDocumentUri(filePath) ||
+                    hasReadableFile(workingCopyPath)
             }
             MdbxSourceType.REMOTE_WEBDAV -> true
+            MdbxSourceType.REMOTE_ONEDRIVE -> true
         }
+    }
+
+    private fun hasReadableFile(path: String?): Boolean {
+        val normalizedPath = path?.takeIf { it.isNotBlank() } ?: return false
+        val file = File(normalizedPath)
+        return file.isFile && file.canRead()
+    }
+
+    private fun hasReadableDocumentUri(uriString: String): Boolean {
+        return runCatching {
+            val uri = Uri.parse(uriString)
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                input.read(ByteArray(1))
+            } != null
+        }.getOrDefault(false)
     }
 
     private suspend fun importPasswordEntry(
@@ -1585,6 +1870,23 @@ class MdbxViewModel(
                     }
                 }
             }
+            MdbxSourceType.REMOTE_ONEDRIVE -> {
+                val source = database.sourceId?.let { remoteSourceDao.getSourceById(it) }
+                    ?: throw IllegalStateException("MDBX OneDrive source not found")
+                val sourceBytes = readOneDriveVaultBytes(source)
+                workingCopy.parentFile?.mkdirs()
+                if (!workingCopy.exists()) {
+                    workingCopy.writeBytes(sourceBytes)
+                    vaultStore.validateExistingVaultFile(workingCopy)
+                } else {
+                    val incomingCopy = writeIncomingTempCopy(databaseId, sourceBytes)
+                    try {
+                        vaultStore.applyIncomingVaultFile(databaseId, incomingCopy)
+                    } finally {
+                        incomingCopy.delete()
+                    }
+                }
+            }
         }
 
         importEntriesFromVault(databaseId)
@@ -1617,6 +1919,15 @@ class MdbxViewModel(
         val remotePath = source.remotePath.takeIf { it.isNotBlank() }
             ?: throw IllegalStateException("MDBX remote path missing")
         val fileSource = WebDavMdbxFileSource(baseUrl, username, password)
+        return fileSource.readFile(remotePath)
+    }
+
+    private suspend fun readOneDriveVaultBytes(source: MdbxRemoteSource): ByteArray {
+        val accountId = source.usernameEncrypted?.let { securityManager.decryptData(it) }
+            ?: throw IllegalStateException("MDBX OneDrive account ID missing")
+        val remotePath = source.remotePath.takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("MDBX OneDrive remote path missing")
+        val fileSource = OneDriveMdbxFileSource(context, accountId)
         return fileSource.readFile(remotePath)
     }
 

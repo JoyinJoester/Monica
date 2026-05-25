@@ -401,6 +401,7 @@ private fun SecureItem.matchesAggregateCategory(
         is CategoryFilter.BitwardenVaultUncategorized ->
             bitwardenVaultId == filter.vaultId && effectiveCategoryId == null
         is CategoryFilter.MdbxDatabase -> mdbxDatabaseId == filter.databaseId
+        is CategoryFilter.MdbxFolderFilter -> mdbxDatabaseId == filter.databaseId
     }
 }
 
@@ -433,6 +434,7 @@ private fun PasskeyEntry.matchesAggregateCategory(filter: CategoryFilter): Boole
         is CategoryFilter.BitwardenVaultUncategorized ->
             bitwardenVaultId == filter.vaultId && categoryId == null
         is CategoryFilter.MdbxDatabase -> mdbxDatabaseId == filter.databaseId
+        is CategoryFilter.MdbxFolderFilter -> mdbxDatabaseId == filter.databaseId
     }
 }
 

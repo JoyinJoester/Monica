@@ -150,6 +150,7 @@ fun PasskeyListScreen(
     val passwordMap = remember(passwords) { passwords.associateBy { it.id } }
     val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList())
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
+    val mdbxDatabases by database.localMdbxDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
     val bitwardenRepository = remember { BitwardenRepository.getInstance(context) }
     val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
     val securityManager = remember { takagi.ru.monica.security.SecurityManager(context) }
@@ -353,6 +354,7 @@ fun PasskeyListScreen(
                 is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter ->
                     effectiveKeePassId == filter.databaseId && effectiveGroupPath.isNullOrBlank()
                 is UnifiedCategoryFilterSelection.MdbxDatabaseFilter -> effectiveMdbxId == filter.databaseId
+                is UnifiedCategoryFilterSelection.MdbxFolderFilter -> effectiveMdbxId == filter.databaseId
             }
         }
     }
@@ -924,6 +926,7 @@ fun PasskeyListScreen(
         is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> "${stringResource(R.string.filter_keepass)} · ${stringResource(R.string.filter_starred)}"
         is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> "${stringResource(R.string.filter_keepass)} · ${stringResource(R.string.filter_uncategorized)}"
         is UnifiedCategoryFilterSelection.MdbxDatabaseFilter -> "MDBX"
+        is UnifiedCategoryFilterSelection.MdbxFolderFilter -> "MDBX"
     }
     
     Column(modifier = modifier.fillMaxSize()) {
@@ -1537,6 +1540,7 @@ fun PasskeyListScreen(
         onDismiss = { showBatchMoveCategoryDialog = false },
         categories = categories,
         keepassDatabases = keepassDatabases,
+        mdbxDatabases = mdbxDatabases,
         bitwardenVaults = bitwardenVaults,
         getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
         getKeePassGroups = getKeePassGroups,
@@ -1613,6 +1617,7 @@ fun PasskeyListScreen(
         currentFilter = selectedCategoryFilter,
         categories = categories,
         keepassDatabases = keepassDatabases,
+        mdbxDatabases = mdbxDatabases,
         bitwardenVaults = bitwardenVaults,
         getKeePassGroups = getKeePassGroups,
         passwordViewModel = passwordViewModel!!,
@@ -1639,6 +1644,7 @@ private fun encodePasskeyCategoryFilter(filter: UnifiedCategoryFilterSelection):
     is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> SavedCategoryFilterState(type = "keepass_database_starred", primaryId = filter.databaseId)
     is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> SavedCategoryFilterState(type = "keepass_database_uncategorized", primaryId = filter.databaseId)
     is UnifiedCategoryFilterSelection.MdbxDatabaseFilter -> SavedCategoryFilterState(type = "mdbx_database", primaryId = filter.databaseId)
+    is UnifiedCategoryFilterSelection.MdbxFolderFilter -> SavedCategoryFilterState(type = "mdbx_database", primaryId = filter.databaseId)
 }
 
 private fun decodePasskeyCategoryFilter(state: SavedCategoryFilterState): UnifiedCategoryFilterSelection {

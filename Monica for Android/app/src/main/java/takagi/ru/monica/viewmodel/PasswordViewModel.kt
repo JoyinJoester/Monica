@@ -33,6 +33,7 @@ import takagi.ru.monica.data.writeOperationAvailability
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
 import takagi.ru.monica.repository.CustomFieldRepository
+import takagi.ru.monica.repository.MdbxStoredFolderEntry
 import takagi.ru.monica.repository.PasswordRepository
 import takagi.ru.monica.repository.SecureItemRepository
 import takagi.ru.monica.security.SecurityManager
@@ -77,6 +78,7 @@ sealed class CategoryFilter {
     data class KeePassDatabaseStarred(val databaseId: Long) : CategoryFilter()
     data class KeePassDatabaseUncategorized(val databaseId: Long) : CategoryFilter()
     data class MdbxDatabase(val databaseId: Long) : CategoryFilter()
+    data class MdbxFolderFilter(val databaseId: Long, val folderId: String) : CategoryFilter()
     data class BitwardenVault(val vaultId: Long) : CategoryFilter()
     data class BitwardenFolderFilter(val folderId: String, val vaultId: Long) : CategoryFilter()
     data class BitwardenVaultStarred(val vaultId: Long) : CategoryFilter()
@@ -137,6 +139,7 @@ class PasswordViewModel(
         private const val SAVED_FILTER_BITWARDEN_VAULT_STARRED = "bitwarden_vault_starred"
         private const val SAVED_FILTER_BITWARDEN_VAULT_UNCATEGORIZED = "bitwarden_vault_uncategorized"
         private const val SAVED_FILTER_MDBX_DATABASE = "mdbx_database"
+        private const val SAVED_FILTER_MDBX_FOLDER = "mdbx_folder"
         private const val MONICA_MANUAL_STACK_GROUP_FIELD_TITLE = "__monica_manual_stack_group"
         private const val MONICA_NO_STACK_FIELD_TITLE = "__monica_no_stack"
         private const val MONICA_KEEPASS_ARCHIVE_ROOT_GROUP_NAME = ".Monica"
@@ -212,6 +215,10 @@ class PasswordViewModel(
     private val _categoryFilter = MutableStateFlow<CategoryFilter>(CategoryFilter.All)
     val categoryFilter = _categoryFilter.asStateFlow()
 
+    private val _mdbxFoldersByDatabase = MutableStateFlow<Map<Long, List<MdbxStoredFolderEntry>>>(emptyMap())
+    val mdbxFoldersByDatabase: StateFlow<Map<Long, List<MdbxStoredFolderEntry>>> =
+        _mdbxFoldersByDatabase.asStateFlow()
+
     private val _expandedGroups = MutableStateFlow<Set<String>>(emptySet())
     val expandedGroups: StateFlow<Set<String>> = _expandedGroups.asStateFlow()
 
@@ -268,6 +275,24 @@ class PasswordViewModel(
     
     fun getBitwardenFolders(vaultId: Long): Flow<List<BitwardenFolder>> {
         return repository.getBitwardenFoldersByVaultId(vaultId)
+    }
+
+    fun getMdbxFolders(databaseId: Long): Flow<List<MdbxStoredFolderEntry>> {
+        return mdbxFoldersByDatabase.map { foldersByDatabase ->
+            foldersByDatabase[databaseId].orEmpty()
+        }.distinctUntilChanged()
+    }
+
+    fun refreshMdbxFolders(databaseId: Long) {
+        viewModelScope.launch {
+            runCatching {
+                repository.listMdbxFolders(databaseId)
+            }.onSuccess { folders ->
+                _mdbxFoldersByDatabase.value = _mdbxFoldersByDatabase.value + (databaseId to folders)
+            }.onFailure { error ->
+                Log.w("PasswordViewModel", "Failed to refresh MDBX folders for database $databaseId", error)
+            }
+        }
     }
 
     fun requestFastScroll(progress: Float) {
@@ -431,6 +456,9 @@ class PasswordViewModel(
                     is CategoryFilter.MdbxDatabase -> repository.getAllPasswordEntries().map { list ->
                         list.filter { it.mdbxDatabaseId == filter.databaseId }
                     }
+                    is CategoryFilter.MdbxFolderFilter -> repository.getAllPasswordEntries().map { list ->
+                        list.filter { it.matchesMdbxFolder(filter.databaseId, filter.folderId) }
+                    }
                 }
             }
             // Combine with settings for smart deduplication logic
@@ -452,6 +480,7 @@ class PasswordViewModel(
                     is CategoryFilter.BitwardenVaultStarred -> true
                     is CategoryFilter.BitwardenVaultUncategorized -> true
                     is CategoryFilter.MdbxDatabase -> true
+                    is CategoryFilter.MdbxFolderFilter -> true
                     else -> false
                 }
                 
@@ -628,7 +657,23 @@ class PasswordViewModel(
                 it.bitwardenVaultId == filter.vaultId && it.bitwardenFolderId == null
             }
             is CategoryFilter.MdbxDatabase -> entries.filter { it.mdbxDatabaseId == filter.databaseId }
+            is CategoryFilter.MdbxFolderFilter -> entries.filter {
+                it.matchesMdbxFolder(filter.databaseId, filter.folderId)
+            }
         }
+    }
+
+    private fun PasswordEntry.matchesMdbxFolder(databaseId: Long, folderId: String): Boolean {
+        if (mdbxDatabaseId != databaseId) return false
+        val normalizedFolderId = folderId.trim()
+        if (normalizedFolderId.equals("root", ignoreCase = true)) {
+            return categoryId == null
+        }
+        val categoryIdFromFolder = normalizedFolderId
+            .removePrefix("category:")
+            .takeIf { it != normalizedFolderId }
+            ?.toLongOrNull()
+        return categoryIdFromFolder != null && categoryId == categoryIdFromFolder
     }
 
     private fun filterGhostEntriesForDisplay(entries: List<PasswordEntry>): List<PasswordEntry> {
@@ -1547,6 +1592,16 @@ class PasswordViewModel(
             SAVED_FILTER_MDBX_DATABASE -> settings.lastPasswordCategoryFilterPrimaryId
                 ?.let { CategoryFilter.MdbxDatabase(it) }
                 ?: CategoryFilter.All
+            SAVED_FILTER_MDBX_FOLDER -> {
+                val databaseId = settings.lastPasswordCategoryFilterPrimaryId
+                    ?: settings.lastPasswordCategoryFilterSecondaryId
+                val folderId = settings.lastPasswordCategoryFilterText
+                if (databaseId != null && !folderId.isNullOrBlank()) {
+                    CategoryFilter.MdbxFolderFilter(databaseId, folderId)
+                } else {
+                    CategoryFilter.All
+                }
+            }
             else -> CategoryFilter.All
         }
     }
@@ -1623,6 +1678,11 @@ class PasswordViewModel(
                         type = SAVED_FILTER_MDBX_DATABASE,
                         primaryId = filter.databaseId
                     )
+                    is CategoryFilter.MdbxFolderFilter -> manager.updateLastPasswordCategoryFilter(
+                        type = SAVED_FILTER_MDBX_FOLDER,
+                        primaryId = filter.databaseId,
+                        text = filter.folderId
+                    )
                 }
             }.onFailure { error ->
                 Log.w("PasswordViewModel", "Failed to persist category filter", error)
@@ -1634,6 +1694,24 @@ class PasswordViewModel(
         viewModelScope.launch {
             val id = repository.insertCategory(Category(name = name))
             onResult(id)
+        }
+    }
+
+    fun createMdbxFolder(
+        databaseId: Long,
+        name: String,
+        parentFolderId: String? = "root",
+        onResult: (Result<MdbxStoredFolderEntry>) -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            val result = runCatching {
+                repository.createMdbxFolder(databaseId, name, parentFolderId)
+                    ?: throw IllegalStateException("MDBX repository unavailable")
+            }
+            result.onSuccess {
+                refreshMdbxFolders(databaseId)
+            }
+            onResult(result)
         }
     }
 

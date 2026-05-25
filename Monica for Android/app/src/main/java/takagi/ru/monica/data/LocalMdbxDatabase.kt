@@ -24,7 +24,8 @@ enum class MdbxStorageLocation {
 enum class MdbxSourceType {
     LOCAL_INTERNAL,
     LOCAL_EXTERNAL,
-    REMOTE_WEBDAV
+    REMOTE_WEBDAV,
+    REMOTE_ONEDRIVE
 }
 
 /**

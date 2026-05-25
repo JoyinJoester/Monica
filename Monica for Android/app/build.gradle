@@ -424,7 +424,7 @@ dependencies {
     implementation 'com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0'
 
     // Microsoft identity platform / OneDrive auth
-    implementation 'com.microsoft.identity.client:msal:8.+'
+    implementation 'com.microsoft.identity.client:msal:8.3.2'
     implementation 'com.squareup.moshi:moshi-adapters:1.15.1'
     
     // BouncyCastle for Argon2 (Bitwarden KDF support)

@@ -16,6 +16,7 @@ import takagi.ru.monica.bitwarden.sync.SyncQueueManagerHolder
 import takagi.ru.monica.data.AppLauncherIcon
 import takagi.ru.monica.data.AppLauncherLabel
 import takagi.ru.monica.data.PasswordDatabase
+import takagi.ru.monica.mdbx.MdbxDiagLogger
 import takagi.ru.monica.security.AppUpdateSecurityGuard
 import takagi.ru.monica.utils.AppLauncherIconManager
 import takagi.ru.monica.utils.SettingsManager
@@ -46,6 +47,7 @@ class MonicaApplication : Application() {
         )
         
         initKoin()
+        MdbxDiagLogger.initialize(this)
         syncLauncherEntryPointsWithSettings()
         initBitwardenSyncInfrastructure()
         WebDavBackoffState.attachPersistence(this)

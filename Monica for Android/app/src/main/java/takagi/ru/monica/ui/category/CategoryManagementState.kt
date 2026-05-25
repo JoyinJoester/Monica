@@ -166,11 +166,17 @@ fun CategoryManagementCreateDialog(
             { _, _, _ -> }
         },
         onCreateMdbxProject = { databaseId, name ->
-            Toast.makeText(
-                context,
-                "MDBX engine not available",
-                Toast.LENGTH_SHORT
-            ).show()
+            scope.launch {
+                passwordViewModel.createMdbxFolder(databaseId, name) { result ->
+                    result.exceptionOrNull()?.let { error ->
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.save_failed_with_error, error.message ?: ""),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }
         },
         initialLocalParentPath = initialLocalParentPath,
         initialTarget = initialDialogTarget,

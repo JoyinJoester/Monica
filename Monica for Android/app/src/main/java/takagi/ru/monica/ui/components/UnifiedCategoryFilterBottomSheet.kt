@@ -121,9 +121,12 @@ import takagi.ru.monica.R
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.KeePassStorageLocation
 import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.LocalMdbxDatabase
+import takagi.ru.monica.data.isMonicaLocalCategory
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.writeOperationAvailability
+import takagi.ru.monica.repository.MdbxStoredFolderEntry
 import takagi.ru.monica.utils.KEEPASS_DISPLAY_PATH_SEPARATOR
 import takagi.ru.monica.utils.KeePassGroupInfo
 import takagi.ru.monica.utils.buildLocalCategoryPath
@@ -152,6 +155,7 @@ sealed interface UnifiedCategoryFilterSelection {
     data class KeePassDatabaseStarredFilter(val databaseId: Long) : UnifiedCategoryFilterSelection
     data class KeePassDatabaseUncategorizedFilter(val databaseId: Long) : UnifiedCategoryFilterSelection
     data class MdbxDatabaseFilter(val databaseId: Long) : UnifiedCategoryFilterSelection
+    data class MdbxFolderFilter(val databaseId: Long, val folderId: String) : UnifiedCategoryFilterSelection
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -169,6 +173,7 @@ fun UnifiedCategoryFilterBottomSheet(
     keepassDatabases: List<LocalKeePassDatabase>,
     bitwardenVaults: List<BitwardenVault>,
     getBitwardenFolders: (Long) -> Flow<List<BitwardenFolder>>,
+    getMdbxFolders: (Long) -> Flow<List<MdbxStoredFolderEntry>> = { kotlinx.coroutines.flow.flowOf(emptyList()) },
     getKeePassGroups: ((Long) -> Flow<List<KeePassGroupInfo>>)? = null,
     onCreateCategory: (() -> Unit)? = null,
     onCreateCategoryWithName: ((String) -> Unit)? = null,
@@ -180,7 +185,9 @@ fun UnifiedCategoryFilterBottomSheet(
     onDeleteCategory: ((Category) -> Unit)? = null,
     onRequestBiometricVerify: BiometricVerifyRequester? = null,
     onCreateKeePassGroup: ((databaseId: Long, parentPath: String?, name: String) -> Unit)? = null,
+    onCreateMdbxProject: ((databaseId: Long, name: String) -> Unit)? = null,
     onRenameKeePassGroup: ((databaseId: Long, groupPath: String, newName: String) -> Unit)? = null,
+    mdbxDatabases: List<LocalMdbxDatabase> = emptyList(),
     onDeleteKeePassGroup: ((databaseId: Long, groupPath: String) -> Unit)? = null,
     onMoveCategory: ((category: Category, targetParentCategoryId: Long?) -> Unit)? = null,
     onMoveKeePassGroup: ((sourceDatabaseId: Long, groupPath: String, targetDatabaseId: Long, targetParentPath: String?) -> Unit)? = null,
@@ -193,8 +200,10 @@ fun UnifiedCategoryFilterBottomSheet(
     var monicaExpanded by remember { mutableStateOf(false) }
     val bitwardenExpanded = remember { mutableStateMapOf<Long, Boolean>() }
     val keepassExpanded = remember { mutableStateMapOf<Long, Boolean>() }
+    val mdbxExpanded = remember { mutableStateMapOf<Long, Boolean>() }
     var showCreateDialog by remember { mutableStateOf(false) }
     var createDialogLocalParentPath by remember { mutableStateOf<String?>(null) }
+    var createDialogInitialMdbxDbId by remember { mutableStateOf<Long?>(null) }
     var renameAction by remember { mutableStateOf<RenameAction?>(null) }
     var renameInput by remember { mutableStateOf("") }
     var localCategoryRenameMode by remember { mutableStateOf(LocalCategoryRenameMode.LeafOnly) }
@@ -234,6 +243,12 @@ fun UnifiedCategoryFilterBottomSheet(
             is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> {
                 keepassExpanded[selected.databaseId] = true
             }
+            is UnifiedCategoryFilterSelection.MdbxDatabaseFilter -> {
+                mdbxExpanded[selected.databaseId] = true
+            }
+            is UnifiedCategoryFilterSelection.MdbxFolderFilter -> {
+                mdbxExpanded[selected.databaseId] = true
+            }
             else -> Unit
         }
     }
@@ -241,6 +256,7 @@ fun UnifiedCategoryFilterBottomSheet(
     val canCreateLocal = onCreateCategoryWithName != null || onCreateCategory != null
     val canCreateBitwarden = onCreateBitwardenFolder != null && bitwardenVaults.isNotEmpty()
     val canCreateKeePass = onCreateKeePassGroup != null && keepassDatabases.isNotEmpty()
+    val canCreateMdbx = onCreateMdbxProject != null && mdbxDatabases.isNotEmpty()
     val localKeePassDatabases = keepassDatabases
     val localCategoryNodes = remember(categories) { buildLocalCategoryNodes(categories) }
 
@@ -828,11 +844,89 @@ fun UnifiedCategoryFilterBottomSheet(
                     }
                 }
 
-                if (canCreateLocal || canCreateBitwarden || canCreateKeePass) {
+                if (mdbxDatabases.isNotEmpty()) {
+                    item {
+                        StorageSectionCard(title = "MDBX") {
+                            mdbxDatabases.forEach { database ->
+                                val expanded = mdbxExpanded[database.id] ?: false
+                                val folders by getMdbxFolders(database.id).collectAsState(initial = emptyList())
+                                Column {
+                                    UnifiedCategoryListItem(
+                                        title = database.name,
+                                        icon = Icons.Default.Key,
+                                        selected = (
+                                            selected is UnifiedCategoryFilterSelection.MdbxDatabaseFilter &&
+                                                selected.databaseId == database.id
+                                            ) || (
+                                            selected is UnifiedCategoryFilterSelection.MdbxFolderFilter &&
+                                                selected.databaseId == database.id
+                                            ),
+                                        onClick = {
+                                            onSelect(UnifiedCategoryFilterSelection.MdbxDatabaseFilter(database.id))
+                                        },
+                                        menu = {
+                                            Row {
+                                                if (canCreateMdbx) {
+                                                    IconButton(onClick = {
+                                                        createDialogLocalParentPath = null
+                                                        createDialogInitialMdbxDbId = database.id
+                                                        showCreateDialog = true
+                                                    }) {
+                                                        Icon(Icons.Default.Add, contentDescription = null)
+                                                    }
+                                                }
+                                                IconButton(onClick = {
+                                                    mdbxExpanded[database.id] = !expanded
+                                                }) {
+                                                    Icon(
+                                                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                                        contentDescription = null
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    )
+                                    SafeAnimatedVisibility(
+                                        visible = expanded,
+                                        enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = expandCollapseSpec),
+                                        exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)
+                                    ) {
+                                        Column {
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            folders.forEach { folder ->
+                                                val folderSelected = selected is UnifiedCategoryFilterSelection.MdbxFolderFilter &&
+                                                    selected.databaseId == database.id &&
+                                                    selected.folderId == folder.folderId
+                                                Box(modifier = Modifier.padding(start = 16.dp)) {
+                                                    UnifiedCategoryListItem(
+                                                        title = folder.name.ifBlank { "Folder ${folder.folderId.take(8)}" },
+                                                        icon = Icons.Default.Folder,
+                                                        selected = folderSelected,
+                                                        onClick = {
+                                                            onSelect(
+                                                                UnifiedCategoryFilterSelection.MdbxFolderFilter(
+                                                                    database.id,
+                                                                    folder.folderId
+                                                                )
+                                                            )
+                                                        }
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (canCreateLocal || canCreateBitwarden || canCreateKeePass || canCreateMdbx) {
                     item {
                         FilledTonalButton(
                             onClick = {
                                 createDialogLocalParentPath = null
+                                createDialogInitialMdbxDbId = null
                                 showCreateDialog = true
                             },
                             modifier = Modifier
@@ -856,16 +950,25 @@ fun UnifiedCategoryFilterBottomSheet(
             onDismiss = {
                 showCreateDialog = false
                 createDialogLocalParentPath = null
+                createDialogInitialMdbxDbId = null
             },
             categories = categories,
             keepassDatabases = keepassDatabases,
+            mdbxDatabases = mdbxDatabases,
             bitwardenVaults = bitwardenVaults,
             getKeePassGroups = getKeePassGroups,
             onCreateCategory = onCreateCategory,
             onCreateCategoryWithName = onCreateCategoryWithName,
             onCreateBitwardenFolder = onCreateBitwardenFolder,
             onCreateKeePassGroup = onCreateKeePassGroup,
-            initialLocalParentPath = createDialogLocalParentPath
+            onCreateMdbxProject = onCreateMdbxProject,
+            initialLocalParentPath = createDialogLocalParentPath,
+            initialTarget = if (createDialogInitialMdbxDbId != null || (!canCreateLocal && !canCreateBitwarden && !canCreateKeePass && canCreateMdbx)) {
+                CreateDialogTarget.Mdbx
+            } else {
+                null
+            },
+            initialMdbxDbId = createDialogInitialMdbxDbId
         )
     }
 
@@ -1304,6 +1407,7 @@ private fun rememberCategoryFilterLabel(
         is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> "$keepass · $starred"
         is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> "$keepass · $uncategorized"
         is UnifiedCategoryFilterSelection.MdbxDatabaseFilter -> "MDBX"
+        is UnifiedCategoryFilterSelection.MdbxFolderFilter -> "MDBX"
     }
 }
 
@@ -1368,6 +1472,7 @@ private data class LocalCategoryNode(
 
 private fun buildLocalCategoryNodes(categories: List<Category>): List<LocalCategoryNode> {
     return categories
+        .filter(Category::isMonicaLocalCategory)
         .map { category ->
             val segments = category.name
                 .split("/")

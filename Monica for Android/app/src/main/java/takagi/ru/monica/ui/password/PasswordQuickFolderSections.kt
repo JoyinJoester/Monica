@@ -1,5 +1,17 @@
 package takagi.ru.monica.ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -10,86 +22,204 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
+import takagi.ru.monica.data.LocalMdbxDatabase
+import takagi.ru.monica.data.MdbxSyncStatus
 import takagi.ru.monica.viewmodel.CategoryFilter
+
+internal fun LocalMdbxDatabase.mdbxPathShouldFlushPendingUpload(): Boolean =
+    lastSyncStatus == MdbxSyncStatus.PENDING_UPLOAD.name
+
+internal data class MdbxPathSyncState(
+    val pendingCount: Int,
+    val isSyncing: Boolean,
+    val onSync: () -> Unit
+)
+
+internal fun LocalMdbxDatabase.mdbxPathPendingSyncCount(): Int {
+    val pending = when (runCatching { MdbxSyncStatus.valueOf(lastSyncStatus) }.getOrNull()) {
+        MdbxSyncStatus.PENDING_UPLOAD,
+        MdbxSyncStatus.REMOTE_CHANGED,
+        MdbxSyncStatus.CONFLICT,
+        MdbxSyncStatus.FAILED -> true
+        else -> false
+    }
+    return if (pending) 1 else 0
+}
 
 @Composable
 internal fun PasswordQuickFolderBreadcrumbBanner(
     breadcrumbs: List<PasswordQuickFolderBreadcrumb>,
     currentFilter: CategoryFilter,
-    onNavigate: (CategoryFilter) -> Unit
+    onNavigate: (CategoryFilter) -> Unit,
+    mdbxSyncState: MdbxPathSyncState? = null
 ) {
-    Box(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
-            .clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+            .animateContentSize(animationSpec = tween(durationMillis = 220)),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
+        if (mdbxSyncState != null) {
+            MdbxPathSyncActions(state = mdbxSyncState)
+        }
+
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
+                .weight(1f)
+                .height(36.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
         ) {
-            breadcrumbs.forEachIndexed { index, crumb ->
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                breadcrumbs.forEachIndexed { index, crumb ->
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(
+                                color = if (crumb.isCurrent) {
+                                    MaterialTheme.colorScheme.primaryContainer
+                                } else {
+                                    MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.68f)
+                                }
+                            )
+                            .clickable(enabled = !crumb.isCurrent) {
+                                if (currentFilter != crumb.targetFilter) {
+                                    onNavigate(crumb.targetFilter)
+                                }
+                            }
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = crumb.title,
+                            style = MaterialTheme.typography.labelMedium,
                             color = if (crumb.isCurrent) {
-                                MaterialTheme.colorScheme.primaryContainer
+                                MaterialTheme.colorScheme.onPrimaryContainer
                             } else {
-                                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.68f)
+                                MaterialTheme.colorScheme.onSecondaryContainer
                             }
                         )
-                        .clickable(enabled = !crumb.isCurrent) {
-                            if (currentFilter != crumb.targetFilter) {
-                                onNavigate(crumb.targetFilter)
-                            }
-                        }
-                        .padding(horizontal = 10.dp, vertical = 4.dp)
-                ) {
+                    }
+                    if (index != breadcrumbs.lastIndex) {
+                        Text(
+                            text = ">",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 6.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun MdbxPathSyncActions(state: MdbxPathSyncState) {
+    Row(
+        modifier = Modifier
+            .height(36.dp)
+            .animateContentSize(animationSpec = tween(durationMillis = 220)),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AnimatedVisibility(
+            visible = state.pendingCount > 0,
+            enter = expandHorizontally(
+                expandFrom = Alignment.End,
+                animationSpec = tween(durationMillis = 220)
+            ) + fadeIn(animationSpec = tween(durationMillis = 180)),
+            exit = shrinkHorizontally(
+                shrinkTowards = Alignment.End,
+                animationSpec = tween(durationMillis = 180)
+            ) + fadeOut(animationSpec = tween(durationMillis = 140))
+        ) {
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.tertiaryContainer,
+                contentColor = MaterialTheme.colorScheme.onTertiaryContainer,
+                tonalElevation = 1.dp,
+                modifier = Modifier
+                    .width(104.dp)
+                    .height(36.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
                     Text(
-                        text = crumb.title,
+                        text = "未同步${state.pendingCount}条",
                         style = MaterialTheme.typography.labelMedium,
-                        color = if (crumb.isCurrent) {
-                            MaterialTheme.colorScheme.onPrimaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.onSecondaryContainer
-                        }
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
-                if (index != breadcrumbs.lastIndex) {
-                    Text(
-                        text = ">",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 6.dp)
-                    )
-                }
+            }
+        }
+
+        val spin by rememberInfiniteTransition(label = "mdbx-path-sync-spin")
+            .animateFloat(
+                initialValue = 0f,
+                targetValue = 360f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 900, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart
+                ),
+                label = "mdbx-path-sync-rotation"
+            )
+        val rotation = if (state.isSyncing) spin else 0f
+
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            tonalElevation = 2.dp,
+            modifier = Modifier.size(36.dp)
+        ) {
+            IconButton(
+                onClick = state.onSync,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Sync,
+                    contentDescription = "同步 MDBX 数据库",
+                    modifier = Modifier
+                        .size(19.dp)
+                        .graphicsLayer { rotationZ = rotation }
+                )
             }
         }
     }

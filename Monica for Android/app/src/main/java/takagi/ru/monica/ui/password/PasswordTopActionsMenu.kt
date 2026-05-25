@@ -159,11 +159,11 @@ internal fun KeepassRefreshTopActionsMenuItem(
 }
 
 @Composable
-internal fun MdbxRefreshTopActionsMenuItem(
+internal fun MdbxSyncTopActionsMenuItem(
     onClick: () -> Unit,
 ) {
     DropdownMenuItem(
-        text = { Text("${stringResource(R.string.refresh)} MDBX") },
+        text = { Text("同步 MDBX 数据库") },
         leadingIcon = { Icon(Icons.Default.Sync, contentDescription = null) },
         onClick = onClick
     )

@@ -1,9 +1,14 @@
 package takagi.ru.monica.viewmodel
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import takagi.ru.monica.data.GeneratorPreferences
+import takagi.ru.monica.data.GeneratorPreferencesManager
 import takagi.ru.monica.data.model.SshKeyData
 import takagi.ru.monica.util.PasswordGenerator
 import takagi.ru.monica.utils.SshKeyGenerator
@@ -11,8 +16,95 @@ import takagi.ru.monica.utils.SshKeyGenerator
 /**
  * ViewModel for generator screen to persist state across navigation
  */
-class GeneratorViewModel : ViewModel() {
+class GeneratorViewModel(
+    private val preferencesManager: GeneratorPreferencesManager? = null
+) : ViewModel() {
     private val defaultSymbols = PasswordGenerator.getDefaultSymbols()
+
+    init {
+        preferencesManager?.let { manager ->
+            viewModelScope.launch(Dispatchers.IO) {
+                val saved = manager.load()
+                _selectedGenerator.value = runCatching {
+                    GeneratorType.valueOf(saved.selectedGenerator)
+                }.getOrDefault(GeneratorType.SYMBOL)
+                _symbolLength.value = saved.symbolLength
+                _includeUppercase.value = saved.includeUppercase
+                _includeLowercase.value = saved.includeLowercase
+                _includeNumbers.value = saved.includeNumbers
+                _includeSymbols.value = saved.includeSymbols
+                _useSymbolExclusionMode.value = saved.useSymbolExclusionMode
+                _excludedSymbols.value = saved.excludedSymbols
+                _customSymbols.value = saved.customSymbols
+                _excludeSimilar.value = saved.excludeSimilar
+                _excludeAmbiguous.value = saved.excludeAmbiguous
+                _analyzeCommonPasswords.value = saved.analyzeCommonPasswords
+                _analyzeWeight.value = saved.analyzeWeight
+                _uppercaseMin.value = saved.uppercaseMin
+                _lowercaseMin.value = saved.lowercaseMin
+                _numbersMin.value = saved.numbersMin
+                _symbolsMin.value = saved.symbolsMin
+                _passphraseWordCount.value = saved.passphraseWordCount
+                _passphraseDelimiter.value = saved.passphraseDelimiter
+                _passphraseCapitalize.value = saved.passphraseCapitalize
+                _passphraseIncludeNumber.value = saved.passphraseIncludeNumber
+                _passphraseCustomWord.value = saved.passphraseCustomWord
+                _passphraseCustomWords.value = saved.passphraseCustomWords
+                _pinLength.value = saved.pinLength
+                _passwordLength.value = saved.passwordLength
+                _firstLetterUppercase.value = saved.firstLetterUppercase
+                _includeNumbersInPassword.value = saved.includeNumbersInPassword
+                _customSeparator.value = saved.customSeparator
+                _separatorCountsTowardsLength.value = saved.separatorCountsTowardsLength
+                _segmentLength.value = saved.segmentLength
+                _sshKeyAlgorithm.value = saved.sshKeyAlgorithm
+                _sshKeyRsaSize.value = saved.sshKeyRsaSize
+            }
+        }
+    }
+
+    private fun scheduleSave() {
+        preferencesManager?.let { manager ->
+            viewModelScope.launch(Dispatchers.IO) {
+                manager.save(currentPreferences())
+            }
+        }
+    }
+
+    private fun currentPreferences() = GeneratorPreferences(
+        selectedGenerator = _selectedGenerator.value.name,
+        symbolLength = _symbolLength.value,
+        includeUppercase = _includeUppercase.value,
+        includeLowercase = _includeLowercase.value,
+        includeNumbers = _includeNumbers.value,
+        includeSymbols = _includeSymbols.value,
+        useSymbolExclusionMode = _useSymbolExclusionMode.value,
+        excludedSymbols = _excludedSymbols.value,
+        customSymbols = _customSymbols.value,
+        excludeSimilar = _excludeSimilar.value,
+        excludeAmbiguous = _excludeAmbiguous.value,
+        analyzeCommonPasswords = _analyzeCommonPasswords.value,
+        analyzeWeight = _analyzeWeight.value,
+        uppercaseMin = _uppercaseMin.value,
+        lowercaseMin = _lowercaseMin.value,
+        numbersMin = _numbersMin.value,
+        symbolsMin = _symbolsMin.value,
+        passphraseWordCount = _passphraseWordCount.value,
+        passphraseDelimiter = _passphraseDelimiter.value,
+        passphraseCapitalize = _passphraseCapitalize.value,
+        passphraseIncludeNumber = _passphraseIncludeNumber.value,
+        passphraseCustomWord = _passphraseCustomWord.value,
+        passphraseCustomWords = _passphraseCustomWords.value,
+        pinLength = _pinLength.value,
+        passwordLength = _passwordLength.value,
+        firstLetterUppercase = _firstLetterUppercase.value,
+        includeNumbersInPassword = _includeNumbersInPassword.value,
+        customSeparator = _customSeparator.value,
+        separatorCountsTowardsLength = _separatorCountsTowardsLength.value,
+        segmentLength = _segmentLength.value,
+        sshKeyAlgorithm = _sshKeyAlgorithm.value,
+        sshKeyRsaSize = _sshKeyRsaSize.value
+    )
     
     // 生成器类型状态
     private val _selectedGenerator = MutableStateFlow(GeneratorType.SYMBOL)
@@ -144,31 +236,38 @@ class GeneratorViewModel : ViewModel() {
     // 更新生成器类型
     fun updateSelectedGenerator(generatorType: GeneratorType) {
         _selectedGenerator.value = generatorType
+        scheduleSave()
     }
-    
+
     // 更新随机符号生成器状态
     fun updateSymbolLength(length: Int) {
         _symbolLength.value = length.coerceIn(4, 128)
+        scheduleSave()
     }
-    
+
     fun updateIncludeUppercase(include: Boolean) {
         _includeUppercase.value = include
+        scheduleSave()
     }
-    
+
     fun updateIncludeLowercase(include: Boolean) {
         _includeLowercase.value = include
+        scheduleSave()
     }
-    
+
     fun updateIncludeNumbers(include: Boolean) {
         _includeNumbers.value = include
+        scheduleSave()
     }
-    
+
     fun updateIncludeSymbols(include: Boolean) {
         _includeSymbols.value = include
+        scheduleSave()
     }
 
     fun updateUseSymbolExclusionMode(enabled: Boolean) {
         _useSymbolExclusionMode.value = enabled
+        scheduleSave()
     }
 
     fun updateExcludedSymbols(symbols: String) {
@@ -181,6 +280,7 @@ class GeneratorViewModel : ViewModel() {
                 acc
             }
             .toString()
+        scheduleSave()
     }
 
     fun toggleExcludedSymbol(symbol: Char) {
@@ -191,10 +291,12 @@ class GeneratorViewModel : ViewModel() {
         } else {
             current + symbol
         }
+        scheduleSave()
     }
 
     fun clearExcludedSymbols() {
         _excludedSymbols.value = ""
+        scheduleSave()
     }
 
     fun updateCustomSymbols(symbols: String) {
@@ -207,43 +309,53 @@ class GeneratorViewModel : ViewModel() {
                 acc
             }
             .toString()
+        scheduleSave()
     }
 
     fun resetCustomSymbols() {
         _customSymbols.value = defaultSymbols
+        scheduleSave()
     }
-    
+
     fun updateExcludeSimilar(exclude: Boolean) {
         _excludeSimilar.value = exclude
+        scheduleSave()
     }
-    
+
     fun updateExcludeAmbiguous(exclude: Boolean) {
         _excludeAmbiguous.value = exclude
+        scheduleSave()
     }
 
     fun updateAnalyzeCommonPasswords(analyze: Boolean) {
         _analyzeCommonPasswords.value = analyze
+        scheduleSave()
     }
 
     fun updateAnalyzeWeight(weight: Int) {
         _analyzeWeight.value = weight.coerceIn(0, 100)
+        scheduleSave()
     }
-    
+
     // ✨ 最小字符数要求更新方法
     fun updateUppercaseMin(min: Int) {
         _uppercaseMin.value = min.coerceAtLeast(0)
+        scheduleSave()
     }
-    
+
     fun updateLowercaseMin(min: Int) {
         _lowercaseMin.value = min.coerceAtLeast(0)
+        scheduleSave()
     }
-    
+
     fun updateNumbersMin(min: Int) {
         _numbersMin.value = min.coerceAtLeast(0)
+        scheduleSave()
     }
-    
+
     fun updateSymbolsMin(min: Int) {
         _symbolsMin.value = min.coerceAtLeast(0)
+        scheduleSave()
     }
     
     fun updateSymbolResult(result: String) {
@@ -253,26 +365,32 @@ class GeneratorViewModel : ViewModel() {
     // 更新口令生成器状态
     fun updatePasswordLength(length: Int) {
         _passwordLength.value = length.coerceIn(4, 128)
+        scheduleSave()
     }
-    
+
     fun updateFirstLetterUppercase(uppercase: Boolean) {
         _firstLetterUppercase.value = uppercase
+        scheduleSave()
     }
-    
+
     fun updateIncludeNumbersInPassword(include: Boolean) {
         _includeNumbersInPassword.value = include
+        scheduleSave()
     }
-    
+
     fun updateCustomSeparator(separator: String) {
         _customSeparator.value = separator
+        scheduleSave()
     }
-    
+
     fun updateSeparatorCountsTowardsLength(counts: Boolean) {
         _separatorCountsTowardsLength.value = counts
+        scheduleSave()
     }
-    
+
     fun updateSegmentLength(length: Int) {
         _segmentLength.value = length
+        scheduleSave()
     }
     
     fun updatePasswordResult(result: String) {
@@ -282,6 +400,7 @@ class GeneratorViewModel : ViewModel() {
     // 更新PIN码生成器状态
     fun updatePinLength(length: Int) {
         _pinLength.value = length.coerceIn(3, 9)
+        scheduleSave()
     }
     
     fun updatePinResult(result: String) {
@@ -291,26 +410,32 @@ class GeneratorViewModel : ViewModel() {
     // ✨ 密码短语更新方法
     fun updatePassphraseWordCount(count: Int) {
         _passphraseWordCount.value = count.coerceIn(1, 20)
+        scheduleSave()
     }
-    
+
     fun updatePassphraseDelimiter(delimiter: String) {
         _passphraseDelimiter.value = delimiter
+        scheduleSave()
     }
-    
+
     fun updatePassphraseCapitalize(capitalize: Boolean) {
         _passphraseCapitalize.value = capitalize
+        scheduleSave()
     }
-    
+
     fun updatePassphraseIncludeNumber(include: Boolean) {
         _passphraseIncludeNumber.value = include
+        scheduleSave()
     }
-    
+
     fun updatePassphraseCustomWord(word: String) {
         _passphraseCustomWord.value = word
+        scheduleSave()
     }
 
     fun updatePassphraseCustomWords(words: String) {
         _passphraseCustomWords.value = words
+        scheduleSave()
     }
     
     fun updatePassphraseResult(result: String) {
@@ -323,6 +448,7 @@ class GeneratorViewModel : ViewModel() {
             SshKeyData.ALGORITHM_RSA -> SshKeyData.ALGORITHM_RSA
             else -> SshKeyGenerator.DEFAULT_ALGORITHM
         }
+        scheduleSave()
     }
 
     fun updateSshKeyRsaSize(size: Int) {
@@ -331,6 +457,7 @@ class GeneratorViewModel : ViewModel() {
         } else {
             SshKeyGenerator.DEFAULT_RSA_KEY_SIZE
         }
+        scheduleSave()
     }
 
     fun updateSshKeyResult(result: SshKeyData?) {

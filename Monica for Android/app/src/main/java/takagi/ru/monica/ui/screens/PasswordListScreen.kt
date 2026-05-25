@@ -246,6 +246,7 @@ fun PasswordListScreen(
                                     is CategoryFilter.BitwardenVaultStarred -> "Bitwarden · ${context.getString(R.string.filter_starred)}"
                                     is CategoryFilter.BitwardenVaultUncategorized -> "Bitwarden · ${context.getString(R.string.filter_uncategorized)}"
                                     is CategoryFilter.MdbxDatabase -> "MDBX"
+                                    is CategoryFilter.MdbxFolderFilter -> "MDBX"
                                 },
                                 style = MaterialTheme.typography.titleLarge,
                                 color = MaterialTheme.colorScheme.onSurface

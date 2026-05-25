@@ -397,7 +397,45 @@ fun PasswordListContent(
     }
     val selectedMdbxDatabaseId = when (val filter = currentFilter) {
         is CategoryFilter.MdbxDatabase -> filter.databaseId
+        is CategoryFilter.MdbxFolderFilter -> filter.databaseId
         else -> null
+    }
+    val selectedMdbxDatabase = remember(selectedMdbxDatabaseId, mdbxDatabases) {
+        selectedMdbxDatabaseId?.let { databaseId ->
+            mdbxDatabases.find { it.id == databaseId }
+        }
+    }
+    val mdbxOperationState by (
+        mdbxViewModel?.operationState
+            ?: kotlinx.coroutines.flow.flowOf(takagi.ru.monica.viewmodel.MdbxViewModel.OperationState.Idle)
+        ).collectAsState(initial = takagi.ru.monica.viewmodel.MdbxViewModel.OperationState.Idle)
+    val mdbxPendingSyncCounts by remember(mdbxViewModel) {
+        mdbxViewModel?.pendingSyncCounts ?: kotlinx.coroutines.flow.flowOf(emptyMap<Long, Int>())
+    }.collectAsState(initial = emptyMap())
+    val mdbxPathSyncState = remember(
+        selectedMdbxDatabase,
+        mdbxOperationState,
+        mdbxPendingSyncCounts,
+        mdbxViewModel
+    ) {
+        val database = selectedMdbxDatabase
+        val viewModel = mdbxViewModel
+        if (database != null && viewModel != null) {
+            MdbxPathSyncState(
+                pendingCount = mdbxPendingSyncCounts[database.id]
+                    ?: database.mdbxPathPendingSyncCount(),
+                isSyncing = mdbxOperationState is takagi.ru.monica.viewmodel.MdbxViewModel.OperationState.Loading,
+                onSync = {
+                    if (database.mdbxPathShouldFlushPendingUpload()) {
+                        viewModel.flushPendingVaultUpload(database.id)
+                    } else {
+                        viewModel.syncVault(database.id)
+                    }
+                }
+            )
+        } else {
+            null
+        }
     }
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner, mdbxViewModel) {
@@ -414,6 +452,9 @@ fun PasswordListContent(
         if (!mdbxDatabasesLoaded) return@LaunchedEffect
         if (mdbxDatabases.none { it.id == selectedId }) {
             viewModel.setCategoryFilter(CategoryFilter.All)
+        } else {
+            viewModel.refreshMdbxFolders(selectedId)
+            mdbxViewModel?.autoSyncVisibleVault(selectedId)
         }
     }
     val keepassGroupsForSelectedDbFlow = remember(selectedKeePassDatabaseId, localKeePassViewModel) {
@@ -430,6 +471,11 @@ fun PasswordListContent(
             ?: kotlinx.coroutines.flow.flowOf(emptyList())
     }
     val selectedBitwardenFolders by selectedBitwardenFoldersFlow.collectAsState(initial = emptyList())
+    val selectedMdbxFoldersFlow = remember(selectedMdbxDatabaseId, viewModel) {
+        selectedMdbxDatabaseId?.let(viewModel::getMdbxFolders)
+            ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    }
+    val selectedMdbxFolders by selectedMdbxFoldersFlow.collectAsState(initial = emptyList())
     val isTopBarSyncing = selectedBitwardenVaultId?.let { vaultId ->
         bitwardenSyncStatusByVault[vaultId].isUserVisibleSyncInProgress()
     } == true
@@ -770,6 +816,7 @@ fun PasswordListContent(
         keepassGroupsForSelectedDb,
         bitwardenVaults,
         selectedBitwardenFolders,
+        selectedMdbxFolders,
         categories,
         initialValue = emptyList()
     ) {
@@ -791,6 +838,7 @@ fun PasswordListContent(
             keepassGroupsForSelectedDb = keepassGroupsForSelectedDb,
             bitwardenVaults = bitwardenVaults,
             selectedBitwardenFolders = selectedBitwardenFolders,
+            selectedMdbxFolders = selectedMdbxFolders,
             categories = categories
         )
     }
@@ -807,6 +855,7 @@ fun PasswordListContent(
         keepassGroupsForSelectedDb,
         bitwardenVaults,
         selectedBitwardenFolders,
+        selectedMdbxFolders,
         categories,
         initialValue = emptyList()
     ) {
@@ -824,6 +873,7 @@ fun PasswordListContent(
             keepassGroupsForSelectedDb = keepassGroupsForSelectedDb,
             bitwardenVaults = bitwardenVaults,
             selectedBitwardenFolders = selectedBitwardenFolders,
+            selectedMdbxFolders = selectedMdbxFolders,
             categories = categories
         )
     }
@@ -834,8 +884,10 @@ fun PasswordListContent(
         quickFolderNodeByPath,
         quickFolderRootFilter,
         keepassDatabases,
+        mdbxDatabases,
         bitwardenVaults,
         selectedBitwardenFolders,
+        selectedMdbxFolders,
         categories,
         initialValue = emptyList()
     ) {
@@ -847,6 +899,8 @@ fun PasswordListContent(
             quickFolderNodeByPath = quickFolderNodeByPath,
             quickFolderRootFilter = quickFolderRootFilter,
             keepassDatabases = keepassDatabases,
+            mdbxDatabases = mdbxDatabases,
+            selectedMdbxFolders = selectedMdbxFolders,
             bitwardenVaults = bitwardenVaults,
             selectedBitwardenFolders = selectedBitwardenFolders,
             categories = categories
@@ -1499,6 +1553,7 @@ fun PasswordListContent(
         visible = showMoveToCategoryDialog,
         categories = categories,
         keepassDatabases = keepassDatabases,
+        mdbxDatabases = mdbxDatabases,
         bitwardenVaults = bitwardenVaults,
         database = database,
         localKeePassViewModel = localKeePassViewModel,
@@ -1534,6 +1589,7 @@ fun PasswordListContent(
         selectedBitwardenVaultId = selectedBitwardenVaultId,
         selectedKeePassDatabaseId = selectedKeePassDatabaseId,
         selectedMdbxDatabaseId = selectedMdbxDatabaseId,
+        selectedMdbxFolders = selectedMdbxFolders,
         isTopBarSyncing = isTopBarSyncing,
         isArchiveView = isArchiveView,
         isKeePassDatabaseView = isKeePassDatabaseView,
@@ -1608,6 +1664,7 @@ fun PasswordListContent(
         density = density,
         showPinnedQuickFolderPathBanner = showPinnedQuickFolderPathBanner,
         quickFolderBreadcrumbs = effectiveQuickFolderBreadcrumbs,
+        mdbxPathSyncState = mdbxPathSyncState,
         currentFilter = currentFilter,
         onNavigateFilter = viewModel::setCategoryFilter,
         shouldGateInitialPasswordFirstFrame = shouldGateInitialPasswordFirstFrame,

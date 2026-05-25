@@ -7,11 +7,20 @@ import takagi.ru.monica.data.SecureItem
 /**
  * Boundary for user-visible MDBX mutations.
  *
- * Implementations must only return after the local .mdbx working copy has
- * committed the mutation. External SAF/WebDAV propagation is a later sync
- * concern and must not be required for ordinary save success.
+ * Implementations must commit the local .mdbx working copy and then publish
+ * that working copy to the configured SAF/WebDAV source before reporting
+ * success. This keeps a second client able to see new MDBX items with its
+ * next manual sync instead of requiring a manual sync on the writer first.
  */
 interface MdbxRepository {
+    suspend fun createFolder(
+        databaseId: Long,
+        name: String,
+        parentFolderId: String? = "root"
+    ): MdbxStoredFolderEntry
+
+    suspend fun listFolders(databaseId: Long): List<MdbxStoredFolderEntry>
+
     suspend fun upsertPassword(entry: PasswordEntry)
     suspend fun deletePassword(entry: PasswordEntry)
     suspend fun upsertPasswords(entries: List<PasswordEntry>) {
