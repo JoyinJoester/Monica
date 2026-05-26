@@ -1,0 +1,14 @@
+[package]
+name = "mdbx-sync"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+mdbx-core = { path = "../mdbx-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+thiserror = { workspace = true }
+sha2 = { workspace = true }
+bincode = "1"

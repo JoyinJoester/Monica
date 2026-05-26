@@ -1,0 +1,62 @@
+
+thread 'coordinator' panicked at /rustc/05f9846f893b09a1be1fc8560e33fc3c815cfecb\compiler\rustc_codegen_ssa\src\back\write.rs:1680:29:
+/rustc/05f9846f893b09a1be1fc8560e33fc3c815cfecb\compiler\rustc_codegen_ssa\src\back\write.rs:1680:29: worker thread panicked
+stack backtrace:
+   0:     0x7fff2d9417b1 - std::backtrace_rs::backtrace::win64::trace
+                               at /rustc/05f9846f893b09a1be1fc8560e33fc3c815cfecb/library\std\src\..\..\backtrace\src\backtrace\win64.rs:85
+   1:     0x7fff2d9417b1 - std::backtrace_rs::backtrace::trace_unsynchronized
+                               at /rustc/05f9846f893b09a1be1fc8560e33fc3c815cfecb/library\std\src\..\..\backtrace\src\backtrace\mod.rs:66
+   2:     0x7fff2d9417b1 - std::sys::backtrace::_print_fmt
+                               at /rustc/05f9846f893b09a1be1fc8560e33fc3c815cfecb/library\std\src\sys\backtrace.rs:66
+   3:     0x7fff2d9417b1 - std::sys::backtrace::impl$0::print::impl$0::fmt
+                               at /rustc/05f9846f893b09a1be1fc8560e33fc3c815cfecb/library\std\src\sys\backtrace.rs:39
+   4:     0x7fff2d9752ba - core::fmt::rt::Argument::fmt
+                               at /rustc/05f9846f893b09a1be1fc8560e33fc3c815cfecb/library\core\src\fmt\rt.rs:177
+   5:     0x7fff2d9752ba - core::fmt::write
+                               at /rustc/05f9846f893b09a1be1fc8560e33fc3c815cfecb/library\core\src\fmt\mod.rs:1449
+   6:     0x7fff2d937537 - std::io::Write::write_fmt<std::sys::pal::windows::stdio::Stderr>
+                               at /rustc/05f9846f893b09a1be1fc8560e33fc3c815cfecb/library\std\src\io\mod.rs:1890
+   7:     0x7fff2d9415f5 - std::sys::backtrace::BacktraceLock::print
+                               at /rustc/05f9846f893b09a1be1fc8560e33fc3c815cfecb/library\std\src\sys\backtrace.rs:42
+   8:     0x7fff2d944520 - std::panicking::default_hook::closure$0
+                               at /rustc/05f9846f893b09a1be1fc8560e33fc3c815cfecb/library\std\src\panicking.rs:298
+   9:     0x7fff2d944311 - std::panicking::default_hook
+                               at /rustc/05f9846f893b09a1be1fc8560e33fc3c815cfecb/library\std\src\panicking.rs:325
+  10:     0x7fff2eff764f - core[379ed1e85498c8da]::slice::sort::unstable::heapsort::heapsort::<((rustc_lint_defs[954f94a5540fbc1c]::Level, &str), usize), <((rustc_lint_defs[954f94a5540fbc1c]::Level, &str), usize) as core[379ed1e85498c8da]::cmp::PartialOrd>::lt>
+  11:     0x7fff2d9451ae - alloc::boxed::impl$30::call
+                               at /rustc/05f9846f893b09a1be1fc8560e33fc3c815cfecb/library\alloc\src\boxed.rs:1990
+  12:     0x7fff2d9451ae - std::panicking::rust_panic_with_hook
+                               at /rustc/05f9846f893b09a1be1fc8560e33fc3c815cfecb/library\std\src\panicking.rs:839
+  13:     0x7fff305aa5df - <thin_vec[f396fd4f20b7dac0]::IntoIter<_> as core[379ed1e85498c8da]::ops::drop::Drop>::drop::drop_non_singleton::<rustc_ast[c3f8aaeb00705b92]::ast::MetaItemInner>
+  14:     0x7fff305a5249 - std[69e129e0dd256456]::sys::backtrace::__rust_end_short_backtrace::<std[69e129e0dd256456]::panicking::begin_panic<alloc[a10a1d58def73cb3]::string::String>::{closure#0}, !>
+  15:     0x7fff305a3ca5 - std[69e129e0dd256456]::panicking::begin_panic::<alloc[a10a1d58def73cb3]::string::String>
+  16:     0x7fff3063464d - rustc_middle[1d335a5a6b4a971a]::util::bug::span_bug_fmt::<rustc_span[feb426b5f536fd7b]::span_encoding::Span>
+  17:     0x7fff3061732d - <rustc_middle[1d335a5a6b4a971a]::ty::consts::Const>::to_value
+  18:     0x7fff30617146 - <rustc_middle[1d335a5a6b4a971a]::ty::consts::Const>::to_value
+  19:     0x7fff30634582 - rustc_middle[1d335a5a6b4a971a]::util::bug::bug_fmt
+  20:     0x7fff2da16d5a - <hashbrown[67c73ad48ff13bc7]::raw::RawTable<((&rustc_codegen_llvm[4e49be572b39c358]::llvm::ffi::Metadata, usize), &rustc_codegen_llvm[4e49be572b39c358]::llvm::ffi::Metadata)>>::reserve_rehash::<hashbrown[67c73ad48ff13bc7]::map::make_hasher<(&rustc_codegen_llvm[4e49be572b39c358]::llvm::ffi::Metadata, usize), &rustc_codegen_llvm[4e49be572b39c358]::llvm::ffi::Metadata, rustc_hash[365057f31201c45d]::FxBuildHasher>::{closure#0}>
+  21:     0x7fff2a5dba8d - RINvNtNtCs95AQCFfcpgw_3std3sys9backtrace28___rust_begin_short_backtraceNCINvXs0_Cs6IIYRg17ok6_18rustc_codegen_llvmNtB1g_18LlvmCodegenBackendNtNtNtCs1Aqswxtw8Zq_17rustc_codegen_ssa6traits7backend19ExtraBackendMethods18spawn_named_threadNCINvNtNtB2k_4back5wr
+  22:     0x7fff2a5e6488 - RINvNtNtNtNtCs4M45Py2ANNS_4core5slice4sort6stable9quicksort9quicksortTNtNtCsdPcZrWPtBQZ_5alloc6string6StringB16_ENCINvMNtB1a_5sliceSB15_7sort_byNCINvXs1g_NtNtNtB1a_11collections5btree3mapINtB2s_8BTreeMapB16_B16_EINtNtNtNtBa_4iter6traits7collect12FromIterat
+  23:     0x7fff2d95656d - alloc::boxed::impl$28::call_once
+                               at /rustc/05f9846f893b09a1be1fc8560e33fc3c815cfecb/library\alloc\src\boxed.rs:1976
+  24:     0x7fff2d95656d - alloc::boxed::impl$28::call_once
+                               at /rustc/05f9846f893b09a1be1fc8560e33fc3c815cfecb/library\alloc\src\boxed.rs:1976
+  25:     0x7fff2d95656d - std::sys::pal::windows::thread::impl$0::new::thread_start
+                               at /rustc/05f9846f893b09a1be1fc8560e33fc3c815cfecb/library\std\src\sys\pal\windows\thread.rs:56
+  26:     0x7ff8690e6347 - BaseThreadInitThunk
+  27:     0x7ff86a5247d0 - RtlUserThreadStart
+
+error: the compiler unexpectedly panicked. this is a bug.
+
+note: we would appreciate a bug report: https://github.com/rust-lang/rust/issues/new?labels=C-bug%2C+I-ICE%2C+T-compiler&template=ice.md
+
+note: rustc 1.86.0 (05f9846f8 2025-03-31) running on x86_64-pc-windows-msvc
+
+note: compiler flags: --crate-type lib -C embed-bitcode=no -C debuginfo=2 -C incremental=[REDACTED]
+
+note: some of the compiler flags provided by cargo are hidden
+
+query stack during panic:
+end of query stack
+{"$message_type":"diagnostic","message":"cached cgu 15bpj0g8gfiwbgxtrkoiy3pts should have an object file, but doesn't","code":null,"level":"error","spans":[],"children":[],"rendered":"\u001b[0m\u001b[1m\u001b[38;5;9merror\u001b[0m\u001b[0m\u001b[1m\u001b[38;5;15m: cached cgu 15bpj0g8gfiwbgxtrkoiy3pts should have an object file, but doesn't\u001b[0m\n\n"}
+{"$message_type":"diagnostic","message":"aborting due to 1 previous error","code":null,"level":"error","spans":[],"children":[],"rendered":"\u001b[0m\u001b[1m\u001b[38;5;9merror\u001b[0m\u001b[0m\u001b[1m\u001b[38;5;15m: aborting due to 1 previous error\u001b[0m\n\n"}
