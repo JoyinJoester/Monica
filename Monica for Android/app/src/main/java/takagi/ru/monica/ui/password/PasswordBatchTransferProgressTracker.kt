@@ -17,6 +17,7 @@ internal enum class PasswordBatchTransferPhase {
 }
 
 internal data class PasswordBatchTransferGlobalProgressState(
+    val operationId: Long,
     val action: UnifiedMoveAction,
     val targetLabel: String,
     val processed: Int,
@@ -40,6 +41,12 @@ internal object PasswordBatchTransferProgressTracker {
     val progress: StateFlow<PasswordBatchTransferGlobalProgressState?> = _progress.asStateFlow()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var clearJob: Job? = null
+    private var nextOperationId = 0L
+
+    private fun allocateOperationId(): Long {
+        nextOperationId += 1
+        return nextOperationId
+    }
 
     fun update(
         action: UnifiedMoveAction,
@@ -54,7 +61,21 @@ internal object PasswordBatchTransferProgressTracker {
         } else {
             processed.coerceAtLeast(0)
         }
+        val current = _progress.value
+        val operationId = if (
+            current != null &&
+            current.phase == PasswordBatchTransferPhase.RUNNING &&
+            current.action == action &&
+            current.targetLabel == targetLabel &&
+            current.total == safeTotal &&
+            safeProcessed >= current.processed
+        ) {
+            current.operationId
+        } else {
+            allocateOperationId()
+        }
         _progress.value = PasswordBatchTransferGlobalProgressState(
+            operationId = operationId,
             action = action,
             targetLabel = targetLabel,
             processed = safeProcessed,
@@ -74,7 +95,19 @@ internal object PasswordBatchTransferProgressTracker {
             clear()
             return
         }
+        val current = _progress.value
+        val operationId = if (
+            current != null &&
+            current.phase == PasswordBatchTransferPhase.RUNNING &&
+            current.action == action &&
+            current.targetLabel == targetLabel
+        ) {
+            current.operationId
+        } else {
+            allocateOperationId()
+        }
         val successState = PasswordBatchTransferGlobalProgressState(
+            operationId = operationId,
             action = action,
             targetLabel = targetLabel,
             processed = safeCount,

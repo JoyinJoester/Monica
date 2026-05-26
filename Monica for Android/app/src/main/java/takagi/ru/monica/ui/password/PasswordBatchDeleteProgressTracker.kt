@@ -16,6 +16,7 @@ internal enum class PasswordBatchDeletePhase {
 }
 
 internal data class PasswordBatchDeleteGlobalProgressState(
+    val operationId: Long,
     val processed: Int,
     val total: Int,
     val phase: PasswordBatchDeletePhase = PasswordBatchDeletePhase.RUNNING,
@@ -37,6 +38,12 @@ internal object PasswordBatchDeleteProgressTracker {
     val progress: StateFlow<PasswordBatchDeleteGlobalProgressState?> = _progress.asStateFlow()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var clearJob: Job? = null
+    private var nextOperationId = 0L
+
+    private fun allocateOperationId(): Long {
+        nextOperationId += 1
+        return nextOperationId
+    }
 
     fun update(processed: Int, total: Int) {
         clearJob?.cancel()
@@ -46,7 +53,19 @@ internal object PasswordBatchDeleteProgressTracker {
         } else {
             processed.coerceAtLeast(0)
         }
+        val current = _progress.value
+        val operationId = if (
+            current != null &&
+            current.phase == PasswordBatchDeletePhase.RUNNING &&
+            current.total == safeTotal &&
+            safeProcessed >= current.processed
+        ) {
+            current.operationId
+        } else {
+            allocateOperationId()
+        }
         _progress.value = PasswordBatchDeleteGlobalProgressState(
+            operationId = operationId,
             processed = safeProcessed,
             total = safeTotal,
             phase = PasswordBatchDeletePhase.RUNNING
@@ -60,7 +79,17 @@ internal object PasswordBatchDeleteProgressTracker {
             clear()
             return
         }
+        val current = _progress.value
+        val operationId = if (
+            current != null &&
+            current.phase == PasswordBatchDeletePhase.RUNNING
+        ) {
+            current.operationId
+        } else {
+            allocateOperationId()
+        }
         val successState = PasswordBatchDeleteGlobalProgressState(
+            operationId = operationId,
             processed = safeCount,
             total = safeCount,
             phase = PasswordBatchDeletePhase.SUCCESS,

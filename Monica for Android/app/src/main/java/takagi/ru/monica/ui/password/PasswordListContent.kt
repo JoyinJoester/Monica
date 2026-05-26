@@ -374,16 +374,8 @@ fun PasswordListContent(
     val quickStatusDeleteState by PasswordBatchDeleteProgressTracker.progress.collectAsState()
     var showQuickStatusTransferDialog by remember { mutableStateOf(false) }
     var showQuickStatusDeleteDialog by remember { mutableStateOf(false) }
-    LaunchedEffect(quickStatusTransferState) {
-        if (quickStatusTransferState == null) {
-            showQuickStatusTransferDialog = false
-        }
-    }
-    LaunchedEffect(quickStatusDeleteState) {
-        if (quickStatusDeleteState == null) {
-            showQuickStatusDeleteDialog = false
-        }
-    }
+    var backgroundedTransferOperationId by remember { mutableStateOf<Long?>(null) }
+    var backgroundedDeleteOperationId by remember { mutableStateOf<Long?>(null) }
 
     // "仅本地" 的核心目标是给用户看待上传清单，不应该出现堆叠容器。
     // 因此这里强制扁平展示，仅在该筛选下生效，不影响其他页面。
@@ -505,6 +497,29 @@ fun PasswordListContent(
     val quickFoldersEnabledForCurrentFilter = false
     val quickFolderPathBannerEnabledForCurrentFilter =
         appSettings.passwordListQuickFolderPathBannerEnabled && !isAllView
+    val quickStatusBannerEnabled = quickFolderPathBannerEnabledForCurrentFilter
+    LaunchedEffect(quickStatusTransferState?.operationId, quickStatusBannerEnabled) {
+        val state = quickStatusTransferState
+        if (state == null) {
+            showQuickStatusTransferDialog = false
+            backgroundedTransferOperationId = null
+            return@LaunchedEffect
+        }
+        if (!quickStatusBannerEnabled && state.operationId != backgroundedTransferOperationId) {
+            showQuickStatusTransferDialog = true
+        }
+    }
+    LaunchedEffect(quickStatusDeleteState?.operationId, quickStatusBannerEnabled) {
+        val state = quickStatusDeleteState
+        if (state == null) {
+            showQuickStatusDeleteDialog = false
+            backgroundedDeleteOperationId = null
+            return@LaunchedEffect
+        }
+        if (!quickStatusBannerEnabled && state.operationId != backgroundedDeleteOperationId) {
+            showQuickStatusDeleteDialog = true
+        }
+    }
     
     // 选择模式状态
     var isSelectionMode by remember { mutableStateOf(false) }
@@ -1426,10 +1441,12 @@ fun PasswordListContent(
     ) {
         effectiveCategoryQuickFilterShortcuts.isNotEmpty()
     }
-    val showPinnedQuickFolderPathBanner =
-        effectiveQuickFolderBreadcrumbs.isNotEmpty() ||
-            quickStatusTransferState != null ||
+    val hasQuickStatusProgress =
+        quickStatusTransferState != null ||
             quickStatusDeleteState != null
+    val showPinnedQuickFolderPathBanner =
+        quickStatusBannerEnabled &&
+            (effectiveQuickFolderBreadcrumbs.isNotEmpty() || hasQuickStatusProgress)
     val hasScrollableHeaderContent = remember(
         hasVisibleQuickFilters,
         hasVisibleCategoryQuickFilters,
@@ -1687,12 +1704,14 @@ fun PasswordListContent(
         quickStatusTransferState = quickStatusTransferState,
         onQuickStatusTransferClick = {
             if (quickStatusTransferState != null) {
+                backgroundedTransferOperationId = null
                 showQuickStatusTransferDialog = true
             }
         },
         quickStatusDeleteState = quickStatusDeleteState,
         onQuickStatusDeleteClick = {
             if (quickStatusDeleteState != null) {
+                backgroundedDeleteOperationId = null
                 showQuickStatusDeleteDialog = true
             }
         },
@@ -1796,7 +1815,10 @@ fun PasswordListContent(
     quickStatusTransferDialogState?.let { state ->
             PasswordBatchTransferProgressDialog(
                 state = state,
-                onMoveToBackground = { showQuickStatusTransferDialog = false }
+                onMoveToBackground = {
+                    backgroundedTransferOperationId = quickStatusTransferState?.operationId
+                    showQuickStatusTransferDialog = false
+                }
             )
     }
 
@@ -1808,7 +1830,10 @@ fun PasswordListContent(
     quickStatusDeleteDialogState?.let { state ->
         PasswordBatchDeleteProgressDialog(
             state = state,
-            onMoveToBackground = { showQuickStatusDeleteDialog = false }
+            onMoveToBackground = {
+                backgroundedDeleteOperationId = quickStatusDeleteState?.operationId
+                showQuickStatusDeleteDialog = false
+            }
         )
     }
     
