@@ -57,6 +57,11 @@ Website: https://joyinjoester.github.io/Monica/
 - Optional sync/backup through your own WebDAV infrastructure.
 - Built-in TOTP management in the same app.
 
+### MDBX local database format
+MDBX is Monica's local-first encrypted vault format in progress. It is not just a password table; it is designed around nested folders, attachments, commit history, conflict detection, tombstone-based deletion, snapshot recovery, and Tiga security modes.
+
+If you want to integrate MDBX in another client, start with the [MDBX workspace README](mdbx/README.md) and the [MDBX client integration guide](mdbx/CLIENT_INTEGRATION_GUIDE.md). The full format specification lives in [mdbx-doc](mdbx-doc/README.md).
+
 ### Quick install
 
 Android:
@@ -127,6 +132,7 @@ Your support mainly funds:
 - `takagi/ru/monica/autofill`: Autofill services and flows.
 - `takagi/ru/monica/passkey`: Android 14+ credential provider implementation.
 - `takagi/ru/monica/workers`: background tasks such as automatic WebDAV backup.
+- `mdbx`: Rust workspace and client integration documents for Monica's MDBX local database format.
 
 ### Mature components currently used (verifiable in repo)
 - Android UI: Jetpack Compose, Material 3, Navigation Compose.

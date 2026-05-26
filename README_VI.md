@@ -57,6 +57,11 @@ Trang web: https://joyinjoester.github.io/Monica/
 - Dong bo/backup tuy chon qua ha tang WebDAV cua chinh ban.
 - Quan ly TOTP tich hop trong cung mot ung dung.
 
+### Dinh dang co so du lieu local MDBX
+MDBX la dinh dang vault ma hoa, uu tien local dang duoc Monica phat trien. No khong chi la mot bang mat khau; MDBX duoc thiet ke xoay quanh thu muc long nhau, tep dinh kem, lich su commit, phat hien xung dot, chuoi xoa tombstone, khoi phuc snapshot va cac che do bao mat Tiga.
+
+Neu ban muon tich hop MDBX vao client khac, hay bat dau voi [MDBX workspace README](mdbx/README.md) va [MDBX client integration guide](mdbx/CLIENT_INTEGRATION_GUIDE.md). Dac ta dinh dang day du nam trong [mdbx-doc](mdbx-doc/README.md).
+
 ### Cai dat nhanh
 
 Android:
@@ -127,6 +132,7 @@ Nguon ung ho duoc uu tien cho:
 - `takagi/ru/monica/autofill`: dich vu va luong autofill.
 - `takagi/ru/monica/passkey`: Credential Provider cho Android 14+.
 - `takagi/ru/monica/workers`: task nen nhu auto backup WebDAV.
+- `mdbx`: Rust workspace va tai lieu tich hop client cho dinh dang co so du lieu local Monica MDBX.
 
 ### Thanh phan da duoc su dung (co the doi chieu trong repo)
 - Android UI: Jetpack Compose, Material 3, Navigation Compose.

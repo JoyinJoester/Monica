@@ -59,6 +59,11 @@ Monica Pass的开发者就是一个大啥比，现在他为了偷懒连代码都
 - 可选同步与备份: 通过自有 WebDAV 基础设施实现跨设备数据流转。
 - 内置 TOTP: 在同一应用内完成密码与二次验证码管理。
 
+### MDBX 本地数据库格式
+MDBX 是 Monica 正在推进的本地优先加密 vault 格式。它不是简单的密码表，而是围绕嵌套文件夹、附件、提交历史、冲突检测、tombstone 删除链路、快照恢复和 Tiga 安全模式设计的数据库格式。
+
+如果你要在其他客户端接入 MDBX，请先读 [MDBX workspace 说明](mdbx/README.zh-CN.md) 和 [MDBX 客户端接入指南](mdbx/CLIENT_INTEGRATION_GUIDE.zh-CN.md)。完整格式规范在 [mdbx-doc](mdbx-doc/README.zh-CN.md)。
+
 ### 快速安装
 
 Android:
@@ -129,6 +134,7 @@ Android:
 - `takagi/ru/monica/autofill`: 自动填充服务与流程。
 - `takagi/ru/monica/passkey`: Android 14+ Credential Provider 相关实现。
 - `takagi/ru/monica/workers`: 后台任务（如自动 WebDAV 备份）。
+- `mdbx`: Monica MDBX 本地数据库格式的 Rust workspace 与客户端接入文档。
 
 ### 当前已使用的成熟组件（仓库可验证）
 - Android UI: Jetpack Compose, Material 3, Navigation Compose。

@@ -57,6 +57,11 @@ Monica — это локальное хранилище паролей, кото
 - Опциональную синхронизацию и резервное копирование через собственную инфраструктуру WebDAV.
 - Встроенное управление TOTP в одном приложении.
 
+### Локальный формат базы данных MDBX
+MDBX — это разрабатываемый Monica локально-ориентированный зашифрованный формат vault. Это не просто таблица паролей: формат проектируется вокруг вложенных папок, вложений, истории commit, обнаружения конфликтов, удаления через tombstone, восстановления из snapshot и режимов безопасности Tiga.
+
+Если вы хотите подключить MDBX в другом клиенте, начните с [MDBX workspace README](mdbx/README.md) и [MDBX client integration guide](mdbx/CLIENT_INTEGRATION_GUIDE.md). Полная спецификация формата находится в [mdbx-doc](mdbx-doc/README.md).
+
 ### Быстрая установка
 
 Android:
@@ -127,6 +132,7 @@ Android:
 - `takagi/ru/monica/autofill`: сервисы и потоки автозаполнения.
 - `takagi/ru/monica/passkey`: реализация Credential Provider для Android 14+.
 - `takagi/ru/monica/workers`: фоновые задачи, например WebDAV‑бэкап.
+- `mdbx`: Rust workspace и документы интеграции клиентов для локального формата базы данных Monica MDBX.
 
 ### Используемые зрелые компоненты (проверяемо в репозитории)
 - Android UI: Jetpack Compose, Material 3, Navigation Compose.
