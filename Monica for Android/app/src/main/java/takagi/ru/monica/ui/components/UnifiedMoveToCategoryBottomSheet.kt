@@ -1,44 +1,37 @@
 package takagi.ru.monica.ui.components
 
 import android.net.Uri
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Archive
-import androidx.compose.material.icons.filled.ExpandLess
-import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.FolderOff
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Smartphone
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
@@ -56,7 +49,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
@@ -69,6 +61,7 @@ import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.LocalMdbxDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenVault
+import takagi.ru.monica.repository.MdbxStoredFolderEntry
 import takagi.ru.monica.utils.KEEPASS_DISPLAY_PATH_SEPARATOR
 import takagi.ru.monica.utils.KeePassGroupInfo
 import takagi.ru.monica.utils.decodeKeePassPathSegments
@@ -81,7 +74,41 @@ sealed interface UnifiedMoveCategoryTarget {
     data class KeePassDatabaseTarget(val databaseId: Long) : UnifiedMoveCategoryTarget
     data class KeePassGroupTarget(val databaseId: Long, val groupPath: String) : UnifiedMoveCategoryTarget
     data class MdbxDatabaseTarget(val databaseId: Long) : UnifiedMoveCategoryTarget
+    data class MdbxFolderTarget(val databaseId: Long, val folderId: String) : UnifiedMoveCategoryTarget
 }
+
+private sealed interface MovePickerSource {
+    val key: String
+    val icon: ImageVector
+
+    data object MonicaLocal : MovePickerSource {
+        override val key: String = "monica"
+        override val icon: ImageVector = Icons.Default.Smartphone
+    }
+
+    data class KeePassDatabase(val database: LocalKeePassDatabase) : MovePickerSource {
+        override val key: String = "keepass:${database.id}"
+        override val icon: ImageVector = Icons.Default.Key
+    }
+
+    data class MdbxDatabase(val database: LocalMdbxDatabase) : MovePickerSource {
+        override val key: String = "mdbx:${database.id}"
+        override val icon: ImageVector = Icons.Default.Storage
+    }
+
+    data class BitwardenVaultSource(val vault: BitwardenVault) : MovePickerSource {
+        override val key: String = "bitwarden:${vault.id}"
+        override val icon: ImageVector = Icons.Default.CloudSync
+    }
+}
+
+private data class MovePickerTarget(
+    val target: UnifiedMoveCategoryTarget,
+    val label: String,
+    val title: String,
+    val icon: ImageVector,
+    val supportingText: String? = null,
+)
 
 // Sentinel target id for "Archive" in move sheet without introducing a new persisted category.
 const val UNIFIED_MOVE_ARCHIVE_SENTINEL_CATEGORY_ID: Long = -9_223_372_036_854_775_000L
@@ -91,7 +118,7 @@ enum class UnifiedMoveAction {
     COPY
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun UnifiedMoveToCategoryBottomSheet(
     visible: Boolean,
@@ -102,6 +129,8 @@ fun UnifiedMoveToCategoryBottomSheet(
     bitwardenVaults: List<BitwardenVault>,
     getBitwardenFolders: (Long) -> Flow<List<BitwardenFolder>>,
     getKeePassGroups: (Long) -> Flow<List<KeePassGroupInfo>>,
+    getMdbxFolders: (Long) -> Flow<List<MdbxStoredFolderEntry>> = { flowOf(emptyList()) },
+    refreshMdbxFolders: (Long) -> Unit = {},
     showBitwardenFolderTargets: Boolean = true,
     allowCopy: Boolean = false,
     allowMove: Boolean = true,
@@ -110,29 +139,114 @@ fun UnifiedMoveToCategoryBottomSheet(
 ) {
     if (!visible) return
 
-    val monicaExpanded = remember { mutableStateOf(false) }
     val selectedAction = remember { mutableStateOf(if (allowMove) UnifiedMoveAction.MOVE else UnifiedMoveAction.COPY) }
-    val bitwardenExpanded = remember { mutableStateOf<Map<Long, Boolean>>(emptyMap()) }
-    val keepassExpanded = remember { mutableStateOf<Map<Long, Boolean>>(emptyMap()) }
     val blockedKeePassOperation = remember { mutableStateOf<KeePassUnavailableMoveState?>(null) }
-    val expandCollapseSpec = spring<IntSize>(
-        dampingRatio = Spring.DampingRatioNoBouncy,
-        stiffness = Spring.StiffnessMediumLow
-    )
+    val selectedTarget = remember { mutableStateOf<UnifiedMoveCategoryTarget?>(null) }
+    val selectedTargetLabel = remember { mutableStateOf<String?>(null) }
     LaunchedEffect(allowMove) {
         if (!allowMove && selectedAction.value == UnifiedMoveAction.MOVE) {
             selectedAction.value = UnifiedMoveAction.COPY
         }
     }
+
+    val sources = remember(keepassDatabases, mdbxDatabases, bitwardenVaults) {
+        buildList {
+            add(MovePickerSource.MonicaLocal)
+            keepassDatabases.forEach { add(MovePickerSource.KeePassDatabase(it)) }
+            mdbxDatabases.forEach { add(MovePickerSource.MdbxDatabase(it)) }
+            bitwardenVaults.forEach { add(MovePickerSource.BitwardenVaultSource(it)) }
+        }
+    }
+    val activeSourceKey = remember { mutableStateOf(sources.firstOrNull()?.key ?: MovePickerSource.MonicaLocal.key) }
+    val sourceKeys = sources.map { it.key }
+    LaunchedEffect(sourceKeys) {
+        if (activeSourceKey.value !in sourceKeys) {
+            activeSourceKey.value = MovePickerSource.MonicaLocal.key
+            selectedTarget.value = null
+            selectedTargetLabel.value = null
+        }
+    }
+
     val localKeePassDatabases = keepassDatabases
     val monicaCategoryNodes = remember(categories) { buildMonicaCategoryNodes(categories) }
+    val categoryNoneLabel = stringResource(R.string.category_none)
+    val bitwardenRootLabel = stringResource(R.string.folder_no_folder_root)
+    val keepassRootLabel = stringResource(R.string.storage_picker_keepass_root)
+    val monicaLabel = stringResource(R.string.filter_monica)
+    val archiveLabel = stringResource(R.string.archive_page_title)
+    val confirmLabel = stringResource(R.string.confirm)
+    val externalStorageLabel = stringResource(R.string.external_storage)
+    val internalStorageLabel = stringResource(R.string.internal_storage)
+    val defaultLabel = stringResource(R.string.default_label)
+    val keepassUnavailableFormat = stringResource(R.string.keepass_connection_status_unavailable_format)
+    val keepassMissingLabel = stringResource(R.string.keepass_connection_status_missing)
+    val keepassNeedsRefreshLabel = stringResource(R.string.keepass_connection_status_needs_refresh)
+    val keepassSyncingLabel = stringResource(R.string.keepass_connection_status_syncing)
+    val keepassConflictLabel = stringResource(R.string.keepass_connection_status_conflict)
+    val keepassFailedLabel = stringResource(R.string.keepass_connection_status_failed)
+    val actionLabel = if (selectedAction.value == UnifiedMoveAction.COPY) {
+        stringResource(R.string.copy)
+    } else {
+        stringResource(R.string.move)
+    }
+
+    fun labelForSource(source: MovePickerSource): String {
+        return when (source) {
+            MovePickerSource.MonicaLocal -> monicaLabel
+            is MovePickerSource.KeePassDatabase -> source.database.name
+            is MovePickerSource.MdbxDatabase -> source.database.name
+            is MovePickerSource.BitwardenVaultSource -> source.vault.displayName ?: source.vault.email
+        }
+    }
+
+    fun keepassReasonLabel(reason: KeePassOperationBlockReason?): String {
+        return when (reason) {
+            KeePassOperationBlockReason.MISSING_DATABASE -> keepassMissingLabel
+            KeePassOperationBlockReason.NEEDS_REFRESH -> keepassNeedsRefreshLabel
+            KeePassOperationBlockReason.SYNCING -> keepassSyncingLabel
+            KeePassOperationBlockReason.CONFLICT -> keepassConflictLabel
+            KeePassOperationBlockReason.FAILED -> keepassFailedLabel
+            null -> keepassNeedsRefreshLabel
+        }
+    }
+
+    fun supportingLabelForSource(source: MovePickerSource): String? {
+        return when (source) {
+            MovePickerSource.MonicaLocal -> null
+            is MovePickerSource.KeePassDatabase -> {
+                val availability = source.database.writeOperationAvailability()
+                if (availability.canOperate) {
+                    if (source.database.storageLocation == KeePassStorageLocation.EXTERNAL) {
+                        externalStorageLabel
+                    } else {
+                        internalStorageLabel
+                    }
+                } else {
+                    keepassUnavailableFormat.format(keepassReasonLabel(availability.reason))
+                }
+            }
+            is MovePickerSource.MdbxDatabase -> source.database.storageLocation
+                .lowercase()
+                .replace('_', ' ')
+            is MovePickerSource.BitwardenVaultSource -> if (source.vault.isDefault) defaultLabel else source.vault.email
+        }
+    }
+
+    fun stageTarget(
+        target: UnifiedMoveCategoryTarget,
+        label: String
+    ) {
+        selectedTarget.value = target
+        selectedTargetLabel.value = label
+    }
     fun selectKeePassTarget(
         database: LocalKeePassDatabase,
-        target: UnifiedMoveCategoryTarget
+        target: UnifiedMoveCategoryTarget,
+        label: String
     ) {
         val availability = database.writeOperationAvailability()
         if (availability.canOperate) {
-            onTargetSelected(target, selectedAction.value)
+            stageTarget(target, label)
         } else {
             blockedKeePassOperation.value = KeePassUnavailableMoveState(
                 databaseName = database.name,
@@ -140,6 +254,179 @@ fun UnifiedMoveToCategoryBottomSheet(
             )
         }
     }
+    fun confirmSelectedTarget() {
+        val target = selectedTarget.value ?: return
+        val keepassDatabaseId = when (target) {
+            is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> target.databaseId
+            is UnifiedMoveCategoryTarget.KeePassGroupTarget -> target.databaseId
+            else -> null
+        }
+        if (keepassDatabaseId != null) {
+            val database = localKeePassDatabases.firstOrNull { it.id == keepassDatabaseId }
+            val availability = database?.writeOperationAvailability()
+            if (database == null || availability?.canOperate != true) {
+                blockedKeePassOperation.value = KeePassUnavailableMoveState(
+                    databaseName = database?.name ?: keepassRootLabel,
+                    reason = availability?.reason ?: KeePassOperationBlockReason.NEEDS_REFRESH
+                )
+                return
+            }
+        }
+        onTargetSelected(target, selectedAction.value)
+    }
+
+    val activeSource = sources.firstOrNull { it.key == activeSourceKey.value }
+        ?: MovePickerSource.MonicaLocal
+    val activeMdbxDatabaseId = (activeSource as? MovePickerSource.MdbxDatabase)?.database?.id
+    LaunchedEffect(activeMdbxDatabaseId) {
+        activeMdbxDatabaseId?.let(refreshMdbxFolders)
+    }
+    val bitwardenFolders by (
+        if (activeSource is MovePickerSource.BitwardenVaultSource && showBitwardenFolderTargets) {
+            getBitwardenFolders(activeSource.vault.id)
+        } else {
+            flowOf(emptyList())
+        }
+    ).collectAsState(initial = emptyList())
+    val keepassGroups by (
+        if (activeSource is MovePickerSource.KeePassDatabase) {
+            getKeePassGroups(activeSource.database.id)
+        } else {
+            flowOf(emptyList())
+        }
+    ).collectAsState(initial = emptyList())
+    val mdbxFolders by (
+        if (activeSource is MovePickerSource.MdbxDatabase) {
+            getMdbxFolders(activeSource.database.id)
+        } else {
+            flowOf(emptyList())
+        }
+    ).collectAsState(initial = emptyList())
+    val keepassGroupNodes = remember(keepassGroups) { buildKeePassGroupNodes(keepassGroups) }
+    val mdbxFolderNodes = remember(mdbxFolders) { buildMdbxFolderNodes(mdbxFolders) }
+
+    fun buildTargetsForSource(source: MovePickerSource): List<MovePickerTarget> {
+        return when (source) {
+            MovePickerSource.MonicaLocal -> buildList {
+                if (allowArchiveTarget) {
+                    add(
+                        MovePickerTarget(
+                            target = UnifiedMoveCategoryTarget.MonicaCategory(UNIFIED_MOVE_ARCHIVE_SENTINEL_CATEGORY_ID),
+                            label = "$monicaLabel / $archiveLabel",
+                            title = archiveLabel,
+                            icon = Icons.Default.Archive
+                        )
+                    )
+                }
+                add(
+                    MovePickerTarget(
+                        target = UnifiedMoveCategoryTarget.Uncategorized,
+                        label = "$monicaLabel / $categoryNoneLabel",
+                        title = categoryNoneLabel,
+                        icon = Icons.Default.FolderOff
+                    )
+                )
+                monicaCategoryNodes.forEach { node ->
+                    add(
+                        MovePickerTarget(
+                            target = UnifiedMoveCategoryTarget.MonicaCategory(node.category.id),
+                            label = listOfNotNull(monicaLabel, node.parentPathLabel, node.displayName)
+                                .joinToString(" / "),
+                            title = node.displayName,
+                            icon = Icons.Default.Folder,
+                            supportingText = node.parentPathLabel
+                        )
+                    )
+                }
+            }
+
+            is MovePickerSource.KeePassDatabase -> buildList {
+                add(
+                    MovePickerTarget(
+                        target = UnifiedMoveCategoryTarget.KeePassDatabaseTarget(source.database.id),
+                        label = "${source.database.name} / $keepassRootLabel",
+                        title = keepassRootLabel,
+                        icon = Icons.Default.FolderOff
+                    )
+                )
+                keepassGroupNodes.forEach { groupNode ->
+                    add(
+                        MovePickerTarget(
+                            target = UnifiedMoveCategoryTarget.KeePassGroupTarget(
+                                databaseId = source.database.id,
+                                groupPath = groupNode.group.path
+                            ),
+                            label = listOfNotNull(
+                                source.database.name,
+                                groupNode.parentPathLabel,
+                                groupNode.displayName
+                            ).joinToString(" / "),
+                            title = groupNode.displayName,
+                            icon = Icons.Default.Folder,
+                            supportingText = groupNode.parentPathLabel
+                        )
+                    )
+                }
+            }
+
+            is MovePickerSource.MdbxDatabase -> buildList {
+                add(
+                    MovePickerTarget(
+                        target = UnifiedMoveCategoryTarget.MdbxDatabaseTarget(source.database.id),
+                        label = "${source.database.name} / $categoryNoneLabel",
+                        title = categoryNoneLabel,
+                        icon = Icons.Default.FolderOff
+                    )
+                )
+                mdbxFolderNodes.forEach { folderNode ->
+                    add(
+                        MovePickerTarget(
+                            target = UnifiedMoveCategoryTarget.MdbxFolderTarget(
+                                databaseId = source.database.id,
+                                folderId = folderNode.folder.folderId
+                            ),
+                            label = listOfNotNull(
+                                source.database.name,
+                                folderNode.parentPathLabel,
+                                folderNode.displayName
+                            ).joinToString(" / "),
+                            title = folderNode.displayName,
+                            icon = Icons.Default.Folder,
+                            supportingText = folderNode.parentPathLabel
+                        )
+                    )
+                }
+            }
+
+            is MovePickerSource.BitwardenVaultSource -> buildList {
+                add(
+                    MovePickerTarget(
+                        target = UnifiedMoveCategoryTarget.BitwardenVaultTarget(source.vault.id),
+                        label = "${source.vault.email} / $bitwardenRootLabel",
+                        title = bitwardenRootLabel,
+                        icon = Icons.Default.FolderOff
+                    )
+                )
+                if (showBitwardenFolderTargets) {
+                    bitwardenFolders.forEach { folder ->
+                        add(
+                            MovePickerTarget(
+                                target = UnifiedMoveCategoryTarget.BitwardenFolderTarget(
+                                    vaultId = source.vault.id,
+                                    folderId = folder.bitwardenFolderId
+                                ),
+                                label = "${source.vault.email} / ${folder.name}",
+                                title = folder.name,
+                                icon = Icons.Default.Folder
+                            )
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    val activeTargets = buildTargetsForSource(activeSource)
 
     blockedKeePassOperation.value?.let { blocked ->
         val reason = keepassBlockReasonLabel(blocked.reason)
@@ -215,302 +502,99 @@ fun UnifiedMoveToCategoryBottomSheet(
             }
 
             LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(bottom = 16.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 item {
-                    MoveSectionCard(title = stringResource(R.string.filter_monica)) {
-                        val expanded = monicaExpanded.value
+                    MoveSelectorSectionTitle(text = stringResource(R.string.category_selection_menu_databases))
+                }
+                item {
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        sources.forEach { source ->
+                            MonicaExpressiveFilterChip(
+                                selected = source.key == activeSourceKey.value,
+                                onClick = {
+                                    activeSourceKey.value = source.key
+                                    selectedTarget.value = null
+                                    selectedTargetLabel.value = null
+                                },
+                                label = labelForSource(source),
+                                leadingIcon = source.icon
+                            )
+                        }
+                    }
+                }
+                item {
+                    MoveSelectorSectionTitle(text = stringResource(R.string.category_selection_menu_folders))
+                }
+                if (activeTargets.isEmpty()) {
+                    item {
+                        Text(
+                            text = categoryNoneLabel,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp)
+                        )
+                    }
+                } else {
+                    items(activeTargets) { target ->
                         MoveTargetItem(
-                            title = stringResource(R.string.filter_monica),
-                            icon = Icons.Default.Smartphone,
-                            onClick = { monicaExpanded.value = !expanded },
-                            menu = {
-                                IconButton(onClick = { monicaExpanded.value = !expanded }) {
-                                    Icon(
-                                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                        contentDescription = null
+                            title = target.title,
+                            icon = target.icon,
+                            supportingText = target.supportingText
+                                ?: supportingLabelForSource(activeSource),
+                            selected = selectedTarget.value == target.target,
+                            onClick = {
+                                if (activeSource is MovePickerSource.KeePassDatabase) {
+                                    selectKeePassTarget(
+                                        database = activeSource.database,
+                                        target = target.target,
+                                        label = target.label
                                     )
+                                } else {
+                                    stageTarget(target.target, target.label)
                                 }
                             }
                         )
-                        BottomSheetAnimatedVisibility(
-                            visible = expanded,
-                            enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = expandCollapseSpec),
-                            exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)
-                        ) {
-                            Column(
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Spacer(modifier = Modifier.height(8.dp))
-                                if (allowArchiveTarget) {
-                                    Box(modifier = Modifier.padding(start = 16.dp)) {
-                                        MoveTargetItem(
-                                            title = stringResource(R.string.archive_page_title),
-                                            icon = Icons.Default.Archive,
-                                            onClick = {
-                                                onTargetSelected(
-                                                    UnifiedMoveCategoryTarget.MonicaCategory(
-                                                        UNIFIED_MOVE_ARCHIVE_SENTINEL_CATEGORY_ID
-                                                    ),
-                                                    selectedAction.value
-                                                )
-                                            }
-                                        )
-                                    }
-                                }
-                                Box(modifier = Modifier.padding(start = 16.dp)) {
-                                    MoveTargetItem(
-                                        title = stringResource(R.string.category_none),
-                                        icon = Icons.Default.FolderOff,
-                                        onClick = {
-                                            onTargetSelected(
-                                                UnifiedMoveCategoryTarget.Uncategorized,
-                                                selectedAction.value
-                                            )
-                                        }
-                                    )
-                                }
-                                monicaCategoryNodes.forEach { node ->
-                                    val indentation = (16 + node.depth * 14).coerceAtMost(72)
-                                    Box(modifier = Modifier.padding(start = indentation.dp)) {
-                                        MoveTargetItem(
-                                            title = node.displayName,
-                                            icon = Icons.Default.Folder,
-                                            supportingText = node.parentPathLabel,
-                                            onClick = {
-                                                onTargetSelected(
-                                                    UnifiedMoveCategoryTarget.MonicaCategory(node.category.id),
-                                                    selectedAction.value
-                                                )
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
-
-                if (bitwardenVaults.isNotEmpty()) {
-                    item {
-                        MoveSectionCard(title = stringResource(R.string.filter_bitwarden)) {
-                            bitwardenVaults.forEachIndexed { index, vault ->
-                                val expanded = showBitwardenFolderTargets && (bitwardenExpanded.value[vault.id] ?: false)
-                                val folders by (
-                                    if (showBitwardenFolderTargets && expanded) {
-                                        getBitwardenFolders(vault.id)
-                                    } else {
-                                        flowOf(emptyList())
-                                    }
-                                ).collectAsState(initial = emptyList())
-                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    MoveTargetItem(
-                                        title = vault.email,
-                                        icon = Icons.Default.CloudSync,
-                                        onClick = {
-                                            if (!showBitwardenFolderTargets) {
-                                                onTargetSelected(
-                                                    UnifiedMoveCategoryTarget.BitwardenVaultTarget(vault.id),
-                                                    selectedAction.value
-                                                )
-                                            } else {
-                                                bitwardenExpanded.value = bitwardenExpanded.value.toMutableMap().apply {
-                                                    this[vault.id] = !expanded
-                                                }
-                                            }
-                                        },
-                                        supportingText = if (vault.isDefault) {
-                                            stringResource(R.string.default_label)
-                                        } else null,
-                                        menu = {
-                                            if (showBitwardenFolderTargets) {
-                                                IconButton(
-                                                    onClick = {
-                                                        bitwardenExpanded.value = bitwardenExpanded.value.toMutableMap().apply {
-                                                            this[vault.id] = !expanded
-                                                        }
-                                                    }
-                                                ) {
-                                                    Icon(
-                                                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                                        contentDescription = null
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    )
-                                    BottomSheetAnimatedVisibility(
-                                        visible = expanded,
-                                        enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = expandCollapseSpec),
-                                        exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)
-                                    ) {
-                                        Column(
-                                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            Spacer(modifier = Modifier.height(8.dp))
-                                            Box(modifier = Modifier.padding(start = 16.dp)) {
-                                                MoveTargetItem(
-                                                    title = stringResource(R.string.category_none),
-                                                    icon = Icons.Default.FolderOff,
-                                                    onClick = {
-                                                        onTargetSelected(
-                                                            UnifiedMoveCategoryTarget.BitwardenVaultTarget(vault.id),
-                                                            selectedAction.value
-                                                        )
-                                                    }
-                                                )
-                                            }
-                                            folders.forEach { folder ->
-                                                Box(modifier = Modifier.padding(start = 16.dp)) {
-                                                    MoveTargetItem(
-                                                        title = folder.name,
-                                                        icon = Icons.Default.Folder,
-                                                        onClick = {
-                                                            onTargetSelected(
-                                                                UnifiedMoveCategoryTarget.BitwardenFolderTarget(
-                                                                    vaultId = vault.id,
-                                                                    folderId = folder.bitwardenFolderId
-                                                                ),
-                                                                selectedAction.value
-                                                            )
-                                                        }
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                if (index < bitwardenVaults.lastIndex) {
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                }
-                            }
+            }
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh
+            ) {
+                Column(
+                    modifier = Modifier.padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "目标：${selectedTargetLabel.value ?: "请选择分类或文件夹"}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (selectedTarget.value == null) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
                         }
+                    )
+                    FilledTonalButton(
+                        onClick = ::confirmSelectedTarget,
+                        enabled = selectedTarget.value != null,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Check, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("$confirmLabel$actionLabel")
                     }
                 }
-
-                if (localKeePassDatabases.isNotEmpty()) {
-                    item {
-                        MoveSectionCard(title = stringResource(R.string.local_keepass_database)) {
-                            localKeePassDatabases.forEachIndexed { index, database ->
-                                val expanded = keepassExpanded.value[database.id] ?: false
-                                val groups by (
-                                    if (expanded) getKeePassGroups(database.id) else flowOf(emptyList())
-                                ).collectAsState(initial = emptyList())
-                                val groupNodes = remember(groups) { buildKeePassGroupNodes(groups) }
-                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    val availability = database.writeOperationAvailability()
-                                    val unavailableReason = if (availability.canOperate) {
-                                        null
-                                    } else {
-                                        keepassBlockReasonLabel(availability.reason)
-                                    }
-                                    MoveTargetItem(
-                                        title = database.name,
-                                        icon = Icons.Default.Key,
-                                        onClick = {
-                                            keepassExpanded.value = keepassExpanded.value.toMutableMap().apply {
-                                                this[database.id] = !expanded
-                                            }
-                                        },
-                                        supportingText = unavailableReason
-                                            ?.let { stringResource(R.string.keepass_connection_status_unavailable_format, it) }
-                                            ?: when {
-                                                database.storageLocation == KeePassStorageLocation.EXTERNAL ->
-                                                    stringResource(R.string.external_storage)
-                                                else -> stringResource(R.string.internal_storage)
-                                            },
-                                        menu = {
-                                            IconButton(
-                                                onClick = {
-                                                    keepassExpanded.value = keepassExpanded.value.toMutableMap().apply {
-                                                        this[database.id] = !expanded
-                                                    }
-                                                }
-                                            ) {
-                                                Icon(
-                                                    imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                                                    contentDescription = null
-                                                )
-                                            }
-                                        }
-                                    )
-                                    BottomSheetAnimatedVisibility(
-                                        visible = expanded,
-                                        enter = fadeIn(animationSpec = tween(180)) + expandVertically(animationSpec = expandCollapseSpec),
-                                        exit = fadeOut(animationSpec = tween(120)) + shrinkVertically(animationSpec = expandCollapseSpec)
-                                    ) {
-                                        Column(
-                                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            Spacer(modifier = Modifier.height(8.dp))
-                                            Box(modifier = Modifier.padding(start = 16.dp)) {
-                                                MoveTargetItem(
-                                                    title = stringResource(R.string.category_none),
-                                                    icon = Icons.Default.FolderOff,
-                                                    onClick = {
-                                                        selectKeePassTarget(
-                                                            database = database,
-                                                            target = UnifiedMoveCategoryTarget.KeePassDatabaseTarget(database.id)
-                                                        )
-                                                    }
-                                                )
-                                            }
-                                            groupNodes.forEach { groupNode ->
-                                                val indentation = (16 + groupNode.depth * 14).coerceAtMost(72)
-                                                Box(modifier = Modifier.padding(start = indentation.dp)) {
-                                                    MoveTargetItem(
-                                                        title = groupNode.displayName,
-                                                        icon = Icons.Default.Folder,
-                                                        supportingText = groupNode.parentPathLabel,
-                                                        onClick = {
-                                                            selectKeePassTarget(
-                                                                database = database,
-                                                                target = UnifiedMoveCategoryTarget.KeePassGroupTarget(
-                                                                    databaseId = database.id,
-                                                                    groupPath = groupNode.group.path
-                                                                )
-                                                            )
-                                                        }
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                if (index < localKeePassDatabases.lastIndex) {
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                }
-                            }
-                        }
-                    }
-                }
-
-                if (mdbxDatabases.isNotEmpty()) {
-                    item {
-                        MoveSectionCard(title = "MDBX") {
-                            mdbxDatabases.forEachIndexed { index, database ->
-                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                                    MoveTargetItem(
-                                        title = database.name,
-                                        icon = Icons.Default.Key,
-                                        onClick = {
-                                            onTargetSelected(
-                                                UnifiedMoveCategoryTarget.MdbxDatabaseTarget(database.id),
-                                                selectedAction.value
-                                            )
-                                        }
-                                    )
-                                }
-                                if (index < mdbxDatabases.lastIndex) {
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                }
-                            }
-                        }
-                    }
-                }
-
             }
         }
     }
@@ -522,25 +606,13 @@ private data class KeePassUnavailableMoveState(
 )
 
 @Composable
-private fun MoveSectionCard(
-    title: String,
-    content: @Composable () -> Unit
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer
-    ) {
-        Column(modifier = Modifier.padding(10.dp)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
-            )
-            content()
-        }
-    }
+private fun MoveSelectorSectionTitle(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+    )
 }
 
 @Composable
@@ -549,6 +621,7 @@ private fun MoveTargetItem(
     icon: ImageVector,
     onClick: () -> Unit,
     supportingText: String? = null,
+    selected: Boolean = false,
     menu: (@Composable () -> Unit)? = null
 ) {
     ListItem(
@@ -557,9 +630,21 @@ private fun MoveTargetItem(
             .clip(RoundedCornerShape(14.dp))
             .clickable(onClick = onClick),
         colors = ListItemDefaults.colors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.34f),
-            headlineColor = MaterialTheme.colorScheme.onSurface,
-            leadingIconColor = MaterialTheme.colorScheme.onSurface,
+            containerColor = if (selected) {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.34f)
+            },
+            headlineColor = if (selected) {
+                MaterialTheme.colorScheme.onPrimaryContainer
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
+            leadingIconColor = if (selected) {
+                MaterialTheme.colorScheme.onPrimaryContainer
+            } else {
+                MaterialTheme.colorScheme.onSurface
+            },
             supportingColor = MaterialTheme.colorScheme.onSurfaceVariant,
             trailingIconColor = MaterialTheme.colorScheme.onSurfaceVariant
         ),
@@ -575,7 +660,11 @@ private fun MoveTargetItem(
                 )
             }
         },
-        trailingContent = menu
+        trailingContent = menu ?: if (selected) {
+            { Icon(Icons.Default.Check, contentDescription = null) }
+        } else {
+            null
+        }
     )
 }
 
@@ -588,6 +677,13 @@ private data class MonicaCategoryNode(
 
 private data class KeePassGroupNode(
     val group: KeePassGroupInfo,
+    val displayName: String,
+    val depth: Int,
+    val parentPathLabel: String?
+)
+
+private data class MdbxFolderNode(
+    val folder: MdbxStoredFolderEntry,
     val displayName: String,
     val depth: Int,
     val parentPathLabel: String?
@@ -637,6 +733,65 @@ private fun buildKeePassGroupNodes(groups: List<KeePassGroupInfo>): List<KeePass
                 parentPathLabel = parentPath
             )
         }
+}
+
+private fun buildMdbxFolderNodes(folders: List<MdbxStoredFolderEntry>): List<MdbxFolderNode> {
+    val validFolders = folders
+        .filter { it.folderId.isNotBlank() }
+        .distinctBy { it.folderId }
+    if (validFolders.isEmpty()) return emptyList()
+
+    val folderById = validFolders.associateBy { it.folderId }
+    val childrenByParent = validFolders.groupBy { it.parentFolderId.normalizedMdbxParentIdForMoveSheet() }
+    val result = mutableListOf<MdbxFolderNode>()
+
+    fun appendChildren(parentId: String?, parentNames: List<String>, depth: Int, seen: Set<String>) {
+        childrenByParent[parentId]
+            .orEmpty()
+            .sortedWith(compareBy<MdbxStoredFolderEntry>({ it.name.lowercase() }, { it.folderId }))
+            .forEach { folder ->
+                if (folder.folderId in seen) return@forEach
+                val name = folder.name.ifBlank { "Folder ${folder.folderId.take(8)}" }
+                result += MdbxFolderNode(
+                    folder = folder,
+                    displayName = name,
+                    depth = depth,
+                    parentPathLabel = parentNames.takeIf { it.isNotEmpty() }?.joinToString(" / ")
+                )
+                appendChildren(
+                    parentId = folder.folderId,
+                    parentNames = parentNames + name,
+                    depth = depth + 1,
+                    seen = seen + folder.folderId
+                )
+            }
+    }
+
+    appendChildren(parentId = null, parentNames = emptyList(), depth = 0, seen = emptySet())
+    validFolders
+        .filterNot { folder -> result.any { it.folder.folderId == folder.folderId } }
+        .sortedWith(compareBy<MdbxStoredFolderEntry>({ it.name.lowercase() }, { it.folderId }))
+        .forEach { folder ->
+            val parentNames = generateSequence(folder.parentFolderId.normalizedMdbxParentIdForMoveSheet()) { parentId ->
+                folderById[parentId]?.parentFolderId.normalizedMdbxParentIdForMoveSheet()
+            }
+                .take(16)
+                .toList()
+                .asReversed()
+                .mapNotNull { parentId -> folderById[parentId]?.name?.takeIf { it.isNotBlank() } }
+            result += MdbxFolderNode(
+                folder = folder,
+                displayName = folder.name.ifBlank { "Folder ${folder.folderId.take(8)}" },
+                depth = parentNames.size,
+                parentPathLabel = parentNames.takeIf { it.isNotEmpty() }?.joinToString(" / ")
+            )
+        }
+    return result
+}
+
+private fun String?.normalizedMdbxParentIdForMoveSheet(): String? {
+    val value = this?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    return if (value.equals("root", ignoreCase = true)) null else value
 }
 
 private fun splitPathSegments(path: String): List<String> {

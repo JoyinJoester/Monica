@@ -615,6 +615,11 @@ fun CardWalletScreen(
             }
             val targetMdbxDatabaseId: Long? = when (target) {
                 is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> target.databaseId
+                is UnifiedMoveCategoryTarget.MdbxFolderTarget -> target.databaseId
+                else -> null
+            }
+            val targetMdbxFolderId: String? = when (target) {
+                is UnifiedMoveCategoryTarget.MdbxFolderTarget -> target.folderId
                 else -> null
             }
             val isMonicaLocalTarget = target == UnifiedMoveCategoryTarget.Uncategorized ||
@@ -655,7 +660,8 @@ fun CardWalletScreen(
                             keepassGroupPath = targetKeepassGroupPath,
                             bitwardenVaultId = targetBitwardenVaultId,
                             bitwardenFolderId = targetBitwardenFolderId,
-                            mdbxDatabaseId = targetMdbxDatabaseId
+                            mdbxDatabaseId = targetMdbxDatabaseId,
+                            mdbxFolderId = targetMdbxFolderId
                         )
                         successCount++
                     }
@@ -678,7 +684,8 @@ fun CardWalletScreen(
                             keepassGroupPath = targetKeepassGroupPath,
                             bitwardenVaultId = targetBitwardenVaultId,
                             bitwardenFolderId = targetBitwardenFolderId,
-                            mdbxDatabaseId = targetMdbxDatabaseId
+                            mdbxDatabaseId = targetMdbxDatabaseId,
+                            mdbxFolderId = targetMdbxFolderId
                         )
                         successCount++
                     }
@@ -691,7 +698,8 @@ fun CardWalletScreen(
                                 keepassGroupPath = null,
                                 bitwardenVaultId = null,
                                 bitwardenFolderId = null,
-                                mdbxDatabaseId = null
+                                mdbxDatabaseId = null,
+                                mdbxFolderId = null
                             )
                         } else {
                             bankCardViewModel.moveCardToMonicaLocal(item, targetCategoryId).isSuccess
@@ -706,7 +714,8 @@ fun CardWalletScreen(
                             keepassGroupPath = targetKeepassGroupPath,
                             bitwardenVaultId = targetBitwardenVaultId,
                             bitwardenFolderId = targetBitwardenFolderId,
-                            mdbxDatabaseId = targetMdbxDatabaseId
+                            mdbxDatabaseId = targetMdbxDatabaseId,
+                            mdbxFolderId = targetMdbxFolderId
                         )
                         if (moved) successCount++ else failedCount++
                     }
@@ -719,7 +728,8 @@ fun CardWalletScreen(
                                 keepassGroupPath = null,
                                 bitwardenVaultId = null,
                                 bitwardenFolderId = null,
-                                mdbxDatabaseId = null
+                                mdbxDatabaseId = null,
+                                mdbxFolderId = null
                             )
                         } else {
                             documentViewModel.moveDocumentToMonicaLocal(item, targetCategoryId).isSuccess
@@ -734,7 +744,8 @@ fun CardWalletScreen(
                             keepassGroupPath = targetKeepassGroupPath,
                             bitwardenVaultId = targetBitwardenVaultId,
                             bitwardenFolderId = targetBitwardenFolderId,
-                            mdbxDatabaseId = targetMdbxDatabaseId
+                            mdbxDatabaseId = targetMdbxDatabaseId,
+                            mdbxFolderId = targetMdbxFolderId
                         )
                         if (moved) successCount++ else failedCount++
                     }
@@ -1428,6 +1439,7 @@ fun CardWalletScreen(
             bitwardenVaults = bitwardenVaults,
             getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
             getKeePassGroups = getKeePassGroups,
+            getMdbxFolders = passwordViewModel::getMdbxFolders,
             allowCopy = true,
             allowMove = allItems.filter { selectedIds.contains(it.id) }.none { it.isKeePassOwned() },
             onTargetSelected = ::performBatchMove

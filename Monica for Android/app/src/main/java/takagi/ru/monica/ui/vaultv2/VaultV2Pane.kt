@@ -151,12 +151,17 @@ import takagi.ru.monica.ui.PasswordListInitialLoadingIndicator
 import takagi.ru.monica.ui.buildPasswordQuickFolderNodes
 import takagi.ru.monica.ui.buildCategoryMenuFolderShortcuts
 import takagi.ru.monica.ui.buildLocalQuickFolderPasswordCountByCategoryId
+import takagi.ru.monica.ui.buildMdbxFolderPathLabel
 import takagi.ru.monica.ui.buildQuickFolderBreadcrumbs
+import takagi.ru.monica.ui.MdbxPathSyncActions
+import takagi.ru.monica.ui.MdbxPathSyncState
+import takagi.ru.monica.ui.mdbxPathPendingSyncCount
 import takagi.ru.monica.ui.mdbxPathShouldFlushPendingUpload
 import takagi.ru.monica.ui.PasswordQuickFilterChipCallbacks
 import takagi.ru.monica.ui.PasswordQuickFilterChipState
 import takagi.ru.monica.ui.supportsQuickFolders
 import takagi.ru.monica.ui.components.ExpressiveTopBar
+import takagi.ru.monica.ui.components.QuickStatusBar
 import takagi.ru.monica.ui.common.selection.SelectionActionBar
 import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
@@ -812,7 +817,7 @@ private fun rememberVaultV2StorageFilterLabel(
 		}
 		is UnifiedCategoryFilterSelection.MdbxFolderFilter -> {
 			val databaseLabel = mdbxDatabases.find { it.id == selected.databaseId }?.name ?: "MDBX"
-			val folderLabel = mdbxFolders.find { it.folderId == selected.folderId }?.name
+			val folderLabel = buildMdbxFolderPathLabel(selected.folderId, mdbxFolders)
 			if (folderLabel.isNullOrBlank()) databaseLabel else "$databaseLabel · $folderLabel"
 		}
 	}
@@ -1306,9 +1311,38 @@ fun VaultV2Pane(
 		mdbxViewModel?.operationState
 			?: flowOf(MdbxViewModel.OperationState.Idle)
 	).collectAsState(initial = MdbxViewModel.OperationState.Idle)
+	val mdbxPendingSyncCounts by remember(mdbxViewModel) {
+		mdbxViewModel?.pendingSyncCounts ?: flowOf(emptyMap<Long, Int>())
+	}.collectAsState(initial = emptyMap())
+	val mdbxQuickStatusSyncState = remember(
+		selectedMdbxDatabase,
+		mdbxOperationState,
+		mdbxPendingSyncCounts,
+		mdbxViewModel
+	) {
+		val database = selectedMdbxDatabase
+		val viewModel = mdbxViewModel
+		if (database != null && viewModel != null) {
+			MdbxPathSyncState(
+				pendingCount = mdbxPendingSyncCounts[database.id]
+					?: database.mdbxPathPendingSyncCount(),
+				isSyncing = mdbxOperationState is MdbxViewModel.OperationState.Loading,
+				onSync = {
+					if (database.mdbxPathShouldFlushPendingUpload()) {
+						viewModel.flushPendingVaultUpload(database.id)
+					} else {
+						viewModel.syncVault(database.id)
+					}
+				}
+			)
+		} else {
+			null
+		}
+	}
 	LaunchedEffect(selectedMdbxDatabaseId, mdbxDatabases.map { it.id }) {
 		selectedMdbxDatabaseId?.let { databaseId ->
 			if (mdbxDatabases.any { it.id == databaseId }) {
+				mdbxViewModel?.activateMdbxDatabase(databaseId)
 				passwordViewModel.refreshMdbxFolders(databaseId)
 				mdbxViewModel?.autoSyncVisibleVault(databaseId)
 			}
@@ -2315,11 +2349,12 @@ fun VaultV2Pane(
 				}
 			)
 
-			VaultV2NavigationBanner(
+			VaultV2QuickStatusBar(
 				pathLabel = storageFilterLabel,
 				currentSectionLabel = currentSectionIndicatorLabel,
 				breadcrumbs = pathBreadcrumbs,
 				currentFilter = breadcrumbCategoryFilter,
+				mdbxSyncState = mdbxQuickStatusSyncState,
 				onNavigate = { filter ->
 					filter.toUnifiedCategoryFilterSelectionOrNull()?.let { selection ->
 						selectedKeys.clear()
@@ -2411,10 +2446,11 @@ fun VaultV2Pane(
 				mdbxDatabases = mdbxDatabases,
 				bitwardenVaults = bitwardenVaults,
 				getBitwardenFolders = passwordViewModel::getBitwardenFolders,
+				getMdbxFolders = passwordViewModel::getMdbxFolders,
 				getKeePassGroups = localKeePassViewModel::getGroups,
-				onCreateMdbxProject = { databaseId, name ->
+				onCreateMdbxProject = { databaseId, parentFolderId, name ->
 					scope.launch {
-						passwordViewModel.createMdbxFolder(databaseId, name) { result ->
+						passwordViewModel.createMdbxFolder(databaseId, name, parentFolderId ?: "root") { result ->
 							result.exceptionOrNull()?.let { error ->
 								Toast.makeText(
 									context,
@@ -2737,6 +2773,7 @@ fun VaultV2Pane(
 				bitwardenVaults = bitwardenVaults,
 				getBitwardenFolders = passwordViewModel::getBitwardenFolders,
 				getKeePassGroups = localKeePassViewModel::getGroups,
+				getMdbxFolders = passwordViewModel::getMdbxFolders,
 				allowCopy = false,
 				allowMove = true,
 				allowArchiveTarget = false,
@@ -2872,6 +2909,23 @@ fun VaultV2Pane(
 								}
 							}
 						}
+						is UnifiedMoveCategoryTarget.MdbxFolderTarget -> {
+							val dbId = target.databaseId
+							val folderId = target.folderId
+							if (passwordIds.isNotEmpty()) passwordViewModel.movePasswordsToMdbxDatabase(passwordIds, dbId, folderId)
+							if (totpIds.isNotEmpty()) totpViewModel.moveToMdbxDatabase(totpIds, dbId, folderId)
+							scope.launch {
+								noteItems.forEach { note ->
+									noteViewModel.moveNoteToStorage(note, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null, mdbxDatabaseId = dbId, mdbxFolderId = folderId)
+								}
+								bankCardIds.forEach { id ->
+									bankCardViewModel.moveCardToStorage(id, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null, mdbxDatabaseId = dbId, mdbxFolderId = folderId)
+								}
+								documentIds.forEach { id ->
+									documentViewModel.moveDocumentToStorage(id, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null, mdbxDatabaseId = dbId, mdbxFolderId = folderId)
+								}
+							}
+						}
 					}
 					selectedKeys.clear()
 				}
@@ -2890,6 +2944,8 @@ fun VaultV2Pane(
 			is UnifiedCategoryFilterSelection.KeePassGroupFilter -> Triple(CreateDialogTarget.KeePass, filter.databaseId, null)
 			is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> Triple(CreateDialogTarget.KeePass, filter.databaseId, null)
 			is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> Triple(CreateDialogTarget.KeePass, filter.databaseId, null)
+			is UnifiedCategoryFilterSelection.MdbxDatabaseFilter -> Triple(CreateDialogTarget.Mdbx, filter.databaseId, null)
+			is UnifiedCategoryFilterSelection.MdbxFolderFilter -> Triple(CreateDialogTarget.Mdbx, filter.databaseId, null)
 			is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> Triple(CreateDialogTarget.Bitwarden, null, filter.vaultId)
 			is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> Triple(CreateDialogTarget.Bitwarden, null, filter.vaultId)
 			is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> Triple(CreateDialogTarget.Bitwarden, null, filter.vaultId)
@@ -2904,6 +2960,7 @@ fun VaultV2Pane(
 			mdbxDatabases = mdbxDatabases,
 			bitwardenVaults = bitwardenVaults,
 			getKeePassGroups = localKeePassViewModel::getGroups,
+			getMdbxFolders = passwordViewModel::getMdbxFolders,
 			onCreateCategoryWithName = { name -> passwordViewModel.addCategory(name) },
 			onCreateBitwardenFolder = { vaultId, name ->
 				scope.launch {
@@ -2932,9 +2989,10 @@ fun VaultV2Pane(
 					}
 				}
 			},
-			onCreateMdbxProject = { databaseId, name ->
+			initialMdbxParentFolderId = (storageSelection as? UnifiedCategoryFilterSelection.MdbxFolderFilter)?.folderId,
+			onCreateMdbxProject = { databaseId, parentFolderId, name ->
 				scope.launch {
-					passwordViewModel.createMdbxFolder(databaseId, name) { result ->
+					passwordViewModel.createMdbxFolder(databaseId, name, parentFolderId ?: "root") { result ->
 						result.exceptionOrNull()?.let { error ->
 							Toast.makeText(
 								context,
@@ -2948,6 +3006,7 @@ fun VaultV2Pane(
 			initialLocalParentPath = initialLocalParentPath,
 			initialTarget = initialDialogTarget,
 			initialKeePassDbId = initialDialogKeePassDbId,
+			initialMdbxDbId = selectedMdbxDatabaseId,
 			initialBitwardenVaultId = initialDialogBitwardenVaultId
 		)
 	}
@@ -3089,115 +3148,155 @@ private fun VaultV2List(
 }
 
 @Composable
-private fun VaultV2NavigationBanner(
+private fun VaultV2QuickStatusBar(
 	pathLabel: String,
 	currentSectionLabel: String,
 	breadcrumbs: List<PasswordQuickFolderBreadcrumb>,
 	currentFilter: CategoryFilter?,
+	mdbxSyncState: MdbxPathSyncState?,
 	onNavigate: (CategoryFilter) -> Unit,
 	onOpenStorageFilter: () -> Unit,
 ) {
-	Row(
-		modifier = Modifier
-			.fillMaxWidth()
-			.padding(horizontal = 12.dp, vertical = 4.dp),
-		horizontalArrangement = Arrangement.spacedBy(10.dp),
-		verticalAlignment = Alignment.CenterVertically,
-	) {
-		Surface(
-			shape = CircleShape,
-			color = MaterialTheme.colorScheme.secondaryContainer,
-			contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-			tonalElevation = 2.dp,
-			shadowElevation = 0.dp,
-			modifier = Modifier.size(32.dp)
-		) {
-			Box(contentAlignment = Alignment.Center) {
-				Text(
-					text = currentSectionLabel.ifBlank { "#" },
-					style = MaterialTheme.typography.labelLarge,
-					fontWeight = FontWeight.SemiBold,
-				)
+	QuickStatusBar(
+		indicator = {
+			VaultV2QuickStatusIndicator(currentSectionLabel = currentSectionLabel)
+		},
+		breadcrumb = {
+			VaultV2BreadcrumbPath(
+				pathLabel = pathLabel,
+				breadcrumbs = breadcrumbs,
+				currentFilter = currentFilter,
+				onNavigate = onNavigate,
+				onOpenStorageFilter = onOpenStorageFilter,
+				modifier = Modifier.weight(1f)
+			)
+		},
+		actions = {
+			mdbxSyncState?.let { state ->
+				MdbxPathSyncActions(state = state)
 			}
 		}
+	)
+}
 
-		Box(
-			modifier = Modifier
-				.weight(1f)
-				.height(36.dp)
-				.clip(RoundedCornerShape(14.dp))
-				.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
-				.then(
-					if (breadcrumbs.isEmpty()) {
-						Modifier.clickable(onClick = onOpenStorageFilter)
-					} else {
-						Modifier
-					}
-				)
-		) {
-			Row(
-				modifier = Modifier
-					.fillMaxSize()
-					.horizontalScroll(rememberScrollState())
-					.padding(horizontal = 8.dp, vertical = 6.dp),
-				verticalAlignment = Alignment.CenterVertically,
-			) {
-				if (breadcrumbs.isNotEmpty() && currentFilter != null) {
-					breadcrumbs.forEachIndexed { index, crumb ->
-						Box(
-							modifier = Modifier
-								.clip(RoundedCornerShape(10.dp))
-								.background(
-									if (crumb.isCurrent) {
-										MaterialTheme.colorScheme.primaryContainer
-									} else {
-										MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.68f)
-									}
-								)
-								.clickable(enabled = !crumb.isCurrent) {
-									if (currentFilter != crumb.targetFilter) {
-										onNavigate(crumb.targetFilter)
-									}
-								}
-								.padding(horizontal = 10.dp, vertical = 4.dp)
-						) {
-							Text(
-								text = crumb.title,
-								style = MaterialTheme.typography.labelMedium,
-								color = if (crumb.isCurrent) {
-									MaterialTheme.colorScheme.onPrimaryContainer
-								} else {
-									MaterialTheme.colorScheme.onSecondaryContainer
-								},
-							)
-						}
+@Composable
+private fun VaultV2QuickStatusIndicator(
+	currentSectionLabel: String
+) {
+	Surface(
+		shape = CircleShape,
+		color = MaterialTheme.colorScheme.secondaryContainer,
+		contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+		tonalElevation = 2.dp,
+		shadowElevation = 0.dp,
+		modifier = Modifier.size(32.dp)
+	) {
+		Box(contentAlignment = Alignment.Center) {
+			Text(
+				text = currentSectionLabel.ifBlank { "#" },
+				style = MaterialTheme.typography.labelLarge,
+				fontWeight = FontWeight.SemiBold,
+			)
+		}
+	}
+}
 
-						if (index != breadcrumbs.lastIndex) {
-							Text(
-								text = ">",
-								style = MaterialTheme.typography.labelMedium,
-								color = MaterialTheme.colorScheme.onSurfaceVariant,
-								modifier = Modifier.padding(horizontal = 6.dp)
-							)
-						}
-					}
+@Composable
+private fun VaultV2BreadcrumbPath(
+	pathLabel: String,
+	breadcrumbs: List<PasswordQuickFolderBreadcrumb>,
+	currentFilter: CategoryFilter?,
+	onNavigate: (CategoryFilter) -> Unit,
+	onOpenStorageFilter: () -> Unit,
+	modifier: Modifier = Modifier
+) {
+	Box(
+		modifier = modifier
+			.height(36.dp)
+			.clip(RoundedCornerShape(14.dp))
+			.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+			.then(
+				if (breadcrumbs.isEmpty()) {
+					Modifier.clickable(onClick = onOpenStorageFilter)
 				} else {
-					Box(
-						modifier = Modifier
-							.clip(RoundedCornerShape(10.dp))
-							.background(MaterialTheme.colorScheme.primaryContainer)
-							.padding(horizontal = 10.dp, vertical = 4.dp)
-					) {
+					Modifier
+				}
+			)
+	) {
+		Row(
+			modifier = Modifier
+				.fillMaxSize()
+				.horizontalScroll(rememberScrollState())
+				.padding(horizontal = 8.dp, vertical = 6.dp),
+			verticalAlignment = Alignment.CenterVertically,
+		) {
+			if (breadcrumbs.isNotEmpty() && currentFilter != null) {
+				breadcrumbs.forEachIndexed { index, crumb ->
+					VaultV2BreadcrumbChip(
+						crumb = crumb,
+						currentFilter = currentFilter,
+						onNavigate = onNavigate
+					)
+
+					if (index != breadcrumbs.lastIndex) {
 						Text(
-							text = pathLabel,
+							text = ">",
 							style = MaterialTheme.typography.labelMedium,
-							color = MaterialTheme.colorScheme.onPrimaryContainer,
+							color = MaterialTheme.colorScheme.onSurfaceVariant,
+							modifier = Modifier.padding(horizontal = 6.dp)
 						)
 					}
 				}
+			} else {
+				Box(
+					modifier = Modifier
+						.clip(RoundedCornerShape(10.dp))
+						.background(MaterialTheme.colorScheme.primaryContainer)
+						.padding(horizontal = 10.dp, vertical = 4.dp)
+				) {
+					Text(
+						text = pathLabel,
+						style = MaterialTheme.typography.labelMedium,
+						color = MaterialTheme.colorScheme.onPrimaryContainer,
+					)
+				}
 			}
 		}
+	}
+}
 
+@Composable
+private fun VaultV2BreadcrumbChip(
+	crumb: PasswordQuickFolderBreadcrumb,
+	currentFilter: CategoryFilter,
+	onNavigate: (CategoryFilter) -> Unit
+) {
+	Box(
+		modifier = Modifier
+			.clip(RoundedCornerShape(10.dp))
+			.background(
+				if (crumb.isCurrent) {
+					MaterialTheme.colorScheme.primaryContainer
+				} else {
+					MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.68f)
+				}
+			)
+			.clickable(enabled = !crumb.isCurrent) {
+				if (currentFilter != crumb.targetFilter) {
+					onNavigate(crumb.targetFilter)
+				}
+			}
+			.padding(horizontal = 10.dp, vertical = 4.dp)
+	) {
+		Text(
+			text = crumb.title,
+			style = MaterialTheme.typography.labelMedium,
+			color = if (crumb.isCurrent) {
+				MaterialTheme.colorScheme.onPrimaryContainer
+			} else {
+				MaterialTheme.colorScheme.onSecondaryContainer
+			},
+		)
 	}
 }
 

@@ -1,6 +1,8 @@
 package takagi.ru.monica.ui
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -12,6 +14,7 @@ import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -53,6 +56,16 @@ import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
 import takagi.ru.monica.data.LocalMdbxDatabase
 import takagi.ru.monica.data.MdbxSyncStatus
+import takagi.ru.monica.ui.components.QuickStatusTransferBar
+import takagi.ru.monica.ui.components.QuickStatusTransferPhase
+import takagi.ru.monica.ui.components.QuickStatusTransferState
+import takagi.ru.monica.ui.components.QuickStatusDeleteBar
+import takagi.ru.monica.ui.components.QuickStatusDeletePhase
+import takagi.ru.monica.ui.components.QuickStatusDeleteState
+import takagi.ru.monica.ui.password.PasswordBatchDeleteGlobalProgressState
+import takagi.ru.monica.ui.password.PasswordBatchDeletePhase
+import takagi.ru.monica.ui.password.PasswordBatchTransferGlobalProgressState
+import takagi.ru.monica.ui.password.PasswordBatchTransferPhase
 import takagi.ru.monica.viewmodel.CategoryFilter
 
 internal fun LocalMdbxDatabase.mdbxPathShouldFlushPendingUpload(): Boolean =
@@ -80,70 +93,174 @@ internal fun PasswordQuickFolderBreadcrumbBanner(
     breadcrumbs: List<PasswordQuickFolderBreadcrumb>,
     currentFilter: CategoryFilter,
     onNavigate: (CategoryFilter) -> Unit,
-    mdbxSyncState: MdbxPathSyncState? = null
+    mdbxSyncState: MdbxPathSyncState? = null,
+    transferState: PasswordBatchTransferGlobalProgressState? = null,
+    onTransferStatusClick: (() -> Unit)? = null,
+    deleteState: PasswordBatchDeleteGlobalProgressState? = null,
+    onDeleteStatusClick: (() -> Unit)? = null
 ) {
-    Row(
+    val sourceLabel = buildQuickStatusSourceLabel(breadcrumbs = breadcrumbs)
+    val statusMode = when {
+        transferState?.phase == PasswordBatchTransferPhase.RUNNING -> PasswordQuickStatusMode.TRANSFER_RUNNING
+        transferState?.phase == PasswordBatchTransferPhase.SUCCESS -> PasswordQuickStatusMode.TRANSFER_SUCCESS
+        deleteState?.phase == PasswordBatchDeletePhase.RUNNING -> PasswordQuickStatusMode.DELETE_RUNNING
+        deleteState?.phase == PasswordBatchDeletePhase.SUCCESS -> PasswordQuickStatusMode.DELETE_SUCCESS
+        else -> PasswordQuickStatusMode.BREADCRUMB
+    }
+    AnimatedContent(
+        targetState = statusMode,
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp)
             .animateContentSize(animationSpec = tween(durationMillis = 220)),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        if (mdbxSyncState != null) {
-            MdbxPathSyncActions(state = mdbxSyncState)
-        }
-
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .height(36.dp)
-                .clip(RoundedCornerShape(14.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+        transitionSpec = {
+            fadeIn(animationSpec = tween(durationMillis = 180))
+                .togetherWith(fadeOut(animationSpec = tween(durationMillis = 140)))
+                .using(SizeTransform(clip = false))
+        },
+        label = "password-quick-status-bar"
+    ) { activeMode ->
+        val activeTransferState = transferState
+        val activeDeleteState = deleteState
+        if (
+            (activeMode == PasswordQuickStatusMode.TRANSFER_RUNNING ||
+                activeMode == PasswordQuickStatusMode.TRANSFER_SUCCESS) &&
+            activeTransferState != null
         ) {
+            QuickStatusTransferBar(
+                state = activeTransferState.toQuickStatusTransferState(sourceLabel = sourceLabel),
+                modifier = Modifier.clickable(enabled = onTransferStatusClick != null) {
+                    onTransferStatusClick?.invoke()
+                }
+            )
+        } else if (
+            (activeMode == PasswordQuickStatusMode.DELETE_RUNNING ||
+                activeMode == PasswordQuickStatusMode.DELETE_SUCCESS) &&
+            activeDeleteState != null
+        ) {
+            QuickStatusDeleteBar(
+                state = activeDeleteState.toQuickStatusDeleteState(),
+                modifier = Modifier.clickable(enabled = onDeleteStatusClick != null) {
+                    onDeleteStatusClick?.invoke()
+                }
+            )
+        } else {
             Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                breadcrumbs.forEachIndexed { index, crumb ->
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(
-                                color = if (crumb.isCurrent) {
-                                    MaterialTheme.colorScheme.primaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.68f)
-                                }
-                            )
-                            .clickable(enabled = !crumb.isCurrent) {
-                                if (currentFilter != crumb.targetFilter) {
-                                    onNavigate(crumb.targetFilter)
-                                }
-                            }
-                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                    ) {
-                        Text(
-                            text = crumb.title,
-                            style = MaterialTheme.typography.labelMedium,
+                if (mdbxSyncState != null) {
+                    MdbxPathSyncActions(state = mdbxSyncState)
+                }
+
+                PasswordQuickFolderBreadcrumbPath(
+                    breadcrumbs = breadcrumbs,
+                    currentFilter = currentFilter,
+                    onNavigate = onNavigate,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+    }
+}
+
+private enum class PasswordQuickStatusMode {
+    BREADCRUMB,
+    TRANSFER_RUNNING,
+    TRANSFER_SUCCESS,
+    DELETE_RUNNING,
+    DELETE_SUCCESS
+}
+
+private fun PasswordBatchTransferGlobalProgressState.toQuickStatusTransferState(
+    sourceLabel: String
+): QuickStatusTransferState = QuickStatusTransferState(
+    action = action,
+    sourceLabel = sourceLabel,
+    targetLabel = targetLabel,
+    processed = processed,
+    total = total,
+    phase = when (phase) {
+        PasswordBatchTransferPhase.RUNNING -> QuickStatusTransferPhase.RUNNING
+        PasswordBatchTransferPhase.SUCCESS -> QuickStatusTransferPhase.SUCCESS
+    },
+    successCount = successCount
+)
+
+private fun PasswordBatchDeleteGlobalProgressState.toQuickStatusDeleteState(): QuickStatusDeleteState =
+    QuickStatusDeleteState(
+        processed = processed,
+        total = total,
+        phase = when (phase) {
+            PasswordBatchDeletePhase.RUNNING -> QuickStatusDeletePhase.RUNNING
+            PasswordBatchDeletePhase.SUCCESS -> QuickStatusDeletePhase.SUCCESS
+        },
+        successCount = successCount
+    )
+
+private fun buildQuickStatusSourceLabel(
+    breadcrumbs: List<PasswordQuickFolderBreadcrumb>
+): String {
+    val titles = breadcrumbs.map { it.title }.filter { it.isNotBlank() }
+    return titles.joinToString(separator = "/").ifBlank { "当前位置" }
+}
+
+@Composable
+private fun PasswordQuickFolderBreadcrumbPath(
+    breadcrumbs: List<PasswordQuickFolderBreadcrumb>,
+    currentFilter: CategoryFilter,
+    onNavigate: (CategoryFilter) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .height(36.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            breadcrumbs.forEachIndexed { index, crumb ->
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(
                             color = if (crumb.isCurrent) {
-                                MaterialTheme.colorScheme.onPrimaryContainer
+                                MaterialTheme.colorScheme.primaryContainer
                             } else {
-                                MaterialTheme.colorScheme.onSecondaryContainer
+                                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.68f)
                             }
                         )
-                    }
-                    if (index != breadcrumbs.lastIndex) {
-                        Text(
-                            text = ">",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 6.dp)
-                        )
-                    }
+                        .clickable(enabled = !crumb.isCurrent) {
+                            if (currentFilter != crumb.targetFilter) {
+                                onNavigate(crumb.targetFilter)
+                            }
+                        }
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Text(
+                        text = crumb.title,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (crumb.isCurrent) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSecondaryContainer
+                        }
+                    )
+                }
+                if (index != breadcrumbs.lastIndex) {
+                    Text(
+                        text = ">",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 6.dp)
+                    )
                 }
             }
         }

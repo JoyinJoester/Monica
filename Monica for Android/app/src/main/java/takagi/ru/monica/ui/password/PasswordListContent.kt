@@ -207,6 +207,8 @@ import takagi.ru.monica.ui.password.PasswordListAggregateConfig
 import takagi.ru.monica.ui.password.PasswordPageListItemUi
 import takagi.ru.monica.ui.password.PasswordListSingleCardItem
 import takagi.ru.monica.ui.password.PasswordSupplementaryListItemUi
+import takagi.ru.monica.ui.password.PasswordBatchDeleteProgressTracker
+import takagi.ru.monica.ui.password.PasswordBatchTransferProgressTracker
 import takagi.ru.monica.ui.password.appendAggregateContentQuickFilterItems
 import takagi.ru.monica.ui.password.buildPasswordAggregateManualStackGroups
 import takagi.ru.monica.ui.password.buildPasswordAggregateItems
@@ -368,6 +370,20 @@ fun PasswordListContent(
     )
     val fastScrollRequestKey by viewModel.fastScrollRequestKey.collectAsState()
     val fastScrollProgress by viewModel.fastScrollProgress.collectAsState()
+    val quickStatusTransferState by PasswordBatchTransferProgressTracker.progress.collectAsState()
+    val quickStatusDeleteState by PasswordBatchDeleteProgressTracker.progress.collectAsState()
+    var showQuickStatusTransferDialog by remember { mutableStateOf(false) }
+    var showQuickStatusDeleteDialog by remember { mutableStateOf(false) }
+    LaunchedEffect(quickStatusTransferState) {
+        if (quickStatusTransferState == null) {
+            showQuickStatusTransferDialog = false
+        }
+    }
+    LaunchedEffect(quickStatusDeleteState) {
+        if (quickStatusDeleteState == null) {
+            showQuickStatusDeleteDialog = false
+        }
+    }
 
     // "仅本地" 的核心目标是给用户看待上传清单，不应该出现堆叠容器。
     // 因此这里强制扁平展示，仅在该筛选下生效，不影响其他页面。
@@ -1410,7 +1426,10 @@ fun PasswordListContent(
     ) {
         effectiveCategoryQuickFilterShortcuts.isNotEmpty()
     }
-    val showPinnedQuickFolderPathBanner = effectiveQuickFolderBreadcrumbs.isNotEmpty()
+    val showPinnedQuickFolderPathBanner =
+        effectiveQuickFolderBreadcrumbs.isNotEmpty() ||
+            quickStatusTransferState != null ||
+            quickStatusDeleteState != null
     val hasScrollableHeaderContent = remember(
         hasVisibleQuickFilters,
         hasVisibleCategoryQuickFilters,
@@ -1665,6 +1684,18 @@ fun PasswordListContent(
         showPinnedQuickFolderPathBanner = showPinnedQuickFolderPathBanner,
         quickFolderBreadcrumbs = effectiveQuickFolderBreadcrumbs,
         mdbxPathSyncState = mdbxPathSyncState,
+        quickStatusTransferState = quickStatusTransferState,
+        onQuickStatusTransferClick = {
+            if (quickStatusTransferState != null) {
+                showQuickStatusTransferDialog = true
+            }
+        },
+        quickStatusDeleteState = quickStatusDeleteState,
+        onQuickStatusDeleteClick = {
+            if (quickStatusDeleteState != null) {
+                showQuickStatusDeleteDialog = true
+            }
+        },
         currentFilter = currentFilter,
         onNavigateFilter = viewModel::setCategoryFilter,
         shouldGateInitialPasswordFirstFrame = shouldGateInitialPasswordFirstFrame,
@@ -1756,6 +1787,30 @@ fun PasswordListContent(
             )
         }
     )
+
+    val quickStatusTransferDialogState = if (showQuickStatusTransferDialog) {
+        quickStatusTransferState?.toDialogUiState()
+    } else {
+        null
+    }
+    quickStatusTransferDialogState?.let { state ->
+            PasswordBatchTransferProgressDialog(
+                state = state,
+                onMoveToBackground = { showQuickStatusTransferDialog = false }
+            )
+    }
+
+    val quickStatusDeleteDialogState = if (showQuickStatusDeleteDialog) {
+        quickStatusDeleteState?.toDialogUiState()
+    } else {
+        null
+    }
+    quickStatusDeleteDialogState?.let { state ->
+        PasswordBatchDeleteProgressDialog(
+            state = state,
+            onMoveToBackground = { showQuickStatusDeleteDialog = false }
+        )
+    }
     
     PasswordListDialogs(
         showManualStackConfirmDialog = showManualStackConfirmDialog,
@@ -1789,13 +1844,16 @@ fun PasswordListContent(
             passwordEntries.any { it.id == id && it.keepassDatabaseId != null }
         } || selectedSupplementaryItems.any { it.entry.keepassDatabaseId != null },
         onDeleteSelection = { onProgress ->
-            val selectedPasswordEntries = passwordEntries.filter { it.id in selectedPasswords }
-            val totalToProcess = selectedPasswordEntries.size + selectedSupplementaryItems.size
+            val selectedPasswordIdsSnapshot = selectedPasswords.toSet()
+            val selectedSupplementaryItemsSnapshot = selectedSupplementaryItems.toList()
+            val selectedItemKeysSnapshot = selectedItemKeys.toList()
+            val selectedPasswordEntries = passwordEntries.filter { it.id in selectedPasswordIdsSnapshot }
+            val totalToProcess = selectedPasswordEntries.size + selectedSupplementaryItemsSnapshot.size
             var processedCount = 0
             onProgress(processedCount, totalToProcess.coerceAtLeast(1))
-            if (selectedItemKeys.isNotEmpty()) {
+            if (selectedItemKeysSnapshot.isNotEmpty()) {
                 coroutineScope.launch {
-                    aggregateStackRepository.clearManualStack(selectedItemKeys.toList())
+                    aggregateStackRepository.clearManualStack(selectedItemKeysSnapshot)
                 }
             }
             val deletedPasswordCount = viewModel.deletePasswordEntriesBatch(selectedPasswordEntries) { processed, _ ->
@@ -1803,7 +1861,7 @@ fun PasswordListContent(
                 onProgress(processedCount, totalToProcess.coerceAtLeast(1))
             }
 
-            selectedSupplementaryItems.forEach { item ->
+            selectedSupplementaryItemsSnapshot.forEach { item ->
                 when (item.type) {
                     PasswordPageContentType.AUTHENTICATOR -> {
                         aggregateUiState.totpItems
@@ -1839,7 +1897,12 @@ fun PasswordListContent(
                 onProgress(processedCount, totalToProcess.coerceAtLeast(1))
             }
 
-            deletedPasswordCount + selectedSupplementaryItems.size
+            deletedPasswordCount + selectedSupplementaryItemsSnapshot.size
+        },
+        onBatchDeleteStarted = {
+            isSelectionMode = false
+            selectedItemKeys = emptySet()
+            swipeSelectionAnchorKey = null
         },
         onSelectionCleared = {
             isSelectionMode = false

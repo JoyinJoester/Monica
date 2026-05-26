@@ -113,6 +113,9 @@ data class PageAdjustmentSettingsSnapshot(
     val validatorSmoothProgress: Boolean = true,
     val validatorVibrationEnabled: Boolean = true,
     val copyNextCodeWhenExpiring: Boolean = false,
+    val securityAnalysisAutoEnabled: Boolean = false,
+    val passwordDetailSecurityAnalysisEnabled: Boolean = true,
+    val autofillAuthRequired: Boolean = true,
     val iconCardsEnabled: Boolean = true,
     val appLauncherIcon: String = takagi.ru.monica.data.AppLauncherIcon.MODERN.name,
     val appLauncherLabel: String = takagi.ru.monica.data.AppLauncherLabel.MONICA_PASS.name,
@@ -1289,6 +1292,9 @@ class SettingsManager(private val context: Context) {
             validatorSmoothProgress = settings.validatorSmoothProgress,
             validatorVibrationEnabled = settings.validatorVibrationEnabled,
             copyNextCodeWhenExpiring = settings.copyNextCodeWhenExpiring,
+            securityAnalysisAutoEnabled = settings.securityAnalysisAutoEnabled,
+            passwordDetailSecurityAnalysisEnabled = settings.passwordDetailSecurityAnalysisEnabled,
+            autofillAuthRequired = settings.autofillAuthRequired,
             iconCardsEnabled = settings.iconCardsEnabled,
             appLauncherIcon = settings.appLauncherIcon.name,
             appLauncherLabel = settings.appLauncherLabel.name,
@@ -1459,6 +1465,10 @@ class SettingsManager(private val context: Context) {
             preferences[VALIDATOR_SMOOTH_PROGRESS_KEY] = snapshot.validatorSmoothProgress
             preferences[VALIDATOR_VIBRATION_ENABLED_KEY] = snapshot.validatorVibrationEnabled
             preferences[COPY_NEXT_CODE_WHEN_EXPIRING_KEY] = snapshot.copyNextCodeWhenExpiring
+            preferences[SECURITY_ANALYSIS_AUTO_ENABLED_KEY] = snapshot.securityAnalysisAutoEnabled
+            preferences[PASSWORD_DETAIL_SECURITY_ANALYSIS_ENABLED_KEY] =
+                snapshot.passwordDetailSecurityAnalysisEnabled
+            preferences[AUTOFILL_AUTH_REQUIRED_KEY] = snapshot.autofillAuthRequired
             preferences[ICON_CARDS_ENABLED_KEY] = snapshot.iconCardsEnabled
             val parsedAppLauncherIcon = runCatching {
                 AppLauncherIcon.valueOf(snapshot.appLauncherIcon.trim())

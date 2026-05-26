@@ -446,6 +446,7 @@ fun TotpListContent(
         bitwardenVaults = bitwardenVaults,
         getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
         getKeePassGroups = getKeePassGroups,
+        getMdbxFolders = passwordViewModel::getMdbxFolders,
         allowCopy = true,
         allowMove = totpItems.filter { it.id in selectedItems.filter { selected -> selected > 0L } }.none { it.isKeePassOwned() },
         onTargetSelected = { target, action ->
@@ -501,6 +502,11 @@ fun TotpListContent(
                         }
                         val targetMdbxDatabaseId = when (target) {
                             is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> target.databaseId
+                            is UnifiedMoveCategoryTarget.MdbxFolderTarget -> target.databaseId
+                            else -> null
+                        }
+                        val targetMdbxFolderId = when (target) {
+                            is UnifiedMoveCategoryTarget.MdbxFolderTarget -> target.folderId
                             else -> null
                         }
                         viewModel.saveTotpItem(
@@ -513,7 +519,8 @@ fun TotpListContent(
                             keepassDatabaseId = targetKeepassDatabaseId,
                             bitwardenVaultId = targetBitwardenVaultId,
                             bitwardenFolderId = targetBitwardenFolderId,
-                            mdbxDatabaseId = targetMdbxDatabaseId
+                            mdbxDatabaseId = targetMdbxDatabaseId,
+                            mdbxFolderId = targetMdbxFolderId
                         )
                         copiedCount++
                     }
@@ -572,6 +579,11 @@ fun TotpListContent(
                         }
                         is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> {
                             viewModel.moveToMdbxDatabase(movableIds, target.databaseId)
+                            val name = mdbxDatabases.find { it.id == target.databaseId }?.name ?: "MDBX"
+                            Toast.makeText(context, "${context.getString(R.string.move_to_category)} $name", Toast.LENGTH_SHORT).show()
+                        }
+                        is UnifiedMoveCategoryTarget.MdbxFolderTarget -> {
+                            viewModel.moveToMdbxDatabase(movableIds, target.databaseId, target.folderId)
                             val name = mdbxDatabases.find { it.id == target.databaseId }?.name ?: "MDBX"
                             Toast.makeText(context, "${context.getString(R.string.move_to_category)} $name", Toast.LENGTH_SHORT).show()
                         }

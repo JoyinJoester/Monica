@@ -104,6 +104,8 @@ data class MdbxDeltaSummary(
     val commitKind: String,
     val changeScope: String,
     val changedObjectIds: String,
+    val changedObjectPreview: String,
+    val changedFieldSummary: String,
     val parentCount: Int,
     val createdAt: String
 )
@@ -112,6 +114,8 @@ data class MdbxCommitDiff(
     val commitId: String,
     val objectType: String,
     val objectId: String,
+    val displayTitle: String?,
+    val storagePath: String?,
     val previousTitle: String?,
     val currentTitle: String?,
     val previousPayloadPreview: String?,
@@ -154,6 +158,38 @@ data class MdbxSnapshotSummary(
     val integrityOk: Boolean
 )
 
+data class MdbxStructurePreview(
+    val snapshotId: String,
+    val snapshotName: String,
+    val currentNodes: List<MdbxStructureNode>,
+    val snapshotNodes: List<MdbxStructureNode>,
+    val currentItemCount: Int,
+    val snapshotItemCount: Int
+)
+
+data class MdbxStructureNode(
+    val id: String,
+    val parentId: String?,
+    val name: String,
+    val type: MdbxStructureNodeType,
+    val path: String,
+    val status: MdbxStructureNodeStatus,
+    val childCount: Int,
+    val metadata: String
+)
+
+enum class MdbxStructureNodeType {
+    FOLDER,
+    ENTRY
+}
+
+enum class MdbxStructureNodeStatus {
+    UNCHANGED,
+    ADDED,
+    REMOVED,
+    MODIFIED
+}
+
 data class MdbxStoredVaultEntry(
     val entryId: String,
     val entryType: String,
@@ -169,7 +205,8 @@ private data class MdbxEntryMutation(
     val entryType: String,
     val title: String,
     val payloadJson: String,
-    val deleted: Boolean
+    val deleted: Boolean,
+    val legacyEntryId: String? = null
 )
 
 private data class MdbxEntryDeleteMutation(
@@ -769,14 +806,18 @@ class MdbxVaultStore(
                     ).use { cursor ->
                         buildList {
                             while (cursor.moveToNext()) {
+                                val commitId = cursor.getString(0)
+                                val changePreview = readCommitChangePreview(db, commitId, epochKey)
                                 add(
                                     MdbxDeltaSummary(
-                                        commitId = cursor.getString(0),
+                                        commitId = commitId,
                                         deviceId = cursor.getString(1),
                                         localSeq = cursor.getLong(2),
                                         commitKind = cursor.getString(3),
                                         changeScope = cursor.getString(4),
                                         changedObjectIds = decodeVaultText(cursor.getBlob(5), epochKey),
+                                        changedObjectPreview = changePreview.objectPreview,
+                                        changedFieldSummary = changePreview.fieldSummary,
                                         parentCount = cursor.getInt(6),
                                         createdAt = cursor.getString(7)
                                     )
@@ -808,7 +849,7 @@ class MdbxVaultStore(
                             beforeCreatedAt = version.createdAt,
                             beforeVersionSeq = version.versionSeq
                         )
-                        version.toDiff(previous, epochKey)
+                        version.toDiff(db, previous, epochKey)
                     }
                 }
             }.getOrDefault(emptyList())
@@ -988,6 +1029,64 @@ class MdbxVaultStore(
             }
             restored
         }
+
+    suspend fun getSnapshotStructurePreview(
+        databaseId: Long,
+        snapshotId: String
+    ): MdbxStructurePreview = withContext(Dispatchers.IO) {
+        val dbInfo = databaseDao.getDatabaseById(databaseId)
+            ?: throw IllegalStateException("MDBX vault not found: $databaseId")
+        val file = resolveWritableFile(dbInfo)
+            ?: throw IllegalStateException("MDBX vault has no readable local copy: ${dbInfo.name}")
+        if (!file.exists()) {
+            throw IllegalStateException("MDBX local copy is missing: ${file.absolutePath}")
+        }
+        openReadOnly(file).use { db ->
+            val missingTables = missingRequiredTables(db)
+            if (missingTables.isNotEmpty()) {
+                throw IllegalStateException(
+                    "Unsupported MDBX schema, missing tables: ${missingTables.joinToString()}"
+                )
+            }
+            val epochKey = requireEpochKey(db, dbInfo)
+            val snapshot = readSnapshotPayload(db, snapshotId, epochKey)
+                ?: throw IllegalStateException("MDBX snapshot not found: $snapshotId")
+            val snapshotName = queryString(
+                db,
+                "SELECT name FROM snapshots WHERE snapshot_id = ? LIMIT 1",
+                arrayOf(snapshotId)
+            ) ?: snapshotId.take(8)
+            val folders = readStructureFolders(db, epochKey)
+            val projectFolderIds = readStructureProjectFolderIds(db)
+            val currentEntries = readCurrentEntryVersionStates(db)
+                .mapNotNull { it.toStructureEntry(folders, projectFolderIds, epochKey) }
+            val snapshotEntries = if (snapshot.isFull) {
+                snapshot.entries
+            } else {
+                readLatestEntryVersionsAtCommit(db, snapshot.baseCommitId)
+            }.mapNotNull { it.toStructureEntry(folders, projectFolderIds, epochKey) }
+            val currentById = currentEntries.associateBy { it.id }
+            val snapshotById = snapshotEntries.associateBy { it.id }
+            MdbxStructurePreview(
+                snapshotId = snapshotId,
+                snapshotName = snapshotName,
+                currentNodes = buildStructureNodes(
+                    folders = folders,
+                    entries = currentEntries,
+                    compareEntries = snapshotById,
+                    side = StructurePreviewSide.CURRENT
+                ),
+                snapshotNodes = buildStructureNodes(
+                    folders = folders,
+                    entries = snapshotEntries,
+                    compareEntries = currentById,
+                    side = StructurePreviewSide.SNAPSHOT
+                ),
+                currentItemCount = currentEntries.count { !it.deleted },
+                snapshotItemCount = snapshotEntries.count { !it.deleted }
+            )
+        }
+    }
 
     suspend fun pruneAutomaticSnapshots(
         databaseId: Long,
@@ -1529,6 +1628,7 @@ class MdbxVaultStore(
             )
             .put("notes", entry.notes)
             .put("category_id", entry.categoryId)
+            .put("mdbx_folder_id", entry.mdbxFolderId)
             .put("bound_note_room_id", entry.boundNoteId)
             .put("bound_note_entry_id", resolveBoundNoteEntryId(entry))
             .put("login_type", entry.loginType)
@@ -1542,7 +1642,8 @@ class MdbxVaultStore(
             entryType = "login",
             title = entry.title,
             payloadJson = payload.toString(),
-            deleted = entry.isDeleted
+            deleted = entry.isDeleted,
+            legacyEntryId = legacyPasswordObjectId(entry)
         )
     }
 
@@ -1557,6 +1658,7 @@ class MdbxVaultStore(
             .put("item_data", item.itemData)
             .put("image_paths", item.imagePaths)
             .put("category_id", item.categoryId)
+            .put("mdbx_folder_id", item.mdbxFolderId)
             .put("bound_password_entry_id", resolveBoundPasswordEntryId(item))
             .put("bitwarden_mode", item.bitwardenVaultId != null)
             .put("keepass_mode", item.keepassDatabaseId != null)
@@ -1591,6 +1693,7 @@ class MdbxVaultStore(
             .put("sign_count", passkey.signCount)
             .put("notes", passkey.notes)
             .put("passkey_mode", passkey.passkeyMode)
+            .put("mdbx_folder_id", passkey.mdbxFolderId)
             .put("bitwarden_compatible", passkey.isBitwardenCompatible())
             .put("keepass_compatible", passkey.isKeePassCompatible())
         return MdbxEntryMutation(
@@ -1772,18 +1875,26 @@ class MdbxVaultStore(
     }
 
     private suspend fun upsertEntryMutations(mutations: List<MdbxEntryMutation>) =
-        mutateEntriesByVault(mutations) { db, mutation, epochKey ->
-            writeEntryMutation(db, mutation, epochKey)
+        mutateEntriesByVault(mutations) { db, vaultMutations, epochKey ->
+            val sharedCommit = sharedEntryCommit(db, vaultMutations.map { it.entryId }, epochKey)
+            val now = now()
+            vaultMutations.forEach { mutation ->
+                writeEntryMutation(db, mutation, epochKey, sharedCommit, now)
+            }
         }
 
     private suspend fun deleteEntryMutations(mutations: List<MdbxEntryDeleteMutation>) =
-        mutateEntriesByVault(mutations) { db, mutation, epochKey ->
-            writeEntryDeleteMutation(db, mutation, epochKey)
+        mutateEntriesByVault(mutations) { db, vaultMutations, epochKey ->
+            val sharedCommit = sharedEntryCommit(db, vaultMutations.map { it.entryId }, epochKey)
+            val now = now()
+            vaultMutations.forEach { mutation ->
+                writeEntryDeleteMutation(db, mutation, epochKey, sharedCommit, now)
+            }
         }
 
     private suspend fun <T : Any> mutateEntriesByVault(
         mutations: List<T>,
-        writeMutation: (SQLiteDatabase, T, ByteArray?) -> Unit
+        writeMutations: (SQLiteDatabase, List<T>, ByteArray?) -> Unit
     ) = withContext(Dispatchers.IO) {
         mutations.groupBy { mutationDatabaseId(it) }.forEach { (databaseId, vaultMutations) ->
             if (vaultMutations.isEmpty()) return@forEach
@@ -1797,7 +1908,7 @@ class MdbxVaultStore(
                     ensureSchema(db)
                     ensureDeviceRegistration(db)
                     val epochKey = requireEpochKey(db, dbInfo)
-                    vaultMutations.forEach { writeMutation(db, it, epochKey) }
+                    writeMutations(db, vaultMutations, epochKey)
                     db.setTransactionSuccessful()
                 } finally {
                     db.endTransaction()
@@ -1814,13 +1925,28 @@ class MdbxVaultStore(
             else -> throw IllegalArgumentException("Unsupported MDBX mutation: ${mutation::class.java.name}")
         }
 
+    private fun sharedEntryCommit(
+        db: SQLiteDatabase,
+        entryIds: List<String>,
+        epochKey: ByteArray?
+    ): String {
+        val changedEntryIds = entryIds.distinct()
+        return appendCommit(
+            db = db,
+            scope = "entry",
+            objectId = changedEntryIds.firstOrNull() ?: "entry-batch",
+            epochKey = epochKey,
+            changedObjectIds = changedEntryIds
+        )
+    }
+
     private fun writeEntryMutation(
         db: SQLiteDatabase,
         mutation: MdbxEntryMutation,
-        epochKey: ByteArray?
+        epochKey: ByteArray?,
+        commitId: String = appendCommit(db, "entry", mutation.entryId, epochKey),
+        now: String = now()
     ) {
-        val commitId = appendCommit(db, "entry", mutation.entryId, epochKey)
-        val now = now()
         val folderId = folderIdFromPayload(mutation.payloadJson)
         val titleCt = encrypt(mutation.title, epochKey)
         val payloadCt = encrypt(mutation.payloadJson, epochKey)
@@ -1837,10 +1963,10 @@ class MdbxVaultStore(
         db.execSQL(
             """
             UPDATE projects SET title_ct = ?, group_id = ?, object_clock = object_clock + 1,
-                head_commit_id = ?, deleted = 0, updated_at = ?, updated_by_device_id = ?
+                head_commit_id = ?, deleted = ?, updated_at = ?, updated_by_device_id = ?
             WHERE project_id = ?
             """.trimIndent(),
-            arrayOf(titleCt, folderId, commitId, now, deviceId, mutation.projectId)
+            arrayOf(titleCt, folderId, commitId, if (mutation.deleted) 1 else 0, now, deviceId, mutation.projectId)
         )
         db.execSQL(
             """
@@ -1887,9 +2013,16 @@ class MdbxVaultStore(
         )
         if (mutation.deleted) {
             insertTombstone(db, "entry", mutation.entryId)
+            insertTombstone(db, "project", mutation.projectId)
         } else {
             clearTombstone(db, "entry", mutation.entryId)
+            clearTombstone(db, "project", mutation.projectId)
         }
+        mutation.legacyEntryId
+            ?.takeIf { it != mutation.entryId }
+            ?.let { legacyEntryId ->
+                markLegacyEntryDeleted(db, legacyEntryId, commitId, now)
+            }
         recordEntryVersion(
             db = db,
             commitId = commitId,
@@ -1903,13 +2036,49 @@ class MdbxVaultStore(
         )
     }
 
+    private fun markLegacyEntryDeleted(
+        db: SQLiteDatabase,
+        legacyEntryId: String,
+        commitId: String,
+        now: String
+    ) {
+        db.execSQL(
+            """
+            UPDATE projects SET deleted = 1, object_clock = object_clock + 1,
+                head_commit_id = ?, updated_at = ?, updated_by_device_id = ?
+            WHERE project_id = ?
+            """.trimIndent(),
+            arrayOf(commitId, now, deviceId, legacyEntryId)
+        )
+        db.execSQL(
+            "UPDATE object_index SET deleted = 1, updated_at = ?, head_commit_id = ? WHERE object_type = 'project' AND object_id = ?",
+            arrayOf(now, commitId, legacyEntryId)
+        )
+        db.execSQL(
+            """
+            UPDATE entries SET deleted = 1, object_clock = object_clock + 1,
+                head_commit_id = ?, updated_at = ?, updated_by_device_id = ?
+            WHERE entry_id = ?
+            """.trimIndent(),
+            arrayOf(commitId, now, deviceId, legacyEntryId)
+        )
+        db.execSQL(
+            "UPDATE object_index SET deleted = 1, updated_at = ?, head_commit_id = ? WHERE object_type = 'entry' AND object_id = ?",
+            arrayOf(now, commitId, legacyEntryId)
+        )
+        insertTombstone(db, "project", legacyEntryId)
+        insertTombstone(db, "entry", legacyEntryId)
+    }
+
     private fun writeEntryDeleteMutation(
         db: SQLiteDatabase,
         mutation: MdbxEntryDeleteMutation,
-        epochKey: ByteArray?
+        epochKey: ByteArray?,
+        commitId: String = appendCommit(db, "entry", mutation.entryId, epochKey),
+        now: String = now()
     ) {
-        val commitId = appendCommit(db, "entry", mutation.entryId, epochKey)
-        val now = now()
+        val version = readEntryVersionState(db, mutation.entryId)
+        val projectId = version?.projectId ?: mutation.entryId
         db.execSQL(
             """
             UPDATE entries SET deleted = 1, object_clock = object_clock + 1,
@@ -1922,16 +2091,29 @@ class MdbxVaultStore(
             "UPDATE object_index SET deleted = 1, updated_at = ?, head_commit_id = ? WHERE object_id = ?",
             arrayOf(now, commitId, mutation.entryId)
         )
+        db.execSQL(
+            """
+            UPDATE projects SET deleted = 1, object_clock = object_clock + 1,
+                head_commit_id = ?, updated_at = ?, updated_by_device_id = ?
+            WHERE project_id = ?
+            """.trimIndent(),
+            arrayOf(commitId, now, deviceId, projectId)
+        )
+        db.execSQL(
+            "UPDATE object_index SET deleted = 1, updated_at = ?, head_commit_id = ? WHERE object_type = 'project' AND object_id = ?",
+            arrayOf(now, commitId, projectId)
+        )
         insertTombstone(db, "entry", mutation.entryId)
-        readEntryVersionState(db, mutation.entryId)?.let { version ->
+        insertTombstone(db, "project", projectId)
+        version?.let {
             recordEntryVersion(
                 db = db,
                 commitId = commitId,
-                projectId = version.projectId ?: mutation.entryId,
+                projectId = projectId,
                 entryId = mutation.entryId,
-                entryType = version.entryType ?: "entry",
-                titleCt = version.titleCt,
-                payloadCt = version.payloadCt,
+                entryType = it.entryType ?: "entry",
+                titleCt = it.titleCt,
+                payloadCt = it.payloadCt,
                 deleted = true,
                 createdAt = now
             )
@@ -2438,7 +2620,8 @@ class MdbxVaultStore(
         scope: String,
         objectId: String,
         epochKey: ByteArray? = null,
-        commitKind: String = "local"
+        commitKind: String = "local",
+        changedObjectIds: List<String> = listOf(objectId)
     ): String {
         val now = now()
         ensureDeviceRegistration(db, now)
@@ -2451,9 +2634,12 @@ class MdbxVaultStore(
             arrayOf(deviceId)
         ).use { if (it.moveToFirst()) it.getString(0) else null }
         val commitId = UUID.randomUUID().toString()
+        val changedObjectIdsJson = JSONArray().apply {
+            changedObjectIds.distinct().forEach { put(it) }
+        }.toString()
         db.execSQL(
             "INSERT INTO commits (commit_id, device_id, local_seq, commit_kind, change_scope, changed_object_ids_ct, vector_clock, created_at, integrity_tag) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            arrayOf(commitId, deviceId, seq, commitKind, scope, encrypt("[\"$objectId\"]", epochKey), "{\"$deviceId\":$seq}", now, UUID.randomUUID().toString().toByteArray())
+            arrayOf(commitId, deviceId, seq, commitKind, scope, encrypt(changedObjectIdsJson, epochKey), "{\"$deviceId\":$seq}", now, UUID.randomUUID().toString().toByteArray())
         )
         if (!parent.isNullOrBlank()) {
             db.execSQL(
@@ -2620,6 +2806,33 @@ class MdbxVaultStore(
         val isFull: Boolean,
         val entries: List<ObjectVersionState>
     )
+
+    private data class CommitChangePreview(
+        val objectPreview: String,
+        val fieldSummary: String
+    )
+
+    private data class StructureFolderInfo(
+        val id: String,
+        val parentId: String?,
+        val name: String,
+        val path: String
+    )
+
+    private data class StructureEntryInfo(
+        val id: String,
+        val parentFolderId: String?,
+        val title: String,
+        val entryType: String,
+        val deleted: Boolean,
+        val contentHash: String,
+        val updatedAt: String
+    )
+
+    private enum class StructurePreviewSide {
+        CURRENT,
+        SNAPSHOT
+    }
 
     private data class BundleEntryVersion(
         val objectId: String,
@@ -2791,6 +3004,7 @@ class MdbxVaultStore(
         )
 
     private fun ObjectVersionState.toDiff(
+        db: SQLiteDatabase,
         previous: ObjectVersionState?,
         epochKey: ByteArray?
     ): MdbxCommitDiff {
@@ -2798,6 +3012,16 @@ class MdbxVaultStore(
         val currentTitle = titleCt?.let { decodeVaultText(it, epochKey) }
         val previousPayload = previous?.payloadCt?.let { decodeVaultText(it, epochKey) }
         val currentPayload = payloadCt?.let { decodeVaultText(it, epochKey) }
+        val displayInfo = readDiffDisplayInfo(
+            db = db,
+            state = this,
+            previous = previous,
+            currentTitle = currentTitle,
+            previousTitle = previousTitle,
+            currentPayload = currentPayload,
+            previousPayload = previousPayload,
+            epochKey = epochKey
+        )
         val changedFields = buildList {
             if (previous == null) add("created")
             if (previousTitle != currentTitle) add("title")
@@ -2808,6 +3032,8 @@ class MdbxVaultStore(
             commitId = commitId,
             objectType = objectType,
             objectId = objectId,
+            displayTitle = displayInfo.title,
+            storagePath = displayInfo.storagePath,
             previousTitle = previousTitle,
             currentTitle = currentTitle,
             previousPayloadPreview = summarizeConflictPayload(previousPayload),
@@ -2817,6 +3043,329 @@ class MdbxVaultStore(
             changedFields = changedFields,
             createdAt = createdAt
         )
+    }
+
+    private fun readCommitChangePreview(
+        db: SQLiteDatabase,
+        commitId: String,
+        epochKey: ByteArray?
+    ): CommitChangePreview {
+        if (!tableExists(db, "object_versions")) {
+            return CommitChangePreview("没有对象变更", "没有字段变更")
+        }
+        val diffs = readObjectVersionsForCommit(db, commitId).map { version ->
+            val previous = readPreviousObjectVersion(
+                db = db,
+                objectType = version.objectType,
+                objectId = version.objectId,
+                beforeCreatedAt = version.createdAt,
+                beforeVersionSeq = version.versionSeq
+            )
+            version.toDiff(db, previous, epochKey)
+        }
+        val objectLabels = diffs
+            .map { diff ->
+                listOfNotNull(
+                    diff.storagePath?.takeIf { it.isNotBlank() },
+                    diff.displayTitle?.takeIf { it.isNotBlank() } ?: diff.objectId.take(8)
+                ).joinToString("/")
+            }
+            .distinct()
+        val fieldLabels = diffs
+            .flatMap { it.changedFields }
+            .map(::commitFieldLabel)
+            .filter { it.isNotBlank() }
+            .distinct()
+        return CommitChangePreview(
+            objectPreview = summarizeCommitObjects(objectLabels),
+            fieldSummary = summarizeCommitFields(fieldLabels)
+        )
+    }
+
+    private fun summarizeCommitObjects(labels: List<String>): String =
+        when {
+            labels.isEmpty() -> "没有对象变更"
+            labels.size == 1 -> labels.first()
+            else -> "${labels.first()} 等 ${labels.size} 个对象"
+        }
+
+    private fun summarizeCommitFields(labels: List<String>): String =
+        when {
+            labels.isEmpty() -> "没有字段变更"
+            labels.size <= 3 -> labels.joinToString("、")
+            else -> labels.take(3).joinToString("、") + " 等 ${labels.size} 项"
+        }
+
+    private fun commitFieldLabel(field: String): String =
+        when (field.lowercase(Locale.ROOT)) {
+            "created" -> "新建"
+            "title" -> "标题"
+            "payload" -> "内容摘要"
+            "deleted" -> "删除状态"
+            "metadata" -> "元数据"
+            else -> field
+        }
+
+    private fun readStructureFolders(
+        db: SQLiteDatabase,
+        epochKey: ByteArray?
+    ): Map<String, StructureFolderInfo> {
+        if (!tableExists(db, "folders")) return emptyMap()
+        val raw = linkedMapOf<String, Pair<String?, String>>()
+        raw["root"] = null to "根目录"
+        db.rawQuery(
+            """
+            SELECT folder_id, parent_folder_id, name_ct
+            FROM folders
+            WHERE deleted = 0
+            ORDER BY path_key ASC
+            """.trimIndent(),
+            emptyArray()
+        ).use { cursor ->
+            while (cursor.moveToNext()) {
+                val folderId = cursor.getString(0)
+                raw[folderId] = (if (cursor.isNull(1)) null else cursor.getString(1)) to
+                    decodeVaultText(cursor.getBlob(2), epochKey)
+            }
+        }
+        fun pathOf(folderId: String, seen: Set<String> = emptySet()): String {
+            if (folderId == "root" || folderId in seen) return ""
+            val row = raw[folderId] ?: return ""
+            val parentPath = row.first?.let { pathOf(it, seen + folderId) }.orEmpty()
+            return listOf(parentPath, row.second)
+                .filter { it.isNotBlank() }
+                .joinToString("/")
+        }
+        return raw.mapValues { (folderId, row) ->
+            StructureFolderInfo(
+                id = folderId,
+                parentId = row.first?.takeIf { it.isNotBlank() },
+                name = row.second,
+                path = pathOf(folderId)
+            )
+        }
+    }
+
+    private fun readStructureProjectFolderIds(db: SQLiteDatabase): Map<String, String?> {
+        if (!tableExists(db, "projects")) return emptyMap()
+        return db.rawQuery(
+            """
+            SELECT project_id, group_id
+            FROM projects
+            WHERE deleted = 0
+            """.trimIndent(),
+            emptyArray()
+        ).use { cursor ->
+            buildMap {
+                while (cursor.moveToNext()) {
+                    put(cursor.getString(0), if (cursor.isNull(1)) null else cursor.getString(1))
+                }
+            }
+        }
+    }
+
+    private fun ObjectVersionState.toStructureEntry(
+        folders: Map<String, StructureFolderInfo>,
+        projectFolderIds: Map<String, String?>,
+        epochKey: ByteArray?
+    ): StructureEntryInfo? {
+        if (objectType.lowercase(Locale.ROOT) != "entry") return null
+        val title = titleCt?.let { decodeVaultText(it, epochKey) }
+            ?.takeIf { it.isNotBlank() }
+            ?: objectId.take(8)
+        val payload = payloadCt?.let { decodeVaultText(it, epochKey) }.orEmpty()
+        val folderId = (projectId?.let { projectFolderIds[it] } ?: folderIdFromPayload(payload))
+            .takeIf { it.isNotBlank() }
+            ?: "root"
+        return StructureEntryInfo(
+            id = objectId,
+            parentFolderId = folderId,
+            title = title,
+            entryType = entryType ?: "entry",
+            deleted = deleted,
+            contentHash = sha256Hex("${title}\n$payload\n$deleted".toByteArray(Charsets.UTF_8)),
+            updatedAt = createdAt
+        )
+    }
+
+    private fun buildStructureNodes(
+        folders: Map<String, StructureFolderInfo>,
+        entries: List<StructureEntryInfo>,
+        compareEntries: Map<String, StructureEntryInfo>,
+        side: StructurePreviewSide
+    ): List<MdbxStructureNode> {
+        val visibleEntries = entries.filterNot { it.deleted }
+        val visibleFolderIds = folders.keys
+            .filter { it != "root" }
+            .toMutableSet()
+        visibleEntries.forEach { entry ->
+            var folderId = entry.parentFolderId ?: "root"
+            var guard = 0
+            while (folderId.isNotBlank() && guard++ < 32) {
+                if (!visibleFolderIds.add(folderId)) break
+                folderId = folders[folderId]?.parentId.orEmpty()
+            }
+        }
+        val folderChildCount = mutableMapOf<String, Int>()
+        visibleEntries.forEach { entry ->
+            folderChildCount[entry.parentFolderId ?: "root"] =
+                (folderChildCount[entry.parentFolderId ?: "root"] ?: 0) + 1
+        }
+        visibleFolderIds.forEach { folderId ->
+            val parentId = folders[folderId]?.parentId
+            if (!parentId.isNullOrBlank()) {
+                folderChildCount[parentId] = (folderChildCount[parentId] ?: 0) + 1
+            }
+        }
+        val folderNodes = visibleFolderIds
+            .filter { it != "root" }
+            .mapNotNull { folderId ->
+                val folder = folders[folderId] ?: return@mapNotNull null
+                MdbxStructureNode(
+                    id = "folder:$folderId",
+                    parentId = folder.parentId?.takeIf { it != "root" }?.let { "folder:$it" },
+                    name = folder.name,
+                    type = MdbxStructureNodeType.FOLDER,
+                    path = folder.path,
+                    status = MdbxStructureNodeStatus.UNCHANGED,
+                    childCount = folderChildCount[folderId] ?: 0,
+                    metadata = "${folderChildCount[folderId] ?: 0} 项"
+                )
+            }
+        val entryNodes = visibleEntries.map { entry ->
+            val compare = compareEntries[entry.id]
+            val status = when {
+                compare == null || compare.deleted -> if (side == StructurePreviewSide.CURRENT) {
+                    MdbxStructureNodeStatus.ADDED
+                } else {
+                    MdbxStructureNodeStatus.REMOVED
+                }
+                compare.contentHash != entry.contentHash ||
+                    compare.parentFolderId != entry.parentFolderId ||
+                    compare.title != entry.title -> MdbxStructureNodeStatus.MODIFIED
+                else -> MdbxStructureNodeStatus.UNCHANGED
+            }
+            val folderPath = folders[entry.parentFolderId ?: "root"]?.path.orEmpty()
+            MdbxStructureNode(
+                id = "entry:${entry.id}",
+                parentId = entry.parentFolderId
+                    ?.takeIf { it != "root" && folders.containsKey(it) }
+                    ?.let { "folder:$it" },
+                name = entry.title,
+                type = MdbxStructureNodeType.ENTRY,
+                path = listOf(folderPath, entry.title).filter { it.isNotBlank() }.joinToString("/"),
+                status = status,
+                childCount = 0,
+                metadata = entryTypeLabel(entry.entryType)
+            )
+        }
+        return (folderNodes + entryNodes).sortedWith(
+            compareBy<MdbxStructureNode> { it.parentId.orEmpty() }
+                .thenBy { structureNodeTypeSortRank(it) }
+                .thenBy { it.name.lowercase(Locale.ROOT) }
+                .thenBy { it.path.lowercase(Locale.ROOT) }
+                .thenBy { it.id }
+        )
+    }
+
+    private fun structureNodeTypeSortRank(node: MdbxStructureNode): Int =
+        if (node.type == MdbxStructureNodeType.FOLDER) 0 else 1
+
+    private fun entryTypeLabel(type: String): String =
+        when (type.lowercase(Locale.ROOT)) {
+            "password" -> "密码"
+            "totp" -> "验证器"
+            "note" -> "安全笔记"
+            "card" -> "银行卡"
+            "document-ref" -> "文档"
+            "passkey" -> "通行密钥"
+            else -> type
+        }
+
+    private data class DiffDisplayInfo(
+        val title: String?,
+        val storagePath: String?
+    )
+
+    private fun readDiffDisplayInfo(
+        db: SQLiteDatabase,
+        state: ObjectVersionState,
+        previous: ObjectVersionState?,
+        currentTitle: String?,
+        previousTitle: String?,
+        currentPayload: String?,
+        previousPayload: String?,
+        epochKey: ByteArray?
+    ): DiffDisplayInfo {
+        val title = currentTitle
+            ?: previousTitle
+            ?: state.projectId?.let { readProjectTitle(db, it, epochKey) }
+            ?: state.objectId.take(8)
+        val folderId = when (state.objectType.lowercase(Locale.ROOT)) {
+            "folder" -> readFolderParentId(db, state.objectId)
+            "entry" -> {
+                val projectId = state.projectId ?: previous?.projectId ?: state.objectId
+                readProjectFolderId(db, projectId)
+                    ?: currentPayload?.let(::folderIdFromPayload)
+                    ?: previousPayload?.let(::folderIdFromPayload)
+            }
+            "project" -> readProjectFolderId(db, state.objectId)
+            else -> null
+        }
+        return DiffDisplayInfo(
+            title = title,
+            storagePath = folderDisplayPath(db, folderId, epochKey)
+        )
+    }
+
+    private fun readProjectTitle(db: SQLiteDatabase, projectId: String, epochKey: ByteArray?): String? =
+        db.rawQuery(
+            "SELECT title_ct FROM projects WHERE project_id = ? LIMIT 1",
+            arrayOf(projectId)
+        ).use { cursor ->
+            if (cursor.moveToFirst() && !cursor.isNull(0)) {
+                decodeVaultText(cursor.getBlob(0), epochKey)
+            } else {
+                null
+            }
+        }
+
+    private fun readProjectFolderId(db: SQLiteDatabase, projectId: String): String? =
+        db.rawQuery(
+            "SELECT group_id FROM projects WHERE project_id = ? LIMIT 1",
+            arrayOf(projectId)
+        ).use { cursor ->
+            if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getString(0) else null
+        }
+
+    private fun readFolderParentId(db: SQLiteDatabase, folderId: String): String? =
+        db.rawQuery(
+            "SELECT parent_folder_id FROM folders WHERE folder_id = ? LIMIT 1",
+            arrayOf(folderId)
+        ).use { cursor ->
+            if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getString(0) else null
+        }
+
+    private fun folderDisplayPath(db: SQLiteDatabase, folderId: String?, epochKey: ByteArray?): String? {
+        var current = folderId?.takeIf { it.isNotBlank() && it != "root" } ?: return null
+        val names = ArrayDeque<String>()
+        val seen = mutableSetOf<String>()
+        while (current.isNotBlank() && current != "root" && seen.add(current) && seen.size < 32) {
+            val row = db.rawQuery(
+                "SELECT parent_folder_id, name_ct FROM folders WHERE folder_id = ? LIMIT 1",
+                arrayOf(current)
+            ).use { cursor ->
+                if (cursor.moveToFirst() && !cursor.isNull(1)) {
+                    val parentId = if (cursor.isNull(0)) null else cursor.getString(0)
+                    parentId to decodeVaultText(cursor.getBlob(1), epochKey)
+                } else {
+                    null
+                }
+            } ?: break
+            names.addFirst(row.second)
+            current = row.first.orEmpty()
+        }
+        return names.joinToString("/").takeIf { it.isNotBlank() }
     }
 
     private fun createSnapshotLocked(
@@ -4498,8 +5047,12 @@ class MdbxVaultStore(
     }
 
     private fun folderIdFromPayload(payloadJson: String): String {
-        val categoryId = runCatching { JSONObject(payloadJson).optLong("category_id", 0L) }
-            .getOrDefault(0L)
+        val payload = runCatching { JSONObject(payloadJson) }.getOrNull() ?: return "root"
+        val explicitFolderId = payload.optString("mdbx_folder_id")
+            .trim()
+            .takeIf { it.isNotBlank() && !it.equals("root", ignoreCase = true) }
+        if (explicitFolderId != null) return explicitFolderId
+        val categoryId = payload.optLong("category_id", 0L)
         return if (categoryId > 0L) "category:$categoryId" else "root"
     }
 
@@ -5344,8 +5897,17 @@ class MdbxVaultStore(
 
     private fun passwordObjectId(entry: PasswordEntry): String =
         entry.replicaGroupId
-            ?.takeIf { it.startsWith("password:") }
+            ?.takeIf(::isMdbxPasswordObjectId)
             ?: "password:${entry.id}"
+
+    private fun legacyPasswordObjectId(entry: PasswordEntry): String? =
+        entry.replicaGroupId
+            ?.takeIf(::isMdbxPasswordObjectId)
+            ?.let { "password:${entry.id}" }
+            ?.takeIf { it != passwordObjectId(entry) }
+
+    private fun isMdbxPasswordObjectId(value: String): Boolean =
+        value.startsWith("password:") && value.length > "password:".length
 
     private fun secureItemObjectId(item: SecureItem, prefix: String): String =
         item.replicaGroupId

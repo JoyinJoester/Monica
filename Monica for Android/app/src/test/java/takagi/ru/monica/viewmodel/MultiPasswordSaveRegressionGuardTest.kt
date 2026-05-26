@@ -70,6 +70,220 @@ class MultiPasswordSaveRegressionGuardTest {
     }
 
     @Test
+    fun inlineTotpPreviewMatchesSimplePasswordPreviewAndKeepsCountdownInSync() {
+        val previewSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/components/InlineTotpPreviewCard.kt"
+        ).readText()
+        val addTotpSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/AddEditTotpScreen.kt"
+        ).readText()
+        val addPasswordSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/AddEditPasswordScreen.kt"
+        ).readText()
+
+        assertTrue(
+            "Inline TOTP previews should keep the compact code plus a one-second Material Expressive shape animation while the number uses the synchronized countdown.",
+            previewSource.contains("fun InlineTotpPreviewCard(") &&
+                previewSource.contains("val synchronizedRemainingSeconds") &&
+                previewSource.contains("rememberInfiniteTransition(label = \"inline_totp_badge_shape_transition\")") &&
+                previewSource.contains("durationMillis = 1000") &&
+                previewSource.contains("MaterialExpressiveLoadingIndicator(") &&
+                previewSource.contains("progress = { shapeProgress }") &&
+                previewSource.contains("modifier = Modifier.size(60.dp)") &&
+                previewSource.contains("color = if (isHotp) containerColor else contentColor") &&
+                previewSource.contains("LoadingIndicatorDefaults.IndeterminateIndicatorPolygons") &&
+                addTotpSource.contains("showHeader = false") &&
+                addTotpSource.contains("showProgress = false") &&
+                addPasswordSource.contains("showHeader = false") &&
+                addPasswordSource.contains("showProgress = false")
+        )
+        assertFalse(
+            "Inline TOTP preview must not bring back the visible TOTP/Steam header, shield icon, bottom progress bar, circular progress-ring badge, or determinate LoadingIndicator that freezes into one rotating shape.",
+            previewSource.contains("LinearProgressIndicator") ||
+                previewSource.contains("Icons.Default.Shield") ||
+                previewSource.contains("Icons.Default.Games") ||
+                previewSource.contains("\"TOTP\"") ||
+                previewSource.contains("\"Steam\"") ||
+                previewSource.contains("drawArc(") ||
+                previewSource.contains("Canvas(") ||
+                previewSource.contains("progress = { progress") ||
+                previewSource.contains("progress = { animatedShapeProgress }") ||
+                previewSource.contains("DeterminateIndicatorPolygons")
+        )
+    }
+
+    @Test
+    fun addPasswordAuthenticatorKeyFieldHasInlineScanAction() {
+        val source = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/AddEditPasswordScreen.kt"
+        ).readText()
+        val mainActivitySource = projectFile(
+            "app/src/main/java/takagi/ru/monica/MainActivity.kt"
+        ).readText()
+        val simpleMainSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt"
+        ).readText()
+        val passwordTabPaneSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/PasswordTabPane.kt"
+        ).readText()
+        val mainScreenFabSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/MainScreenFab.kt"
+        ).readText()
+        val securitySection = source.substringAfter("// Security Card (TOTP)")
+            .substringBefore("// Organization Card")
+        val authenticatorKeyField = securitySection.substringAfter("value = authenticatorSecret")
+            .substringBefore("ExposedDropdownMenuBox(")
+
+        assertTrue(
+            "The Add Password authenticator key field should expose QR scanning as the field trailing action so scanned secrets fill the same form directly.",
+            authenticatorKeyField.contains("trailingIcon = {") &&
+                authenticatorKeyField.contains("if (onScanAuthenticatorQrCode != null)") &&
+                authenticatorKeyField.contains("IconButton(onClick = onScanAuthenticatorQrCode)") &&
+                authenticatorKeyField.contains("Icons.Default.QrCodeScanner") &&
+                source.contains("pendingQrResult?.let { qrValue ->") &&
+                source.contains("applyScannedAuthenticator(qrValue)")
+        )
+        assertFalse(
+            "Do not bring back the separate full-width Scan QR button below the authenticator key field.",
+            securitySection.contains("FilledTonalButton(\n                                    onClick = onScanAuthenticatorQrCode")
+        )
+        assertTrue(
+            "The main password page must pass the QR scanner action/result into inline and FAB Add Password sheets, otherwise the trailing scan icon disappears outside the standalone route.",
+            mainActivitySource.contains("val mainQrResult = navController.currentBackStackEntry") &&
+                mainActivitySource.contains("pendingPasswordAuthenticatorQrResult = mainQrResult") &&
+                mainActivitySource.contains("onScanPasswordAuthenticatorQrCode = {") &&
+                mainActivitySource.contains("navController.navigate(Screen.QrScanner.route)") &&
+                simpleMainSource.contains("pendingPasswordAuthenticatorQrResult: String? = null") &&
+                simpleMainSource.contains("onScanPasswordAuthenticatorQrCode: () -> Unit = {}") &&
+                simpleMainSource.contains("pendingPasswordAuthenticatorQrResult = pendingPasswordAuthenticatorQrResult") &&
+                simpleMainSource.contains("onScanPasswordAuthenticatorQrCode = onScanPasswordAuthenticatorQrCode") &&
+                passwordTabPaneSource.contains("pendingQrResult = pendingPasswordAuthenticatorQrResult") &&
+                passwordTabPaneSource.contains("onScanAuthenticatorQrCode = onScanPasswordAuthenticatorQrCode") &&
+                mainScreenFabSource.contains("pendingQrResult = pendingPasswordAuthenticatorQrResult") &&
+                mainScreenFabSource.contains("onScanAuthenticatorQrCode = onScanPasswordAuthenticatorQrCode")
+        )
+    }
+
+    @Test
+    fun swipeableAddFabUsesEasyNotesStyleFullScreenTransition() {
+        val source = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/components/SwipeableAddFab.kt"
+        ).readText()
+        val mainScreenSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt"
+        ).readText()
+        val expandedContentTransition = source.substringAfter("AnimatedVisibility(\n            visible = isExpanded")
+            .substringBefore("BackHandler(enabled = isExpanded)")
+        val fabTransition = source.substringAfter("AnimatedVisibility(\n            visible = !isExpanded")
+            .substringBefore("Box(\n                modifier = Modifier")
+        val renderMainSurface = mainScreenSource.substringAfter("fun RenderMainSurface() {")
+            .substringBefore("val prepareTotpAddStorageDefaults")
+        val scaledMainSurfaceLayer = renderMainSurface.substringAfter("Box(\n        modifier = Modifier")
+            .substringBefore("if (useDraggableNav")
+        val overlayCallIndex = mainScreenSource.indexOf("MainScreenFabOverlay(")
+        val renderCallIndex = mainScreenSource.indexOf("RenderMainSurface()", startIndex = overlayCallIndex)
+
+        assertTrue(
+            "FAB add should follow EasyNotes' edit-page transition: click the button, fade/scale in a full-screen add page, and fade/scale the FAB away.",
+            expandedContentTransition.contains("fadeIn(animationSpec = tween(300))") &&
+                expandedContentTransition.contains("scaleIn(initialScale = 0.9f, animationSpec = tween(400))") &&
+                expandedContentTransition.contains("fadeOut(animationSpec = tween(300))") &&
+                expandedContentTransition.contains("scaleOut(targetScale = 0.9f, animationSpec = tween(400))") &&
+                expandedContentTransition.contains("modifier = Modifier.matchParentSize()") &&
+                source.contains("expandedContent { animateExpanded(false) }") &&
+                fabTransition.contains("fadeIn(animationSpec = tween(160))") &&
+                fabTransition.contains("scaleIn(initialScale = 0.9f, animationSpec = tween(180))") &&
+                fabTransition.contains("fadeOut(animationSpec = tween(120))") &&
+                fabTransition.contains("scaleOut(targetScale = 0.9f, animationSpec = tween(140))") &&
+                mainScreenSource.contains("val mainSurfaceFabTransitionScale by animateFloatAsState(") &&
+                mainScreenSource.contains("targetValue = if (isFabExpanded) 0.9f else 1f") &&
+                mainScreenSource.contains("label = \"main_surface_fab_transition_scale\"") &&
+                renderMainSurface.contains("Box(modifier = Modifier.fillMaxSize())") &&
+                scaledMainSurfaceLayer.contains(".matchParentSize()") &&
+                scaledMainSurfaceLayer.contains("scaleX = mainSurfaceFabTransitionScale") &&
+                scaledMainSurfaceLayer.contains("scaleY = mainSurfaceFabTransitionScale") &&
+                overlayCallIndex in 0 until renderCallIndex
+        )
+        assertFalse(
+            "Do not bring back the FAB-to-fullscreen resize animation; EasyNotes uses a screen transition instead.",
+            source.contains("Animatable(0f)") ||
+                source.contains("expandProgress") ||
+                source.contains("lerp(fabSize") ||
+                source.contains("requiredSize(fullWidth, fullHeight)") ||
+                source.contains("offset { IntOffset")
+        )
+    }
+
+    @Test
+    fun addPasswordFromMdbxFolderPreservesFolderTargetAndShowsFolderPicker() {
+        val addPasswordSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/AddEditPasswordScreen.kt"
+        ).readText()
+        val mainActivitySource = projectFile(
+            "app/src/main/java/takagi/ru/monica/MainActivity.kt"
+        ).readText()
+        val helpersSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/MainScreenHelpers.kt"
+        ).readText()
+        val pickerSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/components/MultiStorageTargetPickerBottomSheet.kt"
+        ).readText()
+        val selectorSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/components/MultiStorageTargetSelectorCard.kt"
+        ).readText()
+        val passwordTabSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/PasswordTabPane.kt"
+        ).readText()
+        val fabSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/MainScreenFab.kt"
+        ).readText()
+
+        assertTrue(
+            "New-item defaults must carry the selected MDBX folder from a folder filter, otherwise Add Password falls back to the vault root or Monica local.",
+            helpersSource.contains("val mdbxFolderId: String? = null") &&
+                helpersSource.contains("is CategoryFilter.MdbxFolderFilter") &&
+                helpersSource.contains("mdbxFolderId = filter.folderId")
+        )
+        assertTrue(
+            "Route-level pending defaults must persist the MDBX folder id across navigation into Add Password.",
+            mainActivitySource.contains("KEY_PENDING_ADD_MDBX_FOLDER_ID") &&
+                mainActivitySource.contains("mdbxFolderId = get<String>(KEY_PENDING_ADD_MDBX_FOLDER_ID)") &&
+                mainActivitySource.contains("initialMdbxFolderId = pendingStorageDefaults?.mdbxFolderId")
+        )
+        assertTrue(
+            "Add Password must initialize and save a concrete MDBX folder target, not just the database id.",
+            addPasswordSource.contains("initialMdbxFolderId: String? = null") &&
+                addPasswordSource.contains("var mdbxFolderId by rememberSaveable") &&
+                addPasswordSource.contains("mdbxFolderId = initialMdbxFolderId") &&
+                addPasswordSource.contains("is CategoryFilter.MdbxFolderFilter -> StorageTarget.Mdbx(filter.databaseId, filter.folderId)") &&
+                addPasswordSource.contains("mdbxFolderId = primaryTarget.folderId") &&
+                addPasswordSource.contains("mdbxFolderId = mdbxFolderId")
+        )
+        assertTrue(
+            "Add Password storage selector must load MDBX folders into the folders section and select folder targets.",
+            pickerSource.contains("getMdbxFolders: (Long) -> Flow<List<MdbxStoredFolderEntry>>") &&
+                pickerSource.contains("val mdbxFoldersByDatabase") &&
+                pickerSource.contains("getMdbxFolders(database.id).collectAsState") &&
+                pickerSource.contains("StorageTarget.Mdbx(source.database.id, folder.folderId)") &&
+                pickerSource.contains("mdbxFolderDisplayLabel(folder, folders)") &&
+                addPasswordSource.contains("getMdbxFolders = viewModel::getMdbxFolders")
+        )
+        assertTrue(
+            "MDBX should be visually distinct from KeePass in the Add Password storage UI.",
+            pickerSource.contains("override val icon: ImageVector = Icons.Default.Storage") &&
+                selectorSource.contains("is StorageTarget.Mdbx -> StorageCardVisuals(") &&
+                selectorSource.contains("icon = Icons.Default.Storage") &&
+                selectorSource.contains("getMdbxFolders(primaryTarget.databaseId)") &&
+                selectorSource.contains("is StorageTarget.Mdbx -> externalFolderName ?: mdbxVaultLabel")
+        )
+        assertTrue(
+            "Wide/inline Add Password entry points must pass the inherited MDBX folder into the screen.",
+            passwordTabSource.contains("initialMdbxFolderId = passwordNewItemDefaults.mdbxFolderId") &&
+                fabSource.contains("initialMdbxFolderId = aggregateStorageDefaults?.mdbxFolderId")
+        )
+    }
+
+    @Test
     fun customDirectoryMdbxVaultsAreRegisteredAsExternalSources() {
         val source = projectFile(
             "app/src/main/java/takagi/ru/monica/viewmodel/MdbxViewModel.kt"
@@ -367,6 +581,140 @@ class MultiPasswordSaveRegressionGuardTest {
     }
 
     @Test
+    fun mdbxHistoryAndSnapshotViewsUseStaleWhileRevalidateCache() {
+        val viewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/MdbxViewModel.kt"
+        ).readText()
+
+        assertTrue(
+            "MDBX history and snapshot structure pages need in-memory display caches to avoid flashing empty while IO refreshes.",
+            viewModelSource.contains("private val deltaHistoryCache = ConcurrentHashMap<Long, CachedDeltaHistory>()") &&
+                viewModelSource.contains("private val structurePreviewCache =") &&
+                viewModelSource.contains("data class CachedDeltaHistory(") &&
+                viewModelSource.contains("data class SnapshotStructureCacheKey(")
+        )
+
+        val showDeltaHistoryBody = viewModelSource.substringAfter("fun showDeltaHistory(")
+            .substringBefore("private fun invalidateMdbxViewCaches(")
+        assertTrue(
+            "History loading must render existing or cached rows before refreshing from MDBX.",
+            showDeltaHistoryBody.contains("val sameDatabaseState = current?.takeIf { it.databaseId == database.id }") &&
+                showDeltaHistoryBody.contains("val cached = deltaHistoryCache[database.id]") &&
+                showDeltaHistoryBody.contains("deltas = sameDatabaseState?.deltas ?: cached?.deltas.orEmpty()") &&
+                showDeltaHistoryBody.contains("snapshots = sameDatabaseState?.snapshots ?: cached?.snapshots.orEmpty()") &&
+                showDeltaHistoryBody.contains("updateDeltaHistoryCache(") &&
+                showDeltaHistoryBody.contains("[MDBX][perf][showDeltaHistory]")
+        )
+        assertFalse(
+            "History loading must not rebuild a blank Visible state while waiting for MDBX IO.",
+            showDeltaHistoryBody.contains("MdbxDeltaDialogState.Visible(\n                databaseId = database.id,\n                databaseName = database.name,\n                isLoading = true")
+        )
+
+        val showSnapshotStructureBody = viewModelSource.substringAfter("fun showSnapshotStructure(")
+            .substringBefore("fun closeSnapshotStructure(")
+        assertTrue(
+            "Snapshot structure loading must keep the current tree or cached tree while refreshing.",
+            showSnapshotStructureBody.contains("val cachedPreview = cachedStructurePreview(databaseId, snapshotId)") &&
+                showSnapshotStructureBody.contains("current.structurePreview") &&
+                showSnapshotStructureBody.contains("?: cachedPreview") &&
+                showSnapshotStructureBody.contains("updateStructurePreviewCache(databaseId, snapshotId, preview)") &&
+                showSnapshotStructureBody.contains("[MDBX][perf][showSnapshotStructure]")
+        )
+        assertFalse(
+            "Snapshot structure loading must not clear the tree before the refreshed preview is available.",
+            showSnapshotStructureBody.contains(
+                "selectedStructureSnapshotId = snapshotId,\n                structurePreview = null"
+            )
+        )
+
+        val importEntriesBody = viewModelSource.substringAfter("private suspend fun importEntriesFromVault(")
+            .substringBefore("private suspend fun clearImportedEntries(")
+        assertTrue(
+            "MDBX imports and sync refreshes must invalidate display caches and log timing so slow paths are visible.",
+            importEntriesBody.contains("invalidateMdbxViewCaches(databaseId)") &&
+                importEntriesBody.contains("measureTimeMillis") &&
+                importEntriesBody.contains("[MDBX][perf][importEntriesFromVault]")
+        )
+        assertTrue(
+            "MDBX imports must update the Room display cache by stable entry ids instead of deleting all rows first, otherwise startup refresh flashes empty and reorders the list.",
+            importEntriesBody.contains("getByMdbxDatabaseIdSync(databaseId)") &&
+                importEntriesBody.contains("existing = existingPasswordsByEntryId[stored.entryId]") &&
+                !importEntriesBody.contains("clearImportedEntries(databaseId)")
+        )
+        val importPasswordBody = viewModelSource.substringAfter("private suspend fun importPasswordEntry(")
+            .substringBefore("private suspend fun importSecureItem(")
+        assertTrue(
+            "MDBX password imports must preserve the existing Room row identity and sort metadata when refreshing an already imported entry.",
+            importPasswordBody.contains("existing: PasswordEntry?") &&
+                importPasswordBody.contains("id = existing?.id ?: 0L") &&
+                importPasswordBody.contains("createdAt = existing?.createdAt ?: Date()") &&
+                importPasswordBody.contains("updatedAt = existing?.updatedAt ?: Date()") &&
+                importPasswordBody.contains("sortOrder = existing?.sortOrder ?: 0")
+        )
+    }
+
+    @Test
+    fun mdbxActiveVaultPreloadOnlyWarmsTheSelectedDatabase() {
+        val viewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/MdbxViewModel.kt"
+        ).readText()
+        val managerSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/MdbxManagerScreen.kt"
+        ).readText()
+        val simpleMainSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/SimpleMainScreen.kt"
+        ).readText()
+        val vaultV2Source = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/vaultv2/VaultV2Pane.kt"
+        ).readText()
+
+        assertTrue(
+            "MDBX should remember the active vault across process restarts without adding a Room migration.",
+            viewModelSource.contains("ACTIVE_VAULT_PREFS_NAME") &&
+                viewModelSource.contains("ACTIVE_VAULT_ID_KEY") &&
+                viewModelSource.contains("val activeMdbxDatabaseId: StateFlow<Long?>") &&
+                viewModelSource.contains("fun activateMdbxDatabase(databaseId: Long)")
+        )
+        assertTrue(
+            "MDBX active preload must be single-vault and cancellable so many configured vaults do not all open at once.",
+            viewModelSource.contains("private var activePreloadJob: Job? = null") &&
+                viewModelSource.contains("private var activePreloadDatabaseId: Long? = null") &&
+                viewModelSource.contains("activePreloadJob?.cancel()") &&
+                viewModelSource.contains("fun preloadActiveMdbxDatabase(databaseId: Long)") &&
+                viewModelSource.contains("vaultStore.getVaultDiagnostics(database.id)") &&
+                viewModelSource.contains("vaultStore.listDeltaHistory(database.id)") &&
+                viewModelSource.contains("vaultStore.listSnapshots(database.id)") &&
+                !viewModelSource.substringAfter("fun preloadActiveMdbxDatabase(databaseId: Long)")
+                    .substringBefore("// --- WebDAV connection ---")
+                    .contains("importEntriesFromVault(")
+        )
+        assertTrue(
+            "MDBX manager should stay on the format-management hub and only activate vaults after the user opens or navigates to them.",
+            managerSource.contains("mutableStateOf<MdbxManagerPage>(MdbxManagerPage.Hub)") &&
+                managerSource.contains("viewModel.activateMdbxDatabase(database.id)") &&
+                managerSource.contains("viewModel.activateMdbxDatabase(db.id)")
+        )
+        assertFalse(
+            "Opening MDBX format management must not auto-enter the remembered active vault detail page.",
+            managerSource.contains("var restoredActivePage by rememberSaveable") ||
+                managerSource.contains("MdbxManagerPage.Detail(activeDatabase.id, activeDatabase.managerSource())") ||
+                managerSource.contains("viewModel.preloadActiveMdbxDatabase(activeDatabase.id)")
+        )
+        assertFalse(
+            "MDBX manager must not refresh diagnostics for every configured database on every database-list update.",
+            managerSource.contains("viewModel.refreshConflictCounts(databases)")
+        )
+        assertTrue(
+            "Password list MDBX filters should also mark the selected vault active, so app startup restores/preloads the user's current vault instead of only working inside the manager.",
+            simpleMainSource.contains("is CategoryFilter.MdbxDatabase -> filter.databaseId") &&
+                simpleMainSource.contains("is CategoryFilter.MdbxFolderFilter -> filter.databaseId") &&
+                simpleMainSource.contains("mdbxViewModel.activateMdbxDatabase(databaseId)") &&
+                vaultV2Source.contains("selectedMdbxDatabaseId = remember(storageSelection)") &&
+                vaultV2Source.contains("mdbxViewModel?.activateMdbxDatabase(databaseId)")
+        )
+    }
+
+    @Test
     fun mdbxArchitectureCompletionExposesOplogBundlesExternalRefsAndBenchmarks() {
         val storeSource = projectFile(
             "app/src/main/java/takagi/ru/monica/repository/MdbxVaultStore.kt"
@@ -522,9 +870,9 @@ class MultiPasswordSaveRegressionGuardTest {
                 managerSource.contains("onPruneAutomaticSnapshots")
         )
         assertTrue(
-            "Snapshot UI must let the user choose delta versus full snapshot.",
+            "Snapshot UI must let the user choose increment versus full snapshot.",
             managerSource.contains("fullSnapshot") &&
-                managerSource.contains("Delta 快照") &&
+                managerSource.contains("增量快照") &&
                 managerSource.contains("完整快照")
         )
     }
@@ -550,6 +898,11 @@ class MultiPasswordSaveRegressionGuardTest {
                 mainActivitySource.contains("navController.navigate(Screen.MdbxManager.route)")
         )
         assertTrue(
+            "MDBX format-management entry must discard any old MDBX manager back stack state so it always lands on the MDBX hub.",
+            mainActivitySource.contains("popUpTo(Screen.MdbxManager.route) { inclusive = true }") &&
+                mainActivitySource.contains("launchSingleTop = true")
+        )
+        assertTrue(
             "MDBX manager should open to a hub and then branch into local, WebDAV, and OneDrive management pages.",
             managerSource.contains("MdbxManagerHubPage(") &&
                 managerSource.contains("本地 MDBX 管理") &&
@@ -567,16 +920,24 @@ class MultiPasswordSaveRegressionGuardTest {
                 managerSource.contains("page = MdbxManagerPage.Detail")
         )
         assertTrue(
-            "MDBX conflict, history/snapshot, and advanced tools must be standalone manager subpages instead of transient sheets.",
+            "MDBX conflict, snapshot, commit history, and maintenance must be standalone manager subpages instead of transient sheets.",
             managerSource.contains("MdbxConflictPage(") &&
-                managerSource.contains("MdbxDeltaPage(") &&
-                managerSource.contains("MdbxAdvancedToolsPage(") &&
+                managerSource.contains("MdbxSnapshotPage(") &&
+                managerSource.contains("MdbxCommitHistoryPage(") &&
                 managerSource.contains("MdbxMaintenancePage(") &&
                 managerSource.contains("BackHandler(") &&
                 managerSource.contains("MdbxManagerPage.Conflict") &&
-                managerSource.contains("MdbxManagerPage.History") &&
-                managerSource.contains("MdbxManagerPage.Advanced") &&
+                managerSource.contains("MdbxManagerPage.Snapshots") &&
+                managerSource.contains("MdbxManagerPage.CommitHistory") &&
                 managerSource.contains("MdbxManagerPage.Maintenance")
+        )
+        assertFalse(
+            "MDBX manager must not expose the developer advanced tools as a normal user subpage.",
+            managerSource.contains("MdbxManagerPage.Advanced")
+        )
+        assertFalse(
+            "MDBX detail page must not expose a user-facing advanced tools action.",
+            managerSource.contains("onShowAdvanced")
         )
         assertTrue(
             "MDBX detail page must expose a diagnostics and maintenance page for format upgrade troubleshooting.",
@@ -584,12 +945,13 @@ class MultiPasswordSaveRegressionGuardTest {
                 managerSource.contains("onShowMaintenance") &&
                 managerSource.contains("onRefreshDiagnostics") &&
                 managerSource.contains("onFlushPendingUpload") &&
-                managerSource.contains("schema、commit 图、设备 head、快照、附件 chunk 和同步状态")
+                managerSource.contains("MdbxDiagnosticSection(title = \"关键指标\")") &&
+                managerSource.contains("MdbxDiagnosticSection(title = \"高级细节\")")
         )
     }
 
     @Test
-    fun mdbxAdvancedControlsAreReachableFromAndroidManager() {
+    fun mdbxAdvancedControlsRemainInternalAndHiddenFromAndroidManager() {
         val storeSource = projectFile(
             "app/src/main/java/takagi/ru/monica/repository/MdbxVaultStore.kt"
         ).readText()
@@ -634,13 +996,16 @@ class MultiPasswordSaveRegressionGuardTest {
                     .contains("getVaultDiagnostics(databaseId)")
         )
 
-        assertTrue(
-            "MDBX detail page must expose the advanced tools entry.",
-            managerSource.contains("onShowAdvanced") &&
-                managerSource.contains("高级工具")
+        assertFalse(
+            "MDBX detail page must keep developer advanced controls out of the normal user navigation.",
+            managerSource.contains("onShowAdvanced")
+        )
+        assertFalse(
+            "MDBX manager route model must not include a user-facing advanced tools subpage.",
+            managerSource.contains("MdbxManagerPage.Advanced")
         )
         assertTrue(
-            "Android manager must provide controls for bundle export/import, upload flush, chunk status, and benchmark.",
+            "Android manager may keep internal controls for bundle export/import, upload flush, chunk status, and benchmark.",
             managerSource.contains("MdbxAdvancedToolsPage(") &&
                 managerSource.contains("onExportBundle") &&
                 managerSource.contains("onImportBundle") &&
@@ -653,12 +1018,11 @@ class MultiPasswordSaveRegressionGuardTest {
         assertTrue(
             "Android manager must expose later MDBX diagnostics in a standalone maintenance page.",
             managerSource.contains("MdbxMaintenancePage(") &&
-                managerSource.contains("字段级 AAD") &&
-                managerSource.contains("crypto_contexts") &&
-                managerSource.contains("dangling parents") &&
-                managerSource.contains("dangling branch heads") &&
-                managerSource.contains("dangling device heads") &&
-                managerSource.contains("Chunk mismatch") &&
+                managerSource.contains("MdbxDiagnosticSection(title = \"关键指标\")") &&
+                managerSource.contains("MdbxDiagnosticSection(title = \"高级细节\")") &&
+                managerSource.contains("悬空 parent") &&
+                managerSource.contains("悬空 head") &&
+                managerSource.contains("附件分片异常") &&
                 managerSource.contains("external-hash-ref") &&
                 managerSource.contains("上传待处理写入")
         )
@@ -691,6 +1055,9 @@ class MultiPasswordSaveRegressionGuardTest {
         ).readText()
         val passwordListTopSectionSource = projectFile(
             "app/src/main/java/takagi/ru/monica/ui/password/PasswordListTopSection.kt"
+        ).readText()
+        val quickStatusBarSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/components/QuickStatusBar.kt"
         ).readText()
         val mdbxStoreSource = projectFile(
             "app/src/main/java/takagi/ru/monica/repository/MdbxVaultStore.kt"
@@ -728,7 +1095,7 @@ class MultiPasswordSaveRegressionGuardTest {
         )
         assertTrue(
             "MDBX database pages must participate in the same path breadcrumb builder as KeePass and Bitwarden pages.",
-            quickFolderSource.contains("is CategoryFilter.MdbxDatabase -> true") &&
+            quickFolderSource.contains("is CategoryFilter.MdbxDatabase,") &&
                 quickFolderSource.contains("root_mdbx_") &&
                 quickFolderSource.contains("mdbxDatabases.find { it.id == filter.databaseId }?.name")
         )
@@ -744,7 +1111,19 @@ class MultiPasswordSaveRegressionGuardTest {
                 !topActionsSource.contains("\"${'$'}{stringResource(R.string.refresh)} MDBX\"")
         )
         assertTrue(
-            "MDBX database pages must show a path-level sync affordance beside the breadcrumb path.",
+            "MDBX database pages must expose sync as a quick status action beside, not inside, the breadcrumb path.",
+            quickStatusBarSource.contains("fun QuickStatusBar(") &&
+                quickStatusBarSource.contains("indicator: @Composable RowScope.() -> Unit") &&
+                quickStatusBarSource.contains("breadcrumb: @Composable RowScope.() -> Unit") &&
+                quickStatusBarSource.contains("actions: @Composable RowScope.() -> Unit") &&
+                vaultV2Source.contains("private fun VaultV2QuickStatusBar(") &&
+                vaultV2Source.contains("QuickStatusBar(") &&
+                vaultV2Source.contains("VaultV2BreadcrumbPath(") &&
+                vaultV2Source.contains("MdbxPathSyncActions(state = state)") &&
+                !vaultV2Source.contains("private fun VaultV2NavigationBanner(")
+        )
+        assertTrue(
+            "The shared MDBX quick status action must still show pending writes and an icon-only sync button.",
             quickFolderSectionsSource.contains("data class MdbxPathSyncState") &&
                 quickFolderSectionsSource.contains("fun MdbxPathSyncActions") &&
                 quickFolderSectionsSource.contains("mdbxPathPendingSyncCount") &&
@@ -759,10 +1138,11 @@ class MultiPasswordSaveRegressionGuardTest {
                 mdbxStoreSource.contains("calculatePendingSyncCount(") &&
                 mdbxStoreSource.contains("queryPendingLocalOperationCount(") &&
                 mdbxViewModelSource.contains("val pendingSyncCounts") &&
-                passwordListContentSource.contains("pendingSyncCounts")
+                passwordListContentSource.contains("pendingSyncCounts") &&
+                vaultV2Source.contains("val mdbxPendingSyncCounts")
         )
         assertTrue(
-            "The path-level MDBX sync action must stay a circular icon-only button that is always available on MDBX pages.",
+            "The MDBX sync action must stay a circular icon-only button that is always available on MDBX pages.",
             quickFolderSectionsSource.contains("shape = CircleShape") &&
                 quickFolderSectionsSource.contains("IconButton(") &&
                 quickFolderSectionsSource.contains("imageVector = Icons.Default.Sync") &&
@@ -770,8 +1150,8 @@ class MultiPasswordSaveRegressionGuardTest {
                 !quickFolderSectionsSource.contains("TextButton")
         )
         assertTrue(
-            "The MDBX path sync UI must squeeze the breadcrumb path when the pending status appears.",
-            quickFolderSectionsSource.contains(".weight(1f)") &&
+            "The quick status bar must let the breadcrumb path yield width to status actions when pending status appears.",
+            vaultV2Source.contains("modifier = Modifier.weight(1f)") &&
                 quickFolderSectionsSource.contains(".height(36.dp)") &&
                 quickFolderSectionsSource.contains(".width(104.dp)") &&
                 quickFolderSectionsSource.contains("animateContentSize") &&
@@ -783,11 +1163,11 @@ class MultiPasswordSaveRegressionGuardTest {
                 passwordListMainPaneSource.contains("mdbxSyncState = mdbxPathSyncState")
         )
         assertTrue(
-            "The MDBX path sync button must flush pending uploads first and otherwise run the normal vault sync.",
+            "The MDBX quick status sync button must flush pending uploads first and otherwise run the normal vault sync.",
             passwordListContentSource.contains("flushPendingVaultUpload(database.id)") &&
                 passwordListContentSource.contains("syncVault(database.id)") &&
-                vaultV2Source.contains("flushPendingVaultUpload(selectedMdbxDatabaseId)") &&
-                vaultV2Source.contains("syncVault(selectedMdbxDatabaseId)")
+                vaultV2Source.contains("flushPendingVaultUpload(database.id)") &&
+                vaultV2Source.contains("syncVault(database.id)")
         )
         assertTrue(
             "The top-right MDBX sync menu must share the same pending-upload-first behavior as the path sync button.",
@@ -800,6 +1180,29 @@ class MultiPasswordSaveRegressionGuardTest {
             "All VaultV2 hosts must pass through the shared MdbxViewModel.",
             simpleMainSource.contains("mdbxViewModel = mdbxViewModel") &&
                 compactTabsSource.contains("mdbxViewModel = mdbxViewModel")
+        )
+    }
+
+    @Test
+    fun quickFilterChipsMorphToSelectedShapeWhilePressed() {
+        val expressiveChipSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/components/MonicaExpressiveFilterChip.kt"
+        ).readText()
+        val quickFilterChipSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordQuickFilterChips.kt"
+        ).readText()
+
+        assertTrue(
+            "Quick filter chips should use the shared expressive chip implementation so pressed/selected shape behavior stays consistent.",
+            quickFilterChipSource.contains("MonicaExpressiveFilterChip(") &&
+                quickFilterChipSource.contains("interactionSource = interactionSource")
+        )
+        assertTrue(
+            "A non-selected quick filter chip should morph to the selected chip corner radius while pressed, matching Material Expressive state continuity.",
+            expressiveChipSource.contains("collectIsPressedAsState()") &&
+                expressiveChipSource.contains("val targetCornerRadius = if (selected || isPressed) 12.dp else 20.dp") &&
+                expressiveChipSource.contains("animateDpAsState(") &&
+                expressiveChipSource.contains("label = \"monicaExpressiveFilterChipCornerRadius\"")
         )
     }
 
@@ -822,6 +1225,9 @@ class MultiPasswordSaveRegressionGuardTest {
         ).readText()
         val topSectionSource = projectFile(
             "app/src/main/java/takagi/ru/monica/ui/password/PasswordListTopSection.kt"
+        ).readText()
+        val vaultV2Source = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/vaultv2/VaultV2Pane.kt"
         ).readText()
 
         assertTrue(
@@ -848,15 +1254,47 @@ class MultiPasswordSaveRegressionGuardTest {
             "Quick-folder builders must receive MDBX folders and navigate to MdbxFolderFilter targets.",
             quickFolderSource.contains("selectedMdbxFolders: List<MdbxStoredFolderEntry>") &&
                 quickFolderSource.contains("buildMdbxFolderQuickFolderShortcuts") &&
+                quickFolderSource.contains("currentParentFolderId: String? = null") &&
+                quickFolderSource.contains(".filter { folder -> folder.isDirectMdbxChildOf(currentParentFolderId) }") &&
+                quickFolderSource.contains("val currentFolderId = (filter as? CategoryFilter.MdbxFolderFilter)?.folderId") &&
+                quickFolderSource.contains("currentParentFolderId = currentFolderId") &&
+                quickFolderSource.contains("internal fun MdbxStoredFolderEntry.isDirectMdbxChildOf(parentFolderId: String?)") &&
                 quickFolderSource.contains("targetFilter = CategoryFilter.MdbxFolderFilter(databaseId, folder.folderId)") &&
-                quickFolderSource.contains("is CategoryFilter.MdbxFolderFilter -> true")
+                quickFolderSource.contains("is CategoryFilter.MdbxFolderFilter -> true") &&
+                quickFolderSource.contains("keyPrefix = \"back_mdbx\"") &&
+                quickFolderSource.contains("keyPrefix = \"menu_back_mdbx\"") &&
+                quickFolderSource.contains("if (currentFolderId != null)") &&
+                !quickFolderSource.contains("includeBackNavigation && currentFolderId != null") &&
+                quickFolderSource.contains("val backTarget = parentFolderId?.let { CategoryFilter.MdbxFolderFilter(databaseId, it) }") &&
+                quickFolderSource.contains("?: CategoryFilter.MdbxDatabase(databaseId)")
+        )
+        assertTrue(
+            "MDBX breadcrumbs and titles must walk the full parent folder chain, so a/b/c does not collapse to a/c.",
+            quickFolderSource.contains("internal data class MdbxFolderPathSegment(") &&
+                quickFolderSource.contains("internal fun buildMdbxFolderPathSegments(") &&
+                quickFolderSource.contains("var currentId: String? = folderId.trim().takeIf { it.isNotBlank() }") &&
+                quickFolderSource.contains("currentId = folder?.parentFolderId.normalizedMdbxParentId()") &&
+                quickFolderSource.contains("return segments.asReversed()") &&
+                quickFolderSource.contains("val segments = buildMdbxFolderPathSegments(filter.folderId, selectedMdbxFolders)") &&
+                quickFolderSource.contains("targetFilter = CategoryFilter.MdbxFolderFilter(filter.databaseId, segment.folderId)") &&
+                quickFolderSource.contains("internal fun buildMdbxFolderPathLabel(") &&
+                topSectionSource.contains("is CategoryFilter.MdbxFolderFilter -> buildMdbxFolderPathLabel(filter.folderId, selectedMdbxFolders)") &&
+                vaultV2Source.contains("import takagi.ru.monica.ui.buildMdbxFolderPathLabel") &&
+                vaultV2Source.contains("val folderLabel = buildMdbxFolderPathLabel(selected.folderId, mdbxFolders)")
         )
         assertTrue(
             "Both category menu surfaces must read MDBX folders from the shared folder flow.",
             bottomSheetSource.contains("getMdbxFolders: (Long) -> Flow<List<MdbxStoredFolderEntry>>") &&
                 bottomSheetSource.contains("val folders by getMdbxFolders(database.id).collectAsState") &&
+                bottomSheetSource.contains("val currentMdbxFolderId = (selected as? UnifiedCategoryFilterSelection.MdbxFolderFilter)") &&
+                bottomSheetSource.contains(".filter { it.isDirectMdbxChildOf(currentMdbxFolderId) }") &&
+                bottomSheetSource.contains("createDialogInitialMdbxDbId = currentMdbxSelection?.databaseId") &&
+                bottomSheetSource.contains("createDialogInitialMdbxParentFolderId = currentMdbxSelection?.folderId") &&
                 chipMenuSource.contains("getMdbxFolders: (Long) -> Flow<List<MdbxStoredFolderEntry>>") &&
-                chipMenuSource.contains("selectedMdbxDatabaseId?.let(getMdbxFolders)")
+                chipMenuSource.contains("selectedMdbxDatabaseId?.let(getMdbxFolders)") &&
+                chipMenuSource.contains("val currentFolderId = (selected as? UnifiedCategoryFilterSelection.MdbxFolderFilter)?.folderId") &&
+                chipMenuSource.contains(".filter { it.isDirectMdbxChildOf(currentFolderId) }") &&
+                !chipMenuSource.contains("selection = UnifiedCategoryFilterSelection.MdbxDatabaseFilter(databaseId),\n                    isBack = true")
         )
         assertTrue(
             "Top-level password controls must pass MDBX folder loading into the chip menu and keep folder labels visible.",
@@ -899,6 +1337,816 @@ class MultiPasswordSaveRegressionGuardTest {
                 createFolderBody.contains("\"createFolder failed databaseId=") &&
                 createFolderBody.contains("error=\${error.javaClass.simpleName}") &&
                 createFolderBody.contains("throw error")
+        )
+    }
+
+    @Test
+    fun mdbxNestedFolderCreationPropagatesParentFolderFromCurrentSelection() {
+        val dialogSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/components/CreateCategoryDialog.kt"
+        ).readText()
+        val bottomSheetSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/components/UnifiedCategoryFilterBottomSheet.kt"
+        ).readText()
+        val topSectionSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordListTopSection.kt"
+        ).readText()
+        val categoryStateSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/category/CategoryManagementState.kt"
+        ).readText()
+        val vaultV2Source = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/vaultv2/VaultV2Pane.kt"
+        ).readText()
+
+        assertTrue(
+            "CreateCategoryDialog must keep MDBX parent folder state and pass it to folder creation.",
+            dialogSource.contains("onCreateMdbxProject: ((databaseId: Long, parentFolderId: String?, name: String) -> Unit)?") &&
+                dialogSource.contains("initialMdbxParentFolderId: String?") &&
+                dialogSource.contains("getMdbxFolders: (Long) -> Flow<List<MdbxStoredFolderEntry>>") &&
+                dialogSource.contains("val createMdbxFolders by (") &&
+                dialogSource.contains("getMdbxFolders(selectedCreateMdbxDbId!!)") &&
+                dialogSource.contains("text = stringResource(R.string.create_select_mdbx_parent_folder)") &&
+                dialogSource.contains("onClick = { createMdbxParentFolderId = folder.folderId }") &&
+                dialogSource.contains("mdbxFolderDisplayLabel(folder, createMdbxFolders)") &&
+                dialogSource.contains("createMdbxParentFolderId = initialMdbxParentFolderId") &&
+                dialogSource.contains("onCreateMdbxProject?.invoke(dbId, createMdbxParentFolderId, name)")
+        )
+        assertTrue(
+            "Password top create dialog must seed MDBX nested creation from the current folder filter.",
+            topSectionSource.contains("initialMdbxDbId = initialDialogMdbxDbId") &&
+                topSectionSource.contains("getMdbxFolders = viewModel::getMdbxFolders") &&
+                topSectionSource.contains("initialMdbxParentFolderId = (currentFilter as? CategoryFilter.MdbxFolderFilter)?.folderId") &&
+                topSectionSource.contains("viewModel.createMdbxFolder(databaseId, name, parentFolderId ?: \"root\")")
+        )
+        assertTrue(
+            "Shared category management must treat MDBX folder filters as MDBX create targets and pass the parent id.",
+            categoryStateSource.contains("val initialMdbxParentFolderId = (currentFilter as? UnifiedCategoryFilterSelection.MdbxFolderFilter)?.folderId") &&
+                categoryStateSource.contains("getMdbxFolders = passwordViewModel::getMdbxFolders") &&
+                categoryStateSource.contains("is UnifiedCategoryFilterSelection.MdbxFolderFilter -> Quadruple(CreateDialogTarget.Mdbx") &&
+                categoryStateSource.contains("passwordViewModel.createMdbxFolder(databaseId, name, parentFolderId ?: \"root\")")
+        )
+        assertTrue(
+            "MDBX bottom sheet must expose child-folder creation from a folder row and forward the selected parent.",
+            bottomSheetSource.contains("createDialogInitialMdbxParentFolderId = folder.folderId") &&
+                bottomSheetSource.contains("getMdbxFolders = getMdbxFolders") &&
+                bottomSheetSource.contains("initialMdbxParentFolderId = createDialogInitialMdbxParentFolderId") &&
+                bottomSheetSource.contains("onCreateMdbxProject: ((databaseId: Long, parentFolderId: String?, name: String) -> Unit)?")
+        )
+        assertTrue(
+            "VaultV2 must pass MDBX folders into the bottom sheet and preserve parent folder creation in its create dialog.",
+            vaultV2Source.contains("getMdbxFolders = passwordViewModel::getMdbxFolders") &&
+                vaultV2Source.contains("is UnifiedCategoryFilterSelection.MdbxFolderFilter -> Triple(CreateDialogTarget.Mdbx") &&
+            vaultV2Source.contains("initialMdbxParentFolderId = (storageSelection as? UnifiedCategoryFilterSelection.MdbxFolderFilter)?.folderId") &&
+                vaultV2Source.contains("passwordViewModel.createMdbxFolder(databaseId, name, parentFolderId ?: \"root\")")
+        )
+    }
+
+    @Test
+    fun mdbxMoveAndCopySurfacesExposeAndPersistFolderTargets() {
+        val moveSheetSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/components/UnifiedMoveToCategoryBottomSheet.kt"
+        ).readText()
+        val passkeyListSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/PasskeyListScreen.kt"
+        ).readText()
+        val passkeyCreateSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/passkey/PasskeyCreateActivity.kt"
+        ).readText()
+        val mixedBatchSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordBatchMoveMixedSupport.kt"
+        ).readText()
+
+        assertTrue(
+            "Move/copy sheet must expose concrete MDBX folder targets instead of only database-root targets.",
+            moveSheetSource.contains("data class MdbxFolderTarget(val databaseId: Long, val folderId: String)") &&
+                moveSheetSource.contains("getMdbxFolders: (Long) -> Flow<List<MdbxStoredFolderEntry>>") &&
+                moveSheetSource.contains("getMdbxFolders(activeSource.database.id)") &&
+                moveSheetSource.contains("collectAsState(initial = emptyList())") &&
+                moveSheetSource.contains("UnifiedMoveCategoryTarget.MdbxFolderTarget(")
+        )
+        val moveTargetListBody = moveSheetSource.substringAfter("LazyColumn(")
+            .substringBefore("Surface(\n                modifier = Modifier\n                    .fillMaxWidth()\n                    .padding(top = 8.dp)")
+        assertTrue(
+            "Move/copy sheet must follow Add Password's picker model: choose a database/source first, then show only that source's folders.",
+            moveSheetSource.contains("sealed interface MovePickerSource") &&
+                moveSheetSource.contains("val activeSourceKey") &&
+                moveSheetSource.contains("FlowRow(") &&
+                moveSheetSource.contains("category_selection_menu_databases") &&
+                moveSheetSource.contains("category_selection_menu_folders") &&
+                moveSheetSource.contains("MoveSelectorSectionTitle(") &&
+                moveSheetSource.contains("sources.forEach { source ->") &&
+                moveSheetSource.contains("activeSource is MovePickerSource.MdbxDatabase") &&
+                moveSheetSource.contains("if (activeSource is MovePickerSource.KeePassDatabase)")
+        )
+        assertTrue(
+            "Move/copy sheet should stage a chosen category/folder first and require a final confirmation, avoiding accidental move/copy on row tap.",
+            moveSheetSource.contains("val selectedTarget = remember { mutableStateOf<UnifiedMoveCategoryTarget?>(null) }") &&
+                moveSheetSource.contains("fun stageTarget(") &&
+                moveSheetSource.contains("fun confirmSelectedTarget()") &&
+                moveSheetSource.contains("FilledTonalButton(") &&
+                moveSheetSource.contains("onClick = ::confirmSelectedTarget") &&
+                moveSheetSource.contains("selected = selectedTarget.value == target.target") &&
+                moveSheetSource.contains("Text(\"${'$'}confirmLabel${'$'}actionLabel\")")
+        )
+        assertFalse(
+            "Rows inside the move/copy target list must not execute the operation directly; only the confirm button may call onTargetSelected.",
+            moveTargetListBody.contains("onTargetSelected(")
+        )
+        assertFalse(
+            "Move/copy sheet must not regress to the old mixed expandable tree; database selection and folder selection are separate steps.",
+            moveSheetSource.contains("BottomSheetAnimatedVisibility(") ||
+                moveSheetSource.contains("ExpandLess") ||
+                moveSheetSource.contains("ExpandMore") ||
+                moveSheetSource.contains("MoveSectionCard(")
+        )
+        assertTrue(
+            "Passkey move sheets must pass MDBX databases and folder flows so MDBX folders are selectable.",
+            passkeyListSource.contains("mdbxDatabases = mdbxDatabases") &&
+                passkeyListSource.contains("passwordViewModel?.getMdbxFolders(databaseId)") &&
+                passkeyListSource.contains("is UnifiedMoveCategoryTarget.MdbxFolderTarget -> passkey.copy(") &&
+                passkeyListSource.contains("mdbxFolderId = target.folderId")
+        )
+        assertTrue(
+            "Passkey creation must preserve the selected or inherited MDBX folder instead of falling back to the vault root.",
+            passkeyCreateSource.contains("private var pendingMdbxFolderId: String? = null") &&
+                passkeyCreateSource.contains("var selectedMdbxFolderId by remember") &&
+                passkeyCreateSource.contains("mdbxVaultStore.listFolders(databaseId)") &&
+                passkeyCreateSource.contains("onMdbxFolderSelected(target.folderId)") &&
+                passkeyCreateSource.contains("mdbxFolderId = if (initialMdbxDatabaseId != null) initialMdbxFolderId else null")
+        )
+        assertTrue(
+            "Mixed password-page move/copy must propagate MDBX folder ids to passwords and supplementary item types.",
+            mixedBatchSource.contains("val targetMdbxFolderId = when (target)") &&
+                mixedBatchSource.contains("is UnifiedMoveCategoryTarget.MdbxFolderTarget -> target.folderId") &&
+                mixedBatchSource.contains("viewModel.movePasswordsToMdbxDatabaseAwait(selectedIds, target.databaseId, target.folderId)") &&
+                mixedBatchSource.contains("aggregateUiState.totpViewModel?.moveToMdbxDatabase(") &&
+                mixedBatchSource.contains("mdbxDatabaseId = targetMdbxDatabaseId") &&
+                mixedBatchSource.contains("mdbxFolderId = targetMdbxFolderId")
+        )
+    }
+
+    @Test
+    fun mdbxManagerUsesScopedFeedbackAndQuietMaintenanceUi() {
+        val managerSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/MdbxManagerScreen.kt"
+        ).readText()
+
+        assertTrue(
+            "MDBX sync feedback must use Scaffold snackbar instead of a persistent page overlay.",
+            managerSource.contains("val snackbarHostState = remember { SnackbarHostState() }") &&
+                managerSource.contains("snackbarHost = {") &&
+                managerSource.contains("SnackbarHost(hostState = snackbarHostState)") &&
+                managerSource.contains("SnackbarDuration.Short") &&
+                managerSource.contains("viewModel.clearOperationState()")
+        )
+        assertTrue(
+            "MDBX manager must not bring back the custom bottom status overlay that blocks subpages.",
+            !managerSource.contains("MdbxOperationStatusBar") &&
+                !managerSource.contains("Alignment.BottomCenter")
+        )
+        assertTrue(
+            "Snapshot management should stay visually quiet instead of using high-saturation tertiary panels.",
+            managerSource.substringAfter("private fun SnapshotManagerPanel(")
+                .substringBefore("private fun MdbxSnapshotStructurePage(")
+                .let { snapshotPanelSource ->
+                    snapshotPanelSource.contains("OutlinedCard(modifier = Modifier.fillMaxWidth())") &&
+                        !snapshotPanelSource.contains("tertiaryContainer") &&
+                        !snapshotPanelSource.contains("onTertiaryContainer")
+                }
+        )
+        assertTrue(
+            "Diagnostics should prioritize a concise maintenance flow and keep low-level details secondary.",
+            managerSource.contains("private fun MaintenanceActionPanel(") &&
+                managerSource.contains("MdbxDiagnosticSection(title = \"关键指标\")") &&
+                managerSource.contains("MdbxDiagnosticSection(title = \"高级细节\")") &&
+                !managerSource.contains("schema、commit 图、设备 head、快照、附件 chunk")
+        )
+        assertTrue(
+            "History summary should avoid a four-tile dashboard and use compact diagnostic lines.",
+            managerSource.substringAfter("private fun DeltaSummaryHeader(")
+                .substringBefore("private fun DeltaRow(")
+                .contains("DiagnosticLine(Icons.Default.History, \"提交\"") &&
+                !managerSource.substringAfter("private fun DeltaSummaryHeader(")
+                    .substringBefore("private fun DeltaRow(")
+                    .contains("StatusTile(")
+        )
+    }
+
+    @Test
+    fun mdbxHistorySnapshotsAndConflictsOpenFieldDiffViews() {
+        val managerSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/MdbxManagerScreen.kt"
+        ).readText()
+        val storeSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/repository/MdbxVaultStore.kt"
+        ).readText()
+
+        assertTrue(
+            "MDBX conflict rows should open a focused conflict diff detail instead of dumping previews in the list.",
+            managerSource.contains("var selectedConflictId by rememberSaveable") &&
+                managerSource.contains("ConflictSummaryRow(") &&
+                managerSource.contains("ConflictDiffDetail(") &&
+                managerSource.contains("onOpen = { selectedConflictId = conflict.conflictId }")
+        )
+        assertTrue(
+            "MDBX conflict detail should render a field-level unified diff, not a code-style line diff.",
+            managerSource.contains("private fun FieldDiffPanel(") &&
+                managerSource.contains("private data class FieldChangeGroup(") &&
+                managerSource.contains("private fun FieldChangeGroupBlock(") &&
+                managerSource.contains("private fun FieldChangeRow(") &&
+                managerSource.contains("private fun VersionValueRow(") &&
+                managerSource.contains("marker = \"-\"") &&
+                managerSource.contains("marker = \"+\"") &&
+                managerSource.contains("backgroundColor = MaterialTheme.colorScheme.errorContainer.copy") &&
+                managerSource.contains("backgroundColor = MaterialTheme.colorScheme.primaryContainer.copy") &&
+                managerSource.contains("Text(\n                    \"字段变更\"") &&
+                managerSource.contains("\"${'$'}{change.fieldLabel}:\"") &&
+                managerSource.contains("value.ifBlank { \"null\" }") &&
+                managerSource.contains("group.displayPath()") &&
+                !managerSource.contains("fieldLabel = change.fieldLabel") &&
+                !managerSource.contains("versionLabel =") &&
+                !managerSource.contains("\"删除状态\"") &&
+                !managerSource.contains("deletedLabel(") &&
+                !managerSource.contains("\"${'$'}{group.changes.size} 项\"") &&
+                !managerSource.contains("FontFamily.Monospace") &&
+                !managerSource.contains("private fun UnifiedDiffCard(") &&
+                !managerSource.contains("DiffLineKind")
+        )
+        assertTrue(
+            "Commit history should render object-level change cards while conflict merge keeps the field-level diff renderer.",
+            managerSource.substringAfter("private fun CommitDiffPanel(")
+                .substringBefore("private data class FieldChange(")
+                .contains("CommitObjectChangeCard(diff)") &&
+                managerSource.substringAfter("private fun CommitDiffPanel(")
+                    .substringBefore("private data class FieldChange(")
+                    .contains("此提交没有可显示的对象变更") &&
+                !managerSource.substringAfter("private fun CommitDiffPanel(")
+                    .substringBefore("private data class FieldChange(")
+                    .contains("FieldDiffPanel(") &&
+                managerSource.substringAfter("private fun ConflictDiffDetail(")
+                    .substringBefore("@Composable\nprivate fun MdbxSnapshotPage(")
+                    .contains("FieldDiffPanel(")
+        )
+        assertTrue(
+            "Snapshot rows should let the user inspect the snapshot base commit diff before reverting.",
+            managerSource.contains("onShowSnapshotDiff: (String) -> Unit") &&
+                managerSource.contains("onShowDiff = { onShowSnapshotDiff(snapshot.baseCommitId) }") &&
+                managerSource.contains("Text(\"查看变更\")")
+        )
+        assertTrue(
+            "Snapshot rows should open a real subpage for the VSCode-style structure preview and support landscape comparison.",
+            managerSource.contains("data class SnapshotStructure(") &&
+                managerSource.contains("page = MdbxManagerPage.SnapshotStructure(current.databaseId, current.source, snapshotId)") &&
+                managerSource.contains("is MdbxManagerPage.SnapshotStructure -> {") &&
+                managerSource.contains("viewModel.closeSnapshotStructure()") &&
+                managerSource.contains("MdbxManagerPage.Snapshots(current.databaseId, current.source)") &&
+                managerSource.contains("private fun MdbxSnapshotStructurePage(") &&
+                managerSource.contains("private fun SnapshotStructurePreviewPage(") &&
+                managerSource.contains("private fun StructureTreePanel(") &&
+                managerSource.contains("private fun StructureTreeRow(") &&
+                managerSource.contains("onShowSnapshotStructure: (String) -> Unit") &&
+                managerSource.contains("onOpenStructure = { onShowSnapshotStructure(snapshot.snapshotId) }") &&
+                managerSource.contains("Text(\"结构\")") &&
+                managerSource.contains("ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE") &&
+                managerSource.contains("ActivityInfo.SCREEN_ORIENTATION_PORTRAIT") &&
+                managerSource.contains("requestedOrientation") &&
+                managerSource.contains("title = \"现版本\"") &&
+                managerSource.contains("title = \"快照版本\"") &&
+                managerSource.contains("var snapshotCompareMode by rememberSaveable(snapshotPage?.databaseId, snapshotPage?.snapshotId)") &&
+                managerSource.contains("val snapshotTopBarName = snapshotPage?.let") &&
+                managerSource.contains("val snapshotTopBarMeta = snapshotPage?.let") &&
+                managerSource.contains("IconButton(onClick = { snapshotCompareMode = !snapshotCompareMode })") &&
+                managerSource.contains("if (snapshotCompareMode) Icons.Default.FullscreenExit else Icons.Default.Fullscreen") &&
+                managerSource.substringAfter("private fun SnapshotStructurePreviewPage(")
+                    .substringBefore("@Composable\nprivate fun StructureTreePanel(")
+                    .contains(".verticalScroll(rememberScrollState())") &&
+                managerSource.substringAfter("private fun SnapshotStructurePreviewPage(")
+                    .substringBefore("@Composable\nprivate fun StructureTreePanel(")
+                    .contains("VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)") &&
+                managerSource.substringAfter("private fun SnapshotStructurePreviewPage(")
+                    .substringBefore("@Composable\nprivate fun StructureTreePanel(")
+                    .contains("modifier = Modifier.weight(1f),\n                    framed = false") &&
+                !managerSource.substringAfter("private fun SnapshotStructurePreviewPage(")
+                    .substringBefore("@Composable\nprivate fun StructureTreePanel(")
+                    .contains("Icons.Default.Fullscreen") &&
+                !managerSource.contains("rememberSaveable(snapshotId)") &&
+                managerSource.contains("framed = false") &&
+                managerSource.contains("private fun StructureIndentLines(") &&
+                managerSource.contains(".height(34.dp)") &&
+                managerSource.contains(".padding(start = 8.dp, end = 8.dp)") &&
+                managerSource.contains(".fillMaxHeight()") &&
+                managerSource.contains("private val structureTreeNodeComparator = compareBy<MdbxStructureNode>(") &&
+                managerSource.contains("{ if (it.type == MdbxStructureNodeType.FOLDER) 0 else 1 }") &&
+                managerSource.contains("childrenByParent[parentId].orEmpty().sortedWith(structureTreeNodeComparator)") &&
+                !managerSource.substringAfter("private fun MdbxSnapshotPage(")
+                    .substringBefore("@Composable\nprivate fun MdbxCommitHistoryPage(")
+                    .contains("SnapshotStructurePreviewPage(") &&
+                !managerSource.contains("onCloseSnapshotStructure") &&
+                storeSource.contains("data class MdbxStructurePreview(") &&
+                storeSource.contains("data class MdbxStructureNode(") &&
+                storeSource.contains("enum class MdbxStructureNodeStatus") &&
+                storeSource.contains("suspend fun getSnapshotStructurePreview(") &&
+                storeSource.contains("private fun buildStructureNodes(") &&
+                storeSource.contains("val visibleFolderIds = folders.keys") &&
+                storeSource.contains("private fun structureNodeTypeSortRank(node: MdbxStructureNode): Int") &&
+                storeSource.contains("if (node.type == MdbxStructureNodeType.FOLDER) 0 else 1") &&
+                storeSource.contains(".thenBy { structureNodeTypeSortRank(it) }")
+        )
+        assertTrue(
+            "Diff data must be built from parsed fields instead of raw payload/code hunks.",
+            managerSource.contains("private fun MdbxCommitDiff.toFieldChanges()") &&
+                managerSource.contains("private fun CommitObjectChangeCard(") &&
+                managerSource.contains("private enum class ObjectChangeKind") &&
+                managerSource.contains("ObjectChangeKind.DELETED -> \"删除了${'$'}objectLabel\"") &&
+                managerSource.contains("private fun MdbxCommitDiff.displayObjectPath()") &&
+                managerSource.contains("private fun MdbxConflictSummary.toFieldChanges()") &&
+                managerSource.contains("displayTitle?.takeIf") &&
+                managerSource.contains("storagePath?.takeIf") &&
+                managerSource.contains("\"标题\"") &&
+                managerSource.contains("\"内容摘要\"") &&
+                storeSource.contains("val displayTitle: String?") &&
+                storeSource.contains("val storagePath: String?") &&
+                storeSource.contains("private fun readDiffDisplayInfo(") &&
+                storeSource.contains("private fun folderDisplayPath(") &&
+                storeSource.contains("displayTitle = displayInfo.title") &&
+                storeSource.contains("storagePath = displayInfo.storagePath") &&
+                !managerSource.contains("@@ payload") &&
+                !managerSource.contains("@@ title")
+        )
+        assertTrue(
+            "History detail should use the top app bar back path and avoid duplicate in-content titles.",
+            managerSource.contains("val deltaState = deltaDialogState as? MdbxViewModel.MdbxDeltaDialogState.Visible") &&
+                managerSource.contains("deltaState?.selectedDiffCommitId != null") &&
+                managerSource.contains("viewModel.closeCommitDiff()") &&
+                managerSource.contains("MdbxSectionHeader(") &&
+                managerSource.contains("title = \"提交历史\"") &&
+                managerSource.contains("private fun MdbxSnapshotPage(") &&
+                managerSource.contains("private fun MdbxCommitHistoryPage(") &&
+                managerSource.contains("MdbxNavigationActionRow(Icons.Default.Restore, \"快照\", onShowSnapshots)") &&
+                managerSource.contains("MdbxNavigationActionRow(Icons.Default.History, \"提交历史\", onShowCommitHistory)") &&
+                managerSource.contains("delta.changedObjectPreview.ifBlank") &&
+                managerSource.contains("delta.changedFieldSummary.ifBlank") &&
+                storeSource.contains("val changedObjectPreview: String") &&
+                storeSource.contains("val changedFieldSummary: String") &&
+                storeSource.contains("private fun readCommitChangePreview(") &&
+                storeSource.contains("private fun summarizeCommitObjects(") &&
+                storeSource.contains("private fun summarizeCommitFields(") &&
+                !managerSource.contains("onCloseDiff = { viewModel.closeCommitDiff() }") &&
+                !managerSource.contains("Text(\"返回历史\")") &&
+                !managerSource.contains("val pageTitle = if (state?.selectedDiffCommitId != null)") &&
+                !managerSource.contains("MdbxDeltaPage(") &&
+                !managerSource.contains("MdbxManagerPage.History") &&
+                !managerSource.contains("历史 / 快照") &&
+                !managerSource.contains("修改前") &&
+                !managerSource.contains("修改后") &&
+                !managerSource.contains("Text(\n                delta.changedObjectIds") &&
+                !managerSource.contains("Text(\"Diff\")")
+        )
+        assertTrue(
+            "Legacy dialog/list implementations must not return and reintroduce inline diff details.",
+            !managerSource.contains("private fun MdbxConflictDialog(") &&
+                !managerSource.contains("private fun MdbxDeltaDialog(") &&
+                !managerSource.contains("private fun ConflictRow(") &&
+                !managerSource.contains("private fun ConflictVersionPreview(")
+        )
+    }
+
+    @Test
+    fun normalPasswordPageShowsBatchTransferInQuickStatusBar() {
+        val trackerSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordBatchTransferProgressTracker.kt"
+        ).readText()
+        val quickFolderSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordQuickFolderSections.kt"
+        ).readText()
+        val quickStatusTransferSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/components/QuickStatusTransferBar.kt"
+        ).readText()
+        val listContentSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordListContent.kt"
+        ).readText()
+        val mainPaneSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordListMainPane.kt"
+        ).readText()
+        val moveSupportSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordBatchMoveSupport.kt"
+        ).readText()
+        val unifiedMoveSheetSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/components/UnifiedMoveToCategoryBottomSheet.kt"
+        ).readText()
+        val mdbxStoreSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/repository/MdbxVaultStore.kt"
+        ).readText()
+        val passwordRepositorySource = projectFile(
+            "app/src/main/java/takagi/ru/monica/repository/PasswordRepository.kt"
+        ).readText()
+        val mdbxViewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/MdbxViewModel.kt"
+        ).readText()
+
+        assertTrue(
+            "The transfer tracker must keep a short success phase so the quick status bar can show the completed result before returning to breadcrumbs.",
+            trackerSource.contains("enum class PasswordBatchTransferPhase") &&
+                trackerSource.contains("RUNNING") &&
+                trackerSource.contains("SUCCESS") &&
+                trackerSource.contains("fun complete(") &&
+                trackerSource.contains("delay(1300)")
+        )
+        assertTrue(
+            "The normal password page, not VaultV2, must collect transfer progress and show the quick status bar even when only transfer state is active.",
+            listContentSource.contains("PasswordBatchTransferProgressTracker.progress.collectAsState()") &&
+                listContentSource.contains("var showQuickStatusTransferDialog by remember { mutableStateOf(false) }") &&
+                listContentSource.contains("LaunchedEffect(quickStatusTransferState)") &&
+                listContentSource.contains("effectiveQuickFolderBreadcrumbs.isNotEmpty() ||") &&
+                listContentSource.contains("quickStatusTransferState != null") &&
+                listContentSource.contains("quickStatusTransferState = quickStatusTransferState") &&
+                listContentSource.contains("onQuickStatusTransferClick = {") &&
+                listContentSource.contains("quickStatusTransferDialogState?.let") &&
+                mainPaneSource.contains("quickStatusTransferState: PasswordBatchTransferGlobalProgressState? = null") &&
+                mainPaneSource.contains("onQuickStatusTransferClick: (() -> Unit)? = null") &&
+                mainPaneSource.contains("transferState = quickStatusTransferState") &&
+                mainPaneSource.contains("onTransferStatusClick = onQuickStatusTransferClick")
+        )
+        assertTrue(
+            "The transfer animation should live in a reusable quick status component, not as password-page-only UI.",
+            quickStatusTransferSource.contains("data class QuickStatusTransferState(") &&
+                quickStatusTransferSource.contains("enum class QuickStatusTransferPhase") &&
+                quickStatusTransferSource.contains("fun QuickStatusTransferBar(") &&
+                quickStatusTransferSource.contains("Icons.AutoMirrored.Filled.Send") &&
+                quickStatusTransferSource.contains("val sourceWeight") &&
+                quickStatusTransferSource.contains("val targetWeight") &&
+                quickStatusTransferSource.contains("QuickStatusTransferSuccessStatus") &&
+                quickStatusTransferSource.contains("\"移动\"") &&
+                quickStatusTransferSource.contains("\"复制\"") &&
+                quickFolderSource.contains("QuickStatusTransferBar(") &&
+                quickFolderSource.contains("toQuickStatusTransferState(") &&
+                quickFolderSource.contains("targetState = statusMode") &&
+                quickFolderSource.contains("PasswordQuickStatusMode") &&
+                quickFolderSource.contains("Modifier.clickable(enabled = onTransferStatusClick != null)") &&
+                !quickFolderSource.contains("private fun PasswordQuickTransferStatusBar(") &&
+                !quickFolderSource.contains("private fun PasswordQuickTransferSuccessStatus(") &&
+                !quickFolderSource.contains("targetState = transferState")
+        )
+        assertTrue(
+            "Completed password batch moves/copies should publish success to the quick status bar instead of clearing the state immediately, without auto-opening the old blocking progress dialog.",
+            moveSupportSource.contains("var completedCleanly = false") &&
+                moveSupportSource.contains("mutableStateOf(false)") &&
+                moveSupportSource.contains("completedCleanly = true") &&
+                moveSupportSource.contains("internal fun PasswordBatchTransferGlobalProgressState.toDialogUiState()") &&
+                moveSupportSource.contains("PasswordBatchTransferProgressTracker.complete(") &&
+                moveSupportSource.contains("PasswordBatchTransferProgressTracker.clear()") &&
+                !moveSupportSource.contains("showProgressDialog = true")
+        )
+        assertTrue(
+            "After the user confirms a move/copy target, multi-select mode should close immediately while the transfer continues in the quick status bar.",
+            moveSupportSource.indexOf("onProgressUpdate(if (totalCount > 1) 1 else 0, totalCount)").let { progressIndex ->
+                moveSupportSource.indexOf("onDismiss()\n            onSelectionCleared()").let { clearIndex ->
+                    moveSupportSource.indexOf("viewModel.viewModelScope.launch {").let { launchIndex ->
+                        progressIndex >= 0 &&
+                            clearIndex >= 0 &&
+                            launchIndex >= 0 &&
+                            progressIndex < clearIndex &&
+                            clearIndex < launchIndex
+                    }
+                }
+            }
+        )
+        assertTrue(
+            "The normal password move/copy picker must refresh MDBX folders when an MDBX target database is selected, otherwise unopened MDBX databases show only the root target.",
+            unifiedMoveSheetSource.contains("refreshMdbxFolders: (Long) -> Unit = {}") &&
+                unifiedMoveSheetSource.contains("val activeMdbxDatabaseId = (activeSource as? MovePickerSource.MdbxDatabase)?.database?.id") &&
+                unifiedMoveSheetSource.contains("LaunchedEffect(activeMdbxDatabaseId)") &&
+                unifiedMoveSheetSource.contains("activeMdbxDatabaseId?.let(refreshMdbxFolders)") &&
+                moveSupportSource.contains("refreshMdbxFolders = viewModel::refreshMdbxFolders")
+        )
+        assertTrue(
+            "MDBX password object ids must reuse imported MDBX entry ids across clients, while tombstoning the broken local Room-id object written by older builds.",
+            mdbxStoreSource.contains("?.takeIf(::isMdbxPasswordObjectId)") &&
+                mdbxStoreSource.contains("?: \"password:${'$'}{entry.id}\"") &&
+                mdbxStoreSource.contains("private fun legacyPasswordObjectId(entry: PasswordEntry): String?") &&
+                mdbxStoreSource.contains("?.let { \"password:${'$'}{entry.id}\" }") &&
+                mdbxStoreSource.contains("private fun isMdbxPasswordObjectId(value: String): Boolean") &&
+                mdbxStoreSource.contains("legacyEntryId = legacyPasswordObjectId(entry)") &&
+                mdbxStoreSource.contains("markLegacyEntryDeleted(db, legacyEntryId, commitId, now)") &&
+                mdbxStoreSource.contains("insertTombstone(db, \"project\", legacyEntryId)") &&
+                mdbxStoreSource.contains("insertTombstone(db, \"entry\", legacyEntryId)") &&
+                mdbxStoreSource.contains("clearTombstone(db, \"project\", mutation.projectId)") &&
+                mdbxStoreSource.contains("val projectId = version?.projectId ?: mutation.entryId") &&
+                mdbxStoreSource.contains("insertTombstone(db, \"project\", projectId)") &&
+                mdbxStoreSource.contains("UPDATE projects SET title_ct = ?, group_id = ?, object_clock = object_clock + 1,\n                head_commit_id = ?, deleted = ?") &&
+                passwordRepositorySource.contains("replicaGroupId = entry.mdbxPasswordObjectId()") &&
+                passwordRepositorySource.contains("passwordEntryDao.updatePasswordEntries(entriesForMdbx)") &&
+                passwordRepositorySource.contains("private fun PasswordEntry.mdbxPasswordObjectId(): String") &&
+                mdbxViewModelSource.contains(".dedupeMdbxPasswordRowsByEntryId()") &&
+                mdbxViewModelSource.contains("private suspend fun List<PasswordEntry>.dedupeMdbxPasswordRowsByEntryId()") &&
+                mdbxViewModelSource.contains("passwordEntryDao.deletePasswordEntryById(duplicate.id)")
+        )
+    }
+
+    @Test
+    fun normalPasswordPageRunsBatchDeleteThroughQuickStatusBar() {
+        val deleteTrackerSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordBatchDeleteProgressTracker.kt"
+        ).readText()
+        val quickDeleteSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/components/QuickStatusDeleteBar.kt"
+        ).readText()
+        val quickFolderSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordQuickFolderSections.kt"
+        ).readText()
+        val listContentSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordListContent.kt"
+        ).readText()
+        val mainPaneSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordListMainPane.kt"
+        ).readText()
+        val dialogsSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordListDialogs.kt"
+        ).readText()
+
+        assertTrue(
+            "Batch delete progress must keep a short success state so the quick status bar can show the completed result before returning to breadcrumbs.",
+            deleteTrackerSource.contains("enum class PasswordBatchDeletePhase") &&
+                deleteTrackerSource.contains("SUCCESS") &&
+                deleteTrackerSource.contains("fun complete(") &&
+                deleteTrackerSource.contains("delay(1300)")
+        )
+        assertTrue(
+            "The normal password page must collect delete progress, show it in the quick status bar, and open details only when the status bar is tapped.",
+            listContentSource.contains("PasswordBatchDeleteProgressTracker.progress.collectAsState()") &&
+                listContentSource.contains("var showQuickStatusDeleteDialog by remember { mutableStateOf(false) }") &&
+                listContentSource.contains("quickStatusDeleteState != null") &&
+                listContentSource.contains("quickStatusDeleteState = quickStatusDeleteState") &&
+                listContentSource.contains("onQuickStatusDeleteClick = {") &&
+                listContentSource.contains("quickStatusDeleteDialogState?.let") &&
+                mainPaneSource.contains("quickStatusDeleteState: PasswordBatchDeleteGlobalProgressState? = null") &&
+                mainPaneSource.contains("onQuickStatusDeleteClick: (() -> Unit)? = null") &&
+                mainPaneSource.contains("deleteState = quickStatusDeleteState") &&
+                mainPaneSource.contains("onDeleteStatusClick = onQuickStatusDeleteClick")
+        )
+        assertTrue(
+            "Delete status UI should live in the shared quick status area, not in the old blocking progress dialog path.",
+            quickDeleteSource.contains("data class QuickStatusDeleteState(") &&
+                quickDeleteSource.contains("enum class QuickStatusDeletePhase") &&
+                quickDeleteSource.contains("fun QuickStatusDeleteBar(") &&
+                quickDeleteSource.contains("QuickStatusDeleteSuccessStatus") &&
+                quickDeleteSource.contains("正在删除") &&
+                quickDeleteSource.contains("删除成功，已删除") &&
+                quickFolderSource.contains("QuickStatusDeleteBar(") &&
+                quickFolderSource.contains("toQuickStatusDeleteState(") &&
+                quickFolderSource.contains("DELETE_RUNNING") &&
+                quickFolderSource.contains("DELETE_SUCCESS")
+        )
+        assertTrue(
+            "After confirming batch delete, the page must snapshot the selection before clearing multi-select so background deletion does not lose selected items.",
+            dialogsSource.contains("onBatchDeleteStarted: () -> Unit = {}") &&
+                dialogsSource.contains("onShowBatchDeleteDialogChange(false)") &&
+                dialogsSource.contains("PasswordBatchDeleteProgressTracker.complete(successCount)") &&
+                listContentSource.contains("val selectedPasswordIdsSnapshot = selectedPasswords.toSet()") &&
+                listContentSource.contains("val selectedSupplementaryItemsSnapshot = selectedSupplementaryItems.toList()") &&
+                listContentSource.contains("val selectedItemKeysSnapshot = selectedItemKeys.toList()") &&
+                listContentSource.contains("onBatchDeleteStarted = {") &&
+                listContentSource.contains("selectedItemKeys = emptySet()")
+        )
+        assertFalse(
+            "The old auto-opening batch delete progress dialog must not come back; progress details are opened by tapping the quick status bar.",
+            dialogsSource.contains("showBatchDeleteProgressDialog")
+        )
+    }
+
+    @Test
+    fun mdbxBatchDeleteUsesSingleCommitBatchPaths() {
+        val viewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/PasswordViewModel.kt"
+        ).readText()
+        val repositorySource = projectFile(
+            "app/src/main/java/takagi/ru/monica/repository/PasswordRepository.kt"
+        ).readText()
+        val mdbxStoreSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/repository/MdbxVaultStore.kt"
+        ).readText()
+        val batchDeleteBody = viewModelSource
+            .substringAfter("suspend fun deletePasswordEntriesBatch(")
+            .substringBefore("private suspend fun handleBitwardenQueuedDelete(")
+
+        assertTrue(
+            "Password batch delete must collect local targets and flush them through the batch helper instead of writing each item inside the main loop.",
+            batchDeleteBody.contains("val localTargets = mutableListOf<") &&
+                batchDeleteBody.contains("localTargets += entry to commandPolicy") &&
+                batchDeleteBody.contains("applyLocalDeleteBatch(localTargets, trashEnabled)") &&
+                batchDeleteBody.contains("deletedCount += applyLocalDeleteBatch(chunk, trashEnabled)") &&
+                !batchDeleteBody.contains("moveEntryToTrashLocalOnly(entry, commandPolicy)") &&
+                !batchDeleteBody.contains("permanentlyDeleteEntryLocalOnly(entry)")
+        )
+        assertTrue(
+            "The local delete batch helper must call repository batch APIs once and clear archive sync metadata as one list operation.",
+            viewModelSource.contains("private suspend fun applyLocalDeleteBatch(") &&
+                viewModelSource.contains("repository.updatePasswordEntries(softDeletedEntries)") &&
+                viewModelSource.contains("repository.deletePasswordEntries(originalEntries)") &&
+                viewModelSource.contains("repository.deleteArchiveSyncMeta(originalEntries.map { it.id })")
+        )
+        assertTrue(
+            "PasswordRepository batch update/delete must forward MDBX entries through MDBX batch APIs before writing Room in batches.",
+            repositorySource.contains("suspend fun updatePasswordEntries(entries: List<PasswordEntry>)") &&
+                repositorySource.contains("mdbxRepository?.upsertPasswords(normalizedEntries.filter { it.mdbxDatabaseId != null })") &&
+                repositorySource.contains("passwordEntryDao.updatePasswordEntries(normalizedEntries)") &&
+                repositorySource.contains("suspend fun deletePasswordEntries(entries: List<PasswordEntry>)") &&
+                repositorySource.contains("mdbxRepository?.deletePasswords(entries.filter { it.mdbxDatabaseId != null })") &&
+                repositorySource.contains("passwordEntryDao.deletePasswordEntries(entries)")
+        )
+        assertTrue(
+            "MDBX entry batch mutations must share one commit whose changed-object list contains the whole batch, otherwise batch delete creates one commit and snapshot per item.",
+            mdbxStoreSource.contains("val sharedCommit = sharedEntryCommit(db, vaultMutations.map { it.entryId }, epochKey)") &&
+                mdbxStoreSource.contains("writeEntryMutation(db, mutation, epochKey, sharedCommit, now)") &&
+                mdbxStoreSource.contains("writeEntryDeleteMutation(db, mutation, epochKey, sharedCommit, now)") &&
+                mdbxStoreSource.contains("changedObjectIds: List<String> = listOf(objectId)") &&
+                mdbxStoreSource.contains("val changedObjectIdsJson = JSONArray().apply") &&
+                mdbxStoreSource.contains("encrypt(changedObjectIdsJson, epochKey)")
+        )
+    }
+
+    @Test
+    fun mdbxBatchMoveAndCopyUseSingleCommitBatchPaths() {
+        val viewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/PasswordViewModel.kt"
+        ).readText()
+        val repositorySource = projectFile(
+            "app/src/main/java/takagi/ru/monica/repository/PasswordRepository.kt"
+        ).readText()
+        val moveSupportSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordBatchMoveSupport.kt"
+        ).readText()
+        val mixedMoveSupportSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordBatchMoveMixedSupport.kt"
+        ).readText()
+        val batchCopyBody = moveSupportSource
+            .substringAfter("internal suspend fun executePasswordBatchCopy(")
+            .substringBefore("// 复制源密码的本地附件到新密码")
+        val encryptedBatchCopyBody = viewModelSource
+            .substringAfter("suspend fun createMdbxPasswordEntriesBatchAlreadyEncrypted(")
+            .substringBefore("// =============== 自定义字段相关方法 ===============")
+
+        assertTrue(
+            "Moving existing passwords into MDBX must update the local Room rows as one batch after the single MDBX upsert, otherwise observers can fan the operation back out into per-item work.",
+            repositorySource.contains("mdbxRepository?.upsertPasswords(entriesForMdbx)") &&
+                repositorySource.contains("passwordEntryDao.updatePasswordEntries(entriesForMdbx)") &&
+                !repositorySource.contains("entriesForMdbx.forEach { passwordEntryDao.updatePasswordEntry(it) }")
+        )
+        assertTrue(
+            "Copying encrypted password rows into MDBX needs a dedicated batch path so it does not call addPasswordEntryWithResult once per selected item.",
+            viewModelSource.contains("suspend fun createMdbxPasswordEntriesBatchAlreadyEncrypted(entries: List<PasswordEntry>): List<Long>") &&
+                encryptedBatchCopyBody.contains("password = normalizedEntry.password") &&
+                encryptedBatchCopyBody.contains("repository.insertPasswordEntries(encryptedEntries)")
+        )
+        assertTrue(
+            "The normal password-page copy flow must collapse MDBX database/folder targets into one batch insert.",
+            moveSupportSource.contains("addMdbxCopiedEntriesBatch: suspend (List<PasswordEntry>) -> List<Long>") &&
+                batchCopyBody.contains("target is UnifiedMoveCategoryTarget.MdbxDatabaseTarget || target is UnifiedMoveCategoryTarget.MdbxFolderTarget") &&
+                batchCopyBody.contains("val copiedEntries = selectedEntries.map { entry -> buildCopiedEntryForTarget(entry, target) }") &&
+                batchCopyBody.contains("val createdIds = addMdbxCopiedEntriesBatch(copiedEntries)") &&
+                moveSupportSource.contains("viewModel.createMdbxPasswordEntriesBatchAlreadyEncrypted(entries)")
+        )
+        assertTrue(
+            "The mixed aggregate page must use the same MDBX password batch insert; mixed selections must not create one MDBX commit per password row.",
+            mixedMoveSupportSource.contains("target is UnifiedMoveCategoryTarget.MdbxDatabaseTarget || target is UnifiedMoveCategoryTarget.MdbxFolderTarget") &&
+                mixedMoveSupportSource.contains("val createdIds = viewModel.createMdbxPasswordEntriesBatchAlreadyEncrypted(copiedEntries)") &&
+                mixedMoveSupportSource.contains("reportProgress(selectedEntries.size)")
+        )
+    }
+
+    @Test
+    fun mdbxSnapshotsAndBatchCreatesStayReadableAndCoalesced() {
+        val managerSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/MdbxManagerScreen.kt"
+        ).readText()
+        val mdbxViewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/MdbxViewModel.kt"
+        ).readText()
+        val passwordViewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/PasswordViewModel.kt"
+        ).readText()
+        val repositorySource = projectFile(
+            "app/src/main/java/takagi/ru/monica/repository/PasswordRepository.kt"
+        ).readText()
+        val daoSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/data/PasswordEntryDao.kt"
+        ).readText()
+        val saveGroupedBody = passwordViewModelSource
+            .substringAfter("private suspend fun saveGroupedPasswordsInternal(")
+            .substringBefore("// =============== 自定义字段相关方法 ===============")
+
+        assertTrue(
+            "The automatic snapshot button should clear automatic snapshots on demand instead of retaining the default 20 and looking like it did nothing.",
+            mdbxViewModelSource.contains("vaultStore.pruneAutomaticSnapshots(databaseId, keepCount = 0)") &&
+                mdbxViewModelSource.contains("\"已清理 ${'$'}deletedCount 个自动快照\"") &&
+                managerSource.contains("Text(\"清空自动\")")
+        )
+        assertTrue(
+            "Snapshot UI should use user-facing increment/full wording and not expose the unexplained Delta label.",
+            managerSource.contains("if (fullSnapshot) \"完整快照\" else \"增量快照\"") &&
+                managerSource.contains("${'$'}{if (snapshot.isFull) \"完整\" else \"增量\"}") &&
+                !managerSource.contains("Delta 快照") &&
+                !managerSource.contains("\"Delta\"")
+        )
+        assertTrue(
+            "Snapshot rollback must require a second confirmation because it mutates the current MDBX database.",
+            managerSource.contains("var pendingRevertSnapshot by remember { mutableStateOf<MdbxSnapshotSummary?>(null) }") &&
+                managerSource.contains("AlertDialog(") &&
+                managerSource.contains("title = { Text(\"确认回滚快照\") }") &&
+                managerSource.contains("Text(\"确认回滚\")") &&
+                managerSource.contains("onRevertSnapshot(snapshot.snapshotId)") &&
+                managerSource.contains("onRevert = { pendingRevertSnapshot = snapshot }") &&
+                !managerSource.contains("onRevert = { onRevertSnapshot(snapshot.snapshotId) }")
+        )
+        assertTrue(
+            "Deleted commit details must show an object-level delete action instead of the low-level field diff `删除: 存在 -> 已删除`.",
+            managerSource.contains("private fun CommitObjectChangeCard(") &&
+                managerSource.contains("ObjectChangeKind.DELETED -> \"删除了${'$'}objectLabel\"") &&
+                managerSource.contains("if (objectChangeKind() != ObjectChangeKind.MODIFIED) return emptyList()") &&
+                !managerSource.contains("fieldLabel = if (currentDeleted) \"删除\" else \"恢复\"") &&
+                !managerSource.contains("before = if (previousDeleted == true) \"已删除\" else \"存在\"")
+        )
+        assertTrue(
+            "Pure MDBX multi-password creates must be collected and inserted through a batch repository path so MDBX gets one shared commit.",
+            saveGroupedBody.contains("val pendingMdbxCreates = mutableListOf<Pair<Int, PasswordEntry>>()") &&
+                saveGroupedBody.contains("newEntry.isPureMdbxCreateTarget()") &&
+                saveGroupedBody.contains("pendingMdbxCreates += index to newEntry") &&
+                saveGroupedBody.contains("createMdbxPasswordEntriesBatch(pendingMdbxCreates.map { it.second })") &&
+                saveGroupedBody.contains("repository.insertPasswordEntries(encryptedEntries)") &&
+                saveGroupedBody.contains("deletePasswordEntriesBatch(entriesToDelete)") &&
+                !saveGroupedBody.contains("toDelete.forEach")
+        )
+        assertTrue(
+            "Room and PasswordRepository need a true batch insert API that forwards MDBX rows through upsertPasswords once.",
+            daoSource.contains("suspend fun insertPasswordEntries(entries: List<PasswordEntry>): List<Long>") &&
+                repositorySource.contains("suspend fun insertPasswordEntries(entries: List<PasswordEntry>): List<Long>") &&
+                repositorySource.contains("passwordEntryDao.insertPasswordEntries(normalizedEntries)") &&
+                repositorySource.contains("mdbxRepository?.upsertPasswords(persistedEntries.filter { it.mdbxDatabaseId != null })")
+        )
+    }
+
+    @Test
+    fun webDavMonicaConfigBackupIncludesSecurityAutofillAndBlacklistSettings() {
+        val webDavSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/utils/WebDavHelper.kt"
+        ).readText()
+        val settingsSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/utils/SettingsManager.kt"
+        ).readText()
+        val backupScreenSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/WebDavBackupScreen.kt"
+        ).readText()
+
+        assertTrue(
+            "Page-adjustment backup must include the user-facing security/autofill switches, otherwise WebDAV config restore silently loses them.",
+            settingsSource.contains("val securityAnalysisAutoEnabled: Boolean = false") &&
+                settingsSource.contains("val passwordDetailSecurityAnalysisEnabled: Boolean = true") &&
+                settingsSource.contains("val autofillAuthRequired: Boolean = true") &&
+                settingsSource.contains("securityAnalysisAutoEnabled = settings.securityAnalysisAutoEnabled") &&
+                settingsSource.contains("passwordDetailSecurityAnalysisEnabled = settings.passwordDetailSecurityAnalysisEnabled") &&
+                settingsSource.contains("autofillAuthRequired = settings.autofillAuthRequired") &&
+                settingsSource.contains("preferences[SECURITY_ANALYSIS_AUTO_ENABLED_KEY] = snapshot.securityAnalysisAutoEnabled") &&
+                settingsSource.contains("preferences[PASSWORD_DETAIL_SECURITY_ANALYSIS_ENABLED_KEY]") &&
+                settingsSource.contains("preferences[AUTOFILL_AUTH_REQUIRED_KEY] = snapshot.autofillAuthRequired")
+        )
+        assertTrue(
+            "WebDAV page-adjustment JSON must pass these switch fields through both export and restore layers.",
+            webDavSource.contains("val securityAnalysisAutoEnabled: Boolean = false") &&
+                webDavSource.contains("val passwordDetailSecurityAnalysisEnabled: Boolean = true") &&
+                webDavSource.contains("val autofillAuthRequired: Boolean = true") &&
+                webDavSource.contains("pageAdjustmentSettingsSnapshot.securityAnalysisAutoEnabled") &&
+                webDavSource.contains("pageAdjustmentSettingsSnapshot.passwordDetailSecurityAnalysisEnabled") &&
+                webDavSource.contains("pageAdjustmentSettingsSnapshot.autofillAuthRequired") &&
+                webDavSource.contains("pageAdjustmentBackup.securityAnalysisAutoEnabled") &&
+                webDavSource.contains("pageAdjustmentBackup.passwordDetailSecurityAnalysisEnabled") &&
+                webDavSource.contains("pageAdjustmentBackup.autofillAuthRequired")
+        )
+        assertTrue(
+            "Autofill blacklist is distinct from save-blocked targets and must be backed up as its own Monica config file.",
+            webDavSource.contains("private data class AutofillBlacklistBackupEntry(") &&
+                webDavSource.contains("val enabled: Boolean = true") &&
+                webDavSource.contains("val packages: List<String> = emptyList()") &&
+                webDavSource.contains("val autofillBlacklistEnabled = autofillPreferences.isBlacklistEnabled.first()") &&
+                webDavSource.contains("val autofillBlacklistPackages = autofillPreferences.blacklistPackages.first()") &&
+                webDavSource.contains("File(monicaConfigDir, \"autofill_blacklist.json\")") &&
+                webDavSource.contains("json.encodeToString(\n                                    AutofillBlacklistBackupEntry.serializer()") &&
+                webDavSource.contains("normalizedEntryName == \"monica_config/autofill_blacklist.json\"") &&
+                webDavSource.contains("setBlacklistEnabled(autofillBlacklistBackup.enabled)") &&
+                webDavSource.contains("setBlacklistPackages(normalizedPackages)") &&
+                backupScreenSource.contains("\"autofill_blacklist.json\" -> \"自动填充黑名单\"")
+        )
+        assertTrue(
+            "Legacy aggregate Monica config restore should understand blacklist fields when older backups carry them there.",
+            webDavSource.contains("val autofillBlacklistEnabled: Boolean? = null") &&
+                webDavSource.contains("val autofillBlacklistPackages: List<String>? = null") &&
+                webDavSource.contains("monicaConfigBackup.autofillBlacklistEnabled != null") &&
+                webDavSource.contains("monicaConfigBackup.autofillBlacklistPackages != null") &&
+                webDavSource.contains("monicaConfigBackup.autofillBlacklistEnabled?.let") &&
+                webDavSource.contains("normalizedPackages?.let")
+        )
+        assertFalse(
+            "Autofill blacklist must not be collapsed into the save-blocked-targets backup; these are different settings in the UI.",
+            webDavSource.contains("AutofillSaveBlockedTargetsBackupEntry(\n    val blockedTargets: List<String> = emptyList(),\n    val packages")
         )
     }
 

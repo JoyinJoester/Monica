@@ -127,6 +127,7 @@ import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.writeOperationAvailability
 import takagi.ru.monica.repository.MdbxStoredFolderEntry
+import takagi.ru.monica.ui.isDirectMdbxChildOf
 import takagi.ru.monica.utils.KEEPASS_DISPLAY_PATH_SEPARATOR
 import takagi.ru.monica.utils.KeePassGroupInfo
 import takagi.ru.monica.utils.buildLocalCategoryPath
@@ -185,7 +186,7 @@ fun UnifiedCategoryFilterBottomSheet(
     onDeleteCategory: ((Category) -> Unit)? = null,
     onRequestBiometricVerify: BiometricVerifyRequester? = null,
     onCreateKeePassGroup: ((databaseId: Long, parentPath: String?, name: String) -> Unit)? = null,
-    onCreateMdbxProject: ((databaseId: Long, name: String) -> Unit)? = null,
+    onCreateMdbxProject: ((databaseId: Long, parentFolderId: String?, name: String) -> Unit)? = null,
     onRenameKeePassGroup: ((databaseId: Long, groupPath: String, newName: String) -> Unit)? = null,
     mdbxDatabases: List<LocalMdbxDatabase> = emptyList(),
     onDeleteKeePassGroup: ((databaseId: Long, groupPath: String) -> Unit)? = null,
@@ -204,6 +205,7 @@ fun UnifiedCategoryFilterBottomSheet(
     var showCreateDialog by remember { mutableStateOf(false) }
     var createDialogLocalParentPath by remember { mutableStateOf<String?>(null) }
     var createDialogInitialMdbxDbId by remember { mutableStateOf<Long?>(null) }
+    var createDialogInitialMdbxParentFolderId by remember { mutableStateOf<String?>(null) }
     var renameAction by remember { mutableStateOf<RenameAction?>(null) }
     var renameInput by remember { mutableStateOf("") }
     var localCategoryRenameMode by remember { mutableStateOf(LocalCategoryRenameMode.LeafOnly) }
@@ -850,6 +852,17 @@ fun UnifiedCategoryFilterBottomSheet(
                             mdbxDatabases.forEach { database ->
                                 val expanded = mdbxExpanded[database.id] ?: false
                                 val folders by getMdbxFolders(database.id).collectAsState(initial = emptyList())
+                                val currentMdbxFolderId = (selected as? UnifiedCategoryFilterSelection.MdbxFolderFilter)
+                                    ?.takeIf { it.databaseId == database.id }
+                                    ?.folderId
+                                val visibleFolders = remember(folders, currentMdbxFolderId) {
+                                    folders
+                                        .asSequence()
+                                        .filter { it.folderId.isNotBlank() }
+                                        .filter { it.isDirectMdbxChildOf(currentMdbxFolderId) }
+                                        .sortedWith(compareBy<MdbxStoredFolderEntry>({ it.name }, { it.folderId }))
+                                        .toList()
+                                }
                                 Column {
                                     UnifiedCategoryListItem(
                                         title = database.name,
@@ -870,6 +883,7 @@ fun UnifiedCategoryFilterBottomSheet(
                                                     IconButton(onClick = {
                                                         createDialogLocalParentPath = null
                                                         createDialogInitialMdbxDbId = database.id
+                                                        createDialogInitialMdbxParentFolderId = null
                                                         showCreateDialog = true
                                                     }) {
                                                         Icon(Icons.Default.Add, contentDescription = null)
@@ -893,7 +907,7 @@ fun UnifiedCategoryFilterBottomSheet(
                                     ) {
                                         Column {
                                             Spacer(modifier = Modifier.height(8.dp))
-                                            folders.forEach { folder ->
+                                            visibleFolders.forEach { folder ->
                                                 val folderSelected = selected is UnifiedCategoryFilterSelection.MdbxFolderFilter &&
                                                     selected.databaseId == database.id &&
                                                     selected.folderId == folder.folderId
@@ -909,6 +923,20 @@ fun UnifiedCategoryFilterBottomSheet(
                                                                     folder.folderId
                                                                 )
                                                             )
+                                                        },
+                                                        menu = if (canCreateMdbx) {
+                                                            {
+                                                                IconButton(onClick = {
+                                                                    createDialogLocalParentPath = null
+                                                                    createDialogInitialMdbxDbId = database.id
+                                                                    createDialogInitialMdbxParentFolderId = folder.folderId
+                                                                    showCreateDialog = true
+                                                                }) {
+                                                                    Icon(Icons.Default.Add, contentDescription = null)
+                                                                }
+                                                            }
+                                                        } else {
+                                                            null
                                                         }
                                                     )
                                                 }
@@ -926,7 +954,10 @@ fun UnifiedCategoryFilterBottomSheet(
                         FilledTonalButton(
                             onClick = {
                                 createDialogLocalParentPath = null
-                                createDialogInitialMdbxDbId = null
+                                val currentMdbxSelection = selected as? UnifiedCategoryFilterSelection.MdbxFolderFilter
+                                createDialogInitialMdbxDbId = currentMdbxSelection?.databaseId
+                                    ?: (selected as? UnifiedCategoryFilterSelection.MdbxDatabaseFilter)?.databaseId
+                                createDialogInitialMdbxParentFolderId = currentMdbxSelection?.folderId
                                 showCreateDialog = true
                             },
                             modifier = Modifier
@@ -951,12 +982,14 @@ fun UnifiedCategoryFilterBottomSheet(
                 showCreateDialog = false
                 createDialogLocalParentPath = null
                 createDialogInitialMdbxDbId = null
+                createDialogInitialMdbxParentFolderId = null
             },
             categories = categories,
             keepassDatabases = keepassDatabases,
             mdbxDatabases = mdbxDatabases,
             bitwardenVaults = bitwardenVaults,
             getKeePassGroups = getKeePassGroups,
+            getMdbxFolders = getMdbxFolders,
             onCreateCategory = onCreateCategory,
             onCreateCategoryWithName = onCreateCategoryWithName,
             onCreateBitwardenFolder = onCreateBitwardenFolder,
@@ -968,7 +1001,8 @@ fun UnifiedCategoryFilterBottomSheet(
             } else {
                 null
             },
-            initialMdbxDbId = createDialogInitialMdbxDbId
+            initialMdbxDbId = createDialogInitialMdbxDbId,
+            initialMdbxParentFolderId = createDialogInitialMdbxParentFolderId
         )
     }
 

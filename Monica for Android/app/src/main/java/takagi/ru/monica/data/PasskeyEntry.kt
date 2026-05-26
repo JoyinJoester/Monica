@@ -51,7 +51,8 @@ import androidx.room.PrimaryKey
             name = "index_passkeys_keepass_scope_credential",
             unique = true
         ),
-        Index(value = ["mdbx_database_id"], name = "index_passkeys_mdbx_database_id")
+        Index(value = ["mdbx_database_id"], name = "index_passkeys_mdbx_database_id"),
+        Index(value = ["mdbx_database_id", "mdbx_folder_id"], name = "index_passkeys_mdbx_database_folder")
     ]
 )
 data class PasskeyEntry(
@@ -137,6 +138,8 @@ data class PasskeyEntry(
     // MDBX project-centric 数据库归属
     @ColumnInfo(name = "mdbx_database_id", defaultValue = "NULL")
     val mdbxDatabaseId: Long? = null,
+    @ColumnInfo(name = "mdbx_folder_id", defaultValue = "NULL")
+    val mdbxFolderId: String? = null,
     
     // Bitwarden 同步字段（仅同步元数据，私钥无法导出）
     @ColumnInfo(name = "bitwarden_vault_id", defaultValue = "NULL")

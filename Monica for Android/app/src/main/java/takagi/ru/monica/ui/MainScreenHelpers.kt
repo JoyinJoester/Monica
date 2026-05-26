@@ -47,6 +47,7 @@ internal data class NewItemStorageDefaults(
     val keepassDatabaseId: Long? = null,
     val keepassGroupPath: String? = null,
     val mdbxDatabaseId: Long? = null,
+    val mdbxFolderId: String? = null,
     val bitwardenVaultId: Long? = null,
     val bitwardenFolderId: String? = null
 )
@@ -56,6 +57,7 @@ internal fun NewItemStorageDefaults.hasAnyValue(): Boolean {
         keepassDatabaseId != null ||
         !keepassGroupPath.isNullOrBlank() ||
         mdbxDatabaseId != null ||
+        !mdbxFolderId.isNullOrBlank() ||
         bitwardenVaultId != null ||
         !bitwardenFolderId.isNullOrBlank()
 }
@@ -133,6 +135,12 @@ internal fun defaultsFromPasswordFilter(filter: CategoryFilter): NewItemStorageD
         }
         is CategoryFilter.MdbxDatabase -> {
             NewItemStorageDefaults(mdbxDatabaseId = filter.databaseId)
+        }
+        is CategoryFilter.MdbxFolderFilter -> {
+            NewItemStorageDefaults(
+                mdbxDatabaseId = filter.databaseId,
+                mdbxFolderId = filter.folderId
+            )
         }
         is CategoryFilter.BitwardenVaultStarred -> {
             NewItemStorageDefaults(bitwardenVaultId = filter.vaultId)

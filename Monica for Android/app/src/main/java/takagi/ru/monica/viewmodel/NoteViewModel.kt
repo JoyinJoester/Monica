@@ -215,6 +215,7 @@ class NoteViewModel(
         keepassDatabaseId: Long? = null,
         keepassGroupPath: String? = null,
         mdbxDatabaseId: Long? = null,
+        mdbxFolderId: String? = null,
         bitwardenVaultId: Long? = null,
         bitwardenFolderId: String? = null,
         replicaGroupId: String? = null
@@ -246,6 +247,7 @@ class NoteViewModel(
                 keepassEntryUuid = keepassIdentity.entryUuid,
                 keepassGroupUuid = keepassIdentity.groupUuid,
                 mdbxDatabaseId = mdbxDatabaseId,
+                mdbxFolderId = if (mdbxDatabaseId != null) mdbxFolderId else null,
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenFolderId = bitwardenFolderId,
                 syncStatus = if (bitwardenVaultId != null) "PENDING" else "NONE",
@@ -282,6 +284,7 @@ class NoteViewModel(
         keepassDatabaseId: Long? = null,
         keepassGroupPath: String? = null,
         mdbxDatabaseId: Long? = null,
+        mdbxFolderId: String? = null,
         bitwardenVaultId: Long? = null,
         bitwardenFolderId: String? = null,
         replicaGroupId: String? = null
@@ -327,6 +330,7 @@ class NoteViewModel(
                 keepassEntryUuid = keepassIdentity.entryUuid,
                 keepassGroupUuid = keepassIdentity.groupUuid,
                 mdbxDatabaseId = mdbxDatabaseId,
+                mdbxFolderId = if (mdbxDatabaseId != null) mdbxFolderId else null,
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenCipherId = transition.cipherId,
                 bitwardenFolderId = bitwardenFolderId,
@@ -468,6 +472,7 @@ class NoteViewModel(
                             isFavorite = isFavorite,
                             imagePaths = imagePaths,
                             mdbxDatabaseId = currentTarget.databaseId,
+                            mdbxFolderId = currentTarget.folderId,
                             replicaGroupId = replicaGroupId
                         )
                     } else {
@@ -481,6 +486,7 @@ class NoteViewModel(
                             createdAt = createdAt,
                             imagePaths = imagePaths,
                             mdbxDatabaseId = currentTarget.databaseId,
+                            mdbxFolderId = currentTarget.folderId,
                             replicaGroupId = replicaGroupId
                         )
                     }
@@ -573,6 +579,7 @@ class NoteViewModel(
                             isFavorite = isFavorite,
                             imagePaths = imagePaths,
                             mdbxDatabaseId = target.databaseId,
+                            mdbxFolderId = target.folderId,
                             replicaGroupId = replicaGroupId
                         ) else updateNote(
                             id = existingReplica.id,
@@ -584,6 +591,7 @@ class NoteViewModel(
                             createdAt = createdAt,
                             imagePaths = imagePaths,
                             mdbxDatabaseId = target.databaseId,
+                            mdbxFolderId = target.folderId,
                             replicaGroupId = replicaGroupId
                         )
                         is StorageTarget.Bitwarden -> if (existingReplica == null) addNote(
@@ -631,13 +639,15 @@ class NoteViewModel(
         keepassGroupPath: String? = item.keepassGroupPath,
         bitwardenVaultId: Long? = item.bitwardenVaultId,
         bitwardenFolderId: String? = item.bitwardenFolderId,
-        mdbxDatabaseId: Long? = item.mdbxDatabaseId
+        mdbxDatabaseId: Long? = item.mdbxDatabaseId,
+        mdbxFolderId: String? = item.mdbxFolderId
     ): Boolean {
         if (item.itemType != ItemType.NOTE) return false
+        val targetMdbxFolderId = if (mdbxDatabaseId != null) mdbxFolderId else null
         val target = when {
             bitwardenVaultId != null -> StorageTarget.Bitwarden(bitwardenVaultId, bitwardenFolderId)
             keepassDatabaseId != null -> StorageTarget.KeePass(keepassDatabaseId, keepassGroupPath)
-            mdbxDatabaseId != null -> StorageTarget.Mdbx(mdbxDatabaseId)
+            mdbxDatabaseId != null -> StorageTarget.Mdbx(mdbxDatabaseId, targetMdbxFolderId)
             else -> StorageTarget.MonicaLocal(categoryId)
         }
         if (hasReplicaTargetConflict(
@@ -679,6 +689,7 @@ class NoteViewModel(
             bitwardenRevisionDate = transition.revisionDate,
             bitwardenLocalModified = transition.localModified,
             mdbxDatabaseId = mdbxDatabaseId,
+            mdbxFolderId = targetMdbxFolderId,
             syncStatus = transition.syncStatus,
             updatedAt = Date()
         )

@@ -84,6 +84,9 @@ internal fun PasswordTabPane(
     onInlinePasswordEditorBack: () -> Unit,
     onNavigateToAddWifi: (Long?) -> Unit = {},
     onNavigateToAddSshKey: (Long?) -> Unit = {},
+    pendingPasswordAuthenticatorQrResult: String? = null,
+    onConsumePendingPasswordAuthenticatorQrResult: () -> Unit = {},
+    onScanPasswordAuthenticatorQrCode: () -> Unit = {},
     totpViewModel: takagi.ru.monica.viewmodel.TotpViewModel,
     bankCardViewModel: BankCardViewModel,
     noteViewModel: NoteViewModel,
@@ -193,7 +196,11 @@ internal fun PasswordTabPane(
                         initialBitwardenVaultId = passwordNewItemDefaults.bitwardenVaultId,
                         initialBitwardenFolderId = passwordNewItemDefaults.bitwardenFolderId,
                         initialMdbxDatabaseId = passwordNewItemDefaults.mdbxDatabaseId,
+                        initialMdbxFolderId = passwordNewItemDefaults.mdbxFolderId,
                         mdbxDatabasesFallback = mdbxDatabases,
+                        pendingQrResult = pendingPasswordAuthenticatorQrResult,
+                        onConsumePendingQrResult = onConsumePendingPasswordAuthenticatorQrResult,
+                        onScanAuthenticatorQrCode = onScanPasswordAuthenticatorQrCode,
                         onSwitchToWifi = { targetId ->
                             onInlinePasswordEditorBack()
                             onNavigateToAddWifi(targetId)

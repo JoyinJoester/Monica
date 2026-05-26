@@ -79,7 +79,8 @@ class SecureItemRepository(
         itemData: String = source.itemData,
         imagePaths: String = source.imagePaths,
         isFavorite: Boolean = source.isFavorite,
-        categoryId: Long? = source.categoryId
+        categoryId: Long? = source.categoryId,
+        mdbxFolderId: String? = source.mdbxFolderId
     ): SecureItem {
         if (source.mdbxDatabaseId == databaseId) {
             val updated = source.copy(
@@ -89,6 +90,7 @@ class SecureItemRepository(
                 imagePaths = imagePaths,
                 isFavorite = isFavorite,
                 categoryId = categoryId,
+                mdbxFolderId = mdbxFolderId,
                 updatedAt = Date()
             )
             updateItem(updated)
@@ -120,6 +122,7 @@ class SecureItemRepository(
             keepassEntryUuid = null,
             keepassGroupUuid = null,
             mdbxDatabaseId = databaseId,
+            mdbxFolderId = mdbxFolderId,
             bitwardenVaultId = null,
             bitwardenCipherId = null,
             bitwardenFolderId = null,

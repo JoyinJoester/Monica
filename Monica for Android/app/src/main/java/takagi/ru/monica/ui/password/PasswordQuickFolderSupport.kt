@@ -32,6 +32,11 @@ internal data class PasswordQuickFolderBreadcrumb(
     val isCurrent: Boolean
 )
 
+internal data class MdbxFolderPathSegment(
+    val folderId: String,
+    val name: String
+)
+
 internal fun normalizePasswordQuickFolderPath(path: String): String {
     return path
         .split("/")
@@ -276,18 +281,19 @@ internal fun buildQuickFolderShortcuts(
                 is CategoryFilter.MdbxFolderFilter -> filter.databaseId
                 else -> error("Unsupported MDBX quick-folder filter: $filter")
             }
-            if (includeBackNavigation && filter is CategoryFilter.MdbxFolderFilter) {
-                shortcuts += PasswordQuickFolderShortcut(
-                    key = "back_mdbx_${databaseId}_${filter.folderId}",
-                    title = context.getString(R.string.password_list_quick_folder_back),
-                    subtitle = context.getString(R.string.password_list_quick_folder_back_subtitle),
-                    isBack = true,
-                    targetFilter = CategoryFilter.MdbxDatabase(databaseId),
-                    passwordCount = null
+            val currentFolderId = (filter as? CategoryFilter.MdbxFolderFilter)?.folderId
+            if (currentFolderId != null) {
+                shortcuts += buildMdbxBackQuickFolderShortcut(
+                    context = context,
+                    keyPrefix = "back_mdbx",
+                    databaseId = databaseId,
+                    currentFolderId = currentFolderId,
+                    folders = selectedMdbxFolders
                 )
             }
             shortcuts += buildMdbxFolderQuickFolderShortcuts(
                 databaseId = databaseId,
+                currentParentFolderId = currentFolderId,
                 folders = selectedMdbxFolders,
                 allPasswords = quickFolderSourceEntries,
                 isSearchActive = isSearchActive
@@ -492,18 +498,19 @@ internal fun buildCategoryMenuFolderShortcuts(
                 is CategoryFilter.MdbxFolderFilter -> filter.databaseId
                 else -> error("Unsupported MDBX category-menu filter: $filter")
             }
-            if (filter is CategoryFilter.MdbxFolderFilter) {
-                shortcuts += PasswordQuickFolderShortcut(
-                    key = "menu_back_mdbx_${databaseId}_${filter.folderId}",
-                    title = context.getString(R.string.password_list_quick_folder_back),
-                    subtitle = context.getString(R.string.password_list_quick_folder_back_subtitle),
-                    isBack = true,
-                    targetFilter = CategoryFilter.MdbxDatabase(databaseId),
-                    passwordCount = null
+            val currentFolderId = (filter as? CategoryFilter.MdbxFolderFilter)?.folderId
+            if (currentFolderId != null) {
+                shortcuts += buildMdbxBackQuickFolderShortcut(
+                    context = context,
+                    keyPrefix = "menu_back_mdbx",
+                    databaseId = databaseId,
+                    currentFolderId = currentFolderId,
+                    folders = selectedMdbxFolders
                 )
             }
             shortcuts += buildMdbxFolderQuickFolderShortcuts(
                 databaseId = databaseId,
+                currentParentFolderId = currentFolderId,
                 folders = selectedMdbxFolders,
                 allPasswords = menuSourceEntries,
                 isSearchActive = isSearchActive
@@ -645,16 +652,15 @@ internal fun buildQuickFolderBreadcrumbs(
         }
 
         is CategoryFilter.MdbxFolderFilter -> {
-            val folderName = selectedMdbxFolders.firstOrNull {
-                it.folderId == filter.folderId
-            }?.name?.takeIf { it.isNotBlank() }
-                ?: "Folder ${filter.folderId.take(8)}"
-            crumbs += PasswordQuickFolderBreadcrumb(
-                key = "mdbx_folder_${filter.databaseId}_${filter.folderId}",
-                title = folderName,
-                targetFilter = filter,
-                isCurrent = true
-            )
+            val segments = buildMdbxFolderPathSegments(filter.folderId, selectedMdbxFolders)
+            segments.forEachIndexed { index, segment ->
+                crumbs += PasswordQuickFolderBreadcrumb(
+                    key = "mdbx_folder_${filter.databaseId}_${segment.folderId}",
+                    title = segment.name,
+                    targetFilter = CategoryFilter.MdbxFolderFilter(filter.databaseId, segment.folderId),
+                    isCurrent = index == segments.lastIndex
+                )
+            }
         }
 
         else -> Unit
@@ -833,6 +839,7 @@ internal fun countKeePassSubtreePasswords(
 
 internal fun buildMdbxFolderQuickFolderShortcuts(
     databaseId: Long,
+    currentParentFolderId: String? = null,
     folders: List<MdbxStoredFolderEntry>,
     allPasswords: List<takagi.ru.monica.data.PasswordEntry>,
     isSearchActive: Boolean
@@ -843,8 +850,9 @@ internal fun buildMdbxFolderQuickFolderShortcuts(
     return folders
         .asSequence()
         .filter { it.folderId.isNotBlank() }
+        .filter { folder -> folder.isDirectMdbxChildOf(currentParentFolderId) }
         .filter { folder -> !isSearchActive || (folderCountById[folder.folderId] ?: 0) > 0 }
-        .sortedWith(compareBy<MdbxStoredFolderEntry>({ it.parentFolderId ?: "" }, { it.name }, { it.folderId }))
+        .sortedWith(compareBy<MdbxStoredFolderEntry>({ it.name }, { it.folderId }))
         .map { folder ->
             PasswordQuickFolderShortcut(
                 key = "mdbx_${databaseId}_${folder.folderId}",
@@ -858,6 +866,73 @@ internal fun buildMdbxFolderQuickFolderShortcuts(
         .toList()
 }
 
+private fun buildMdbxBackQuickFolderShortcut(
+    context: Context,
+    keyPrefix: String,
+    databaseId: Long,
+    currentFolderId: String,
+    folders: List<MdbxStoredFolderEntry>
+): PasswordQuickFolderShortcut {
+    val parentFolderId = folders
+        .firstOrNull { it.folderId == currentFolderId }
+        ?.parentFolderId
+        .normalizedMdbxParentId()
+    val backTarget = parentFolderId?.let { CategoryFilter.MdbxFolderFilter(databaseId, it) }
+        ?: CategoryFilter.MdbxDatabase(databaseId)
+
+    return PasswordQuickFolderShortcut(
+        key = "${keyPrefix}_${databaseId}_$currentFolderId",
+        title = context.getString(R.string.password_list_quick_folder_back),
+        subtitle = context.getString(R.string.password_list_quick_folder_back_subtitle),
+        isBack = true,
+        targetFilter = backTarget,
+        passwordCount = null
+    )
+}
+
+internal fun MdbxStoredFolderEntry.isDirectMdbxChildOf(parentFolderId: String?): Boolean {
+    return parentFolderId.normalizedMdbxParentId() == parentFolderIdForComparison()
+}
+
+internal fun String?.normalizedMdbxParentId(): String? {
+    val value = this?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    return if (value.equals("root", ignoreCase = true)) null else value
+}
+
+internal fun buildMdbxFolderPathSegments(
+    folderId: String,
+    folders: List<MdbxStoredFolderEntry>
+): List<MdbxFolderPathSegment> {
+    val folderById = folders
+        .filter { it.folderId.isNotBlank() }
+        .associateBy { it.folderId }
+    val segments = mutableListOf<MdbxFolderPathSegment>()
+    var currentId: String? = folderId.trim().takeIf { it.isNotBlank() }
+    var guard = 0
+    while (currentId != null && guard++ < 32) {
+        val folder = folderById[currentId]
+        segments += MdbxFolderPathSegment(
+            folderId = currentId,
+            name = folder?.name?.takeIf { it.isNotBlank() } ?: "Folder ${currentId.take(8)}"
+        )
+        currentId = folder?.parentFolderId.normalizedMdbxParentId()
+    }
+    return segments.asReversed()
+}
+
+internal fun buildMdbxFolderPathLabel(
+    folderId: String,
+    folders: List<MdbxStoredFolderEntry>
+): String {
+    return buildMdbxFolderPathSegments(folderId, folders)
+        .joinToString("/") { it.name }
+        .ifBlank { "Folder ${folderId.take(8)}" }
+}
+
+private fun MdbxStoredFolderEntry.parentFolderIdForComparison(): String? {
+    return parentFolderId.normalizedMdbxParentId()
+}
+
 internal fun countMdbxFolderPasswords(
     databaseId: Long,
     folderId: String,
@@ -865,12 +940,19 @@ internal fun countMdbxFolderPasswords(
 ): Int {
     val normalizedFolderId = folderId.trim()
     return allPasswords.count { entry ->
-        entry.mdbxDatabaseId == databaseId && when {
-            normalizedFolderId.equals("root", ignoreCase = true) -> entry.categoryId == null
-            normalizedFolderId.startsWith("category:") -> {
-                entry.categoryId == normalizedFolderId.removePrefix("category:").toLongOrNull()
+        if (entry.mdbxDatabaseId != databaseId) {
+            false
+        } else {
+            val explicitFolderId = entry.mdbxFolderId?.trim().orEmpty()
+            when {
+                normalizedFolderId.equals("root", ignoreCase = true) ->
+                    explicitFolderId.isBlank() && entry.categoryId == null
+                explicitFolderId.isNotBlank() -> explicitFolderId == normalizedFolderId
+                normalizedFolderId.startsWith("category:") -> {
+                    entry.categoryId == normalizedFolderId.removePrefix("category:").toLongOrNull()
+                }
+                else -> false
             }
-            else -> false
         }
     }
 }

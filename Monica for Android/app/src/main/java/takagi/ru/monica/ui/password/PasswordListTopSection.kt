@@ -183,9 +183,7 @@ internal fun PasswordListTopSection(
             is CategoryFilter.BitwardenVaultStarred -> "${stringResource(R.string.filter_bitwarden)} · ${stringResource(R.string.filter_starred)}"
             is CategoryFilter.BitwardenVaultUncategorized -> "${stringResource(R.string.filter_bitwarden)} · ${stringResource(R.string.filter_uncategorized)}"
             is CategoryFilter.MdbxDatabase -> mdbxDatabases.find { it.id == filter.databaseId }?.name ?: "MDBX"
-            is CategoryFilter.MdbxFolderFilter -> selectedMdbxFolders.firstOrNull {
-                it.folderId == filter.folderId
-            }?.name ?: "MDBX"
+            is CategoryFilter.MdbxFolderFilter -> buildMdbxFolderPathLabel(filter.folderId, selectedMdbxFolders)
         }
 
         ExpressiveTopBar(
@@ -766,6 +764,11 @@ internal fun PasswordListTopSection(
             val initialLocalParentPath = (currentFilter as? CategoryFilter.Custom)?.let { filter ->
                 categories.firstOrNull { it.id == filter.categoryId }?.name
             }
+            val initialDialogMdbxDbId = when (currentFilter) {
+                is CategoryFilter.MdbxDatabase -> currentFilter.databaseId
+                is CategoryFilter.MdbxFolderFilter -> currentFilter.databaseId
+                else -> null
+            }
             val (initialDialogTarget, initialDialogKeePassDbId, initialDialogBitwardenVaultId) = remember(currentFilter) {
                 when (currentFilter) {
                     is CategoryFilter.KeePassDatabase,
@@ -796,12 +799,7 @@ internal fun PasswordListTopSection(
                     }
                     is CategoryFilter.MdbxDatabase,
                     is CategoryFilter.MdbxFolderFilter -> {
-                        val databaseId = when (currentFilter) {
-                            is CategoryFilter.MdbxDatabase -> currentFilter.databaseId
-                            is CategoryFilter.MdbxFolderFilter -> currentFilter.databaseId
-                            else -> null
-                        }
-                        Triple(CreateDialogTarget.Mdbx, databaseId, null)
+                        Triple(CreateDialogTarget.Mdbx, null, null)
                     }
                     else -> Triple(null, null, null)
                 }
@@ -814,10 +812,12 @@ internal fun PasswordListTopSection(
                 mdbxDatabases = mdbxDatabases,
                 bitwardenVaults = bitwardenVaults,
                 getKeePassGroups = localKeePassViewModel::getGroups,
+                getMdbxFolders = viewModel::getMdbxFolders,
                 onCreateCategoryWithName = { name -> viewModel.addCategory(name) },
                 initialLocalParentPath = initialLocalParentPath,
                 initialTarget = initialDialogTarget,
                 initialKeePassDbId = initialDialogKeePassDbId,
+                initialMdbxDbId = initialDialogMdbxDbId,
                 initialBitwardenVaultId = initialDialogBitwardenVaultId,
                 onCreateBitwardenFolder = { vaultId, name ->
                     coroutineScope.launch {
@@ -846,9 +846,10 @@ internal fun PasswordListTopSection(
                         }
                     }
                 },
-                onCreateMdbxProject = { databaseId, name ->
+                initialMdbxParentFolderId = (currentFilter as? CategoryFilter.MdbxFolderFilter)?.folderId,
+                onCreateMdbxProject = { databaseId, parentFolderId, name ->
                     coroutineScope.launch {
-                        viewModel.createMdbxFolder(databaseId, name) { result ->
+                        viewModel.createMdbxFolder(databaseId, name, parentFolderId ?: "root") { result ->
                             result.exceptionOrNull()?.let { error ->
                                 Toast.makeText(
                                     context,

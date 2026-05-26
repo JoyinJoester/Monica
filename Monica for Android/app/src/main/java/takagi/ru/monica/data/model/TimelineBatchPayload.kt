@@ -13,6 +13,7 @@ data class TimelinePasswordLocationState(
     val keepassDatabaseId: Long? = null,
     val keepassGroupPath: String? = null,
     val mdbxDatabaseId: Long? = null,
+    val mdbxFolderId: String? = null,
     val bitwardenVaultId: Long? = null,
     val bitwardenCipherId: String? = null,
     val bitwardenFolderId: String? = null,

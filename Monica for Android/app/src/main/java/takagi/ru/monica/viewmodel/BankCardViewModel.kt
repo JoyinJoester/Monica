@@ -177,6 +177,7 @@ class BankCardViewModel(
         keepassDatabaseId: Long? = null,
         keepassGroupPath: String? = null,
         mdbxDatabaseId: Long? = null,
+        mdbxFolderId: String? = null,
         bitwardenVaultId: Long? = null,
         bitwardenFolderId: String? = null,
         replicaGroupId: String? = null
@@ -200,6 +201,7 @@ class BankCardViewModel(
                 keepassEntryUuid = keepassIdentity.entryUuid,
                 keepassGroupUuid = keepassIdentity.groupUuid,
                 mdbxDatabaseId = mdbxDatabaseId,
+                mdbxFolderId = if (mdbxDatabaseId != null) mdbxFolderId else null,
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenFolderId = bitwardenFolderId,
                 syncStatus = if (bitwardenVaultId != null) "PENDING" else "NONE",
@@ -235,6 +237,7 @@ class BankCardViewModel(
         keepassDatabaseId: Long? = null,
         keepassGroupPath: String? = null,
         mdbxDatabaseId: Long? = null,
+        mdbxFolderId: String? = null,
         bitwardenVaultId: Long? = null,
         bitwardenFolderId: String? = null,
         replicaGroupId: String? = null
@@ -281,6 +284,7 @@ class BankCardViewModel(
                     keepassEntryUuid = keepassIdentity.entryUuid,
                     keepassGroupUuid = keepassIdentity.groupUuid,
                     mdbxDatabaseId = mdbxDatabaseId,
+                    mdbxFolderId = if (mdbxDatabaseId != null) mdbxFolderId else null,
                     bitwardenVaultId = bitwardenVaultId,
                     bitwardenFolderId = bitwardenFolderId,
                     replicaGroupId = replicaGroupId ?: existingItem.replicaGroupId,
@@ -336,13 +340,15 @@ class BankCardViewModel(
         keepassGroupPath: String?,
         bitwardenVaultId: Long?,
         bitwardenFolderId: String?,
-        mdbxDatabaseId: Long? = null
+        mdbxDatabaseId: Long? = null,
+        mdbxFolderId: String? = null
     ): Boolean {
         val existingItem = repository.getItemById(id) ?: return false
+        val targetMdbxFolderId = if (mdbxDatabaseId != null) mdbxFolderId else null
         val target = when {
             bitwardenVaultId != null -> StorageTarget.Bitwarden(bitwardenVaultId, bitwardenFolderId)
             keepassDatabaseId != null -> StorageTarget.KeePass(keepassDatabaseId, keepassGroupPath)
-            mdbxDatabaseId != null -> StorageTarget.Mdbx(mdbxDatabaseId)
+            mdbxDatabaseId != null -> StorageTarget.Mdbx(mdbxDatabaseId, targetMdbxFolderId)
             else -> StorageTarget.MonicaLocal(categoryId)
         }
         if (hasReplicaTargetConflict(
@@ -368,6 +374,7 @@ class BankCardViewModel(
             bitwardenVaultId = bitwardenVaultId,
             bitwardenFolderId = bitwardenFolderId,
             mdbxDatabaseId = mdbxDatabaseId,
+            mdbxFolderId = targetMdbxFolderId,
             updatedAt = Date()
         )
         val transition = SecureItemBitwardenTransitionResolver.resolve(
@@ -492,6 +499,7 @@ class BankCardViewModel(
                             isFavorite = isFavorite,
                             imagePaths = imagePaths,
                             mdbxDatabaseId = currentTarget.databaseId,
+                            mdbxFolderId = currentTarget.folderId,
                             replicaGroupId = replicaGroupId
                         )
                     } else {
@@ -503,6 +511,7 @@ class BankCardViewModel(
                             isFavorite = isFavorite,
                             imagePaths = imagePaths,
                             mdbxDatabaseId = currentTarget.databaseId,
+                            mdbxFolderId = currentTarget.folderId,
                             replicaGroupId = replicaGroupId
                         )
                     }
@@ -605,6 +614,7 @@ class BankCardViewModel(
                             isFavorite = isFavorite,
                             imagePaths = imagePaths,
                             mdbxDatabaseId = target.databaseId,
+                            mdbxFolderId = target.folderId,
                             replicaGroupId = replicaGroupId
                         ) else updateCard(
                             id = existingReplica.id,
@@ -614,6 +624,7 @@ class BankCardViewModel(
                             isFavorite = isFavorite,
                             imagePaths = imagePaths,
                             mdbxDatabaseId = target.databaseId,
+                            mdbxFolderId = target.folderId,
                             replicaGroupId = replicaGroupId
                         )
                     }

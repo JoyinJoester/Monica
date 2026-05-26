@@ -246,8 +246,12 @@ internal fun String.toQuickFolderRootFilter(): CategoryFilter = when (this) {
 private fun PasswordEntry.matchesMdbxFolder(databaseId: Long, folderId: String): Boolean {
     if (mdbxDatabaseId != databaseId) return false
     val normalizedFolderId = folderId.trim()
+    val explicitFolderId = mdbxFolderId?.trim().orEmpty()
     if (normalizedFolderId.equals("root", ignoreCase = true)) {
-        return categoryId == null
+        return explicitFolderId.isBlank() && categoryId == null
+    }
+    if (explicitFolderId.isNotBlank()) {
+        return explicitFolderId == normalizedFolderId
     }
     val categoryIdFromFolder = normalizedFolderId
         .removePrefix("category:")

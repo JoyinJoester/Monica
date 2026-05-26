@@ -1,6 +1,9 @@
 package takagi.ru.monica.ui.screens
 
+import android.app.Activity
 import android.content.Context
+import android.content.ContextWrapper
+import android.content.pm.ActivityInfo
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
@@ -11,6 +14,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -28,7 +33,12 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
@@ -66,6 +76,10 @@ import takagi.ru.monica.repository.MdbxConflictSummary
 import takagi.ru.monica.repository.MdbxCommitDiff
 import takagi.ru.monica.repository.MdbxDeltaSummary
 import takagi.ru.monica.repository.MdbxSnapshotSummary
+import takagi.ru.monica.repository.MdbxStructureNode
+import takagi.ru.monica.repository.MdbxStructureNodeStatus
+import takagi.ru.monica.repository.MdbxStructureNodeType
+import takagi.ru.monica.repository.MdbxStructurePreview
 import takagi.ru.monica.repository.MdbxVaultDiagnostics
 import takagi.ru.monica.utils.ClipboardUtils
 import takagi.ru.monica.viewmodel.MdbxViewModel
@@ -89,10 +103,14 @@ fun MdbxManagerScreen(
     val vaultDiagnostics by viewModel.vaultDiagnostics.collectAsState()
     val conflictDialogState by viewModel.conflictDialogState.collectAsState()
     val deltaDialogState by viewModel.deltaDialogState.collectAsState()
-    val advancedDialogState by viewModel.advancedDialogState.collectAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
     var showDeleteDialog by remember { mutableStateOf<LocalMdbxDatabase?>(null) }
     var page by rememberSaveable(stateSaver = MdbxManagerPageSaver) {
         mutableStateOf<MdbxManagerPage>(MdbxManagerPage.Hub)
+    }
+    val snapshotPage = page as? MdbxManagerPage.SnapshotStructure
+    var snapshotCompareMode by rememberSaveable(snapshotPage?.databaseId, snapshotPage?.snapshotId) {
+        mutableStateOf(false)
     }
     val localDatabases = remember(databases) {
         databases.filter {
@@ -114,20 +132,22 @@ fun MdbxManagerScreen(
         viewModel.pruneMissingLocalVaults()
     }
     LaunchedEffect(databases) {
-        viewModel.refreshConflictCounts(databases)
         val databasePage = page as? MdbxManagerPage.DatabasePage
         if (databasePage != null && databases.none { it.id == databasePage.databaseId }) {
             page = MdbxManagerPage.Hub
         }
     }
+    LaunchedEffect(selectedDatabase?.id) {
+        selectedDatabase?.let { database ->
+            viewModel.activateMdbxDatabase(database.id)
+        }
+    }
     LaunchedEffect(page) {
         when (page) {
             is MdbxManagerPage.Conflict -> viewModel.dismissDeltaDialog()
-            is MdbxManagerPage.History -> viewModel.dismissConflictDialog()
-            is MdbxManagerPage.Advanced -> {
-                viewModel.dismissConflictDialog()
-                viewModel.dismissDeltaDialog()
-            }
+            is MdbxManagerPage.Snapshots,
+            is MdbxManagerPage.SnapshotStructure,
+            is MdbxManagerPage.CommitHistory -> viewModel.dismissConflictDialog()
             is MdbxManagerPage.Maintenance -> {
                 viewModel.dismissConflictDialog()
                 viewModel.dismissDeltaDialog()
@@ -135,6 +155,22 @@ fun MdbxManagerScreen(
             }
             else -> Unit
         }
+    }
+    val deltaState = deltaDialogState as? MdbxViewModel.MdbxDeltaDialogState.Visible
+    val snapshotTopBarState = deltaState?.takeIf { it.databaseId == snapshotPage?.databaseId }
+    val snapshotTopBarPreview = snapshotTopBarState?.let { topBarState ->
+        topBarState.structurePreview
+            ?.takeIf { topBarState.selectedStructureSnapshotId == snapshotPage?.snapshotId }
+    }
+    val snapshotTopBarName = snapshotPage?.let { current ->
+        snapshotTopBarPreview?.snapshotName
+            ?: snapshotTopBarState?.snapshots?.firstOrNull { it.snapshotId == current.snapshotId }?.name
+            ?: shortId(current.snapshotId)
+    }
+    val snapshotTopBarMeta = snapshotPage?.let {
+        snapshotTopBarPreview?.let { preview ->
+            "现版本 ${preview.currentItemCount} · 快照 ${preview.snapshotItemCount}"
+        } ?: "正在加载结构"
     }
 
     val goBack: () -> Unit = {
@@ -149,30 +185,96 @@ fun MdbxManagerScreen(
                 viewModel.dismissConflictDialog()
                 MdbxManagerPage.Detail(current.databaseId, current.source)
             }
-            is MdbxManagerPage.History -> {
-                viewModel.dismissDeltaDialog()
-                MdbxManagerPage.Detail(current.databaseId, current.source)
+            is MdbxManagerPage.Snapshots -> {
+                val deltaState = deltaDialogState as? MdbxViewModel.MdbxDeltaDialogState.Visible
+                if (deltaState?.selectedDiffCommitId != null) {
+                    viewModel.closeCommitDiff()
+                    current
+                } else {
+                    viewModel.dismissDeltaDialog()
+                    MdbxManagerPage.Detail(current.databaseId, current.source)
+                }
             }
-            is MdbxManagerPage.Advanced -> {
-                viewModel.dismissAdvancedTools()
-                MdbxManagerPage.Detail(current.databaseId, current.source)
+            is MdbxManagerPage.SnapshotStructure -> {
+                viewModel.closeSnapshotStructure()
+                MdbxManagerPage.Snapshots(current.databaseId, current.source)
+            }
+            is MdbxManagerPage.CommitHistory -> {
+                val deltaState = deltaDialogState as? MdbxViewModel.MdbxDeltaDialogState.Visible
+                if (deltaState?.selectedDiffCommitId != null) {
+                    viewModel.closeCommitDiff()
+                    current
+                } else {
+                    viewModel.dismissDeltaDialog()
+                    MdbxManagerPage.Detail(current.databaseId, current.source)
+                }
             }
             is MdbxManagerPage.Maintenance -> MdbxManagerPage.Detail(current.databaseId, current.source)
         }
     }
     BackHandler(onBack = goBack)
 
+    LaunchedEffect(operationState) {
+        when (val state = operationState) {
+            is MdbxViewModel.OperationState.Success -> {
+                snackbarHostState.showSnackbar(
+                    message = state.message,
+                    duration = SnackbarDuration.Short
+                )
+                viewModel.clearOperationState()
+            }
+            is MdbxViewModel.OperationState.Error -> {
+                snackbarHostState.showSnackbar(
+                    message = state.message,
+                    duration = SnackbarDuration.Short
+                )
+                viewModel.clearOperationState()
+            }
+            else -> Unit
+        }
+    }
+
     Scaffold(
+        snackbarHost = {
+            SnackbarHost(hostState = snackbarHostState)
+        },
         topBar = {
             TopAppBar(
-                title = { Text(page.title(selectedDatabase)) },
+                title = {
+                    if (snapshotPage != null && snapshotTopBarName != null) {
+                        Column {
+                            Text(
+                                snapshotTopBarName,
+                                style = MaterialTheme.typography.titleMedium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                snapshotTopBarMeta.orEmpty(),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    } else {
+                        Text(page.title(selectedDatabase))
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = goBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back))
                     }
                 },
                 actions = {
-                    if (page is MdbxManagerPage.Source) {
+                    if (snapshotPage != null) {
+                        IconButton(onClick = { snapshotCompareMode = !snapshotCompareMode }) {
+                            Icon(
+                                if (snapshotCompareMode) Icons.Default.FullscreenExit else Icons.Default.Fullscreen,
+                                contentDescription = null
+                            )
+                        }
+                    } else if (page is MdbxManagerPage.Source) {
                         val current = page as MdbxManagerPage.Source
                         IconButton(onClick = {
                             when (current.source) {
@@ -261,6 +363,7 @@ fun MdbxManagerScreen(
                             }
                         },
                         onOpenDatabase = { db ->
+                            viewModel.activateMdbxDatabase(db.id)
                             page = MdbxManagerPage.Detail(db.id, current.source)
                         }
                     )
@@ -277,13 +380,13 @@ fun MdbxManagerScreen(
                                 viewModel.showConflicts(db)
                                 page = MdbxManagerPage.Conflict(db.id, current.source)
                             },
-                            onShowDeltas = {
+                            onShowSnapshots = {
                                 viewModel.showDeltaHistory(db)
-                                page = MdbxManagerPage.History(db.id, current.source)
+                                page = MdbxManagerPage.Snapshots(db.id, current.source)
                             },
-                            onShowAdvanced = {
-                                viewModel.showAdvancedTools(db)
-                                page = MdbxManagerPage.Advanced(db.id, current.source)
+                            onShowCommitHistory = {
+                                viewModel.showDeltaHistory(db)
+                                page = MdbxManagerPage.CommitHistory(db.id, current.source)
                             },
                             onShowMaintenance = {
                                 viewModel.refreshVaultDiagnostics(listOf(db))
@@ -319,13 +422,15 @@ fun MdbxManagerScreen(
                         }
                     )
                 }
-                is MdbxManagerPage.History -> {
+                is MdbxManagerPage.Snapshots -> {
                     val state = deltaDialogState as? MdbxViewModel.MdbxDeltaDialogState.Visible
-                    MdbxDeltaPage(
+                    MdbxSnapshotPage(
                         state = state,
-                        databaseName = selectedDatabase?.name ?: "MDBX",
                         onShowDiff = { commitId -> viewModel.showCommitDiff(current.databaseId, commitId) },
-                        onRevert = { commitId -> viewModel.revertCommit(current.databaseId, commitId) },
+                        onShowSnapshotStructure = { snapshotId ->
+                            viewModel.showSnapshotStructure(current.databaseId, snapshotId)
+                            page = MdbxManagerPage.SnapshotStructure(current.databaseId, current.source, snapshotId)
+                        },
                         onCreateSnapshot = { name, fullSnapshot ->
                             viewModel.createSnapshot(current.databaseId, name, fullSnapshot)
                         },
@@ -340,23 +445,36 @@ fun MdbxManagerScreen(
                         }
                     )
                 }
-                is MdbxManagerPage.Advanced -> {
-                    val state = advancedDialogState as? MdbxViewModel.MdbxAdvancedDialogState.Visible
-                    MdbxAdvancedToolsPage(
-                        state = state,
-                        databaseName = selectedDatabase?.name ?: "MDBX",
-                        onExportBundle = { baseCommitId ->
-                            viewModel.exportSyncBundle(current.databaseId, baseCommitId)
-                        },
-                        onImportBundle = { payload ->
-                            viewModel.importSyncBundleFromJson(current.databaseId, payload)
-                        },
-                        onFlushPendingUpload = {
-                            viewModel.flushPendingVaultUpload(current.databaseId)
-                        },
-                        onRunBenchmark = { operationCount ->
-                            viewModel.runBenchmark(current.databaseId, operationCount)
+                is MdbxManagerPage.SnapshotStructure -> {
+                    val state = deltaDialogState as? MdbxViewModel.MdbxDeltaDialogState.Visible
+                    LaunchedEffect(current.databaseId, current.snapshotId) {
+                        if (state == null || state.databaseId != current.databaseId) {
+                            selectedDatabase?.let(viewModel::showDeltaHistory)
+                        } else if (state.selectedStructureSnapshotId != current.snapshotId) {
+                            viewModel.showSnapshotStructure(current.databaseId, current.snapshotId)
                         }
+                    }
+                    LaunchedEffect(state?.databaseId, state?.isLoading, current.snapshotId) {
+                        if (
+                            state?.databaseId == current.databaseId &&
+                            !state.isLoading &&
+                            state.selectedStructureSnapshotId != current.snapshotId
+                        ) {
+                            viewModel.showSnapshotStructure(current.databaseId, current.snapshotId)
+                        }
+                    }
+                    MdbxSnapshotStructurePage(
+                        preview = state?.structurePreview,
+                        isLoading = state == null || state.isLoading || state.isStructureLoading,
+                        compareMode = snapshotCompareMode
+                    )
+                }
+                is MdbxManagerPage.CommitHistory -> {
+                    val state = deltaDialogState as? MdbxViewModel.MdbxDeltaDialogState.Visible
+                    MdbxCommitHistoryPage(
+                        state = state,
+                        onShowDiff = { commitId -> viewModel.showCommitDiff(current.databaseId, commitId) },
+                        onRevert = { commitId -> viewModel.revertCommit(current.databaseId, commitId) }
                     )
                 }
                 is MdbxManagerPage.Maintenance -> {
@@ -388,28 +506,6 @@ fun MdbxManagerScreen(
             }
             }
 
-            when (val state = operationState) {
-                is MdbxViewModel.OperationState.Success -> {
-                    MdbxOperationStatusBar(
-                        text = state.message,
-                        icon = Icons.Default.CheckCircle,
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(start = 16.dp, end = 16.dp, bottom = 96.dp)
-                    )
-                }
-                is MdbxViewModel.OperationState.Error -> {
-                    MdbxOperationStatusBar(
-                        text = state.message,
-                        icon = Icons.Default.Warning,
-                        isError = true,
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(start = 16.dp, end = 16.dp, bottom = 96.dp)
-                    )
-                }
-                else -> Unit
-            }
         }
     }
 
@@ -457,8 +553,13 @@ private sealed class MdbxManagerPage {
     sealed class DatabasePage(open val databaseId: Long, open val source: MdbxManagerSource?) : MdbxManagerPage()
     data class Detail(override val databaseId: Long, override val source: MdbxManagerSource?) : DatabasePage(databaseId, source)
     data class Conflict(override val databaseId: Long, override val source: MdbxManagerSource?) : DatabasePage(databaseId, source)
-    data class History(override val databaseId: Long, override val source: MdbxManagerSource?) : DatabasePage(databaseId, source)
-    data class Advanced(override val databaseId: Long, override val source: MdbxManagerSource?) : DatabasePage(databaseId, source)
+    data class Snapshots(override val databaseId: Long, override val source: MdbxManagerSource?) : DatabasePage(databaseId, source)
+    data class SnapshotStructure(
+        override val databaseId: Long,
+        override val source: MdbxManagerSource?,
+        val snapshotId: String
+    ) : DatabasePage(databaseId, source)
+    data class CommitHistory(override val databaseId: Long, override val source: MdbxManagerSource?) : DatabasePage(databaseId, source)
     data class Maintenance(override val databaseId: Long, override val source: MdbxManagerSource?) : DatabasePage(databaseId, source)
 }
 
@@ -467,8 +568,9 @@ private fun MdbxManagerPage.depth(): Int = when (this) {
     is MdbxManagerPage.Source -> 1
     is MdbxManagerPage.Detail -> 2
     is MdbxManagerPage.Conflict -> 3
-    is MdbxManagerPage.History -> 3
-    is MdbxManagerPage.Advanced -> 3
+    is MdbxManagerPage.Snapshots -> 3
+    is MdbxManagerPage.SnapshotStructure -> 4
+    is MdbxManagerPage.CommitHistory -> 3
     is MdbxManagerPage.Maintenance -> 3
 }
 
@@ -479,8 +581,14 @@ private val MdbxManagerPageSaver: Saver<MdbxManagerPage, Any> = Saver(
             is MdbxManagerPage.Source -> listOf("Source", page.source.name)
             is MdbxManagerPage.Detail -> listOf("Detail", page.databaseId, page.source?.name ?: "")
             is MdbxManagerPage.Conflict -> listOf("Conflict", page.databaseId, page.source?.name ?: "")
-            is MdbxManagerPage.History -> listOf("History", page.databaseId, page.source?.name ?: "")
-            is MdbxManagerPage.Advanced -> listOf("Advanced", page.databaseId, page.source?.name ?: "")
+            is MdbxManagerPage.Snapshots -> listOf("Snapshots", page.databaseId, page.source?.name ?: "")
+            is MdbxManagerPage.SnapshotStructure -> listOf(
+                "SnapshotStructure",
+                page.databaseId,
+                page.source?.name ?: "",
+                page.snapshotId
+            )
+            is MdbxManagerPage.CommitHistory -> listOf("CommitHistory", page.databaseId, page.source?.name ?: "")
             is MdbxManagerPage.Maintenance -> listOf("Maintenance", page.databaseId, page.source?.name ?: "")
         }
     },
@@ -494,8 +602,15 @@ private val MdbxManagerPageSaver: Saver<MdbxManagerPage, Any> = Saver(
             }
             "Detail" -> MdbxManagerPage.Detail(list[1] as Long, parseMdbxManagerSourceOrNull(list[2] as String))
             "Conflict" -> MdbxManagerPage.Conflict(list[1] as Long, parseMdbxManagerSourceOrNull(list[2] as String))
-            "History" -> MdbxManagerPage.History(list[1] as Long, parseMdbxManagerSourceOrNull(list[2] as String))
-            "Advanced" -> MdbxManagerPage.Advanced(list[1] as Long, parseMdbxManagerSourceOrNull(list[2] as String))
+            "Snapshots" -> MdbxManagerPage.Snapshots(list[1] as Long, parseMdbxManagerSourceOrNull(list[2] as String))
+            "SnapshotStructure" -> MdbxManagerPage.SnapshotStructure(
+                list[1] as Long,
+                parseMdbxManagerSourceOrNull(list[2] as String),
+                list[3] as String
+            )
+            "CommitHistory",
+            "History" -> MdbxManagerPage.CommitHistory(list[1] as Long, parseMdbxManagerSourceOrNull(list[2] as String))
+            "Advanced" -> MdbxManagerPage.Detail(list[1] as Long, parseMdbxManagerSourceOrNull(list[2] as String))
             "Maintenance" -> MdbxManagerPage.Maintenance(list[1] as Long, parseMdbxManagerSourceOrNull(list[2] as String))
             else -> null
         }
@@ -514,8 +629,9 @@ private fun MdbxManagerPage.title(database: LocalMdbxDatabase?): String = when (
     }
     is MdbxManagerPage.Detail -> database?.name ?: "MDBX 数据库详情"
     is MdbxManagerPage.Conflict -> "冲突管理"
-    is MdbxManagerPage.History -> "历史 / 快照"
-    is MdbxManagerPage.Advanced -> "高级工具"
+    is MdbxManagerPage.Snapshots -> "快照"
+    is MdbxManagerPage.SnapshotStructure -> "快照详情"
+    is MdbxManagerPage.CommitHistory -> "提交历史"
     is MdbxManagerPage.Maintenance -> "诊断 / 维护"
 }
 
@@ -542,7 +658,7 @@ private fun MdbxManagerHubPage(
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                "按存储位置管理 MDBX 数据库。数据库诊断、冲突、历史、快照和高级工具都在数据库详情页继续进入。",
+                "按存储位置管理 MDBX 数据库。数据库诊断、冲突、历史和快照都在数据库详情页继续进入。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -760,8 +876,8 @@ private fun MdbxVaultDetailPage(
     diagnostics: MdbxVaultDiagnostics?,
     onSync: () -> Unit,
     onShowConflicts: () -> Unit,
-    onShowDeltas: () -> Unit,
-    onShowAdvanced: () -> Unit,
+    onShowSnapshots: () -> Unit,
+    onShowCommitHistory: () -> Unit,
     onShowMaintenance: () -> Unit,
     onSetDefault: () -> Unit,
     onDelete: () -> Unit
@@ -964,8 +1080,8 @@ private fun MdbxVaultDetailPage(
                 conflictCount = conflictCount,
                 onSync = onSync,
                 onShowConflicts = onShowConflicts,
-                onShowDeltas = onShowDeltas,
-                onShowAdvanced = onShowAdvanced,
+                onShowSnapshots = onShowSnapshots,
+                onShowCommitHistory = onShowCommitHistory,
                 onShowMaintenance = onShowMaintenance,
                 onSetDefault = onSetDefault,
                 onDelete = onDelete
@@ -980,8 +1096,8 @@ private fun MdbxDetailActionList(
     conflictCount: Int,
     onSync: () -> Unit,
     onShowConflicts: () -> Unit,
-    onShowDeltas: () -> Unit,
-    onShowAdvanced: () -> Unit,
+    onShowSnapshots: () -> Unit,
+    onShowCommitHistory: () -> Unit,
     onShowMaintenance: () -> Unit,
     onSetDefault: () -> Unit,
     onDelete: () -> Unit
@@ -1000,9 +1116,9 @@ private fun MdbxDetailActionList(
                 onShowConflicts
             )
             HorizontalDivider(modifier = Modifier.padding(start = 56.dp))
-            MdbxNavigationActionRow(Icons.Default.History, "历史 / 快照", onShowDeltas)
+            MdbxNavigationActionRow(Icons.Default.Restore, "快照", onShowSnapshots)
             HorizontalDivider(modifier = Modifier.padding(start = 56.dp))
-            MdbxNavigationActionRow(Icons.Default.Science, "高级工具", onShowAdvanced)
+            MdbxNavigationActionRow(Icons.Default.History, "提交历史", onShowCommitHistory)
             HorizontalDivider(modifier = Modifier.padding(start = 56.dp))
             MdbxNavigationActionRow(Icons.Default.ReportProblem, "诊断 / 维护", onShowMaintenance)
             HorizontalDivider(modifier = Modifier.padding(start = 56.dp))
@@ -1057,22 +1173,40 @@ private fun MdbxConflictPage(
     databaseName: String,
     onResolve: (String, MdbxConflictResolution) -> Unit
 ) {
+    var selectedConflictId by rememberSaveable(state?.databaseId ?: -1L) { mutableStateOf<String?>(null) }
+    val selectedConflict = state?.conflicts?.firstOrNull { it.conflictId == selectedConflictId }
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            Text(
-                "冲突管理 · ${state?.databaseName ?: databaseName}",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
+            if (selectedConflict != null) {
+                TextButton(onClick = { selectedConflictId = null }) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("返回冲突列表")
+                }
+            } else {
+                Text(
+                    "冲突管理 · ${state?.databaseName ?: databaseName}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
         }
         if (state == null || state.isLoading) {
             item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
         }
-        if (state != null && state.conflicts.isEmpty() && !state.isLoading) {
+        if (selectedConflict != null) {
+            item {
+                ConflictDiffDetail(
+                    conflict = selectedConflict,
+                    enabled = !state.isLoading,
+                    onResolve = onResolve
+                )
+            }
+        } else if (state != null && state.conflicts.isEmpty() && !state.isLoading) {
             item {
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Text(
@@ -1082,25 +1216,115 @@ private fun MdbxConflictPage(
                     )
                 }
             }
-        }
-        state?.conflicts?.let { conflicts ->
-            items(items = conflicts, key = { it.conflictId }) { conflict ->
-                ConflictRow(
-                    conflict = conflict,
-                    enabled = !state.isLoading,
-                    onResolve = onResolve
-                )
+        } else {
+            state?.conflicts?.let { conflicts ->
+                items(items = conflicts, key = { it.conflictId }) { conflict ->
+                    ConflictSummaryRow(
+                        conflict = conflict,
+                        onOpen = { selectedConflictId = conflict.conflictId }
+                    )
+                }
             }
         }
     }
 }
 
 @Composable
-private fun MdbxDeltaPage(
+private fun ConflictSummaryRow(
+    conflict: MdbxConflictSummary,
+    onOpen: () -> Unit
+) {
+    OutlinedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onOpen)
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                Icons.AutoMirrored.Filled.CallMerge,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.error,
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(
+                    "${objectTypeLabel(conflict.objectType)} · ${shortId(conflict.objectId)}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    stringResource(R.string.mdbx_conflict_fields_value, conflict.conflictingFields),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    "本地 ${shortId(conflict.localCommitId)} · 传入 ${shortId(conflict.incomingCommitId)} · ${conflict.createdAt}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun ConflictDiffDetail(
+    conflict: MdbxConflictSummary,
+    enabled: Boolean,
+    onResolve: (String, MdbxConflictResolution) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        FieldDiffPanel(
+            title = "冲突详情",
+            subtitle = "${objectTypeLabel(conflict.objectType)} · ${shortId(conflict.objectId)} · 基线 ${shortId(conflict.baseCommitId)}",
+            changes = conflict.toFieldChanges()
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = { onResolve(conflict.conflictId, MdbxConflictResolution.LOCAL_WINS) },
+                enabled = enabled,
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+            ) {
+                Text(stringResource(R.string.mdbx_conflict_local_wins))
+            }
+            Button(
+                onClick = { onResolve(conflict.conflictId, MdbxConflictResolution.INCOMING_WINS) },
+                enabled = enabled,
+                modifier = Modifier.weight(1f).heightIn(min = 48.dp)
+            ) {
+                Text(stringResource(R.string.mdbx_conflict_incoming_wins))
+            }
+        }
+        TextButton(
+            onClick = { onResolve(conflict.conflictId, MdbxConflictResolution.MARK_RESOLVED) },
+            enabled = enabled,
+            modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+        ) {
+            Text(stringResource(R.string.mdbx_conflict_mark_resolved))
+        }
+    }
+}
+
+@Composable
+private fun MdbxSnapshotPage(
     state: MdbxViewModel.MdbxDeltaDialogState.Visible?,
-    databaseName: String,
     onShowDiff: (String) -> Unit,
-    onRevert: (String) -> Unit,
+    onShowSnapshotStructure: (String) -> Unit,
     onCreateSnapshot: (String, Boolean) -> Unit,
     onDeleteSnapshot: (String) -> Unit,
     onRevertSnapshot: (String) -> Unit,
@@ -1110,66 +1334,124 @@ private fun MdbxDeltaPage(
     var fullSnapshot by rememberSaveable(state?.databaseId ?: -1L) { mutableStateOf(false) }
     val manualSnapshots = state?.snapshots?.filterNot { it.autoPrune }.orEmpty()
     val automaticSnapshots = state?.snapshots?.filter { it.autoPrune }.orEmpty()
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        item {
-            Text(
-                "历史 / 快照 · ${state?.databaseName ?: databaseName}",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-        }
-        if (state == null || state.isLoading || state.isDiffLoading || state.isSnapshotLoading) {
+        if (
+            state == null ||
+            state.isLoading ||
+            state.isDiffLoading ||
+            state.isSnapshotLoading
+        ) {
             item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
         }
         state?.let { visibleState ->
-            if (visibleState.deltas.isNotEmpty()) {
-                item { DeltaSummaryHeader(visibleState.deltas) }
-            }
-            item {
-                SnapshotManagerPanel(
-                    snapshotName = snapshotName,
-                    onSnapshotNameChange = { snapshotName = it },
-                    fullSnapshot = fullSnapshot,
-                    onFullSnapshotChange = { fullSnapshot = it },
-                    snapshots = visibleState.snapshots,
-                    manualSnapshotCount = manualSnapshots.size,
-                    automaticSnapshotCount = automaticSnapshots.size,
-                    enabled = !visibleState.isLoading && !visibleState.isSnapshotLoading,
-                    onCreateSnapshot = {
-                        onCreateSnapshot(snapshotName, fullSnapshot)
-                        snapshotName = ""
-                    },
-                    onPruneAutomaticSnapshots = onPruneAutomaticSnapshots,
-                    onDeleteSnapshot = onDeleteSnapshot,
-                    onRevertSnapshot = onRevertSnapshot
-                )
-            }
-            visibleState.selectedDiffCommitId?.let { commitId ->
+            val selectedCommitId = visibleState.selectedDiffCommitId
+            if (selectedCommitId != null) {
                 item {
                     CommitDiffPanel(
-                        commitId = commitId,
+                        commitId = selectedCommitId,
                         diffItems = visibleState.diffItems,
                         isLoading = visibleState.isDiffLoading
                     )
                 }
-            }
-            if (visibleState.deltas.isEmpty() && !visibleState.isLoading) {
+            } else {
                 item {
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Text("还没有增量提交记录", modifier = Modifier.padding(16.dp))
-                    }
+                    MdbxSectionHeader(
+                        icon = Icons.Default.Restore,
+                        title = "快照",
+                        subtitle = if (visibleState.snapshots.isEmpty()) {
+                            "还没有快照"
+                        } else {
+                            "手动 ${manualSnapshots.size} · 自动 ${automaticSnapshots.size}"
+                        },
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                item {
+                    SnapshotManagerPanel(
+                        snapshotName = snapshotName,
+                        onSnapshotNameChange = { snapshotName = it },
+                        fullSnapshot = fullSnapshot,
+                        onFullSnapshotChange = { fullSnapshot = it },
+                        snapshots = visibleState.snapshots,
+                        manualSnapshotCount = manualSnapshots.size,
+                        automaticSnapshotCount = automaticSnapshots.size,
+                        enabled = !visibleState.isLoading && !visibleState.isSnapshotLoading,
+                        onCreateSnapshot = {
+                            onCreateSnapshot(snapshotName, fullSnapshot)
+                            snapshotName = ""
+                        },
+                        onShowSnapshotDiff = onShowDiff,
+                        onShowSnapshotStructure = onShowSnapshotStructure,
+                        onPruneAutomaticSnapshots = onPruneAutomaticSnapshots,
+                        onDeleteSnapshot = onDeleteSnapshot,
+                        onRevertSnapshot = onRevertSnapshot
+                    )
                 }
             }
-            items(items = visibleState.deltas, key = { it.commitId }) { delta ->
-                DeltaRow(
-                    delta = delta,
-                    onShowDiff = { onShowDiff(delta.commitId) },
-                    onRevert = { onRevert(delta.commitId) }
-                )
+        }
+    }
+}
+
+@Composable
+private fun MdbxCommitHistoryPage(
+    state: MdbxViewModel.MdbxDeltaDialogState.Visible?,
+    onShowDiff: (String) -> Unit,
+    onRevert: (String) -> Unit
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        if (state == null || state.isLoading || state.isDiffLoading) {
+            item { LinearProgressIndicator(modifier = Modifier.fillMaxWidth()) }
+        }
+        state?.let { visibleState ->
+            val selectedCommitId = visibleState.selectedDiffCommitId
+            if (selectedCommitId != null) {
+                item {
+                    CommitDiffPanel(
+                        commitId = selectedCommitId,
+                        diffItems = visibleState.diffItems,
+                        isLoading = visibleState.isDiffLoading
+                    )
+                }
+            } else {
+                item {
+                    MdbxSectionHeader(
+                        icon = Icons.Default.History,
+                        title = "提交历史",
+                        subtitle = if (visibleState.deltas.isEmpty()) {
+                            "还没有可查看的提交"
+                        } else {
+                            "${visibleState.deltas.size} 次提交 · 点击查看字段变更"
+                        },
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+                if (visibleState.deltas.isEmpty() && !visibleState.isLoading) {
+                    item {
+                        OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+                            Text(
+                                "还没有增量提交记录",
+                                modifier = Modifier.padding(16.dp),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                }
+                items(items = visibleState.deltas, key = { it.commitId }) { delta ->
+                    DeltaRow(
+                        delta = delta,
+                        onShowDiff = { onShowDiff(delta.commitId) },
+                        onRevert = { onRevert(delta.commitId) }
+                    )
+                }
             }
         }
     }
@@ -1360,44 +1642,18 @@ private fun MdbxMaintenancePage(
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                "用于 MDBX 格式升级后检查 schema、commit 图、设备 head、快照、附件 chunk 和同步状态。",
+                "先看同步、文件可用性和恢复风险；低频排查信息放在后面。",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
 
         item {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("维护操作", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedButton(
-                            onClick = onRefreshDiagnostics,
-                            modifier = Modifier.weight(1f).heightIn(min = 48.dp)
-                        ) {
-                            Icon(Icons.Default.Visibility, contentDescription = null)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("刷新诊断")
-                        }
-                        OutlinedButton(
-                            onClick = onSync,
-                            modifier = Modifier.weight(1f).heightIn(min = 48.dp)
-                        ) {
-                            Icon(Icons.Default.Sync, contentDescription = null)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("同步")
-                        }
-                    }
-                    Button(
-                        onClick = onFlushPendingUpload,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                    ) {
-                        Icon(Icons.Default.CloudSync, contentDescription = null)
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("上传待处理写入")
-                    }
-                }
-            }
+            MaintenanceActionPanel(
+                onRefreshDiagnostics = onRefreshDiagnostics,
+                onSync = onSync,
+                onFlushPendingUpload = onFlushPendingUpload
+            )
         }
 
         item {
@@ -1406,56 +1662,34 @@ private fun MdbxMaintenancePage(
 
         diagnostics?.let { diagnostic ->
             item {
-                MdbxDiagnosticSection(title = "格式 / 加密") {
-                    DiagnosticLine(Icons.Default.Security, "格式版本", diagnostic.formatVersion ?: "MDBX-?")
-                    DiagnosticLine(Icons.Default.Security, "Tiga", diagnostic.defaultTigaMode ?: database.tigaMode)
-                    DiagnosticLine(Icons.Default.Info, "完整性", if (diagnostic.integrityOk) "OK" else (diagnostic.integrityMessage ?: "异常"))
-                    DiagnosticLine(Icons.Default.Security, "字段级 AAD", "crypto_contexts · mdbx:v1:<type>:<id>:<field>")
-                }
-            }
-            item {
-                MdbxDiagnosticSection(title = "Commit / Merge / Conflict") {
-                    DiagnosticLine(Icons.Default.History, "Commits", diagnostic.commitCount.toString())
-                    DiagnosticLine(Icons.Default.Delete, "Tombstones", diagnostic.tombstoneCount.toString())
+                MdbxDiagnosticSection(title = "关键指标") {
+                    DiagnosticLine(Icons.Default.Sync, "待同步", diagnostic.pendingSyncCount.toString())
                     DiagnosticLine(Icons.AutoMirrored.Filled.CallMerge, "未解决冲突", diagnostic.unresolvedConflictCount.toString())
-                    DiagnosticLine(Icons.Default.Storage, "Branches", diagnostic.branchCount.toString())
-                    DiagnosticLine(Icons.Default.Storage, "Devices", diagnostic.deviceCount.toString())
-                    DiagnosticLine(Icons.Default.Warning, "dangling parents", diagnostic.danglingParentCount.toString())
-                    DiagnosticLine(Icons.Default.Warning, "dangling branch heads", diagnostic.danglingBranchHeadCount.toString())
-                    DiagnosticLine(Icons.Default.Warning, "dangling device heads", diagnostic.danglingDeviceHeadCount.toString())
+                    DiagnosticLine(Icons.Default.History, "提交 / 快照", "${diagnostic.commitCount} / ${diagnostic.snapshotCount}")
+                    DiagnosticLine(Icons.Default.Folder, "条目 / 文件夹", "${diagnostic.entryCount} / ${diagnostic.folderCount}")
+                    DiagnosticLine(Icons.Default.Storage, "附件", "${diagnostic.attachmentCount} 个 · ${formatBytes(diagnostic.storedAttachmentBytes)}")
                 }
             }
             item {
-                MdbxDiagnosticSection(title = "快照 / 恢复") {
-                    DiagnosticLine(Icons.Default.Restore, "Snapshots", diagnostic.snapshotCount.toString())
-                    DiagnosticLine(Icons.Default.Folder, "Folders", diagnostic.folderCount.toString())
-                    DiagnosticLine(Icons.Default.Storage, "Indexed objects", diagnostic.indexedObjectCount.toString())
-                    DiagnosticLine(Icons.Default.History, "Entries", "${diagnostic.entryCount} active · ${diagnostic.deletedEntryCount} deleted")
-                }
-            }
-            item {
-                MdbxDiagnosticSection(title = "附件 / Chunk") {
-                    DiagnosticLine(Icons.Default.Storage, "附件", "${diagnostic.attachmentCount} total · ${diagnostic.externalAttachmentCount} external")
-                    DiagnosticLine(Icons.Default.Storage, "大小", "${formatBytes(diagnostic.originalAttachmentBytes)} original · ${formatBytes(diagnostic.storedAttachmentBytes)} stored")
+                MdbxDiagnosticSection(title = "高级细节") {
+                    DiagnosticLine(Icons.Default.Security, "格式 / Tiga", "${diagnostic.formatVersion ?: "MDBX-?"} · ${diagnostic.defaultTigaMode ?: database.tigaMode}")
+                    DiagnosticLine(Icons.Default.Storage, "分支 / 设备", "${diagnostic.branchCount} / ${diagnostic.deviceCount}")
+                    DiagnosticLine(Icons.Default.Delete, "删除标记", diagnostic.tombstoneCount.toString())
+                    DiagnosticLine(Icons.Default.Storage, "索引对象", diagnostic.indexedObjectCount.toString())
+                    DiagnosticLine(Icons.Default.Storage, "外部附件", "${diagnostic.externalAttachmentCount} 个 · 原始 ${formatBytes(diagnostic.originalAttachmentBytes)}")
                     DiagnosticLine(
                         if (diagnostic.attachmentChunkMismatchCount > 0) Icons.Default.Warning else Icons.Default.CheckCircle,
-                        "Chunk mismatch",
+                        "附件分片异常",
                         diagnostic.attachmentChunkMismatchCount.toString()
                     )
-                    DiagnosticLine(Icons.Default.Storage, "external-hash-ref", "按 content hash 绑定外部附件引用")
-                }
-            }
-            item {
-                MdbxDiagnosticSection(title = "同步 / 本地副本") {
-                    DiagnosticLine(Icons.Default.Sync, "状态", diagnostic.lastSyncStatus)
-                    DiagnosticLine(Icons.Default.Warning, "错误", diagnostic.lastSyncError ?: "-")
-                    DiagnosticLine(Icons.Default.Folder, "文件", diagnostic.filePath ?: "-")
-                    DiagnosticLine(Icons.Default.Storage, "大小", formatBytes(diagnostic.fileSizeBytes))
+                    DiagnosticLine(Icons.Default.Warning, "悬空 parent", diagnostic.danglingParentCount.toString())
+                    DiagnosticLine(Icons.Default.Warning, "悬空 head", "${diagnostic.danglingBranchHeadCount} branch · ${diagnostic.danglingDeviceHeadCount} device")
                     DiagnosticLine(
                         if (diagnostic.isReadable) Icons.Default.CheckCircle else Icons.Default.CloudOff,
                         "可读",
                         if (diagnostic.isReadable) "是" else (diagnostic.unavailableReason ?: "否")
                     )
+                    DiagnosticLine(Icons.Default.Folder, "文件", diagnostic.filePath ?: "-")
                 }
             }
         } ?: item {
@@ -1470,11 +1704,62 @@ private fun MdbxMaintenancePage(
 }
 
 @Composable
+private fun MaintenanceActionPanel(
+    onRefreshDiagnostics: () -> Unit,
+    onSync: () -> Unit,
+    onFlushPendingUpload: () -> Unit
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text("维护操作", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = onRefreshDiagnostics,
+                    modifier = Modifier.weight(1f).heightIn(min = 44.dp)
+                ) {
+                    Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("刷新")
+                }
+                OutlinedButton(
+                    onClick = onSync,
+                    modifier = Modifier.weight(1f).heightIn(min = 44.dp)
+                ) {
+                    Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("同步")
+                }
+            }
+            FilledTonalButton(
+                onClick = onFlushPendingUpload,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 44.dp)
+            ) {
+                Icon(Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("上传待处理写入")
+            }
+        }
+    }
+}
+
+@Composable
 private fun MdbxDiagnosticOverviewCard(
     database: LocalMdbxDatabase,
     diagnostics: MdbxVaultDiagnostics?
 ) {
     val healthIssueCount = diagnostics?.healthIssueCount ?: 0
+    val healthText = when {
+        diagnostics == null -> "读取中"
+        healthIssueCount > 0 -> "$healthIssueCount 项需要处理"
+        else -> "正常"
+    }
+    val syncText = diagnostics?.let { diagnostic ->
+        if (diagnostic.pendingSyncCount > 0) {
+            "${diagnostic.lastSyncStatus} · 待同步 ${diagnostic.pendingSyncCount}"
+        } else {
+            diagnostic.lastSyncStatus
+        }
+    } ?: database.lastSyncStatus
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -1497,21 +1782,20 @@ private fun MdbxDiagnosticOverviewCard(
                     )
                 }
             }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatusTile(
-                    modifier = Modifier.weight(1f),
-                    icon = if (healthIssueCount > 0) Icons.Default.Warning else Icons.Default.CheckCircle,
-                    label = "健康",
-                    value = if (healthIssueCount > 0) "$healthIssueCount 项" else "正常",
-                    isWarning = healthIssueCount > 0
-                )
-                StatusTile(
-                    modifier = Modifier.weight(1f),
-                    icon = Icons.Default.History,
-                    label = "Commit",
-                    value = diagnostics?.commitCount?.toString() ?: "-",
-                    isWarning = false
-                )
+            HorizontalDivider()
+            DiagnosticLine(
+                icon = if (healthIssueCount > 0) Icons.Default.Warning else Icons.Default.CheckCircle,
+                label = "健康",
+                value = healthText
+            )
+            DiagnosticLine(Icons.Default.Sync, "同步", syncText)
+            DiagnosticLine(
+                icon = if (diagnostics?.isReadable == false) Icons.Default.CloudOff else Icons.Default.Storage,
+                label = "文件",
+                value = diagnostics?.let { "${formatBytes(it.fileSizeBytes)} · ${it.filePath ?: "-"}" } ?: "-"
+            )
+            diagnostics?.lastSyncError?.takeIf { it.isNotBlank() }?.let { error ->
+                DiagnosticLine(Icons.Default.Warning, "最近错误", error)
             }
         }
     }
@@ -1718,53 +2002,6 @@ private fun MdbxQuickActionsCard(
 }
 
 @Composable
-private fun MdbxOperationStatusBar(
-    text: String,
-    icon: ImageVector,
-    modifier: Modifier = Modifier,
-    isError: Boolean = false
-) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.medium,
-        tonalElevation = 3.dp,
-        color = if (isError) {
-            MaterialTheme.colorScheme.errorContainer
-        } else {
-            MaterialTheme.colorScheme.primaryContainer
-        }
-    ) {
-        Row(
-            modifier = Modifier.padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = if (isError) {
-                    MaterialTheme.colorScheme.onErrorContainer
-                } else {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                },
-                modifier = Modifier.size(18.dp)
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(
-                text,
-                style = MaterialTheme.typography.bodySmall,
-                color = if (isError) {
-                    MaterialTheme.colorScheme.onErrorContainer
-                } else {
-                    MaterialTheme.colorScheme.onPrimaryContainer
-                },
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-@Composable
 private fun sourceColor(database: LocalMdbxDatabase): Color =
     when (database.sourceTypeEnum) {
         MdbxSourceType.LOCAL_INTERNAL -> MaterialTheme.colorScheme.primary
@@ -1787,6 +2024,14 @@ private fun mdbxSourceLabel(database: LocalMdbxDatabase): String =
         MdbxSourceType.LOCAL_EXTERNAL -> "本地文件"
         MdbxSourceType.REMOTE_WEBDAV -> "WebDAV"
         MdbxSourceType.REMOTE_ONEDRIVE -> "OneDrive"
+    }
+
+private fun LocalMdbxDatabase.managerSource(): MdbxManagerSource =
+    when (sourceTypeEnum) {
+        MdbxSourceType.LOCAL_INTERNAL,
+        MdbxSourceType.LOCAL_EXTERNAL -> MdbxManagerSource.LOCAL
+        MdbxSourceType.REMOTE_WEBDAV -> MdbxManagerSource.WEBDAV
+        MdbxSourceType.REMOTE_ONEDRIVE -> MdbxManagerSource.ONEDRIVE
     }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -1912,8 +2157,8 @@ private fun MdbxVaultDetailBottomSheet(
     onDismiss: () -> Unit,
     onSync: () -> Unit,
     onShowConflicts: () -> Unit,
-    onShowDeltas: () -> Unit,
-    onShowAdvanced: () -> Unit,
+    onShowSnapshots: () -> Unit,
+    onShowCommitHistory: () -> Unit,
     onSetDefault: () -> Unit,
     onDelete: () -> Unit
 ) {
@@ -2156,20 +2401,20 @@ private fun MdbxVaultDetailBottomSheet(
                     Text(if (conflictCount > 0) "冲突管理($conflictCount)" else "冲突管理")
                 }
                 OutlinedButton(
-                    onClick = onShowDeltas,
+                    onClick = onShowSnapshots,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                ) {
+                    Icon(Icons.Default.Restore, contentDescription = null)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("快照")
+                }
+                OutlinedButton(
+                    onClick = onShowCommitHistory,
                     modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
                 ) {
                     Icon(Icons.Default.History, contentDescription = null)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("历史 / 快照")
-                }
-                OutlinedButton(
-                    onClick = onShowAdvanced,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                ) {
-                    Icon(Icons.Default.Science, contentDescription = null)
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("高级工具")
+                    Text("提交历史")
                 }
                 OutlinedButton(
                     onClick = onDelete,
@@ -2556,275 +2801,6 @@ private fun AdvancedToolSection(
 }
 
 @Composable
-private fun MdbxConflictDialog(
-    state: MdbxViewModel.MdbxConflictDialogState.Visible,
-    onDismiss: () -> Unit,
-    onResolve: (String, MdbxConflictResolution) -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(stringResource(R.string.mdbx_conflict_queue_title, state.databaseName))
-        },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 440.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                if (state.isLoading) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                }
-                if (state.conflicts.isEmpty() && !state.isLoading) {
-                    Text(
-                        stringResource(R.string.mdbx_conflict_queue_empty),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-                state.conflicts.forEach { conflict ->
-                    ConflictRow(
-                        conflict = conflict,
-                        enabled = !state.isLoading,
-                        onResolve = onResolve
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.mdbx_close))
-            }
-        }
-    )
-}
-
-@Composable
-private fun ConflictRow(
-    conflict: MdbxConflictSummary,
-    enabled: Boolean,
-    onResolve: (String, MdbxConflictResolution) -> Unit
-) {
-    Surface(
-        shape = MaterialTheme.shapes.small,
-        tonalElevation = 1.dp,
-        color = MaterialTheme.colorScheme.surfaceVariant
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.AutoMirrored.Filled.CallMerge,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "${conflict.objectType}: ${conflict.objectId}",
-                        style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        stringResource(
-                            R.string.mdbx_conflict_fields_value,
-                            conflict.conflictingFields
-                        ),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-            }
-            Text(
-                stringResource(
-                    R.string.mdbx_conflict_commits_value,
-                    shortId(conflict.localCommitId),
-                    shortId(conflict.incomingCommitId),
-                    shortId(conflict.baseCommitId)
-                ),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            ConflictVersionPreview(
-                label = "本地版本",
-                title = conflict.localTitle ?: conflict.objectId,
-                preview = conflict.localPayloadPreview ?: "无 payload 快照"
-            )
-            ConflictVersionPreview(
-                label = "传入版本",
-                title = conflict.incomingTitle ?: conflict.objectId,
-                preview = conflict.incomingPayloadPreview ?: "无 payload 快照"
-            )
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    OutlinedButton(
-                        onClick = {
-                            onResolve(conflict.conflictId, MdbxConflictResolution.LOCAL_WINS)
-                        },
-                        enabled = enabled,
-                        modifier = Modifier.weight(1f).heightIn(min = 48.dp)
-                    ) {
-                        Text(stringResource(R.string.mdbx_conflict_local_wins))
-                    }
-                    OutlinedButton(
-                        onClick = {
-                            onResolve(conflict.conflictId, MdbxConflictResolution.INCOMING_WINS)
-                        },
-                        enabled = enabled,
-                        modifier = Modifier.weight(1f).heightIn(min = 48.dp)
-                    ) {
-                        Text(stringResource(R.string.mdbx_conflict_incoming_wins))
-                    }
-                }
-                Text(
-                    stringResource(R.string.mdbx_conflict_custom_merge_pending),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                TextButton(
-                    onClick = {
-                        onResolve(conflict.conflictId, MdbxConflictResolution.MARK_RESOLVED)
-                    },
-                    enabled = enabled,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
-                ) {
-                    Text(stringResource(R.string.mdbx_conflict_mark_resolved))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ConflictVersionPreview(
-    label: String,
-    title: String,
-    preview: String
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = MaterialTheme.shapes.extraSmall,
-        color = MaterialTheme.colorScheme.surface
-    ) {
-        Column(
-            modifier = Modifier.padding(8.dp),
-            verticalArrangement = Arrangement.spacedBy(3.dp)
-        ) {
-            Text(
-                label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold
-            )
-            Text(
-                title,
-                style = MaterialTheme.typography.bodySmall,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                preview,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
-
-@Composable
-private fun MdbxDeltaDialog(
-    state: MdbxViewModel.MdbxDeltaDialogState.Visible,
-    onDismiss: () -> Unit,
-    onShowDiff: (String) -> Unit,
-    onRevert: (String) -> Unit,
-    onCreateSnapshot: (String, Boolean) -> Unit,
-    onDeleteSnapshot: (String) -> Unit,
-    onRevertSnapshot: (String) -> Unit,
-    onPruneAutomaticSnapshots: () -> Unit
-) {
-    var snapshotName by rememberSaveable(state.databaseId) { mutableStateOf("") }
-    var fullSnapshot by rememberSaveable(state.databaseId) { mutableStateOf(false) }
-    val manualSnapshots = state.snapshots.filterNot { it.autoPrune }
-    val automaticSnapshots = state.snapshots.filter { it.autoPrune }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("增量管理 · ${state.databaseName}") },
-        text = {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 440.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                if (state.isLoading) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                }
-                if (state.isDiffLoading) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                }
-                if (state.isSnapshotLoading) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                }
-                if (state.deltas.isNotEmpty()) {
-                    DeltaSummaryHeader(state.deltas)
-                }
-                SnapshotManagerPanel(
-                    snapshotName = snapshotName,
-                    onSnapshotNameChange = { snapshotName = it },
-                    fullSnapshot = fullSnapshot,
-                    onFullSnapshotChange = { fullSnapshot = it },
-                    snapshots = state.snapshots,
-                    manualSnapshotCount = manualSnapshots.size,
-                    automaticSnapshotCount = automaticSnapshots.size,
-                    enabled = !state.isLoading && !state.isSnapshotLoading,
-                    onCreateSnapshot = {
-                        onCreateSnapshot(snapshotName, fullSnapshot)
-                        snapshotName = ""
-                    },
-                    onPruneAutomaticSnapshots = onPruneAutomaticSnapshots,
-                    onDeleteSnapshot = onDeleteSnapshot,
-                    onRevertSnapshot = onRevertSnapshot
-                )
-                if (state.selectedDiffCommitId != null) {
-                    CommitDiffPanel(
-                        commitId = state.selectedDiffCommitId,
-                        diffItems = state.diffItems,
-                        isLoading = state.isDiffLoading
-                    )
-                }
-                if (state.deltas.isEmpty() && !state.isLoading) {
-                    Text("还没有增量提交记录", style = MaterialTheme.typography.bodyMedium)
-                }
-                state.deltas.forEach { delta ->
-                    DeltaRow(
-                        delta = delta,
-                        onShowDiff = { onShowDiff(delta.commitId) },
-                        onRevert = { onRevert(delta.commitId) }
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.mdbx_close))
-            }
-        }
-    )
-}
-
-@Composable
 private fun SnapshotManagerPanel(
     snapshotName: String,
     onSnapshotNameChange: (String) -> Unit,
@@ -2835,15 +2811,43 @@ private fun SnapshotManagerPanel(
     automaticSnapshotCount: Int,
     enabled: Boolean,
     onCreateSnapshot: () -> Unit,
+    onShowSnapshotDiff: (String) -> Unit,
+    onShowSnapshotStructure: (String) -> Unit,
     onPruneAutomaticSnapshots: () -> Unit,
     onDeleteSnapshot: (String) -> Unit,
     onRevertSnapshot: (String) -> Unit
 ) {
-    Surface(
-        shape = MaterialTheme.shapes.small,
-        tonalElevation = 1.dp,
-        color = MaterialTheme.colorScheme.tertiaryContainer
-    ) {
+    var pendingRevertSnapshot by remember { mutableStateOf<MdbxSnapshotSummary?>(null) }
+    pendingRevertSnapshot?.let { snapshot ->
+        AlertDialog(
+            onDismissRequest = { pendingRevertSnapshot = null },
+            icon = {
+                Icon(Icons.Default.Restore, contentDescription = null)
+            },
+            title = { Text("确认回滚快照") },
+            text = {
+                Text(
+                    "回滚会把当前 MDBX 数据库恢复到“${snapshot.name.ifBlank { shortId(snapshot.snapshotId) }}”对应的状态。此操作会修改当前数据库，请确认后继续。"
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingRevertSnapshot = null
+                        onRevertSnapshot(snapshot.snapshotId)
+                    }
+                ) {
+                    Text("确认回滚")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingRevertSnapshot = null }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -2852,7 +2856,7 @@ private fun SnapshotManagerPanel(
                 Icon(
                     Icons.Default.Restore,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onTertiaryContainer,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(8.dp))
@@ -2865,7 +2869,7 @@ private fun SnapshotManagerPanel(
                     Text(
                         "手动 $manualSnapshotCount · 自动 $automaticSnapshotCount",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
@@ -2887,7 +2891,7 @@ private fun SnapshotManagerPanel(
                     enabled = enabled
                 )
                 Text(
-                    if (fullSnapshot) "完整快照" else "Delta 快照",
+                    if (fullSnapshot) "完整快照" else "增量快照",
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.weight(1f)
                 )
@@ -2909,22 +2913,24 @@ private fun SnapshotManagerPanel(
                 ) {
                     Icon(Icons.Default.Delete, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("清理自动")
+                    Text("清空自动")
                 }
             }
             if (snapshots.isEmpty()) {
                 Text(
                     "还没有快照",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onTertiaryContainer
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             snapshots.take(30).forEach { snapshot ->
                 SnapshotRow(
                     snapshot = snapshot,
                     enabled = enabled,
+                    onShowDiff = { onShowSnapshotDiff(snapshot.baseCommitId) },
+                    onOpenStructure = { onShowSnapshotStructure(snapshot.snapshotId) },
                     onDelete = { onDeleteSnapshot(snapshot.snapshotId) },
-                    onRevert = { onRevertSnapshot(snapshot.snapshotId) }
+                    onRevert = { pendingRevertSnapshot = snapshot }
                 )
             }
         }
@@ -2932,14 +2938,318 @@ private fun SnapshotManagerPanel(
 }
 
 @Composable
+private fun MdbxSnapshotStructurePage(
+    preview: MdbxStructurePreview?,
+    isLoading: Boolean,
+    compareMode: Boolean
+) {
+    val activity = LocalContext.current.findActivity()
+    val originalOrientation = remember(activity) { activity?.requestedOrientation }
+
+    LaunchedEffect(compareMode, activity) {
+        activity?.requestedOrientation = if (compareMode) {
+            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
+    }
+    DisposableEffect(activity, originalOrientation) {
+        onDispose {
+            if (originalOrientation != null) {
+                activity?.requestedOrientation = originalOrientation
+            }
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(
+                horizontal = if (compareMode) 0.dp else 8.dp,
+                vertical = if (compareMode) 0.dp else 8.dp
+            ),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        if (isLoading) {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        }
+        SnapshotStructurePreviewPage(
+            preview = preview,
+            compareMode = compareMode
+        )
+    }
+}
+
+@Composable
+private fun SnapshotStructurePreviewPage(
+    preview: MdbxStructurePreview?,
+    compareMode: Boolean
+) {
+    Column(
+        modifier = Modifier.fillMaxSize()
+    ) {
+        if (preview == null) {
+            Text(
+                "正在读取快照结构",
+                modifier = Modifier.padding(16.dp),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else if (compareMode) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(0.dp)
+            ) {
+                StructureTreePanel(
+                    title = "现版本",
+                    nodes = preview.currentNodes,
+                    modifier = Modifier.weight(1f),
+                    framed = false
+                )
+                VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                StructureTreePanel(
+                    title = "快照版本",
+                    nodes = preview.snapshotNodes,
+                    modifier = Modifier.weight(1f),
+                    framed = false
+                )
+            }
+        } else {
+            StructureTreePanel(
+                title = "",
+                nodes = preview.snapshotNodes,
+                modifier = Modifier.fillMaxWidth(),
+                framed = false
+            )
+        }
+    }
+}
+
+@Composable
+private fun StructureTreePanel(
+    title: String,
+    nodes: List<MdbxStructureNode>,
+    modifier: Modifier = Modifier,
+    framed: Boolean = true
+) {
+    var expandedIds by remember(nodes) {
+        mutableStateOf(nodes.filter { it.type == MdbxStructureNodeType.FOLDER }.map { it.id }.toSet())
+    }
+    val content: @Composable () -> Unit = {
+        Column(modifier = Modifier.padding(vertical = 8.dp)) {
+            if (title.isNotBlank()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        "${nodes.count { it.type == MdbxStructureNodeType.ENTRY }} 项",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
+            if (nodes.isEmpty()) {
+                Text(
+                    "没有可显示的结构",
+                    modifier = Modifier.padding(12.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                val visibleNodes = visibleStructureNodes(nodes, expandedIds)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(vertical = 4.dp)
+                ) {
+                    visibleNodes.forEach { item ->
+                        StructureTreeRow(
+                            node = item.node,
+                            depth = item.depth,
+                            isExpanded = item.node.id in expandedIds,
+                            hasChildren = item.hasChildren,
+                            onToggle = {
+                                expandedIds = if (item.node.id in expandedIds) {
+                                    expandedIds - item.node.id
+                                } else {
+                                    expandedIds + item.node.id
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+    if (framed) {
+        OutlinedCard(modifier = modifier) { content() }
+    } else {
+        Surface(modifier = modifier, color = Color.Transparent) { content() }
+    }
+}
+
+private data class VisibleStructureNode(
+    val node: MdbxStructureNode,
+    val depth: Int,
+    val hasChildren: Boolean
+)
+
+private fun visibleStructureNodes(
+    nodes: List<MdbxStructureNode>,
+    expandedIds: Set<String>
+): List<VisibleStructureNode> {
+    val childrenByParent = nodes.groupBy { it.parentId }
+    fun walk(parentId: String?, depth: Int): List<VisibleStructureNode> =
+        childrenByParent[parentId].orEmpty().sortedWith(structureTreeNodeComparator).flatMap { node ->
+            val hasChildren = childrenByParent.containsKey(node.id)
+            listOf(VisibleStructureNode(node, depth, hasChildren)) +
+                if (hasChildren && node.id in expandedIds) walk(node.id, depth + 1) else emptyList()
+        }
+    return walk(null, 0)
+}
+
+private val structureTreeNodeComparator = compareBy<MdbxStructureNode>(
+    { if (it.type == MdbxStructureNodeType.FOLDER) 0 else 1 },
+    { it.name.lowercase(Locale.ROOT) },
+    { it.path.lowercase(Locale.ROOT) },
+    { it.id }
+)
+
+@Composable
+private fun StructureTreeRow(
+    node: MdbxStructureNode,
+    depth: Int,
+    isExpanded: Boolean,
+    hasChildren: Boolean,
+    onToggle: () -> Unit
+) {
+    val statusColor = structureStatusColor(node.status)
+    Row(
+        modifier = Modifier
+            .widthIn(min = 260.dp)
+            .height(34.dp)
+            .clickable(enabled = hasChildren, onClick = onToggle)
+            .padding(start = 8.dp, end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        StructureIndentLines(depth)
+        if (hasChildren) {
+            Icon(
+                if (isExpanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                contentDescription = null,
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        } else {
+            Spacer(modifier = Modifier.width(16.dp))
+        }
+        Spacer(modifier = Modifier.width(4.dp))
+        Icon(
+            if (node.type == MdbxStructureNodeType.FOLDER) Icons.Default.Folder else Icons.Default.Description,
+            contentDescription = null,
+            modifier = Modifier.size(17.dp),
+            tint = if (node.type == MdbxStructureNodeType.FOLDER) {
+                MaterialTheme.colorScheme.primary
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
+        )
+        Spacer(modifier = Modifier.width(7.dp))
+        Text(
+            node.name,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = if (node.type == MdbxStructureNodeType.FOLDER) FontWeight.SemiBold else FontWeight.Normal,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.widthIn(max = 190.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        if (node.status != MdbxStructureNodeStatus.UNCHANGED) {
+            Text(
+                structureStatusLabel(node.status),
+                style = MaterialTheme.typography.labelSmall,
+                color = statusColor,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+        }
+        Text(
+            node.metadata,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
+@Composable
+private fun StructureIndentLines(depth: Int) {
+    if (depth <= 0) return
+    Row {
+        repeat(depth) {
+            Box(
+                modifier = Modifier
+                    .width(18.dp)
+                    .fillMaxHeight(),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .fillMaxHeight()
+                        .background(MaterialTheme.colorScheme.outlineVariant)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun structureStatusColor(status: MdbxStructureNodeStatus): Color =
+    when (status) {
+        MdbxStructureNodeStatus.ADDED -> MaterialTheme.colorScheme.primary
+        MdbxStructureNodeStatus.REMOVED -> MaterialTheme.colorScheme.error
+        MdbxStructureNodeStatus.MODIFIED -> MaterialTheme.colorScheme.tertiary
+        MdbxStructureNodeStatus.UNCHANGED -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+private fun structureStatusLabel(status: MdbxStructureNodeStatus): String =
+    when (status) {
+        MdbxStructureNodeStatus.ADDED -> "A"
+        MdbxStructureNodeStatus.REMOVED -> "D"
+        MdbxStructureNodeStatus.MODIFIED -> "M"
+        MdbxStructureNodeStatus.UNCHANGED -> ""
+    }
+
+@Composable
 private fun SnapshotRow(
     snapshot: MdbxSnapshotSummary,
     enabled: Boolean,
+    onShowDiff: () -> Unit,
+    onOpenStructure: () -> Unit,
     onDelete: () -> Unit,
     onRevert: () -> Unit
 ) {
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onOpenStructure),
         shape = MaterialTheme.shapes.extraSmall,
         color = MaterialTheme.colorScheme.surface
     ) {
@@ -2977,13 +3287,29 @@ private fun SnapshotRow(
                 }
             }
             Text(
-                "${if (snapshot.autoPrune) "自动" else "手动"} · ${if (snapshot.isFull) "完整" else "Delta"} · ${formatBytes(snapshot.payloadBytes)} · ${if (snapshot.integrityOk) "校验正常" else "校验失败"}",
+                "${if (snapshot.autoPrune) "自动" else "手动"} · ${if (snapshot.isFull) "完整" else "增量"} · ${formatBytes(snapshot.payloadBytes)} · ${if (snapshot.integrityOk) "校验正常" else "校验失败"}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(
+                    onClick = onShowDiff,
+                    enabled = enabled
+                ) {
+                    Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("查看变更")
+                }
+                TextButton(
+                    onClick = onOpenStructure,
+                    enabled = enabled
+                ) {
+                    Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("结构")
+                }
                 TextButton(
                     onClick = onRevert,
                     enabled = enabled && snapshot.integrityOk
@@ -3011,100 +3337,398 @@ private fun CommitDiffPanel(
     diffItems: List<MdbxCommitDiff>,
     isLoading: Boolean
 ) {
-    Surface(
-        shape = MaterialTheme.shapes.small,
-        tonalElevation = 1.dp,
-        color = MaterialTheme.colorScheme.secondaryContainer
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                "Diff · ${shortId(commitId)}",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-            if (diffItems.isEmpty() && !isLoading) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            "提交 ${shortId(commitId)} · ${diffItems.size} 个对象",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        if (diffItems.isEmpty() && !isLoading) {
+            OutlinedCard(modifier = Modifier.fillMaxWidth()) {
                 Text(
-                    "此提交没有可显示的对象版本快照",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer
+                    "此提交没有可显示的对象变更",
+                    modifier = Modifier.padding(14.dp),
+                    style = MaterialTheme.typography.bodyMedium
                 )
             }
-            diffItems.forEach { item ->
-                CommitDiffRow(item)
+        }
+        diffItems.forEach { diff ->
+            CommitObjectChangeCard(diff)
+        }
+    }
+}
+
+@Composable
+private fun CommitObjectChangeCard(
+    diff: MdbxCommitDiff
+) {
+    val fieldChanges = diff.toFieldChanges()
+    val actionTone = diff.objectChangeTone()
+    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+        Column {
+            Surface(color = actionTone.containerColor) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        diff.objectChangeIcon(),
+                        contentDescription = null,
+                        tint = actionTone.contentColor,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        diff.objectChangeTitle(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = actionTone.contentColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    diff.displayObjectPath(),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    diff.objectChangeMeta(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            if (fieldChanges.isNotEmpty()) {
+                Surface(color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f)) {
+                    Text(
+                        "字段变更",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                fieldChanges.forEachIndexed { index, change ->
+                    if (index > 0) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                    }
+                    FieldChangeRow(change)
+                }
+            }
+        }
+    }
+}
+
+private data class ObjectChangeTone(
+    val containerColor: Color,
+    val contentColor: Color
+)
+
+private enum class ObjectChangeKind {
+    CREATED,
+    MODIFIED,
+    DELETED,
+    RESTORED
+}
+
+private data class FieldChange(
+    val objectTitle: String,
+    val objectPath: String?,
+    val fieldLabel: String,
+    val before: String,
+    val after: String
+)
+
+private data class FieldChangeGroup(
+    val objectTitle: String,
+    val objectPath: String?,
+    val changes: List<FieldChange>
+)
+
+@Composable
+private fun FieldDiffPanel(
+    title: String,
+    subtitle: String,
+    changes: List<FieldChange>
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (title.isNotBlank() || subtitle.isNotBlank()) {
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                if (title.isNotBlank()) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        if (changes.isEmpty()) {
+            Text(
+                "没有可显示的字段变更",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        changes
+            .groupBy { it.objectPath to it.objectTitle }
+            .map { (objectKey, objectChanges) ->
+                FieldChangeGroup(
+                    objectTitle = objectKey.second,
+                    objectPath = objectKey.first,
+                    changes = objectChanges
+                )
+            }
+            .forEach { group ->
+                FieldChangeGroupBlock(group)
+            }
+    }
+}
+
+@Composable
+private fun FieldChangeGroupBlock(
+    group: FieldChangeGroup
+) {
+    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+        Column {
+            Surface(color = MaterialTheme.colorScheme.surfaceVariant) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Folder,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        group.displayPath(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+            Surface(color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f)) {
+                Text(
+                    "字段变更",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+            group.changes.forEachIndexed { index, change ->
+                if (index > 0) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                }
+                FieldChangeRow(change)
             }
         }
     }
 }
 
 @Composable
-private fun CommitDiffRow(item: MdbxCommitDiff) {
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+private fun FieldChangeRow(change: FieldChange) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(0.dp)
+    ) {
         Text(
-            "${item.objectType}:${shortId(item.objectId)} · ${item.changedFields.joinToString()}",
-            style = MaterialTheme.typography.labelMedium,
+            "${change.fieldLabel}:",
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold
         )
+        VersionValueRow(
+            marker = "-",
+            value = change.before,
+            color = MaterialTheme.colorScheme.error,
+            backgroundColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.28f)
+        )
+        VersionValueRow(
+            marker = "+",
+            value = change.after,
+            color = MaterialTheme.colorScheme.primary,
+            backgroundColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.34f)
+        )
+    }
+}
+
+@Composable
+private fun VersionValueRow(
+    marker: String,
+    value: String,
+    color: Color,
+    backgroundColor: Color
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(backgroundColor)
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.Top
+    ) {
         Text(
-            "标题: ${item.previousTitle ?: "-"} -> ${item.currentTitle ?: "-"}",
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
+            marker,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+            color = color,
+            modifier = Modifier.width(18.dp)
         )
         Text(
-            "内容: ${item.previousPayloadPreview ?: "-"} -> ${item.currentPayloadPreview ?: "-"}",
-            style = MaterialTheme.typography.bodySmall,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis
+            value.ifBlank { "null" },
+            style = MaterialTheme.typography.bodyMedium,
+            maxLines = 4,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
         )
-        if (item.previousDeleted != item.currentDeleted) {
-            Text(
-                "删除状态: ${item.previousDeleted ?: false} -> ${item.currentDeleted}",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSecondaryContainer
-            )
+    }
+}
+
+private fun MdbxCommitDiff.toFieldChanges(): List<FieldChange> {
+    if (objectChangeKind() != ObjectChangeKind.MODIFIED) return emptyList()
+    val objectTitle = displayTitle?.takeIf { it.isNotBlank() } ?: shortId(objectId)
+    val objectPath = storagePath?.takeIf { it.isNotBlank() }
+    return buildList {
+        if (previousTitle != currentTitle) {
+            add(FieldChange(objectTitle, objectPath, "标题", previousTitle.orEmpty(), currentTitle.orEmpty()))
+        }
+        if (previousPayloadPreview != currentPayloadPreview) {
+            add(FieldChange(objectTitle, objectPath, "内容摘要", previousPayloadPreview.orEmpty(), currentPayloadPreview.orEmpty()))
         }
     }
 }
+
+private fun MdbxCommitDiff.objectChangeKind(): ObjectChangeKind =
+    when {
+        previousDeleted == null && !currentDeleted -> ObjectChangeKind.CREATED
+        previousDeleted == true && !currentDeleted -> ObjectChangeKind.RESTORED
+        currentDeleted -> ObjectChangeKind.DELETED
+        else -> ObjectChangeKind.MODIFIED
+    }
+
+private fun MdbxCommitDiff.objectChangeTitle(): String {
+    val objectLabel = objectTypeLabel(objectType)
+    return when (objectChangeKind()) {
+        ObjectChangeKind.CREATED -> "新增了$objectLabel"
+        ObjectChangeKind.MODIFIED -> "修改了$objectLabel"
+        ObjectChangeKind.DELETED -> "删除了$objectLabel"
+        ObjectChangeKind.RESTORED -> "恢复了$objectLabel"
+    }
+}
+
+private fun MdbxCommitDiff.objectChangeIcon(): ImageVector =
+    when (objectChangeKind()) {
+        ObjectChangeKind.CREATED -> Icons.Default.Add
+        ObjectChangeKind.MODIFIED -> Icons.Default.History
+        ObjectChangeKind.DELETED -> Icons.Default.Delete
+        ObjectChangeKind.RESTORED -> Icons.Default.Restore
+    }
+
+@Composable
+private fun MdbxCommitDiff.objectChangeTone(): ObjectChangeTone =
+    when (objectChangeKind()) {
+        ObjectChangeKind.CREATED -> ObjectChangeTone(
+            containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f),
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+        )
+        ObjectChangeKind.MODIFIED -> ObjectChangeTone(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.46f),
+            contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+        )
+        ObjectChangeKind.DELETED -> ObjectChangeTone(
+            containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
+            contentColor = MaterialTheme.colorScheme.onErrorContainer
+        )
+        ObjectChangeKind.RESTORED -> ObjectChangeTone(
+            containerColor = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.46f),
+            contentColor = MaterialTheme.colorScheme.onTertiaryContainer
+        )
+    }
+
+private fun MdbxCommitDiff.displayObjectPath(): String =
+    listOfNotNull(
+        storagePath?.takeIf { it.isNotBlank() },
+        displayTitle?.takeIf { it.isNotBlank() } ?: shortId(objectId)
+    ).joinToString("/").ifBlank { shortId(objectId) }
+
+private fun MdbxCommitDiff.objectChangeMeta(): String =
+    "${objectTypeLabel(objectType)} · ${shortId(objectId)} · ${createdAt}"
+
+private fun MdbxConflictSummary.toFieldChanges(): List<FieldChange> {
+    val objectTitle = localTitle
+        ?: incomingTitle
+        ?: "${objectTypeLabel(objectType)} · ${shortId(objectId)}"
+    return buildList {
+        if (localTitle != incomingTitle) {
+            add(FieldChange(objectTitle, null, "标题", localTitle.orEmpty(), incomingTitle.orEmpty()))
+        }
+        if (localPayloadPreview != incomingPayloadPreview) {
+            add(FieldChange(objectTitle, null, "内容摘要", localPayloadPreview.orEmpty(), incomingPayloadPreview.orEmpty()))
+        }
+        if (conflictingFields.isNotBlank()) {
+            add(FieldChange(objectTitle, null, "冲突字段", conflictingFields, conflictingFields))
+        }
+    }
+}
+
+private fun FieldChangeGroup.displayPath(): String =
+    listOfNotNull(
+        objectPath?.takeIf { it.isNotBlank() },
+        objectTitle.takeIf { it.isNotBlank() }
+    ).joinToString("/").ifBlank { "-" }
+
+private fun objectTypeLabel(type: String): String =
+    when (type.lowercase(Locale.US)) {
+        "entry" -> "密码条目"
+        "folder" -> "文件夹"
+        "passkey" -> "通行密钥"
+        else -> type
+    }
 
 @Composable
 private fun DeltaSummaryHeader(deltas: List<MdbxDeltaSummary>) {
     val deviceCount = deltas.map { it.deviceId }.distinct().size
     val changedObjectCount = deltas.sumOf { changedObjectCount(it.changedObjectIds) }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatusTile(
-                modifier = Modifier.weight(1f),
-                icon = Icons.Default.History,
-                label = "提交",
-                value = deltas.size.toString(),
-                isWarning = false
-            )
-            StatusTile(
-                modifier = Modifier.weight(1f),
-                icon = Icons.Default.Storage,
-                label = "客户端",
-                value = deviceCount.toString(),
-                isWarning = false
-            )
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            StatusTile(
-                modifier = Modifier.weight(1f),
-                icon = Icons.Default.Sync,
-                label = "对象变更",
-                value = changedObjectCount.toString(),
-                isWarning = false
-            )
-            StatusTile(
-                modifier = Modifier.weight(1f),
-                icon = Icons.AutoMirrored.Filled.CallMerge,
-                label = "分叉提交",
-                value = deltas.count { it.parentCount > 1 }.toString(),
-                isWarning = deltas.any { it.parentCount > 1 }
-            )
+    val mergeCommitCount = deltas.count { it.parentCount > 1 }
+    OutlinedCard(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("提交概览", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+            DiagnosticLine(Icons.Default.History, "提交", "${deltas.size} 次")
+            DiagnosticLine(Icons.Default.Sync, "对象变更", changedObjectCount.toString())
+            DiagnosticLine(Icons.Default.Storage, "客户端", deviceCount.toString())
+            DiagnosticLine(Icons.AutoMirrored.Filled.CallMerge, "分叉提交", mergeCommitCount.toString())
         }
     }
 }
@@ -3115,14 +3739,23 @@ private fun DeltaRow(
     onShowDiff: () -> Unit,
     onRevert: () -> Unit
 ) {
+    val objectCount = changedObjectCount(delta.changedObjectIds)
+    val objectPreview = delta.changedObjectPreview.ifBlank {
+        "${objectCount} 个对象变更"
+    }
+    val fieldSummary = delta.changedFieldSummary.ifBlank {
+        objectTypeLabel(delta.changeScope)
+    }
     Surface(
         shape = MaterialTheme.shapes.small,
         tonalElevation = 1.dp,
-        color = MaterialTheme.colorScheme.surfaceVariant
+        color = MaterialTheme.colorScheme.surface
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(
@@ -3134,14 +3767,14 @@ private fun DeltaRow(
                 Spacer(modifier = Modifier.width(8.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "#${delta.localSeq} ${delta.commitKind} · ${delta.changeScope}",
+                        objectPreview,
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        "${shortId(delta.commitId)} · ${delta.createdAt}",
+                        "修改：$fieldSummary",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
@@ -3150,28 +3783,22 @@ private fun DeltaRow(
                 }
             }
             Text(
-                "客户端 ${delta.deviceId} · parents ${delta.parentCount}",
+                "#${delta.localSeq} · ${shortId(delta.commitId)} · ${delta.createdAt} · 客户端 ${shortId(delta.deviceId)} · parents ${delta.parentCount}",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                delta.changedObjectIds,
-                style = MaterialTheme.typography.bodySmall,
-                maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = onShowDiff) {
                     Icon(Icons.Default.Visibility, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Diff")
+                    Text("查看变更")
                 }
                 TextButton(onClick = onRevert) {
                     Icon(Icons.Default.Restore, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Revert")
+                    Text("回滚")
                 }
             }
         }
@@ -3180,6 +3807,13 @@ private fun DeltaRow(
 
 private fun shortId(value: String): String =
     value.take(8).ifBlank { "-" }
+
+private fun Context.findActivity(): Activity? =
+    when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
 
 private fun changedObjectCount(changedObjectIds: String): Int {
     val normalized = changedObjectIds.trim()

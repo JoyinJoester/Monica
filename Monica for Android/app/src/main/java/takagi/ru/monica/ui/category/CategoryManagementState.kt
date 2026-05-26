@@ -127,6 +127,7 @@ fun CategoryManagementCreateDialog(
         categories.firstOrNull { it.id == filter.categoryId }?.name
     }
     val (initialDialogTarget, initialDialogKeePassDbId, initialDialogMdbxDbId, initialDialogBitwardenVaultId) = resolveInitialDialogTarget(currentFilter)
+    val initialMdbxParentFolderId = (currentFilter as? UnifiedCategoryFilterSelection.MdbxFolderFilter)?.folderId
 
     CreateCategoryDialog(
         visible = true,
@@ -136,6 +137,7 @@ fun CategoryManagementCreateDialog(
         mdbxDatabases = mdbxDatabases,
         bitwardenVaults = bitwardenVaults,
         getKeePassGroups = getKeePassGroups,
+        getMdbxFolders = passwordViewModel::getMdbxFolders,
         onCreateCategoryWithName = { name -> passwordViewModel.addCategory(name) },
         onCreateBitwardenFolder = { vaultId, name ->
             scope.launch {
@@ -165,9 +167,9 @@ fun CategoryManagementCreateDialog(
         } else {
             { _, _, _ -> }
         },
-        onCreateMdbxProject = { databaseId, name ->
+        onCreateMdbxProject = { databaseId, parentFolderId, name ->
             scope.launch {
-                passwordViewModel.createMdbxFolder(databaseId, name) { result ->
+                passwordViewModel.createMdbxFolder(databaseId, name, parentFolderId ?: "root") { result ->
                     result.exceptionOrNull()?.let { error ->
                         Toast.makeText(
                             context,
@@ -182,6 +184,7 @@ fun CategoryManagementCreateDialog(
         initialTarget = initialDialogTarget,
         initialKeePassDbId = initialDialogKeePassDbId,
         initialMdbxDbId = initialDialogMdbxDbId,
+        initialMdbxParentFolderId = initialMdbxParentFolderId,
         initialBitwardenVaultId = initialDialogBitwardenVaultId
     )
 }
@@ -257,6 +260,7 @@ private fun resolveInitialDialogTarget(
         is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> Quadruple(CreateDialogTarget.KeePass, filter.databaseId, null, null)
         is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> Quadruple(CreateDialogTarget.KeePass, filter.databaseId, null, null)
         is UnifiedCategoryFilterSelection.MdbxDatabaseFilter -> Quadruple(CreateDialogTarget.Mdbx, null, filter.databaseId, null)
+        is UnifiedCategoryFilterSelection.MdbxFolderFilter -> Quadruple(CreateDialogTarget.Mdbx, null, filter.databaseId, null)
         is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> Quadruple(CreateDialogTarget.Bitwarden, null, null, filter.vaultId)
         is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> Quadruple(CreateDialogTarget.Bitwarden, null, null, filter.vaultId)
         is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> Quadruple(CreateDialogTarget.Bitwarden, null, null, filter.vaultId)

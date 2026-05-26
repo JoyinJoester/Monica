@@ -25,9 +25,10 @@ sealed interface StorageTarget {
     }
 
     data class Mdbx(
-        val databaseId: Long
+        val databaseId: Long,
+        val folderId: String? = null
     ) : StorageTarget {
-        override val stableKey: String = "mdbx:$databaseId"
+        override val stableKey: String = "mdbx:$databaseId:${folderId.orEmpty()}"
     }
 }
 
@@ -49,7 +50,7 @@ fun StorageTarget.isUncategorizedTarget(): Boolean = when (this) {
     is StorageTarget.MonicaLocal -> categoryId == null
     is StorageTarget.KeePass -> groupPath.isNullOrBlank()
     is StorageTarget.Bitwarden -> folderId.isNullOrBlank()
-    is StorageTarget.Mdbx -> true
+    is StorageTarget.Mdbx -> folderId.isNullOrBlank()
 }
 
 fun List<StorageTarget>.normalizedStorageTargets(
@@ -99,7 +100,8 @@ fun PasswordEntry.toStorageTarget(): StorageTarget = when {
         groupPath = keepassGroupPath
     )
     mdbxDatabaseId != null -> StorageTarget.Mdbx(
-        databaseId = mdbxDatabaseId
+        databaseId = mdbxDatabaseId,
+        folderId = mdbxFolderId
     )
     else -> StorageTarget.MonicaLocal(categoryId = categoryId)
 }
@@ -114,7 +116,8 @@ fun SecureItem.toStorageTarget(): StorageTarget = when {
         groupPath = keepassGroupPath
     )
     mdbxDatabaseId != null -> StorageTarget.Mdbx(
-        databaseId = mdbxDatabaseId
+        databaseId = mdbxDatabaseId,
+        folderId = mdbxFolderId
     )
     else -> StorageTarget.MonicaLocal(categoryId = categoryId)
 }
@@ -175,6 +178,7 @@ fun StorageTarget.applyToPasswordEntry(
             bitwardenRevisionDate = null,
             bitwardenLocalModified = false,
             mdbxDatabaseId = databaseId,
+            mdbxFolderId = folderId,
             replicaGroupId = replicaGroupId
         )
     }
@@ -239,6 +243,7 @@ fun StorageTarget.applyToSecureItem(
             bitwardenRevisionDate = null,
             bitwardenLocalModified = false,
             mdbxDatabaseId = databaseId,
+            mdbxFolderId = folderId,
             syncStatus = "NONE",
             replicaGroupId = replicaGroupId
         )

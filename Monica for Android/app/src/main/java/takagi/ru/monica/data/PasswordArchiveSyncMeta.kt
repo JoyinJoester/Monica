@@ -79,4 +79,7 @@ interface PasswordArchiveSyncMetaDao {
 
     @Query("DELETE FROM password_archive_sync_meta WHERE entry_id = :entryId")
     suspend fun deleteByEntryId(entryId: Long)
+
+    @Query("DELETE FROM password_archive_sync_meta WHERE entry_id IN (:entryIds)")
+    suspend fun deleteByEntryIds(entryIds: List<Long>)
 }

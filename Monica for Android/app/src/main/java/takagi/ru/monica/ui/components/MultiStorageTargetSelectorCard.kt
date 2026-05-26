@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.UnfoldMore
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -29,6 +30,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import takagi.ru.monica.R
@@ -40,6 +42,7 @@ import takagi.ru.monica.data.bitwarden.BitwardenFolderDao
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.StorageTarget
 import takagi.ru.monica.data.writeOperationAvailability
+import takagi.ru.monica.repository.MdbxStoredFolderEntry
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
 
 @Composable
@@ -51,12 +54,13 @@ fun MultiStorageTargetSelectorCard(
     mdbxDatabases: List<LocalMdbxDatabase> = emptyList(),
     bitwardenVaults: List<BitwardenVault>,
     bitwardenFolderDao: BitwardenFolderDao,
+    getMdbxFolders: (Long) -> Flow<List<MdbxStoredFolderEntry>> = { flowOf(emptyList()) },
     isEditing: Boolean,
     onAddTargetClick: () -> Unit,
     onRemoveTarget: (StorageTarget) -> Unit
 ) {
     val primaryTarget = selectedTargets.firstOrNull() ?: StorageTarget.MonicaLocal(null)
-    val folderNameFlow = remember(primaryTarget, bitwardenFolderDao) {
+    val folderNameFlow = remember(primaryTarget, bitwardenFolderDao, getMdbxFolders) {
         when (primaryTarget) {
             is StorageTarget.Bitwarden -> {
                 bitwardenFolderDao.getFoldersByVaultFlow(primaryTarget.vaultId).map { folders ->
@@ -65,11 +69,18 @@ fun MultiStorageTargetSelectorCard(
                     }
                 }
             }
+            is StorageTarget.Mdbx -> {
+                getMdbxFolders(primaryTarget.databaseId).map { folders ->
+                    primaryTarget.folderId?.let { folderId ->
+                        folders.firstOrNull { it.folderId == folderId }?.name
+                    }
+                }
+            }
 
             else -> flowOf(null)
         }
     }
-    val bitwardenFolderName by folderNameFlow.collectAsState(initial = null)
+    val externalFolderName by folderNameFlow.collectAsState(initial = null)
 
     val monicaLabel = stringResource(R.string.app_name)
     val keepassLabel = stringResource(R.string.create_target_keepass)
@@ -118,8 +129,8 @@ fun MultiStorageTargetSelectorCard(
             ?.takeIf { it.isNotBlank() }
             ?.let(::decodeKeePassPathForDisplay)
             ?: keepassRootLabel
-        is StorageTarget.Mdbx -> mdbxVaultLabel
-        is StorageTarget.Bitwarden -> bitwardenFolderName ?: noFolderLabel
+        is StorageTarget.Mdbx -> externalFolderName ?: mdbxVaultLabel
+        is StorageTarget.Bitwarden -> externalFolderName ?: noFolderLabel
     }
     val keepassConnectionHint = (primaryTarget as? StorageTarget.KeePass)
         ?.let { keepassTarget ->
@@ -254,11 +265,11 @@ private fun storageCardVisuals(
             iconTint = MaterialTheme.colorScheme.onPrimary
         )
         is StorageTarget.Mdbx -> StorageCardVisuals(
-            icon = Icons.Default.Key,
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
-            iconContainerColor = MaterialTheme.colorScheme.primary,
-            iconTint = MaterialTheme.colorScheme.onPrimary
+            icon = Icons.Default.Storage,
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            iconContainerColor = MaterialTheme.colorScheme.inverseSurface,
+            iconTint = MaterialTheme.colorScheme.inverseOnSurface
         )
         is StorageTarget.Bitwarden -> StorageCardVisuals(
             icon = Icons.Default.Cloud,
@@ -286,12 +297,13 @@ fun buildMultiStorageTarget(
     keepassGroupPath: String?,
     mdbxDatabaseId: Long? = null,
     bitwardenVaultId: Long?,
-    bitwardenFolderId: String?
+    bitwardenFolderId: String?,
+    mdbxFolderId: String? = null
 ): StorageTarget {
     return when {
         bitwardenVaultId != null -> StorageTarget.Bitwarden(bitwardenVaultId, bitwardenFolderId)
         keepassDatabaseId != null -> StorageTarget.KeePass(keepassDatabaseId, keepassGroupPath)
-        mdbxDatabaseId != null -> StorageTarget.Mdbx(mdbxDatabaseId)
+        mdbxDatabaseId != null -> StorageTarget.Mdbx(mdbxDatabaseId, mdbxFolderId)
         else -> StorageTarget.MonicaLocal(categoryId)
     }
 }
@@ -303,6 +315,7 @@ fun UnifiedMoveCategoryTarget.toMultiStorageTargetOrNull(): StorageTarget? {
         is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> StorageTarget.KeePass(databaseId, null)
         is UnifiedMoveCategoryTarget.KeePassGroupTarget -> StorageTarget.KeePass(databaseId, groupPath)
         is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> StorageTarget.Mdbx(databaseId)
+        is UnifiedMoveCategoryTarget.MdbxFolderTarget -> StorageTarget.Mdbx(databaseId, folderId)
         is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> StorageTarget.Bitwarden(vaultId, null)
         is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> StorageTarget.Bitwarden(vaultId, folderId)
     }

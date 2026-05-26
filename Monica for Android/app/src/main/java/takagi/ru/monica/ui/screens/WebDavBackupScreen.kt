@@ -68,6 +68,7 @@ private fun monicaConfigEntryDisplayName(entry: String): String {
         "page_adjustment_settings.json" -> "页面调整设置"
         "autofill_blocked_fields.json" -> "自动填充屏蔽字段"
         "autofill_save_blocked_targets.json" -> "自动填充不保存名单"
+        "autofill_blacklist.json" -> "自动填充黑名单"
         "bitwarden_vaults.json" -> "Bitwarden Vault配置"
         "common_account.json" -> "常用账号模板"
         "monica_config.json" -> "Monica聚合配置"

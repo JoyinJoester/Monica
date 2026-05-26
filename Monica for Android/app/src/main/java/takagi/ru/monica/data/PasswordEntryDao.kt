@@ -60,6 +60,9 @@ interface PasswordEntryDao {
     
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPasswordEntry(entry: PasswordEntry): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertPasswordEntries(entries: List<PasswordEntry>): List<Long>
     
     /**
      * 插入密码条目（别名方法，供 Bitwarden 同步服务使用）
@@ -69,9 +72,15 @@ interface PasswordEntryDao {
     
     @Update
     suspend fun updatePasswordEntry(entry: PasswordEntry)
+
+    @Update
+    suspend fun updatePasswordEntries(entries: List<PasswordEntry>)
     
     @Delete
     suspend fun deletePasswordEntry(entry: PasswordEntry)
+
+    @Delete
+    suspend fun deletePasswordEntries(entries: List<PasswordEntry>)
     
     @Query("DELETE FROM password_entries WHERE id = :id")
     suspend fun deletePasswordEntryById(id: Long)
@@ -172,6 +181,7 @@ interface PasswordEntryDao {
         """
         UPDATE password_entries
         SET mdbx_database_id = :databaseId,
+            mdbx_folder_id = :folderId,
             keepassDatabaseId = NULL,
             keepassGroupPath = NULL,
             keepass_entry_uuid = NULL,
@@ -185,7 +195,12 @@ interface PasswordEntryDao {
         WHERE id IN (:ids)
         """
     )
-    suspend fun updateMdbxDatabaseForPasswords(ids: List<Long>, databaseId: Long?, now: Long = System.currentTimeMillis())
+    suspend fun updateMdbxDatabaseForPasswords(
+        ids: List<Long>,
+        databaseId: Long?,
+        folderId: String?,
+        now: Long = System.currentTimeMillis()
+    )
 
     @Query(
         """
@@ -283,6 +298,9 @@ interface PasswordEntryDao {
 
     @Query("DELETE FROM password_entries WHERE mdbx_database_id = :databaseId")
     suspend fun deleteAllByMdbxDatabaseId(databaseId: Long)
+
+    @Query("SELECT * FROM password_entries WHERE mdbx_database_id = :databaseId")
+    suspend fun getByMdbxDatabaseIdSync(databaseId: Long): List<PasswordEntry>
     
     /**
      * 检查是否存在相同的密码条目(根据title、username、website匹配)

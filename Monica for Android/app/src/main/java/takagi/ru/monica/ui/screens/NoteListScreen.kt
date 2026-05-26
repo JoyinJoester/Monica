@@ -403,6 +403,7 @@ fun NoteListScreen(
                     is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> target.databaseId
                     is UnifiedMoveCategoryTarget.KeePassGroupTarget -> target.databaseId
                     is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> null
+                    is UnifiedMoveCategoryTarget.MdbxFolderTarget -> null
                 }
                 val targetKeepassGroupPath = when (target) {
                     is UnifiedMoveCategoryTarget.KeePassGroupTarget -> target.groupPath
@@ -420,6 +421,11 @@ fun NoteListScreen(
                 }
                 val targetMdbxDatabaseId = when (target) {
                     is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> target.databaseId
+                    is UnifiedMoveCategoryTarget.MdbxFolderTarget -> target.databaseId
+                    else -> null
+                }
+                val targetMdbxFolderId = when (target) {
+                    is UnifiedMoveCategoryTarget.MdbxFolderTarget -> target.folderId
                     else -> null
                 }
 
@@ -444,7 +450,8 @@ fun NoteListScreen(
                             keepassGroupPath = targetKeepassGroupPath,
                             bitwardenVaultId = targetBitwardenVaultId,
                             bitwardenFolderId = targetBitwardenFolderId,
-                            mdbxDatabaseId = targetMdbxDatabaseId
+                            mdbxDatabaseId = targetMdbxDatabaseId,
+                            mdbxFolderId = targetMdbxFolderId
                         )
                         movedCount++
                     }
@@ -458,7 +465,8 @@ fun NoteListScreen(
                                 keepassGroupPath = null,
                                 bitwardenVaultId = null,
                                 bitwardenFolderId = null,
-                                mdbxDatabaseId = null
+                                mdbxDatabaseId = null,
+                                mdbxFolderId = null
                             )
                         } else {
                             viewModel.moveNoteToMonicaLocal(item, targetCategoryId).isSuccess
@@ -471,7 +479,8 @@ fun NoteListScreen(
                             keepassGroupPath = targetKeepassGroupPath,
                             bitwardenVaultId = targetBitwardenVaultId,
                             bitwardenFolderId = targetBitwardenFolderId,
-                            mdbxDatabaseId = targetMdbxDatabaseId
+                            mdbxDatabaseId = targetMdbxDatabaseId,
+                            mdbxFolderId = targetMdbxFolderId
                         )
                     }
                     if (moved) movedCount++ else failedCount++
@@ -845,6 +854,7 @@ fun NoteListScreen(
             bitwardenVaults = bitwardenVaults,
             getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
             getKeePassGroups = getKeePassGroups,
+            getMdbxFolders = resolvedPasswordViewModel::getMdbxFolders,
             allowCopy = true,
             allowMove = notes.filter { selectedNoteIds.contains(it.id) }.none { it.isKeePassOwned() },
             onTargetSelected = { target, action ->

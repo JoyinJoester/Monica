@@ -764,6 +764,7 @@ fun PasskeyListScreen(
                 keepassDatabaseId = null,
                 keepassGroupPath = null,
                 mdbxDatabaseId = null,
+                mdbxFolderId = null,
                 bitwardenFolderId = null,
                 bitwardenVaultId = null
             )
@@ -772,6 +773,7 @@ fun PasskeyListScreen(
                 keepassDatabaseId = null,
                 keepassGroupPath = null,
                 mdbxDatabaseId = null,
+                mdbxFolderId = null,
                 bitwardenFolderId = null,
                 bitwardenVaultId = null
             )
@@ -780,19 +782,22 @@ fun PasskeyListScreen(
                 bitwardenFolderId = null,
                 keepassGroupPath = null,
                 keepassDatabaseId = null,
-                mdbxDatabaseId = null
+                mdbxDatabaseId = null,
+                mdbxFolderId = null
             )
             is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> passkey.copy(
                 bitwardenVaultId = target.vaultId,
                 bitwardenFolderId = target.folderId,
                 keepassGroupPath = null,
                 keepassDatabaseId = null,
-                mdbxDatabaseId = null
+                mdbxDatabaseId = null,
+                mdbxFolderId = null
             )
             is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> passkey.copy(
                 keepassDatabaseId = target.databaseId,
                 keepassGroupPath = null,
                 mdbxDatabaseId = null,
+                mdbxFolderId = null,
                 bitwardenFolderId = null,
                 bitwardenVaultId = null
             )
@@ -800,6 +805,7 @@ fun PasskeyListScreen(
                     keepassDatabaseId = target.databaseId,
                     keepassGroupPath = target.groupPath,
                     mdbxDatabaseId = null,
+                    mdbxFolderId = null,
                     bitwardenFolderId = null,
                     bitwardenVaultId = null
                 )
@@ -808,6 +814,17 @@ fun PasskeyListScreen(
                     keepassDatabaseId = null,
                     keepassGroupPath = null,
                     mdbxDatabaseId = target.databaseId,
+                    mdbxFolderId = null,
+                    bitwardenVaultId = null,
+                    bitwardenFolderId = null,
+                    bitwardenCipherId = null
+                )
+                is UnifiedMoveCategoryTarget.MdbxFolderTarget -> passkey.copy(
+                    categoryId = null,
+                    keepassDatabaseId = null,
+                    keepassGroupPath = null,
+                    mdbxDatabaseId = target.databaseId,
+                    mdbxFolderId = target.folderId,
                     bitwardenVaultId = null,
                     bitwardenFolderId = null,
                     bitwardenCipherId = null
@@ -1480,9 +1497,13 @@ fun PasskeyListScreen(
         onDismiss = { passkeyToMoveCategory = null },
         categories = categories,
         keepassDatabases = keepassDatabases,
+        mdbxDatabases = mdbxDatabases,
         bitwardenVaults = bitwardenVaults,
         getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
         getKeePassGroups = getKeePassGroups,
+        getMdbxFolders = { databaseId ->
+            passwordViewModel?.getMdbxFolders(databaseId) ?: flowOf(emptyList())
+        },
         allowCopy = true,
         allowMove = passkeyToMoveCategory?.isKeePassOwned() != true,
         onTargetSelected = { target, action ->
@@ -1528,6 +1549,7 @@ fun PasskeyListScreen(
                     is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> keepassDatabases.find { it.id == target.databaseId }?.name ?: context.getString(R.string.filter_keepass)
                     is UnifiedMoveCategoryTarget.KeePassGroupTarget -> decodeKeePassPathForDisplay(target.groupPath)
                     is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> "MDBX"
+                    is UnifiedMoveCategoryTarget.MdbxFolderTarget -> "MDBX"
                 }
                 Toast.makeText(context, context.getString(R.string.passkey_category_updated, targetLabel), Toast.LENGTH_SHORT).show()
                 passkeyToMoveCategory = null
@@ -1544,6 +1566,9 @@ fun PasskeyListScreen(
         bitwardenVaults = bitwardenVaults,
         getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
         getKeePassGroups = getKeePassGroups,
+        getMdbxFolders = { databaseId ->
+            passwordViewModel?.getMdbxFolders(databaseId) ?: flowOf(emptyList())
+        },
         allowCopy = true,
         allowMove = combinedPasskeys
             .filter { selectedPasskeys.contains(it.managementKey()) }

@@ -40,7 +40,7 @@ import takagi.ru.monica.data.bitwarden.*
         LocalMdbxDatabase::class,
         MdbxRemoteSource::class
     ],
-    version = 67,
+    version = 68,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -2028,6 +2028,24 @@ abstract class PasswordDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_67_68 = object : androidx.room.migration.Migration(67, 68) {
+            override fun migrate(database: androidx.sqlite.db.SupportSQLiteDatabase) {
+                try {
+                    android.util.Log.i("PasswordDatabase", "Starting migration 67→68: MDBX folder ownership")
+                    addColumnIfMissing(database, "password_entries", "mdbx_folder_id", "TEXT DEFAULT NULL")
+                    addColumnIfMissing(database, "secure_items", "mdbx_folder_id", "TEXT DEFAULT NULL")
+                    addColumnIfMissing(database, "passkeys", "mdbx_folder_id", "TEXT DEFAULT NULL")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_password_entries_mdbx_database_folder ON password_entries(mdbx_database_id, mdbx_folder_id)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_secure_items_mdbx_database_folder ON secure_items(mdbx_database_id, mdbx_folder_id)")
+                    database.execSQL("CREATE INDEX IF NOT EXISTS index_passkeys_mdbx_database_folder ON passkeys(mdbx_database_id, mdbx_folder_id)")
+                    android.util.Log.i("PasswordDatabase", "Migration 67→68 completed successfully")
+                } catch (e: Exception) {
+                    android.util.Log.e("PasswordDatabase", "Migration 67→68 failed: ${e.message}")
+                    throw e
+                }
+            }
+        }
+
         private fun addColumnIfMissing(
             database: androidx.sqlite.db.SupportSQLiteDatabase,
             tableName: String,
@@ -2123,7 +2141,8 @@ abstract class PasswordDatabase : RoomDatabase() {
                         MIGRATION_63_64,   // MDBX 条目归属字段 (passwords/secure_items/passkeys)
                         MIGRATION_64_65,   // MDBX 解锁方式元数据 (password/key file/device key)
                         MIGRATION_65_66,   // MDBX key file URI for real unlock flows
-                        MIGRATION_66_67    // MDBX category linkage
+                        MIGRATION_66_67,   // MDBX category linkage
+                        MIGRATION_67_68    // MDBX folder ownership
                     )
                     // 启用多进程失效通知：IME 跑在 :ime 独立进程，主进程需要
                     // 感知 IME 进程对数据库的修改（例如最近填充时间戳等）。

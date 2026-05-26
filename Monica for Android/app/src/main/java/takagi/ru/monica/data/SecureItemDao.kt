@@ -171,6 +171,9 @@ interface SecureItemDao {
 
     @Query("DELETE FROM secure_items WHERE mdbx_database_id = :databaseId")
     suspend fun deleteAllByMdbxDatabaseId(databaseId: Long)
+
+    @Query("SELECT * FROM secure_items WHERE mdbx_database_id = :databaseId")
+    suspend fun getByMdbxDatabaseIdSync(databaseId: Long): List<SecureItem>
     
     /**
      * 删除所有安全项目

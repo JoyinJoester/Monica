@@ -100,10 +100,10 @@ internal fun BoxScope.MainScreenFabOverlay(
     onNavigateToWalletAdd: (CardWalletTab) -> Unit,
     passwordPageAggregateEnabled: Boolean,
     passwordNewItemDefaults: NewItemStorageDefaults,
-    onPreparePasswordAddStorageDefaults: (Long?, Long?, String?, Long?, Long?, String?) -> Unit,
-    onPrepareTotpAddStorageDefaults: (Long?, Long?, String?, Long?, Long?, String?) -> Unit,
-    onPrepareNoteAddStorageDefaults: (Long?, Long?, String?, Long?, Long?, String?) -> Unit,
-    onPrepareWalletAddStorageDefaults: (Long?, Long?, String?, Long?, Long?, String?) -> Unit,
+    onPreparePasswordAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit,
+    onPrepareTotpAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit,
+    onPrepareNoteAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit,
+    onPrepareWalletAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit,
     onNoteAddOpen: () -> Unit,
     onSendAddOpen: () -> Unit,
     onGeneratorRefresh: () -> Unit,
@@ -113,6 +113,9 @@ internal fun BoxScope.MainScreenFabOverlay(
     localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
     totpNewItemDefaults: NewItemStorageDefaults,
     onNavigateToQuickTotpScan: () -> Unit,
+    pendingPasswordAuthenticatorQrResult: String? = null,
+    onConsumePendingPasswordAuthenticatorQrResult: () -> Unit = {},
+    onScanPasswordAuthenticatorQrCode: () -> Unit = {},
     walletUnifiedAddType: CardWalletTab,
     onWalletUnifiedAddTypeChange: (CardWalletTab) -> Unit,
     documentViewModel: DocumentViewModel,
@@ -331,6 +334,9 @@ internal fun BoxScope.MainScreenFabOverlay(
                 onExpandStateChanged = onFabExpandedChange,
                 onNavigateToAddWifi = onNavigateToAddWifi,
                 onNavigateToAddSshKey = onNavigateToAddSshKey,
+                pendingPasswordAuthenticatorQrResult = pendingPasswordAuthenticatorQrResult,
+                onConsumePendingPasswordAuthenticatorQrResult = onConsumePendingPasswordAuthenticatorQrResult,
+                onScanPasswordAuthenticatorQrCode = onScanPasswordAuthenticatorQrCode,
                 passwordViewModel = passwordViewModel,
                 totpViewModel = totpViewModel,
                 bankCardViewModel = bankCardViewModel,
@@ -615,16 +621,19 @@ internal fun MainScreenAddFab(
     onNavigateToWalletAdd: (CardWalletTab) -> Unit,
     passwordPageAggregateEnabled: Boolean,
     passwordNewItemDefaults: NewItemStorageDefaults,
-    onPreparePasswordAddStorageDefaults: (Long?, Long?, String?, Long?, Long?, String?) -> Unit,
-    onPrepareTotpAddStorageDefaults: (Long?, Long?, String?, Long?, Long?, String?) -> Unit,
-    onPrepareNoteAddStorageDefaults: (Long?, Long?, String?, Long?, Long?, String?) -> Unit,
-    onPrepareWalletAddStorageDefaults: (Long?, Long?, String?, Long?, Long?, String?) -> Unit,
+    onPreparePasswordAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit,
+    onPrepareTotpAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit,
+    onPrepareNoteAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit,
+    onPrepareWalletAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit,
     onNoteAddOpen: () -> Unit,
     onSendAddOpen: () -> Unit,
     onGeneratorRefresh: () -> Unit,
     onExpandStateChanged: (Boolean) -> Unit,
     onNavigateToAddWifi: (Long?) -> Unit = {},
     onNavigateToAddSshKey: (Long?) -> Unit = {},
+    pendingPasswordAuthenticatorQrResult: String? = null,
+    onConsumePendingPasswordAuthenticatorQrResult: () -> Unit = {},
+    onScanPasswordAuthenticatorQrCode: () -> Unit = {},
     passwordViewModel: PasswordViewModel,
     totpViewModel: TotpViewModel,
     bankCardViewModel: BankCardViewModel,
@@ -702,6 +711,7 @@ internal fun MainScreenAddFab(
                                                 aggregateStorageDefaults.keepassDatabaseId,
                                                 aggregateStorageDefaults.keepassGroupPath,
                                                 aggregateStorageDefaults.mdbxDatabaseId,
+                                                aggregateStorageDefaults.mdbxFolderId,
                                                 aggregateStorageDefaults.bitwardenVaultId,
                                                 aggregateStorageDefaults.bitwardenFolderId
                                             )
@@ -722,6 +732,7 @@ internal fun MainScreenAddFab(
                                                 aggregateStorageDefaults.keepassDatabaseId,
                                                 aggregateStorageDefaults.keepassGroupPath,
                                                 aggregateStorageDefaults.mdbxDatabaseId,
+                                                aggregateStorageDefaults.mdbxFolderId,
                                                 aggregateStorageDefaults.bitwardenVaultId,
                                                 aggregateStorageDefaults.bitwardenFolderId
                                             )
@@ -742,6 +753,7 @@ internal fun MainScreenAddFab(
                                                 aggregateStorageDefaults.keepassDatabaseId,
                                                 aggregateStorageDefaults.keepassGroupPath,
                                                 aggregateStorageDefaults.mdbxDatabaseId,
+                                                aggregateStorageDefaults.mdbxFolderId,
                                                 aggregateStorageDefaults.bitwardenVaultId,
                                                 aggregateStorageDefaults.bitwardenFolderId
                                             )
@@ -762,6 +774,7 @@ internal fun MainScreenAddFab(
                                                 aggregateStorageDefaults.keepassDatabaseId,
                                                 aggregateStorageDefaults.keepassGroupPath,
                                                 aggregateStorageDefaults.mdbxDatabaseId,
+                                                aggregateStorageDefaults.mdbxFolderId,
                                                 aggregateStorageDefaults.bitwardenVaultId,
                                                 aggregateStorageDefaults.bitwardenFolderId
                                             )
@@ -836,8 +849,12 @@ internal fun MainScreenAddFab(
                                 initialKeePassDatabaseId = aggregateStorageDefaults?.keepassDatabaseId,
                                 initialKeePassGroupPath = aggregateStorageDefaults?.keepassGroupPath,
                                 initialMdbxDatabaseId = aggregateStorageDefaults?.mdbxDatabaseId,
+                                initialMdbxFolderId = aggregateStorageDefaults?.mdbxFolderId,
                                 initialBitwardenVaultId = aggregateStorageDefaults?.bitwardenVaultId,
                                 initialBitwardenFolderId = aggregateStorageDefaults?.bitwardenFolderId,
+                                pendingQrResult = pendingPasswordAuthenticatorQrResult,
+                                onConsumePendingQrResult = onConsumePendingPasswordAuthenticatorQrResult,
+                                onScanAuthenticatorQrCode = onScanPasswordAuthenticatorQrCode,
                                 onSwitchToWifi = { targetId ->
                                     collapse()
                                     onNavigateToAddWifi(targetId)
@@ -917,8 +934,12 @@ internal fun MainScreenAddFab(
                                     initialKeePassDatabaseId = aggregateStorageDefaults?.keepassDatabaseId,
                                     initialKeePassGroupPath = aggregateStorageDefaults?.keepassGroupPath,
                                     initialMdbxDatabaseId = aggregateStorageDefaults?.mdbxDatabaseId,
+                                    initialMdbxFolderId = aggregateStorageDefaults?.mdbxFolderId,
                                     initialBitwardenVaultId = aggregateStorageDefaults?.bitwardenVaultId,
                                     initialBitwardenFolderId = aggregateStorageDefaults?.bitwardenFolderId,
+                                    pendingQrResult = pendingPasswordAuthenticatorQrResult,
+                                    onConsumePendingQrResult = onConsumePendingPasswordAuthenticatorQrResult,
+                                    onScanAuthenticatorQrCode = onScanPasswordAuthenticatorQrCode,
                                     onSwitchToWifi = { targetId ->
                                         collapse()
                                         onNavigateToAddWifi(targetId)

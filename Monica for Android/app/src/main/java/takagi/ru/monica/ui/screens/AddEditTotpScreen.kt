@@ -831,8 +831,8 @@ fun AddEditTotpScreen(
                                         timeOffset = settings.totpTimeOffset,
                                         smoothProgress = settings.validatorSmoothProgress,
                                         modifier = Modifier.padding(top = 10.dp),
-                                        showHeader = true,
-                                        showProgress = true
+                                        showHeader = false,
+                                        showProgress = false
                                     )
                                 }
                             }

@@ -159,6 +159,7 @@ private data class PendingAddStorageDefaults(
     val keepassDatabaseId: Long? = null,
     val keepassGroupPath: String? = null,
     val mdbxDatabaseId: Long? = null,
+    val mdbxFolderId: String? = null,
     val bitwardenVaultId: Long? = null,
     val bitwardenFolderId: String? = null
 )
@@ -173,6 +174,7 @@ private const val KEY_PENDING_ADD_CATEGORY_ID = "pending_add_category_id"
 private const val KEY_PENDING_ADD_KEEPASS_DATABASE_ID = "pending_add_keepass_database_id"
 private const val KEY_PENDING_ADD_KEEPASS_GROUP_PATH = "pending_add_keepass_group_path"
 private const val KEY_PENDING_ADD_MDBX_DATABASE_ID = "pending_add_mdbx_database_id"
+private const val KEY_PENDING_ADD_MDBX_FOLDER_ID = "pending_add_mdbx_folder_id"
 private const val KEY_PENDING_ADD_BITWARDEN_VAULT_ID = "pending_add_bitwarden_vault_id"
 private const val KEY_PENDING_ADD_BITWARDEN_FOLDER_ID = "pending_add_bitwarden_folder_id"
 private const val KEY_PENDING_SEND_TITLE = "pending_send_title"
@@ -184,6 +186,7 @@ private fun PendingAddStorageDefaults.hasAnyValue(): Boolean {
         keepassDatabaseId != null ||
         !keepassGroupPath.isNullOrBlank() ||
         mdbxDatabaseId != null ||
+        !mdbxFolderId.isNullOrBlank() ||
         bitwardenVaultId != null ||
         !bitwardenFolderId.isNullOrBlank()
 }
@@ -199,6 +202,7 @@ private fun SavedStateHandle.clearPendingAddStorageDefaults() {
     remove<Long>(KEY_PENDING_ADD_KEEPASS_DATABASE_ID)
     remove<String>(KEY_PENDING_ADD_KEEPASS_GROUP_PATH)
     remove<Long>(KEY_PENDING_ADD_MDBX_DATABASE_ID)
+    remove<String>(KEY_PENDING_ADD_MDBX_FOLDER_ID)
     remove<Long>(KEY_PENDING_ADD_BITWARDEN_VAULT_ID)
     remove<String>(KEY_PENDING_ADD_BITWARDEN_FOLDER_ID)
 }
@@ -235,6 +239,12 @@ private fun SavedStateHandle.setPendingAddStorageDefaults(defaults: PendingAddSt
         set(KEY_PENDING_ADD_MDBX_DATABASE_ID, defaults.mdbxDatabaseId)
     } else {
         remove<Long>(KEY_PENDING_ADD_MDBX_DATABASE_ID)
+    }
+    val mdbxFolderId = defaults.mdbxFolderId?.takeIf { it.isNotBlank() }
+    if (mdbxFolderId != null) {
+        set(KEY_PENDING_ADD_MDBX_FOLDER_ID, mdbxFolderId)
+    } else {
+        remove<String>(KEY_PENDING_ADD_MDBX_FOLDER_ID)
     }
     if (defaults.bitwardenVaultId != null) {
         set(KEY_PENDING_ADD_BITWARDEN_VAULT_ID, defaults.bitwardenVaultId)
@@ -281,6 +291,7 @@ private fun SavedStateHandle.consumePendingAddStorageDefaults(): PendingAddStora
         keepassDatabaseId = get<Long>(KEY_PENDING_ADD_KEEPASS_DATABASE_ID),
         keepassGroupPath = get<String>(KEY_PENDING_ADD_KEEPASS_GROUP_PATH)?.takeIf { it.isNotBlank() },
         mdbxDatabaseId = get<Long>(KEY_PENDING_ADD_MDBX_DATABASE_ID),
+        mdbxFolderId = get<String>(KEY_PENDING_ADD_MDBX_FOLDER_ID)?.takeIf { it.isNotBlank() },
         bitwardenVaultId = get<Long>(KEY_PENDING_ADD_BITWARDEN_VAULT_ID),
         bitwardenFolderId = get<String>(KEY_PENDING_ADD_BITWARDEN_FOLDER_ID)?.takeIf { it.isNotBlank() }
     )
@@ -893,6 +904,9 @@ fun MonicaContent(
         ) { backStackEntry ->
             val tab = backStackEntry.arguments?.getInt("tab") ?: 0
             val scope = rememberCoroutineScope()
+            val mainQrResult = navController.currentBackStackEntry
+                ?.savedStateHandle
+                ?.get<String>("qr_result")
 
             androidx.compose.runtime.CompositionLocalProvider(
                 takagi.ru.monica.ui.LocalAnimatedVisibilityScope provides this
@@ -935,6 +949,17 @@ fun MonicaContent(
                 onNavigateToQuickTotpScan = {
                     navController.navigate(Screen.QuickTotpScan.route)
                 },
+                pendingPasswordAuthenticatorQrResult = mainQrResult,
+                onConsumePendingPasswordAuthenticatorQrResult = {
+                    navController.currentBackStackEntry
+                        ?.savedStateHandle
+                        ?.remove<String>("qr_result")
+                },
+                onScanPasswordAuthenticatorQrCode = {
+                    navController.navigate(Screen.QrScanner.route) {
+                        launchSingleTop = true
+                    }
+                },
                 onNavigateToFidoQrScan = {
                     navController.navigate(Screen.FidoQrScan.route)
                 },
@@ -947,7 +972,7 @@ fun MonicaContent(
                 onNavigateToWalletAdd = { initialType ->
                     navController.navigate(Screen.WalletAdd.createRoute(initialType.name))
                 },
-                onPreparePasswordAddStorageDefaults = { categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, bitwardenVaultId, bitwardenFolderId ->
+                onPreparePasswordAddStorageDefaults = { categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, mdbxFolderId, bitwardenVaultId, bitwardenFolderId ->
                     navController.currentBackStackEntry
                         ?.savedStateHandle
                         ?.setPendingAddStorageDefaults(
@@ -956,12 +981,13 @@ fun MonicaContent(
                                 keepassDatabaseId = keepassDatabaseId,
                                 keepassGroupPath = keepassGroupPath,
                                 mdbxDatabaseId = mdbxDatabaseId,
+                                mdbxFolderId = mdbxFolderId,
                                 bitwardenVaultId = bitwardenVaultId,
                                 bitwardenFolderId = bitwardenFolderId
                             )
                         )
                 },
-                onPrepareTotpAddStorageDefaults = { categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, bitwardenVaultId, bitwardenFolderId ->
+                onPrepareTotpAddStorageDefaults = { categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, mdbxFolderId, bitwardenVaultId, bitwardenFolderId ->
                     navController.currentBackStackEntry
                         ?.savedStateHandle
                         ?.setPendingAddStorageDefaults(
@@ -970,12 +996,13 @@ fun MonicaContent(
                                 keepassDatabaseId = keepassDatabaseId,
                                 keepassGroupPath = keepassGroupPath,
                                 mdbxDatabaseId = mdbxDatabaseId,
+                                mdbxFolderId = mdbxFolderId,
                                 bitwardenVaultId = bitwardenVaultId,
                                 bitwardenFolderId = bitwardenFolderId
                             )
                         )
                 },
-                onPrepareNoteAddStorageDefaults = { categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, bitwardenVaultId, bitwardenFolderId ->
+                onPrepareNoteAddStorageDefaults = { categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, mdbxFolderId, bitwardenVaultId, bitwardenFolderId ->
                     navController.currentBackStackEntry
                         ?.savedStateHandle
                         ?.setPendingAddStorageDefaults(
@@ -984,12 +1011,13 @@ fun MonicaContent(
                                 keepassDatabaseId = keepassDatabaseId,
                                 keepassGroupPath = keepassGroupPath,
                                 mdbxDatabaseId = mdbxDatabaseId,
+                                mdbxFolderId = mdbxFolderId,
                                 bitwardenVaultId = bitwardenVaultId,
                                 bitwardenFolderId = bitwardenFolderId
                             )
                         )
                 },
-                onPrepareWalletAddStorageDefaults = { categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, bitwardenVaultId, bitwardenFolderId ->
+                onPrepareWalletAddStorageDefaults = { categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, mdbxFolderId, bitwardenVaultId, bitwardenFolderId ->
                     navController.currentBackStackEntry
                         ?.savedStateHandle
                         ?.setPendingAddStorageDefaults(
@@ -998,6 +1026,7 @@ fun MonicaContent(
                                 keepassDatabaseId = keepassDatabaseId,
                                 keepassGroupPath = keepassGroupPath,
                                 mdbxDatabaseId = mdbxDatabaseId,
+                                mdbxFolderId = mdbxFolderId,
                                 bitwardenVaultId = bitwardenVaultId,
                                 bitwardenFolderId = bitwardenFolderId
                             )
@@ -1184,6 +1213,7 @@ fun MonicaContent(
                 initialKeePassDatabaseId = pendingStorageDefaults?.keepassDatabaseId,
                 initialKeePassGroupPath = pendingStorageDefaults?.keepassGroupPath,
                 initialMdbxDatabaseId = pendingStorageDefaults?.mdbxDatabaseId,
+                initialMdbxFolderId = pendingStorageDefaults?.mdbxFolderId,
                 initialBitwardenVaultId = pendingStorageDefaults?.bitwardenVaultId,
                 initialBitwardenFolderId = pendingStorageDefaults?.bitwardenFolderId,
                 pendingQrResult = qrResult,
@@ -2393,7 +2423,10 @@ fun MonicaContent(
                     navController.navigate(Screen.PageAdjustmentCustomization.route)
                 },
                 onNavigateToMdbx = {
-                    navController.navigate(Screen.MdbxManager.route)
+                    navController.navigate(Screen.MdbxManager.route) {
+                        popUpTo(Screen.MdbxManager.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
                 },
                 onClearAllData = { clearPasswords: Boolean, clearTotp: Boolean, clearNotes: Boolean, clearDocuments: Boolean, clearBankCards: Boolean, clearGeneratorHistory: Boolean ->
                     // 清空所有数据
@@ -2977,7 +3010,10 @@ fun MonicaContent(
                     navController.popBackStack()
                 },
                 onNavigateToMdbx = {
-                    navController.navigate(Screen.MdbxManager.route)
+                    navController.navigate(Screen.MdbxManager.route) {
+                        popUpTo(Screen.MdbxManager.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
                 }
             )
             }
@@ -3227,7 +3263,10 @@ fun MonicaContent(
                     navController.navigate(Screen.LocalKeePass.route)
                 },
                 onNavigateToMdbx = {
-                    navController.navigate(Screen.MdbxManager.route)
+                    navController.navigate(Screen.MdbxManager.route) {
+                        popUpTo(Screen.MdbxManager.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
                 },
                 onNavigateToBitwarden = {
                     navController.navigate(Screen.BitwardenSettings.route)

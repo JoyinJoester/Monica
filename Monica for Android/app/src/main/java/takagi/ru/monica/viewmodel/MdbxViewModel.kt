@@ -9,6 +9,7 @@ import androidx.documentfile.provider.DocumentFile
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -48,6 +49,7 @@ import takagi.ru.monica.repository.MdbxApplyResult
 import takagi.ru.monica.repository.MdbxBenchmarkResult
 import takagi.ru.monica.repository.MdbxSnapshotSummary
 import takagi.ru.monica.repository.MdbxStoredVaultEntry
+import takagi.ru.monica.repository.MdbxStructurePreview
 import takagi.ru.monica.repository.MdbxSyncBundle
 import takagi.ru.monica.repository.MdbxVaultCredential
 import takagi.ru.monica.repository.MdbxVaultCrypto
@@ -64,6 +66,8 @@ import java.io.File
 import java.text.Normalizer
 import java.util.Date
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.system.measureTimeMillis
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -125,6 +129,102 @@ class MdbxViewModel(
         _advancedDialogState.asStateFlow()
 
     private val autoSyncLastStartedAt = mutableMapOf<Long, Long>()
+    private val activeVaultPrefs =
+        context.applicationContext.getSharedPreferences(ACTIVE_VAULT_PREFS_NAME, Context.MODE_PRIVATE)
+    private val _activeMdbxDatabaseId = MutableStateFlow(
+        activeVaultPrefs.getLong(ACTIVE_VAULT_ID_KEY, NO_ACTIVE_VAULT_ID)
+            .takeIf { it > 0L }
+    )
+    val activeMdbxDatabaseId: StateFlow<Long?> = _activeMdbxDatabaseId.asStateFlow()
+    private var activePreloadJob: Job? = null
+    private var activePreloadDatabaseId: Long? = null
+    private val deltaHistoryCache = ConcurrentHashMap<Long, CachedDeltaHistory>()
+    private val structurePreviewCache =
+        ConcurrentHashMap<SnapshotStructureCacheKey, MdbxStructurePreview>()
+
+    private companion object {
+        const val ACTIVE_VAULT_PREFS_NAME = "mdbx_active_vault"
+        const val ACTIVE_VAULT_ID_KEY = "last_active_mdbx_database_id"
+        const val NO_ACTIVE_VAULT_ID = -1L
+    }
+
+    private data class CachedDeltaHistory(
+        val deltas: List<MdbxDeltaSummary>,
+        val snapshots: List<MdbxSnapshotSummary>
+    )
+
+    private data class SnapshotStructureCacheKey(
+        val databaseId: Long,
+        val snapshotId: String
+    )
+
+    fun activateMdbxDatabase(databaseId: Long) {
+        if (_activeMdbxDatabaseId.value != databaseId) {
+            _activeMdbxDatabaseId.value = databaseId
+            activeVaultPrefs.edit().putLong(ACTIVE_VAULT_ID_KEY, databaseId).apply()
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            databaseDao.updateLastAccessedTime(databaseId)
+        }
+        preloadActiveMdbxDatabase(databaseId)
+    }
+
+    fun forgetActiveMdbxDatabaseIf(databaseId: Long) {
+        if (_activeMdbxDatabaseId.value == databaseId) {
+            _activeMdbxDatabaseId.value = null
+            activeVaultPrefs.edit().remove(ACTIVE_VAULT_ID_KEY).apply()
+            activePreloadJob?.cancel()
+            activePreloadJob = null
+            activePreloadDatabaseId = null
+        }
+    }
+
+    fun preloadActiveMdbxDatabase(databaseId: Long) {
+        val runningJob = activePreloadJob
+        if (runningJob?.isActive == true && activePreloadDatabaseId == databaseId) {
+            return
+        }
+        activePreloadJob?.cancel()
+        activePreloadDatabaseId = databaseId
+        activePreloadJob = viewModelScope.launch {
+            val startedAt = System.currentTimeMillis()
+            MdbxDiagLogger.append("[MDBX][activePreload] start databaseId=$databaseId")
+            try {
+                var deltas: List<MdbxDeltaSummary> = emptyList()
+                var snapshots: List<MdbxSnapshotSummary> = emptyList()
+                val diagnostic = withContext(Dispatchers.IO) {
+                    val database = databaseDao.getDatabaseById(databaseId)
+                        ?: return@withContext null
+                    val diagnostic = vaultStore.getVaultDiagnostics(database.id)
+                    deltas = vaultStore.listDeltaHistory(database.id)
+                    snapshots = vaultStore.listSnapshots(database.id)
+                    diagnostic
+                }
+                if (diagnostic == null) {
+                    forgetActiveMdbxDatabaseIf(databaseId)
+                    MdbxDiagLogger.append("[MDBX][activePreload] missing databaseId=$databaseId")
+                    return@launch
+                }
+                if (_activeMdbxDatabaseId.value != databaseId) {
+                    MdbxDiagLogger.append("[MDBX][activePreload] discarded databaseId=$databaseId active=${_activeMdbxDatabaseId.value ?: "-"}")
+                    return@launch
+                }
+                applyVaultDiagnostic(databaseId, diagnostic)
+                updateDeltaHistoryCache(databaseId, deltas, snapshots)
+                MdbxDiagLogger.append(
+                    "[MDBX][activePreload] success databaseId=$databaseId deltas=${deltas.size} snapshots=${snapshots.size} elapsedMs=${System.currentTimeMillis() - startedAt}"
+                )
+            } catch (e: Exception) {
+                MdbxDiagLogger.append(
+                    "[MDBX][activePreload] failure databaseId=$databaseId error=${e::class.java.simpleName}:${e.message}"
+                )
+            } finally {
+                if (activePreloadDatabaseId == databaseId) {
+                    activePreloadDatabaseId = null
+                }
+            }
+        }
+    }
 
     // --- WebDAV connection ---
 
@@ -1102,6 +1202,8 @@ class MdbxViewModel(
                         remoteSourceDao.deleteSourceById(sourceId)
                     }
                 }
+                invalidateMdbxViewCaches(databaseId)
+                forgetActiveMdbxDatabaseIf(databaseId)
                 _conflictCounts.value = _conflictCounts.value - databaseId
                 _pendingSyncCounts.value = _pendingSyncCounts.value - databaseId
                 _vaultDiagnostics.value = _vaultDiagnostics.value - databaseId
@@ -1147,6 +1249,13 @@ class MdbxViewModel(
             }
             if (removedIds.isNotEmpty()) {
                 val removedSet = removedIds.toSet()
+                invalidateMdbxViewCaches(removedSet)
+                if (_activeMdbxDatabaseId.value in removedSet) {
+                    _activeMdbxDatabaseId.value = null
+                    activeVaultPrefs.edit().remove(ACTIVE_VAULT_ID_KEY).apply()
+                    activePreloadJob?.cancel()
+                    activePreloadJob = null
+                }
                 _conflictCounts.value = _conflictCounts.value - removedSet
                 _pendingSyncCounts.value = _pendingSyncCounts.value - removedSet
                 _vaultDiagnostics.value = _vaultDiagnostics.value - removedSet
@@ -1208,23 +1317,104 @@ class MdbxViewModel(
 
     fun showDeltaHistory(database: LocalMdbxDatabase) {
         viewModelScope.launch {
+            val current = _deltaDialogState.value as? MdbxDeltaDialogState.Visible
+            val sameDatabaseState = current?.takeIf { it.databaseId == database.id }
+            val cached = deltaHistoryCache[database.id]
             _deltaDialogState.value = MdbxDeltaDialogState.Visible(
                 databaseId = database.id,
                 databaseName = database.name,
+                deltas = sameDatabaseState?.deltas ?: cached?.deltas.orEmpty(),
+                snapshots = sameDatabaseState?.snapshots ?: cached?.snapshots.orEmpty(),
+                selectedDiffCommitId = null,
+                diffItems = emptyList(),
+                isDiffLoading = false,
+                isSnapshotLoading = false,
+                selectedStructureSnapshotId = null,
+                structurePreview = null,
+                isStructureLoading = false,
                 isLoading = true
             )
-            val deltas = withContext(Dispatchers.IO) {
-                vaultStore.listDeltaHistory(database.id)
+            var deltas: List<MdbxDeltaSummary> = emptyList()
+            var snapshots: List<MdbxSnapshotSummary> = emptyList()
+            val deltaMs = withContext(Dispatchers.IO) {
+                measureTimeMillis {
+                    deltas = vaultStore.listDeltaHistory(database.id)
+                }
             }
-            val snapshots = withContext(Dispatchers.IO) {
-                vaultStore.listSnapshots(database.id)
+            val snapshotMs = withContext(Dispatchers.IO) {
+                measureTimeMillis {
+                    snapshots = vaultStore.listSnapshots(database.id)
+                }
             }
-            _deltaDialogState.value = MdbxDeltaDialogState.Visible(
+            MdbxDiagLogger.append(
+                "[MDBX][perf][showDeltaHistory] databaseId=${database.id} deltas=${deltas.size} snapshots=${snapshots.size} deltaMs=$deltaMs snapshotMs=$snapshotMs cached=${cached != null} keptVisible=${sameDatabaseState != null}"
+            )
+            updateDeltaHistoryCache(
                 databaseId = database.id,
-                databaseName = database.name,
                 deltas = deltas,
-                snapshots = snapshots,
-                isLoading = false
+                snapshots = snapshots
+            )
+            val refreshedState = (_deltaDialogState.value as? MdbxDeltaDialogState.Visible)
+                ?.takeIf { it.databaseId == database.id }
+                ?.copy(
+                    databaseName = database.name,
+                    deltas = deltas,
+                    snapshots = snapshots,
+                    isLoading = false
+                )
+                ?.let { clearSelectedStructureIfInvalid(it, snapshots) }
+            if (refreshedState != null) {
+                _deltaDialogState.value = refreshedState
+            }
+        }
+    }
+
+    private fun invalidateMdbxViewCaches(databaseId: Long) {
+        deltaHistoryCache.remove(databaseId)
+        structurePreviewCache.keys.removeIf { it.databaseId == databaseId }
+    }
+
+    private fun invalidateMdbxViewCaches(databaseIds: Iterable<Long>) {
+        databaseIds.forEach(::invalidateMdbxViewCaches)
+    }
+
+    private fun updateDeltaHistoryCache(
+        databaseId: Long,
+        deltas: List<MdbxDeltaSummary>,
+        snapshots: List<MdbxSnapshotSummary>
+    ) {
+        deltaHistoryCache[databaseId] = CachedDeltaHistory(
+            deltas = deltas,
+            snapshots = snapshots
+        )
+    }
+
+    private fun updateStructurePreviewCache(
+        databaseId: Long,
+        snapshotId: String,
+        preview: MdbxStructurePreview
+    ) {
+        structurePreviewCache[SnapshotStructureCacheKey(databaseId, snapshotId)] = preview
+    }
+
+    private fun cachedStructurePreview(
+        databaseId: Long,
+        snapshotId: String
+    ): MdbxStructurePreview? =
+        structurePreviewCache[SnapshotStructureCacheKey(databaseId, snapshotId)]
+
+    private fun clearSelectedStructureIfInvalid(
+        state: MdbxDeltaDialogState.Visible,
+        snapshots: List<MdbxSnapshotSummary>
+    ): MdbxDeltaDialogState.Visible {
+        val selectedSnapshotId = state.selectedStructureSnapshotId ?: return state
+        return if (snapshots.any { it.snapshotId == selectedSnapshotId }) {
+            state
+        } else {
+            state.copy(
+                selectedStructureSnapshotId = null,
+                structurePreview = null,
+                isStructureLoading = false
             )
         }
     }
@@ -1251,12 +1441,80 @@ class MdbxViewModel(
         }
     }
 
+    fun closeCommitDiff() {
+        val current = _deltaDialogState.value as? MdbxDeltaDialogState.Visible ?: return
+        _deltaDialogState.value = current.copy(
+            selectedDiffCommitId = null,
+            diffItems = emptyList(),
+            isDiffLoading = false
+        )
+    }
+
+    fun showSnapshotStructure(databaseId: Long, snapshotId: String) {
+        viewModelScope.launch {
+            val current = _deltaDialogState.value as? MdbxDeltaDialogState.Visible
+                ?: return@launch
+            val cachedPreview = cachedStructurePreview(databaseId, snapshotId)
+            _deltaDialogState.value = current.copy(
+                selectedStructureSnapshotId = snapshotId,
+                structurePreview = current.structurePreview
+                    ?.takeIf { current.selectedStructureSnapshotId == snapshotId }
+                    ?: cachedPreview,
+                isStructureLoading = true,
+                selectedDiffCommitId = null,
+                diffItems = emptyList(),
+                isDiffLoading = false
+            )
+            try {
+                var loadedPreview: MdbxStructurePreview? = null
+                val elapsedMs = withContext(Dispatchers.IO) {
+                    measureTimeMillis {
+                        loadedPreview = vaultStore.getSnapshotStructurePreview(databaseId, snapshotId)
+                    }
+                }
+                val preview = loadedPreview
+                    ?: throw IllegalStateException("MDBX snapshot structure did not load")
+                MdbxDiagLogger.append(
+                    "[MDBX][perf][showSnapshotStructure] databaseId=$databaseId snapshotId=${snapshotId.take(8)} currentNodes=${preview.currentNodes.size} snapshotNodes=${preview.snapshotNodes.size} elapsedMs=$elapsedMs cached=${cachedPreview != null}"
+                )
+                val latest = _deltaDialogState.value as? MdbxDeltaDialogState.Visible
+                    ?: return@launch
+                updateStructurePreviewCache(databaseId, snapshotId, preview)
+                _deltaDialogState.value = latest.copy(
+                    selectedStructureSnapshotId = snapshotId,
+                    structurePreview = preview,
+                    isStructureLoading = false
+                )
+            } catch (e: Exception) {
+                val latest = _deltaDialogState.value as? MdbxDeltaDialogState.Visible
+                _deltaDialogState.value = latest?.copy(
+                    selectedStructureSnapshotId = null,
+                    structurePreview = null,
+                    isStructureLoading = false
+                ) ?: MdbxDeltaDialogState.Hidden
+                _operationState.value = OperationState.Error(
+                    "Failed to load MDBX snapshot structure: ${e.message ?: "unknown error"}"
+                )
+            }
+        }
+    }
+
+    fun closeSnapshotStructure() {
+        val current = _deltaDialogState.value as? MdbxDeltaDialogState.Visible ?: return
+        _deltaDialogState.value = current.copy(
+            selectedStructureSnapshotId = null,
+            structurePreview = null,
+            isStructureLoading = false
+        )
+    }
+
     fun revertCommit(databaseId: Long, commitId: String) {
         viewModelScope.launch {
             val current = _deltaDialogState.value as? MdbxDeltaDialogState.Visible
             _deltaDialogState.value = current?.copy(isLoading = true)
                 ?: MdbxDeltaDialogState.Hidden
             try {
+                invalidateMdbxViewCaches(databaseId)
                 val revertedCount = withContext(Dispatchers.IO) {
                     val count = vaultStore.revertCommit(databaseId, commitId)
                     importEntriesFromVault(databaseId)
@@ -1272,14 +1530,16 @@ class MdbxViewModel(
                     vaultStore.getVaultDiagnostics(databaseId)
                 }
                 applyVaultDiagnostic(databaseId, refreshedDiagnostic)
-                _deltaDialogState.value = current?.copy(
+                updateDeltaHistoryCache(databaseId, refreshedDeltas, refreshedSnapshots)
+                val refreshedState = current?.copy(
                     deltas = refreshedDeltas,
                     snapshots = refreshedSnapshots,
                     selectedDiffCommitId = null,
                     diffItems = emptyList(),
                     isLoading = false,
                     isDiffLoading = false
-                ) ?: MdbxDeltaDialogState.Hidden
+                )?.let { clearSelectedStructureIfInvalid(it, refreshedSnapshots) }
+                _deltaDialogState.value = refreshedState ?: MdbxDeltaDialogState.Hidden
                 _operationState.value = OperationState.Success(
                     "Reverted $revertedCount MDBX object(s)"
                 )
@@ -1299,6 +1559,7 @@ class MdbxViewModel(
             _deltaDialogState.value = current?.copy(isSnapshotLoading = true)
                 ?: MdbxDeltaDialogState.Hidden
             try {
+                invalidateMdbxViewCaches(databaseId)
                 val snapshot = withContext(Dispatchers.IO) {
                     vaultStore.createSnapshot(
                         databaseId = databaseId,
@@ -1327,6 +1588,7 @@ class MdbxViewModel(
             _deltaDialogState.value = current?.copy(isSnapshotLoading = true)
                 ?: MdbxDeltaDialogState.Hidden
             try {
+                invalidateMdbxViewCaches(databaseId)
                 withContext(Dispatchers.IO) {
                     vaultStore.deleteSnapshot(databaseId, snapshotId)
                 }
@@ -1348,6 +1610,7 @@ class MdbxViewModel(
             _deltaDialogState.value = current?.copy(isSnapshotLoading = true, isLoading = true)
                 ?: MdbxDeltaDialogState.Hidden
             try {
+                invalidateMdbxViewCaches(databaseId)
                 val restoredCount = withContext(Dispatchers.IO) {
                     val count = vaultStore.revertToSnapshot(databaseId, snapshotId)
                     importEntriesFromVault(databaseId)
@@ -1375,12 +1638,13 @@ class MdbxViewModel(
             _deltaDialogState.value = current?.copy(isSnapshotLoading = true)
                 ?: MdbxDeltaDialogState.Hidden
             try {
+                invalidateMdbxViewCaches(databaseId)
                 val deletedCount = withContext(Dispatchers.IO) {
-                    vaultStore.pruneAutomaticSnapshots(databaseId)
+                    vaultStore.pruneAutomaticSnapshots(databaseId, keepCount = 0)
                 }
                 refreshDeltaDialogAfterSnapshotMutation(databaseId, current)
                 _operationState.value = OperationState.Success(
-                    "Pruned $deletedCount automatic MDBX snapshot(s)"
+                    "已清理 $deletedCount 个自动快照"
                 )
             } catch (e: Exception) {
                 _deltaDialogState.value = current?.copy(isSnapshotLoading = false)
@@ -1406,7 +1670,8 @@ class MdbxViewModel(
             vaultStore.getVaultDiagnostics(databaseId)
         }
         applyVaultDiagnostic(databaseId, refreshedDiagnostic)
-        _deltaDialogState.value = previousState?.copy(
+        updateDeltaHistoryCache(databaseId, refreshedDeltas, refreshedSnapshots)
+        val refreshedState = previousState?.copy(
             deltas = refreshedDeltas,
             snapshots = refreshedSnapshots,
             selectedDiffCommitId = null,
@@ -1414,7 +1679,8 @@ class MdbxViewModel(
             isLoading = false,
             isDiffLoading = false,
             isSnapshotLoading = false
-        ) ?: MdbxDeltaDialogState.Hidden
+        )?.let { clearSelectedStructureIfInvalid(it, refreshedSnapshots) }
+        _deltaDialogState.value = refreshedState ?: MdbxDeltaDialogState.Hidden
     }
 
     fun resolveConflict(
@@ -1593,40 +1859,136 @@ class MdbxViewModel(
         )
 
     private suspend fun importEntriesFromVault(databaseId: Long) {
-        clearImportedEntries(databaseId)
-        val entries = vaultStore.readStoredEntries(databaseId)
+        invalidateMdbxViewCaches(databaseId)
+        var entries: List<MdbxStoredVaultEntry> = emptyList()
+        val readMs = measureTimeMillis {
+            entries = vaultStore.readStoredEntries(databaseId)
+        }
         val payloadByEntryId = mutableMapOf<String, JSONObject>()
         val importedPasswordIds = mutableMapOf<String, Long>()
         val importedSecureItemIds = mutableMapOf<String, Long>()
-
-        entries.filterNot { it.deleted }.forEach { stored ->
-            val payload = runCatching { JSONObject(stored.payloadJson) }.getOrNull()
-                ?: return@forEach
-            payloadByEntryId[stored.entryId] = payload
-            if (stored.entryType == "login") {
-                val passwordId = importPasswordEntry(databaseId, stored, payload)
-                importedPasswordIds[stored.entryId] = passwordId
-            }
-        }
-
-        entries.filterNot { it.deleted }.forEach { stored ->
-            val payload = payloadByEntryId[stored.entryId] ?: return@forEach
-            when (stored.entryType) {
-                "note", "totp", "card", "document-ref" -> {
-                    importSecureItem(databaseId, stored, payload, importedPasswordIds)
-                        ?.let { secureItemId -> importedSecureItemIds[stored.entryId] = secureItemId }
+        val existingPasswordsByEntryId = passwordEntryDao.getByMdbxDatabaseIdSync(databaseId)
+            .dedupeMdbxPasswordRowsByEntryId()
+            .mapNotNull { entry -> entry.replicaGroupId?.let { it to entry } }
+            .toMap()
+        val existingSecureItemsByEntryId = secureItemDao.getByMdbxDatabaseIdSync(databaseId)
+            .dedupeMdbxSecureItemRowsByEntryId()
+            .mapNotNull { item -> item.replicaGroupId?.let { it to item } }
+            .toMap()
+        val existingPasskeysByEntryId = passkeyDao.getByMdbxDatabaseId(databaseId)
+            .mapNotNull { passkey ->
+                passkey.credentialId.takeIf { it.isNotBlank() }?.let { credentialId ->
+                    "passkey:$credentialId" to passkey
                 }
-                "passkey" -> importPasskey(databaseId, stored, payload)
             }
+            .toMap()
+        val activePasswordEntryIds = mutableSetOf<String>()
+        val activeSecureItemEntryIds = mutableSetOf<String>()
+        val activePasskeyEntryIds = mutableSetOf<String>()
+        val reconcileMs = measureTimeMillis {
         }
-        restoreImportedBindings(payloadByEntryId, importedPasswordIds, importedSecureItemIds)
-        importAttachmentsFromVault(databaseId, importedPasswordIds)
+        val importMs = measureTimeMillis {
+            entries.filterNot { it.deleted }.forEach { stored ->
+                val payload = runCatching { JSONObject(stored.payloadJson) }.getOrNull()
+                    ?: return@forEach
+                payloadByEntryId[stored.entryId] = payload
+                if (stored.entryType == "login") {
+                    activePasswordEntryIds += stored.entryId
+                    val passwordId = importPasswordEntry(
+                        databaseId = databaseId,
+                        stored = stored,
+                        payload = payload,
+                        existing = existingPasswordsByEntryId[stored.entryId]
+                    )
+                    importedPasswordIds[stored.entryId] = passwordId
+                }
+            }
+
+            entries.filterNot { it.deleted }.forEach { stored ->
+                val payload = payloadByEntryId[stored.entryId] ?: return@forEach
+                when (stored.entryType) {
+                    "note", "totp", "card", "document-ref" -> {
+                        activeSecureItemEntryIds += stored.entryId
+                        importSecureItem(
+                            databaseId = databaseId,
+                            stored = stored,
+                            payload = payload,
+                            importedPasswordIds = importedPasswordIds,
+                            existing = existingSecureItemsByEntryId[stored.entryId]
+                        )
+                            ?.let { secureItemId -> importedSecureItemIds[stored.entryId] = secureItemId }
+                    }
+                    "passkey" -> {
+                        activePasskeyEntryIds += stored.entryId
+                        importPasskey(
+                            databaseId = databaseId,
+                            stored = stored,
+                            payload = payload,
+                            existing = existingPasskeysByEntryId[stored.entryId]
+                        )
+                    }
+                }
+            }
+            restoreImportedBindings(payloadByEntryId, importedPasswordIds, importedSecureItemIds)
+            existingPasswordsByEntryId
+                .filterKeys { it !in activePasswordEntryIds }
+                .values
+                .forEach { passwordEntryDao.deletePasswordEntryById(it.id) }
+            existingSecureItemsByEntryId
+                .filterKeys { it !in activeSecureItemEntryIds }
+                .values
+                .forEach { secureItemDao.deleteItemById(it.id) }
+            existingPasskeysByEntryId
+                .filterKeys { it !in activePasskeyEntryIds }
+                .values
+                .forEach { passkeyDao.deleteByRecordId(it.id) }
+        }
+        val attachmentMs = measureTimeMillis {
+            importAttachmentsFromVault(databaseId, importedPasswordIds)
+        }
+        MdbxDiagLogger.append(
+            "[MDBX][perf][importEntriesFromVault] databaseId=$databaseId entries=${entries.size} active=${entries.count { !it.deleted }} passwords=${importedPasswordIds.size} secureItems=${importedSecureItemIds.size} readMs=$readMs reconcileMs=$reconcileMs importMs=$importMs attachmentMs=$attachmentMs"
+        )
     }
 
     private suspend fun clearImportedEntries(databaseId: Long) {
         passwordEntryDao.deleteAllByMdbxDatabaseId(databaseId)
         secureItemDao.deleteAllByMdbxDatabaseId(databaseId)
         passkeyDao.deleteAllByMdbxDatabaseId(databaseId)
+    }
+
+    private suspend fun List<PasswordEntry>.dedupeMdbxPasswordRowsByEntryId(): List<PasswordEntry> {
+        if (isEmpty()) return this
+        val keepIds = mutableSetOf<Long>()
+        groupBy { it.replicaGroupId?.takeIf(String::isNotBlank) }.forEach { (entryId, rows) ->
+            if (entryId == null) {
+                keepIds += rows.map { it.id }
+                return@forEach
+            }
+            val keeper = rows.maxByOrNull { it.updatedAt.time } ?: return@forEach
+            keepIds += keeper.id
+            rows.filterNot { it.id == keeper.id }.forEach { duplicate ->
+                passwordEntryDao.deletePasswordEntryById(duplicate.id)
+            }
+        }
+        return filter { it.id in keepIds }
+    }
+
+    private suspend fun List<SecureItem>.dedupeMdbxSecureItemRowsByEntryId(): List<SecureItem> {
+        if (isEmpty()) return this
+        val keepIds = mutableSetOf<Long>()
+        groupBy { it.replicaGroupId?.takeIf(String::isNotBlank) }.forEach { (entryId, rows) ->
+            if (entryId == null) {
+                keepIds += rows.map { it.id }
+                return@forEach
+            }
+            val keeper = rows.maxByOrNull { it.updatedAt.time } ?: return@forEach
+            keepIds += keeper.id
+            rows.filterNot { it.id == keeper.id }.forEach { duplicate ->
+                secureItemDao.deleteItemById(duplicate.id)
+            }
+        }
+        return filter { it.id in keepIds }
     }
 
     private fun LocalMdbxDatabase.hasAccessibleLocalSource(): Boolean {
@@ -1662,7 +2024,8 @@ class MdbxViewModel(
     private suspend fun importPasswordEntry(
         databaseId: Long,
         stored: MdbxStoredVaultEntry,
-        payload: JSONObject
+        payload: JSONObject,
+        existing: PasswordEntry?
     ): Long {
         val plainPassword = payload.optString("password_plain")
             .takeIf { it.isNotEmpty() }
@@ -1670,31 +2033,39 @@ class MdbxViewModel(
                 runCatching { securityManager.decryptData(value) }.getOrDefault(value)
             }
             ?: ""
-        return passwordEntryDao.insertPasswordEntry(
-            PasswordEntry(
-                id = 0L,
-                title = stored.title,
-                website = payload.optString("website"),
-                username = payload.optString("username"),
-                password = securityManager.encryptData(plainPassword),
-                notes = payload.optString("notes"),
-                categoryId = null,
-                mdbxDatabaseId = databaseId,
-                replicaGroupId = stored.entryId,
-                authenticatorKey = payload.optString("authenticator_key"),
-                passkeyBindings = payload.optString("passkey_bindings"),
-                loginType = payload.optString("login_type", "PASSWORD"),
-                createdAt = Date(),
-                updatedAt = Date()
-            )
+        val entry = PasswordEntry(
+            id = existing?.id ?: 0L,
+            title = stored.title,
+            website = payload.optString("website"),
+            username = payload.optString("username"),
+            password = securityManager.encryptData(plainPassword),
+            notes = payload.optString("notes"),
+            categoryId = existing?.categoryId,
+            mdbxDatabaseId = databaseId,
+            mdbxFolderId = payload.optMdbxFolderId(),
+            replicaGroupId = stored.entryId,
+            authenticatorKey = payload.optString("authenticator_key"),
+            passkeyBindings = payload.optString("passkey_bindings"),
+            loginType = payload.optString("login_type", "PASSWORD"),
+            createdAt = existing?.createdAt ?: Date(),
+            updatedAt = existing?.updatedAt ?: Date(),
+            isFavorite = existing?.isFavorite ?: false,
+            sortOrder = existing?.sortOrder ?: 0,
+            isGroupCover = existing?.isGroupCover ?: false
         )
+        if (existing != null) {
+            passwordEntryDao.updatePasswordEntry(entry)
+            return existing.id
+        }
+        return passwordEntryDao.insertPasswordEntry(entry)
     }
 
     private suspend fun importSecureItem(
         databaseId: Long,
         stored: MdbxStoredVaultEntry,
         payload: JSONObject,
-        importedPasswordIds: Map<String, Long>
+        importedPasswordIds: Map<String, Long>,
+        existing: SecureItem?
     ): Long? {
         val itemType = when (stored.entryType) {
             "note" -> ItemType.NOTE
@@ -1708,20 +2079,28 @@ class MdbxViewModel(
         } else {
             payload.optString("item_data")
         }
-        return secureItemDao.insertItem(
-            SecureItem(
-                id = 0L,
-                itemType = itemType,
-                title = stored.title,
-                notes = payload.optString("notes"),
-                itemData = itemData,
-                imagePaths = payload.optString("image_paths"),
-                categoryId = null,
-                mdbxDatabaseId = databaseId,
-                replicaGroupId = stored.entryId,
-                syncStatus = "NONE"
-            )
+        val item = SecureItem(
+            id = existing?.id ?: 0L,
+            itemType = itemType,
+            title = stored.title,
+            notes = payload.optString("notes"),
+            itemData = itemData,
+            imagePaths = payload.optString("image_paths"),
+            categoryId = existing?.categoryId,
+            mdbxDatabaseId = databaseId,
+            mdbxFolderId = payload.optMdbxFolderId(),
+            replicaGroupId = stored.entryId,
+            syncStatus = existing?.syncStatus ?: "NONE",
+            createdAt = existing?.createdAt ?: Date(),
+            updatedAt = existing?.updatedAt ?: Date(),
+            isFavorite = existing?.isFavorite ?: false,
+            sortOrder = existing?.sortOrder ?: 0
         )
+        if (existing != null) {
+            secureItemDao.updateItem(item)
+            return existing.id
+        }
+        return secureItemDao.insertItem(item)
     }
 
     private fun remapImportedTotpBinding(
@@ -1757,30 +2136,51 @@ class MdbxViewModel(
     private suspend fun importPasskey(
         databaseId: Long,
         stored: MdbxStoredVaultEntry,
-        payload: JSONObject
+        payload: JSONObject,
+        existing: PasskeyEntry?
     ) {
         val credentialId = payload.optString("credential_id")
         if (credentialId.isBlank()) return
-        passkeyDao.insert(
-            PasskeyEntry(
-                id = 0L,
-                credentialId = credentialId,
-                rpId = payload.optString("rp_id"),
-                rpName = payload.optString("rp_name").ifBlank { stored.title },
-                userId = payload.optString("user_id"),
-                userName = payload.optString("user_name"),
-                userDisplayName = payload.optString("user_display_name"),
-                publicKeyAlgorithm = payload.optInt("public_key_algorithm", -7),
-                publicKey = payload.optString("public_key"),
-                privateKeyAlias = payload.optString("private_key_alias"),
-                transports = payload.optString("transports", "internal"),
-                aaguid = payload.optString("aaguid"),
-                signCount = payload.optLong("sign_count", 0L),
-                notes = payload.optString("notes"),
-                passkeyMode = payload.optString("passkey_mode", PasskeyEntry.MODE_LEGACY),
-                mdbxDatabaseId = databaseId
-            )
+        val passkey = PasskeyEntry(
+            id = existing?.id ?: 0L,
+            credentialId = credentialId,
+            rpId = payload.optString("rp_id"),
+            rpName = payload.optString("rp_name").ifBlank { stored.title },
+            userId = payload.optString("user_id"),
+            userName = payload.optString("user_name"),
+            userDisplayName = payload.optString("user_display_name"),
+            publicKeyAlgorithm = payload.optInt("public_key_algorithm", -7),
+            publicKey = payload.optString("public_key"),
+            privateKeyAlias = payload.optString("private_key_alias"),
+            transports = payload.optString("transports", "internal"),
+            aaguid = payload.optString("aaguid"),
+            signCount = payload.optLong("sign_count", 0L),
+            notes = payload.optString("notes"),
+            passkeyMode = payload.optString("passkey_mode", PasskeyEntry.MODE_LEGACY),
+            mdbxDatabaseId = databaseId,
+            mdbxFolderId = payload.optMdbxFolderId(),
+            createdAt = existing?.createdAt ?: System.currentTimeMillis(),
+            lastUsedAt = existing?.lastUsedAt ?: System.currentTimeMillis(),
+            useCount = existing?.useCount ?: 0,
+            iconUrl = existing?.iconUrl,
+            isDiscoverable = existing?.isDiscoverable ?: true,
+            isUserVerificationRequired = existing?.isUserVerificationRequired ?: true,
+            isBackedUp = existing?.isBackedUp ?: false,
+            boundPasswordId = existing?.boundPasswordId,
+            categoryId = existing?.categoryId,
+            syncStatus = existing?.syncStatus ?: "NONE"
         )
+        if (existing != null) {
+            passkeyDao.update(passkey)
+        } else {
+            passkeyDao.insert(passkey)
+        }
+    }
+
+    private fun JSONObject.optMdbxFolderId(): String? {
+        return optString("mdbx_folder_id")
+            .trim()
+            .takeIf { it.isNotBlank() && !it.equals("root", ignoreCase = true) }
     }
 
     private suspend fun importAttachmentsFromVault(
@@ -1789,6 +2189,9 @@ class MdbxViewModel(
     ) {
         if (importedPasswordIds.isEmpty()) return
         val attachments = vaultStore.readStoredAttachments(databaseId)
+        importedPasswordIds.values.toSet().forEach { parentPasswordId ->
+            attachmentDao.purgeByParent(parentPasswordId)
+        }
         if (attachments.isEmpty()) return
         val dir = File(context.filesDir, "secure_attachments")
         dir.mkdirs()
@@ -1961,7 +2364,10 @@ class MdbxViewModel(
             val selectedDiffCommitId: String? = null,
             val diffItems: List<MdbxCommitDiff> = emptyList(),
             val isDiffLoading: Boolean = false,
-            val isSnapshotLoading: Boolean = false
+            val isSnapshotLoading: Boolean = false,
+            val selectedStructureSnapshotId: String? = null,
+            val structurePreview: MdbxStructurePreview? = null,
+            val isStructureLoading: Boolean = false
         ) : MdbxDeltaDialogState()
     }
 

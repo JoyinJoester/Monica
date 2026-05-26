@@ -75,6 +75,7 @@ import takagi.ru.monica.data.writeOperationAvailability
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.repository.MdbxStoredFolderEntry
+import takagi.ru.monica.ui.isDirectMdbxChildOf
 import takagi.ru.monica.utils.KeePassGroupInfo
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
 
@@ -694,17 +695,12 @@ private fun buildFolderChips(
                 is UnifiedCategoryFilterSelection.MdbxFolderFilter -> selected.databaseId
                 else -> return emptyList()
             }
+            val currentFolderId = (selected as? UnifiedCategoryFilterSelection.MdbxFolderFilter)?.folderId
             val chips = mutableListOf<FolderChipItem>()
-            if (selected is UnifiedCategoryFilterSelection.MdbxFolderFilter) {
-                chips += FolderChipItem(
-                    label = "返回",
-                    selection = UnifiedCategoryFilterSelection.MdbxDatabaseFilter(databaseId),
-                    isBack = true
-                )
-            }
             chips += mdbxFolders
                 .filter { it.folderId.isNotBlank() }
-                .sortedWith(compareBy<MdbxStoredFolderEntry>({ it.parentFolderId ?: "" }, { it.name }, { it.folderId }))
+                .filter { it.isDirectMdbxChildOf(currentFolderId) }
+                .sortedWith(compareBy<MdbxStoredFolderEntry>({ it.name }, { it.folderId }))
                 .map {
                     FolderChipItem(
                         label = it.name.ifBlank { "Folder ${it.folderId.take(8)}" },

@@ -20,6 +20,7 @@ import java.util.Date
         Index(value = ["replica_group_id"], name = "index_password_entries_replica_group_id"),
         Index(value = ["keepass_entry_uuid"], name = "index_password_entries_keepass_entry_uuid"),
         Index(value = ["mdbx_database_id"], name = "index_password_entries_mdbx_database_id"),
+        Index(value = ["mdbx_database_id", "mdbx_folder_id"], name = "index_password_entries_mdbx_database_folder"),
         Index(
             value = ["bitwarden_vault_id", "bitwarden_cipher_id"],
             unique = true,
@@ -77,6 +78,8 @@ data class PasswordEntry(
     // MDBX project-centric 数据库归属
     @ColumnInfo(name = "mdbx_database_id", defaultValue = "NULL")
     val mdbxDatabaseId: Long? = null, // 归属的 MDBX 数据库ID
+    @ColumnInfo(name = "mdbx_folder_id", defaultValue = "NULL")
+    val mdbxFolderId: String? = null, // 归属的 MDBX 文件夹ID
     
     // 关联的验证器密钥 (TOTP Secret)
     val authenticatorKey: String = "",  // 用于存储绑定的TOTP验证器密钥

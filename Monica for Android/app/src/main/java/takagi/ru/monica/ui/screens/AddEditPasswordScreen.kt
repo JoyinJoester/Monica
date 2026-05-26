@@ -189,6 +189,7 @@ fun AddEditPasswordScreen(
     initialKeePassDatabaseId: Long? = null,
     initialKeePassGroupPath: String? = null,
     initialMdbxDatabaseId: Long? = null,
+    initialMdbxFolderId: String? = null,
     initialBitwardenVaultId: Long? = null,
     initialBitwardenFolderId: String? = null,
     pendingQrResult: String? = null,
@@ -317,6 +318,7 @@ fun AddEditPasswordScreen(
 
     // MDBX 数据库选择
     var mdbxDatabaseId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var mdbxFolderId by rememberSaveable { mutableStateOf<String?>(null) }
     val mdbxDatabases by (localMdbxViewModel?.allDatabases
         ?: database.localMdbxDatabaseDao().getAllDatabases()
     ).collectAsState(initial = mdbxDatabasesFallback)
@@ -330,6 +332,7 @@ fun AddEditPasswordScreen(
         initialKeePassDatabaseId != null ||
         initialKeePassGroupPath != null ||
         initialMdbxDatabaseId != null ||
+        initialMdbxFolderId != null ||
         initialBitwardenVaultId != null ||
         initialBitwardenFolderId != null
     val selectedStorageTargets = remember { mutableStateListOf<StorageTarget>() }
@@ -549,6 +552,7 @@ fun AddEditPasswordScreen(
                 keepassDatabaseId = null
                 keepassGroupPath = null
                 mdbxDatabaseId = null
+                mdbxFolderId = null
                 bitwardenVaultId = null
                 bitwardenFolderId = null
             }
@@ -557,6 +561,7 @@ fun AddEditPasswordScreen(
                 keepassDatabaseId = primaryTarget.databaseId
                 keepassGroupPath = primaryTarget.groupPath
                 mdbxDatabaseId = null
+                mdbxFolderId = null
                 bitwardenVaultId = null
                 bitwardenFolderId = null
             }
@@ -565,6 +570,7 @@ fun AddEditPasswordScreen(
                 keepassDatabaseId = null
                 keepassGroupPath = null
                 mdbxDatabaseId = null
+                mdbxFolderId = null
                 bitwardenVaultId = primaryTarget.vaultId
                 bitwardenFolderId = primaryTarget.folderId
             }
@@ -573,6 +579,7 @@ fun AddEditPasswordScreen(
                 keepassDatabaseId = null
                 keepassGroupPath = null
                 mdbxDatabaseId = primaryTarget.databaseId
+                mdbxFolderId = primaryTarget.folderId
                 bitwardenVaultId = null
                 bitwardenFolderId = null
             }
@@ -581,6 +588,7 @@ fun AddEditPasswordScreen(
                 keepassDatabaseId = null
                 keepassGroupPath = null
                 mdbxDatabaseId = null
+                mdbxFolderId = null
                 bitwardenVaultId = null
                 bitwardenFolderId = null
             }
@@ -1089,6 +1097,7 @@ fun AddEditPasswordScreen(
                     keepassDatabaseId = entry.keepassDatabaseId
                     keepassGroupPath = entry.keepassGroupPath
                     mdbxDatabaseId = entry.mdbxDatabaseId
+                    mdbxFolderId = entry.mdbxFolderId
                     bitwardenVaultId = entry.bitwardenVaultId
                     bitwardenFolderId = entry.bitwardenFolderId
                     currentReplicaGroupId = entry.replicaGroupId
@@ -1353,6 +1362,7 @@ fun AddEditPasswordScreen(
                 keepassDatabaseId = keepassDatabaseId,
                 keepassGroupPath = keepassGroupPath,
                 mdbxDatabaseId = mdbxDatabaseId,
+                mdbxFolderId = mdbxFolderId,
                 bitwardenVaultId = bitwardenVaultId,  // ✅ 保存到 Bitwarden Vault
                 bitwardenFolderId = bitwardenFolderId,
                 authenticatorKey = currentAuthKey,  // ✅ 保存验证器密钥
@@ -1534,6 +1544,7 @@ fun AddEditPasswordScreen(
         initialKeePassDatabaseId,
         initialKeePassGroupPath,
         initialMdbxDatabaseId,
+        initialMdbxFolderId,
         initialBitwardenVaultId,
         initialBitwardenFolderId
     ) {
@@ -1548,6 +1559,7 @@ fun AddEditPasswordScreen(
                         keepassDatabaseId = initialKeePassDatabaseId,
                         keepassGroupPath = initialKeePassGroupPath,
                         mdbxDatabaseId = initialMdbxDatabaseId,
+                        mdbxFolderId = initialMdbxFolderId,
                         bitwardenVaultId = initialBitwardenVaultId,
                         bitwardenFolderId = initialBitwardenFolderId
                     )
@@ -1562,6 +1574,7 @@ fun AddEditPasswordScreen(
             is CategoryFilter.KeePassDatabaseStarred -> StorageTarget.KeePass(filter.databaseId, null)
             is CategoryFilter.KeePassDatabaseUncategorized -> StorageTarget.KeePass(filter.databaseId, null)
             is CategoryFilter.MdbxDatabase -> StorageTarget.Mdbx(filter.databaseId)
+            is CategoryFilter.MdbxFolderFilter -> StorageTarget.Mdbx(filter.databaseId, filter.folderId)
             is CategoryFilter.BitwardenVault -> StorageTarget.Bitwarden(filter.vaultId, null)
             is CategoryFilter.BitwardenFolderFilter -> StorageTarget.Bitwarden(filter.vaultId, filter.folderId)
             is CategoryFilter.BitwardenVaultStarred -> StorageTarget.Bitwarden(filter.vaultId, null)
@@ -1665,6 +1678,7 @@ fun AddEditPasswordScreen(
                     mdbxDatabases = mdbxDatabases,
                     bitwardenVaults = bitwardenVaults,
                     bitwardenFolderDao = database.bitwardenFolderDao(),
+                    getMdbxFolders = viewModel::getMdbxFolders,
                     isEditing = isEditing,
                     onAddTargetClick = { showStorageTargetSheet = true },
                     onRemoveTarget = ::removeSelectedStorageTarget
@@ -2309,6 +2323,16 @@ fun AddEditPasswordScreen(
                                 label = { Text(stringResource(R.string.authenticator_key_optional)) },
                                 placeholder = { Text(stringResource(R.string.authenticator_key_hint)) },
                                 leadingIcon = { Icon(Icons.Default.VpnKey, null) },
+                                trailingIcon = {
+                                    if (onScanAuthenticatorQrCode != null) {
+                                        IconButton(onClick = onScanAuthenticatorQrCode) {
+                                            Icon(
+                                                imageVector = Icons.Default.QrCodeScanner,
+                                                contentDescription = stringResource(R.string.scan_qr_code)
+                                            )
+                                        }
+                                    }
+                                },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
@@ -2368,23 +2392,6 @@ fun AddEditPasswordScreen(
                                             }
                                         )
                                     }
-                                }
-                            }
-
-                            if (onScanAuthenticatorQrCode != null) {
-                                FilledTonalButton(
-                                    onClick = onScanAuthenticatorQrCode,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 10.dp),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.QrCodeScanner,
-                                        contentDescription = null
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(stringResource(R.string.scan_qr_code))
                                 }
                             }
 
@@ -3206,6 +3213,7 @@ fun AddEditPasswordScreen(
         getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
         getKeePassGroups = localKeePassViewModel?.let { keepassVm -> keepassVm::getGroups }
             ?: { flowOf(emptyList<takagi.ru.monica.utils.KeePassGroupInfo>()) },
+        getMdbxFolders = viewModel::getMdbxFolders,
         onDismiss = { showStorageTargetSheet = false },
         onSelectedTargetsChange = ::setSelectedStorageTargets
     )

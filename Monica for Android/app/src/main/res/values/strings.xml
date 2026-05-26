@@ -2900,10 +2900,12 @@
     <string name="multi_storage_more_sources_suffix">%1$d more databases</string>
     <string name="create_select_bitwarden_vault">Choose Bitwarden account</string>
     <string name="create_select_keepass_database">Choose KeePass database</string>
+    <string name="create_select_mdbx_database">Choose MDBX database</string>
     <string name="create_target_section_title">Target</string>
     <string name="create_nested_section_title">Nested location</string>
     <string name="create_select_local_parent">Choose local parent folder</string>
     <string name="create_select_keepass_parent_group">Choose KeePass parent group (optional)</string>
+    <string name="create_select_mdbx_parent_folder">Choose MDBX parent folder (optional)</string>
     <string name="create_preview_path_label">Preview</string>
     <string name="bitwarden_folder_flat_hint">Bitwarden folders are flat. New folders are created at root level.</string>
     <string name="bitwarden_all_types">All types</string>
