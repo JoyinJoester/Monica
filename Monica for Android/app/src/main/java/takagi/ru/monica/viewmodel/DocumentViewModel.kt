@@ -50,6 +50,10 @@ class DocumentViewModel(
 
     private val bitwardenRepository = context?.let { BitwardenRepository.getInstance(it.applicationContext) }
 
+    private fun requestBitwardenMutationSync(vaultId: Long?) {
+        vaultId?.let { bitwardenRepository?.requestLocalMutationSync(it) }
+    }
+
     private val keepassBridge = if (context != null && localKeePassDatabaseDao != null && securityManager != null) {
         KeePassCompatibilityBridge(
             KeePassWorkspaceRepository(
@@ -197,6 +201,7 @@ class DocumentViewModel(
                 insertItem = repository::insertItem,
                 rollbackItem = repository::deleteItemById
             ) ?: return@launch
+            requestBitwardenMutationSync(bitwardenVaultId)
             
             // 记录创建操作
             OperationLogger.logCreate(
@@ -293,6 +298,7 @@ class DocumentViewModel(
                     syncStatus = transition.syncStatus
                 )
                 repository.updateItem(finalUpdatedItem)
+                requestBitwardenMutationSync(bitwardenVaultId)
                 keepassSecureItemUpdateExecutor.syncUpdatedItem(
                     existingItem = existingItem,
                     updatedItem = finalUpdatedItem
@@ -377,6 +383,7 @@ class DocumentViewModel(
             syncStatus = transition.syncStatus
         )
         repository.updateItem(finalUpdatedItem)
+        requestBitwardenMutationSync(bitwardenVaultId)
         keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = existingItem, updatedItem = finalUpdatedItem)
         return true
     }

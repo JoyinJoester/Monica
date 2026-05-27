@@ -133,6 +133,8 @@ import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.CategorySelectionUiMode
 import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.KeePassSyncPhase
+import takagi.ru.monica.data.KeePassSyncStatus
 import takagi.ru.monica.data.PasskeyEntry
 import takagi.ru.monica.data.PasswordListQuickFilterItem
 import takagi.ru.monica.data.PasswordListTopModule
@@ -142,6 +144,7 @@ import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.isKeePassOwned
 import takagi.ru.monica.data.isLocalOnlyItem
+import takagi.ru.monica.data.isRemoteSource
 import takagi.ru.monica.data.model.PasskeyBindingCodec
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.model.TimelinePasswordLocationState
@@ -374,8 +377,10 @@ fun PasswordListContent(
     val quickStatusDeleteState by PasswordBatchDeleteProgressTracker.progress.collectAsState()
     var showQuickStatusTransferDialog by remember { mutableStateOf(false) }
     var showQuickStatusDeleteDialog by remember { mutableStateOf(false) }
+    var showQuickStatusKeePassSyncDialog by remember { mutableStateOf(false) }
     var backgroundedTransferOperationId by remember { mutableStateOf<Long?>(null) }
     var backgroundedDeleteOperationId by remember { mutableStateOf<Long?>(null) }
+    var backgroundedKeePassSyncKey by remember { mutableStateOf<String?>(null) }
 
     // "仅本地" 的核心目标是给用户看待上传清单，不应该出现堆叠容器。
     // 因此这里强制扁平展示，仅在该筛选下生效，不影响其他页面。
@@ -472,6 +477,26 @@ fun PasswordListContent(
     }
     val keepassGroupsForSelectedDb by keepassGroupsForSelectedDbFlow.collectAsState(initial = emptyList())
     val isKeePassDatabaseView = selectedKeePassDatabaseId != null
+    val selectedKeePassDatabase = remember(selectedKeePassDatabaseId, keepassDatabases) {
+        selectedKeePassDatabaseId?.let { databaseId ->
+            keepassDatabases.find { it.id == databaseId }
+        }
+    }
+    LaunchedEffect(
+        selectedKeePassDatabase?.id,
+        selectedKeePassDatabase?.lastSyncStatus
+    ) {
+        val database = selectedKeePassDatabase ?: return@LaunchedEffect
+        if (database.isRemoteSource()) {
+            localKeePassViewModel.autoSyncVisibleRemoteDatabase(database.id)
+        }
+    }
+    val selectedKeePassSyncStateFlow = remember(selectedKeePassDatabaseId, localKeePassViewModel) {
+        selectedKeePassDatabaseId?.let { databaseId ->
+            localKeePassViewModel.getRemoteSyncState(databaseId)
+        } ?: kotlinx.coroutines.flow.flowOf(null)
+    }
+    val selectedKeePassRemoteSyncState by selectedKeePassSyncStateFlow.collectAsState(initial = null)
     val bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel()
     val bitwardenSyncStatusByVault by bitwardenViewModel.syncStatusByVault.collectAsState()
     val selectedBitwardenFoldersFlow = remember(selectedBitwardenVaultId, viewModel) {
@@ -487,6 +512,61 @@ fun PasswordListContent(
     val isTopBarSyncing = selectedBitwardenVaultId?.let { vaultId ->
         bitwardenSyncStatusByVault[vaultId].isUserVisibleSyncInProgress()
     } == true
+    val quickStatusBitwardenSyncState = remember(
+        selectedBitwardenVaultId,
+        bitwardenSyncStatusByVault,
+        bitwardenVaults
+    ) {
+        val vaultId = selectedBitwardenVaultId ?: return@remember null
+        val status = bitwardenSyncStatusByVault[vaultId] ?: return@remember null
+        if (!status.isUserVisibleSyncInProgress()) return@remember null
+        val vaultName = bitwardenVaults
+            .firstOrNull { it.id == vaultId }
+            ?.displayName
+            ?.takeIf { it.isNotBlank() }
+            ?: bitwardenVaults.firstOrNull { it.id == vaultId }?.email
+            ?: "Bitwarden"
+        QuickStatusBitwardenSyncState(
+            vaultName = vaultName,
+            isRunning = status.isRunning
+        )
+    }
+    val quickStatusKeePassSyncState = remember(
+        selectedKeePassDatabase,
+        selectedKeePassRemoteSyncState,
+        localKeePassViewModel
+    ) {
+        val database = selectedKeePassDatabase
+        if (database == null || !database.isRemoteSource()) {
+            null
+        } else {
+            val phase = selectedKeePassRemoteSyncState?.syncPhase
+            val shouldShow = database.lastSyncStatus in setOf(
+                KeePassSyncStatus.PENDING_UPLOAD,
+                KeePassSyncStatus.SYNCING,
+                KeePassSyncStatus.REMOTE_CHANGED,
+                KeePassSyncStatus.CONFLICT,
+                KeePassSyncStatus.FAILED
+            ) || phase in setOf(
+                KeePassSyncPhase.COMPARING,
+                KeePassSyncPhase.DOWNLOADING,
+                KeePassSyncPhase.UPLOADING
+            )
+            if (!shouldShow) {
+                null
+            } else {
+                QuickStatusKeePassSyncState(
+                    databaseId = database.id,
+                    databaseName = database.name,
+                    status = database.lastSyncStatus,
+                    phase = phase,
+                    onSync = {
+                        localKeePassViewModel.syncRemoteDatabase(database.id)
+                    }
+                )
+            }
+        }
+    }
     val isArchiveView = currentFilter is CategoryFilter.Archived
     val effectiveGroupMode = if (isLocalOnlyView) "none" else groupMode
     val effectiveStackCardMode = if (isLocalOnlyView) {
@@ -518,6 +598,23 @@ fun PasswordListContent(
         }
         if (!quickStatusBannerEnabled && state.operationId != backgroundedDeleteOperationId) {
             showQuickStatusDeleteDialog = true
+        }
+    }
+    LaunchedEffect(
+        quickStatusKeePassSyncState?.databaseId,
+        quickStatusKeePassSyncState?.status,
+        quickStatusKeePassSyncState?.phase,
+        quickStatusBannerEnabled
+    ) {
+        val state = quickStatusKeePassSyncState
+        if (state == null) {
+            showQuickStatusKeePassSyncDialog = false
+            backgroundedKeePassSyncKey = null
+            return@LaunchedEffect
+        }
+        val stateKey = "${state.databaseId}:${state.status}:${state.phase}"
+        if (!quickStatusBannerEnabled && stateKey != backgroundedKeePassSyncKey) {
+            showQuickStatusKeePassSyncDialog = true
         }
     }
     
@@ -1443,7 +1540,8 @@ fun PasswordListContent(
     }
     val hasQuickStatusProgress =
         quickStatusTransferState != null ||
-            quickStatusDeleteState != null
+            quickStatusDeleteState != null ||
+            quickStatusBitwardenSyncState != null
     val showPinnedQuickFolderPathBanner =
         quickStatusBannerEnabled &&
             (effectiveQuickFolderBreadcrumbs.isNotEmpty() || hasQuickStatusProgress)
@@ -1715,6 +1813,8 @@ fun PasswordListContent(
                 showQuickStatusDeleteDialog = true
             }
         },
+        quickStatusBitwardenSyncState = quickStatusBitwardenSyncState,
+        quickStatusKeePassSyncState = quickStatusKeePassSyncState,
         currentFilter = currentFilter,
         onNavigateFilter = viewModel::setCategoryFilter,
         shouldGateInitialPasswordFirstFrame = shouldGateInitialPasswordFirstFrame,
@@ -1835,6 +1935,50 @@ fun PasswordListContent(
                 showQuickStatusDeleteDialog = false
             }
         )
+    }
+
+    if (showQuickStatusKeePassSyncDialog) {
+        quickStatusKeePassSyncState?.let { state ->
+            AlertDialog(
+                onDismissRequest = {},
+                title = {
+                    Text(text = state.databaseName.ifBlank { "KeePass" })
+                },
+                text = {
+                    Column {
+                        Text(text = keepassQuickSyncStatusLabel(state))
+                        if (state.isRunning) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            backgroundedKeePassSyncKey = "${state.databaseId}:${state.status}:${state.phase}"
+                            showQuickStatusKeePassSyncDialog = false
+                        }
+                    ) {
+                        Text(text = stringResource(R.string.password_batch_transfer_continue_in_background))
+                    }
+                },
+                dismissButton = if (!state.isRunning) {
+                    {
+                        TextButton(
+                            onClick = {
+                                state.onSync()
+                                showQuickStatusKeePassSyncDialog = false
+                            }
+                        ) {
+                            Text(text = "立即同步")
+                        }
+                    }
+                } else {
+                    null
+                }
+            )
+        }
     }
     
     PasswordListDialogs(

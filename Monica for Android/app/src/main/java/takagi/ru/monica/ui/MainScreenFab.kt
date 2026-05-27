@@ -807,6 +807,7 @@ internal fun MainScreenAddFab(
                         initialKeePassDatabaseId = aggregateStorageDefaults?.keepassDatabaseId,
                         initialKeePassGroupPath = aggregateStorageDefaults?.keepassGroupPath,
                         initialMdbxDatabaseId = aggregateStorageDefaults?.mdbxDatabaseId,
+                        initialMdbxFolderId = aggregateStorageDefaults?.mdbxFolderId,
                         initialBitwardenVaultId = aggregateStorageDefaults?.bitwardenVaultId,
                         initialBitwardenFolderId = aggregateStorageDefaults?.bitwardenFolderId
                     )
@@ -992,7 +993,14 @@ internal fun MainScreenAddFab(
                                     onNavigateBack = collapse,
                                     bankCardViewModel = bankCardViewModel,
                                     documentViewModel = documentViewModel,
-                                    stateHolder = walletAddSaveableStateHolder
+                                    stateHolder = walletAddSaveableStateHolder,
+                                    initialCategoryId = aggregateStorageDefaults?.categoryId,
+                                    initialKeePassDatabaseId = aggregateStorageDefaults?.keepassDatabaseId,
+                                    initialKeePassGroupPath = aggregateStorageDefaults?.keepassGroupPath,
+                                    initialMdbxDatabaseId = aggregateStorageDefaults?.mdbxDatabaseId,
+                                    initialMdbxFolderId = aggregateStorageDefaults?.mdbxFolderId,
+                                    initialBitwardenVaultId = aggregateStorageDefaults?.bitwardenVaultId,
+                                    initialBitwardenFolderId = aggregateStorageDefaults?.bitwardenFolderId
                                 )
                             }
                             BottomNavItem.Notes -> {

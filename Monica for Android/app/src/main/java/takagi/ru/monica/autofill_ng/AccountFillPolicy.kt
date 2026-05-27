@@ -23,12 +23,26 @@ object AccountFillPolicy {
         }
     }
 
+    fun resolveAccountIdentifierForDisplay(entry: PasswordEntry): String {
+        val candidate = entry.username.trim()
+        if (candidate.isBlank() || looksEncryptedPayload(candidate)) {
+            return ""
+        }
+        return candidate
+    }
+
     fun shouldFillEmailWithAccount(context: Context): Boolean {
         return runCatching {
             runBlocking {
                 SettingsManager(context).settingsFlow.first().separateUsernameAccountEnabled
             }
         }.getOrDefault(false)
+    }
+
+    private fun looksEncryptedPayload(value: String): Boolean {
+        return value.startsWith("V2|") ||
+            value.startsWith("MDK|") ||
+            (value.contains("==") && value.length > 20)
     }
 }
 

@@ -2416,6 +2416,18 @@
     <string name="autofill_card_expiry">有效期: %1$s</string>
     <string name="autofill_for_display_name">为 %1$s</string>
     <string name="autofill_suggested_strong_password">建议的强密码</string>
+    <string name="autofill_generate_password">生成密码</string>
+    <string name="autofill_generated_password_title">生成的密码</string>
+    <string name="autofill_generated_password_fill">填入</string>
+    <string name="autofill_generated_password_options">生成设置</string>
+    <string name="autofill_generated_password_length">长度</string>
+    <string name="autofill_generated_password_uppercase">大写</string>
+    <string name="autofill_generated_password_lowercase">小写</string>
+    <string name="autofill_generated_password_numbers">数字</string>
+    <string name="autofill_generated_password_symbols">符号</string>
+    <string name="autofill_generated_password_readable">易读模式</string>
+    <string name="autofill_structured_fill_unavailable">自动填充不可用</string>
+    <string name="autofill_structured_copy_message">当前页面被识别为%1$s，不能直接填入%2$s。你可以复制需要的字段。</string>
     <string name="password_strength_label">密码强度</string>
     
     <!-- Send 页面 -->

@@ -51,6 +51,10 @@ class BankCardViewModel(
 
     private val bitwardenRepository = context?.let { BitwardenRepository.getInstance(it.applicationContext) }
 
+    private fun requestBitwardenMutationSync(vaultId: Long?) {
+        vaultId?.let { bitwardenRepository?.requestLocalMutationSync(it) }
+    }
+
     private val keepassBridge = if (context != null && localKeePassDatabaseDao != null && securityManager != null) {
         KeePassCompatibilityBridge(
             KeePassWorkspaceRepository(
@@ -215,6 +219,7 @@ class BankCardViewModel(
                 insertItem = repository::insertItem,
                 rollbackItem = repository::deleteItemById
             ) ?: return@launch
+            requestBitwardenMutationSync(bitwardenVaultId)
             
             // 记录创建操作
             OperationLogger.logCreate(
@@ -317,6 +322,7 @@ class BankCardViewModel(
                 repository.updateItem(
                     finalUpdatedItem
                 )
+                requestBitwardenMutationSync(bitwardenVaultId)
                 keepassSecureItemUpdateExecutor.syncUpdatedItem(
                     existingItem = existingItem,
                     updatedItem = finalUpdatedItem
@@ -401,6 +407,7 @@ class BankCardViewModel(
             syncStatus = transition.syncStatus
         )
         repository.updateItem(finalUpdatedItem)
+        requestBitwardenMutationSync(bitwardenVaultId)
         keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = existingItem, updatedItem = finalUpdatedItem)
         return true
     }

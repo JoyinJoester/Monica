@@ -21,6 +21,7 @@ import takagi.ru.monica.bitwarden.api.BitwardenTlsConfig
 import takagi.ru.monica.bitwarden.cache.BitwardenOfflineSecretCache
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.bitwarden.service.LoginResult
+import takagi.ru.monica.bitwarden.sync.BitwardenMutationSyncBridge
 import takagi.ru.monica.bitwarden.sync.BitwardenSyncOrchestrator
 import takagi.ru.monica.bitwarden.sync.BitwardenSyncNotificationHelper
 import takagi.ru.monica.bitwarden.sync.BitwardenSyncSummary
@@ -163,8 +164,20 @@ class BitwardenViewModel(application: Application) : AndroidViewModel(applicatio
         _isNeverLockEnabled.value = repository.isNeverLockEnabled
         _isAutoSyncEnabled.value = repository.isAutoSyncEnabled
         _isSyncOnWifiOnly.value = repository.isSyncOnWifiOnly
+        BitwardenMutationSyncBridge.register(this) { vaultId ->
+            syncOrchestrator.requestSync(
+                vaultId = vaultId,
+                reason = SyncTriggerReason.LOCAL_MUTATION
+            )
+            true
+        }
         observeVaultSnapshots()
         loadVaults(triggerStartupAutoSync = true)
+    }
+
+    override fun onCleared() {
+        BitwardenMutationSyncBridge.unregister(this)
+        super.onCleared()
     }
     
     // ==================== 公开方法 ====================

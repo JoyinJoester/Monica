@@ -9,10 +9,11 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import takagi.ru.monica.repository.KeePassWorkspaceRepository
-import takagi.ru.monica.repository.KeePassWorkspaceSnapshot
 import takagi.ru.monica.utils.KeePassEntryData
 import takagi.ru.monica.utils.KeePassGroupInfo
+import takagi.ru.monica.utils.KeePassKdbxService
 import takagi.ru.monica.utils.KeePassSecureItemData
+import takagi.ru.monica.utils.KeePassWorkspaceSnapshot
 
 data class KeePassWorkspaceUiState(
     val databaseId: Long? = null,
@@ -33,6 +34,7 @@ class KeePassWorkspaceViewModel(
     val uiState: StateFlow<KeePassWorkspaceUiState> = _uiState.asStateFlow()
 
     fun openWorkspace(databaseId: Long) {
+        KeePassKdbxService.markDatabaseActive(databaseId)
         if (_uiState.value.databaseId == databaseId && _uiState.value.passwords.isNotEmpty()) {
             return
         }
@@ -41,6 +43,7 @@ class KeePassWorkspaceViewModel(
 
     fun refreshWorkspace(databaseId: Long? = null) {
         val resolvedDatabaseId = databaseId ?: _uiState.value.databaseId ?: return
+        KeePassKdbxService.markDatabaseActive(resolvedDatabaseId)
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
@@ -115,6 +118,11 @@ class KeePassWorkspaceViewModel(
 
     fun clearError() {
         _uiState.update { it.copy(errorMessage = null) }
+    }
+
+    override fun onCleared() {
+        KeePassKdbxService.clearActiveDatabase(_uiState.value.databaseId)
+        super.onCleared()
     }
 
     private fun KeePassWorkspaceSnapshot.toUiState(databaseId: Long): KeePassWorkspaceUiState {

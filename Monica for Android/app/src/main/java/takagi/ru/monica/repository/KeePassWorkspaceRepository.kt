@@ -15,12 +15,7 @@ import takagi.ru.monica.utils.KeePassGroupInfo
 import takagi.ru.monica.utils.KeePassKdbxService
 import takagi.ru.monica.utils.KeePassRestoreTarget
 import takagi.ru.monica.utils.KeePassSecureItemData
-
-data class KeePassWorkspaceSnapshot(
-    val passwords: List<KeePassEntryData>,
-    val secureItems: List<KeePassSecureItemData>,
-    val groups: List<KeePassGroupInfo>
-)
+import takagi.ru.monica.utils.KeePassWorkspaceSnapshot
 
 class KeePassWorkspaceRepository(
     private val service: KeePassKdbxService
@@ -37,21 +32,10 @@ class KeePassWorkspaceRepository(
         includeRecycleBinGroups: Boolean = false,
         allowedSecureItemTypes: Set<ItemType>? = null
     ): Result<KeePassWorkspaceSnapshot> {
-        val passwords = service.readPasswordEntries(databaseId).getOrElse {
-            return Result.failure(it)
-        }
-        val secureItems = service.readSecureItems(databaseId, allowedSecureItemTypes).getOrElse {
-            return Result.failure(it)
-        }
-        val groups = service.listGroups(databaseId, includeRecycleBinGroups).getOrElse {
-            return Result.failure(it)
-        }
-        return Result.success(
-            KeePassWorkspaceSnapshot(
-                passwords = passwords,
-                secureItems = secureItems,
-                groups = groups
-            )
+        return service.loadWorkspace(
+            databaseId = databaseId,
+            includeRecycleBinGroups = includeRecycleBinGroups,
+            allowedSecureItemTypes = allowedSecureItemTypes
         )
     }
 

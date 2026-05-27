@@ -32,6 +32,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.data.MdbxTigaMode
@@ -129,6 +130,12 @@ fun MdbxOneDriveCreateScreen(
                 session = cached
                 loadDirectory("")
             }
+    }
+    LaunchedEffect(operationState) {
+        if (operationState is MdbxViewModel.OperationState.Success) {
+            delay(1200)
+            onNavigateBack()
+        }
     }
 
     Scaffold(

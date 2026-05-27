@@ -133,6 +133,10 @@ class TotpViewModel(
     private val keepassSecureItemUpdateExecutor = KeePassSecureItemUpdateExecutor(keepassBridge)
     private val bitwardenRepository = context?.let { BitwardenRepository.getInstance(it.applicationContext) }
     private val settingsManager = context?.let { SettingsManager(it.applicationContext) }
+
+    private fun requestBitwardenMutationSync(vaultId: Long?) {
+        vaultId?.let { bitwardenRepository?.requestLocalMutationSync(it) }
+    }
     
     // 搜索查询
     private val _searchQuery = MutableStateFlow("")
@@ -345,12 +349,24 @@ class TotpViewModel(
         _categoryFilter.value = filter
         persistCategoryFilter(filter)
         when (filter) {
-            is TotpCategoryFilter.KeePassDatabase -> syncKeePassTotp(filter.databaseId)
-            is TotpCategoryFilter.KeePassGroupFilter -> syncKeePassTotp(filter.databaseId)
-            is TotpCategoryFilter.KeePassDatabaseStarred -> syncKeePassTotp(filter.databaseId)
-            is TotpCategoryFilter.KeePassDatabaseUncategorized -> syncKeePassTotp(filter.databaseId)
+            is TotpCategoryFilter.KeePassDatabase -> {
+                KeePassKdbxService.markDatabaseActive(filter.databaseId)
+                syncKeePassTotp(filter.databaseId)
+            }
+            is TotpCategoryFilter.KeePassGroupFilter -> {
+                KeePassKdbxService.markDatabaseActive(filter.databaseId)
+                syncKeePassTotp(filter.databaseId)
+            }
+            is TotpCategoryFilter.KeePassDatabaseStarred -> {
+                KeePassKdbxService.markDatabaseActive(filter.databaseId)
+                syncKeePassTotp(filter.databaseId)
+            }
+            is TotpCategoryFilter.KeePassDatabaseUncategorized -> {
+                KeePassKdbxService.markDatabaseActive(filter.databaseId)
+                syncKeePassTotp(filter.databaseId)
+            }
             is TotpCategoryFilter.MdbxDatabase -> Unit
-            else -> Unit
+            else -> KeePassKdbxService.trimInactiveCaches()
         }
     }
 
@@ -990,6 +1006,7 @@ class TotpViewModel(
         if (id != null && id > 0) {
             val existing = repository.getItemById(id)
             repository.updateItem(item)
+            requestBitwardenMutationSync(resolvedBitwardenVaultId)
             if (existing != null) {
                 val changes = mutableListOf<FieldChange>()
                 if (existing.title != title) {
@@ -1015,6 +1032,7 @@ class TotpViewModel(
                 insertItem = repository::insertItem,
                 rollbackItem = repository::deleteItemById
             ) ?: return
+            requestBitwardenMutationSync(resolvedBitwardenVaultId)
             OperationLogger.logCreate(
                 itemType = OperationLogItemType.TOTP,
                 itemId = newId,
@@ -1026,6 +1044,7 @@ class TotpViewModel(
         val authenticatorPayload = TotpDataResolver.toBitwardenPayload(title, updatedTotpData)
         if (boundId != null && authenticatorPayload.isNotBlank()) {
             passwordRepository.updateAuthenticatorKey(boundId, authenticatorPayload)
+            passwordRepository.getPasswordEntryById(boundId)?.bitwardenVaultId?.let(::requestBitwardenMutationSync)
         }
 
         if (previousBoundId != null && previousBoundId != boundId && previousSecret.isNotBlank()) {
@@ -1036,6 +1055,7 @@ class TotpViewModel(
             val previousTotpKey = buildTotpIdentityKeyFromRawKey(previousSecret)
             if (previousPasswordKey != null && previousPasswordKey == previousTotpKey) {
                 passwordRepository.updateAuthenticatorKey(previousBoundId, "")
+                previousPassword.bitwardenVaultId?.let(::requestBitwardenMutationSync)
             }
         }
 
@@ -1142,6 +1162,7 @@ class TotpViewModel(
                                 updatedAt = Date()
                             )
                         )
+                        requestBitwardenMutationSync(password.bitwardenVaultId)
                     } else {
                         passwordRepository.updateAuthenticatorKey(boundId, "")
                     }
@@ -1186,6 +1207,7 @@ class TotpViewModel(
                         bitwardenLocalModified = true
                     )
                 )
+                requestBitwardenMutationSync(vaultId)
                 OperationLogger.logDelete(
                     itemType = OperationLogItemType.TOTP,
                     itemId = item.id,
@@ -1524,6 +1546,7 @@ class TotpViewModel(
                         syncStatus = transition.syncStatus
                     )
                     repository.updateItem(finalUpdatedItem)
+                    requestBitwardenMutationSync(vaultId)
                     keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = item, updatedItem = finalUpdatedItem)
                 } catch (e: Exception) {
                     e.printStackTrace()

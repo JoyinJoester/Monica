@@ -12,6 +12,7 @@ import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.json.JSONObject
 import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.CustomFieldDao
 import takagi.ru.monica.data.LocalMdbxDatabase
 import takagi.ru.monica.data.LocalMdbxDatabaseDao
 import takagi.ru.monica.data.MdbxRemoteSourceDao
@@ -265,7 +266,8 @@ class MdbxVaultStore(
     private val securityManager: SecurityManager,
     private val remoteSourceDao: MdbxRemoteSourceDao? = null,
     private val passwordEntryDao: PasswordEntryDao? = null,
-    private val secureItemDao: SecureItemDao? = null
+    private val secureItemDao: SecureItemDao? = null,
+    private val customFieldDao: CustomFieldDao? = null
 ) : MdbxRepository {
     private val epochKeyCache = ConcurrentHashMap<Long, ByteArray>()
     private val vaultWriteLocks = ConcurrentHashMap<String, Mutex>()
@@ -1633,6 +1635,7 @@ class MdbxVaultStore(
             .put("bound_note_entry_id", resolveBoundNoteEntryId(entry))
             .put("login_type", entry.loginType)
             .put("passkey_bindings", entry.passkeyBindings)
+            .put("custom_fields", passwordCustomFieldsPayload(entry.id))
             .put("bitwarden_mode", entry.bitwardenVaultId != null)
             .put("keepass_mode", entry.keepassDatabaseId != null)
         return MdbxEntryMutation(
@@ -1645,6 +1648,24 @@ class MdbxVaultStore(
             deleted = entry.isDeleted,
             legacyEntryId = legacyPasswordObjectId(entry)
         )
+    }
+
+    private suspend fun passwordCustomFieldsPayload(entryId: Long): JSONArray {
+        val fields = customFieldDao?.getFieldsByEntryIdSync(entryId).orEmpty()
+        return JSONArray().also { array ->
+            fields
+                .filter { it.title.isNotBlank() }
+                .sortedWith(compareBy({ it.sortOrder }, { it.id }))
+                .forEach { field ->
+                    array.put(
+                        JSONObject()
+                            .put("title", field.title)
+                            .put("value", field.value)
+                            .put("is_protected", field.isProtected)
+                            .put("sort_order", field.sortOrder)
+                    )
+                }
+        }
     }
 
     private suspend fun secureItemEntryMutation(item: SecureItem): MdbxEntryMutation? {

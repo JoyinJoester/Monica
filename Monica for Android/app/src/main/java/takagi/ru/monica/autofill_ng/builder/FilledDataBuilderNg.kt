@@ -3,6 +3,7 @@ package takagi.ru.monica.autofill_ng.builder
 import android.content.Context
 import android.view.autofill.AutofillValue
 import android.widget.inline.InlinePresentationSpec
+import takagi.ru.monica.autofill_ng.AccountFillPolicy
 import takagi.ru.monica.autofill_ng.model.AutofillCipher
 import takagi.ru.monica.autofill_ng.model.AutofillRequest
 import takagi.ru.monica.autofill_ng.model.AutofillPartition
@@ -22,6 +23,7 @@ import kotlinx.coroutines.runBlocking
 // 不在此处截断条目数量，让系统键盘自行控制横向滚动显示所有条目。
 private const val MAX_FILLED_PARTITIONS_COUNT = Int.MAX_VALUE
 private const val MAX_INLINE_SUGGESTION_COUNT = Int.MAX_VALUE
+private const val MANUAL_PLACEHOLDER_VALUE = "PLACEHOLDER"
 
 class FilledDataBuilderNg(
     private val context: Context,
@@ -47,6 +49,7 @@ class FilledDataBuilderNg(
     fun build(
         request: AutofillRequest.Fillable,
         passwords: List<PasswordEntry>,
+        requireAuthentication: Boolean = true,
     ): FilledData {
         val autoLockMinutes = resolveAutoLockTimeoutForAutofill()
         val isVaultLocked = !securityManager.canAccessVaultNowStrict(context, autoLockMinutes)
@@ -71,17 +74,12 @@ class FilledDataBuilderNg(
             emptyList()
         } else {
             val ciphers = passwords.mapNotNull { entry ->
-                val usernameValue = decryptForAutofill(entry.username)
-                val passwordValue = decryptForAutofill(entry.password)
-                if (usernameValue.isNullOrBlank() && passwordValue.isNullOrBlank()) {
-                    null
-                } else {
-                    entry.toAutofillCipherLogin(
-                        fallbackWebsite = request.uri.orEmpty(),
-                        usernameValue = usernameValue.orEmpty(),
-                        passwordValue = passwordValue.orEmpty()
-                    )
-                }
+                buildCipherForResponse(
+                    entry = entry,
+                    fallbackWebsite = request.uri.orEmpty(),
+                    requireAuthentication = requireAuthentication,
+                    isVaultLocked = isVaultLocked
+                )
             }
 
             ciphers
@@ -136,6 +134,38 @@ class FilledDataBuilderNg(
         return FilledItem(
             autofillId = data.autofillId,
             value = AutofillValue.forText(value)
+        )
+    }
+
+    private fun buildCipherForResponse(
+        entry: PasswordEntry,
+        fallbackWebsite: String,
+        requireAuthentication: Boolean,
+        isVaultLocked: Boolean,
+    ): AutofillCipher.Login? {
+        if (requireAuthentication && isVaultLocked) {
+            val subtitleValue = AccountFillPolicy
+                .resolveAccountIdentifierForDisplay(entry)
+                .takeIf { it.isNotBlank() }
+                ?: entry.website.takeIf { it.isNotBlank() }
+                ?: fallbackWebsite.takeIf { it.isNotBlank() }
+                ?: entry.title
+            return entry.toAutofillCipherLogin(
+                fallbackWebsite = fallbackWebsite,
+                usernameValue = subtitleValue,
+                passwordValue = MANUAL_PLACEHOLDER_VALUE
+            )
+        }
+
+        val usernameValue = decryptForAutofill(entry.username)
+        val passwordValue = decryptForAutofill(entry.password)
+        if (usernameValue.isNullOrBlank() && passwordValue.isNullOrBlank()) {
+            return null
+        }
+        return entry.toAutofillCipherLogin(
+            fallbackWebsite = fallbackWebsite,
+            usernameValue = usernameValue.orEmpty(),
+            passwordValue = passwordValue.orEmpty()
         )
     }
 

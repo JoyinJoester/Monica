@@ -80,6 +80,92 @@ class RemoteKeePassSyncService(
         )
     }
 
+    suspend fun markUploadInProgress(databaseId: Long, workingHash: String?) {
+        val current = ensureSyncState(databaseId)
+        syncStateDao.insertState(
+            current.copy(
+                workingHash = workingHash,
+                hasLocalChanges = true,
+                syncPhase = KeePassSyncPhase.UPLOADING,
+                failureCode = null,
+                failureMessage = null
+            )
+        )
+        databaseDao.updateSyncStatus(
+            id = databaseId,
+            status = KeePassSyncStatus.PENDING_UPLOAD,
+            error = null,
+            syncedAt = null
+        )
+    }
+
+    suspend fun markComparing(databaseId: Long, workingHash: String?) {
+        val current = ensureSyncState(databaseId)
+        syncStateDao.insertState(
+            current.copy(
+                workingHash = workingHash ?: current.workingHash,
+                syncPhase = KeePassSyncPhase.COMPARING,
+                failureCode = null,
+                failureMessage = null
+            )
+        )
+        databaseDao.updateSyncStatus(
+            id = databaseId,
+            status = KeePassSyncStatus.SYNCING,
+            error = null,
+            syncedAt = null
+        )
+    }
+
+    suspend fun markDownloading(databaseId: Long, workingHash: String?) {
+        val current = ensureSyncState(databaseId)
+        syncStateDao.insertState(
+            current.copy(
+                workingHash = workingHash ?: current.workingHash,
+                hasRemoteChanges = true,
+                syncPhase = KeePassSyncPhase.DOWNLOADING,
+                failureCode = null,
+                failureMessage = null
+            )
+        )
+        databaseDao.updateSyncStatus(
+            id = databaseId,
+            status = KeePassSyncStatus.SYNCING,
+            error = null,
+            syncedAt = null
+        )
+    }
+
+    suspend fun markUploadedButLocalChanged(
+        databaseId: Long,
+        versionToken: String?,
+        etag: String?,
+        baseHash: String?,
+        workingHash: String?
+    ) {
+        val current = ensureSyncState(databaseId)
+        syncStateDao.insertState(
+            current.copy(
+                remoteVersionToken = versionToken ?: current.remoteVersionToken,
+                remoteEtag = etag ?: current.remoteEtag,
+                baseHash = baseHash,
+                workingHash = workingHash,
+                hasLocalChanges = true,
+                hasRemoteChanges = false,
+                syncPhase = KeePassSyncPhase.IDLE,
+                lastSuccessAt = System.currentTimeMillis(),
+                failureCode = null,
+                failureMessage = null
+            )
+        )
+        databaseDao.updateSyncStatus(
+            id = databaseId,
+            status = KeePassSyncStatus.PENDING_UPLOAD,
+            error = null,
+            syncedAt = null
+        )
+    }
+
     suspend fun markConflict(
         databaseId: Long,
         workingHash: String?,
@@ -117,8 +203,8 @@ class RemoteKeePassSyncService(
         val current = ensureSyncState(databaseId)
         syncStateDao.insertState(
             current.copy(
-                remoteVersionToken = versionToken,
-                remoteEtag = etag,
+                remoteVersionToken = versionToken ?: current.remoteVersionToken,
+                remoteEtag = etag ?: current.remoteEtag,
                 baseHash = baseHash,
                 workingHash = workingHash,
                 hasLocalChanges = false,

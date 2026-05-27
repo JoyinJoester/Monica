@@ -2589,6 +2589,18 @@
     <string name="autofill_card_expiry">Expiry: %1$s</string>
     <string name="autofill_for_display_name">For %1$s</string>
     <string name="autofill_suggested_strong_password">Suggested strong password</string>
+    <string name="autofill_generate_password">Generate password</string>
+    <string name="autofill_generated_password_title">Generated password</string>
+    <string name="autofill_generated_password_fill">Fill</string>
+    <string name="autofill_generated_password_options">Options</string>
+    <string name="autofill_generated_password_length">Length</string>
+    <string name="autofill_generated_password_uppercase">Uppercase</string>
+    <string name="autofill_generated_password_lowercase">Lowercase</string>
+    <string name="autofill_generated_password_numbers">Numbers</string>
+    <string name="autofill_generated_password_symbols">Symbols</string>
+    <string name="autofill_generated_password_readable">Readable mode</string>
+    <string name="autofill_structured_fill_unavailable">Autofill unavailable</string>
+    <string name="autofill_structured_copy_message">This page is currently recognized as %1$s, so %2$s cannot be filled directly here. Copy the needed field instead.</string>
     <string name="password_strength_label">Password strength</string>
     
     <!-- Send screen -->

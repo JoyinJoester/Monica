@@ -31,6 +31,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -38,11 +40,15 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Badge
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Password
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SearchOff
 import androidx.compose.material.icons.filled.Smartphone
@@ -58,6 +64,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntSize
 import androidx.core.app.NotificationManagerCompat
@@ -97,6 +105,9 @@ import takagi.ru.monica.service.MonicaAccessibilityService
 import takagi.ru.monica.ui.theme.MonicaTheme
 import androidx.compose.foundation.isSystemInDarkTheme
 import takagi.ru.monica.data.model.TotpData
+import takagi.ru.monica.data.model.BankCardData
+import takagi.ru.monica.data.model.DocumentData
+import takagi.ru.monica.data.model.displayFullName
 import takagi.ru.monica.data.ThemeMode
 import takagi.ru.monica.ui.components.PasswordVerificationContent
 import takagi.ru.monica.ui.base.BaseMonicaActivity
@@ -107,12 +118,14 @@ import takagi.ru.monica.ui.screens.AddEditPasswordScreen
 import takagi.ru.monica.security.SessionManager
 import takagi.ru.monica.util.TotpDataResolver
 import takagi.ru.monica.util.TotpGenerator
+import takagi.ru.monica.util.PasswordGenerator
 import takagi.ru.monica.utils.AppLauncherIconManager
 import takagi.ru.monica.utils.ClipboardUtils
 import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
+import kotlin.math.roundToInt
 
 /**
  * Keyguard 风格的全屏自动填充选择器
@@ -408,6 +421,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                     },
                     onAutofillBankCard = ::handleBankCardAutofill,
                     onAutofillDocument = ::handleDocumentAutofill,
+                    onFillGeneratedPassword = ::handleGeneratedPasswordFill,
                     onCopy = ::copyToClipboard,
                     onClose = {
                         setResult(Activity.RESULT_CANCELED)
@@ -754,7 +768,97 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         finish()
     }
 
-    private fun scheduleManualAccessibilityFill(username: String, password: String): Boolean {
+    private fun handleGeneratedPasswordFill(generatedPassword: String) {
+        val password = generatedPassword.trim()
+        if (password.isBlank()) return
+
+        if (isManualMode) {
+            if (scheduleManualAccessibilityFill("", password, preferPasswordField = true)) {
+                finish()
+                return
+            }
+            copyToClipboard(getString(R.string.autofill_password), password, true)
+            finish()
+            return
+        }
+
+        val autofillIds = args.autofillIds
+        if (autofillIds.isNullOrEmpty()) {
+            if (scheduleManualAccessibilityFill("", password, preferPasswordField = true)) {
+                finish()
+            } else {
+                copyToClipboard(getString(R.string.autofill_password), password, true)
+                finish()
+            }
+            return
+        }
+
+        val filledValues = buildGeneratedPasswordFillValues(
+            autofillIds = autofillIds,
+            hints = args.autofillHints,
+            password = password
+        )
+        if (filledValues.isEmpty()) {
+            copyToClipboard(getString(R.string.autofill_password), password, true)
+            android.widget.Toast.makeText(
+                this,
+                R.string.password_copied,
+                android.widget.Toast.LENGTH_SHORT
+            ).show()
+            return
+        }
+
+        val dataset = buildResultDataset(
+            title = getString(R.string.autofill_generated_password_title),
+            subtitle = args.webDomain
+                ?: args.applicationId
+                ?: getString(R.string.app_name),
+            filledValues = filledValues
+        )
+        val authResult: Parcelable = if (args.responseAuthMode) {
+            FillResponse.Builder().addDataset(dataset).build()
+        } else {
+            dataset
+        }
+        val resultIntent = Intent().apply {
+            putExtra(AutofillManager.EXTRA_AUTHENTICATION_RESULT, authResult)
+        }
+        AutofillLogger.i(
+            "PICKER",
+            "Returning generated password autofill: filled=${filledValues.size}, ids=${autofillIds.size}"
+        )
+        setResult(Activity.RESULT_OK, resultIntent)
+        finish()
+    }
+
+    private fun buildGeneratedPasswordFillValues(
+        autofillIds: List<AutofillId>,
+        hints: List<String>?,
+        password: String,
+    ): Map<AutofillId, String> {
+        val filledValues = linkedMapOf<AutofillId, String>()
+        autofillIds.forEachIndexed { index, autofillId ->
+            val normalizedHint = hints?.getOrNull(index)?.trim()?.lowercase().orEmpty()
+            val isPasswordTarget =
+                normalizedHint == EnhancedAutofillStructureParserV2.FieldHint.PASSWORD.name.lowercase() ||
+                    normalizedHint == EnhancedAutofillStructureParserV2.FieldHint.NEW_PASSWORD.name.lowercase() ||
+                    normalizedHint.contains("password") ||
+                    normalizedHint.contains("pass")
+            if (isPasswordTarget) {
+                filledValues[autofillId] = password
+            }
+        }
+        if (filledValues.isEmpty() && autofillIds.size == 1) {
+            filledValues[autofillIds.first()] = password
+        }
+        return filledValues
+    }
+
+    private fun scheduleManualAccessibilityFill(
+        username: String,
+        password: String,
+        preferPasswordField: Boolean = false,
+    ): Boolean {
         if (!MonicaAccessibilityService.isCredentialFillAvailable(applicationContext)) {
             AutofillLogger.i("PICKER", "Manual accessibility fill unavailable; service is not active")
             return false
@@ -768,6 +872,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                 packageNameToSkip = packageNameToSkip,
                 username = username,
                 password = password,
+                preferPasswordField = preferPasswordField,
                 attempt = 1
             )
         }, MANUAL_ACCESSIBILITY_FILL_DELAY_MS)
@@ -783,6 +888,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
         packageNameToSkip: String,
         username: String,
         password: String,
+        preferPasswordField: Boolean,
         attempt: Int,
     ) {
         val activePackage = MonicaAccessibilityService.getActiveWindowPackageName().orEmpty()
@@ -795,7 +901,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                 targetPackageName = activePackage,
                 username = username,
                 password = password,
-                preferPasswordField = false
+                preferPasswordField = preferPasswordField
             )
         }
 
@@ -806,13 +912,23 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
 
         if (filled || attempt >= MANUAL_ACCESSIBILITY_MAX_ATTEMPTS) {
             if (!filled) {
-                copyManualCredentialFallback(
-                    context = appContext,
-                    username = username,
-                    password = password,
-                    usernameLabel = appContext.getString(R.string.autofill_username),
-                    passwordLabel = appContext.getString(R.string.autofill_password)
-                )
+                if (preferPasswordField && username.isBlank()) {
+                    ClipboardUtils.copyToClipboard(
+                        context = appContext,
+                        text = password,
+                        label = appContext.getString(R.string.autofill_password),
+                        sensitive = true
+                    )
+                    android.widget.Toast.makeText(appContext, R.string.password_copied, android.widget.Toast.LENGTH_SHORT).show()
+                } else {
+                    copyManualCredentialFallback(
+                        context = appContext,
+                        username = username,
+                        password = password,
+                        usernameLabel = appContext.getString(R.string.autofill_username),
+                        passwordLabel = appContext.getString(R.string.autofill_password)
+                    )
+                }
             }
             return
         }
@@ -823,6 +939,7 @@ class AutofillPickerActivityV2 : BaseMonicaActivity() {
                 packageNameToSkip = packageNameToSkip,
                 username = username,
                 password = password,
+                preferPasswordField = preferPasswordField,
                 attempt = attempt + 1
             )
         }, MANUAL_ACCESSIBILITY_RETRY_DELAY_MS)
@@ -1321,6 +1438,7 @@ private fun AutofillPickerContent(
     onAutofill: (PasswordEntry, Boolean) -> Unit,
     onAutofillBankCard: (SecureItem) -> Unit,
     onAutofillDocument: (SecureItem) -> Unit,
+    onFillGeneratedPassword: (String) -> Unit,
     onCopy: (String, String, Boolean) -> Unit,
     onClose: () -> Unit,
     onMarkAsNonAutofill: () -> Unit,
@@ -1338,6 +1456,24 @@ private fun AutofillPickerContent(
     var searchQuery by remember { mutableStateOf("") }
     var isSearchLoading by remember { mutableStateOf(false) }
     var showMarkAsNonAutofillDialog by remember { mutableStateOf(false) }
+    var structuredCopyDialog by remember { mutableStateOf<StructuredAutofillCopyDialogState?>(null) }
+    var showGeneratedPasswordSheet by rememberSaveable { mutableStateOf(false) }
+    var generatedPasswordLength by rememberSaveable { mutableIntStateOf(20) }
+    var generatedIncludeUppercase by rememberSaveable { mutableStateOf(true) }
+    var generatedIncludeLowercase by rememberSaveable { mutableStateOf(true) }
+    var generatedIncludeNumbers by rememberSaveable { mutableStateOf(true) }
+    var generatedIncludeSymbols by rememberSaveable { mutableStateOf(true) }
+    var generatedReadableMode by rememberSaveable { mutableStateOf(true) }
+    val generatedPasswordOptions = AutofillPasswordGeneratorOptions(
+        length = generatedPasswordLength,
+        includeUppercase = generatedIncludeUppercase,
+        includeLowercase = generatedIncludeLowercase,
+        includeNumbers = generatedIncludeNumbers,
+        includeSymbols = generatedIncludeSymbols,
+        readableMode = generatedReadableMode,
+    )
+    var generatedPassword by rememberSaveable { mutableStateOf(generateAutofillPassword(generatedPasswordOptions)) }
+    var useGeneratedPasswordForNextAdd by rememberSaveable { mutableStateOf(false) }
     var sourceFilter by remember { mutableStateOf(AutofillStorageSourceFilter.ALL) }
     var selectedKeePassDatabaseId by remember { mutableStateOf<Long?>(null) }
     var selectedKeePassGroupPath by remember { mutableStateOf<String?>(null) }
@@ -1353,6 +1489,14 @@ private fun AutofillPickerContent(
     val requestProfile = remember(args.autofillHints) {
         buildAutofillPickerRequestProfile(args.autofillHints)
     }
+    val initialContentType = remember(requestProfile) {
+        when {
+            requestProfile.wantsBankCards -> AutofillPickerContentType.PAYMENT
+            requestProfile.wantsDocuments -> AutofillPickerContentType.DOCUMENT
+            else -> AutofillPickerContentType.ACCOUNT
+        }
+    }
+    var selectedContentType by rememberSaveable { mutableStateOf(initialContentType) }
     val loginHintCount = remember(args.autofillHints) {
         args.autofillHints.orEmpty().count(::isLoginAutofillHint)
     }
@@ -1362,15 +1506,18 @@ private fun AutofillPickerContent(
     val documentHintCount = remember(args.autofillHints) {
         args.autofillHints.orEmpty().count(::isDocumentAutofillHint)
     }
-    val addTargets = remember(requestProfile, loginHintCount, bankCardHintCount, documentHintCount) {
-        resolveAutofillAddTargets(
-            requestProfile = requestProfile,
-            loginHintCount = loginHintCount,
-            bankCardHintCount = bankCardHintCount,
-            documentHintCount = documentHintCount,
+    val addTargets = remember {
+        listOf(
+            AutofillAddTarget.PASSWORD,
+            AutofillAddTarget.BANK_CARD,
+            AutofillAddTarget.DOCUMENT,
         )
     }
-    val defaultAddTarget = addTargets.lastOrNull()
+    val defaultAddTarget = when (selectedContentType) {
+        AutofillPickerContentType.ACCOUNT -> AutofillAddTarget.PASSWORD
+        AutofillPickerContentType.PAYMENT -> AutofillAddTarget.BANK_CARD
+        AutofillPickerContentType.DOCUMENT -> AutofillAddTarget.DOCUMENT
+    }
     var pendingAddTarget by rememberSaveable { mutableStateOf<AutofillAddTarget?>(null) }
     val appDb = remember(context) { PasswordDatabase.getDatabase(context.applicationContext) }
     val secureItemRepository = remember(appDb) { SecureItemRepository(appDb.secureItemDao()) }
@@ -1384,6 +1531,17 @@ private fun AutofillPickerContent(
     val autofillPasswordLabel = stringResource(R.string.autofill_password)
     val autofillCopyPasswordUnavailable = stringResource(R.string.autofill_copy_password_unavailable)
     val autofillCopyAccountUnavailable = stringResource(R.string.autofill_copy_account_unavailable)
+    val detectedAutofillTypeLabel = when {
+        requestProfile.wantsBankCards && !requestProfile.wantsPasswords -> stringResource(R.string.item_type_bank_card)
+        requestProfile.wantsDocuments && !requestProfile.wantsPasswords -> stringResource(R.string.item_type_document)
+        else -> stringResource(R.string.item_type_password)
+    }
+    val canDirectFillBankCard = !isManualMode &&
+        !args.autofillIds.isNullOrEmpty() &&
+        requestProfile.wantsBankCards
+    val canDirectFillDocument = !isManualMode &&
+        !args.autofillIds.isNullOrEmpty() &&
+        requestProfile.wantsDocuments
 
     val handlePasswordAction: (PasswordItemAction) -> Unit = { action ->
         when (action) {
@@ -1557,19 +1715,13 @@ private fun AutofillPickerContent(
         try {
             // 筛选建议密码
             val suggestedIds = args.suggestedPasswordIds?.toList() ?: emptyList()
-            if (requestProfile.wantsPasswords && suggestedIds.isNotEmpty()) {
+            if (suggestedIds.isNotEmpty()) {
                 suggestedPasswords = repository.getPasswordsByIds(suggestedIds)
             }
-            if (requestProfile.wantsPasswords) {
-                // 先完成全量数据读取，再切换到列表视图，避免首屏阶段性结构突变。
-                allPasswords = repository.getAllPasswordEntries().first()
-            }
-            if (requestProfile.wantsBankCards) {
-                allBankCards = secureItemRepository.getActiveItemsByType(ItemType.BANK_CARD).first()
-            }
-            if (requestProfile.wantsDocuments) {
-                allDocuments = secureItemRepository.getActiveItemsByType(ItemType.DOCUMENT).first()
-            }
+            // 先完成全量数据读取，再切换到列表视图，避免首屏阶段性结构突变。
+            allPasswords = repository.getAllPasswordEntries().first()
+            allBankCards = secureItemRepository.getActiveItemsByType(ItemType.BANK_CARD).first()
+            allDocuments = secureItemRepository.getActiveItemsByType(ItemType.DOCUMENT).first()
             AutofillLogger.i(
                 "PICKER_UI",
                 "Picker data load complete",
@@ -1596,11 +1748,6 @@ private fun AutofillPickerContent(
     }
 
     LaunchedEffect(searchQuery) {
-        if (!requestProfile.wantsPasswords) {
-            searchedPasswords = emptyList()
-            isSearchLoading = false
-            return@LaunchedEffect
-        }
         val query = searchQuery.trim()
         if (query.isBlank()) {
             searchedPasswords = emptyList()
@@ -1671,7 +1818,7 @@ private fun AutofillPickerContent(
     val parsedBankCards = remember(allBankCards) { allBankCards.mapNotNull(::parseBankCardCandidate) }
     val parsedDocuments = remember(allDocuments) { allDocuments.mapNotNull(::parseDocumentCandidate) }
 
-    val basePasswords = if (searchQuery.isBlank() || !requestProfile.wantsPasswords) allPasswords else searchedPasswords
+    val basePasswords = if (searchQuery.isBlank()) allPasswords else searchedPasswords
 
     val sourceFilteredPasswords by remember(
         basePasswords,
@@ -1961,25 +2108,56 @@ private fun AutofillPickerContent(
             }
         }
     )
-    val addMenuActions = remember(addTargets) {
-        addTargets.map { target ->
-            when (target) {
-                AutofillAddTarget.PASSWORD -> AutofillFabMenuAction(
-                    icon = Icons.Default.Lock,
-                    labelRes = R.string.item_type_password,
-                    onClick = { pendingAddTarget = AutofillAddTarget.PASSWORD; currentScreen = "add" }
+    val addMenuActions = remember(addTargets, generatedPasswordOptions) {
+        buildList {
+            add(
+                AutofillFabMenuAction(
+                    icon = Icons.Default.Password,
+                    labelRes = R.string.autofill_generate_password,
+                    onClick = {
+                        useGeneratedPasswordForNextAdd = false
+                        generatedPassword = generateAutofillPassword(generatedPasswordOptions)
+                        showGeneratedPasswordSheet = true
+                    }
                 )
-                AutofillAddTarget.DOCUMENT -> AutofillFabMenuAction(
-                    icon = Icons.Default.Badge,
-                    labelRes = R.string.item_type_document,
-                    onClick = { pendingAddTarget = AutofillAddTarget.DOCUMENT; currentScreen = "add" }
-                )
-                AutofillAddTarget.BANK_CARD -> AutofillFabMenuAction(
-                    icon = Icons.Default.CreditCard,
-                    labelRes = R.string.item_type_bank_card,
-                    onClick = { pendingAddTarget = AutofillAddTarget.BANK_CARD; currentScreen = "add" }
-                )
-            }
+            )
+            addAll(addTargets.map { target ->
+                when (target) {
+                    AutofillAddTarget.PASSWORD -> AutofillFabMenuAction(
+                        icon = Icons.Default.Lock,
+                        labelRes = R.string.item_type_password,
+                        onClick = {
+                            useGeneratedPasswordForNextAdd = false
+                            pendingAddTarget = AutofillAddTarget.PASSWORD
+                            currentScreen = "add"
+                        }
+                    )
+                    AutofillAddTarget.DOCUMENT -> AutofillFabMenuAction(
+                        icon = Icons.Default.Badge,
+                        labelRes = R.string.item_type_document,
+                        onClick = { pendingAddTarget = AutofillAddTarget.DOCUMENT; currentScreen = "add" }
+                    )
+                    AutofillAddTarget.BANK_CARD -> AutofillFabMenuAction(
+                        icon = Icons.Default.CreditCard,
+                        labelRes = R.string.item_type_bank_card,
+                        onClick = { pendingAddTarget = AutofillAddTarget.BANK_CARD; currentScreen = "add" }
+                    )
+                }
+            })
+        }
+    }
+    val handleBankCardClick: (SecureItem, BankCardData) -> Unit = { item, data ->
+        if (canDirectFillBankCard) {
+            onAutofillBankCard(item)
+        } else {
+            structuredCopyDialog = StructuredAutofillCopyDialogState.BankCard(item, data)
+        }
+    }
+    val handleDocumentClick: (SecureItem, DocumentData) -> Unit = { item, data ->
+        if (canDirectFillDocument) {
+            onAutofillDocument(item)
+        } else {
+            structuredCopyDialog = StructuredAutofillCopyDialogState.Document(item, data)
         }
     }
     val navigateBackToList: () -> Unit = {
@@ -2020,6 +2198,65 @@ private fun AutofillPickerContent(
                     Text(text = stringResource(R.string.cancel))
                 }
             },
+        )
+    }
+
+    structuredCopyDialog?.let { dialogState ->
+        StructuredAutofillCopyDialog(
+            state = dialogState,
+            detectedTypeLabel = detectedAutofillTypeLabel,
+            onCopy = { action ->
+                structuredCopyDialog = null
+                onCopy(action.label, action.value, action.sensitive)
+            },
+            onDismiss = { structuredCopyDialog = null }
+        )
+    }
+
+    if (showGeneratedPasswordSheet) {
+        GeneratedPasswordBottomSheet(
+            password = generatedPassword,
+            options = generatedPasswordOptions,
+            onRefresh = { generatedPassword = generateAutofillPassword(generatedPasswordOptions) },
+            onLengthChange = { length ->
+                generatedPasswordLength = length
+                generatedPassword = generateAutofillPassword(generatedPasswordOptions.copy(length = length))
+            },
+            onUppercaseChange = { enabled ->
+                generatedIncludeUppercase = enabled
+                generatedPassword = generateAutofillPassword(generatedPasswordOptions.copy(includeUppercase = enabled))
+            },
+            onLowercaseChange = { enabled ->
+                generatedIncludeLowercase = enabled
+                generatedPassword = generateAutofillPassword(generatedPasswordOptions.copy(includeLowercase = enabled))
+            },
+            onNumbersChange = { enabled ->
+                generatedIncludeNumbers = enabled
+                generatedPassword = generateAutofillPassword(generatedPasswordOptions.copy(includeNumbers = enabled))
+            },
+            onSymbolsChange = { enabled ->
+                generatedIncludeSymbols = enabled
+                generatedPassword = generateAutofillPassword(generatedPasswordOptions.copy(includeSymbols = enabled))
+            },
+            onReadableModeChange = { enabled ->
+                generatedReadableMode = enabled
+                generatedPassword = generateAutofillPassword(generatedPasswordOptions.copy(readableMode = enabled))
+            },
+            onCopy = {
+                onCopy(autofillPasswordLabel, generatedPassword, true)
+                showGeneratedPasswordSheet = false
+            },
+            onFill = {
+                showGeneratedPasswordSheet = false
+                onFillGeneratedPassword(generatedPassword)
+            },
+            onSaveAsNew = {
+                showGeneratedPasswordSheet = false
+                useGeneratedPasswordForNextAdd = true
+                pendingAddTarget = AutofillAddTarget.PASSWORD
+                currentScreen = "add"
+            },
+            onDismiss = { showGeneratedPasswordSheet = false }
         )
     }
     
@@ -2150,6 +2387,17 @@ private fun AutofillPickerContent(
                                 .padding(horizontal = 16.dp, vertical = 2.dp)
                         )
                         
+                        AutofillPickerContentTypeTabs(
+                            selectedType = selectedContentType,
+                            passwordCount = filteredPasswords.size,
+                            bankCardCount = filteredBankCards.size,
+                            documentCount = filteredDocuments.size,
+                            onSelectType = { selectedContentType = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp)
+                        )
+
                         if (isLoading) {
                             Box(
                                 modifier = Modifier.fillMaxSize(),
@@ -2158,63 +2406,116 @@ private fun AutofillPickerContent(
                                 CircularProgressIndicator()
                             }
                         } else {
-                            if (requestProfile.wantsPasswords) {
-                                val showSuggestedSection = searchQuery.isBlank() &&
-                                    filteredSuggestedPasswords.isNotEmpty()
-                                val suggestedIds = filteredSuggestedPasswords.map { it.id }.toSet()
-                                val mainPasswords = if (showSuggestedSection) {
-                                    filteredPasswords.filter { it.id !in suggestedIds }
-                                } else {
-                                    filteredPasswords
-                                }
-                                val displayedMainPasswords = mainPasswords
-                                val hasStructuredResults = filteredBankCards.isNotEmpty() || filteredDocuments.isNotEmpty()
-                                val showNoSuggestionsHint = sourceFilter == AutofillStorageSourceFilter.ALL &&
-                                    selectedKeePassDatabaseId == null &&
-                                    selectedKeePassGroupPath == null &&
-                                    selectedVaultId == null &&
-                                    selectedFolderId == null &&
-                                    searchQuery.isBlank() &&
-                                    filteredSuggestedPasswords.isEmpty() &&
-                                    !hasStructuredResults
+                            when (selectedContentType) {
+                                AutofillPickerContentType.ACCOUNT -> {
+                                    val showSuggestedSection = searchQuery.isBlank() &&
+                                        filteredSuggestedPasswords.isNotEmpty()
+                                    val suggestedIds = filteredSuggestedPasswords.map { it.id }.toSet()
+                                    val mainPasswords = if (showSuggestedSection) {
+                                        filteredPasswords.filter { it.id !in suggestedIds }
+                                    } else {
+                                        filteredPasswords
+                                    }
+                                    val showNoSuggestionsHint = sourceFilter == AutofillStorageSourceFilter.ALL &&
+                                        selectedKeePassDatabaseId == null &&
+                                        selectedKeePassGroupPath == null &&
+                                        selectedVaultId == null &&
+                                        selectedFolderId == null &&
+                                        searchQuery.isBlank() &&
+                                        filteredSuggestedPasswords.isEmpty()
 
-                                LazyColumn(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .weight(1f)
-                                ) {
-                                    if (isSearchLoading) {
-                                        item(key = "search_loading") {
-                                            Box(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                CircularProgressIndicator(
-                                                    modifier = Modifier.size(18.dp),
-                                                    strokeWidth = 2.dp
+                                    LazyColumn(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .weight(1f)
+                                    ) {
+                                        if (isSearchLoading) {
+                                            item(key = "search_loading") {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(18.dp),
+                                                        strokeWidth = 2.dp
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        if (showSuggestedSection) {
+                                            item {
+                                                Text(
+                                                    text = stringResource(R.string.autofill_suggested_fill),
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                                )
+                                            }
+
+                                            items(
+                                                items = filteredSuggestedPasswords,
+                                                key = { "suggested_${it.id}" }
+                                            ) { password ->
+                                                SuggestedPasswordListItem(
+                                                    password = password,
+                                                    iconCardsEnabled = iconCardsEnabled,
+                                                    showSmartCopyOptions = hasNotificationPermission,
+                                                    onAction = handlePasswordAction
+                                                )
+                                            }
+
+                                            item {
+                                                HorizontalDivider(
+                                                    modifier = Modifier.padding(vertical = 8.dp),
+                                                    color = MaterialTheme.colorScheme.outlineVariant
                                                 )
                                             }
                                         }
-                                    }
 
-                                    if (showSuggestedSection) {
-                                        item {
-                                            Text(
-                                                text = stringResource(R.string.autofill_suggested_fill),
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.primary,
-                                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                                            )
+                                        if (showNoSuggestionsHint) {
+                                            item {
+                                                NoSuggestionsHint()
+                                            }
+                                        }
+
+                                        if (mainPasswords.isNotEmpty()) {
+                                            item {
+                                                Text(
+                                                    text = if (showSuggestedSection) {
+                                                        stringResource(R.string.autofill_other_entries)
+                                                    } else {
+                                                        when (sourceFilter) {
+                                                            AutofillStorageSourceFilter.ALL -> stringResource(R.string.autofill_all_entries)
+                                                            AutofillStorageSourceFilter.LOCAL -> stringResource(R.string.filter_local_only)
+                                                            AutofillStorageSourceFilter.KEEPASS -> stringResource(R.string.filter_keepass)
+                                                            AutofillStorageSourceFilter.BITWARDEN -> stringResource(R.string.filter_bitwarden)
+                                                        }
+                                                    },
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                                )
+                                            }
+                                        } else if (!showNoSuggestionsHint) {
+                                            item {
+                                                EmptyPasswordState(
+                                                    modifier = Modifier
+                                                        .fillParentMaxSize()
+                                                        .padding(top = 32.dp)
+                                                )
+                                            }
                                         }
 
                                         items(
-                                            items = filteredSuggestedPasswords,
-                                            key = { "suggested_${it.id}" }
+                                            items = mainPasswords,
+                                            key = { it.id }
                                         ) { password ->
-                                            SuggestedPasswordListItem(
+                                            PasswordListItem(
                                                 password = password,
+                                                showDropdownMenu = true,
                                                 iconCardsEnabled = iconCardsEnabled,
                                                 showSmartCopyOptions = hasNotificationPermission,
                                                 onAction = handlePasswordAction
@@ -2222,171 +2523,90 @@ private fun AutofillPickerContent(
                                         }
 
                                         item {
-                                            HorizontalDivider(
-                                                modifier = Modifier.padding(vertical = 8.dp),
-                                                color = MaterialTheme.colorScheme.outlineVariant
-                                            )
+                                            Spacer(modifier = Modifier.height(80.dp))
                                         }
-                                    }
-
-                                    if (showNoSuggestionsHint) {
-                                        item {
-                                            NoSuggestionsHint()
-                                        }
-                                    }
-
-                                    if (mainPasswords.isNotEmpty()) {
-                                        item {
-                                            Text(
-                                                text = if (showSuggestedSection) {
-                                                    stringResource(R.string.autofill_other_entries)
-                                                } else {
-                                                    when (sourceFilter) {
-                                                        AutofillStorageSourceFilter.ALL -> stringResource(R.string.autofill_all_entries)
-                                                        AutofillStorageSourceFilter.LOCAL -> stringResource(R.string.filter_local_only)
-                                                        AutofillStorageSourceFilter.KEEPASS -> stringResource(R.string.filter_keepass)
-                                                        AutofillStorageSourceFilter.BITWARDEN -> stringResource(R.string.filter_bitwarden)
-                                                    }
-                                                },
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                                            )
-                                        }
-                                    } else if (!showNoSuggestionsHint && !hasStructuredResults) {
-                                        item {
-                                            EmptyPasswordState(
-                                                modifier = Modifier
-                                                    .fillParentMaxSize()
-                                                    .padding(top = 32.dp)
-                                            )
-                                        }
-                                    }
-
-                                    items(
-                                        items = displayedMainPasswords,
-                                        key = { it.id }
-                                    ) { password ->
-                                        PasswordListItem(
-                                            password = password,
-                                            showDropdownMenu = true,
-                                            iconCardsEnabled = iconCardsEnabled,
-                                            showSmartCopyOptions = hasNotificationPermission,
-                                            onAction = handlePasswordAction
-                                        )
-                                    }
-
-                                    if (requestProfile.wantsBankCards && filteredBankCards.isNotEmpty()) {
-                                        item(key = "cards_header") {
-                                            Text(
-                                                text = stringResource(R.string.item_type_bank_card),
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                                            )
-                                        }
-                                        items(
-                                            items = filteredBankCards,
-                                            key = { (item, _) -> "card_${item.id}" }
-                                        ) { (item, data) ->
-                                            AutofillStructuredItemCard(
-                                                title = bankCardDisplayTitle(item, data),
-                                                subtitle = bankCardDisplaySubtitle(data),
-                                                billingAddress = bankCardBillingAddressDisplay(data),
-                                                onClick = { onAutofillBankCard(item) }
-                                            )
-                                        }
-                                    }
-
-                                    if (requestProfile.wantsDocuments && filteredDocuments.isNotEmpty()) {
-                                        item(key = "documents_header") {
-                                            Text(
-                                                text = stringResource(R.string.item_type_document),
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                                            )
-                                        }
-                                        items(
-                                            items = filteredDocuments,
-                                            key = { (item, _) -> "document_${item.id}" }
-                                        ) { (item, data) ->
-                                            AutofillStructuredItemCard(
-                                                title = documentDisplayTitle(item, data),
-                                                subtitle = documentDisplaySubtitle(data),
-                                                billingAddress = documentBillingAddressDisplay(data),
-                                                onClick = { onAutofillDocument(item) }
-                                            )
-                                        }
-                                    }
-
-                                    item {
-                                        Spacer(modifier = Modifier.height(80.dp))
                                     }
                                 }
-                            } else {
-                                val hasStructuredResults = filteredBankCards.isNotEmpty() || filteredDocuments.isNotEmpty()
-                                LazyColumn(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .weight(1f)
-                                ) {
-                                    if (requestProfile.wantsBankCards && filteredBankCards.isNotEmpty()) {
-                                        item(key = "cards_header") {
-                                            Text(
-                                                text = stringResource(R.string.item_type_bank_card),
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                                            )
+                                AutofillPickerContentType.PAYMENT -> {
+                                    LazyColumn(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .weight(1f)
+                                    ) {
+                                        if (filteredBankCards.isNotEmpty()) {
+                                            item(key = "cards_header") {
+                                                Text(
+                                                    text = stringResource(R.string.item_type_bank_card),
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                                )
+                                            }
+                                            items(
+                                                items = filteredBankCards,
+                                                key = { (item, _) -> "card_${item.id}" }
+                                            ) { (item, data) ->
+                                                AutofillStructuredItemCard(
+                                                    title = bankCardDisplayTitle(item, data),
+                                                    subtitle = bankCardDisplaySubtitle(data),
+                                                    billingAddress = bankCardBillingAddressDisplay(data),
+                                                    onClick = { handleBankCardClick(item, data) }
+                                                )
+                                            }
+                                        } else {
+                                            item {
+                                                EmptyPasswordState(
+                                                    modifier = Modifier
+                                                        .fillParentMaxSize()
+                                                        .padding(top = 32.dp)
+                                                )
+                                            }
                                         }
-                                        items(
-                                            items = filteredBankCards,
-                                            key = { (item, _) -> "card_${item.id}" }
-                                        ) { (item, data) ->
-                                            AutofillStructuredItemCard(
-                                                title = bankCardDisplayTitle(item, data),
-                                                subtitle = bankCardDisplaySubtitle(data),
-                                                billingAddress = bankCardBillingAddressDisplay(data),
-                                                onClick = { onAutofillBankCard(item) }
-                                            )
-                                        }
-                                    }
 
-                                    if (requestProfile.wantsDocuments && filteredDocuments.isNotEmpty()) {
-                                        item(key = "documents_header") {
-                                            Text(
-                                                text = stringResource(R.string.item_type_document),
-                                                style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                                            )
-                                        }
-                                        items(
-                                            items = filteredDocuments,
-                                            key = { (item, _) -> "document_${item.id}" }
-                                        ) { (item, data) ->
-                                            AutofillStructuredItemCard(
-                                                title = documentDisplayTitle(item, data),
-                                                subtitle = documentDisplaySubtitle(data),
-                                                billingAddress = documentBillingAddressDisplay(data),
-                                                onClick = { onAutofillDocument(item) }
-                                            )
-                                        }
-                                    }
-
-                                    if (!hasStructuredResults) {
                                         item {
-                                            EmptyPasswordState(
-                                                modifier = Modifier
-                                                    .fillParentMaxSize()
-                                                    .padding(top = 32.dp)
-                                            )
+                                            Spacer(modifier = Modifier.height(80.dp))
                                         }
                                     }
+                                }
+                                AutofillPickerContentType.DOCUMENT -> {
+                                    LazyColumn(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .weight(1f)
+                                    ) {
+                                        if (filteredDocuments.isNotEmpty()) {
+                                            item(key = "documents_header") {
+                                                Text(
+                                                    text = stringResource(R.string.item_type_document),
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                                )
+                                            }
+                                            items(
+                                                items = filteredDocuments,
+                                                key = { (item, _) -> "document_${item.id}" }
+                                            ) { (item, data) ->
+                                                AutofillStructuredItemCard(
+                                                    title = documentDisplayTitle(item, data),
+                                                    subtitle = documentDisplaySubtitle(data),
+                                                    billingAddress = documentBillingAddressDisplay(data),
+                                                    onClick = { handleDocumentClick(item, data) }
+                                                )
+                                            }
+                                        } else {
+                                            item {
+                                                EmptyPasswordState(
+                                                    modifier = Modifier
+                                                        .fillParentMaxSize()
+                                                        .padding(top = 32.dp)
+                                                )
+                                            }
+                                        }
 
-                                    item {
-                                        Spacer(modifier = Modifier.height(24.dp))
+                                        item {
+                                            Spacer(modifier = Modifier.height(80.dp))
+                                        }
                                     }
                                 }
                             }
@@ -2434,7 +2654,10 @@ private fun AutofillPickerContent(
                             title = initialTitle,
                             website = args.webDomain.orEmpty(),
                             username = args.capturedUsername.orEmpty(),
-                            password = args.capturedPassword.orEmpty(),
+                            password = generatedPassword.takeIf {
+                                useGeneratedPasswordForNextAdd &&
+                                    pendingAddTarget == AutofillAddTarget.PASSWORD
+                            } ?: args.capturedPassword.orEmpty(),
                             appPackageName = if (isWebFlow) "" else args.applicationId.orEmpty(),
                             appName = if (isWebFlow) "" else appName.orEmpty(),
                         ),
@@ -2469,11 +2692,6 @@ private fun AutofillPickerContent(
                         cardId = null,
                         onNavigateBack = navigateBackToList
                     )
-                }
-                null -> {
-                    LaunchedEffect(Unit) {
-                        navigateBackToList()
-                    }
                 }
             }
         }
@@ -2548,6 +2766,77 @@ private enum class AutofillStorageSourceFilter {
     BITWARDEN
 }
 
+private enum class AutofillPickerContentType {
+    ACCOUNT,
+    PAYMENT,
+    DOCUMENT
+}
+
+@Composable
+private fun AutofillPickerContentTypeTabs(
+    selectedType: AutofillPickerContentType,
+    passwordCount: Int,
+    bankCardCount: Int,
+    documentCount: Int,
+    onSelectType: (AutofillPickerContentType) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        AutofillPickerContentTypeChip(
+            selected = selectedType == AutofillPickerContentType.ACCOUNT,
+            icon = Icons.Default.Lock,
+            label = stringResource(R.string.item_type_password),
+            count = passwordCount,
+            onClick = { onSelectType(AutofillPickerContentType.ACCOUNT) }
+        )
+        AutofillPickerContentTypeChip(
+            selected = selectedType == AutofillPickerContentType.PAYMENT,
+            icon = Icons.Default.CreditCard,
+            label = stringResource(R.string.item_type_bank_card),
+            count = bankCardCount,
+            onClick = { onSelectType(AutofillPickerContentType.PAYMENT) }
+        )
+        AutofillPickerContentTypeChip(
+            selected = selectedType == AutofillPickerContentType.DOCUMENT,
+            icon = Icons.Default.Badge,
+            label = stringResource(R.string.item_type_document),
+            count = documentCount,
+            onClick = { onSelectType(AutofillPickerContentType.DOCUMENT) }
+        )
+    }
+}
+
+@Composable
+private fun AutofillPickerContentTypeChip(
+    selected: Boolean,
+    icon: ImageVector,
+    label: String,
+    count: Int,
+    onClick: () -> Unit,
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        leadingIcon = {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+        },
+        label = {
+            Text(
+                text = "$label $count",
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    )
+}
+
 private fun AutofillStorageSourceFilter.toPreferenceFilter(): AutofillPreferences.AutofillDefaultSourceFilter {
     return when (this) {
         AutofillStorageSourceFilter.ALL -> AutofillPreferences.AutofillDefaultSourceFilter.ALL
@@ -2566,11 +2855,508 @@ private fun AutofillPreferences.AutofillDefaultSourceFilter.toUiFilter(): Autofi
     }
 }
 
+private sealed interface StructuredAutofillCopyDialogState {
+    data class BankCard(
+        val item: SecureItem,
+        val data: BankCardData,
+    ) : StructuredAutofillCopyDialogState
+
+    data class Document(
+        val item: SecureItem,
+        val data: DocumentData,
+    ) : StructuredAutofillCopyDialogState
+}
+
+private data class StructuredCopyAction(
+    val label: String,
+    val value: String,
+    val displayValue: String = value,
+    val sensitive: Boolean = false,
+)
+
+@Composable
+private fun StructuredAutofillCopyDialog(
+    state: StructuredAutofillCopyDialogState,
+    detectedTypeLabel: String,
+    onCopy: (StructuredCopyAction) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val targetTypeLabel = when (state) {
+        is StructuredAutofillCopyDialogState.BankCard -> stringResource(R.string.item_type_bank_card)
+        is StructuredAutofillCopyDialogState.Document -> stringResource(R.string.item_type_document)
+    }
+    val title = when (state) {
+        is StructuredAutofillCopyDialogState.BankCard -> bankCardDisplayTitle(state.item, state.data)
+        is StructuredAutofillCopyDialogState.Document -> documentDisplayTitle(state.item, state.data)
+    }
+    val subtitle = when (state) {
+        is StructuredAutofillCopyDialogState.BankCard -> bankCardDisplaySubtitle(state.data)
+        is StructuredAutofillCopyDialogState.Document -> documentDisplaySubtitle(state.data)
+    }
+    val actions = when (state) {
+        is StructuredAutofillCopyDialogState.BankCard -> bankCardCopyActions(state.data)
+        is StructuredAutofillCopyDialogState.Document -> documentCopyActions(state.data)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = title.ifBlank { targetTypeLabel },
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 420.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                if (subtitle.isNotBlank()) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Text(
+                    text = stringResource(
+                        R.string.autofill_structured_copy_message,
+                        detectedTypeLabel,
+                        targetTypeLabel,
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                OutlinedButton(
+                    enabled = false,
+                    onClick = {},
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Text(text = stringResource(R.string.autofill_structured_fill_unavailable))
+                }
+                actions.forEach { action ->
+                    StructuredCopyActionButton(
+                        action = action,
+                        onClick = { onCopy(action) }
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(text = stringResource(R.string.cancel))
+            }
+        }
+    )
+}
+
+@Composable
+private fun StructuredCopyActionButton(
+    action: StructuredCopyAction,
+    onClick: () -> Unit,
+) {
+    OutlinedButton(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Default.ContentCopy,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                text = "${stringResource(R.string.copy)} ${action.label}",
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = action.displayValue,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun bankCardCopyActions(data: BankCardData): List<StructuredCopyAction> {
+    val expiry = bankCardExpiryCopyValue(data)
+    return buildList {
+        addCopyAction(stringResource(R.string.card_number), data.cardNumber, maskBankCardNumber(data.cardNumber), true)
+        addCopyAction(stringResource(R.string.cardholder_label), data.cardholderName)
+        addCopyAction(stringResource(R.string.expiry_label), expiry)
+        addCopyAction(stringResource(R.string.cvv), data.cvv, sensitive = true)
+        addCopyAction(stringResource(R.string.bank_name), data.bankName)
+        addCopyAction(stringResource(R.string.bank_card_brand_label), data.brand)
+        addCopyAction(stringResource(R.string.bank_card_nickname_label), data.nickname)
+        addCopyAction(stringResource(R.string.billing_address), bankCardBillingAddressDisplay(data))
+        addCopyAction(stringResource(R.string.bank_card_customer_service_phone_label), data.customerServicePhone)
+    }
+}
+
+@Composable
+private fun documentCopyActions(data: DocumentData): List<StructuredCopyAction> {
+    return buildList {
+        addCopyAction(stringResource(R.string.document_number_label), data.documentNumber, maskDocumentNumber(data.documentNumber), true)
+        addCopyAction(stringResource(R.string.full_name), data.displayFullName().ifBlank { data.fullName })
+        addCopyAction(stringResource(R.string.document_first_name_label), data.firstName)
+        addCopyAction(stringResource(R.string.document_last_name_label), data.lastName)
+        addCopyAction(stringResource(R.string.email), data.email)
+        addCopyAction(stringResource(R.string.phone), data.phone)
+        addCopyAction(stringResource(R.string.billing_address), documentBillingAddressDisplay(data))
+        addCopyAction(stringResource(R.string.document_passport_number_label), data.passportNumber, maskDocumentNumber(data.passportNumber), true)
+        addCopyAction(stringResource(R.string.document_license_number_label), data.licenseNumber, maskDocumentNumber(data.licenseNumber), true)
+        addCopyAction(stringResource(R.string.document_ssn_label), data.ssn, maskDocumentNumber(data.ssn), true)
+        addCopyAction(stringResource(R.string.issued_date), data.issuedDate)
+        addCopyAction(stringResource(R.string.expiry_date_label), data.expiryDate)
+        addCopyAction(stringResource(R.string.issued_by), data.issuedBy)
+        addCopyAction(stringResource(R.string.nationality), data.nationality)
+        addCopyAction(stringResource(R.string.document_company_label), data.company)
+        addCopyAction(stringResource(R.string.autofill_username), data.username)
+    }
+}
+
+private fun MutableList<StructuredCopyAction>.addCopyAction(
+    label: String,
+    value: String,
+    displayValue: String = value,
+    sensitive: Boolean = false,
+) {
+    val trimmed = value.trim()
+    if (trimmed.isNotBlank()) {
+        add(
+            StructuredCopyAction(
+                label = label,
+                value = trimmed,
+                displayValue = displayValue.trim().ifBlank { trimmed },
+                sensitive = sensitive,
+            )
+        )
+    }
+}
+
+private fun bankCardExpiryCopyValue(data: BankCardData): String {
+    val month = data.expiryMonth.trim()
+    val year = data.expiryYear.trim()
+    return when {
+        month.isBlank() -> year
+        year.isBlank() -> month
+        else -> "$month/$year"
+    }
+}
+
 private data class AutofillFabMenuAction(
     val icon: ImageVector,
     val labelRes: Int,
     val onClick: () -> Unit,
 )
+
+private data class AutofillPasswordGeneratorOptions(
+    val length: Int = 20,
+    val includeUppercase: Boolean = true,
+    val includeLowercase: Boolean = true,
+    val includeNumbers: Boolean = true,
+    val includeSymbols: Boolean = true,
+    val readableMode: Boolean = true,
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun GeneratedPasswordBottomSheet(
+    password: String,
+    options: AutofillPasswordGeneratorOptions,
+    onRefresh: () -> Unit,
+    onLengthChange: (Int) -> Unit,
+    onUppercaseChange: (Boolean) -> Unit,
+    onLowercaseChange: (Boolean) -> Unit,
+    onNumbersChange: (Boolean) -> Unit,
+    onSymbolsChange: (Boolean) -> Unit,
+    onReadableModeChange: (Boolean) -> Unit,
+    onCopy: () -> Unit,
+    onFill: () -> Unit,
+    onSaveAsNew: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        containerColor = MaterialTheme.colorScheme.surface,
+        tonalElevation = 4.dp,
+        dragHandle = { BottomSheetDefaults.DragHandle() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(42.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Password,
+                            contentDescription = null,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+                Text(
+                    text = stringResource(R.string.autofill_generated_password_title),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = onRefresh) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = stringResource(R.string.regenerate)
+                    )
+                }
+                IconButton(onClick = onCopy) {
+                    Icon(
+                        imageVector = Icons.Default.ContentCopy,
+                        contentDescription = stringResource(R.string.copy_password)
+                    )
+                }
+            }
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                contentColor = MaterialTheme.colorScheme.onSurface
+            ) {
+                SelectionContainer {
+                    Text(
+                        text = password,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(
+                    onClick = onSaveAsNew,
+                    modifier = Modifier.height(44.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Save,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(text = stringResource(R.string.save_as_new_entry))
+                }
+                Button(
+                    onClick = onFill,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(44.dp),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Text(text = stringResource(R.string.autofill_generated_password_fill))
+                }
+            }
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow,
+                contentColor = MaterialTheme.colorScheme.onSurface
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.autofill_generated_password_options),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    AutofillPasswordLengthRow(
+                        length = options.length,
+                        onLengthChange = onLengthChange,
+                    )
+                    val selectedTypeCount = listOf(
+                        options.includeUppercase,
+                        options.includeLowercase,
+                        options.includeNumbers,
+                        options.includeSymbols,
+                    ).count { it }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            AutofillPasswordOptionSwitchRow(
+                                text = stringResource(R.string.autofill_generated_password_uppercase),
+                                checked = options.includeUppercase,
+                                enabled = !options.includeUppercase || selectedTypeCount > 1,
+                                onCheckedChange = onUppercaseChange,
+                            )
+                            AutofillPasswordOptionSwitchRow(
+                                text = stringResource(R.string.autofill_generated_password_numbers),
+                                checked = options.includeNumbers,
+                                enabled = !options.includeNumbers || selectedTypeCount > 1,
+                                onCheckedChange = onNumbersChange,
+                            )
+                        }
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            AutofillPasswordOptionSwitchRow(
+                                text = stringResource(R.string.autofill_generated_password_lowercase),
+                                checked = options.includeLowercase,
+                                enabled = !options.includeLowercase || selectedTypeCount > 1,
+                                onCheckedChange = onLowercaseChange,
+                            )
+                            AutofillPasswordOptionSwitchRow(
+                                text = stringResource(R.string.autofill_generated_password_symbols),
+                                checked = options.includeSymbols,
+                                enabled = !options.includeSymbols || selectedTypeCount > 1,
+                                onCheckedChange = onSymbolsChange,
+                            )
+                        }
+                    }
+                    AutofillPasswordOptionSwitchRow(
+                        text = stringResource(R.string.autofill_generated_password_readable),
+                        checked = options.readableMode,
+                        enabled = true,
+                        onCheckedChange = onReadableModeChange,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AutofillPasswordLengthRow(
+    length: Int,
+    onLengthChange: (Int) -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(2.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(R.string.autofill_generated_password_length),
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = length.toString(),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        Slider(
+            value = length.toFloat(),
+            onValueChange = { value -> onLengthChange(value.roundToInt().coerceIn(8, 32)) },
+            valueRange = 8f..32f,
+            steps = 23,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(34.dp)
+        )
+    }
+}
+
+@Composable
+private fun AutofillPasswordOptionSwitchRow(
+    text: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 42.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(enabled = enabled) { onCheckedChange(!checked) }
+            .padding(start = 10.dp, end = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (enabled) {
+                MaterialTheme.colorScheme.onSurface
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f)
+            },
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            enabled = enabled,
+            modifier = Modifier.height(36.dp)
+        )
+    }
+}
+
+private fun generateAutofillPassword(options: AutofillPasswordGeneratorOptions): String {
+    return PasswordGenerator.generatePassword(
+        length = options.length,
+        includeUppercase = options.includeUppercase,
+        includeLowercase = options.includeLowercase,
+        includeNumbers = options.includeNumbers,
+        includeSymbols = options.includeSymbols,
+        excludeSimilar = options.readableMode,
+        excludeAmbiguous = options.readableMode,
+        uppercaseMin = if (options.includeUppercase) 1 else 0,
+        lowercaseMin = if (options.includeLowercase) 1 else 0,
+        numbersMin = if (options.includeNumbers) 1 else 0,
+        symbolsMin = if (options.includeSymbols) 1 else 0
+    )
+}
 
 @Composable
 private fun AutofillFabMenu(

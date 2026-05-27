@@ -42,6 +42,7 @@ import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.utils.KeePassEntryData
 import takagi.ru.monica.utils.KeePassKdbxService
+import takagi.ru.monica.utils.KeePassSecureItemData
 import takagi.ru.monica.utils.buildKeePassPathKey
 import takagi.ru.monica.data.model.StorageTarget
 import takagi.ru.monica.data.model.applyToPasswordEntry
@@ -1193,10 +1194,12 @@ class PasswordViewModel(
                 if (forceRefresh) {
                     KeePassKdbxService.invalidateProcessCache(databaseId)
                 }
-                val result = bridge.readLegacyPasswordEntries(databaseId)
-                val data = result.getOrNull() ?: return@launch
-                upsertKeePassEntries(databaseId, data)
-                syncKeePassTotpEntries(databaseId)
+                val snapshot = bridge
+                    .loadLegacyWorkspace(databaseId, allowedSecureItemTypes = setOf(ItemType.TOTP))
+                    .getOrNull()
+                    ?: return@launch
+                upsertKeePassEntries(databaseId, snapshot.passwords)
+                syncKeePassTotpEntries(databaseId, snapshot.secureItems)
             }.onFailure { error ->
                 Log.w("PasswordViewModel", "KeePass sync failed for databaseId=$databaseId", error)
             }
@@ -1331,17 +1334,19 @@ class PasswordViewModel(
         fieldRepository.saveFieldsForEntries(mapOf(entryId to fields))
     }
 
-    private suspend fun syncKeePassTotpEntries(databaseId: Long) {
-        val bridge = keepassBridge ?: return
+    private suspend fun syncKeePassTotpEntries(
+        databaseId: Long,
+        snapshots: List<KeePassSecureItemData>? = null
+    ) {
         val secureRepo = secureItemRepository ?: return
 
-        val snapshots = bridge
-            .readLegacySecureItems(databaseId, setOf(ItemType.TOTP))
-            .getOrNull()
+        val resolvedSnapshots = snapshots ?: keepassBridge
+            ?.readLegacySecureItems(databaseId, setOf(ItemType.TOTP))
+            ?.getOrNull()
             ?: return
 
         val existingTotp = secureRepo.getItemsByType(ItemType.TOTP).first()
-        snapshots.forEach { snapshot ->
+        resolvedSnapshots.forEach { snapshot ->
             val incoming = snapshot.item
             val existingBySource = snapshot.sourceMonicaId
                 ?.takeIf { it > 0 }
@@ -1474,11 +1479,23 @@ class PasswordViewModel(
             persistCategoryFilter(filter)
         }
         when (filter) {
-            is CategoryFilter.KeePassDatabase -> syncKeePassDatabase(filter.databaseId)
-            is CategoryFilter.KeePassGroupFilter -> syncKeePassDatabase(filter.databaseId)
-            is CategoryFilter.KeePassDatabaseStarred -> syncKeePassDatabase(filter.databaseId)
-            is CategoryFilter.KeePassDatabaseUncategorized -> syncKeePassDatabase(filter.databaseId)
-            else -> Unit
+            is CategoryFilter.KeePassDatabase -> {
+                KeePassKdbxService.markDatabaseActive(filter.databaseId)
+                syncKeePassDatabase(filter.databaseId)
+            }
+            is CategoryFilter.KeePassGroupFilter -> {
+                KeePassKdbxService.markDatabaseActive(filter.databaseId)
+                syncKeePassDatabase(filter.databaseId)
+            }
+            is CategoryFilter.KeePassDatabaseStarred -> {
+                KeePassKdbxService.markDatabaseActive(filter.databaseId)
+                syncKeePassDatabase(filter.databaseId)
+            }
+            is CategoryFilter.KeePassDatabaseUncategorized -> {
+                KeePassKdbxService.markDatabaseActive(filter.databaseId)
+                syncKeePassDatabase(filter.databaseId)
+            }
+            else -> KeePassKdbxService.trimInactiveCaches()
         }
     }
 
@@ -2014,6 +2031,9 @@ class PasswordViewModel(
             rollbackEntry = repository::deletePasswordEntryById,
             resolvePassword = { it.password }
         ) ?: return null
+        normalizedBoundEntry.bitwardenVaultId?.let { vaultId ->
+            bitwardenRepository?.requestLocalMutationSync(vaultId)
+        }
 
         if (includeDetailedLog) {
             val createDetails = mutableListOf<takagi.ru.monica.utils.FieldChange>()
@@ -2198,6 +2218,9 @@ class PasswordViewModel(
             updatedEntry = entryToUpdate,
             resolvePassword = { it.password }
         )
+        entryToUpdate.bitwardenVaultId?.let { vaultId ->
+            bitwardenRepository?.requestLocalMutationSync(vaultId)
+        }
         
         // 记录更新操作
         val changes = takagi.ru.monica.utils.OperationLogger.compareAndGetChanges(

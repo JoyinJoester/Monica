@@ -338,7 +338,8 @@ class MainActivity : BaseMonicaActivity() {
             securityManager,
             database.mdbxRemoteSourceDao(),
             database.passwordEntryDao(),
-            database.secureItemDao()
+            database.secureItemDao(),
+            database.customFieldDao()
         )
         val repository = PasswordRepository(
             database.passwordEntryDao(), 
@@ -556,6 +557,7 @@ fun MonicaApp(
             database.secureItemDao(),
             database.passkeyDao(),
             database.attachmentDao(),
+            database.customFieldDao(),
             securityManager
         )
     }
@@ -1697,6 +1699,7 @@ fun MonicaContent(
                     initialKeePassDatabaseId = pendingStorageDefaults?.keepassDatabaseId,
                     initialKeePassGroupPath = pendingStorageDefaults?.keepassGroupPath,
                     initialMdbxDatabaseId = pendingStorageDefaults?.mdbxDatabaseId,
+                    initialMdbxFolderId = pendingStorageDefaults?.mdbxFolderId,
                     initialBitwardenVaultId = pendingStorageDefaults?.bitwardenVaultId,
                     initialBitwardenFolderId = pendingStorageDefaults?.bitwardenFolderId
                 )
@@ -1727,6 +1730,7 @@ fun MonicaContent(
                 initialKeePassDatabaseId = pendingStorageDefaults?.keepassDatabaseId,
                 initialKeePassGroupPath = pendingStorageDefaults?.keepassGroupPath,
                 initialMdbxDatabaseId = pendingStorageDefaults?.mdbxDatabaseId,
+                initialMdbxFolderId = pendingStorageDefaults?.mdbxFolderId,
                 initialBitwardenVaultId = pendingStorageDefaults?.bitwardenVaultId,
                 initialBitwardenFolderId = pendingStorageDefaults?.bitwardenFolderId,
                 onNavigateBack = {
@@ -1759,6 +1763,7 @@ fun MonicaContent(
                 initialKeePassDatabaseId = pendingStorageDefaults?.keepassDatabaseId,
                 initialKeePassGroupPath = pendingStorageDefaults?.keepassGroupPath,
                 initialMdbxDatabaseId = pendingStorageDefaults?.mdbxDatabaseId,
+                initialMdbxFolderId = pendingStorageDefaults?.mdbxFolderId,
                 initialBitwardenVaultId = pendingStorageDefaults?.bitwardenVaultId,
                 initialBitwardenFolderId = pendingStorageDefaults?.bitwardenFolderId,
                 onNavigateBack = {

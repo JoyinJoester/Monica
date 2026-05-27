@@ -197,6 +197,43 @@ class EnhancedAutofillStructureParserV2 {
 
     private val autofillLabelCreditCardNumberTranslations = listOf(
         ".*(credit|debit|card)+.*number.*".toRegex(),
+        ".*(cc|card)[-_ ]?(no|num|number).*".toRegex(),
+        ".*银行卡号.*".toRegex(),
+        ".*信用卡号.*".toRegex(),
+        ".*卡号.*".toRegex(),
+    )
+
+    private val autofillLabelCreditCardSecurityCodeTranslations = listOf(
+        "cvv",
+        "cvc",
+        "security code",
+        "security-code",
+        "card code",
+        "card-code",
+        "安全码",
+        "验证码",
+    )
+
+    private val autofillLabelCreditCardExpirationTranslations = listOf(
+        "expiry",
+        "expiration",
+        "exp date",
+        "exp-date",
+        "valid thru",
+        "valid-thru",
+        "有效期",
+        "到期",
+    )
+
+    private val autofillLabelCreditCardHolderTranslations = listOf(
+        "cardholder",
+        "card holder",
+        "card-holder",
+        "holder name",
+        "holder-name",
+        "name on card",
+        "持卡人",
+        "持有人",
     )
 
     private val autofillLabelPersonFirstNameTranslations = listOf(
@@ -866,6 +903,62 @@ class EnhancedAutofillStructureParserV2 {
             reason = "type",
         )
 
+        "cc-number",
+        "cc_number",
+        "credit-card-number",
+        "credit_card_number",
+        "card-number",
+        "card_number",
+        -> ParsedItemBuilder(
+            accuracy = Accuracy.HIGH,
+            hint = InternalHint.CREDIT_CARD_NUMBER,
+            reason = "type",
+        )
+
+        "cc-csc",
+        "cc_csc",
+        "cc-cvv",
+        "cc_cvv",
+        "cvv",
+        "cvc",
+        "security-code",
+        "security_code",
+        -> ParsedItemBuilder(
+            accuracy = Accuracy.HIGH,
+            hint = InternalHint.CREDIT_CARD_SECURITY_CODE,
+            reason = "type",
+        )
+
+        "cc-exp-month",
+        "cc_exp_month",
+        -> ParsedItemBuilder(
+            accuracy = Accuracy.HIGH,
+            hint = InternalHint.CREDIT_CARD_EXPIRATION_MONTH,
+            reason = "type",
+        )
+
+        "cc-exp-year",
+        "cc_exp_year",
+        -> ParsedItemBuilder(
+            accuracy = Accuracy.HIGH,
+            hint = InternalHint.CREDIT_CARD_EXPIRATION_YEAR,
+            reason = "type",
+        )
+
+        "cc-exp",
+        "cc_exp",
+        "cc-exp-date",
+        "cc_exp_date",
+        "credit-card-expiration",
+        "credit_card_expiration",
+        "expiry",
+        "expiration",
+        -> ParsedItemBuilder(
+            accuracy = Accuracy.HIGH,
+            hint = InternalHint.CREDIT_CARD_EXPIRATION_DATE,
+            reason = "type",
+        )
+
         else -> null
     }.let { listOfNotNull(it) }
 
@@ -892,9 +985,29 @@ class EnhancedAutofillStructureParserV2 {
                 reason = "id",
             )
 
+            "cc_number" in id || "ccnum" in id || "card_number" in id || "cardnumber" in id ||
+                "card_no" in id || "cardno" in id || "credit_card_number" in id -> ParsedItemBuilder(
+                accuracy = Accuracy.HIGH,
+                hint = InternalHint.CREDIT_CARD_NUMBER,
+                reason = "id",
+            )
+
             "cardholder" in id || "holder_name" in id -> ParsedItemBuilder(
                 accuracy = Accuracy.HIGH,
                 hint = InternalHint.CREDIT_CARD_HOLDER_NAME,
+                reason = "id",
+            )
+
+            "cc_name" in id || "card_name" in id || "name_on_card" in id -> ParsedItemBuilder(
+                accuracy = Accuracy.HIGH,
+                hint = InternalHint.CREDIT_CARD_HOLDER_NAME,
+                reason = "id",
+            )
+
+            "cc_csc" in id || "cc_cvv" in id || "cvv" in id || "cvc" in id ||
+                "security_code" in id || "securitycode" in id -> ParsedItemBuilder(
+                accuracy = Accuracy.HIGH,
+                hint = InternalHint.CREDIT_CARD_SECURITY_CODE,
                 reason = "id",
             )
 
@@ -907,6 +1020,12 @@ class EnhancedAutofillStructureParserV2 {
             "cc_exp_year" in id || "exp_year" in id -> ParsedItemBuilder(
                 accuracy = Accuracy.HIGH,
                 hint = InternalHint.CREDIT_CARD_EXPIRATION_YEAR,
+                reason = "id",
+            )
+
+            "cc_exp" in id || "exp_date" in id || "expiry" in id || "expiration" in id -> ParsedItemBuilder(
+                accuracy = Accuracy.HIGH,
+                hint = InternalHint.CREDIT_CARD_EXPIRATION_DATE,
                 reason = "id",
             )
 
@@ -1009,6 +1128,27 @@ class EnhancedAutofillStructureParserV2 {
                 ParsedItemBuilder(
                     accuracy = Accuracy.MEDIUM,
                     hint = InternalHint.CREDIT_CARD_NUMBER,
+                    reason = "label:$hint",
+                )
+
+            autofillLabelCreditCardSecurityCodeTranslations.any { it in hint } ->
+                ParsedItemBuilder(
+                    accuracy = Accuracy.MEDIUM,
+                    hint = InternalHint.CREDIT_CARD_SECURITY_CODE,
+                    reason = "label:$hint",
+                )
+
+            autofillLabelCreditCardExpirationTranslations.any { it in hint } ->
+                ParsedItemBuilder(
+                    accuracy = Accuracy.MEDIUM,
+                    hint = InternalHint.CREDIT_CARD_EXPIRATION_DATE,
+                    reason = "label:$hint",
+                )
+
+            autofillLabelCreditCardHolderTranslations.any { it in hint } ->
+                ParsedItemBuilder(
+                    accuracy = Accuracy.MEDIUM,
+                    hint = InternalHint.CREDIT_CARD_HOLDER_NAME,
                     reason = "label:$hint",
                 )
 
@@ -1172,6 +1312,8 @@ class EnhancedAutofillStructureParserV2 {
                         inputType,
                         InputType.TYPE_NUMBER_VARIATION_NORMAL,
                     ) -> {
+                        extractOfType(node.idType.orEmpty()).let(out::addAll)
+                        extractOfId(node.idEntry.orEmpty()).let(out::addAll)
                         out += ParsedItemBuilder(
                             accuracy = if (importance == View.IMPORTANT_FOR_AUTOFILL_YES) {
                                 Accuracy.MEDIUM

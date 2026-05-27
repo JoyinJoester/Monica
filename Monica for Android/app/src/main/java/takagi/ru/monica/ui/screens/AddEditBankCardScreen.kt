@@ -81,6 +81,7 @@ fun AddEditBankCardScreen(
     initialKeePassDatabaseId: Long? = null,
     initialKeePassGroupPath: String? = null,
     initialMdbxDatabaseId: Long? = null,
+    initialMdbxFolderId: String? = null,
     initialBitwardenVaultId: Long? = null,
     initialBitwardenFolderId: String? = null,
     showTypeSwitcher: Boolean = false,
@@ -152,6 +153,7 @@ fun AddEditBankCardScreen(
     var keepassDatabaseId by rememberSaveable { mutableStateOf<Long?>(null) }
     var keepassGroupPath by rememberSaveable { mutableStateOf<String?>(null) }
     var mdbxDatabaseId by rememberSaveable { mutableStateOf(initialMdbxDatabaseId) }
+    var mdbxFolderId by rememberSaveable { mutableStateOf(initialMdbxFolderId) }
     var bitwardenVaultId by rememberSaveable { mutableStateOf<Long?>(null) }
     var bitwardenFolderId by rememberSaveable { mutableStateOf<String?>(null) }
     var hasAppliedInitialStorage by rememberSaveable { mutableStateOf(false) }
@@ -187,6 +189,7 @@ fun AddEditBankCardScreen(
                 keepassDatabaseId = null
                 keepassGroupPath = null
                 mdbxDatabaseId = null
+                mdbxFolderId = null
                 bitwardenVaultId = null
                 bitwardenFolderId = null
             }
@@ -195,6 +198,7 @@ fun AddEditBankCardScreen(
                 keepassDatabaseId = primaryTarget.databaseId
                 keepassGroupPath = primaryTarget.groupPath
                 mdbxDatabaseId = null
+                mdbxFolderId = null
                 bitwardenVaultId = null
                 bitwardenFolderId = null
             }
@@ -203,6 +207,7 @@ fun AddEditBankCardScreen(
                 keepassDatabaseId = null
                 keepassGroupPath = null
                 mdbxDatabaseId = primaryTarget.databaseId
+                mdbxFolderId = primaryTarget.folderId
                 bitwardenVaultId = null
                 bitwardenFolderId = null
             }
@@ -211,6 +216,7 @@ fun AddEditBankCardScreen(
                 keepassDatabaseId = null
                 keepassGroupPath = null
                 mdbxDatabaseId = null
+                mdbxFolderId = null
                 bitwardenVaultId = primaryTarget.vaultId
                 bitwardenFolderId = primaryTarget.folderId
             }
@@ -219,6 +225,7 @@ fun AddEditBankCardScreen(
                 keepassDatabaseId = null
                 keepassGroupPath = null
                 mdbxDatabaseId = null
+                mdbxFolderId = null
                 bitwardenVaultId = null
                 bitwardenFolderId = null
             }
@@ -248,6 +255,7 @@ fun AddEditBankCardScreen(
         initialKeePassDatabaseId,
         initialKeePassGroupPath,
         initialMdbxDatabaseId,
+        initialMdbxFolderId,
         initialBitwardenVaultId,
         initialBitwardenFolderId,
         rememberedStorageTarget,
@@ -256,11 +264,13 @@ fun AddEditBankCardScreen(
         if (cardId != null || hasAppliedInitialStorage) return@LaunchedEffect
         val remembered = rememberedStorageTarget
         val explicitGroupPath = initialKeePassGroupPath?.takeIf { it.isNotBlank() }
+        val explicitMdbxFolderId = initialMdbxFolderId?.takeIf { it.isNotBlank() }
         val explicitFolderId = initialBitwardenFolderId?.takeIf { it.isNotBlank() }
         val hasExplicitInitialStorage = initialCategoryId != null ||
             initialKeePassDatabaseId != null ||
             explicitGroupPath != null ||
             initialMdbxDatabaseId != null ||
+            explicitMdbxFolderId != null ||
             initialBitwardenVaultId != null ||
             explicitFolderId != null
         val filterKeepassDatabaseId = when (cardWalletCategoryFilterState?.type) {
@@ -297,6 +307,11 @@ fun AddEditBankCardScreen(
         } else {
             remembered?.mdbxDatabaseId
         }
+        mdbxFolderId = if (hasExplicitInitialStorage) {
+            explicitMdbxFolderId
+        } else {
+            remembered?.mdbxFolderId
+        }
         bitwardenVaultId = if (hasExplicitInitialStorage) {
             initialBitwardenVaultId
         } else {
@@ -314,6 +329,7 @@ fun AddEditBankCardScreen(
                     keepassDatabaseId = keepassDatabaseId,
                     keepassGroupPath = keepassGroupPath,
                     mdbxDatabaseId = mdbxDatabaseId,
+                    mdbxFolderId = mdbxFolderId,
                     bitwardenVaultId = bitwardenVaultId,
                     bitwardenFolderId = bitwardenFolderId
                 )
@@ -443,18 +459,29 @@ fun AddEditBankCardScreen(
     val save: () -> Unit = saveAction@{
         if (isSaving || cardNumber.isBlank()) return@saveAction
         isSaving = true // 防止重复点击
-        val effectiveTargets = selectedStorageTargets.toList().ifEmpty {
+        val availableMdbxDatabaseIds = mdbxDatabases.map { it.id }.toSet()
+        val effectiveTargets = selectedStorageTargets
+            .toList()
+            .filterNot { target ->
+                target is StorageTarget.Mdbx && target.databaseId !in availableMdbxDatabaseIds
+            }
+            .ifEmpty {
             listOf(
                 buildMultiStorageTarget(
                     categoryId = selectedCategoryId,
                     keepassDatabaseId = keepassDatabaseId,
                     keepassGroupPath = keepassGroupPath,
                     mdbxDatabaseId = mdbxDatabaseId,
+                    mdbxFolderId = mdbxFolderId,
                     bitwardenVaultId = bitwardenVaultId,
                     bitwardenFolderId = bitwardenFolderId
                 )
             )
         }
+            .filterNot { target ->
+                target is StorageTarget.Mdbx && target.databaseId !in availableMdbxDatabaseIds
+            }
+            .normalizedStorageTargets()
         val primaryTarget = effectiveTargets.first()
         val syncVaultIds = effectiveTargets
             .filterIsInstance<StorageTarget.Bitwarden>()
@@ -509,6 +536,7 @@ fun AddEditBankCardScreen(
                     keepassDatabaseId = (primaryTarget as? StorageTarget.KeePass)?.databaseId,
                     keepassGroupPath = (primaryTarget as? StorageTarget.KeePass)?.groupPath,
                     mdbxDatabaseId = (primaryTarget as? StorageTarget.Mdbx)?.databaseId,
+                    mdbxFolderId = (primaryTarget as? StorageTarget.Mdbx)?.folderId,
                     bitwardenVaultId = (primaryTarget as? StorageTarget.Bitwarden)?.vaultId,
                     bitwardenFolderId = (primaryTarget as? StorageTarget.Bitwarden)?.folderId
                 )

@@ -33,6 +33,7 @@ import takagi.ru.monica.data.KeePassRemoteProviderType
 import takagi.ru.monica.data.KeePassStorageLocation
 import takagi.ru.monica.data.KeePassSyncStatus
 import takagi.ru.monica.data.KeepassRemoteSource
+import takagi.ru.monica.data.KeepassRemoteSyncState
 import takagi.ru.monica.data.isRemoteSource
 import takagi.ru.monica.data.toSourceType
 import takagi.ru.monica.data.LocalKeePassDatabase
@@ -70,6 +71,7 @@ class LocalKeePassViewModel(
 ) : AndroidViewModel(application) {
     companion object {
         private const val TAG = "LocalKeePassViewModel"
+        private const val VISIBLE_REMOTE_AUTO_SYNC_THROTTLE_MS = 60_000L
     }
     
     private val context: Context get() = getApplication()
@@ -121,6 +123,9 @@ class LocalKeePassViewModel(
             syncStateDao = appDatabase.keepassRemoteSyncStateDao()
         )
     }
+    private val visibleRemoteSyncDatabaseIds = mutableSetOf<Long>()
+    private val visibleRemoteSyncLastStartedAt = mutableMapOf<Long, Long>()
+    private val visibleRemoteSyncMutex = Mutex()
 
     init {
         autoResolveWebDavConflictDatabases()
@@ -169,6 +174,10 @@ class LocalKeePassViewModel(
         return _groupsByDatabase
             .map { cache -> cache[databaseId].orEmpty() }
             .onStart { refreshGroups(databaseId) }
+    }
+
+    fun getRemoteSyncState(databaseId: Long): Flow<KeepassRemoteSyncState?> {
+        return appDatabase.keepassRemoteSyncStateDao().getStateFlow(databaseId)
     }
 
     fun refreshGroups(databaseId: Long) {
@@ -1314,6 +1323,60 @@ class LocalKeePassViewModel(
         }
     }
 
+    fun autoSyncVisibleRemoteDatabase(databaseId: Long) {
+        synchronized(visibleRemoteSyncDatabaseIds) {
+            if (!visibleRemoteSyncDatabaseIds.add(databaseId)) {
+                return
+            }
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            var mutexLocked = false
+            try {
+                if (!visibleRemoteSyncMutex.tryLock()) {
+                    return@launch
+                }
+                mutexLocked = true
+
+                val database = dao.getDatabaseById(databaseId)
+                if (database == null || !database.isRemoteSource()) {
+                    return@launch
+                }
+                if (database.lastSyncStatus == KeePassSyncStatus.CONFLICT) {
+                    return@launch
+                }
+
+                val now = SystemClock.elapsedRealtime()
+                val shouldBypassThrottle = database.lastSyncStatus == KeePassSyncStatus.PENDING_UPLOAD ||
+                    database.lastSyncStatus == KeePassSyncStatus.FAILED ||
+                    database.lastSyncStatus == KeePassSyncStatus.REMOTE_CHANGED
+                val lastStartedAt = synchronized(visibleRemoteSyncLastStartedAt) {
+                    visibleRemoteSyncLastStartedAt[databaseId]
+                }
+                if (!shouldBypassThrottle &&
+                    lastStartedAt != null &&
+                    now - lastStartedAt < VISIBLE_REMOTE_AUTO_SYNC_THROTTLE_MS
+                ) {
+                    return@launch
+                }
+                synchronized(visibleRemoteSyncLastStartedAt) {
+                    visibleRemoteSyncLastStartedAt[databaseId] = now
+                }
+
+                syncRemoteDatabaseInternal(databaseId)
+            } catch (error: Exception) {
+                handleSyncRemoteFailure(databaseId, error)
+                Log.w(TAG, "Visible KeePass remote auto-sync failed: databaseId=$databaseId", error)
+            } finally {
+                if (mutexLocked) {
+                    visibleRemoteSyncMutex.unlock()
+                }
+                synchronized(visibleRemoteSyncDatabaseIds) {
+                    visibleRemoteSyncDatabaseIds.remove(databaseId)
+                }
+            }
+        }
+    }
+
     private suspend fun syncRemoteDatabaseInternal(databaseId: Long): RemoteSyncResult {
         val database = dao.getDatabaseById(databaseId)
             ?: throw Exception("数据库不存在")
@@ -1342,6 +1405,7 @@ class LocalKeePassViewModel(
         val hash = GoogleDriveKeePassSupport.sha256Hex(bytes)
         val baseHash = syncState?.baseHash
         val localHasChanges = baseHash == null || baseHash != hash
+        remoteSyncService.markComparing(databaseId, hash)
         val remoteStat = runCatching { fileSource.stat() }.getOrDefault(takagi.ru.monica.utils.FileSourceStat())
         val knownRemoteVersion = syncState?.remoteEtag ?: syncState?.remoteVersionToken
         val currentRemoteVersion = remoteStat.etag ?: remoteStat.versionToken
@@ -1350,6 +1414,7 @@ class LocalKeePassViewModel(
             !currentRemoteVersion.isNullOrBlank() &&
             knownRemoteVersion != currentRemoteVersion
         ) {
+            remoteSyncService.markDownloading(databaseId, hash)
             val remoteBytes = fileSource.read()
             if (!localHasChanges) {
                 val remoteHash = GoogleDriveKeePassSupport.sha256Hex(remoteBytes)
@@ -1426,7 +1491,7 @@ class LocalKeePassViewModel(
             return RemoteSyncResult(syncedDatabaseName, syncMessage)
         }
 
-        remoteSyncService.markLocalChanges(databaseId, hash)
+        remoteSyncService.markUploadInProgress(databaseId, hash)
         val writeResult = when (database.sourceType) {
             KeePassDatabaseSourceType.REMOTE_ONEDRIVE -> fileSource.write(
                 bytes,
@@ -1456,7 +1521,11 @@ class LocalKeePassViewModel(
                 ?.takeIf { it.exists() }
                 ?.readBytes()
                 ?.let(GoogleDriveKeePassSupport::sha256Hex)
-            if (workingHash != null && database.lastSyncStatus != KeePassSyncStatus.CONFLICT) {
+            val syncState = appDatabase.keepassRemoteSyncStateDao().getState(databaseId)
+            val hasLocalChanges = syncState?.hasLocalChanges == true ||
+                database.lastSyncStatus == KeePassSyncStatus.PENDING_UPLOAD ||
+                (workingHash != null && syncState?.baseHash != null && syncState.baseHash != workingHash)
+            if (hasLocalChanges && workingHash != null && database.lastSyncStatus != KeePassSyncStatus.CONFLICT) {
                 remoteSyncService.markLocalChanges(databaseId, workingHash)
             }
             if (database.lastSyncStatus != KeePassSyncStatus.CONFLICT) {

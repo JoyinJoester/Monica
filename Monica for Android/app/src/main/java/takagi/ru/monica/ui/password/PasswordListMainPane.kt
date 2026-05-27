@@ -48,6 +48,8 @@ internal fun PasswordListMainPane(
     onQuickStatusTransferClick: (() -> Unit)? = null,
     quickStatusDeleteState: PasswordBatchDeleteGlobalProgressState? = null,
     onQuickStatusDeleteClick: (() -> Unit)? = null,
+    quickStatusBitwardenSyncState: QuickStatusBitwardenSyncState? = null,
+    quickStatusKeePassSyncState: QuickStatusKeePassSyncState? = null,
     currentFilter: CategoryFilter,
     onNavigateFilter: (CategoryFilter) -> Unit,
     shouldGateInitialPasswordFirstFrame: Boolean,
@@ -124,7 +126,9 @@ internal fun PasswordListMainPane(
                     transferState = quickStatusTransferState,
                     onTransferStatusClick = onQuickStatusTransferClick,
                     deleteState = quickStatusDeleteState,
-                    onDeleteStatusClick = onQuickStatusDeleteClick
+                    onDeleteStatusClick = onQuickStatusDeleteClick,
+                    bitwardenSyncState = quickStatusBitwardenSyncState,
+                    keePassSyncState = quickStatusKeePassSyncState
                 )
             }
 

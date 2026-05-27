@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.data.MdbxUnlockMethod
@@ -93,6 +94,12 @@ fun MdbxWebDavCreateScreen(
 
     LaunchedEffect(Unit) {
         viewModel.clearOperationState()
+    }
+    LaunchedEffect(operationState) {
+        if (operationState is MdbxViewModel.OperationState.Success) {
+            delay(1200)
+            onNavigateBack()
+        }
     }
 
     Scaffold(

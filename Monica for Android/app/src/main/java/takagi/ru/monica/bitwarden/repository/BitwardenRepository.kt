@@ -52,6 +52,7 @@ import takagi.ru.monica.bitwarden.service.BitwardenHistoricalTotpRepairService
 import takagi.ru.monica.bitwarden.service.BitwardenSyncService
 import takagi.ru.monica.bitwarden.service.LoginResult
 import takagi.ru.monica.bitwarden.service.SyncResult as ServiceSyncResult
+import takagi.ru.monica.bitwarden.sync.BitwardenMutationSyncBridge
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.bitwarden.*
@@ -1203,6 +1204,15 @@ class BitwardenRepository(private val context: Context) {
         }
     }
 
+    fun requestLocalMutationSync(vaultId: Long) {
+        BitwardenMutationSyncBridge.requestLocalMutationSync(
+            context = context,
+            vaultId = vaultId,
+            requiresWifi = isSyncOnWifiOnly,
+            autoSyncEnabled = isAutoSyncEnabled
+        )
+    }
+
     suspend fun queueCipherDelete(
         vaultId: Long,
         cipherId: String,
@@ -1216,6 +1226,7 @@ class BitwardenRepository(private val context: Context) {
             // 已有待删除操作时直接复用，保证幂等。
             val existingDelete = pendingOpDao.findActiveDeleteByCipher(vaultId, cipherId)
             if (existingDelete != null) {
+                requestLocalMutationSync(vaultId)
                 return@withContext Result.success(Unit)
             }
 
@@ -1238,6 +1249,7 @@ class BitwardenRepository(private val context: Context) {
                 )
             )
 
+            requestLocalMutationSync(vault.id)
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "加入 Bitwarden 删除队列失败", e)
@@ -1257,12 +1269,14 @@ class BitwardenRepository(private val context: Context) {
 
             val existingRestore = pendingOpDao.findActiveRestoreByCipher(vaultId, cipherId)
             if (existingRestore != null) {
+                requestLocalMutationSync(vaultId)
                 return@withContext Result.success(BitwardenRestoreQueueOutcome.REMOTE_RESTORE_ALREADY_QUEUED)
             }
 
             val existingDelete = pendingOpDao.findActiveDeleteByCipher(vaultId, cipherId)
             if (existingDelete != null) {
                 pendingOpDao.cancelActiveDeleteByCipher(vaultId, cipherId)
+                requestLocalMutationSync(vaultId)
                 return@withContext Result.success(BitwardenRestoreQueueOutcome.CANCELED_PENDING_DELETE)
             }
 
@@ -1283,6 +1297,7 @@ class BitwardenRepository(private val context: Context) {
                 )
             )
 
+            requestLocalMutationSync(vault.id)
             Result.success(BitwardenRestoreQueueOutcome.ENQUEUED_REMOTE_RESTORE)
         } catch (e: Exception) {
             Log.e(TAG, "加入 Bitwarden 恢复队列失败", e)

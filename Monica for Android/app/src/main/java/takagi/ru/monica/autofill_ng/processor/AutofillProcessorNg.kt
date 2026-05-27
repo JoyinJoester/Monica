@@ -48,7 +48,8 @@ class AutofillProcessorNg(
 
         val filledData = filledDataBuilder.build(
             request = request,
-            passwords = passwords
+            passwords = passwords,
+            requireAuthentication = requireAuthentication
         )
         return fillResponseBuilder.build(
             request = request,

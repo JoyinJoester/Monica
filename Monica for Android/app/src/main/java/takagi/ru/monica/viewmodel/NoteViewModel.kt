@@ -74,6 +74,10 @@ class NoteViewModel(
 
     private val bitwardenRepository = context?.let { BitwardenRepository.getInstance(it.applicationContext) }
 
+    private fun requestBitwardenMutationSync(vaultId: Long?) {
+        vaultId?.let { bitwardenRepository?.requestLocalMutationSync(it) }
+    }
+
     private data class KeePassMutationIdentity(
         val groupPath: String?,
         val entryUuid: String?,
@@ -260,6 +264,7 @@ class NoteViewModel(
                 insertItem = repository::insertItem,
                 rollbackItem = repository::deleteItemById
             ) ?: return@launch
+            requestBitwardenMutationSync(bitwardenVaultId)
             
             // 记录创建操作
             OperationLogger.logCreate(
@@ -342,6 +347,7 @@ class NoteViewModel(
                 updatedAt = Date()
             )
             repository.updateItem(item)
+            requestBitwardenMutationSync(bitwardenVaultId)
             val removedImageIds = existingItem
                 ?.let { extractImageRefs(it) - extractImageRefs(item) }
                 .orEmpty()
@@ -694,6 +700,7 @@ class NoteViewModel(
             updatedAt = Date()
         )
         repository.updateItem(updated)
+        requestBitwardenMutationSync(bitwardenVaultId)
         keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = item, updatedItem = updated)
         return true
     }

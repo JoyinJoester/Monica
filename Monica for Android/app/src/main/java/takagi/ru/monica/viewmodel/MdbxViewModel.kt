@@ -23,6 +23,8 @@ import takagi.ru.monica.attachments.data.AttachmentDao
 import takagi.ru.monica.attachments.model.Attachment
 import takagi.ru.monica.attachments.model.AttachmentDownloadState
 import takagi.ru.monica.attachments.model.AttachmentSource
+import takagi.ru.monica.data.CustomField
+import takagi.ru.monica.data.CustomFieldDao
 import takagi.ru.monica.data.ItemType
 import takagi.ru.monica.data.LocalMdbxDatabase
 import takagi.ru.monica.data.LocalMdbxDatabaseDao
@@ -80,6 +82,7 @@ class MdbxViewModel(
     private val secureItemDao: SecureItemDao,
     private val passkeyDao: PasskeyDao,
     private val attachmentDao: AttachmentDao,
+    private val customFieldDao: CustomFieldDao,
     private val securityManager: SecurityManager
 ) : AndroidViewModel(application) {
 
@@ -90,7 +93,8 @@ class MdbxViewModel(
         securityManager,
         remoteSourceDao,
         passwordEntryDao,
-        secureItemDao
+        secureItemDao,
+        customFieldDao
     )
 
     private val _allDatabasesLoaded = MutableStateFlow(false)
@@ -2053,11 +2057,45 @@ class MdbxViewModel(
             sortOrder = existing?.sortOrder ?: 0,
             isGroupCover = existing?.isGroupCover ?: false
         )
-        if (existing != null) {
+        val localPasswordId = if (existing != null) {
             passwordEntryDao.updatePasswordEntry(entry)
-            return existing.id
+            existing.id
+        } else {
+            passwordEntryDao.insertPasswordEntry(entry)
         }
-        return passwordEntryDao.insertPasswordEntry(entry)
+
+        restoreCustomFields(localPasswordId, payload)
+        return localPasswordId
+    }
+
+    private suspend fun restoreCustomFields(entryId: Long, payload: JSONObject) {
+        val fields = payload.optJSONArray("custom_fields")
+            ?: payload.optJSONArray("customFields")
+            ?: return
+        val restored = buildList {
+            for (index in 0 until fields.length()) {
+                val item = fields.optJSONObject(index) ?: continue
+                val title = item.optString("title")
+                    .ifBlank { item.optString("label") }
+                    .trim()
+                if (title.isBlank()) continue
+                add(
+                    CustomField(
+                        id = 0L,
+                        entryId = entryId,
+                        title = title,
+                        value = item.optString("value"),
+                        isProtected = item.optBoolean("is_protected", item.optBoolean("isProtected", false)),
+                        sortOrder = if (item.has("sort_order")) {
+                            item.optInt("sort_order", index)
+                        } else {
+                            item.optInt("sortOrder", index)
+                        }
+                    )
+                )
+            }
+        }
+        customFieldDao.replaceFieldsForEntry(entryId, restored)
     }
 
     private suspend fun importSecureItem(

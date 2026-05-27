@@ -3,6 +3,7 @@ package takagi.ru.monica.bitwarden.sync
 import android.content.Context
 import android.util.Log
 import androidx.work.*
+import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import java.util.concurrent.TimeUnit
 
 /**
@@ -30,6 +31,14 @@ class BitwardenSyncWorker(
         
         const val SYNC_TYPE_FULL = "full"
         const val SYNC_TYPE_QUEUE = "queue"
+
+        private fun oneTimeWorkName(vaultId: Long?): String {
+            return if (vaultId != null && vaultId > 0) {
+                "${WORK_NAME_ONE_TIME}_vault_$vaultId"
+            } else {
+                WORK_NAME_ONE_TIME
+            }
+        }
         
         /**
          * 创建一次性同步请求
@@ -145,7 +154,7 @@ class BitwardenSyncWorker(
             
             WorkManager.getInstance(context)
                 .enqueueUniqueWork(
-                    WORK_NAME_ONE_TIME,
+                    oneTimeWorkName(vaultId),
                     ExistingWorkPolicy.REPLACE,
                     request
                 )
@@ -161,23 +170,20 @@ class BitwardenSyncWorker(
         Log.d(TAG, "Starting sync work: type=$syncType, vaultId=$vaultId")
         
         return try {
-            // 获取 SyncQueueManager 实例
-            // 注意：实际使用时需要通过依赖注入获取
-            val syncManager = getSyncQueueManager()
-            
-            if (syncManager == null) {
-                Log.w(TAG, "SyncQueueManager not available, skip this run")
-                return Result.success()
-            }
-            
             when (syncType) {
                 SYNC_TYPE_QUEUE -> {
-                    // 处理待同步队列
-                    syncManager.processQueue()
+                    if (vaultId != null) {
+                        syncVault(vaultId)
+                    } else {
+                        syncAllUnlockedVaults()
+                    }
                 }
                 SYNC_TYPE_FULL -> {
-                    // 全量同步（从服务器拉取）
-                    // TODO: 实现全量同步逻辑
+                    if (vaultId != null) {
+                        syncVault(vaultId)
+                    } else {
+                        Log.w(TAG, "Full sync requested without vaultId")
+                    }
                 }
             }
             
@@ -205,6 +211,37 @@ class BitwardenSyncWorker(
         // TODO: 通过依赖注入获取实例
         // 临时返回 null，需要在应用初始化时设置
         return SyncQueueManagerHolder.instance
+    }
+
+    private suspend fun syncVault(vaultId: Long) {
+        when (val result = BitwardenRepository.getInstance(applicationContext).sync(vaultId)) {
+            is BitwardenRepository.SyncResult.Success -> {
+                Log.d(
+                    TAG,
+                    "Repository sync completed: vaultId=$vaultId, applied=${result.appliedChangeCount}"
+                )
+            }
+            is BitwardenRepository.SyncResult.EmptyVaultBlocked -> {
+                Log.w(TAG, "Repository sync blocked by empty vault protection: vaultId=$vaultId")
+            }
+            is BitwardenRepository.SyncResult.Error -> {
+                throw IllegalStateException(result.message)
+            }
+        }
+    }
+
+    private suspend fun syncAllUnlockedVaults() {
+        val repository = BitwardenRepository.getInstance(applicationContext)
+        val unlockedVaults = repository.getAllVaults().filter { vault ->
+            repository.isVaultUnlocked(vault.id)
+        }
+        if (unlockedVaults.isEmpty()) {
+            Log.d(TAG, "No unlocked Bitwarden vaults available for background sync")
+            return
+        }
+        unlockedVaults.forEach { vault ->
+            syncVault(vault.id)
+        }
     }
 }
 

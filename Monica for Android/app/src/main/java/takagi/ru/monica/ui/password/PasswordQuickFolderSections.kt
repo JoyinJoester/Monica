@@ -54,6 +54,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
+import takagi.ru.monica.data.KeePassSyncPhase
+import takagi.ru.monica.data.KeePassSyncStatus
 import takagi.ru.monica.data.LocalMdbxDatabase
 import takagi.ru.monica.data.MdbxSyncStatus
 import takagi.ru.monica.ui.components.QuickStatusTransferBar
@@ -77,6 +79,25 @@ internal data class MdbxPathSyncState(
     val onSync: () -> Unit
 )
 
+internal data class QuickStatusBitwardenSyncState(
+    val vaultName: String,
+    val isRunning: Boolean
+)
+
+internal data class QuickStatusKeePassSyncState(
+    val databaseId: Long,
+    val databaseName: String,
+    val status: KeePassSyncStatus,
+    val phase: KeePassSyncPhase?,
+    val onSync: () -> Unit
+) {
+    val isRunning: Boolean
+        get() = status == KeePassSyncStatus.SYNCING ||
+            phase == KeePassSyncPhase.UPLOADING ||
+            phase == KeePassSyncPhase.DOWNLOADING ||
+            phase == KeePassSyncPhase.COMPARING
+}
+
 internal fun LocalMdbxDatabase.mdbxPathPendingSyncCount(): Int {
     val pending = when (runCatching { MdbxSyncStatus.valueOf(lastSyncStatus) }.getOrNull()) {
         MdbxSyncStatus.PENDING_UPLOAD,
@@ -97,7 +118,9 @@ internal fun PasswordQuickFolderBreadcrumbBanner(
     transferState: PasswordBatchTransferGlobalProgressState? = null,
     onTransferStatusClick: (() -> Unit)? = null,
     deleteState: PasswordBatchDeleteGlobalProgressState? = null,
-    onDeleteStatusClick: (() -> Unit)? = null
+    onDeleteStatusClick: (() -> Unit)? = null,
+    bitwardenSyncState: QuickStatusBitwardenSyncState? = null,
+    keePassSyncState: QuickStatusKeePassSyncState? = null
 ) {
     val sourceLabel = buildQuickStatusSourceLabel(breadcrumbs = breadcrumbs)
     val statusMode = when {
@@ -105,6 +128,8 @@ internal fun PasswordQuickFolderBreadcrumbBanner(
         transferState?.phase == PasswordBatchTransferPhase.SUCCESS -> PasswordQuickStatusMode.TRANSFER_SUCCESS
         deleteState?.phase == PasswordBatchDeletePhase.RUNNING -> PasswordQuickStatusMode.DELETE_RUNNING
         deleteState?.phase == PasswordBatchDeletePhase.SUCCESS -> PasswordQuickStatusMode.DELETE_SUCCESS
+        keePassSyncState != null -> PasswordQuickStatusMode.KEEPASS_SYNC
+        bitwardenSyncState != null -> PasswordQuickStatusMode.BITWARDEN_SYNC
         else -> PasswordQuickStatusMode.BREADCRUMB
     }
     AnimatedContent(
@@ -122,6 +147,8 @@ internal fun PasswordQuickFolderBreadcrumbBanner(
     ) { activeMode ->
         val activeTransferState = transferState
         val activeDeleteState = deleteState
+        val activeBitwardenSyncState = bitwardenSyncState
+        val activeKeePassSyncState = keePassSyncState
         if (
             (activeMode == PasswordQuickStatusMode.TRANSFER_RUNNING ||
                 activeMode == PasswordQuickStatusMode.TRANSFER_SUCCESS) &&
@@ -144,6 +171,16 @@ internal fun PasswordQuickFolderBreadcrumbBanner(
                     onDeleteStatusClick?.invoke()
                 }
             )
+        } else if (
+            activeMode == PasswordQuickStatusMode.KEEPASS_SYNC &&
+            activeKeePassSyncState != null
+        ) {
+            QuickStatusKeePassSyncBar(state = activeKeePassSyncState)
+        } else if (
+            activeMode == PasswordQuickStatusMode.BITWARDEN_SYNC &&
+            activeBitwardenSyncState != null
+        ) {
+            QuickStatusBitwardenSyncBar(state = activeBitwardenSyncState)
         } else {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -170,7 +207,189 @@ private enum class PasswordQuickStatusMode {
     TRANSFER_RUNNING,
     TRANSFER_SUCCESS,
     DELETE_RUNNING,
-    DELETE_SUCCESS
+    DELETE_SUCCESS,
+    KEEPASS_SYNC,
+    BITWARDEN_SYNC
+}
+
+@Composable
+private fun QuickStatusKeePassSyncBar(
+    state: QuickStatusKeePassSyncState,
+    modifier: Modifier = Modifier
+) {
+    val spin by rememberInfiniteTransition(label = "keepass-quick-status-spin")
+        .animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 900, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "keepass-quick-status-rotation"
+        )
+    val rotation = if (state.isRunning) spin else 0f
+    val containerColor = when (state.status) {
+        KeePassSyncStatus.CONFLICT,
+        KeePassSyncStatus.FAILED,
+        KeePassSyncStatus.REMOTE_CHANGED -> MaterialTheme.colorScheme.errorContainer
+        KeePassSyncStatus.PENDING_UPLOAD -> MaterialTheme.colorScheme.tertiaryContainer
+        else -> MaterialTheme.colorScheme.primaryContainer
+    }
+    val contentColor = when (state.status) {
+        KeePassSyncStatus.CONFLICT,
+        KeePassSyncStatus.FAILED,
+        KeePassSyncStatus.REMOTE_CHANGED -> MaterialTheme.colorScheme.onErrorContainer
+        KeePassSyncStatus.PENDING_UPLOAD -> MaterialTheme.colorScheme.onTertiaryContainer
+        else -> MaterialTheme.colorScheme.onPrimaryContainer
+    }
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(36.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Surface(
+            modifier = Modifier
+                .weight(1f)
+                .height(36.dp),
+            shape = RoundedCornerShape(14.dp),
+            color = containerColor.copy(alpha = 0.9f),
+            contentColor = contentColor,
+            tonalElevation = 2.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = keepassQuickSyncStatusLabel(state),
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = state.databaseName.ifBlank { "KeePass" },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = contentColor.copy(alpha = 0.82f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+        Surface(
+            shape = CircleShape,
+            color = containerColor,
+            contentColor = contentColor,
+            tonalElevation = 2.dp,
+            modifier = Modifier.size(36.dp)
+        ) {
+            IconButton(
+                onClick = state.onSync,
+                modifier = Modifier.size(36.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Sync,
+                    contentDescription = "同步 KeePass 数据库",
+                    modifier = Modifier
+                        .size(19.dp)
+                        .graphicsLayer { rotationZ = rotation }
+                )
+            }
+        }
+    }
+}
+
+internal fun keepassQuickSyncStatusLabel(state: QuickStatusKeePassSyncState): String {
+    if (state.isRunning) return "正在同步"
+    return when (state.status) {
+        KeePassSyncStatus.PENDING_UPLOAD -> "等待上传"
+        KeePassSyncStatus.REMOTE_CHANGED -> "远端有更新"
+        KeePassSyncStatus.CONFLICT -> "同步冲突"
+        KeePassSyncStatus.FAILED -> "同步失败"
+        KeePassSyncStatus.SYNCING -> "正在同步"
+        KeePassSyncStatus.IN_SYNC -> "已同步"
+        KeePassSyncStatus.LOCAL_ONLY -> "本地数据库"
+    }
+}
+
+@Composable
+private fun QuickStatusBitwardenSyncBar(
+    state: QuickStatusBitwardenSyncState,
+    modifier: Modifier = Modifier
+) {
+    val spin by rememberInfiniteTransition(label = "bitwarden-quick-status-spin")
+        .animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 900, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "bitwarden-quick-status-rotation"
+        )
+    val rotation = if (state.isRunning) spin else 0f
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(36.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Surface(
+            modifier = Modifier
+                .weight(1f)
+                .height(36.dp),
+            shape = RoundedCornerShape(14.dp),
+            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.88f),
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            tonalElevation = 2.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (state.isRunning) "正在同步" else "等待同步",
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = state.vaultName.ifBlank { "Bitwarden" },
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            tonalElevation = 2.dp,
+            modifier = Modifier.size(36.dp)
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Icon(
+                    imageVector = Icons.Default.Sync,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(19.dp)
+                        .graphicsLayer { rotationZ = rotation }
+                )
+            }
+        }
+    }
 }
 
 private fun PasswordBatchTransferGlobalProgressState.toQuickStatusTransferState(
