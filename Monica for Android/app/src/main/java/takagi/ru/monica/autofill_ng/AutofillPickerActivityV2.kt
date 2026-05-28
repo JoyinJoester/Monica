@@ -1914,10 +1914,15 @@ private fun AutofillPickerContent(
     }
 
     val filteredPasswordIds = remember(filteredPasswords) { filteredPasswords.map { it.id }.toHashSet() }
-    val filteredSuggestedPasswords by remember(suggestedPasswords, filteredPasswordIds) {
+    val suggestedHiddenByCurrentFilter by remember(suggestedPasswords, filteredPasswordIds) {
         derivedStateOf {
-            suggestedPasswords.filter { it.id in filteredPasswordIds }
+            suggestedPasswords.count { it.id !in filteredPasswordIds }
         }
+    }
+    val visibleSuggestedPasswords = if (searchQuery.isBlank()) {
+        suggestedPasswords
+    } else {
+        emptyList()
     }
 
     val filterSummary = when (sourceFilter) {
@@ -2006,7 +2011,8 @@ private fun AutofillPickerContent(
         allDocuments.size,
         suggestedPasswords.size,
         filteredPasswords.size,
-        filteredSuggestedPasswords.size,
+        visibleSuggestedPasswords.size,
+        suggestedHiddenByCurrentFilter,
         filteredBankCards.size,
         filteredDocuments.size
     ) {
@@ -2023,7 +2029,8 @@ private fun AutofillPickerContent(
                 "documentCount" to allDocuments.size,
                 "suggestedCount" to suggestedPasswords.size,
                 "filteredCount" to filteredPasswords.size,
-                "filteredSuggestedCount" to filteredSuggestedPasswords.size,
+                "visibleSuggestedCount" to visibleSuggestedPasswords.size,
+                "suggestedHiddenByCurrentFilter" to suggestedHiddenByCurrentFilter,
                 "filteredBankCards" to filteredBankCards.size,
                 "filteredDocuments" to filteredDocuments.size,
                 "selectedKeePassDb" to (selectedKeePassDatabaseId ?: -1L),
@@ -2409,8 +2416,8 @@ private fun AutofillPickerContent(
                             when (selectedContentType) {
                                 AutofillPickerContentType.ACCOUNT -> {
                                     val showSuggestedSection = searchQuery.isBlank() &&
-                                        filteredSuggestedPasswords.isNotEmpty()
-                                    val suggestedIds = filteredSuggestedPasswords.map { it.id }.toSet()
+                                        visibleSuggestedPasswords.isNotEmpty()
+                                    val suggestedIds = visibleSuggestedPasswords.map { it.id }.toSet()
                                     val mainPasswords = if (showSuggestedSection) {
                                         filteredPasswords.filter { it.id !in suggestedIds }
                                     } else {
@@ -2422,7 +2429,7 @@ private fun AutofillPickerContent(
                                         selectedVaultId == null &&
                                         selectedFolderId == null &&
                                         searchQuery.isBlank() &&
-                                        filteredSuggestedPasswords.isEmpty()
+                                        visibleSuggestedPasswords.isEmpty()
 
                                     LazyColumn(
                                         modifier = Modifier
@@ -2456,7 +2463,7 @@ private fun AutofillPickerContent(
                                             }
 
                                             items(
-                                                items = filteredSuggestedPasswords,
+                                                items = visibleSuggestedPasswords,
                                                 key = { "suggested_${it.id}" }
                                             ) { password ->
                                                 SuggestedPasswordListItem(

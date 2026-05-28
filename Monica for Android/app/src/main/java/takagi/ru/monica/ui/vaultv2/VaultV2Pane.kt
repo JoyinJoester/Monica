@@ -95,6 +95,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
@@ -1229,18 +1230,19 @@ fun VaultV2Pane(
 			secondaryKey = restoredFilter.secondaryKey,
 		)
 	}
-	LaunchedEffect(
-		state.hasInitializedStorageFilter,
-		state.storageFilterType,
-		state.storageFilterPrimaryId,
-		state.storageFilterSecondaryKey,
-	) {
+	LaunchedEffect(state.hasInitializedStorageFilter) {
 		if (!state.hasInitializedStorageFilter) return@LaunchedEffect
-		val savedState = state.toSavedCategoryFilterState()
-		settingsViewModel.updateCategoryFilterState(
-			scope = VAULT_V2_CATEGORY_FILTER_SCOPE,
-			state = savedState,
-		)
+		snapshotFlow {
+			state.storageFilterType to state.storageFilterPrimaryId
+		}.distinctUntilChanged()
+		 .drop(1) // skip the initial value (matches what Block A just restored)
+		 .collect {
+			val savedState = state.toSavedCategoryFilterState()
+			settingsViewModel.updateCategoryFilterState(
+				scope = VAULT_V2_CATEGORY_FILTER_SCOPE,
+				state = savedState,
+			)
+		}
 	}
 	val storageSelection = remember(
 		state.storageFilterType,
