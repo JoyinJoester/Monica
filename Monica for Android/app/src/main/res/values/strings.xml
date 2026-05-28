@@ -3596,6 +3596,8 @@
     <string name="autofill_v2_subdomain_match_desc">Treat subdomains of the same site as related login targets.</string>
     <string name="autofill_v2_respect_off">Respect autofill-off fields</string>
     <string name="autofill_v2_respect_off_desc">Skip fields where apps/websites explicitly disable autofill.</string>
+    <string name="autofill_inline_suggestions">Inline suggestions in IME</string>
+    <string name="autofill_inline_suggestions_desc">Show autofill suggestions in the keyboard candidate bar. When off, only the traditional dropdown menu is used.</string>
     <string name="autofill_v2_save_prompt">Enable save prompt</string>
     <string name="autofill_v2_save_prompt_desc">Offer to save new credentials after login/register.</string>
     <string name="autofill_v2_blacklist">Enable blacklist</string>

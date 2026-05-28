@@ -5,7 +5,7 @@ import java.net.IDN
 import java.util.Locale
 
 object BrowserAutofillContextStore {
-    private const val MAX_DOMAIN_AGE_MS = 15_000L
+    private const val MAX_DOMAIN_AGE_MS = 60_000L
 
     data class Snapshot(
         val packageName: String,

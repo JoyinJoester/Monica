@@ -7,6 +7,8 @@ import android.view.View
 import android.view.autofill.AutofillId
 import androidx.autofill.HintConstants
 import takagi.ru.monica.autofill_ng.core.safeTextOrNull
+import android.util.Log
+import java.net.URL
 import java.util.Locale
 
 class EnhancedAutofillStructureParserV2 {
@@ -136,6 +138,9 @@ class EnhancedAutofillStructureParserV2 {
 
     private data class ParseContext(
         var traversalIndex: Int = 0,
+        var nodesWithAutofillId: Int = 0,
+        var nodesWithoutAutofillId: Int = 0,
+        var totalNodesVisited: Int = 0,
     )
 
     private class AutofillHintMatcher(
@@ -664,9 +669,23 @@ class EnhancedAutofillStructureParserV2 {
             webView && (webDomain == "127.0.0.1" || webDomain == "localhost")
         }
 
+        val effectiveWebDomain = rawStructure?.webDomain.takeUnless { isInSelfHostedServer }
+            ?: extractDomainFromStructureText(structure)
+        if (effectiveWebDomain != null && rawStructure?.webDomain == null && !isInSelfHostedServer) {
+            Log.d("MonicaAutofill", "webDomain recovered from structure text: $effectiveWebDomain")
+        }
+
+        Log.d(
+            "MonicaAutofill",
+            "parse result: items=${items.size}, totalNodes=${parseContext.totalNodesVisited}, " +
+                "withAutofillId=${parseContext.nodesWithAutofillId}, " +
+                "withoutAutofillId=${parseContext.nodesWithoutAutofillId}, " +
+                "webDomain=$effectiveWebDomain, webScheme=${rawStructure?.webScheme}"
+        )
+
         return ParsedStructure(
             applicationId = applicationId,
-            webDomain = rawStructure?.webDomain.takeUnless { isInSelfHostedServer },
+            webDomain = effectiveWebDomain,
             webScheme = rawStructure?.webScheme.takeUnless { isInSelfHostedServer },
             webView = if (isInSelfHostedServer) false else rawStructure?.webView == true,
             items = items.sortedBy { it.traversalIndex },
@@ -679,22 +698,81 @@ class EnhancedAutofillStructureParserV2 {
         return PACKAGE_NAME_REGEX.matches(value)
     }
 
+    /**
+     * Last-resort fallback: scan AssistStructure text nodes for URL-like strings
+     * and extract the domain. This helps when the browser doesn't report webDomain
+     * for HTTP pages.
+     */
+    private fun extractDomainFromStructureText(structure: AssistStructure): String? {
+        for (i in 0 until structure.windowNodeCount) {
+            val windowNode = structure.getWindowNodeAt(i)
+            val domain = scanNodeForUrlDomain(windowNode.rootViewNode, depth = 0)
+            if (domain != null) return domain
+        }
+        return null
+    }
+
+    private fun scanNodeForUrlDomain(node: AssistStructure.ViewNode, depth: Int): String? {
+        if (depth > 6) return null
+        val text = node.text?.toString()?.trim()
+        if (!text.isNullOrBlank()) {
+            val domain = extractDomainFromUrl(text)
+            if (domain != null) return domain
+        }
+        for (i in 0 until node.childCount) {
+            val child = node.getChildAt(i) ?: continue
+            val domain = scanNodeForUrlDomain(child, depth + 1)
+            if (domain != null) return domain
+        }
+        return null
+    }
+
+    private fun extractDomainFromUrl(text: String): String? {
+        val trimmed = text.trim()
+        if (trimmed.length < 4 || trimmed.length > 2048) return null
+        if (!trimmed.contains(".")) return null
+        // Skip obvious non-URL text (e.g. "v2.0", "3.14", placeholder text without slashes/colons)
+        val looksLikeUrl = trimmed.contains("://") ||
+            trimmed.startsWith("www.") ||
+            (trimmed.contains(".") && trimmed.any { it == '/' || it == ':' })
+        if (!looksLikeUrl) return null
+        val urlStr = if (trimmed.contains("://")) trimmed else "https://$trimmed"
+        val host = runCatching { URL(urlStr).host }.getOrNull()
+            ?.trim()
+            ?.lowercase(Locale.ROOT)
+            ?.takeIf { it.isNotBlank() && it.contains(".") && it.any { c -> c.isLetter() } }
+        return host
+    }
+
     private fun parseViewNode(
         node: AssistStructure.ViewNode,
         parentWebViewNodeId: Int? = null,
         context: ParseContext,
     ): RawParsedStructure {
         var webView = false
-        var webDomain: String? = node.webDomain?.takeIf { it.isNotEmpty() }
-        var webScheme: String? = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            node.webScheme?.takeIf { it.isNotEmpty() }
-        } else {
-            null
+        val rawWebDomain = node.webDomain
+        val rawWebScheme = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) node.webScheme else null
+        var webDomain: String? = rawWebDomain?.takeIf { it.isNotEmpty() }
+        var webScheme: String? = rawWebScheme?.takeIf { it.isNotEmpty() }
+        if (context.traversalIndex == 0) {
+            Log.d(
+                "MonicaAutofill",
+                "parseViewNode root: rawWebDomain=$rawWebDomain, rawWebScheme=$rawWebScheme, " +
+                    "webDomain=$webDomain, webScheme=$webScheme, " +
+                    "className=${node.className}, sdk=${Build.VERSION.SDK_INT}"
+            )
         }
 
         val out = mutableListOf<RawParsedItem>()
         webView = node.className == "android.webkit.WebView"
         val webViewNodeId = node.id.takeIf { webView } ?: parentWebViewNodeId
+
+        context.totalNodesVisited++
+        if (node.autofillId != null) {
+            context.nodesWithAutofillId++
+        } else {
+            context.nodesWithoutAutofillId++
+        }
 
         if (node.autofillId != null) {
             val outBuilders = mutableListOf<ParsedItemBuilder>()

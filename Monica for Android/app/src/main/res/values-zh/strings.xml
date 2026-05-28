@@ -3376,6 +3376,8 @@
     <string name="autofill_v2_subdomain_match_desc">同一主域下的子域名视为关联登录目标。</string>
     <string name="autofill_v2_respect_off">遵循 autofill-off 字段</string>
     <string name="autofill_v2_respect_off_desc">当站点或应用明确禁用自动填充时跳过该字段。</string>
+    <string name="autofill_inline_suggestions">输入法内联建议</string>
+    <string name="autofill_inline_suggestions_desc">在第三方输入法候选栏中显示自动填充建议。关闭后仅使用传统下拉菜单式建议。</string>
     <string name="autofill_v2_save_prompt">启用保存提示</string>
     <string name="autofill_v2_save_prompt_desc">登录/注册后提示保存新凭据。</string>
     <string name="autofill_v2_blacklist">启用黑名单</string>

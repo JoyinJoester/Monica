@@ -3380,6 +3380,8 @@ Làm mới hoặc đồng bộ hóa cơ sở dữ liệu KeePass này, sau đó 
     <string name="autofill_v2_subdomain_match_desc">Hãy coi các tên miền phụ của cùng một trang web là mục tiêu đăng nhập có liên quan.</string>
     <string name="autofill_v2_respect_off">Tôn trọng các trường tự động điền</string>
     <string name="autofill_v2_respect_off_desc">Bỏ qua các trường nơi ứng dụng/trang web tắt tính năng tự động điền một cách rõ ràng.</string>
+    <string name="autofill_inline_suggestions">Gợi ý nội tuyến trong IME</string>
+    <string name="autofill_inline_suggestions_desc">Hiển thị gợi ý tự động điền trong thanh ứng viên của bàn phím. Khi tắt, chỉ sử dụng menu thả xuống truyền thống.</string>
     <string name="autofill_v2_save_prompt">Bật lời nhắc lưu</string>
     <string name="autofill_v2_save_prompt_desc">Đề nghị lưu thông tin đăng nhập mới sau khi đăng nhập/đăng ký.</string>
     <string name="autofill_v2_blacklist">Bật danh sách đen</string>

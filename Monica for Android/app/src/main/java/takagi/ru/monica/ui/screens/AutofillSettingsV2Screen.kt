@@ -129,6 +129,7 @@ fun AutofillSettingsV2Screen(
     val otpNotificationDurationSeconds by preferences.otpNotificationDuration.collectAsState(initial = 30)
     val autoCopyOtpEnabled by preferences.isAutoCopyOtpEnabled.collectAsState(initial = false)
     val respectOffEnabled by preferences.isV2RespectAutofillOffEnabled.collectAsState(initial = true)
+    val inlineSuggestionsEnabled by preferences.isInlineSuggestionsEnabled.collectAsState(initial = true)
     val blacklistEnabled by preferences.isBlacklistEnabled.collectAsState(initial = true)
     val blacklistPackages by preferences.blacklistPackages.collectAsState(initial = emptySet())
     val saveBlockedTargetRecords by preferences.saveBlockedTargetRecords.collectAsState(initial = emptyList())
@@ -557,6 +558,16 @@ fun AutofillSettingsV2Screen(
                     checked = respectOffEnabled,
                     onCheckedChange = { enabled ->
                         scope.launch { preferences.setV2RespectAutofillOffEnabled(enabled) }
+                    },
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                SwitchSettingItem(
+                    icon = Icons.Outlined.Input,
+                    title = stringResource(R.string.autofill_inline_suggestions),
+                    subtitle = stringResource(R.string.autofill_inline_suggestions_desc),
+                    checked = inlineSuggestionsEnabled,
+                    onCheckedChange = { enabled ->
+                        scope.launch { preferences.setInlineSuggestionsEnabled(enabled) }
                     },
                 )
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))

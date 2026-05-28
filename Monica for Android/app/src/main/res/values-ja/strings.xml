@@ -3367,6 +3367,8 @@
     <string name="autofill_v2_subdomain_match_desc">同じサイトのサブドメインを関連するログイン ターゲットとして扱います。</string>
     <string name="autofill_v2_respect_off">自動入力オフフィールドを尊重する</string>
     <string name="autofill_v2_respect_off_desc">アプリ/ウェブサイトが自動入力を明示的に無効にしているフィールドをスキップします。</string>
+    <string name="autofill_inline_suggestions">IMEインライン候補</string>
+    <string name="autofill_inline_suggestions_desc">キーボードの候補バーに自動入力候補を表示します。オフにすると従来のドロップダウンメニューのみ使用します。</string>
     <string name="autofill_v2_save_prompt">保存プロンプトを有効にする</string>
     <string name="autofill_v2_save_prompt_desc">ログイン/登録後に新しい認証情報を保存するよう提案します。</string>
     <string name="autofill_v2_blacklist">ブラックリストを有効にする</string>

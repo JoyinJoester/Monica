@@ -61,6 +61,9 @@ class AutofillPreferences(private val context: Context) {
         private val KEY_V2_DEFAULT_KEEPASS_DATABASE_ID = longPreferencesKey("v2_default_keepass_database_id")
         private val KEY_V2_DEFAULT_BITWARDEN_VAULT_ID = longPreferencesKey("v2_default_bitwarden_vault_id")
 
+        // 内联建议（输入法候选栏内嵌自动填充）
+        private val KEY_INLINE_SUGGESTIONS_ENABLED = booleanPreferencesKey("inline_suggestions_enabled")
+
         // 是否尊重自动填充禁用标识
         private val KEY_RESPECT_AUTOFILL_DISABLED = booleanPreferencesKey("respect_autofill_disabled")
         
@@ -334,7 +337,21 @@ class AutofillPreferences(private val context: Context) {
             preferences[KEY_RESPECT_AUTOFILL_DISABLED] = enabled
         }
     }
-    
+
+    /**
+     * 是否启用输入法内联建议（键盘候选栏内嵌自动填充）
+     * 关闭后仍会使用传统下拉菜单式建议
+     */
+    val isInlineSuggestionsEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[KEY_INLINE_SUGGESTIONS_ENABLED] ?: true
+    }
+
+    suspend fun setInlineSuggestionsEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_INLINE_SUGGESTIONS_ENABLED] = enabled
+        }
+    }
+
     /**
      * Auth Notification Settings
      */

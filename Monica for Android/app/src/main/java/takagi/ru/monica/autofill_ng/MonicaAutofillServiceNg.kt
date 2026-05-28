@@ -263,7 +263,18 @@ class MonicaAutofillServiceNg : AutofillService() {
         }
         val parsedWebDomain = parsed.webDomain?.takeIf { it.isNotBlank() }
         val browserFallbackDomain = if (parsedWebDomain == null) {
-            BrowserAutofillContextStore.getRecentDomain(packageName)
+            val fallback = BrowserAutofillContextStore.getRecentDomain(packageName)
+            AutofillLogger.i(
+                "AF",
+                "webDomain is null from AssistStructure, accessibility fallback=${fallback ?: "none"}",
+                metadata = mapOf(
+                    "requestId" to requestId,
+                    "packageName" to packageName,
+                    "parsedWebScheme" to (parsed.webScheme ?: "none"),
+                    "fallbackDomain" to (fallback ?: "none"),
+                ),
+            )
+            fallback
         } else {
             null
         }
@@ -341,7 +352,8 @@ class MonicaAutofillServiceNg : AutofillService() {
             )
             return null
         }
-        val requestUri = webDomain?.let { "https://$it" } ?: "androidapp://$packageName"
+        val effectiveScheme = parsed.webScheme?.takeIf { it.isNotBlank() } ?: "https"
+        val requestUri = webDomain?.let { "$effectiveScheme://$it" } ?: "androidapp://$packageName"
         val appDisplayName = resolveAppDisplayName(packageName)
         val interactionContext = AutofillInteractionContextResolver.build(
             packageName = packageName,
@@ -451,7 +463,11 @@ class MonicaAutofillServiceNg : AutofillService() {
             matchedPasswords = passwordsForResponse.size,
         )
 
-        val inlineRequest = getInlineRequest(request)
+        val inlineRequest = if (autofillPreferences.isInlineSuggestionsEnabled.first()) {
+            getInlineRequest(request)
+        } else {
+            null
+        }
         val autofillAuthRequired = settingsManager.settingsFlow.first().autofillAuthRequired
         val response = bwCompatProcessor.process(
             packageName = packageName,

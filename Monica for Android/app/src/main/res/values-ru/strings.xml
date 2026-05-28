@@ -3349,6 +3349,8 @@
     <string name="autofill_v2_subdomain_match_desc">Считать поддомены того же сайта связанными целями.</string>
     <string name="autofill_v2_respect_off">Учитывать autofill=off</string>
     <string name="autofill_v2_respect_off_desc">Пропускать поля, где приложения/сайты явно отключают автозаполнение.</string>
+    <string name="autofill_inline_suggestions">Встроенные подсказки в IME</string>
+    <string name="autofill_inline_suggestions_desc">Показывать подсказки автозаполнения в панели кандидатов клавиатуры. При выключении используется только традиционное выпадающее меню.</string>
     <string name="autofill_v2_save_prompt">Предлагать сохранение</string>
     <string name="autofill_v2_save_prompt_desc">Предлагать сохранить новые учётные данные после входа/регистрации.</string>
     <string name="autofill_v2_blacklist">Чёрный список</string>
