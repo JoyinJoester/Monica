@@ -44,10 +44,10 @@ object TotpDataResolver {
         return normalizeTotpData(initialData)
     }
 
-    fun normalizeTotpData(data: TotpData): TotpData {
+    fun normalizeTotpData(data: TotpData, depth: Int = 0): TotpData {
         // 修复历史损坏数据：secret 字段误存了完整 URI（如 "steam://BASE64..."）
-        if (data.secret.contains("://")) {
-            reparseCorruptedSecret(data)?.let { return normalizeTotpData(it) }
+        if (data.secret.contains("://") && depth < 3) {
+            reparseCorruptedSecret(data)?.let { return normalizeTotpData(it, depth + 1) }
         }
 
         val mergedData = parseUriTotpData(data.secret)?.let { parsed ->
