@@ -174,6 +174,8 @@ class SettingsManager(private val context: Context) {
         private val AUTO_HIDE_BOTTOM_NAV_WHEN_SINGLE_TAB_KEY =
             booleanPreferencesKey("auto_hide_bottom_nav_when_single_tab")
         private val DISABLE_PASSWORD_VERIFICATION_KEY = booleanPreferencesKey("disable_password_verification")
+        private val PASSKEY_HYPEROS_BIOMETRIC_BYPASS_ENABLED_KEY =
+            booleanPreferencesKey("passkey_hyperos_biometric_bypass_enabled")
         private val BITWARDEN_SYNC_FORENSICS_ENABLED_KEY =
             booleanPreferencesKey("bitwarden_sync_forensics_enabled")
         private val BITWARDEN_SYNC_FORENSICS_DIRECTORY_URI_KEY =
@@ -529,6 +531,8 @@ class SettingsManager(private val context: Context) {
             autoHideBottomNavWhenSingleTab =
                 preferences[AUTO_HIDE_BOTTOM_NAV_WHEN_SINGLE_TAB_KEY] ?: false,
             disablePasswordVerification = preferences[DISABLE_PASSWORD_VERIFICATION_KEY] ?: false,
+            passkeyHyperOsBiometricBypassEnabled =
+                preferences[PASSKEY_HYPEROS_BIOMETRIC_BYPASS_ENABLED_KEY] ?: false,
             bitwardenSyncForensicsEnabled =
                 preferences[BITWARDEN_SYNC_FORENSICS_ENABLED_KEY] ?: false,
             bitwardenSyncForensicsDirectoryUri =
@@ -811,6 +815,12 @@ class SettingsManager(private val context: Context) {
     suspend fun updateDisablePasswordVerification(disabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[DISABLE_PASSWORD_VERIFICATION_KEY] = disabled
+        }
+    }
+
+    suspend fun updatePasskeyHyperOsBiometricBypassEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PASSKEY_HYPEROS_BIOMETRIC_BYPASS_ENABLED_KEY] = enabled
         }
     }
 

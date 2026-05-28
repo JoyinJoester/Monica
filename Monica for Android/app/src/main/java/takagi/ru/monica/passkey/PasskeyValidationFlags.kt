@@ -26,7 +26,7 @@ object PasskeyValidationFlags {
     }
 
     fun isHyperOsBiometricBypassEnabled(context: Context): Boolean {
-        return prefs(context).getBoolean(KEY_HYPEROS_BIOMETRIC_BYPASS_ENABLED, true)
+        return prefs(context).getBoolean(KEY_HYPEROS_BIOMETRIC_BYPASS_ENABLED, false)
     }
 
     fun setShadowValidationEnabled(context: Context, enabled: Boolean) {

@@ -34,6 +34,7 @@ import androidx.credentials.provider.CallingAppInfo
 import androidx.credentials.provider.PendingIntentHandler
 import androidx.fragment.app.FragmentActivity
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.flow.first
 import org.json.JSONObject
 import takagi.ru.monica.R
 import takagi.ru.monica.data.AppSettings
@@ -358,9 +359,12 @@ class PasskeyAuthActivity : FragmentActivity() {
     }
 
     private fun requestPasskeyUserVerification(passkey: PasskeyEntry) {
+        val settings = runBlocking {
+            SettingsManager(applicationContext).settingsFlow.first()
+        }
         val shouldBypassBiometric = PasskeyBiometricCompatibilityPolicy.shouldBypassBiometricForPasskey(
             romType = DeviceUtils.getROMType(),
-            isBypassEnabled = PasskeyValidationFlags.isHyperOsBiometricBypassEnabled(this),
+            isBypassEnabled = settings.passkeyHyperOsBiometricBypassEnabled,
             hasHyperOsSystemProperty = DeviceUtils.isHyperOsSystemPropertyPresent(),
         )
 

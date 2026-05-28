@@ -171,6 +171,12 @@ class SettingsViewModel(
         }
     }
 
+    fun updatePasskeyHyperOsBiometricBypassEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updatePasskeyHyperOsBiometricBypassEnabled(enabled)
+        }
+    }
+
     fun updateBitwardenSyncForensicsEnabled(enabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updateBitwardenSyncForensicsEnabled(enabled)

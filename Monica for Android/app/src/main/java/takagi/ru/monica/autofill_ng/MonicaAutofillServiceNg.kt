@@ -39,6 +39,7 @@ import takagi.ru.monica.service.BrowserAutofillContextStore
 import takagi.ru.monica.utils.DeviceUtils
 import takagi.ru.monica.utils.SettingsManager
 import java.security.MessageDigest
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.abs
 
 /**
@@ -53,7 +54,17 @@ class MonicaAutofillServiceNg : AutofillService() {
             Regex("^[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+$")
         private const val PARSED_ITEM_ACCURACY_THRESHOLD = 1.5f
         private const val PASSWORD_ONLY_DIRECT_FILL_WINDOW_MS = 120_000L
+        private const val RESPONSE_STABILITY_WINDOW_MS = 2_000L
+        private val fillRequestSequence = AtomicLong(0L)
     }
+
+    private data class RecentFillSuggestions(
+        val key: String,
+        val createdAtMs: Long,
+        val requestId: Long,
+        val targetCount: Int,
+        val passwords: List<PasswordEntry>,
+    )
 
     private data class StructuredConfidenceDecision(
         val highConfidence: Boolean,
@@ -76,6 +87,8 @@ class MonicaAutofillServiceNg : AutofillService() {
     private val parser = EnhancedAutofillStructureParserV2()
     private val matcher = BitwardenLikeAutofillMatcherNg()
     private val bwCompatProcessor by lazy { AutofillProcessorNg(applicationContext) }
+    @Volatile
+    private var recentFillSuggestions: RecentFillSuggestions? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -104,34 +117,90 @@ class MonicaAutofillServiceNg : AutofillService() {
         cancellationSignal: CancellationSignal,
         callback: FillCallback,
     ) {
+        val requestId = fillRequestSequence.incrementAndGet()
+        val startedAt = System.currentTimeMillis()
+        AutofillLogger.i(
+            "AF",
+            "onFillRequest received",
+            metadata = mapOf(
+                "requestId" to requestId,
+                "sdk" to Build.VERSION.SDK_INT,
+                "device" to "${Build.MANUFACTURER}/${Build.MODEL}",
+                "flags" to request.flags,
+                "fillContextCount" to request.fillContexts.size,
+                "cancelled" to cancellationSignal.isCanceled,
+            )
+        )
         val job = scope.launch {
             try {
                 val response = withContext(Dispatchers.Default) {
-                    processFillRequest(request, cancellationSignal)
+                    processFillRequest(request, cancellationSignal, requestId)
                 }
+                AutofillLogger.i(
+                    "AF",
+                    "onFillRequest callback success",
+                    metadata = mapOf(
+                        "requestId" to requestId,
+                        "hasResponse" to (response != null),
+                        "cancelled" to cancellationSignal.isCanceled,
+                        "elapsedMs" to (System.currentTimeMillis() - startedAt),
+                    )
+                )
                 callback.onSuccess(response)
             } catch (e: Exception) {
-                AutofillLogger.e("AF", "onFillRequest failed", e)
+                AutofillLogger.e(
+                    "AF",
+                    "onFillRequest failed",
+                    e,
+                    metadata = mapOf(
+                        "requestId" to requestId,
+                        "elapsedMs" to (System.currentTimeMillis() - startedAt),
+                    )
+                )
                 diagnostics.logError("AF", "Fill request failed: ${e.message}", e)
                 callback.onFailure(e.message ?: "Autofill failed")
             }
         }
-        cancellationSignal.setOnCancelListener { job.cancel() }
+        cancellationSignal.setOnCancelListener {
+            AutofillLogger.w(
+                "AF",
+                "onFillRequest cancelled by system",
+                metadata = mapOf(
+                    "requestId" to requestId,
+                    "elapsedMs" to (System.currentTimeMillis() - startedAt),
+                )
+            )
+            job.cancel()
+        }
     }
 
     private suspend fun processFillRequest(
         request: FillRequest,
         cancellationSignal: CancellationSignal,
+        requestId: Long,
     ): FillResponse? {
-        if (cancellationSignal.isCanceled) return null
-        if (!autofillPreferences.isAutofillEnabled.first()) return null
+        if (cancellationSignal.isCanceled) {
+            AutofillLogger.w("AF", "Skip fill request: already cancelled", metadata = mapOf("requestId" to requestId))
+            return null
+        }
+        if (!autofillPreferences.isAutofillEnabled.first()) {
+            AutofillLogger.i("AF", "Skip fill request: app autofill disabled", metadata = mapOf("requestId" to requestId))
+            return null
+        }
 
-        val fillContext = request.fillContexts.lastOrNull() ?: return null
+        val fillContext = request.fillContexts.lastOrNull() ?: run {
+            AutofillLogger.i("AF", "Skip fill request: no fill context", metadata = mapOf("requestId" to requestId))
+            return null
+        }
         val structure = fillContext.structure
         val fallbackPackage = structure.activityComponent?.packageName.orEmpty()
 
         if (fallbackPackage.isNotBlank() && autofillPreferences.isInBlacklist(fallbackPackage)) {
-            AutofillLogger.i("AF", "Package blocked by blacklist: $fallbackPackage")
+            AutofillLogger.i(
+                "AF",
+                "Package blocked by blacklist: $fallbackPackage",
+                metadata = mapOf("requestId" to requestId)
+            )
             return null
         }
 
@@ -151,6 +220,7 @@ class MonicaAutofillServiceNg : AutofillService() {
             "Autofill request source diagnostics",
             metadata = mapOf(
                 "sdk" to Build.VERSION.SDK_INT,
+                "requestId" to requestId,
                 "device" to "${Build.MANUFACTURER}/${Build.MODEL}",
                 "windowNodeCount" to structure.windowNodeCount,
                 "fallbackPackage" to if (fallbackPackage.isBlank()) "none" else fallbackPackage,
@@ -168,6 +238,7 @@ class MonicaAutofillServiceNg : AutofillService() {
                 "AF",
                 "Skip request: empty resolved package name",
                 metadata = mapOf(
+                    "requestId" to requestId,
                     "fallbackPackage" to if (fallbackPackage.isBlank()) "none" else fallbackPackage,
                     "parsedApplicationId" to (parsed.applicationId ?: "none"),
                     "parsedItemCount" to parsed.items.size,
@@ -182,6 +253,7 @@ class MonicaAutofillServiceNg : AutofillService() {
                 "AF",
                 "No supported autofill fields detected",
                 metadata = mapOf(
+                    "requestId" to requestId,
                     "packageName" to packageName,
                     "parsedItemCount" to parsed.items.size,
                     "parsedHintPreview" to parsed.items.take(8).joinToString(",") { it.hint.name },
@@ -204,6 +276,7 @@ class MonicaAutofillServiceNg : AutofillService() {
                 "AF",
                 "Skip weak structured autofill request",
                 metadata = mapOf(
+                    "requestId" to requestId,
                     "packageName" to packageName,
                     "webDomain" to (webDomain ?: "none"),
                     "targetCount" to fillableTargets.size,
@@ -228,6 +301,7 @@ class MonicaAutofillServiceNg : AutofillService() {
             "AF",
             "Autofill target diagnostics",
             metadata = mapOf(
+                "requestId" to requestId,
                 "packageName" to packageName,
                 "webDomain" to (webDomain ?: "none"),
                 "domainSource" to when {
@@ -259,6 +333,7 @@ class MonicaAutofillServiceNg : AutofillService() {
                 "AF",
                 "Skip autofill request: blocked field signature",
                 metadata = mapOf(
+                    "requestId" to requestId,
                     "packageName" to packageName,
                     "webDomain" to (webDomain ?: "none"),
                     "targetCount" to fillableTargets.size,
@@ -350,6 +425,19 @@ class MonicaAutofillServiceNg : AutofillService() {
             emptyList()
         }
 
+        val responseStabilityKey = buildResponseStabilityKey(
+            packageName = packageName,
+            webDomain = webDomain,
+            fieldSignatureKey = fieldSignatureKey,
+            fillableTargets = fillableTargets,
+        )
+        val passwordsForResponse = stabilizeMatchedPasswords(
+            key = responseStabilityKey,
+            matchedPasswords = matchedPasswords,
+            requestId = requestId,
+            targetCount = fillableTargets.size,
+        )
+
         diagnostics.logPasswordMatching(
             packageName = packageName,
             domain = webDomain,
@@ -360,7 +448,7 @@ class MonicaAutofillServiceNg : AutofillService() {
                 "structured_manual_picker"
             },
             totalPasswords = candidatePasswordCount,
-            matchedPasswords = matchedPasswords.size,
+            matchedPasswords = passwordsForResponse.size,
         )
 
         val inlineRequest = getInlineRequest(request)
@@ -371,22 +459,114 @@ class MonicaAutofillServiceNg : AutofillService() {
             fillableTargets = fillableTargets,
             inlineRequest = inlineRequest,
             isCompatMode = isCompatMode,
-            passwords = matchedPasswords,
+            passwords = passwordsForResponse,
             fieldSignatureKey = fieldSignatureKey,
-            preferDirectAutoFill = isPasswordOnlyLogin && matchedPasswords.size == 1,
+            preferDirectAutoFill = isPasswordOnlyLogin && passwordsForResponse.size == 1,
             passwordSuggestionEnabled = autofillPreferences.isPasswordSuggestionEnabled.first(),
             requireAuthentication = autofillAuthRequired,
         )
 
         if (response == null) {
-            AutofillLogger.w("AF", "No fill response produced")
+            AutofillLogger.w(
+                "AF",
+                "No fill response produced",
+                metadata = mapOf(
+                    "requestId" to requestId,
+                    "packageName" to packageName,
+                    "webDomain" to (webDomain ?: "none"),
+                    "targets" to fillableTargets.size,
+                    "matches" to passwordsForResponse.size,
+                    "rawMatches" to matchedPasswords.size,
+                    "candidatePasswords" to candidatePasswordCount,
+                    "responseStabilityKey" to responseStabilityKey,
+                )
+            )
         } else {
             AutofillLogger.i(
                 "AF",
-                "Fill response ready: package=$packageName, domain=$webDomain, targets=${fillableTargets.size}, matches=${matchedPasswords.size}",
+                "Fill response ready",
+                metadata = mapOf(
+                    "requestId" to requestId,
+                    "packageName" to packageName,
+                    "webDomain" to (webDomain ?: "none"),
+                    "targets" to fillableTargets.size,
+                    "matches" to passwordsForResponse.size,
+                    "rawMatches" to matchedPasswords.size,
+                    "candidatePasswords" to candidatePasswordCount,
+                    "authRequired" to autofillAuthRequired,
+                    "inlineRequest" to (inlineRequest != null),
+                    "sdk" to Build.VERSION.SDK_INT,
+                    "responseStabilityKey" to responseStabilityKey,
+                )
             )
         }
         return response
+    }
+
+    private fun buildResponseStabilityKey(
+        packageName: String,
+        webDomain: String?,
+        fieldSignatureKey: String?,
+        fillableTargets: List<ParsedItem>,
+    ): String {
+        val fieldKey = fieldSignatureKey?.takeIf { it.isNotBlank() }
+        if (fieldKey != null) {
+            return listOf(
+                packageName.trim().lowercase(),
+                webDomain.orEmpty().trim().lowercase(),
+                fieldKey,
+            ).joinToString("|")
+        }
+        val targetShape = fillableTargets
+            .sortedBy { it.traversalIndex }
+            .joinToString(",") { "${it.hint.name}:${it.isFocused}:${it.isVisible}" }
+        return listOf(
+            packageName.trim().lowercase(),
+            webDomain.orEmpty().trim().lowercase(),
+            targetShape,
+        ).joinToString("|")
+    }
+
+    private fun stabilizeMatchedPasswords(
+        key: String,
+        matchedPasswords: List<PasswordEntry>,
+        requestId: Long,
+        targetCount: Int,
+    ): List<PasswordEntry> {
+        val now = System.currentTimeMillis()
+        val cached = recentFillSuggestions
+        val cachedIsUsable = cached != null &&
+            cached.key == key &&
+            now - cached.createdAtMs <= RESPONSE_STABILITY_WINDOW_MS &&
+            cached.targetCount >= targetCount &&
+            cached.passwords.size > matchedPasswords.size
+
+        if (cachedIsUsable) {
+            AutofillLogger.w(
+                "AF",
+                "Reusing recent stronger fill suggestions",
+                metadata = mapOf(
+                    "requestId" to requestId,
+                    "previousRequestId" to cached!!.requestId,
+                    "ageMs" to (now - cached.createdAtMs),
+                    "previousMatches" to cached.passwords.size,
+                    "currentMatches" to matchedPasswords.size,
+                    "targetCount" to targetCount,
+                ),
+            )
+            return cached.passwords
+        }
+
+        if (matchedPasswords.isNotEmpty()) {
+            recentFillSuggestions = RecentFillSuggestions(
+                key = key,
+                createdAtMs = now,
+                requestId = requestId,
+                targetCount = targetCount,
+                passwords = matchedPasswords,
+            )
+        }
+        return matchedPasswords
     }
 
     private suspend fun resolveLastFilledEntry(

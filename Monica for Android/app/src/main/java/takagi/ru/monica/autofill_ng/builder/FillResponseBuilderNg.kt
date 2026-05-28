@@ -16,6 +16,7 @@ import takagi.ru.monica.autofill_ng.AutofillCipherCallbackActivity
 import takagi.ru.monica.autofill_ng.AutofillPickerActivityV2
 import takagi.ru.monica.autofill_ng.PasswordSuggestionActivity
 import takagi.ru.monica.autofill_ng.builder.AutofillDatasetBuilder
+import takagi.ru.monica.autofill_ng.core.AutofillLogger
 import takagi.ru.monica.autofill_ng.model.AutofillRequest
 import takagi.ru.monica.autofill_ng.model.AutofillView
 import takagi.ru.monica.autofill_ng.model.FilledData
@@ -40,22 +41,37 @@ class FillResponseBuilderNg(
         val fillableAutofillIds = filledData.fillableAutofillIds
         if (fillableAutofillIds.isEmpty()) {
             android.util.Log.w(TAG, "build skipped: no fillableAutofillIds")
+            AutofillLogger.w("FILLING", "Build skipped: no fillableAutofillIds")
             return null
         }
 
         val responseBuilder = FillResponse.Builder()
         var cipherDatasetCount = 0
+        var failedCipherDatasetCount = 0
         filledData.filledPartitions.forEachIndexed { index, partition ->
             if (partition.filledItems.isEmpty()) return@forEachIndexed
-            responseBuilder.addDataset(
-                buildCipherDataset(
-                    request = request,
-                    partition = partition,
-                    index = index,
-                    requireAuthentication = requireAuthentication,
+            runCatching {
+                responseBuilder.addDataset(
+                    buildCipherDataset(
+                        request = request,
+                        partition = partition,
+                        index = index,
+                        requireAuthentication = requireAuthentication,
+                    )
                 )
-            )
-            cipherDatasetCount++
+                cipherDatasetCount++
+            }.onFailure { error ->
+                failedCipherDatasetCount++
+                android.util.Log.w(TAG, "Failed to build cipher dataset index=$index", error)
+                AutofillLogger.w(
+                    "FILLING",
+                    "Failed to build cipher dataset",
+                    metadata = mapOf(
+                        "index" to index,
+                        "error" to (error.message ?: error::class.java.simpleName)
+                    )
+                )
+            }
         }
 
         val strongPasswordDataset = if (passwordSuggestionEnabled) {
@@ -89,9 +105,25 @@ class FillResponseBuilderNg(
         android.util.Log.i(
             TAG,
             "build result: cipherDatasets=$cipherDatasetCount, " +
+                "failedCipherDatasets=$failedCipherDatasetCount, " +
                 "strongPasswordDataset=${if (strongPasswordDataset != null) 1 else 0}, " +
                 "vaultDataset=1, fillableIds=${fillableAutofillIds.size}, " +
-                "suggestedIds=${filledData.filledPartitions.count { it.autofillCipher.cipherId != null }}"
+                "suggestedIds=${filledData.filledPartitions.count { it.autofillCipher.cipherId != null }}, " +
+                "authRequired=$requireAuthentication, sdk=${Build.VERSION.SDK_INT}"
+        )
+        AutofillLogger.i(
+            "FILLING",
+            "FillResponse build result",
+            metadata = mapOf(
+                "cipherDatasets" to cipherDatasetCount,
+                "failedCipherDatasets" to failedCipherDatasetCount,
+                "strongPasswordDataset" to (strongPasswordDataset != null),
+                "vaultDataset" to true,
+                "fillableIds" to fillableAutofillIds.size,
+                "suggestedIds" to filledData.filledPartitions.count { it.autofillCipher.cipherId != null },
+                "authRequired" to requireAuthentication,
+                "sdk" to Build.VERSION.SDK_INT,
+            )
         )
         return responseBuilder.build()
     }

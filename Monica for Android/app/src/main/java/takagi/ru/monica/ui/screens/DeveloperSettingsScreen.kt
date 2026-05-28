@@ -108,6 +108,9 @@ fun DeveloperSettingsScreen(
 
     var showDebugLogsDialog by remember { mutableStateOf(false) }
     var disablePasswordVerification by remember { mutableStateOf(settings.disablePasswordVerification) }
+    var passkeyHyperOsBiometricBypassEnabled by remember {
+        mutableStateOf(settings.passkeyHyperOsBiometricBypassEnabled)
+    }
     var bitwardenSyncForensicsEnabled by remember {
         mutableStateOf(settings.bitwardenSyncForensicsEnabled)
     }
@@ -122,12 +125,14 @@ fun DeveloperSettingsScreen(
     }
     LaunchedEffect(
         settings.disablePasswordVerification,
+        settings.passkeyHyperOsBiometricBypassEnabled,
         settings.bitwardenSyncForensicsEnabled,
         settings.bitwardenSyncForensicsDirectoryUri,
         settings.bitwardenSyncForensicsRawCaptureEnabled,
         settings.appLauncherLabel
     ) {
         disablePasswordVerification = settings.disablePasswordVerification
+        passkeyHyperOsBiometricBypassEnabled = settings.passkeyHyperOsBiometricBypassEnabled
         bitwardenSyncForensicsEnabled = settings.bitwardenSyncForensicsEnabled
         bitwardenSyncForensicsDirectoryUri = settings.bitwardenSyncForensicsDirectoryUri
         bitwardenSyncForensicsRawCaptureEnabled = settings.bitwardenSyncForensicsRawCaptureEnabled
@@ -278,6 +283,19 @@ fun DeveloperSettingsScreen(
                                 "DeveloperSettings",
                                 "Password verification setting updated to: $enabled"
                             )
+                        }
+                    }
+                )
+
+                SettingsItemWithSwitch(
+                    icon = Icons.Default.WarningAmber,
+                    title = stringResource(R.string.developer_passkey_hyperos_biometric_bypass),
+                    subtitle = stringResource(R.string.developer_passkey_hyperos_biometric_bypass_desc),
+                    checked = passkeyHyperOsBiometricBypassEnabled,
+                    onCheckedChange = { enabled ->
+                        passkeyHyperOsBiometricBypassEnabled = enabled
+                        scope.launch {
+                            viewModel.updatePasskeyHyperOsBiometricBypassEnabled(enabled)
                         }
                     }
                 )

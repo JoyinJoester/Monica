@@ -59,9 +59,6 @@ fun PasskeySettingsScreen(
     var strictValidationEnabled by remember {
         mutableStateOf(PasskeyValidationFlags.isStrictValidationEnabled(context))
     }
-    var hyperOsBiometricBypassEnabled by remember {
-        mutableStateOf(PasskeyValidationFlags.isHyperOsBiometricBypassEnabled(context))
-    }
     var diagnosticsSummary by remember {
         mutableStateOf(PasskeyValidationDiagnostics.readSummary(context))
     }
@@ -127,7 +124,6 @@ fun PasskeySettingsScreen(
                 PasskeyValidationCard(
                     shadowValidationEnabled = shadowValidationEnabled,
                     strictValidationEnabled = strictValidationEnabled,
-                    hyperOsBiometricBypassEnabled = hyperOsBiometricBypassEnabled,
                     onShadowValidationChanged = { enabled ->
                         shadowValidationEnabled = enabled
                         PasskeyValidationFlags.setShadowValidationEnabled(context, enabled)
@@ -139,10 +135,6 @@ fun PasskeySettingsScreen(
                     onStrictValidationChanged = { enabled ->
                         strictValidationEnabled = enabled
                         PasskeyValidationFlags.setStrictValidationEnabled(context, enabled)
-                    },
-                    onHyperOsBiometricBypassChanged = { enabled ->
-                        hyperOsBiometricBypassEnabled = enabled
-                        PasskeyValidationFlags.setHyperOsBiometricBypassEnabled(context, enabled)
                     }
                 )
                 
@@ -269,10 +261,8 @@ private fun PasskeyDiagnosticsCard(
 private fun PasskeyValidationCard(
     shadowValidationEnabled: Boolean,
     strictValidationEnabled: Boolean,
-    hyperOsBiometricBypassEnabled: Boolean,
     onShadowValidationChanged: (Boolean) -> Unit,
     onStrictValidationChanged: (Boolean) -> Unit,
-    onHyperOsBiometricBypassChanged: (Boolean) -> Unit,
 ) {
     Card(
         modifier = Modifier
@@ -349,31 +339,6 @@ private fun PasskeyValidationCard(
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = stringResource(R.string.passkey_hyperos_bypass_title),
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        text = stringResource(R.string.passkey_hyperos_bypass_desc),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(
-                    checked = hyperOsBiometricBypassEnabled,
-                    onCheckedChange = onHyperOsBiometricBypassChanged
-                )
-            }
         }
     }
 }

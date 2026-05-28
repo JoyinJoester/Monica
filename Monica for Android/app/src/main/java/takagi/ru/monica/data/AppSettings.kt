@@ -497,6 +497,7 @@ data class AppSettings(
     val useDraggableBottomNav: Boolean = false, // 使用可拖拽底部导航栏
     val autoHideBottomNavWhenSingleTab: Boolean = false, // 仅启用一个底栏项时自动隐藏导航栏
     val disablePasswordVerification: Boolean = false, // 开发者选项：关闭密码验证
+    val passkeyHyperOsBiometricBypassEnabled: Boolean = false, // 开发者选项：HyperOS Passkey 生物识别兼容旁路
     val bitwardenSyncForensicsEnabled: Boolean = false, // 开发者选项：Bitwarden 同步脱敏取证
     val bitwardenSyncForensicsDirectoryUri: String? = null, // 取证日志外部镜像目录（SAF tree uri）
     val bitwardenSyncForensicsRawCaptureEnabled: Boolean = false, // 开发者选项：Bitwarden 原始请求/响应留存（强脱敏）

@@ -37,7 +37,9 @@ import androidx.credentials.exceptions.CreateCredentialUnknownException
 import androidx.credentials.provider.CallingAppInfo
 import androidx.credentials.provider.PendingIntentHandler
 import androidx.fragment.app.FragmentActivity
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.json.JSONArray
 import org.json.JSONObject
 import takagi.ru.monica.R
@@ -566,9 +568,12 @@ class PasskeyCreateActivity : FragmentActivity() {
     }
 
     private fun requestPasskeyUserVerificationBeforeCreate() {
+        val settings = runBlocking {
+            SettingsManager(applicationContext).settingsFlow.first()
+        }
         val shouldBypassBiometric = PasskeyBiometricCompatibilityPolicy.shouldBypassBiometricForPasskey(
             romType = DeviceUtils.getROMType(),
-            isBypassEnabled = PasskeyValidationFlags.isHyperOsBiometricBypassEnabled(this),
+            isBypassEnabled = settings.passkeyHyperOsBiometricBypassEnabled,
             hasHyperOsSystemProperty = DeviceUtils.isHyperOsSystemPropertyPresent(),
         )
 
