@@ -22,7 +22,8 @@ object TotpDataResolver {
     fun fromAuthenticatorKey(
         rawKey: String,
         fallbackIssuer: String = "",
-        fallbackAccountName: String = ""
+        fallbackAccountName: String = "",
+        depth: Int = 0
     ): TotpData? {
         val normalizedKey = rawKey.trim()
         if (normalizedKey.isBlank()) return null
@@ -35,13 +36,13 @@ object TotpDataResolver {
             )
         } else {
             TotpData(
-                secret = normalizedKey,
+                secret = if (normalizedKey.contains("://")) "" else normalizedKey,
                 issuer = fallbackIssuer.trim(),
                 accountName = fallbackAccountName.trim()
             )
         }
 
-        return normalizeTotpData(initialData)
+        return normalizeTotpData(initialData, depth)
     }
 
     fun normalizeTotpData(data: TotpData, depth: Int = 0): TotpData {
@@ -296,8 +297,12 @@ object TotpDataResolver {
         val reparsed = fromAuthenticatorKey(
             rawKey = raw,
             fallbackIssuer = data.issuer.ifBlank { data.accountName },
-            fallbackAccountName = data.accountName
+            fallbackAccountName = data.accountName,
+            depth = 1
         ) ?: return null
+
+        // 防止递归：修复后 secret 仍含 "://" 则放弃
+        if (reparsed.secret.contains("://")) return null
 
         // 仅当解析结果与原数据有实质差异时才采用
         if (reparsed.otpType == data.otpType &&
