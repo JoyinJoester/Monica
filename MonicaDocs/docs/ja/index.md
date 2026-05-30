@@ -18,7 +18,7 @@ hero:
       link: https://github.com/JoyinJoester/Monica/tree/main/Monica%20for%20Browser
     - theme: alt
       text: ドキュメント
-      link: /ja/guide/getting-started
+      link: /ja/reference/catalogue
 
 features:
   - title: パスワード管理

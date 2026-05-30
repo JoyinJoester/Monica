@@ -18,7 +18,7 @@ hero:
       link: https://github.com/JoyinJoester/Monica/tree/main/Monica%20for%20Browser
     - theme: alt
       text: Документация проекта
-      link: /ru/guide/getting-started
+      link: /ru/reference/catalogue
 
 features:
   - title: Менеджер паролей
