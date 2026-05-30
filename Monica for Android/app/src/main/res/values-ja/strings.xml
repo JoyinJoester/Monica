@@ -318,19 +318,6 @@
     
     <!-- 新しいエクスポート画面 -->
     <string name="export_select_option">エクスポートオプションを選択</string>
-    <string name="export_option_all">すべてのデータをエクスポート</string>
-    <string name="export_option_all_desc">すべてのパスワード、TOTP、銀行カード、証明書をCSV形式でエクスポート</string>
-    <string name="export_option_passwords">パスワードのみエクスポート</string>
-    <string name="export_option_passwords_desc">パスワードエントリのみをCSV形式でエクスポート</string>
-    <string name="export_option_totp">TOTPのみエクスポート</string>
-    <string name="export_option_totp_desc">TOTP認証器をCSVまたはAegis互換形式でエクスポート</string>
-    <string name="export_option_cards_docs">銀行カードと証明書をエクスポート</string>
-    <string name="export_option_cards_docs_desc">銀行カードと証明書を結合してCSV形式でエクスポート</string>
-    <string name="export_totp_format">TOTPエクスポート形式を選択</string>
-    <string name="export_enable_encryption">暗号化を有効にする</string>
-    <string name="export_encryption_hint">TOTPデータをパスワードで保護（Aegis互換）</string>
-    <string name="export_encryption_password">暗号化パスワードを入力</string>
-    <string name="export_encryption_password_hint">ファイルをインポートする際にこのパスワードが必要です</string>
     
     <string name="import_data_warning_title">警告</string>
     <string name="import_data_warning_message">データをインポートすると既存のデータが上書きされる可能性があります。インポート前に現在のデータをバックアップしてください。</string>
@@ -2194,8 +2181,6 @@
     <string name="kdbx_import_password_title">KDBXパスワードを入力してください</string>
     <string name="kdbx_import_password_hint">この KDBX ファイルを復号化するためのパスワードを入力してください</string>
     <string name="import_data_btn">輸入</string>
-    <string name="export_option_notes">メモのみをエクスポート</string>
-    <string name="export_option_notes_desc">すべてのノートをCSV形式でエクスポート</string>
     <string name="sso_login_title">第三方账号登录</string>
     <string name="sso_login_btn">登录</string>
     <string name="use_sso">使用</string>

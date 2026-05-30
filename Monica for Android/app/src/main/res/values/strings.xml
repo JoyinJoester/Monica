@@ -594,21 +594,6 @@
     <string name="kdbx_import_password_title">Enter KDBX Password</string>
     <string name="kdbx_import_password_hint">Enter the password to decrypt this KDBX file</string>
     <string name="import_data_btn">Import</string>
-    <string name="export_option_all">Export All Data</string>
-    <string name="export_option_all_desc">Export all passwords, TOTP, bank cards, and documents in CSV format</string>
-    <string name="export_option_passwords">Export Passwords Only</string>
-    <string name="export_option_passwords_desc">Export only password entries in CSV format</string>
-    <string name="export_option_totp">Export TOTP Only</string>
-    <string name="export_option_totp_desc">Export TOTP authenticators in CSV or Aegis-compatible format</string>
-    <string name="export_option_cards_docs">Export Bank Cards &amp; Documents</string>
-    <string name="export_option_cards_docs_desc">Export bank cards and documents together in CSV format</string>
-    <string name="export_option_notes">Export Notes Only</string>
-    <string name="export_option_notes_desc">Export all notes in CSV format</string>
-    <string name="export_totp_format">Select TOTP Export Format</string>
-    <string name="export_enable_encryption">Enable Encryption</string>
-    <string name="export_encryption_hint">Protect your TOTP data with a password (Aegis-compatible)</string>
-    <string name="export_encryption_password">Enter Encryption Password</string>
-    <string name="export_encryption_password_hint">This password will be required when importing the file</string>
     
     <string name="import_data_warning_title">Warning</string>
     <string name="import_data_warning_message">Importing may overwrite data. Back up your current vault first.</string>
@@ -3161,7 +3146,7 @@
     <string name="import_data_keepass_tip_format_unsupported">Unsupported format/cipher, or the file is damaged. Check it in KeePassDX/KeePassXC.</string>
     <string name="import_data_keepass_tip_io_failed">I/O failed while reading the file. Check file integrity and storage availability, then retry.</string>
     <string name="import_type_csv_data_title">CSV Data</string>
-    <string name="import_type_csv_data_desc">Import CSV exported from Monica / KeePass / Bitwarden / Password Keyboard</string>
+    <string name="import_type_csv_data_desc">Import CSV exported from Monica / KeePass / Bitwarden / Proton Pass / Password Keyboard</string>
     <string name="import_type_csv_data_file_hint">Select .csv file</string>
     <string name="import_type_aegis_title">Aegis Authenticator</string>
     <string name="import_type_aegis_desc">Import JSON backup from Aegis Authenticator</string>
@@ -3200,6 +3185,9 @@
     <string name="import_type_csv_bitwarden_title">Bitwarden CSV</string>
     <string name="import_type_csv_bitwarden_desc">Import CSV exported by Bitwarden</string>
     <string name="import_type_csv_bitwarden_file_hint">Select Bitwarden .csv file</string>
+    <string name="import_type_csv_proton_pass_title">Proton Pass CSV</string>
+    <string name="import_type_csv_proton_pass_desc">Import CSV exported by Proton Pass</string>
+    <string name="import_type_csv_proton_pass_file_hint">Select Proton Pass .csv file</string>
     <string name="import_type_csv_chrome_title">Chrome CSV</string>
     <string name="import_type_csv_chrome_desc">Import CSV exported by Google Chrome</string>
     <string name="import_type_csv_chrome_file_hint">Select Chrome .csv file</string>

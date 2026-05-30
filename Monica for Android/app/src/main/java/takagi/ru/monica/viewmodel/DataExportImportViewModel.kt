@@ -71,61 +71,6 @@ class DataExportImportViewModel(
     }
 
     /**
-     * 导出所有数据
-     */
-    suspend fun exportData(outputUri: Uri): Result<String> {
-        return try {
-            // 获取SecureItem数据
-            val secureItems = secureItemRepository.getAllItems().first()
-            
-            // 获取PasswordEntry数据并转换为SecureItem格式
-            val passwordEntries = passwordRepository.getAllPasswordEntries().first()
-            val passwordItems = passwordEntries.map { entry ->
-                // 将PasswordEntry转换为数据字符串
-                val passwordData = buildString {
-                    append("username:${entry.username};")
-                    append("password:${entry.password}")
-                    if (entry.website.isNotEmpty()) {
-                        append(";website:${entry.website}")
-                    }
-                    if (entry.email.isNotEmpty()) {
-                        append(";email:${entry.email}")
-                    }
-                    if (entry.phone.isNotEmpty()) {
-                        append(";phone:${entry.phone}")
-                    }
-                }
-                
-                SecureItem(
-                    id = entry.id,
-                    itemType = ItemType.PASSWORD,
-                    title = entry.title,
-                    itemData = passwordData,
-                    notes = entry.notes,
-                    isFavorite = entry.isFavorite,
-                    imagePaths = "", // PasswordEntry没有iconPath字段
-                    createdAt = entry.createdAt,
-                    updatedAt = entry.updatedAt,
-                    categoryId = entry.categoryId,
-                    keepassDatabaseId = entry.keepassDatabaseId,
-                    keepassGroupPath = entry.keepassGroupPath,
-                    bitwardenVaultId = entry.bitwardenVaultId,
-                    bitwardenFolderId = entry.bitwardenFolderId
-                )
-            }
-            
-            // 合并所有数据
-            val allItems = secureItems + passwordItems
-            
-            // 导出数据
-            exportManager.exportData(allItems, outputUri)
-        } catch (e: Exception) {
-            android.util.Log.e("DataImport", "导出失败: ${e.message}", e)
-            Result.failure(e)
-        }
-    }
-
-    /**
      * 导入数据
      */
     suspend fun importData(
@@ -351,6 +296,13 @@ class DataExportImportViewModel(
      */
     suspend fun importBitwardenCsv(inputUri: Uri): Result<Int> {
         return importData(inputUri, DataExportImportManager.CsvFormat.BITWARDEN_PASSWORD)
+    }
+
+    /**
+     * 导入 Proton Pass CSV 文件
+     */
+    suspend fun importProtonPassCsv(inputUri: Uri): Result<Int> {
+        return importData(inputUri, DataExportImportManager.CsvFormat.PROTON_PASS_PASSWORD)
     }
 
     /**
@@ -595,13 +547,6 @@ class DataExportImportViewModel(
     }
 
     /**
-     * 获取建议的文件名
-     */
-    fun getSuggestedFileName(): String {
-        return exportManager.getSuggestedFileName()
-    }
-
-    /**
      * 导入Aegis JSON文件
      */
     suspend fun importAegisJson(inputUri: Uri): Result<Int> {
@@ -785,126 +730,6 @@ class DataExportImportViewModel(
             )
         } catch (e: Exception) {
             android.util.Log.e("EncryptedAegisImport", "导入异常: ${e.message}", e)
-            Result.failure(e)
-        }
-    }
-    
-    /**
-     * 导出密码数据
-     */
-    suspend fun exportPasswords(outputUri: Uri): Result<String> {
-        return try {
-            // 获取PasswordEntry数据
-            val passwordEntries = passwordRepository.getAllPasswordEntries().first()
-            val passwordItems = passwordEntries.map { entry ->
-                val exportedPassword = runCatching { securityManager.decryptData(entry.password) }
-                    .getOrElse { entry.password }
-                val passwordData = buildString {
-                    append("username:${entry.username};")
-                    append("password:$exportedPassword")
-                    if (entry.website.isNotEmpty()) {
-                        append(";website:${entry.website}")
-                    }
-                    if (entry.email.isNotEmpty()) {
-                        append(";email:${entry.email}")
-                    }
-                    if (entry.phone.isNotEmpty()) {
-                        append(";phone:${entry.phone}")
-                    }
-                }
-                
-                takagi.ru.monica.data.SecureItem(
-                    id = entry.id,
-                    itemType = ItemType.PASSWORD,
-                    title = entry.title,
-                    itemData = passwordData,
-                    notes = entry.notes,
-                    isFavorite = entry.isFavorite,
-                    imagePaths = "",
-                    createdAt = entry.createdAt,
-                    updatedAt = entry.updatedAt
-                )
-            }
-            
-            exportManager.exportPasswords(passwordItems, outputUri)
-        } catch (e: Exception) {
-            android.util.Log.e("DataExport", "导出密码失败: ${e.message}", e)
-            Result.failure(e)
-        }
-    }
-    
-    /**
-     * 导出TOTP数据
-     */
-    suspend fun exportTotp(
-        outputUri: Uri,
-        format: takagi.ru.monica.ui.screens.TotpExportFormat,
-        password: String?
-    ): Result<String> {
-        return try {
-            val totpItems = secureItemRepository.getItemsByType(ItemType.TOTP).first()
-            
-            when (format) {
-                takagi.ru.monica.ui.screens.TotpExportFormat.CSV -> {
-                    // CSV格式导出
-                    exportManager.exportData(totpItems, outputUri)
-                }
-                takagi.ru.monica.ui.screens.TotpExportFormat.AEGIS -> {
-                    // Aegis格式导出
-                    val aegisExporter = takagi.ru.monica.util.AegisExporter()
-                    val aegisEntries = totpItems.mapNotNull { item ->
-                        try {
-                            val totpData = Json.decodeFromString<TotpData>(item.itemData)
-                            // 移除secret中的所有空格和特殊字符，确保是纯Base32字符串
-                            val cleanSecret = totpData.secret.replace(Regex("[\\s\\-]"), "").uppercase()
-                            takagi.ru.monica.util.AegisExporter.AegisEntry(
-                                uuid = java.util.UUID.randomUUID().toString(),
-                                name = totpData.accountName,
-                                issuer = totpData.issuer,
-                                note = item.notes,
-                                secret = cleanSecret,
-                                algorithm = totpData.algorithm,
-                                digits = totpData.digits,
-                                period = totpData.period
-                            )
-                        } catch (e: Exception) {
-                            android.util.Log.e("TotpExport", "解析TOTP数据失败: ${item.title}", e)
-                            null
-                        }
-                    }
-                    
-                    val jsonContent = if (password != null && password.isNotEmpty()) {
-                        aegisExporter.exportToEncryptedAegisJson(aegisEntries, password)
-                    } else {
-                        aegisExporter.exportToUnencryptedAegisJson(aegisEntries)
-                    }
-                    
-                    // 写入JSON文件
-                    context.contentResolver.openOutputStream(outputUri)?.use { output ->
-                        output.write(jsonContent.toByteArray(Charsets.UTF_8))
-                    }
-                    
-                    Result.success("成功导出 ${aegisEntries.size} 条TOTP数据")
-                }
-            }
-        } catch (e: Exception) {
-            android.util.Log.e("DataExport", "导出TOTP失败: ${e.message}", e)
-            Result.failure(e)
-        }
-    }
-    
-    /**
-     * 导出银行卡和证件数据
-     */
-    suspend fun exportBankCardsAndDocuments(outputUri: Uri): Result<String> {
-        return try {
-            val bankCards = secureItemRepository.getItemsByType(ItemType.BANK_CARD).first()
-            val documents = secureItemRepository.getItemsByType(ItemType.DOCUMENT).first()
-            val allItems = bankCards + documents
-            
-            exportManager.exportBankCardsAndDocuments(allItems, outputUri)
-        } catch (e: Exception) {
-            android.util.Log.e("DataExport", "导出银行卡和证件失败: ${e.message}", e)
             Result.failure(e)
         }
     }
@@ -1097,19 +922,6 @@ class DataExportImportViewModel(
             importedCount = 1
         )
         return Result.success(1)
-    }
-
-    /**
-     * 导出笔记数据
-     */
-    suspend fun exportNotes(outputUri: Uri): Result<String> {
-        return try {
-            val notes = secureItemRepository.getItemsByType(ItemType.NOTE).first()
-            exportManager.exportData(notes, outputUri)
-        } catch (e: Exception) {
-            android.util.Log.e("DataExport", "导出笔记失败: ${e.message}", e)
-            Result.failure(e)
-        }
     }
 
     /**

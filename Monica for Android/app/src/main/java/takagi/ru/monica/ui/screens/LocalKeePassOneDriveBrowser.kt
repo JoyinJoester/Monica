@@ -68,6 +68,7 @@ import takagi.ru.monica.utils.FileSourceEntry
 import takagi.ru.monica.utils.OneDriveAccountSession
 import takagi.ru.monica.utils.OneDriveAuthManager
 import takagi.ru.monica.utils.OneDriveKeePassFileSource
+import takagi.ru.monica.utils.toOneDriveUserMessage
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
 
 private enum class KeepassOneDriveConnectionState {
@@ -115,7 +116,7 @@ fun KeepassOneDriveBrowserBottomSheet(
                     connectionState = KeepassOneDriveConnectionState.Connected
                 },
                 onFailure = { error ->
-                    browserError = error.message ?: context.getString(R.string.keepass_onedrive_load_files_failed)
+                    browserError = error.toOneDriveUserMessage(context.getString(R.string.keepass_onedrive_load_files_failed))
                     connectionState = KeepassOneDriveConnectionState.Failed
                 }
             )
@@ -211,7 +212,7 @@ fun KeepassOneDriveBrowserBottomSheet(
                                         .onFailure { error ->
                                             isConnecting = false
                                             connectionState = KeepassOneDriveConnectionState.Failed
-                                            browserError = error.message ?: context.getString(R.string.keepass_onedrive_sign_in_failed)
+                                            browserError = error.toOneDriveUserMessage(context.getString(R.string.keepass_onedrive_sign_in_failed))
                                         }
                                 }
                             },
@@ -413,7 +414,7 @@ fun KeepassOneDriveBrowserBottomSheet(
                             showCreateFolderDialog = false
                         },
                         onFailure = { error ->
-                            browserError = error.message ?: context.getString(R.string.keepass_webdav_create_folder_failed)
+                            browserError = error.toOneDriveUserMessage(context.getString(R.string.keepass_webdav_create_folder_failed))
                         }
                     )
                 }

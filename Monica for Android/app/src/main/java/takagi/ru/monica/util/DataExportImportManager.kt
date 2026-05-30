@@ -5,15 +5,12 @@ import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.encodeToString
-import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.model.BankCardData
 import takagi.ru.monica.data.model.NoteData
 import takagi.ru.monica.data.model.SecureCustomField
 import takagi.ru.monica.data.model.SecureCustomFieldType
 import java.io.BufferedReader
-import java.io.BufferedWriter
 import java.io.InputStreamReader
-import java.io.OutputStreamWriter
 import java.io.StringReader
 import java.nio.charset.Charset
 import java.security.MessageDigest
@@ -66,75 +63,7 @@ class DataExportImportManager(private val context: Context) {
     )
 
     companion object {
-        private const val EXPORT_FILE_EXTENSION = ".csv"
-        private const val CSV_SEPARATOR = ","
-        private const val CSV_QUOTE = "\""
         private val STEAM_DEVICE_ID_REGEX = Regex("^android:[0-9a-f-]+$", RegexOption.IGNORE_CASE)
-        
-        // CSV 列标题
-        private val CSV_HEADERS = arrayOf(
-            "ID", "Type", "Title", "Data", "Notes", "IsFavorite", 
-            "ImagePaths", "CreatedAt", "UpdatedAt", "CategoryId",
-            "KeePassDatabaseId", "KeePassGroupPath", "BitwardenVaultId", "BitwardenFolderId"
-        )
-    }
-
-    /**
-     * 导出数据到CSV文件
-     * @param items 要导出的所有数据项
-     * @param outputUri 输出文件的URI
-     */
-    suspend fun exportData(
-        items: List<SecureItem>,
-        outputUri: Uri
-    ): Result<String> = withContext(Dispatchers.IO) {
-        try {
-            val outputStream = context.contentResolver.openOutputStream(outputUri)
-                ?: return@withContext Result.failure(Exception("无法创建输出文件，请检查存储权限"))
-            
-            outputStream.use { output ->
-                BufferedWriter(OutputStreamWriter(output, Charsets.UTF_8)).use { writer ->
-                    // 写入BOM标记，让Excel能正确识别UTF-8
-                    writer.write("\uFEFF")
-                    
-                    // 写入列标题
-                    writer.write(CSV_HEADERS.joinToString(CSV_SEPARATOR))
-                    writer.newLine()
-                    
-                    // 写入数据行
-                    items.forEach { item ->
-                        try {
-                            val row = arrayOf(
-                                item.id.toString(),
-                                item.itemType.name,
-                                escapeCsvField(item.title),
-                                escapeCsvField(item.itemData),
-                                escapeCsvField(item.notes),
-                                item.isFavorite.toString(),
-                                escapeCsvField(item.imagePaths),
-                                item.createdAt.time.toString(),
-                                item.updatedAt.time.toString(),
-                                item.categoryId?.toString() ?: "",
-                                item.keepassDatabaseId?.toString() ?: "",
-                                escapeCsvField(item.keepassGroupPath ?: ""),
-                                item.bitwardenVaultId?.toString() ?: "",
-                                escapeCsvField(item.bitwardenFolderId ?: "")
-                            )
-                            writer.write(row.joinToString(CSV_SEPARATOR))
-                            writer.newLine()
-                        } catch (e: Exception) {
-                            android.util.Log.e("DataExport", "写入数据项失败: ${item.id}", e)
-                            // 继续处理下一项
-                        }
-                    }
-                }
-            }
-
-            Result.success("成功导出 ${items.size} 条数据")
-        } catch (e: Exception) {
-            android.util.Log.e("DataExport", "导出失败", e)
-            Result.failure(Exception("导出失败：${e.message ?: "未知错误"}"))
-        }
     }
 
     /**
@@ -193,7 +122,8 @@ class DataExportImportManager(private val context: Context) {
                     if (isHeader) {
                         when (csvFormat) {
                             CsvFormat.KEEPASS_PASSWORD,
-                            CsvFormat.BITWARDEN_PASSWORD -> {
+                            CsvFormat.BITWARDEN_PASSWORD,
+                            CsvFormat.PROTON_PASS_PASSWORD -> {
                                 val headers = parseCsvLine(firstLine)
                                 headerIndexMap = buildHeaderIndexMap(headers)
                             }
@@ -318,6 +248,7 @@ class DataExportImportManager(private val context: Context) {
         CHROME_PASSWORD,   // Chrome密码格式 (name,url,username,password,note)
         KEEPASS_PASSWORD,  // KeePass CSV 格式
         BITWARDEN_PASSWORD, // Bitwarden CSV 格式
+        PROTON_PASS_PASSWORD, // Proton Pass CSV 格式
         PASSWORD_KEYBOARD, // 密码键盘软件 CSV 格式
         ALIPAY_TRANSACTION, // 支付宝交易明细格式
         UNKNOWN
@@ -357,6 +288,16 @@ class DataExportImportManager(private val context: Context) {
             lowerLine.contains("type") && lowerLine.contains("title") &&
             lowerLine.contains("data") && headerSet.contains("id") ->
                 CsvFormat.APP_EXPORT
+
+            // Proton Pass CSV: type,name,url,email,username,password,note,totp,createTime,modifyTime,vault
+            headerSet.contains("type") &&
+            headerSet.contains("name") &&
+            headerSet.contains("url") &&
+            headerSet.contains("email") &&
+            headerSet.contains("username") &&
+            headerSet.contains("password") &&
+            headerSet.contains("totp") ->
+                CsvFormat.PROTON_PASS_PASSWORD
 
             // Chrome 标准导出头：name,url,username,password,note
             // 需要在密码键盘表头检测之前判断，避免被误识别为 password_keyboard
@@ -555,6 +496,82 @@ class DataExportImportManager(private val context: Context) {
                     } else null
                 }
 
+                CsvFormat.PROTON_PASS_PASSWORD -> {
+                    if (fields.size >= 4) {
+                        val type = getFieldValue(fields, headerIndexMap, listOf("type"))
+                            ?: fields.getOrNull(0)?.trim().orEmpty()
+                        if (type.isNotBlank() && type.lowercase() != "login") {
+                            return null
+                        }
+
+                        val title = getFieldValue(fields, headerIndexMap, listOf("name", "title"))
+                            ?: fields.getOrNull(1)?.trim().orEmpty()
+                        val url = getFieldValue(fields, headerIndexMap, listOf("url", "website", "uri"))
+                            ?: fields.getOrNull(2)?.trim().orEmpty()
+                        val email = getFieldValue(fields, headerIndexMap, listOf("email", "mail"))
+                            ?: fields.getOrNull(3)?.trim().orEmpty()
+                        val username = getFieldValue(fields, headerIndexMap, listOf("username", "user name", "user_name", "login"))
+                            ?: fields.getOrNull(4)?.trim().orEmpty()
+                        val password = getFieldValue(fields, headerIndexMap, listOf("password", "pass", "pwd"))
+                            ?: fields.getOrNull(5)?.trim().orEmpty()
+                        val note = getFieldValue(fields, headerIndexMap, listOf("note", "notes", "description"))
+                            ?: fields.getOrNull(6)?.trim().orEmpty()
+                        val totp = getFieldValue(fields, headerIndexMap, listOf("totp", "otp", "2fa", "authenticator"))
+                            ?: fields.getOrNull(7)?.trim().orEmpty()
+                        val createdAt = parseEpochSecondsOrMillis(
+                            getFieldValue(fields, headerIndexMap, listOf("createtime", "created", "createdat"))
+                                ?: fields.getOrNull(8)?.trim().orEmpty()
+                        )
+                        val updatedAt = parseEpochSecondsOrMillis(
+                            getFieldValue(fields, headerIndexMap, listOf("modifytime", "modified", "updated", "updatedat"))
+                                ?: fields.getOrNull(9)?.trim().orEmpty()
+                        )
+                        val vault = getFieldValue(fields, headerIndexMap, listOf("vault", "vaultname"))
+                            ?: fields.getOrNull(10)?.trim().orEmpty()
+
+                        if (title.isBlank() && username.isBlank() && email.isBlank() && password.isBlank() && url.isBlank()) {
+                            return null
+                        }
+
+                        val passwordData = buildString {
+                            append("username:${username.ifBlank { email }};")
+                            append("password:$password")
+                            if (url.isNotEmpty()) {
+                                append(";website:$url")
+                            }
+                            if (email.isNotEmpty()) {
+                                append(";email:$email")
+                            }
+                        }
+
+                        val importedCustomFields = buildList {
+                            if (vault.isNotBlank()) {
+                                add(
+                                    ImportedCustomField(
+                                        title = "Proton Vault",
+                                        value = vault,
+                                        isProtected = false
+                                    )
+                                )
+                            }
+                        }
+
+                        ExportItem(
+                            id = 0,
+                            itemType = "PASSWORD",
+                            title = title.ifBlank { url.ifBlank { username.ifBlank { email.ifBlank { "Imported Password" } } } },
+                            itemData = passwordData,
+                            notes = note,
+                            isFavorite = false,
+                            imagePaths = "",
+                            createdAt = createdAt ?: System.currentTimeMillis(),
+                            updatedAt = updatedAt ?: System.currentTimeMillis(),
+                            importedCustomFields = importedCustomFields,
+                            importedAuthenticatorKey = totp.trim().takeIf { it.isNotBlank() }
+                        )
+                    } else null
+                }
+
                 CsvFormat.PASSWORD_KEYBOARD -> {
                     if (fields.size >= 2) {
                         val recordType = resolvePasswordKeyboardRecordType(fields, headerIndexMap)
@@ -739,6 +756,16 @@ class DataExportImportManager(private val context: Context) {
             CsvFormat.BITWARDEN_PASSWORD -> {
                 val headers = parseCsvLine(firstLine).map { it.trim().lowercase() }.toSet()
                 headers.contains("login_username") && headers.contains("login_password")
+            }
+            CsvFormat.PROTON_PASS_PASSWORD -> {
+                val headers = parseCsvLine(firstLine).map { it.trim().lowercase() }.toSet()
+                headers.contains("type") &&
+                    headers.contains("name") &&
+                    headers.contains("url") &&
+                    headers.contains("email") &&
+                    headers.contains("username") &&
+                    headers.contains("password") &&
+                    headers.contains("totp")
             }
             CsvFormat.PASSWORD_KEYBOARD -> {
                 val fields = parseCsvLine(firstLine)
@@ -1244,14 +1271,12 @@ class DataExportImportManager(private val context: Context) {
         }
     }
 
-    /**
-     * 转义CSV字段（处理引号和逗号）
-     */
-    private fun escapeCsvField(field: String): String {
-        return if (field.contains(CSV_SEPARATOR) || field.contains(CSV_QUOTE) || field.contains("\n")) {
-            CSV_QUOTE + field.replace(CSV_QUOTE, "$CSV_QUOTE$CSV_QUOTE") + CSV_QUOTE
+    private fun parseEpochSecondsOrMillis(value: String): Long? {
+        val timestamp = value.trim().toLongOrNull() ?: return null
+        return if (timestamp in 1..9_999_999_999L) {
+            timestamp * 1000
         } else {
-            field
+            timestamp
         }
     }
 
@@ -1339,14 +1364,6 @@ class DataExportImportManager(private val context: Context) {
         }
         
         return fields
-    }
-
-    /**
-     * 获取建议的导出文件名
-     */
-    fun getSuggestedFileName(): String {
-        val timestamp = System.currentTimeMillis()
-        return "monica_backup_${timestamp}${EXPORT_FILE_EXTENSION}"
     }
 
 /**
@@ -1665,106 +1682,6 @@ class DataExportImportManager(private val context: Context) {
         } catch (e: Exception) {
             android.util.Log.e("EncryptedAegisImport", "导入加密Aegis文件失败", e)
             Result.failure(Exception("导入加密Aegis文件失败：${e.message ?: "未知错误"}"))
-        }
-    }
-    
-    /**
-     * 导出密码数据到CSV
-     */
-    suspend fun exportPasswords(
-        items: List<SecureItem>,
-        outputUri: Uri
-    ): Result<String> = withContext(Dispatchers.IO) {
-        try {
-            val outputStream = context.contentResolver.openOutputStream(outputUri)
-                ?: return@withContext Result.failure(Exception("无法创建输出文件"))
-            
-            outputStream.use { output ->
-                BufferedWriter(OutputStreamWriter(output, Charsets.UTF_8)).use { writer ->
-                    writer.write("\uFEFF")
-                    writer.write(CSV_HEADERS.joinToString(CSV_SEPARATOR))
-                    writer.newLine()
-                    
-                    items.forEach { item ->
-                        try {
-                            val row = arrayOf(
-                                item.id.toString(),
-                                item.itemType.name,
-                                escapeCsvField(item.title),
-                                escapeCsvField(item.itemData),
-                                escapeCsvField(item.notes),
-                                item.isFavorite.toString(),
-                                escapeCsvField(item.imagePaths),
-                                item.createdAt.time.toString(),
-                                item.updatedAt.time.toString(),
-                                item.categoryId?.toString() ?: "",
-                                item.keepassDatabaseId?.toString() ?: "",
-                                escapeCsvField(item.keepassGroupPath ?: ""),
-                                item.bitwardenVaultId?.toString() ?: "",
-                                escapeCsvField(item.bitwardenFolderId ?: "")
-                            )
-                            writer.write(row.joinToString(CSV_SEPARATOR))
-                            writer.newLine()
-                        } catch (e: Exception) {
-                            android.util.Log.e("DataExport", "写入密码项失败: ${item.id}", e)
-                        }
-                    }
-                }
-            }
-            Result.success("成功导出 ${items.size} 条密码")
-        } catch (e: Exception) {
-            android.util.Log.e("DataExport", "导出密码失败", e)
-            Result.failure(Exception("导出密码失败：${e.message ?: "未知错误"}"))
-        }
-    }
-    
-    /**
-     * 导出银行卡和证件到CSV
-     */
-    suspend fun exportBankCardsAndDocuments(
-        items: List<SecureItem>,
-        outputUri: Uri
-    ): Result<String> = withContext(Dispatchers.IO) {
-        try {
-            val outputStream = context.contentResolver.openOutputStream(outputUri)
-                ?: return@withContext Result.failure(Exception("无法创建输出文件"))
-            
-            outputStream.use { output ->
-                BufferedWriter(OutputStreamWriter(output, Charsets.UTF_8)).use { writer ->
-                    writer.write("\uFEFF")
-                    writer.write(CSV_HEADERS.joinToString(CSV_SEPARATOR))
-                    writer.newLine()
-                    
-                    items.forEach { item ->
-                        try {
-                            val row = arrayOf(
-                                item.id.toString(),
-                                item.itemType.name,
-                                escapeCsvField(item.title),
-                                escapeCsvField(item.itemData),
-                                escapeCsvField(item.notes),
-                                item.isFavorite.toString(),
-                                escapeCsvField(item.imagePaths),
-                                item.createdAt.time.toString(),
-                                item.updatedAt.time.toString(),
-                                item.categoryId?.toString() ?: "",
-                                item.keepassDatabaseId?.toString() ?: "",
-                                escapeCsvField(item.keepassGroupPath ?: ""),
-                                item.bitwardenVaultId?.toString() ?: "",
-                                escapeCsvField(item.bitwardenFolderId ?: "")
-                            )
-                            writer.write(row.joinToString(CSV_SEPARATOR))
-                            writer.newLine()
-                        } catch (e: Exception) {
-                            android.util.Log.e("DataExport", "写入项失败: ${item.id}", e)
-                        }
-                    }
-                }
-            }
-            Result.success("成功导出 ${items.size} 条数据")
-        } catch (e: Exception) {
-            android.util.Log.e("DataExport", "导出失败", e)
-            Result.failure(Exception("导出失败：${e.message ?: "未知错误"}"))
         }
     }
     

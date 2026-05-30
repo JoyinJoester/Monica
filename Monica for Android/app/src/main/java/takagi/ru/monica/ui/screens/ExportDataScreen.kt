@@ -5,11 +5,6 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -32,26 +27,6 @@ import takagi.ru.monica.utils.WebDavHelper
 import takagi.ru.monica.ui.components.OutlinedTextField
 
 /**
- * 导出选项枚举
- */
-enum class ExportOption {
-    ZIP_BACKUP,      // 完整备份 (WebDAV兼容ZIP) - 首选
-    KDBX,            // KeePass 格式 (.kdbx)
-    PASSWORDS,       // 密码（CSV格式）
-    TOTP,            // TOTP（CSV或Aegis格式）
-    BANK_CARDS_DOCS, // 银行卡和证件合并（CSV格式）
-    NOTES            // 笔记（CSV格式）
-}
-
-/**
- * TOTP导出格式枚举
- */
-enum class TotpExportFormat {
-    CSV,           // CSV格式
-    AEGIS          // Aegis兼容格式
-}
-
-/**
  * 数据导出界面 - 重新设计
  * 采用M3 Expressive设计规范
  */
@@ -59,11 +34,6 @@ enum class TotpExportFormat {
 @Composable
 fun ExportDataScreen(
     onNavigateBack: () -> Unit,
-    onExportAll: suspend (Uri) -> Result<String>,
-    onExportPasswords: suspend (Uri) -> Result<String>,
-    onExportTotp: suspend (Uri, TotpExportFormat, String?) -> Result<String>,
-    onExportBankCardsAndDocs: suspend (Uri) -> Result<String>,
-    onExportNotes: suspend (Uri) -> Result<String>,
     onExportZip: suspend (Uri, BackupPreferences) -> Result<String>,
     onExportKdbx: suspend (Uri, String) -> Result<String> = { _, _ -> Result.failure(Exception("Not implemented")) }
 ) {
@@ -74,11 +44,6 @@ fun ExportDataScreen(
     
     var isExporting by remember { mutableStateOf(false) }
     var selectedOption by remember { mutableStateOf(ExportOption.ZIP_BACKUP) }
-    var totpFormat by remember { mutableStateOf(TotpExportFormat.CSV) }
-    var enableEncryption by remember { mutableStateOf(false) }
-    var encryptionPassword by remember { mutableStateOf("") }
-    var passwordVisible by remember { mutableStateOf(false) }
-    var showPasswordDialog by remember { mutableStateOf(false) }
     
     // KDBX 导出密码
     var kdbxPassword by remember { mutableStateOf("") }
@@ -111,15 +76,6 @@ fun ExportDataScreen(
         isExporting = true
         try {
             val result = when (selectedOption) {
-                ExportOption.PASSWORDS -> onExportPasswords(safeUri)
-                ExportOption.TOTP -> {
-                    val password = if (enableEncryption && totpFormat == TotpExportFormat.AEGIS) {
-                        encryptionPassword
-                    } else null
-                    onExportTotp(safeUri, totpFormat, password)
-                }
-                ExportOption.BANK_CARDS_DOCS -> onExportBankCardsAndDocs(safeUri)
-                ExportOption.NOTES -> onExportNotes(safeUri)
                 ExportOption.ZIP_BACKUP -> onExportZip(safeUri, backupPreferences)
                 ExportOption.KDBX -> onExportKdbx(safeUri, kdbxPassword)
             }
@@ -161,16 +117,6 @@ fun ExportDataScreen(
     
     // 启动导出
     fun startExport() {
-        // 如果选择了TOTP的Aegis加密格式且需要加密
-        if (selectedOption == ExportOption.TOTP && 
-            totpFormat == TotpExportFormat.AEGIS && 
-            enableEncryption) {
-            if (encryptionPassword.isEmpty()) {
-                showPasswordDialog = true
-                return
-            }
-        }
-        
         // KDBX 导出需要密码
         if (selectedOption == ExportOption.KDBX) {
             if (kdbxPassword.isEmpty()) {
@@ -187,30 +133,7 @@ fun ExportDataScreen(
             return
         }
         
-        // 根据选项设置文件名和 MIME
-        val (fileName, mimeType) = when (selectedOption) {
-            ExportOption.PASSWORDS -> "monica_passwords_${System.currentTimeMillis()}.csv"
-            ExportOption.TOTP -> {
-                if (totpFormat == TotpExportFormat.AEGIS) {
-                    "monica_totp_${System.currentTimeMillis()}.json"
-                } else {
-                    "monica_totp_${System.currentTimeMillis()}.csv"
-                }
-            }
-            ExportOption.BANK_CARDS_DOCS -> "monica_cards_docs_${System.currentTimeMillis()}.csv"
-            ExportOption.NOTES -> "monica_notes_${System.currentTimeMillis()}.csv"
-            ExportOption.ZIP_BACKUP -> "monica_backup_${java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())}.zip"
-            ExportOption.KDBX -> "monica_${java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.getDefault()).format(java.util.Date())}.kdbx"
-        }.let { name ->
-            val type = when {
-                name.endsWith(".csv") -> "text/csv"
-                name.endsWith(".json") -> "application/json"
-                name.endsWith(".zip") -> "application/zip"
-                name.endsWith(".kdbx") -> "application/octet-stream"
-                else -> "*/*"
-            }
-            name to type
-        }
+        val (fileName, mimeType) = exportDocumentSpec(selectedOption)
 
         val createDocumentIntent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
@@ -227,56 +150,6 @@ fun ExportDataScreen(
                 )
             }
         }
-    }
-    
-    // 密码输入对话框
-    if (showPasswordDialog) {
-        AlertDialog(
-            onDismissRequest = { showPasswordDialog = false },
-            title = { Text(stringResource(R.string.export_encryption_password)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        stringResource(R.string.export_encryption_password_hint),
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    OutlinedTextField(
-                        value = encryptionPassword,
-                        onValueChange = { encryptionPassword = it },
-                        label = { Text(stringResource(R.string.password)) },
-                        visualTransformation = if (passwordVisible) 
-                            VisualTransformation.None 
-                        else 
-                            PasswordVisualTransformation(),
-                        trailingIcon = {
-                            IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                                Icon(
-                                    if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                    contentDescription = null
-                                )
-                            }
-                        },
-                        singleLine = true
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showPasswordDialog = false
-                        startExport()
-                    },
-                    enabled = encryptionPassword.isNotEmpty()
-                ) {
-                    Text(stringResource(R.string.confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showPasswordDialog = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            }
-        )
     }
     
     // KDBX 密码输入对话框
@@ -414,157 +287,12 @@ fun ExportDataScreen(
                 expandable = true,
                 expanded = selectedOption == ExportOption.ZIP_BACKUP && zipBackupExpanded,
                 expandedContent = {
-                    Column(
-                        modifier = Modifier.padding(top = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            stringResource(R.string.selective_backup_description),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                        )
-                        
-                        // 备份内容选择
-                        ExportContentCheckbox(
-                            label = stringResource(R.string.backup_content_passwords),
-                            checked = backupPreferences.includePasswords,
-                            onCheckedChange = { backupPreferences = backupPreferences.copy(includePasswords = it) }
-                        )
-                        ExportContentCheckbox(
-                            label = stringResource(R.string.backup_content_authenticators),
-                            checked = backupPreferences.includeAuthenticators,
-                            onCheckedChange = { backupPreferences = backupPreferences.copy(includeAuthenticators = it) }
-                        )
-                        // 卡包（证件 + 银行卡）
-                        ExportContentCheckbox(
-                            label = stringResource(R.string.backup_content_wallet),
-                            checked = backupPreferences.includeDocuments && backupPreferences.includeBankCards,
-                            onCheckedChange = { 
-                                backupPreferences = backupPreferences.copy(
-                                    includeDocuments = it,
-                                    includeBankCards = it
-                                ) 
-                            }
-                        )
-                        ExportContentCheckbox(
-                            label = stringResource(R.string.backup_content_notes),
-                            checked = backupPreferences.includeNotes,
-                            onCheckedChange = { backupPreferences = backupPreferences.copy(includeNotes = it) }
-                        )
-                        ExportContentCheckbox(
-                            label = stringResource(R.string.backup_content_images),
-                            checked = backupPreferences.includeImages,
-                            onCheckedChange = { backupPreferences = backupPreferences.copy(includeImages = it) }
-                        )
-                        ExportContentCheckbox(
-                            label = stringResource(R.string.backup_content_generator_history),
-                            checked = backupPreferences.includeGeneratorHistory,
-                            onCheckedChange = { backupPreferences = backupPreferences.copy(includeGeneratorHistory = it) }
-                        )
-                        ExportContentCheckbox(
-                            label = stringResource(R.string.backup_content_timeline),
-                            checked = backupPreferences.includeTimeline,
-                            onCheckedChange = { backupPreferences = backupPreferences.copy(includeTimeline = it) }
-                        )
-                        ExportContentCheckbox(
-                            label = stringResource(R.string.backup_content_trash),
-                            checked = backupPreferences.includeTrash,
-                            onCheckedChange = { backupPreferences = backupPreferences.copy(includeTrash = it) }
-                        )
-                        
-                        // KeePass 数据库选项（始终显示）
-                        HorizontalDivider(
-                            modifier = Modifier.padding(vertical = 4.dp),
-                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f)
-                        )
-                        ExportContentCheckbox(
-                            label = if (localKeePassCount > 0) 
-                                stringResource(R.string.backup_content_local_keepass) + " ($localKeePassCount)" 
-                            else 
-                                stringResource(R.string.backup_content_local_keepass),
-                            checked = backupPreferences.includeLocalKeePass,
-                            onCheckedChange = { backupPreferences = backupPreferences.copy(includeLocalKeePass = it) },
-                            enabled = localKeePassCount > 0
-                        )
-                        if (localKeePassCount == 0) {
-                            Text(
-                                text = stringResource(R.string.backup_content_local_keepass_empty),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.5f),
-                                modifier = Modifier.padding(start = 32.dp)
-                            )
-                        } else {
-                            Text(
-                                text = stringResource(R.string.backup_content_local_keepass_hint),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
-                                modifier = Modifier.padding(start = 32.dp)
-                            )
-                        }
-                        
-                        // WebDAV 配置选项（始终显示）
-                        if (isWebDavConfigured) {
-                            HorizontalDivider(
-                                modifier = Modifier.padding(vertical = 4.dp),
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f)
-                            )
-                            ExportContentCheckbox(
-                                label = stringResource(R.string.backup_content_webdav_config),
-                                checked = backupPreferences.includeWebDavConfig,
-                                onCheckedChange = { backupPreferences = backupPreferences.copy(includeWebDavConfig = it) }
-                            )
-                            Text(
-                                text = stringResource(R.string.backup_content_webdav_config_hint),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f),
-                                modifier = Modifier.padding(start = 32.dp)
-                            )
-                        }
-                        
-                        // 快捷操作按钮
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            FilledTonalButton(
-                                onClick = {
-                                    backupPreferences = BackupPreferences(
-                                        includePasswords = true,
-                                        includeAuthenticators = true,
-                                        includeDocuments = true,
-                                        includeBankCards = true,
-                                        includeNotes = true,
-                                        includeGeneratorHistory = true,
-                                        includeImages = true,
-                                        includeTimeline = true,
-                                        includeTrash = true
-                                    )
-                                },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text(stringResource(R.string.select_all), style = MaterialTheme.typography.labelMedium)
-                            }
-                            
-                            FilledTonalButton(
-                                onClick = {
-                                    backupPreferences = BackupPreferences(
-                                        includePasswords = false,
-                                        includeAuthenticators = false,
-                                        includeDocuments = false,
-                                        includeBankCards = false,
-                                        includeNotes = false,
-                                        includeGeneratorHistory = false,
-                                        includeImages = false,
-                                        includeTimeline = false,
-                                        includeTrash = false
-                                    )
-                                },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text(stringResource(R.string.deselect_all), style = MaterialTheme.typography.labelMedium)
-                            }
-                        }
-                    }
+                    ZipBackupOptionsContent(
+                        backupPreferences = backupPreferences,
+                        onBackupPreferencesChange = { backupPreferences = it },
+                        localKeePassCount = localKeePassCount,
+                        isWebDavConfigured = isWebDavConfigured
+                    )
                 }
             )
             
@@ -575,122 +303,6 @@ fun ExportDataScreen(
                 description = stringResource(R.string.export_option_kdbx_desc),
                 selected = selectedOption == ExportOption.KDBX,
                 onClick = { selectedOption = ExportOption.KDBX }
-            )
-            
-            ExportOptionCard(
-                icon = Icons.Default.Lock,
-                title = stringResource(R.string.export_option_passwords),
-                description = stringResource(R.string.export_option_passwords_desc),
-                selected = selectedOption == ExportOption.PASSWORDS,
-                onClick = { selectedOption = ExportOption.PASSWORDS }
-            )
-            
-            // TOTP选项卡（带格式选择）
-            ExportOptionCard(
-                icon = Icons.Default.Security,
-                title = stringResource(R.string.export_option_totp),
-                description = stringResource(R.string.export_option_totp_desc),
-                selected = selectedOption == ExportOption.TOTP,
-                onClick = { selectedOption = ExportOption.TOTP },
-                expandable = true,
-                expanded = selectedOption == ExportOption.TOTP,
-                expandedContent = {
-                    Column(
-                        modifier = Modifier.padding(top = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        // 格式选择
-                        Text(
-                            stringResource(R.string.export_totp_format),
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Medium
-                        )
-                        
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            FilterChip(
-                                selected = totpFormat == TotpExportFormat.CSV,
-                                onClick = { 
-                                    totpFormat = TotpExportFormat.CSV
-                                    enableEncryption = false
-                                },
-                                label = { Text("CSV") },
-                                leadingIcon = if (totpFormat == TotpExportFormat.CSV) {
-                                    { Icon(Icons.Default.Check, contentDescription = null, Modifier.size(18.dp)) }
-                                } else null,
-                                modifier = Modifier.weight(1f)
-                            )
-                            FilterChip(
-                                selected = totpFormat == TotpExportFormat.AEGIS,
-                                onClick = { totpFormat = TotpExportFormat.AEGIS },
-                                label = { Text("Aegis") },
-                                leadingIcon = if (totpFormat == TotpExportFormat.AEGIS) {
-                                    { Icon(Icons.Default.Check, contentDescription = null, Modifier.size(18.dp)) }
-                                } else null,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                        
-                        // Aegis加密选项
-                        AnimatedVisibility(
-                            visible = totpFormat == TotpExportFormat.AEGIS,
-                            enter = fadeIn() + expandVertically(),
-                            exit = fadeOut() + shrinkVertically()
-                        ) {
-                            Surface(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = MaterialTheme.shapes.medium,
-                                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            stringResource(R.string.export_enable_encryption),
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.Medium
-                                        )
-                                        Text(
-                                            stringResource(R.string.export_encryption_hint),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f)
-                                        )
-                                    }
-                                    Switch(
-                                        checked = enableEncryption,
-                                        onCheckedChange = { 
-                                            enableEncryption = it
-                                            if (!it) encryptionPassword = ""
-                                        }
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            )
-            
-            ExportOptionCard(
-                icon = Icons.Default.CreditCard,
-                title = stringResource(R.string.export_option_cards_docs),
-                description = stringResource(R.string.export_option_cards_docs_desc),
-                selected = selectedOption == ExportOption.BANK_CARDS_DOCS,
-                onClick = { selectedOption = ExportOption.BANK_CARDS_DOCS }
-            )
-
-            ExportOptionCard(
-                icon = Icons.Default.Note,
-                title = stringResource(R.string.export_option_notes),
-                description = stringResource(R.string.export_option_notes_desc),
-                selected = selectedOption == ExportOption.NOTES,
-                onClick = { selectedOption = ExportOption.NOTES }
             )
             
             Spacer(modifier = Modifier.weight(1f))
@@ -724,31 +336,27 @@ fun ExportDataScreen(
             }
             
             // 安全警告
-            if (selectedOption != ExportOption.TOTP || 
-                totpFormat != TotpExportFormat.AEGIS || 
-                !enableEncryption) {
-                ElevatedCard(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.elevatedCardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer
-                    )
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.elevatedCardColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer
+                )
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Warning,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onErrorContainer,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Text(
-                            stringResource(R.string.export_data_warning),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onErrorContainer
-                        )
-                    }
+                    Icon(
+                        Icons.Default.Warning,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onErrorContainer,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Text(
+                        stringResource(R.string.export_data_warning),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
                 }
             }
             
@@ -757,143 +365,3 @@ fun ExportDataScreen(
     }
 }
 
-/**
- * 导出选项卡片组件 - M3 Expressive风格
- */
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun ExportOptionCard(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    description: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    expandable: Boolean = false,
-    expanded: Boolean = false,
-    expandedContent: @Composable (() -> Unit)? = null
-) {
-    ElevatedCard(
-        onClick = onClick,
-        modifier = modifier.fillMaxWidth(),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = if (selected) 
-                MaterialTheme.colorScheme.primaryContainer 
-            else 
-                MaterialTheme.colorScheme.surface
-        ),
-        elevation = CardDefaults.elevatedCardElevation(
-            defaultElevation = if (selected) 4.dp else 2.dp
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.Top
-            ) {
-                Surface(
-                    shape = MaterialTheme.shapes.medium,
-                    color = if (selected) 
-                        MaterialTheme.colorScheme.primary 
-                    else 
-                        MaterialTheme.colorScheme.primaryContainer,
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            icon,
-                            contentDescription = null,
-                            tint = if (selected) 
-                                MaterialTheme.colorScheme.onPrimary 
-                            else 
-                                MaterialTheme.colorScheme.onPrimaryContainer,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-                }
-                
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        title,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = if (selected) 
-                            MaterialTheme.colorScheme.onPrimaryContainer 
-                        else 
-                            MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        description,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = if (selected) 
-                            MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f) 
-                        else 
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                
-                if (selected) {
-                    Icon(
-                        Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
-            }
-            
-            // 展开内容
-            if (expandable && expanded && expandedContent != null) {
-                Divider(
-                    modifier = Modifier.padding(vertical = 12.dp),
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f)
-                )
-                expandedContent()
-            }
-        }
-    }
-}
-
-/**
- * 导出内容复选框组件
- */
-@Composable
-private fun ExportContentCheckbox(
-    label: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true
-) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (enabled) 
-                MaterialTheme.colorScheme.onPrimaryContainer 
-            else 
-                MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.5f)
-        )
-        Checkbox(
-            checked = checked,
-            onCheckedChange = if (enabled) onCheckedChange else { _ -> },
-            enabled = enabled,
-            colors = CheckboxDefaults.colors(
-                checkedColor = MaterialTheme.colorScheme.primary,
-                uncheckedColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.6f),
-                disabledCheckedColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                disabledUncheckedColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.3f)
-            )
-        )
-    }
-}

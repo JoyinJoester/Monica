@@ -47,7 +47,11 @@ class OneDriveBackupHelper(context: Context) {
 
     suspend fun getConfiguredSession(): OneDriveAccountSession? {
         val config = getConfig() ?: return null
-        return runCatching { authManager.acquireAccessToken(config.accountId) }.getOrNull()
+        return runCatching { authManager.acquireAccessToken(config.accountId) }
+            .getOrElse { error ->
+                if (error.isOneDriveAuthTemporarilyUnavailable()) throw error
+                null
+            }
     }
 
     suspend fun listDirectory(accountId: String, currentPath: String?): List<FileSourceEntry> {

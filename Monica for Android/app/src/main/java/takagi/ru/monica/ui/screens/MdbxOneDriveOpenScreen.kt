@@ -41,6 +41,7 @@ import takagi.ru.monica.utils.FileSourceEntry
 import takagi.ru.monica.utils.OneDriveAccountSession
 import takagi.ru.monica.utils.OneDriveAuthManager
 import takagi.ru.monica.utils.OneDriveKeePassFileSource
+import takagi.ru.monica.utils.toOneDriveUserMessage
 import takagi.ru.monica.viewmodel.MdbxKeyFileSelection
 import takagi.ru.monica.viewmodel.MdbxViewModel
 import java.text.Normalizer
@@ -120,10 +121,13 @@ fun MdbxOneDriveOpenScreen(
                 currentPath = targetPath
             ).fold(
                 onSuccess = { listing ->
+                    authError = null
                     currentPath = listing.currentPath
                     entries = listing.entries
                 },
-                onFailure = { /* keep previous entries */ }
+                onFailure = { error ->
+                    authError = error.toOneDriveUserMessage("OneDrive 目录加载失败")
+                }
             )
             isLoadingEntries = false
         }
@@ -214,7 +218,7 @@ fun MdbxOneDriveOpenScreen(
                                             loadDirectory("")
                                         }
                                         .onFailure { e ->
-                                            authError = e.message ?: "OneDrive 登录失败"
+                                            authError = e.toOneDriveUserMessage("OneDrive 登录失败")
                                         }
                                     isConnecting = false
                                 }

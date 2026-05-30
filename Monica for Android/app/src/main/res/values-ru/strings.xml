@@ -487,21 +487,6 @@
     <string name="kdbx_import_password_title">Введите пароль KDBX</string>
     <string name="kdbx_import_password_hint">Введите пароль для расшифровки файла KDBX</string>
     <string name="import_data_btn">Импорт</string>
-    <string name="export_option_all">Экспорт всех данных</string>
-    <string name="export_option_all_desc">Экспорт всех паролей, TOTP, карт и документов в формате CSV</string>
-    <string name="export_option_passwords">Экспорт только паролей</string>
-    <string name="export_option_passwords_desc">Экспорт только паролей в формате CSV</string>
-    <string name="export_option_totp">Экспорт только TOTP</string>
-    <string name="export_option_totp_desc">Экспорт аутентификаторов TOTP в формате CSV или Aegis</string>
-    <string name="export_option_cards_docs">Экспорт карт и документов</string>
-    <string name="export_option_cards_docs_desc">Экспорт карт и документов вместе в формате CSV</string>
-    <string name="export_option_notes">Экспорт только заметок</string>
-    <string name="export_option_notes_desc">Экспорт всех заметок в формате CSV</string>
-    <string name="export_totp_format">Выберите формат экспорта TOTP</string>
-    <string name="export_enable_encryption">Включить шифрование</string>
-    <string name="export_encryption_hint">Защитите данные TOTP паролем (совместимо с Aegis)</string>
-    <string name="export_encryption_password">Введите пароль шифрования</string>
-    <string name="export_encryption_password_hint">Этот пароль понадобится при импорте файла</string>
 
     <string name="import_data_warning_title">Внимание</string>
     <string name="import_data_warning_message">Импорт может перезаписать данные. Сначала сделайте резервную копию.</string>

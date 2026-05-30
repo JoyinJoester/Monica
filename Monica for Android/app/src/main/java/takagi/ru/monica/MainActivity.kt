@@ -2196,21 +2196,6 @@ fun MonicaContent(
                 onNavigateBack = {
                     navController.popBackStack()
                 },
-                onExportAll = { uri ->
-                    dataExportImportViewModel.exportData(uri)
-                },
-                onExportPasswords = { uri ->
-                    dataExportImportViewModel.exportPasswords(uri)
-                },
-                onExportTotp = { uri, format, password ->
-                    dataExportImportViewModel.exportTotp(uri, format, password)
-                },
-                onExportBankCardsAndDocs = { uri ->
-                    dataExportImportViewModel.exportBankCardsAndDocuments(uri)
-                },
-                onExportNotes = { uri ->
-                    dataExportImportViewModel.exportNotes(uri)
-                },
                 onExportZip = { uri, preferences ->
                     dataExportImportViewModel.exportZipBackup(uri, preferences)
                 },
@@ -2261,6 +2246,9 @@ fun MonicaContent(
                 },
                 onImportBitwardenCsv = { uri ->
                     dataExportImportViewModel.importBitwardenCsv(uri)
+                },
+                onImportProtonPassCsv = { uri ->
+                    dataExportImportViewModel.importProtonPassCsv(uri)
                 },
                 onImportPasswordKeyboardCsv = { uri, tagHandling ->
                     dataExportImportViewModel.importPasswordKeyboardCsv(uri, tagHandling)

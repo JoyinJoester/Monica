@@ -5,9 +5,6 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -18,7 +15,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -26,261 +22,15 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import java.io.BufferedReader
-import java.io.InputStreamReader
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.ui.components.PasswordEntryPickerBottomSheet
 import takagi.ru.monica.util.DataExportImportManager
 import takagi.ru.monica.util.FileOperationHelper
-import takagi.ru.monica.utils.KeePassErrorCode
 import takagi.ru.monica.utils.KeePassOperationException
 import takagi.ru.monica.viewmodel.DataExportImportViewModel
 import takagi.ru.monica.ui.components.OutlinedTextField
-
-/**
- * 导入类型数据类
- */
-private data class ImportTypeInfo(
-    val key: String,
-    val icon: ImageVector,
-    val title: String,
-    val description: String,
-    val fileHint: String
-)
-
-private fun isPasswordDecryptError(errorMessage: String): Boolean {
-    val normalized = errorMessage.lowercase()
-    return normalized.contains("wrong password") ||
-        normalized.contains("password incorrect") ||
-        normalized.contains("decrypt") ||
-        normalized.contains("invalid credentials") ||
-        normalized.contains("密码错误") ||
-        normalized.contains("解密失败")
-}
-
-private fun isPasswordRequiredError(errorMessage: String): Boolean {
-    val normalized = errorMessage.lowercase()
-    return normalized.contains("password required") ||
-        normalized.contains("password needed") ||
-        normalized.contains("need password")
-}
-
-private fun formatImportErrorMessage(error: Throwable, fallback: String): String {
-    return if (error is KeePassOperationException) {
-        val message = error.message.takeIf { !it.isNullOrBlank() } ?: fallback
-        "[${error.code.name}] $message"
-    } else {
-        error.message ?: fallback
-    }
-}
-
-private fun isLikelyLegacyKdbFile(fileName: String?, uri: Uri?): Boolean {
-    val candidate = (
-        fileName
-            ?: uri?.lastPathSegment?.substringAfterLast('/')
-            ?: ""
-        ).lowercase()
-    return candidate.endsWith(".kdb") && !candidate.endsWith(".kdbx")
-}
-
-private enum class PasswordKeyboardFileMode {
-    PASSWORD,
-    NOTE,
-    CARD,
-    UNKNOWN
-}
-
-private fun shouldPromptPasswordKeyboardTagDialog(context: android.content.Context, uri: Uri): Boolean {
-    return when (detectPasswordKeyboardFileMode(context, uri)) {
-        PasswordKeyboardFileMode.NOTE -> false
-        PasswordKeyboardFileMode.PASSWORD,
-        PasswordKeyboardFileMode.CARD,
-        PasswordKeyboardFileMode.UNKNOWN -> true
-    }
-}
-
-private fun detectPasswordKeyboardFileMode(
-    context: android.content.Context,
-    uri: Uri
-): PasswordKeyboardFileMode {
-    return runCatching {
-        context.contentResolver.openInputStream(uri)?.use { input ->
-            BufferedReader(InputStreamReader(input, Charsets.UTF_8)).use { reader ->
-                val firstLine = reader.readLine()?.removePrefix("\uFEFF")?.trim().orEmpty()
-                val firstFields = parsePasswordKeyboardCsvPreviewFields(firstLine)
-                    .map { it.trim().lowercase() }
-
-                if (firstFields.firstOrNull() == "secretinputexportfile") {
-                    return@use when (firstFields.getOrNull(1)) {
-                        "normal" -> PasswordKeyboardFileMode.NOTE
-                        "card" -> PasswordKeyboardFileMode.CARD
-                        "password" -> PasswordKeyboardFileMode.PASSWORD
-                        else -> PasswordKeyboardFileMode.UNKNOWN
-                    }
-                }
-
-                val headers = firstFields.toSet()
-                val hasCardHeader =
-                    (headers.contains("cardno") ||
-                        headers.contains("card_no") ||
-                        headers.contains("cardnumber") ||
-                        headers.contains("card number") ||
-                        headers.contains("卡号")) &&
-                        headers.contains("title")
-                val hasPasswordHeader =
-                    headers.contains("username") &&
-                        headers.contains("password") &&
-                        headers.contains("title")
-                val hasNoteHeader =
-                    headers.contains("title") &&
-                        (headers.contains("remarks") ||
-                            headers.contains("remark") ||
-                            headers.contains("notes") ||
-                            headers.contains("note")) &&
-                        !headers.contains("password")
-
-                when {
-                    hasPasswordHeader -> PasswordKeyboardFileMode.PASSWORD
-                    hasCardHeader -> PasswordKeyboardFileMode.CARD
-                    hasNoteHeader -> PasswordKeyboardFileMode.NOTE
-                    else -> PasswordKeyboardFileMode.UNKNOWN
-                }
-            }
-        } ?: PasswordKeyboardFileMode.UNKNOWN
-    }.getOrElse { PasswordKeyboardFileMode.UNKNOWN }
-}
-
-private fun parsePasswordKeyboardCsvPreviewFields(line: String): List<String> {
-    if (line.isBlank()) return emptyList()
-
-    val fields = mutableListOf<String>()
-    val current = StringBuilder()
-    var inQuotes = false
-    var index = 0
-
-    while (index < line.length) {
-        val ch = line[index]
-        when (ch) {
-            '"' -> {
-                if (inQuotes && index + 1 < line.length && line[index + 1] == '"') {
-                    current.append('"')
-                    index++
-                } else {
-                    inQuotes = !inQuotes
-                }
-            }
-
-            ',' -> {
-                if (inQuotes) {
-                    current.append(ch)
-                } else {
-                    fields += current.toString().trim()
-                    current.clear()
-                }
-            }
-
-            else -> current.append(ch)
-        }
-        index++
-    }
-
-    fields += current.toString().trim()
-    return fields
-}
-
-private fun keepassImportSuggestion(context: android.content.Context, code: KeePassErrorCode): String {
-    return when (code) {
-        KeePassErrorCode.LEGACY_KDB_UNSUPPORTED ->
-            context.getString(R.string.import_data_keepass_tip_legacy_kdb)
-        KeePassErrorCode.INVALID_CREDENTIAL ->
-            context.getString(R.string.import_data_keepass_tip_invalid_credential)
-        KeePassErrorCode.URI_PERMISSION_DENIED ->
-            context.getString(R.string.import_data_keepass_tip_permission)
-        KeePassErrorCode.KDF_MEMORY_INSUFFICIENT ->
-            context.getString(R.string.import_data_keepass_tip_kdf_memory)
-        KeePassErrorCode.FORMAT_UNSUPPORTED ->
-            context.getString(R.string.import_data_keepass_tip_format_unsupported)
-        KeePassErrorCode.IO_READ_WRITE_FAILED ->
-            context.getString(R.string.import_data_keepass_tip_io_failed)
-    }
-}
-
-/**
- * 导入类型选项卡片
- */
-@Composable
-private fun ImportTypeCard(
-    info: ImportTypeInfo,
-    selected: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val containerColor by animateColorAsState(
-        if (selected) MaterialTheme.colorScheme.primaryContainer
-        else MaterialTheme.colorScheme.surfaceContainerLow,
-        label = "containerColor"
-    )
-    val borderColor by animateColorAsState(
-        if (selected) MaterialTheme.colorScheme.primary
-        else MaterialTheme.colorScheme.outlineVariant,
-        label = "borderColor"
-    )
-    val elevation by animateDpAsState(
-        if (selected) 4.dp else 0.dp,
-        label = "elevation"
-    )
-    
-    Card(
-        modifier = modifier.clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = containerColor),
-        border = BorderStroke(if (selected) 2.dp else 1.dp, borderColor),
-        elevation = CardDefaults.cardElevation(defaultElevation = elevation)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Icon(
-                    info.icon,
-                    contentDescription = null,
-                    modifier = Modifier.size(24.dp),
-                    tint = if (selected) MaterialTheme.colorScheme.primary
-                           else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    info.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
-                    color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer
-                            else MaterialTheme.colorScheme.onSurface
-                )
-                if (selected) {
-                    Spacer(modifier = Modifier.weight(1f))
-                    Icon(
-                        Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                }
-            }
-            Text(
-                info.description,
-                style = MaterialTheme.typography.bodySmall,
-                color = if (selected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-    }
-}
 
 /**
  * 数据导入界面 - M3 Expressive 设计
@@ -305,6 +55,7 @@ fun ImportDataScreen(
     onImportKdbx: suspend (Uri, String, Uri?) -> Result<Int> = { _, _, _ -> Result.failure(Exception("Not implemented")) },  // KDBX导入
     onImportKeePassCsv: suspend (Uri) -> Result<Int> = onImport,  // KeePass CSV导入
     onImportBitwardenCsv: suspend (Uri) -> Result<Int> = onImport,  // Bitwarden CSV导入
+    onImportProtonPassCsv: suspend (Uri) -> Result<Int> = onImport,  // Proton Pass CSV导入
     onImportChromeCsv: suspend (Uri) -> Result<Int> = onImport,  // Chrome CSV导入
     onImportPasswordKeyboardCsv: suspend (
         Uri,
@@ -364,89 +115,8 @@ fun ImportDataScreen(
         .getAllPasswordEntries()
         .collectAsState(initial = emptyList())
     
-    // 导入类型信息列表
-    val importTypes = listOf(
-        ImportTypeInfo(
-            key = "monica_zip",
-            icon = Icons.Default.Archive,
-            title = stringResource(R.string.import_type_monica_backup_title),
-            description = stringResource(R.string.import_type_monica_backup_desc),
-            fileHint = stringResource(R.string.import_type_monica_backup_file_hint)
-        ),
-        ImportTypeInfo(
-            key = "kdbx",
-            icon = Icons.Default.Key,
-            title = stringResource(R.string.import_type_keepass_format_title),
-            description = stringResource(R.string.import_type_keepass_format_desc),
-            fileHint = stringResource(R.string.import_type_keepass_format_file_hint)
-        ),
-        ImportTypeInfo(
-            key = "csv_group",
-            icon = Icons.Default.TableChart,
-            title = stringResource(R.string.import_type_csv_data_title),
-            description = stringResource(R.string.import_type_csv_data_desc),
-            fileHint = stringResource(R.string.import_type_csv_data_file_hint)
-        ),
-        ImportTypeInfo(
-            key = "aegis",
-            icon = Icons.Default.Security,
-            title = stringResource(R.string.import_type_aegis_title),
-            description = stringResource(R.string.import_type_aegis_desc),
-            fileHint = stringResource(R.string.import_type_aegis_file_hint)
-        ),
-        ImportTypeInfo(
-            key = "stratum",
-            icon = Icons.Default.VerifiedUser,
-            title = stringResource(R.string.import_type_stratum_title),
-            description = stringResource(R.string.import_type_stratum_desc),
-            fileHint = stringResource(R.string.import_type_stratum_file_hint)
-        ),
-        ImportTypeInfo(
-            key = "steam",
-            icon = Icons.Default.SportsEsports,
-            title = stringResource(R.string.import_type_steam_title),
-            description = stringResource(R.string.import_type_steam_desc),
-            fileHint = stringResource(R.string.import_type_steam_file_hint)
-        )
-    )
-
-    val csvImportTypes = listOf(
-        ImportTypeInfo(
-            key = "normal",
-            icon = Icons.Default.TableChart,
-            title = stringResource(R.string.import_type_csv_monica_title),
-            description = stringResource(R.string.import_type_csv_monica_desc),
-            fileHint = stringResource(R.string.import_type_csv_monica_file_hint)
-        ),
-        ImportTypeInfo(
-            key = "keepass_csv",
-            icon = Icons.Default.Description,
-            title = stringResource(R.string.import_type_csv_keepass_title),
-            description = stringResource(R.string.import_type_csv_keepass_desc),
-            fileHint = stringResource(R.string.import_type_csv_keepass_file_hint)
-        ),
-        ImportTypeInfo(
-            key = "bitwarden_csv",
-            icon = Icons.Default.Lock,
-            title = stringResource(R.string.import_type_csv_bitwarden_title),
-            description = stringResource(R.string.import_type_csv_bitwarden_desc),
-            fileHint = stringResource(R.string.import_type_csv_bitwarden_file_hint)
-        ),
-        ImportTypeInfo(
-            key = "chrome_csv",
-            icon = Icons.Default.Language,
-            title = stringResource(R.string.import_type_csv_chrome_title),
-            description = stringResource(R.string.import_type_csv_chrome_desc),
-            fileHint = stringResource(R.string.import_type_csv_chrome_file_hint)
-        ),
-        ImportTypeInfo(
-            key = "password_keyboard_csv",
-            icon = Icons.Default.Keyboard,
-            title = stringResource(R.string.import_type_csv_password_keyboard_title),
-            description = stringResource(R.string.import_type_csv_password_keyboard_desc),
-            fileHint = stringResource(R.string.import_type_csv_password_keyboard_file_hint)
-        )
-    )
+    val importTypes = importTypeOptions()
+    val csvImportTypes = csvImportTypeOptions()
 
     val effectiveImportType = if (importType == "csv_group") csvImportType else importType
     val isSteamLoginMode = effectiveImportType == "steam" && steamImportMode == "login"
@@ -662,6 +332,10 @@ fun ImportDataScreen(
                                                 }
                                                 "bitwarden_csv" -> {
                                                     val result = onImportBitwardenCsv(uri)
+                                                    handleImportResult(result, context, snackbarHostState, effectiveImportType, onNavigateBack)
+                                                }
+                                                "proton_pass_csv" -> {
+                                                    val result = onImportProtonPassCsv(uri)
                                                     handleImportResult(result, context, snackbarHostState, effectiveImportType, onNavigateBack)
                                                 }
                                                 "chrome_csv" -> {
@@ -996,6 +670,7 @@ fun ImportDataScreen(
                                 "kdbx" -> FileOperationHelper.importFromKdbx(act)
                                 "keepass_csv" -> FileOperationHelper.importFromCsv(act)
                                 "bitwarden_csv" -> FileOperationHelper.importFromCsv(act)
+                                "proton_pass_csv" -> FileOperationHelper.importFromCsv(act)
                                 "chrome_csv" -> FileOperationHelper.importFromCsv(act)
                                 "password_keyboard_csv" -> FileOperationHelper.importFromCsv(act)
                                 "aegis" -> FileOperationHelper.importFromJson(act)
@@ -1125,162 +800,128 @@ fun ImportDataScreen(
     }
 
     if (showPasswordKeyboardTagDialog) {
-        AlertDialog(
-            onDismissRequest = { showPasswordKeyboardTagDialog = false },
-            title = { Text(stringResource(R.string.import_password_keyboard_tag_dialog_title)) },
-            text = {
-                Text(stringResource(R.string.import_password_keyboard_tag_dialog_message))
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val uri = selectedFileUri ?: run {
-                            showPasswordKeyboardTagDialog = false
-                            return@TextButton
-                        }
-                        showPasswordKeyboardTagDialog = false
-                        scope.launch {
-                            isImporting = true
-                            try {
-                                val result = onImportPasswordKeyboardCsv(
-                                    uri,
-                                    DataExportImportManager.PasswordKeyboardTagHandling.CONVERT_TO_CUSTOM_FIELD
+        PasswordKeyboardTagDialog(
+            onDismiss = { showPasswordKeyboardTagDialog = false },
+            onConvert = {
+                val uri = selectedFileUri
+                if (uri == null) {
+                    showPasswordKeyboardTagDialog = false
+                } else {
+                    showPasswordKeyboardTagDialog = false
+                    scope.launch {
+                        isImporting = true
+                        try {
+                            val result = onImportPasswordKeyboardCsv(
+                                uri,
+                                DataExportImportManager.PasswordKeyboardTagHandling.CONVERT_TO_CUSTOM_FIELD
+                            )
+                            handleImportResult(
+                                result,
+                                context,
+                                snackbarHostState,
+                                effectiveImportType,
+                                onNavigateBack
+                            )
+                        } catch (e: Exception) {
+                            android.util.Log.e("ImportDataScreen", "密码键盘 CSV 导入异常", e)
+                            snackbarHostState.showSnackbar(
+                                context.getString(
+                                    R.string.import_data_error_exception,
+                                    e.message ?: context.getString(R.string.import_data_unknown_error)
                                 )
-                                handleImportResult(
-                                    result,
-                                    context,
-                                    snackbarHostState,
-                                    effectiveImportType,
-                                    onNavigateBack
-                                )
-                            } catch (e: Exception) {
-                                android.util.Log.e("ImportDataScreen", "密码键盘 CSV 导入异常", e)
-                                snackbarHostState.showSnackbar(
-                                    context.getString(
-                                        R.string.import_data_error_exception,
-                                        e.message ?: context.getString(R.string.import_data_unknown_error)
-                                    )
-                                )
-                            } finally {
-                                isImporting = false
-                            }
+                            )
+                        } finally {
+                            isImporting = false
                         }
                     }
-                ) {
-                    Text(stringResource(R.string.import_password_keyboard_tag_convert_action))
                 }
             },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        val uri = selectedFileUri ?: run {
-                            showPasswordKeyboardTagDialog = false
-                            return@TextButton
-                        }
-                        showPasswordKeyboardTagDialog = false
-                        scope.launch {
-                            isImporting = true
-                            try {
-                                val result = onImportPasswordKeyboardCsv(
-                                    uri,
-                                    DataExportImportManager.PasswordKeyboardTagHandling.DROP
+            onDrop = {
+                val uri = selectedFileUri
+                if (uri == null) {
+                    showPasswordKeyboardTagDialog = false
+                } else {
+                    showPasswordKeyboardTagDialog = false
+                    scope.launch {
+                        isImporting = true
+                        try {
+                            val result = onImportPasswordKeyboardCsv(
+                                uri,
+                                DataExportImportManager.PasswordKeyboardTagHandling.DROP
+                            )
+                            handleImportResult(
+                                result,
+                                context,
+                                snackbarHostState,
+                                effectiveImportType,
+                                onNavigateBack
+                            )
+                        } catch (e: Exception) {
+                            android.util.Log.e("ImportDataScreen", "密码键盘 CSV 导入异常", e)
+                            snackbarHostState.showSnackbar(
+                                context.getString(
+                                    R.string.import_data_error_exception,
+                                    e.message ?: context.getString(R.string.import_data_unknown_error)
                                 )
-                                handleImportResult(
-                                    result,
-                                    context,
-                                    snackbarHostState,
-                                    effectiveImportType,
-                                    onNavigateBack
-                                )
-                            } catch (e: Exception) {
-                                android.util.Log.e("ImportDataScreen", "密码键盘 CSV 导入异常", e)
-                                snackbarHostState.showSnackbar(
-                                    context.getString(
-                                        R.string.import_data_error_exception,
-                                        e.message ?: context.getString(R.string.import_data_unknown_error)
-                                    )
-                                )
-                            } finally {
-                                isImporting = false
-                            }
+                            )
+                        } finally {
+                            isImporting = false
                         }
                     }
-                ) {
-                    Text(stringResource(R.string.import_password_keyboard_tag_drop_action))
                 }
             }
         )
     }
 
     if (showZipRestoreConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { showZipRestoreConfirmDialog = false },
-            title = { Text(stringResource(R.string.webdav_restore_backup_title)) },
-            text = {
-                Text(
-                    stringResource(
-                        R.string.webdav_restore_backup_confirm_message,
-                        selectedFileName ?: context.getString(R.string.import_data_file_selected)
-                    )
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val uri = selectedFileUri ?: return@TextButton
-                        showZipRestoreConfirmDialog = false
-                        scope.launch {
-                            isImporting = true
-                            try {
-                                val result = onImportZip(uri, null)
-                                result.onSuccess { count ->
+        ZipRestoreConfirmDialog(
+            selectedFileName = selectedFileName,
+            isImporting = isImporting,
+            onDismiss = { showZipRestoreConfirmDialog = false },
+            onConfirm = {
+                val uri = selectedFileUri
+                if (uri != null) {
+                    showZipRestoreConfirmDialog = false
+                    scope.launch {
+                        isImporting = true
+                        try {
+                            val result = onImportZip(uri, null)
+                            result.onSuccess { count ->
+                                handleImportResult(
+                                    Result.success(count),
+                                    context,
+                                    snackbarHostState,
+                                    effectiveImportType,
+                                    onNavigateBack
+                                )
+                            }.onFailure { error ->
+                                if (error is takagi.ru.monica.utils.WebDavHelper.PasswordRequiredException) {
+                                    isImporting = false
+                                    showPasswordDialog = true
+                                    passwordError = null
+                                    aegisPassword = ""
+                                } else {
                                     handleImportResult(
-                                        Result.success(count),
+                                        Result.failure(error),
                                         context,
                                         snackbarHostState,
                                         effectiveImportType,
                                         onNavigateBack
                                     )
-                                }.onFailure { error ->
-                                    if (error is takagi.ru.monica.utils.WebDavHelper.PasswordRequiredException) {
-                                        isImporting = false
-                                        showPasswordDialog = true
-                                        passwordError = null
-                                        aegisPassword = ""
-                                    } else {
-                                        handleImportResult(
-                                            Result.failure(error),
-                                            context,
-                                            snackbarHostState,
-                                            effectiveImportType,
-                                            onNavigateBack
-                                        )
-                                    }
                                 }
-                            } catch (e: Exception) {
-                                android.util.Log.e("ImportDataScreen", "ZIP导入异常", e)
-                                snackbarHostState.showSnackbar(
-                                    context.getString(
-                                        R.string.import_data_error_exception,
-                                        e.message ?: context.getString(R.string.import_data_unknown_error)
-                                    )
-                                )
-                            } finally {
-                                isImporting = false
                             }
+                        } catch (e: Exception) {
+                            android.util.Log.e("ImportDataScreen", "ZIP导入异常", e)
+                            snackbarHostState.showSnackbar(
+                                context.getString(
+                                    R.string.import_data_error_exception,
+                                    e.message ?: context.getString(R.string.import_data_unknown_error)
+                                )
+                            )
+                        } finally {
+                            isImporting = false
                         }
-                    },
-                    enabled = !isImporting
-                ) {
-                    Text(stringResource(R.string.webdav_restore_action))
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { showZipRestoreConfirmDialog = false },
-                    enabled = !isImporting
-                ) {
-                    Text(stringResource(R.string.cancel))
+                    }
                 }
             }
         )
@@ -1288,118 +929,69 @@ fun ImportDataScreen(
 
     // 密码输入对话框
     if (showPasswordDialog) {
-        AlertDialog(
-            onDismissRequest = { 
+        EncryptedImportPasswordDialog(
+            importType = importType,
+            password = aegisPassword,
+            passwordError = passwordError,
+            isImporting = isImporting,
+            onPasswordChange = {
+                aegisPassword = it
+                passwordError = null
+            },
+            onDismiss = {
                 showPasswordDialog = false
                 passwordError = null
             },
-            title = {
-                val title = when (importType) {
-                    "stratum" -> stringResource(R.string.stratum_decrypt_password_title)
-                    else -> stringResource(R.string.aegis_decrypt_password_title)
-                }
-                Text(title)
-            },
-            text = {
-                Column {
-                    Text(
-                        when (importType) {
-                            "stratum" -> stringResource(R.string.stratum_decrypt_password_hint)
-                            else -> stringResource(R.string.aegis_decrypt_password_hint)
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    )
-                    OutlinedTextField(
-                        value = aegisPassword,
-                        onValueChange = { 
-                            aegisPassword = it
-                            passwordError = null
-                        },
-                        label = { Text(stringResource(R.string.password)) },
-                        singleLine = true,
-                        isError = passwordError != null,
-                        supportingText = passwordError?.let { { Text(it, color = MaterialTheme.colorScheme.error) } },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        if (aegisPassword.isBlank()) {
-                            passwordError = context.getString(R.string.import_data_password_cannot_be_empty)
-                            return@TextButton
-                        }
-                        
-                        scope.launch {
-                            isImporting = true
-                            showPasswordDialog = false
-                            try {
-                                selectedFileUri?.let { uri ->
-                                    // 使用加密导入回调
-                                    val result = when (importType) {
-                                        "monica_zip" -> onImportZip(uri, aegisPassword)
-                                        "stratum" -> onImportStratum(uri, aegisPassword)
-                                        else -> onImportEncryptedAegis(uri, aegisPassword)
+            onConfirm = {
+                if (aegisPassword.isBlank()) {
+                    passwordError = context.getString(R.string.import_data_password_cannot_be_empty)
+                } else {
+                    scope.launch {
+                        isImporting = true
+                        showPasswordDialog = false
+                        try {
+                            selectedFileUri?.let { uri ->
+                                // 使用加密导入回调
+                                val result = when (importType) {
+                                    "monica_zip" -> onImportZip(uri, aegisPassword)
+                                    "stratum" -> onImportStratum(uri, aegisPassword)
+                                    else -> onImportEncryptedAegis(uri, aegisPassword)
+                                }
+
+                                result.onSuccess { count ->
+                                    val message = if (importType == "monica_zip") {
+                                        context.getString(R.string.import_data_zip_restore_success_count, count)
+                                    } else if (importType == "stratum") {
+                                        context.getString(R.string.import_data_stratum_import_success_count, count)
+                                    } else {
+                                        context.getString(R.string.import_data_aegis_import_success_count, count)
                                     }
-                                    
-                                    result.onSuccess { count ->
-                                        val message = if (importType == "monica_zip") {
-                                            context.getString(R.string.import_data_zip_restore_success_count, count)
-                                        } else if (importType == "stratum") {
-                                            context.getString(R.string.import_data_stratum_import_success_count, count)
-                                        } else {
-                                            context.getString(R.string.import_data_aegis_import_success_count, count)
-                                        }
-                                        snackbarHostState.showSnackbar(message)
-                                        onNavigateBack()
-                                    }.onFailure { error ->
-                                        val errorMsg = error.message ?: context.getString(R.string.import_data_unknown_error)
-                                        if (isPasswordDecryptError(errorMsg)) {
-                                            passwordError = context.getString(R.string.import_data_password_incorrect_retry)
-                                            showPasswordDialog = true
-                                        } else {
-                                            snackbarHostState.showSnackbar(
-                                                context.getString(R.string.import_data_failed_with_reason, errorMsg)
-                                            )
-                                        }
+                                    snackbarHostState.showSnackbar(message)
+                                    onNavigateBack()
+                                }.onFailure { error ->
+                                    val errorMsg = error.message ?: context.getString(R.string.import_data_unknown_error)
+                                    if (isPasswordDecryptError(errorMsg)) {
+                                        passwordError = context.getString(R.string.import_data_password_incorrect_retry)
+                                        showPasswordDialog = true
+                                    } else {
+                                        snackbarHostState.showSnackbar(
+                                            context.getString(R.string.import_data_failed_with_reason, errorMsg)
+                                        )
                                     }
                                 }
-                            } catch (e: Exception) {
-                                android.util.Log.e("ImportDataScreen", "加密导入异常", e)
-                                snackbarHostState.showSnackbar(
-                                    context.getString(
-                                        R.string.import_data_failed_with_reason,
-                                        e.message ?: context.getString(R.string.import_data_unknown_error)
-                                    )
-                                )
-                            } finally {
-                                isImporting = false
                             }
+                        } catch (e: Exception) {
+                            android.util.Log.e("ImportDataScreen", "加密导入异常", e)
+                            snackbarHostState.showSnackbar(
+                                context.getString(
+                                    R.string.import_data_failed_with_reason,
+                                    e.message ?: context.getString(R.string.import_data_unknown_error)
+                                )
+                            )
+                        } finally {
+                            isImporting = false
                         }
-                    },
-                    enabled = !isImporting
-                ) {
-                    if (isImporting) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Text(stringResource(R.string.confirm))
                     }
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { 
-                        showPasswordDialog = false
-                        passwordError = null
-                    },
-                    enabled = !isImporting
-                ) {
-                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -1407,141 +999,68 @@ fun ImportDataScreen(
     
     // KDBX 密码输入对话框
     if (showKdbxPasswordDialog) {
-        AlertDialog(
-            onDismissRequest = { 
+        KdbxImportPasswordDialog(
+            password = kdbxPassword,
+            passwordVisible = kdbxPasswordVisible,
+            keyFileName = kdbxKeyFileName,
+            hasKeyFile = kdbxKeyFileUri != null,
+            isImporting = isImporting,
+            onPasswordChange = { kdbxPassword = it },
+            onTogglePasswordVisible = { kdbxPasswordVisible = !kdbxPasswordVisible },
+            onPickKeyFile = { kdbxKeyFilePickerLauncher.launch(arrayOf("*/*")) },
+            onDismiss = {
                 showKdbxPasswordDialog = false
                 kdbxPassword = ""
                 kdbxKeyFileUri = null
                 kdbxKeyFileName = ""
             },
-            title = { Text(stringResource(R.string.kdbx_import_password_title)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        stringResource(R.string.kdbx_import_password_hint),
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                    OutlinedTextField(
-                        value = kdbxPassword,
-                        onValueChange = { kdbxPassword = it },
-                        label = { Text(stringResource(R.string.password)) },
-                        visualTransformation = if (kdbxPasswordVisible) 
-                            androidx.compose.ui.text.input.VisualTransformation.None 
-                        else 
-                            androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                        trailingIcon = {
-                            IconButton(onClick = { kdbxPasswordVisible = !kdbxPasswordVisible }) {
-                                Icon(
-                                    if (kdbxPasswordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                    contentDescription = null
+            onConfirm = {
+                showKdbxPasswordDialog = false
+                selectedFileUri?.let { uri ->
+                    scope.launch {
+                        isImporting = true
+                        try {
+                            val result = onImportKdbx(uri, kdbxPassword, kdbxKeyFileUri)
+                            result.onSuccess { count ->
+                                snackbarHostState.showSnackbar(
+                                    context.getString(R.string.import_data_kdbx_import_success_count, count)
                                 )
-                            }
-                        },
-                        singleLine = true
-                    )
-                    OutlinedTextField(
-                        value = kdbxKeyFileName,
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text(stringResource(R.string.local_keepass_key_file_optional)) },
-                        placeholder = { Text(stringResource(R.string.local_keepass_key_file_tap_to_select)) },
-                        trailingIcon = {
-                            IconButton(onClick = { kdbxKeyFilePickerLauncher.launch(arrayOf("*/*")) }) {
-                                Icon(
-                                    Icons.Default.FolderOpen,
-                                    contentDescription = stringResource(R.string.local_keepass_select_key_file)
-                                )
-                            }
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { kdbxKeyFilePickerLauncher.launch(arrayOf("*/*")) }
-                    )
-                    Text(
-                        if (kdbxKeyFileUri == null) {
-                            stringResource(R.string.local_keepass_no_key_file_selected)
-                        } else {
-                            stringResource(R.string.local_keepass_key_file_selected)
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showKdbxPasswordDialog = false
-                        selectedFileUri?.let { uri ->
-                            scope.launch {
-                                isImporting = true
-                                try {
-                                    val result = onImportKdbx(uri, kdbxPassword, kdbxKeyFileUri)
-                                    result.onSuccess { count ->
-                                        snackbarHostState.showSnackbar(
-                                            context.getString(R.string.import_data_kdbx_import_success_count, count)
+                                onNavigateBack()
+                            }.onFailure { error ->
+                                if (error is KeePassOperationException) {
+                                    keepassImportError = error
+                                    showKeepassImportErrorDialog = true
+                                } else {
+                                    snackbarHostState.showSnackbar(
+                                        formatImportErrorMessage(
+                                            error,
+                                            context.getString(R.string.import_data_error)
                                         )
-                                        onNavigateBack()
-                                    }.onFailure { error ->
-                                        if (error is KeePassOperationException) {
-                                            keepassImportError = error
-                                            showKeepassImportErrorDialog = true
-                                        } else {
-                                            snackbarHostState.showSnackbar(
-                                                formatImportErrorMessage(
-                                                    error,
-                                                    context.getString(R.string.import_data_error)
-                                                )
-                                            )
-                                        }
-                                    }
-                                } catch (e: Exception) {
-                                    if (e is KeePassOperationException) {
-                                        keepassImportError = e
-                                        showKeepassImportErrorDialog = true
-                                    } else {
-                                        snackbarHostState.showSnackbar(
-                                            formatImportErrorMessage(
-                                                e,
-                                                context.getString(
-                                                    R.string.import_data_error_exception,
-                                                    e.message ?: context.getString(R.string.import_data_unknown_error)
-                                                )
-                                            )
-                                        )
-                                    }
-                                } finally {
-                                    isImporting = false
-                                    kdbxPassword = ""
-                                    kdbxKeyFileUri = null
-                                    kdbxKeyFileName = ""
+                                    )
                                 }
                             }
+                        } catch (e: Exception) {
+                            if (e is KeePassOperationException) {
+                                keepassImportError = e
+                                showKeepassImportErrorDialog = true
+                            } else {
+                                snackbarHostState.showSnackbar(
+                                    formatImportErrorMessage(
+                                        e,
+                                        context.getString(
+                                            R.string.import_data_error_exception,
+                                            e.message ?: context.getString(R.string.import_data_unknown_error)
+                                        )
+                                    )
+                                )
+                            }
+                        } finally {
+                            isImporting = false
+                            kdbxPassword = ""
+                            kdbxKeyFileUri = null
+                            kdbxKeyFileName = ""
                         }
-                    },
-                    enabled = (kdbxPassword.isNotEmpty() || kdbxKeyFileUri != null) && !isImporting
-                ) {
-                    if (isImporting) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp
-                        )
-                    } else {
-                        Text(stringResource(R.string.import_data_btn))
                     }
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { 
-                        showKdbxPasswordDialog = false
-                        kdbxPassword = ""
-                        kdbxKeyFileUri = null
-                        kdbxKeyFileName = ""
-                    },
-                    enabled = !isImporting
-                ) {
-                    Text(stringResource(R.string.cancel))
                 }
             }
         )
@@ -1549,47 +1068,11 @@ fun ImportDataScreen(
 
     if (showKeepassImportErrorDialog && keepassImportError != null) {
         val error = keepassImportError!!
-        AlertDialog(
-            onDismissRequest = {
+        KeepassImportErrorDialog(
+            error = error,
+            onDismiss = {
                 showKeepassImportErrorDialog = false
                 keepassImportError = null
-            },
-            title = {
-                Text(stringResource(R.string.import_data_keepass_error_title))
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(
-                        stringResource(R.string.import_data_keepass_error_code_value, error.code.name),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        error.message ?: context.getString(R.string.import_data_error),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    HorizontalDivider()
-                    Text(
-                        stringResource(R.string.import_data_keepass_error_suggestion_label),
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        keepassImportSuggestion(context, error.code),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showKeepassImportErrorDialog = false
-                        keepassImportError = null
-                    }
-                ) {
-                    Text(stringResource(R.string.ok))
-                }
             }
         )
     }
