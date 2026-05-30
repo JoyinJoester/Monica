@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="660" height="400" viewBox="0 0 660 400">
+  <rect x="0" y="0" width="660" height="50.0" fill="#8ab4f8"/>
+  <rect x="0" y="50.0" width="660" height="12.5" fill="#FFFFFF"/>
+  <rect x="0" y="62.5" width="660" height="275.0" fill="#a7f3d0"/>
+  <rect x="0" y="337.5" width="660" height="12.5" fill="#FFFFFF"/>
+  <rect x="0" y="350.0" width="660" height="50.0" fill="#8ab4f8"/>
+  <circle cx="165.0" cy="200.0" r="100.0" fill="#FFFFFF"/>
+  <defs><clipPath id="icon-clip"><circle cx="165.0" cy="200.0" r="100.0"/></clipPath></defs><image href="https://raw.githubusercontent.com/JoyinJoester/Monica/main/image/newicon.png" x="85.0" y="120.0" width="160.0" height="160.0" clip-path="url(#icon-clip)" preserveAspectRatio="xMidYMid slice"/>
+</svg>
