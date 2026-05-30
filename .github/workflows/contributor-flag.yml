@@ -1,0 +1,28 @@
+name: Update Contributor Flag
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '.github/assets/**'
+      - '*.svg'
+  schedule:
+    - cron: '17 3 * * 1'
+
+permissions:
+  contents: write
+
+jobs:
+  update-svg:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Create output directory
+        run: mkdir -p .github/assets
+
+      - uses: JoyinJoester/North-Korea-Flag@main
+        with:
+          count: '3'
+          output: '.github/assets/contributor-flag.svg'

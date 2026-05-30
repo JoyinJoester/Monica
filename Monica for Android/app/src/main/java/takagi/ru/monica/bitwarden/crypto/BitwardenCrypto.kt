@@ -1,6 +1,10 @@
 package takagi.ru.monica.bitwarden.crypto
 
 import android.util.Base64
+import com.lambdapioneer.argon2kt.Argon2Kt
+import com.lambdapioneer.argon2kt.Argon2Mode
+import com.lambdapioneer.argon2kt.Argon2Version
+import kotlinx.coroutines.CancellationException
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
@@ -36,6 +40,7 @@ import javax.crypto.spec.SecretKeySpec
 object BitwardenCrypto {
     private const val MAX_CIPHER_STRING_LENGTH = 1024 * 1024
     private const val MAX_BASE64_PART_LENGTH = 1024 * 1024
+    private const val ARGON2_JVM_FALLBACK_MAX_MEMORY_MB = 64
     
     // 加密类型常量
     const val CIPHER_TYPE_AES_CBC = 0
@@ -46,6 +51,7 @@ object BitwardenCrypto {
     private const val MAC_KEY_SIZE = 32   // 256 bits
     private const val IV_SIZE = 16        // 128 bits
     private const val SEND_KEY_MATERIAL_SIZE = 16
+    private val nativeArgon2 by lazy { Argon2Kt() }
     
     /**
      * 对称加密密钥 - 包含加密密钥和 MAC 密钥
@@ -139,20 +145,102 @@ object BitwardenCrypto {
         memory: Int = 64,
         parallelism: Int = 4
     ): ByteArray {
-        // 使用 BouncyCastle 的 Argon2 实现
         val passwordBytes = password.toByteArray(StandardCharsets.UTF_8)
         // 注意: salt 应该已经被调用者小写化，这里不再重复处理
         val saltBytes = salt.toByteArray(StandardCharsets.UTF_8)
         
         // keyguard: val saltHash = hashSha256(salt)
         val saltHash = MessageDigest.getInstance("SHA-256").digest(saltBytes)
-        
+
+        return try {
+            deriveMasterKeyArgon2Native(
+                passwordBytes = passwordBytes,
+                saltHash = saltHash,
+                iterations = iterations,
+                memory = memory,
+                parallelism = parallelism
+            )
+        } catch (nativeError: Throwable) {
+            if (nativeError is CancellationException) {
+                throw nativeError
+            }
+            if (nativeError is ThreadDeath) {
+                throw nativeError
+            }
+            if (memory > ARGON2_JVM_FALLBACK_MAX_MEMORY_MB) {
+                throw IllegalStateException(
+                    "Bitwarden Argon2id KDF requires ${memory}MB memory; native Argon2 failed " +
+                        "and JVM fallback is disabled to avoid Android heap OOM.",
+                    nativeError
+                )
+            }
+
+            BitwardenArgon2MemoryGuard.requireCanRun(memory)
+            deriveMasterKeyArgon2BouncyCastle(
+                passwordBytes = passwordBytes,
+                saltHash = saltHash,
+                iterations = iterations,
+                memory = memory,
+                parallelism = parallelism
+            )
+        } finally {
+            passwordBytes.fill(0)
+            saltBytes.fill(0)
+            saltHash.fill(0)
+        }
+    }
+
+    private fun deriveMasterKeyArgon2Native(
+        passwordBytes: ByteArray,
+        saltHash: ByteArray,
+        iterations: Int,
+        memory: Int,
+        parallelism: Int
+    ): ByteArray {
+        val passwordBuffer = ByteBuffer.allocateDirect(passwordBytes.size).apply {
+            put(passwordBytes)
+            flip()
+        }
+        val saltBuffer = ByteBuffer.allocateDirect(saltHash.size).apply {
+            put(saltHash)
+            flip()
+        }
+
+        return try {
+            val result = nativeArgon2.hash(
+                mode = Argon2Mode.ARGON2_ID,
+                password = passwordBuffer,
+                salt = saltBuffer,
+                tCostInIterations = iterations,
+                mCostInKibibyte = argon2MemoryKiB(memory),
+                parallelism = parallelism,
+                hashLengthInBytes = 32,
+                version = Argon2Version.V13
+            )
+            val hash = result.rawHashAsByteArray()
+            wipeDirectBuffer(result.rawHash)
+            wipeDirectBuffer(result.encodedOutput)
+            hash
+        } finally {
+            wipeDirectBuffer(passwordBuffer)
+            wipeDirectBuffer(saltBuffer)
+        }
+    }
+
+    private fun deriveMasterKeyArgon2BouncyCastle(
+        passwordBytes: ByteArray,
+        saltHash: ByteArray,
+        iterations: Int,
+        memory: Int,
+        parallelism: Int
+    ): ByteArray {
+        // 使用 BouncyCastle 的 Argon2 实现作为低内存兼容回退。
         val params = org.bouncycastle.crypto.params.Argon2Parameters.Builder(
             org.bouncycastle.crypto.params.Argon2Parameters.ARGON2_id
         )
             .withSalt(saltHash)  // 使用 SHA256 哈希后的 salt
             .withIterations(iterations)
-            .withMemoryAsKB(memory * 1024)
+            .withMemoryAsKB(argon2MemoryKiB(memory))
             .withParallelism(parallelism)
             .withVersion(org.bouncycastle.crypto.params.Argon2Parameters.ARGON2_VERSION_13)
             .build()
@@ -161,9 +249,38 @@ object BitwardenCrypto {
         generator.init(params)
         
         val hash = ByteArray(32)
-        generator.generateBytes(passwordBytes, hash)
+        try {
+            generator.generateBytes(passwordBytes, hash)
+        } catch (error: OutOfMemoryError) {
+            throw BitwardenKdfMemoryException(
+                requestedMemoryMb = memory,
+                maxHeapMb = Runtime.getRuntime().maxMemory() / (1024L * 1024L),
+                safeLimitMb = BitwardenArgon2MemoryGuard.safeLimitMb(
+                    maxHeapBytes = Runtime.getRuntime().maxMemory(),
+                    usedHeapBytes = Runtime.getRuntime().totalMemory() - Runtime.getRuntime().freeMemory()
+                )
+            )
+        }
         
         return hash
+    }
+
+    private fun wipeDirectBuffer(buffer: ByteBuffer) {
+        if (buffer.isReadOnly) return
+        val duplicate = buffer.duplicate()
+        duplicate.clear()
+        while (duplicate.hasRemaining()) {
+            duplicate.put(0.toByte())
+        }
+    }
+
+    private fun argon2MemoryKiB(memoryMb: Int): Int {
+        require(memoryMb > 0) { "Bitwarden Argon2id KDF memory must be positive: $memoryMb" }
+        return try {
+            Math.multiplyExact(memoryMb, 1024)
+        } catch (e: ArithmeticException) {
+            throw IllegalArgumentException("Bitwarden Argon2id KDF memory is too large: ${memoryMb}MB", e)
+        }
     }
     
     /**

@@ -48,8 +48,10 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import takagi.ru.monica.R
 import takagi.ru.monica.util.PasswordGenerator
@@ -72,6 +74,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
 import takagi.ru.monica.ui.components.OutlinedTextField
 import takagi.ru.monica.ui.components.SshKeyGenerationProgressIndicator
+import takagi.ru.monica.utils.ClipboardUtils
 
 /**
  * 将密码转换为彩色文本
@@ -656,8 +659,8 @@ fun GeneratorScreen(
                         Slider(
                             value = symbolLength.toFloat(),
                             onValueChange = { viewModel.updateSymbolLength(it.toInt()) },
-                            valueRange = 1f..32f,
-                            steps = 31,
+                            valueRange = 4f..128f,
+                            steps = 123,
                             modifier = Modifier.fillMaxWidth()
                         )
                         
@@ -994,8 +997,8 @@ fun GeneratorScreen(
                         Slider(
                             value = passwordLength.toFloat(),
                             onValueChange = { viewModel.updatePasswordLength(it.toInt()) },
-                            valueRange = 4f..32f,
-                            steps = 28,
+                            valueRange = 4f..128f,
+                            steps = 124,
                             modifier = Modifier.fillMaxWidth()
                         )
                         
@@ -1069,8 +1072,8 @@ fun GeneratorScreen(
                         Slider(
                             value = passphraseWordCount.toFloat(),
                             onValueChange = { viewModel.updatePassphraseWordCount(it.toInt()) },
-                            valueRange = 3f..8f,
-                            steps = 5,
+                            valueRange = 1f..20f,
+                            steps = 18,
                             modifier = Modifier.fillMaxWidth()
                         )
                         
@@ -1596,7 +1599,10 @@ private fun ResultCard(
 ) {
     var showCopied by remember { mutableStateOf(false) }
     val colorScheme = MaterialTheme.colorScheme
-    val strengthResult = remember(result) { PasswordGenerator.analyzePasswordStrength(result) }
+    val context = LocalContext.current
+    val strengthResult = remember(result, context) {
+        PasswordGenerator.analyzePasswordStrength(result, context)
+    }
     val strengthColor = when (strengthResult.level) {
         PasswordGenerator.StrengthLevel.VERY_WEAK -> colorScheme.error
         PasswordGenerator.StrengthLevel.WEAK -> colorScheme.tertiary
@@ -1637,15 +1643,54 @@ private fun ResultCard(
         animationSpec = tween(durationMillis = 300),
         label = "button_content_color"
     )
+    val resultTextStyle = when {
+        compactMode && result.length > 72 -> MaterialTheme.typography.bodySmall.copy(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+            fontSize = 12.sp,
+            lineHeight = 16.sp,
+            letterSpacing = 0.sp
+        )
+        compactMode -> MaterialTheme.typography.titleMedium.copy(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+            letterSpacing = 0.sp
+        )
+        result.length >= 96 -> MaterialTheme.typography.bodyMedium.copy(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+            fontSize = 13.sp,
+            lineHeight = 18.sp,
+            letterSpacing = 0.sp
+        )
+        result.length >= 64 -> MaterialTheme.typography.bodyMedium.copy(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+            fontSize = 15.sp,
+            lineHeight = 20.sp,
+            letterSpacing = 0.sp
+        )
+        result.length >= 40 -> MaterialTheme.typography.titleMedium.copy(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+            fontSize = 17.sp,
+            lineHeight = 24.sp,
+            letterSpacing = 0.sp
+        )
+        result.length >= 24 -> MaterialTheme.typography.titleLarge.copy(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+            fontSize = 20.sp,
+            lineHeight = 28.sp,
+            letterSpacing = 0.sp
+        )
+        else -> MaterialTheme.typography.headlineSmall.copy(
+            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+            lineHeight = MaterialTheme.typography.headlineSmall.lineHeight * 1.2f,
+            letterSpacing = 0.sp
+        )
+    }
+    val resultTextScrollState = rememberScrollState()
 
     ElevatedCard(
         modifier = modifier
             .fillMaxWidth()
             .animateContentSize(
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow
-                )
+                animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing)
             )
             .graphicsLayer { alpha = cardAlpha },
         elevation = CardDefaults.elevatedCardElevation(
@@ -1659,19 +1704,12 @@ private fun ResultCard(
             }
         )
     ) {
-        AnimatedContent(
-            targetState = compactMode,
-            transitionSpec = {
-                (fadeIn(animationSpec = tween(180)) + scaleIn(initialScale = 0.94f)) togetherWith
-                    (fadeOut(animationSpec = tween(160)) + scaleOut(targetScale = 1.02f))
-            },
-            label = "result_card_compact_transition"
-        ) { isCompact ->
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(if (isCompact) 10.dp else 20.dp)
-            ) {
+        val isCompact = compactMode
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(if (isCompact) 10.dp else 20.dp)
+        ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -1744,26 +1782,34 @@ private fun ResultCard(
 
                 Spacer(modifier = Modifier.height(if (isCompact) 8.dp else 16.dp))
 
-                AnimatedVisibility(
-                    visible = result.isNotEmpty(),
-                    enter = fadeIn(animationSpec = tween(300)) + expandVertically(),
-                    exit = fadeOut(animationSpec = tween(200)) + shrinkVertically()
-                ) {
-                    SelectionContainer {
-                        Text(
-                            text = colorizePassword(result),
-                            style = (if (isCompact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.headlineSmall).copy(
-                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
-                                letterSpacing = androidx.compose.ui.unit.TextUnit(0.5f, androidx.compose.ui.unit.TextUnitType.Sp)
-                            ),
-                            fontWeight = FontWeight.Medium,
-                            lineHeight = if (isCompact) {
-                                MaterialTheme.typography.titleMedium.lineHeight
-                            } else {
-                                MaterialTheme.typography.headlineSmall.lineHeight * 1.4f
-                            },
-                            maxLines = if (isCompact) 1 else Int.MAX_VALUE
-                        )
+                if (result.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .then(
+                                if (isCompact) {
+                                    Modifier.heightIn(max = 28.dp)
+                                } else {
+                                    Modifier.heightIn(max = 120.dp)
+                                }
+                            )
+                            .then(
+                                if (isCompact) {
+                                    Modifier
+                                } else {
+                                    Modifier.verticalScroll(resultTextScrollState)
+                                }
+                            )
+                    ) {
+                        SelectionContainer {
+                            Text(
+                                text = colorizePassword(result),
+                                style = resultTextStyle,
+                                fontWeight = FontWeight.Medium,
+                                maxLines = if (isCompact) 1 else Int.MAX_VALUE,
+                                overflow = if (isCompact) TextOverflow.Ellipsis else TextOverflow.Clip
+                            )
+                        }
                     }
                 }
 
@@ -1802,11 +1848,7 @@ private fun ResultCard(
                     }
                 }
 
-                AnimatedVisibility(
-                    visible = result.isNotEmpty() && infoText.isNotBlank(),
-                    enter = fadeIn(animationSpec = tween(300, delayMillis = 100)) + slideInVertically(),
-                    exit = fadeOut(animationSpec = tween(200))
-                ) {
+                if (result.isNotEmpty() && infoText.isNotBlank()) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -1832,7 +1874,6 @@ private fun ResultCard(
                         )
                     }
                 }
-            }
         }
     }
 }
@@ -2126,9 +2167,12 @@ private fun GeneratorHistorySheet(
                                     // 复制按钮
                                     IconButton(
                                         onClick = {
-                                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                            val clip = ClipData.newPlainText("password", historyItem.password)
-                                            clipboard.setPrimaryClip(clip)
+                                            ClipboardUtils.copyToClipboard(
+                                                context = context,
+                                                text = historyItem.password,
+                                                label = context.getString(R.string.password),
+                                                sensitive = true
+                                            )
                                             copied = true
                                         }
                                     ) {

@@ -48,6 +48,20 @@ class CipherSyncProcessor(
         val website: String = "",
         val appPackageName: String = ""
     )
+
+    private fun normalizeWebsite(rawWebsite: String): String {
+        val trimmed = rawWebsite.trim()
+        if (trimmed.isBlank()) return trimmed
+        return if (
+            trimmed.startsWith("http://", ignoreCase = true) ||
+            trimmed.startsWith("https://", ignoreCase = true) ||
+            trimmed.startsWith("androidapp://", ignoreCase = true)
+        ) {
+            trimmed
+        } else {
+            "https://$trimmed"
+        }
+    }
     
     private val database = PasswordDatabase.getDatabase(context)
     private val passwordEntryDao = database.passwordEntryDao()
@@ -1562,7 +1576,7 @@ class CipherSyncProcessor(
     ): ParsedLoginUris {
         if (uris.isNullOrEmpty()) return ParsedLoginUris()
 
-        var website = ""
+        val websites = linkedSetOf<String>()
         var appPackageName = ""
         uris.forEach { uriData ->
             val uri = decryptString(uriData.uri, key) ?: return@forEach
@@ -1572,10 +1586,13 @@ class CipherSyncProcessor(
                         appPackageName = uri.removePrefix("androidapp://")
                     }
                 }
-                website.isBlank() -> website = uri
+                else -> websites += normalizeWebsite(uri)
             }
         }
-        return ParsedLoginUris(website = website, appPackageName = appPackageName)
+        return ParsedLoginUris(
+            website = websites.joinToString(", "),
+            appPackageName = appPackageName
+        )
     }
 
     private fun parseDocumentType(raw: String?): DocumentType? {

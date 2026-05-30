@@ -37,10 +37,6 @@ import takagi.ru.monica.ui.components.PasswordQuickAccessItem
 import takagi.ru.monica.ui.components.PasswordQuickAccessSheet
 import takagi.ru.monica.ui.components.SwipeableAddFab
 import takagi.ru.monica.ui.main.navigation.BottomNavItem
-import takagi.ru.monica.ui.screens.AddEditNoteScreen
-import takagi.ru.monica.ui.screens.AddEditPasswordScreen
-import takagi.ru.monica.ui.screens.AddEditSendScreen
-import takagi.ru.monica.ui.screens.AddEditTotpScreen
 import takagi.ru.monica.ui.screens.CardWalletTab
 import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.DocumentViewModel
@@ -100,10 +96,10 @@ internal fun BoxScope.MainScreenFabOverlay(
     onNavigateToWalletAdd: (CardWalletTab) -> Unit,
     passwordPageAggregateEnabled: Boolean,
     passwordNewItemDefaults: NewItemStorageDefaults,
-    onPreparePasswordAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit,
-    onPrepareTotpAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit,
-    onPrepareNoteAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit,
-    onPrepareWalletAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit,
+    onPreparePasswordAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit,
+    onPrepareTotpAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit,
+    onPrepareNoteAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit,
+    onPrepareWalletAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit,
     onNoteAddOpen: () -> Unit,
     onSendAddOpen: () -> Unit,
     onGeneratorRefresh: () -> Unit,
@@ -113,6 +109,9 @@ internal fun BoxScope.MainScreenFabOverlay(
     localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
     totpNewItemDefaults: NewItemStorageDefaults,
     onNavigateToQuickTotpScan: () -> Unit,
+    pendingPasswordAuthenticatorQrResult: String? = null,
+    onConsumePendingPasswordAuthenticatorQrResult: () -> Unit = {},
+    onScanPasswordAuthenticatorQrCode: () -> Unit = {},
     walletUnifiedAddType: CardWalletTab,
     onWalletUnifiedAddTypeChange: (CardWalletTab) -> Unit,
     documentViewModel: DocumentViewModel,
@@ -331,6 +330,9 @@ internal fun BoxScope.MainScreenFabOverlay(
                 onExpandStateChanged = onFabExpandedChange,
                 onNavigateToAddWifi = onNavigateToAddWifi,
                 onNavigateToAddSshKey = onNavigateToAddSshKey,
+                pendingPasswordAuthenticatorQrResult = pendingPasswordAuthenticatorQrResult,
+                onConsumePendingPasswordAuthenticatorQrResult = onConsumePendingPasswordAuthenticatorQrResult,
+                onScanPasswordAuthenticatorQrCode = onScanPasswordAuthenticatorQrCode,
                 passwordViewModel = passwordViewModel,
                 totpViewModel = totpViewModel,
                 bankCardViewModel = bankCardViewModel,
@@ -615,16 +617,19 @@ internal fun MainScreenAddFab(
     onNavigateToWalletAdd: (CardWalletTab) -> Unit,
     passwordPageAggregateEnabled: Boolean,
     passwordNewItemDefaults: NewItemStorageDefaults,
-    onPreparePasswordAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit,
-    onPrepareTotpAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit,
-    onPrepareNoteAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit,
-    onPrepareWalletAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit,
+    onPreparePasswordAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit,
+    onPrepareTotpAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit,
+    onPrepareNoteAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit,
+    onPrepareWalletAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit,
     onNoteAddOpen: () -> Unit,
     onSendAddOpen: () -> Unit,
     onGeneratorRefresh: () -> Unit,
     onExpandStateChanged: (Boolean) -> Unit,
     onNavigateToAddWifi: (Long?) -> Unit = {},
     onNavigateToAddSshKey: (Long?) -> Unit = {},
+    pendingPasswordAuthenticatorQrResult: String? = null,
+    onConsumePendingPasswordAuthenticatorQrResult: () -> Unit = {},
+    onScanPasswordAuthenticatorQrCode: () -> Unit = {},
     passwordViewModel: PasswordViewModel,
     totpViewModel: TotpViewModel,
     bankCardViewModel: BankCardViewModel,
@@ -639,7 +644,6 @@ internal fun MainScreenAddFab(
     sendState: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel.SendState,
     bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel
 ) {
-    var showVaultWalletAddScreen by rememberSaveable(currentTab.key) { mutableStateOf(false) }
     val effectiveAddButtonBehaviorMode =
         if (currentTab == BottomNavItem.VaultV2) {
             AddButtonBehaviorMode.EXPANDABLE_MENU
@@ -652,7 +656,7 @@ internal fun MainScreenAddFab(
         CardWalletTab.ALL -> walletUnifiedAddType
     }
     val shouldApplyPasswordAggregateDefaults =
-        currentTab == BottomNavItem.Passwords
+        currentTab == BottomNavItem.Passwords || currentTab == BottomNavItem.VaultV2
     val aggregateStorageDefaults = if (shouldApplyPasswordAggregateDefaults) {
         passwordNewItemDefaults
     } else {
@@ -680,7 +684,6 @@ internal fun MainScreenAddFab(
                 onNavigateToWalletAdd,
                 isCompactWidth,
                 compactWalletAddType,
-                showVaultWalletAddScreen,
                 aggregateStorageDefaults,
                 onPreparePasswordAddStorageDefaults,
                 onPrepareTotpAddStorageDefaults,
@@ -701,6 +704,8 @@ internal fun MainScreenAddFab(
                                                 aggregateStorageDefaults.categoryId,
                                                 aggregateStorageDefaults.keepassDatabaseId,
                                                 aggregateStorageDefaults.keepassGroupPath,
+                                                aggregateStorageDefaults.mdbxDatabaseId,
+                                                aggregateStorageDefaults.mdbxFolderId,
                                                 aggregateStorageDefaults.bitwardenVaultId,
                                                 aggregateStorageDefaults.bitwardenFolderId
                                             )
@@ -720,6 +725,8 @@ internal fun MainScreenAddFab(
                                                 aggregateStorageDefaults.categoryId,
                                                 aggregateStorageDefaults.keepassDatabaseId,
                                                 aggregateStorageDefaults.keepassGroupPath,
+                                                aggregateStorageDefaults.mdbxDatabaseId,
+                                                aggregateStorageDefaults.mdbxFolderId,
                                                 aggregateStorageDefaults.bitwardenVaultId,
                                                 aggregateStorageDefaults.bitwardenFolderId
                                             )
@@ -739,6 +746,8 @@ internal fun MainScreenAddFab(
                                                 aggregateStorageDefaults.categoryId,
                                                 aggregateStorageDefaults.keepassDatabaseId,
                                                 aggregateStorageDefaults.keepassGroupPath,
+                                                aggregateStorageDefaults.mdbxDatabaseId,
+                                                aggregateStorageDefaults.mdbxFolderId,
                                                 aggregateStorageDefaults.bitwardenVaultId,
                                                 aggregateStorageDefaults.bitwardenFolderId
                                             )
@@ -758,42 +767,20 @@ internal fun MainScreenAddFab(
                                                 aggregateStorageDefaults.categoryId,
                                                 aggregateStorageDefaults.keepassDatabaseId,
                                                 aggregateStorageDefaults.keepassGroupPath,
+                                                aggregateStorageDefaults.mdbxDatabaseId,
+                                                aggregateStorageDefaults.mdbxFolderId,
                                                 aggregateStorageDefaults.bitwardenVaultId,
                                                 aggregateStorageDefaults.bitwardenFolderId
                                             )
                                         }
-                                        if (isCompactWidth) {
-                                            onNavigateToWalletAdd(compactWalletAddType)
-                                        } else {
-                                            showVaultWalletAddScreen = true
-                                        }
+                                        onNavigateToWalletAdd(compactWalletAddType)
                                     }
                                 )
                             }
                         }
                     }
             }
-            if (showVaultWalletAddScreen) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(MaterialTheme.colorScheme.surface)
-                ) {
-                    UnifiedWalletAddScreen(
-                        selectedType = walletUnifiedAddType,
-                        onTypeSelected = onWalletUnifiedAddTypeChange,
-                        onNavigateBack = { showVaultWalletAddScreen = false },
-                        bankCardViewModel = bankCardViewModel,
-                        documentViewModel = documentViewModel,
-                        stateHolder = walletAddSaveableStateHolder,
-                        initialCategoryId = aggregateStorageDefaults?.categoryId,
-                        initialKeePassDatabaseId = aggregateStorageDefaults?.keepassDatabaseId,
-                        initialKeePassGroupPath = aggregateStorageDefaults?.keepassGroupPath,
-                        initialBitwardenVaultId = aggregateStorageDefaults?.bitwardenVaultId,
-                        initialBitwardenFolderId = aggregateStorageDefaults?.bitwardenFolderId
-                    )
-                }
-            } else if (effectiveAddButtonBehaviorMode == AddButtonBehaviorMode.EXPANDABLE_MENU) {
+            if (effectiveAddButtonBehaviorMode == AddButtonBehaviorMode.EXPANDABLE_MENU) {
                 VaultV2FabMenu(
                     fabBottomOffset = fabBottomOffset,
                     fabContainerColor = fabContainerColor,
@@ -806,6 +793,20 @@ internal fun MainScreenAddFab(
                     fabBottomOffset = fabBottomOffset,
                     fabContainerColor = fabContainerColor,
                     modifier = Modifier,
+                    onClick = {
+                        if (aggregateStorageDefaults != null) {
+                            onPreparePasswordAddStorageDefaults(
+                                aggregateStorageDefaults.categoryId,
+                                aggregateStorageDefaults.keepassDatabaseId,
+                                aggregateStorageDefaults.keepassGroupPath,
+                                aggregateStorageDefaults.mdbxDatabaseId,
+                                aggregateStorageDefaults.mdbxFolderId,
+                                aggregateStorageDefaults.bitwardenVaultId,
+                                aggregateStorageDefaults.bitwardenFolderId
+                            )
+                        }
+                        onPasswordAddOpen()
+                    },
                     onExpandStateChanged = onExpandStateChanged,
                     fabContent = {
                         Icon(
@@ -813,36 +814,6 @@ internal fun MainScreenAddFab(
                             contentDescription = stringResource(R.string.add),
                             tint = fabIconTint
                         )
-                    },
-                    expandedContent = { collapse ->
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(MaterialTheme.colorScheme.surface)
-                        ) {
-                            AddEditPasswordScreen(
-                                viewModel = passwordViewModel,
-                                totpViewModel = totpViewModel,
-                                bankCardViewModel = bankCardViewModel,
-                                noteViewModel = noteViewModel,
-                                localKeePassViewModel = localKeePassViewModel,
-                                passwordId = null,
-                                initialCategoryId = aggregateStorageDefaults?.categoryId,
-                                initialKeePassDatabaseId = aggregateStorageDefaults?.keepassDatabaseId,
-                                initialKeePassGroupPath = aggregateStorageDefaults?.keepassGroupPath,
-                                initialBitwardenVaultId = aggregateStorageDefaults?.bitwardenVaultId,
-                                initialBitwardenFolderId = aggregateStorageDefaults?.bitwardenFolderId,
-                                onSwitchToWifi = { targetId ->
-                                    collapse()
-                                    onNavigateToAddWifi(targetId)
-                                },
-                                onSwitchToSshKey = { targetId ->
-                                    collapse()
-                                    onNavigateToAddSshKey(targetId)
-                                },
-                                onNavigateBack = collapse
-                            )
-                        }
                     }
                 )
             }
@@ -853,18 +824,15 @@ internal fun MainScreenAddFab(
                 fabBottomOffset = fabBottomOffset,
                 fabContainerColor = fabContainerColor,
                 modifier = Modifier,
-                onFabClickOverride = when (currentTab) {
-                    BottomNavItem.VaultV2 -> if (isCompactWidth) null else ({ onPasswordAddOpen() })
-                    BottomNavItem.Passwords -> if (isCompactWidth) null else ({ onPasswordAddOpen() })
-                    BottomNavItem.Authenticator -> if (isCompactWidth) null else ({ onTotpAddOpen() })
-                    BottomNavItem.CardWallet -> when {
-                        cardWalletSubTab == CardWalletTab.ALL -> null
-                        else -> ({ onWalletAddOpen() })
-                    }
-                    BottomNavItem.Notes -> if (isCompactWidth) null else ({ onNoteAddOpen() })
-                    BottomNavItem.Send -> if (isCompactWidth) null else ({ onSendAddOpen() })
+                onClick = when (currentTab) {
+                    BottomNavItem.VaultV2 -> ({ onPasswordAddOpen() })
+                    BottomNavItem.Passwords -> ({ onPasswordAddOpen() })
+                    BottomNavItem.Authenticator -> ({ onTotpAddOpen() })
+                    BottomNavItem.CardWallet -> ({ onWalletAddOpen() })
+                    BottomNavItem.Notes -> ({ onNoteAddOpen() })
+                    BottomNavItem.Send -> ({ onSendAddOpen() })
                     BottomNavItem.Generator -> ({ onGeneratorRefresh() })
-                    else -> null
+                    else -> ({})
                 },
                 onExpandStateChanged = onExpandStateChanged,
                 fabContent = {
@@ -889,114 +857,6 @@ internal fun MainScreenAddFab(
                             )
                         }
                         else -> { /* 不显示 */ }
-                    }
-                },
-                expandedContent = { collapse ->
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(MaterialTheme.colorScheme.surface)
-                    ) {
-                        when (currentTab) {
-                            BottomNavItem.VaultV2,
-                            BottomNavItem.Passwords -> {
-                                AddEditPasswordScreen(
-                                    viewModel = passwordViewModel,
-                                    totpViewModel = totpViewModel,
-                                    bankCardViewModel = bankCardViewModel,
-                                    noteViewModel = noteViewModel,
-                                    localKeePassViewModel = localKeePassViewModel,
-                                    passwordId = null,
-                                    initialCategoryId = aggregateStorageDefaults?.categoryId,
-                                    initialKeePassDatabaseId = aggregateStorageDefaults?.keepassDatabaseId,
-                                    initialKeePassGroupPath = aggregateStorageDefaults?.keepassGroupPath,
-                                    initialBitwardenVaultId = aggregateStorageDefaults?.bitwardenVaultId,
-                                    initialBitwardenFolderId = aggregateStorageDefaults?.bitwardenFolderId,
-                                    onSwitchToWifi = { targetId ->
-                                        collapse()
-                                        onNavigateToAddWifi(targetId)
-                                    },
-                                    onSwitchToSshKey = { targetId ->
-                                        collapse()
-                                        onNavigateToAddSshKey(targetId)
-                                    },
-                                    onNavigateBack = collapse
-                                )
-                            }
-                            BottomNavItem.Authenticator -> {
-                                val totpCategories by totpViewModel.categories.collectAsState()
-                                AddEditTotpScreen(
-                                    totpId = null,
-                                    initialData = null,
-                                    initialTitle = "",
-                                    initialNotes = "",
-                                    initialCategoryId = totpNewItemDefaults.categoryId,
-                                    initialKeePassDatabaseId = totpNewItemDefaults.keepassDatabaseId,
-                                    initialKeePassGroupPath = totpNewItemDefaults.keepassGroupPath,
-                                    initialBitwardenVaultId = totpNewItemDefaults.bitwardenVaultId,
-                                    initialBitwardenFolderId = totpNewItemDefaults.bitwardenFolderId,
-                                    categories = totpCategories,
-                                    passwordViewModel = passwordViewModel,
-                                    totpViewModel = totpViewModel,
-                                    localKeePassViewModel = localKeePassViewModel,
-                                    onSave = { title, notes, totpData, targets ->
-                                        totpViewModel.saveTotpAcrossTargets(
-                                            id = null,
-                                            title = title,
-                                            notes = notes,
-                                            totpData = totpData,
-                                            targets = targets
-                                        )
-                                        collapse()
-                                    },
-                                    onNavigateBack = collapse,
-                                    onScanQrCode = {
-                                        collapse()
-                                        onNavigateToQuickTotpScan()
-                                    }
-                                )
-                            }
-                            BottomNavItem.CardWallet -> {
-                                UnifiedWalletAddScreen(
-                                    selectedType = compactWalletAddType,
-                                    onTypeSelected = onWalletUnifiedAddTypeChange,
-                                    onNavigateBack = collapse,
-                                    bankCardViewModel = bankCardViewModel,
-                                    documentViewModel = documentViewModel,
-                                    stateHolder = walletAddSaveableStateHolder
-                                )
-                            }
-                            BottomNavItem.Notes -> {
-                                AddEditNoteScreen(
-                                    noteId = -1L,
-                                    onNavigateBack = collapse,
-                                    viewModel = noteViewModel
-                                )
-                            }
-                            BottomNavItem.Send -> {
-                                AddEditSendScreen(
-                                    sendState = sendState,
-                                    onNavigateBack = collapse,
-                                    onCreate = { title, text, notes, password, maxAccessCount, hideEmail, hiddenText, expireInDays ->
-                                        bitwardenViewModel.createTextSend(
-                                            title = title,
-                                            text = text,
-                                            notes = notes,
-                                            password = password,
-                                            maxAccessCount = maxAccessCount,
-                                            hideEmail = hideEmail,
-                                            hiddenText = hiddenText,
-                                            expireInDays = expireInDays
-                                        )
-                                        collapse()
-                                    }
-                                )
-                            }
-                            BottomNavItem.Generator -> {
-                                // Generator 使用全局 FAB 点击回调触发刷新，不走展开页面。
-                            }
-                            else -> { /* Should not happen */ }
-                        }
                     }
                 }
             )
@@ -1031,9 +891,7 @@ internal fun VaultV2FabMenu(
 
     DisposableEffect(Unit) {
         onDispose {
-            if (expanded) {
-                onExpandStateChanged(false)
-            }
+            onExpandStateChanged(false)
         }
     }
 
@@ -1138,4 +996,3 @@ internal fun VaultV2FabMenu(
         }
     }
 }
-

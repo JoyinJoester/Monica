@@ -65,6 +65,8 @@ fun AddEditDocumentScreen(
     initialCategoryId: Long? = null,
     initialKeePassDatabaseId: Long? = null,
     initialKeePassGroupPath: String? = null,
+    initialMdbxDatabaseId: Long? = null,
+    initialMdbxFolderId: String? = null,
     initialBitwardenVaultId: Long? = null,
     initialBitwardenFolderId: String? = null,
     showTypeSwitcher: Boolean = false,
@@ -137,6 +139,8 @@ fun AddEditDocumentScreen(
     var selectedCategoryId by rememberSaveable { mutableStateOf<Long?>(null) }
     var keepassDatabaseId by rememberSaveable { mutableStateOf<Long?>(null) }
     var keepassGroupPath by rememberSaveable { mutableStateOf<String?>(null) }
+    var mdbxDatabaseId by rememberSaveable { mutableStateOf(initialMdbxDatabaseId) }
+    var mdbxFolderId by rememberSaveable { mutableStateOf(initialMdbxFolderId) }
     var bitwardenVaultId by rememberSaveable { mutableStateOf<Long?>(null) }
     var bitwardenFolderId by rememberSaveable { mutableStateOf<String?>(null) }
     var hasAppliedInitialStorage by rememberSaveable { mutableStateOf(false) }
@@ -149,6 +153,7 @@ fun AddEditDocumentScreen(
     val commonNameType = stringResource(R.string.common_account_type_name)
     val categories by database.categoryDao().getAllCategories().collectAsState(initial = emptyList())
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
+    val mdbxDatabases by database.localMdbxDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
     val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
     val allDocuments by viewModel.allDocuments.collectAsState(initial = emptyList())
     val rememberedStorageTarget by settingsManager
@@ -164,6 +169,8 @@ fun AddEditDocumentScreen(
                 selectedCategoryId = primaryTarget.categoryId
                 keepassDatabaseId = null
                 keepassGroupPath = null
+                mdbxDatabaseId = null
+                mdbxFolderId = null
                 bitwardenVaultId = null
                 bitwardenFolderId = null
             }
@@ -171,6 +178,17 @@ fun AddEditDocumentScreen(
                 selectedCategoryId = null
                 keepassDatabaseId = primaryTarget.databaseId
                 keepassGroupPath = primaryTarget.groupPath
+                mdbxDatabaseId = null
+                mdbxFolderId = null
+                bitwardenVaultId = null
+                bitwardenFolderId = null
+            }
+            is StorageTarget.Mdbx -> {
+                selectedCategoryId = null
+                keepassDatabaseId = null
+                keepassGroupPath = null
+                mdbxDatabaseId = primaryTarget.databaseId
+                mdbxFolderId = primaryTarget.folderId
                 bitwardenVaultId = null
                 bitwardenFolderId = null
             }
@@ -178,6 +196,8 @@ fun AddEditDocumentScreen(
                 selectedCategoryId = null
                 keepassDatabaseId = null
                 keepassGroupPath = null
+                mdbxDatabaseId = null
+                mdbxFolderId = null
                 bitwardenVaultId = primaryTarget.vaultId
                 bitwardenFolderId = primaryTarget.folderId
             }
@@ -185,6 +205,8 @@ fun AddEditDocumentScreen(
                 selectedCategoryId = null
                 keepassDatabaseId = null
                 keepassGroupPath = null
+                mdbxDatabaseId = null
+                mdbxFolderId = null
                 bitwardenVaultId = null
                 bitwardenFolderId = null
             }
@@ -213,6 +235,8 @@ fun AddEditDocumentScreen(
         initialCategoryId,
         initialKeePassDatabaseId,
         initialKeePassGroupPath,
+        initialMdbxDatabaseId,
+        initialMdbxFolderId,
         initialBitwardenVaultId,
         initialBitwardenFolderId,
         rememberedStorageTarget,
@@ -221,10 +245,13 @@ fun AddEditDocumentScreen(
         if (documentId != null || hasAppliedInitialStorage) return@LaunchedEffect
         val remembered = rememberedStorageTarget
         val explicitGroupPath = initialKeePassGroupPath?.takeIf { it.isNotBlank() }
+        val explicitMdbxFolderId = initialMdbxFolderId?.takeIf { it.isNotBlank() }
         val explicitFolderId = initialBitwardenFolderId?.takeIf { it.isNotBlank() }
         val hasExplicitInitialStorage = initialCategoryId != null ||
             initialKeePassDatabaseId != null ||
             explicitGroupPath != null ||
+            initialMdbxDatabaseId != null ||
+            explicitMdbxFolderId != null ||
             initialBitwardenVaultId != null ||
             explicitFolderId != null
         val filterKeepassDatabaseId = when (cardWalletCategoryFilterState?.type) {
@@ -256,6 +283,16 @@ fun AddEditDocumentScreen(
         } else {
             filterKeepassGroupPath ?: remembered?.keepassGroupPath
         }
+        mdbxDatabaseId = if (hasExplicitInitialStorage) {
+            initialMdbxDatabaseId
+        } else {
+            remembered?.mdbxDatabaseId
+        }
+        mdbxFolderId = if (hasExplicitInitialStorage) {
+            explicitMdbxFolderId
+        } else {
+            remembered?.mdbxFolderId
+        }
         bitwardenVaultId = if (hasExplicitInitialStorage) {
             initialBitwardenVaultId
         } else {
@@ -272,6 +309,8 @@ fun AddEditDocumentScreen(
                     categoryId = selectedCategoryId,
                     keepassDatabaseId = keepassDatabaseId,
                     keepassGroupPath = keepassGroupPath,
+                    mdbxDatabaseId = mdbxDatabaseId,
+                    mdbxFolderId = mdbxFolderId,
                     bitwardenVaultId = bitwardenVaultId,
                     bitwardenFolderId = bitwardenFolderId
                 )
@@ -406,17 +445,29 @@ fun AddEditDocumentScreen(
     val save: () -> Unit = saveAction@{
         if (isSaving || documentNumber.isBlank()) return@saveAction
         isSaving = true // 防止重复点击
-        val effectiveTargets = selectedStorageTargets.toList().ifEmpty {
-            listOf(
-                buildMultiStorageTarget(
-                    categoryId = selectedCategoryId,
-                    keepassDatabaseId = keepassDatabaseId,
-                    keepassGroupPath = keepassGroupPath,
-                    bitwardenVaultId = bitwardenVaultId,
-                    bitwardenFolderId = bitwardenFolderId
+        val availableMdbxDatabaseIds = mdbxDatabases.map { it.id }.toSet()
+        val effectiveTargets = selectedStorageTargets
+            .toList()
+            .filterNot { target ->
+                target is StorageTarget.Mdbx && target.databaseId !in availableMdbxDatabaseIds
+            }
+            .ifEmpty {
+                listOf(
+                    buildMultiStorageTarget(
+                        categoryId = selectedCategoryId,
+                        keepassDatabaseId = keepassDatabaseId,
+                        keepassGroupPath = keepassGroupPath,
+                        mdbxDatabaseId = mdbxDatabaseId,
+                        mdbxFolderId = mdbxFolderId,
+                        bitwardenVaultId = bitwardenVaultId,
+                        bitwardenFolderId = bitwardenFolderId
+                    )
                 )
-            )
-        }
+            }
+            .filterNot { target ->
+                target is StorageTarget.Mdbx && target.databaseId !in availableMdbxDatabaseIds
+            }
+            .normalizedStorageTargets()
         val primaryTarget = effectiveTargets.first()
         val syncVaultIds = effectiveTargets
             .filterIsInstance<StorageTarget.Bitwarden>()
@@ -487,6 +538,8 @@ fun AddEditDocumentScreen(
                     categoryId = (primaryTarget as? StorageTarget.MonicaLocal)?.categoryId,
                     keepassDatabaseId = (primaryTarget as? StorageTarget.KeePass)?.databaseId,
                     keepassGroupPath = (primaryTarget as? StorageTarget.KeePass)?.groupPath,
+                    mdbxDatabaseId = (primaryTarget as? StorageTarget.Mdbx)?.databaseId,
+                    mdbxFolderId = (primaryTarget as? StorageTarget.Mdbx)?.folderId,
                     bitwardenVaultId = (primaryTarget as? StorageTarget.Bitwarden)?.vaultId,
                     bitwardenFolderId = (primaryTarget as? StorageTarget.Bitwarden)?.folderId
                 )
@@ -522,6 +575,7 @@ fun AddEditDocumentScreen(
                 existingTargetKeys = existingReplicaTargetKeys,
                 categories = categories,
                 keepassDatabases = keepassDatabases,
+                mdbxDatabases = mdbxDatabases,
                 bitwardenVaults = bitwardenVaults,
                 bitwardenFolderDao = database.bitwardenFolderDao(),
                 isEditing = documentId != null,
@@ -953,6 +1007,7 @@ fun AddEditDocumentScreen(
         lockedTargetKeys = existingReplicaTargetKeys,
         categories = categories,
         keepassDatabases = keepassDatabases,
+        mdbxDatabases = mdbxDatabases,
         bitwardenVaults = bitwardenVaults,
         getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
         getKeePassGroups = localKeePassViewModel::getGroups,

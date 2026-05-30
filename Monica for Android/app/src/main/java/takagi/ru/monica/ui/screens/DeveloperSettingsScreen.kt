@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.WarningAmber
@@ -83,10 +84,10 @@ import takagi.ru.monica.autofill_ng.core.AutofillLogger
 import takagi.ru.monica.bitwarden.service.BitwardenDiagLogger
 import takagi.ru.monica.bitwarden.service.BitwardenSyncForensicsLogger
 import takagi.ru.monica.data.AppLauncherLabel
+import takagi.ru.monica.mdbx.MdbxDiagLogger
 import takagi.ru.monica.passkey.PasskeyValidationDiagnostics
 import takagi.ru.monica.security.SecurityDiagLogger
 import takagi.ru.monica.security.SessionManager
-import takagi.ru.monica.utils.MndxDeveloperVaultHelper
 import takagi.ru.monica.viewmodel.SettingsViewModel
 
 /**
@@ -97,7 +98,8 @@ import takagi.ru.monica.viewmodel.SettingsViewModel
 @Composable
 fun DeveloperSettingsScreen(
     viewModel: SettingsViewModel,
-    onNavigateBack: () -> Unit
+    onNavigateBack: () -> Unit,
+    onNavigateToMdbx: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val settings by viewModel.settings.collectAsState()
@@ -106,6 +108,9 @@ fun DeveloperSettingsScreen(
 
     var showDebugLogsDialog by remember { mutableStateOf(false) }
     var disablePasswordVerification by remember { mutableStateOf(settings.disablePasswordVerification) }
+    var passkeyHyperOsBiometricBypassEnabled by remember {
+        mutableStateOf(settings.passkeyHyperOsBiometricBypassEnabled)
+    }
     var bitwardenSyncForensicsEnabled by remember {
         mutableStateOf(settings.bitwardenSyncForensicsEnabled)
     }
@@ -118,16 +123,16 @@ fun DeveloperSettingsScreen(
     var appLauncherLabel by remember {
         mutableStateOf(settings.appLauncherLabel)
     }
-    var isCreatingMndxDemo by remember { mutableStateOf(false) }
-
     LaunchedEffect(
         settings.disablePasswordVerification,
+        settings.passkeyHyperOsBiometricBypassEnabled,
         settings.bitwardenSyncForensicsEnabled,
         settings.bitwardenSyncForensicsDirectoryUri,
         settings.bitwardenSyncForensicsRawCaptureEnabled,
         settings.appLauncherLabel
     ) {
         disablePasswordVerification = settings.disablePasswordVerification
+        passkeyHyperOsBiometricBypassEnabled = settings.passkeyHyperOsBiometricBypassEnabled
         bitwardenSyncForensicsEnabled = settings.bitwardenSyncForensicsEnabled
         bitwardenSyncForensicsDirectoryUri = settings.bitwardenSyncForensicsDirectoryUri
         bitwardenSyncForensicsRawCaptureEnabled = settings.bitwardenSyncForensicsRawCaptureEnabled
@@ -283,6 +288,19 @@ fun DeveloperSettingsScreen(
                 )
 
                 SettingsItemWithSwitch(
+                    icon = Icons.Default.WarningAmber,
+                    title = stringResource(R.string.developer_passkey_hyperos_biometric_bypass),
+                    subtitle = stringResource(R.string.developer_passkey_hyperos_biometric_bypass_desc),
+                    checked = passkeyHyperOsBiometricBypassEnabled,
+                    onCheckedChange = { enabled ->
+                        passkeyHyperOsBiometricBypassEnabled = enabled
+                        scope.launch {
+                            viewModel.updatePasskeyHyperOsBiometricBypassEnabled(enabled)
+                        }
+                    }
+                )
+
+                SettingsItemWithSwitch(
                     icon = Icons.Default.AutoAwesome,
                     title = stringResource(R.string.developer_launcher_name_use_pass),
                     subtitle = stringResource(R.string.developer_launcher_name_use_pass_desc),
@@ -366,49 +384,12 @@ fun DeveloperSettingsScreen(
                 )
 
                 SettingsItem(
-                    icon = Icons.Default.AutoAwesome,
-                    title = stringResource(R.string.developer_mndx_create_demo_onedrive),
-                    subtitle = if (isCreatingMndxDemo) {
-                        stringResource(R.string.developer_mndx_create_demo_running)
-                    } else {
-                        stringResource(R.string.developer_mndx_create_demo_onedrive_desc)
-                    },
-                    onClick = {
-                        if (isCreatingMndxDemo) return@SettingsItem
-                        isCreatingMndxDemo = true
-                        scope.launch {
-                            val result = MndxDeveloperVaultHelper(context)
-                                .createDemoVaultInOneDrive()
-                            isCreatingMndxDemo = false
-                            result.fold(
-                                onSuccess = { created ->
-                                    Toast.makeText(
-                                        context,
-                                        context.getString(
-                                            R.string.developer_mndx_create_demo_success,
-                                            created.vaultName,
-                                            created.fileCount
-                                        ),
-                                        Toast.LENGTH_LONG
-                                    ).show()
-                                },
-                                onFailure = { error ->
-                                    Toast.makeText(
-                                        context,
-                                        context.getString(
-                                            R.string.developer_mndx_create_demo_failed,
-                                            error.message ?: "unknown"
-                                        ),
-                                        Toast.LENGTH_LONG
-                                    ).show()
-                                }
-                            )
-                        }
-                    }
+                    icon = Icons.Default.Science,
+                    title = stringResource(R.string.mdbx_format_title),
+                    subtitle = stringResource(R.string.mdbx_format_description),
+                    onClick = onNavigateToMdbx
                 )
             }
-
-            // 自动填充调试区域
             SettingsSection(
                 title = stringResource(R.string.developer_autofill_debug)
             ) {
@@ -776,6 +757,7 @@ private object DeveloperLogDebugHelper {
         runCatching { AutofillLogger.initialize(context.applicationContext) }
         runCatching { BitwardenDiagLogger.initialize(context.applicationContext) }
         runCatching { BitwardenSyncForensicsLogger.initialize(context.applicationContext) }
+        runCatching { MdbxDiagLogger.initialize(context.applicationContext) }
         runCatching { SecurityDiagLogger.initialize(context.applicationContext) }
         val autofillTagLogs = readAutofillTagLogs()
         val appProcessLogs = readLogcat(
@@ -842,6 +824,11 @@ private object DeveloperLogDebugHelper {
         }.getOrElse {
             "Bitwarden sync forensics logs unavailable: ${it.message}"
         }
+        val persistedMdbxLogs = runCatching {
+            MdbxDiagLogger.exportPersistedLogs(2000)
+        }.getOrElse {
+            "MDBX persisted logs unavailable: ${it.message}"
+        }
         val persistedSecurityLogs = runCatching {
             SecurityDiagLogger.exportPersistedLogs(2000)
         }.getOrElse {
@@ -892,6 +879,13 @@ private object DeveloperLogDebugHelper {
                 appendLine(persistedForensicsLogs.trim())
             }
             appendLine()
+            appendLine("=== MDBX Persisted Logs ===")
+            if (persistedMdbxLogs.isBlank()) {
+                appendLine(context.getString(R.string.developer_no_logs))
+            } else {
+                appendLine(persistedMdbxLogs.trim())
+            }
+            appendLine()
             appendLine("=== Security Persisted Logs ===")
             if (persistedSecurityLogs.isBlank()) {
                 appendLine(context.getString(R.string.developer_no_logs))
@@ -911,9 +905,11 @@ private object DeveloperLogDebugHelper {
         val parsedPersisted = parseLines(persistedAutofillLogs)
         val parsedBitwarden = parseLines(persistedBitwardenLogs)
         val parsedForensics = parseLines(persistedForensicsLogs)
+        val parsedMdbx = parseLines(persistedMdbxLogs)
         val parsedSecurity = parseLines(persistedSecurityLogs)
         val parsed = when {
             parsedSystem.isNotEmpty() -> parsedSystem
+            parsedMdbx.isNotEmpty() -> parsedMdbx
             parsedSecurity.isNotEmpty() -> parsedSecurity
             parsedForensics.isNotEmpty() -> parsedForensics
             parsedBitwarden.isNotEmpty() -> parsedBitwarden
@@ -932,6 +928,9 @@ private object DeveloperLogDebugHelper {
         }
         runCatching {
             BitwardenSyncForensicsLogger.clear(context.applicationContext)
+        }
+        runCatching {
+            MdbxDiagLogger.clear()
         }
         runCatching {
             SecurityDiagLogger.clear()

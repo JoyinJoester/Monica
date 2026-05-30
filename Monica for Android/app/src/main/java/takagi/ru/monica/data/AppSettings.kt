@@ -489,6 +489,7 @@ data class AppSettings(
     val biometricEnabled: Boolean = false, // 生物识别认证默认关闭
     val autoLockMinutes: Int = 5, // Auto lock after X minutes of inactivity
     val screenshotProtectionEnabled: Boolean = false, // Prevent screenshots by default
+    val clipboardAutoClearSeconds: Int = 0, // 复制账号/密码后自动清除剪切板，0=关闭
     val dynamicColorEnabled: Boolean = true, // 动态颜色默认开启
     val quickSetupCompleted: Boolean = false, // 首次快速初始化是否已完成/跳过
     val bottomNavVisibility: BottomNavVisibility = BottomNavVisibility(),
@@ -496,10 +497,11 @@ data class AppSettings(
     val useDraggableBottomNav: Boolean = false, // 使用可拖拽底部导航栏
     val autoHideBottomNavWhenSingleTab: Boolean = false, // 仅启用一个底栏项时自动隐藏导航栏
     val disablePasswordVerification: Boolean = false, // 开发者选项：关闭密码验证
+    val passkeyHyperOsBiometricBypassEnabled: Boolean = false, // 开发者选项：HyperOS Passkey 生物识别兼容旁路
     val bitwardenSyncForensicsEnabled: Boolean = false, // 开发者选项：Bitwarden 同步脱敏取证
     val bitwardenSyncForensicsDirectoryUri: String? = null, // 取证日志外部镜像目录（SAF tree uri）
     val bitwardenSyncForensicsRawCaptureEnabled: Boolean = false, // 开发者选项：Bitwarden 原始请求/响应留存（强脱敏）
-    val validatorProgressBarStyle: ProgressBarStyle = ProgressBarStyle.LINEAR, // 验证器进度条样式
+    val validatorProgressBarStyle: ProgressBarStyle = ProgressBarStyle.WAVE, // 验证器进度条样式（波浪形）
     val validatorUnifiedProgressBar: UnifiedProgressBarMode = UnifiedProgressBarMode.ENABLED, // 统一进度条模式
     val validatorSmoothProgress: Boolean = true, // 平滑进度条（无停顿感）
     val validatorVibrationEnabled: Boolean = true, // 验证器震动提醒
@@ -507,7 +509,7 @@ data class AppSettings(
     val securityAnalysisAutoEnabled: Boolean = false, // 安全分析自动分析
     val passwordDetailSecurityAnalysisEnabled: Boolean = true,
     val bitwardenBottomStatusBarEnabled: Boolean = false, // Bitwarden 底部状态栏（实验）
-    val copyNextCodeWhenExpiring: Boolean = false, // 倒计时<=5秒时复制下一个验证码
+    val copyNextCodeWhenExpiring: Boolean = true, // 倒计时<=5秒时复制下一个验证码（默认开启）
     val notificationValidatorEnabled: Boolean = false, // 通知栏验证器开关
     val notificationValidatorAutoMatch: Boolean = false, // 通知栏验证器自动匹配
     val notificationValidatorId: Long = -1L, // 通知栏显示的验证器ID
@@ -527,16 +529,16 @@ data class AppSettings(
     val unmatchedIconHandlingStrategy: UnmatchedIconHandlingStrategy = UnmatchedIconHandlingStrategy.DEFAULT_ICON, // 无匹配图标处理策略
     val passwordCardDisplayMode: PasswordCardDisplayMode = PasswordCardDisplayMode.SHOW_ALL, // 卡片显示模式
     val passwordCardDisplayFields: List<PasswordCardDisplayField> = PasswordCardDisplayField.DEFAULT_ORDER, // 卡片显示字段（顺序即展示顺序）
-    val passwordCardShowAuthenticator: Boolean = false, // 密码卡片显示绑定验证器
-    val passwordCardHideOtherContentWhenAuthenticator: Boolean = false, // 显示验证器时隐藏其他卡片内容
+    val passwordCardShowAuthenticator: Boolean = true, // 密码卡片显示绑定验证器（默认开启）
+    val passwordCardHideOtherContentWhenAuthenticator: Boolean = true, // 显示验证器时隐藏其他卡片内容（默认开启）
     val authenticatorCardDisplayFields: List<AuthenticatorCardDisplayField> = AuthenticatorCardDisplayField.DEFAULT_ORDER, // 验证器卡片显示字段（顺序即展示顺序）
-    val passwordListQuickFiltersEnabled: Boolean = false, // 密码列表快捷筛选开关
+    val passwordListQuickFiltersEnabled: Boolean = true, // 密码列表快捷筛选开关（默认开启）
     val passwordListQuickFilterItems: List<PasswordListQuickFilterItem> = PasswordListQuickFilterItem.DEFAULT_ORDER, // 密码列表快捷筛选显示内容
-    val passwordListCategoryQuickFiltersEnabled: Boolean = false, // 密码列表分类快捷筛选开关
+    val passwordListCategoryQuickFiltersEnabled: Boolean = true, // 密码列表分类快捷筛选开关（默认开启）
     val passwordListQuickFoldersEnabled: Boolean = false, // 密码列表快捷文件夹开关
     val passwordListQuickFolderStyle: PasswordListQuickFolderStyle = PasswordListQuickFolderStyle.CLASSIC, // 密码列表快捷文件夹展示样式
     val passwordListQuickFolderPathBannerEnabled: Boolean = false, // 密码列表路径横幅开关
-    val passwordListSystemBackToParentFolderEnabled: Boolean = false, // 密码页系统返回回到父文件夹
+    val passwordListSystemBackToParentFolderEnabled: Boolean = true, // 密码页系统返回回到父文件夹（默认开启）
     val addButtonBehaviorMode: AddButtonBehaviorMode = AddButtonBehaviorMode.DIRECT_PASSWORD, // 添加按钮行为
     val addButtonMenuOrder: List<AddButtonMenuAction> = AddButtonMenuAction.DEFAULT_ORDER, // 添加按钮展开菜单顺序
     val addButtonMenuEnabledActions: List<AddButtonMenuAction> = AddButtonMenuAction.DEFAULT_ENABLED_ACTIONS, // 添加按钮展开菜单启用项
@@ -596,8 +598,7 @@ enum class PasswordCardDisplayField {
 
     companion object {
         val DEFAULT_ORDER: List<PasswordCardDisplayField> = listOf(
-            USERNAME,
-            WEBSITE
+            USERNAME
         )
     }
 }
@@ -611,7 +612,6 @@ enum class AuthenticatorCardDisplayField {
 
     companion object {
         val DEFAULT_ORDER: List<AuthenticatorCardDisplayField> = listOf(
-            ISSUER,
             ACCOUNT_NAME
         )
     }

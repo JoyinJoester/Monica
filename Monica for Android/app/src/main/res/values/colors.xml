@@ -7,6 +7,7 @@
     <color name="teal_700">#FF018786</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    <color name="monica_startup_background">#0F1117</color>
     
     <!-- 应用图标背景色 - 默认蓝色,Android 12+ 会自动适配 Material You -->
     <color name="ic_launcher_background">#1976D2</color>

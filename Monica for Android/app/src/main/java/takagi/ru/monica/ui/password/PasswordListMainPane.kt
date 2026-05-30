@@ -27,6 +27,8 @@ import takagi.ru.monica.data.PasswordListQuickFolderStyle
 import takagi.ru.monica.data.PasswordPageContentType
 import takagi.ru.monica.ui.common.pull.PullActionStateHandle
 import takagi.ru.monica.ui.components.PullActionVisualState
+import takagi.ru.monica.ui.password.PasswordBatchDeleteGlobalProgressState
+import takagi.ru.monica.ui.password.PasswordBatchTransferGlobalProgressState
 import takagi.ru.monica.viewmodel.CategoryFilter
 
 @Composable
@@ -41,6 +43,13 @@ internal fun PasswordListMainPane(
     density: Density,
     showPinnedQuickFolderPathBanner: Boolean,
     quickFolderBreadcrumbs: List<PasswordQuickFolderBreadcrumb>,
+    mdbxPathSyncState: MdbxPathSyncState? = null,
+    quickStatusTransferState: PasswordBatchTransferGlobalProgressState? = null,
+    onQuickStatusTransferClick: (() -> Unit)? = null,
+    quickStatusDeleteState: PasswordBatchDeleteGlobalProgressState? = null,
+    onQuickStatusDeleteClick: (() -> Unit)? = null,
+    quickStatusBitwardenSyncState: QuickStatusBitwardenSyncState? = null,
+    quickStatusKeePassSyncState: QuickStatusKeePassSyncState? = null,
     currentFilter: CategoryFilter,
     onNavigateFilter: (CategoryFilter) -> Unit,
     shouldGateInitialPasswordFirstFrame: Boolean,
@@ -112,7 +121,14 @@ internal fun PasswordListMainPane(
                 PasswordQuickFolderBreadcrumbBanner(
                     breadcrumbs = quickFolderBreadcrumbs,
                     currentFilter = currentFilter,
-                    onNavigate = onNavigateFilter
+                    onNavigate = onNavigateFilter,
+                    mdbxSyncState = mdbxPathSyncState,
+                    transferState = quickStatusTransferState,
+                    onTransferStatusClick = onQuickStatusTransferClick,
+                    deleteState = quickStatusDeleteState,
+                    onDeleteStatusClick = onQuickStatusDeleteClick,
+                    bitwardenSyncState = quickStatusBitwardenSyncState,
+                    keePassSyncState = quickStatusKeePassSyncState
                 )
             }
 

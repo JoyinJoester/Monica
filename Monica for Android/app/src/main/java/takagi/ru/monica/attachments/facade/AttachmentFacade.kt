@@ -22,6 +22,8 @@ import takagi.ru.monica.attachments.util.AttachmentLogger
 import takagi.ru.monica.bitwarden.api.BitwardenVaultApi
 import takagi.ru.monica.bitwarden.api.CipherAttachmentApiData
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto.SymmetricCryptoKey
+import takagi.ru.monica.data.PasswordEntryDao
+import takagi.ru.monica.repository.MdbxVaultStore
 import java.io.File
 import java.io.OutputStream
 
@@ -47,6 +49,8 @@ class AttachmentFacade(
     private val storage: AttachmentStorage,
     private val keyVault: AttachmentKeyVault,
     private val previewCache: AttachmentPreviewCache,
+    private val passwordEntryDao: PasswordEntryDao? = null,
+    private val mdbxVaultStore: MdbxVaultStore? = null,
     /** 用于 `openForPreview` 发出的 FileProvider authority，需与 manifest 中注册的 authority 一致。 */
     private val fileProviderAuthority: String
 ) {
@@ -172,7 +176,9 @@ class AttachmentFacade(
 
         // 4. 持久化（executor 返回的 Attachment 已经是完整记录，Room 只负责 insert）
         val id = repository.insert(attachment)
-        attachment.copy(id = id)
+        attachment.copy(id = id).also { saved ->
+            mirrorAttachmentToMdbx(saved)
+        }
     }
 
     // ---------------------------------------------------------------- 读/导出
@@ -299,6 +305,7 @@ class AttachmentFacade(
         keepassContext: KeePassContext? = null
     ) = withContext(Dispatchers.IO) {
         val existing = repository.getById(attachmentId) ?: return@withContext
+        mirrorAttachmentDeleteToMdbx(existing)
         when (existing.sourceEnum) {
             AttachmentSource.LOCAL -> {
                 localExecutor.delete(existing)
@@ -519,6 +526,45 @@ class AttachmentFacade(
         val resolver = context.applicationContext.contentResolver
         val input = resolver.openInputStream(uri) ?: throw AttachmentError.IoError
         return input.use { it.readBytes() }
+    }
+
+    private suspend fun mirrorAttachmentToMdbx(attachment: Attachment) {
+        val vaultStore = mdbxVaultStore ?: return
+        val dao = passwordEntryDao ?: return
+        if (attachment.localPath.isNullOrBlank() || attachment.wrappedCek.isNullOrBlank()) return
+        val parent = dao.getPasswordEntryById(attachment.parentPasswordId) ?: return
+        val databaseId = parent.mdbxDatabaseId ?: return
+        val parentEntryId = vaultStore.passwordObjectIdForAttachment(parent)
+        runCatching {
+            vaultStore.upsertAttachment(databaseId, parentEntryId, attachment)
+        }.onFailure { error ->
+            AttachmentLogger.logFailure(
+                event = AttachmentLogger.Event.UPLOAD,
+                attachmentId = attachment.id,
+                source = attachment.sourceEnum,
+                error = error,
+                extras = mapOf("mdbx_database_id" to databaseId)
+            )
+        }
+    }
+
+    private suspend fun mirrorAttachmentDeleteToMdbx(attachment: Attachment) {
+        val vaultStore = mdbxVaultStore ?: return
+        val dao = passwordEntryDao ?: return
+        val parent = dao.getPasswordEntryById(attachment.parentPasswordId) ?: return
+        val databaseId = parent.mdbxDatabaseId ?: return
+        val parentEntryId = vaultStore.passwordObjectIdForAttachment(parent)
+        runCatching {
+            vaultStore.deleteAttachment(databaseId, parentEntryId, attachment)
+        }.onFailure { error ->
+            AttachmentLogger.logFailure(
+                event = AttachmentLogger.Event.DELETE,
+                attachmentId = attachment.id,
+                source = attachment.sourceEnum,
+                error = error,
+                extras = mapOf("mdbx_database_id" to databaseId)
+            )
+        }
     }
 
     private suspend fun materializePreview(attachment: Attachment): File {

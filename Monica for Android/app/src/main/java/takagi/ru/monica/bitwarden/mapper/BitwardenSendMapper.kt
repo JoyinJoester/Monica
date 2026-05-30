@@ -3,6 +3,7 @@ package takagi.ru.monica.bitwarden.mapper
 import android.util.Base64
 import takagi.ru.monica.bitwarden.api.SendApiResponse
 import takagi.ru.monica.bitwarden.api.SendCreateRequest
+import takagi.ru.monica.bitwarden.api.SendFileCreateRequest
 import takagi.ru.monica.bitwarden.api.SendTextCreateRequest
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto.SymmetricCryptoKey
@@ -15,6 +16,13 @@ object BitwardenSendMapper {
         val request: SendCreateRequest,
         val keyBase64: String,
         val shareUrl: String
+    )
+
+    data class CreateFileSendPayload(
+        val request: SendCreateRequest,
+        val keyBase64: String,
+        val encryptedFileName: String,
+        val sendKey: SymmetricCryptoKey
     )
 
     fun mapApiToEntity(
@@ -60,7 +68,8 @@ object BitwardenSendMapper {
                 shareUrl = buildShareUrl(
                     serverUrl = serverUrl,
                     accessId = api.accessId,
-                    keyMaterial = keyMaterial
+                    keyMaterial = keyMaterial,
+                    urlB64Key = api.urlB64Key
                 ),
                 lastSyncedAt = now,
                 createdAt = now,
@@ -128,13 +137,63 @@ object BitwardenSendMapper {
         )
     }
 
+    fun buildCreateFileSendPayload(
+        vaultKey: SymmetricCryptoKey,
+        keyMaterial: ByteArray,
+        title: String,
+        fileName: String,
+        encryptedFileLength: Long,
+        notes: String?,
+        password: String?,
+        maxAccessCount: Int?,
+        hideEmail: Boolean,
+        deletionMillis: Long,
+        expirationMillis: Long?
+    ): CreateFileSendPayload {
+        val keyBase64 = Base64.encodeToString(keyMaterial, Base64.NO_WRAP)
+        val sendKey = BitwardenCrypto.deriveSendKey(keyMaterial)
+
+        val encryptedKey = BitwardenCrypto.encrypt(keyMaterial, vaultKey)
+        val encryptedName = BitwardenCrypto.encryptString(title, sendKey)
+        val encryptedFileName = BitwardenCrypto.encryptString(fileName, sendKey)
+        val encryptedNotes = notes
+            ?.takeIf { it.isNotBlank() }
+            ?.let { BitwardenCrypto.encryptString(it, sendKey) }
+        val passwordHash = password
+            ?.takeIf { it.isNotBlank() }
+            ?.let { BitwardenCrypto.hashSendPassword(it, keyMaterial) }
+
+        val request = SendCreateRequest(
+            key = encryptedKey,
+            type = BitwardenSend.TYPE_FILE,
+            fileLength = encryptedFileLength,
+            name = encryptedName,
+            notes = encryptedNotes,
+            password = passwordHash,
+            disabled = false,
+            hideEmail = hideEmail,
+            deletionDate = Instant.ofEpochMilli(deletionMillis).toString(),
+            expirationDate = expirationMillis?.let { Instant.ofEpochMilli(it).toString() },
+            maxAccessCount = maxAccessCount?.takeIf { it > 0 },
+            file = SendFileCreateRequest(fileName = encryptedFileName)
+        )
+
+        return CreateFileSendPayload(
+            request = request,
+            keyBase64 = keyBase64,
+            encryptedFileName = encryptedFileName,
+            sendKey = sendKey
+        )
+    }
+
     fun buildShareUrl(
         serverUrl: String,
         accessId: String,
-        keyMaterial: ByteArray
+        keyMaterial: ByteArray,
+        urlB64Key: String? = null
     ): String {
         val baseUrl = buildSendBaseUrl(serverUrl)
-        val key = Base64.encodeToString(
+        val key = urlB64Key?.takeIf { it.isNotBlank() } ?: Base64.encodeToString(
             keyMaterial,
             Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
         )

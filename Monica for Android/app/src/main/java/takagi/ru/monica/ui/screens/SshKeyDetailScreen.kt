@@ -1,10 +1,9 @@
 package takagi.ru.monica.ui.screens
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -61,7 +60,10 @@ import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.model.SshKeyData
 import takagi.ru.monica.data.model.SshKeyDataCodec
 import takagi.ru.monica.ui.components.CustomFieldDetailCard
+import takagi.ru.monica.ui.components.PasswordFieldActionMenuHost
+import takagi.ru.monica.ui.components.rememberPasswordFieldActionMenuState
 import takagi.ru.monica.ui.icons.MonicaIcons
+import takagi.ru.monica.utils.ClipboardUtils
 import takagi.ru.monica.viewmodel.PasswordViewModel
 
 /**
@@ -78,7 +80,8 @@ fun SshKeyDetailScreen(
     viewModel: PasswordViewModel,
     passwordId: Long,
     onNavigateBack: () -> Unit,
-    onEdit: (Long) -> Unit
+    onEdit: (Long) -> Unit,
+    onCreateSend: ((title: String, text: String) -> Unit)? = null
 ) {
     val context = LocalContext.current
     var entry by remember { mutableStateOf<PasswordEntry?>(null) }
@@ -154,7 +157,8 @@ fun SshKeyDetailScreen(
             privateKeyRevealed = privateKeyRevealed,
             onTogglePrivateKeyVisibility = { privateKeyRevealed = !privateKeyRevealed },
             onCopy = { label, text -> copyTextToClipboardLocal(context, label, text) },
-            customFields = customFields
+            customFields = customFields,
+            onCreateSend = onCreateSend
         )
     }
 }
@@ -166,7 +170,8 @@ private fun SshKeyDetailBody(
     privateKeyRevealed: Boolean,
     onTogglePrivateKeyVisibility: () -> Unit,
     onCopy: (label: String, text: String) -> Unit,
-    customFields: List<CustomField>
+    customFields: List<CustomField>,
+    onCreateSend: ((title: String, text: String) -> Unit)?
 ) {
     Column(
         modifier = Modifier
@@ -186,21 +191,24 @@ private fun SshKeyDetailBody(
             label = stringResource(R.string.ssh_key_fingerprint),
             value = data.fingerprintSha256,
             monospace = true,
-            onCopy = { onCopy(copyFingerprintLabel, data.fingerprintSha256) }
+            onCopy = { onCopy(copyFingerprintLabel, data.fingerprintSha256) },
+            onCreateSend = onCreateSend
         )
 
         SshFieldCard(
             label = stringResource(R.string.ssh_key_public_key),
             value = data.publicKeyOpenSsh,
             monospace = true,
-            onCopy = { onCopy(copyPublicLabel, data.publicKeyOpenSsh) }
+            onCopy = { onCopy(copyPublicLabel, data.publicKeyOpenSsh) },
+            onCreateSend = onCreateSend
         )
 
         SshPrivateKeyCard(
             value = data.privateKeyOpenSsh,
             revealed = privateKeyRevealed,
             onToggleVisibility = onTogglePrivateKeyVisibility,
-            onCopy = { onCopy(copyPrivateLabel, data.privateKeyOpenSsh) }
+            onCopy = { onCopy(copyPrivateLabel, data.privateKeyOpenSsh) },
+            onCreateSend = onCreateSend
         )
 
         if (data.comment.isNotBlank()) {
@@ -208,7 +216,8 @@ private fun SshKeyDetailBody(
                 label = stringResource(R.string.ssh_key_comment),
                 value = data.comment,
                 monospace = false,
-                onCopy = null
+                onCopy = null,
+                onCreateSend = onCreateSend
             )
         }
 
@@ -278,8 +287,12 @@ private fun SshFieldCard(
     label: String,
     value: String,
     monospace: Boolean,
-    onCopy: (() -> Unit)?
+    onCopy: (() -> Unit)?,
+    onCreateSend: ((title: String, text: String) -> Unit)? = null
 ) {
+    val context = LocalContext.current
+    val actionMenuState = rememberPasswordFieldActionMenuState()
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -313,13 +326,31 @@ private fun SshFieldCard(
                     }
                 }
             }
-            SelectionContainer {
-                Text(
-                    text = value,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontFamily = if (monospace) FontFamily.Monospace else FontFamily.Default,
-                    overflow = TextOverflow.Visible
-                )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(4.dp))
+                    .clickable(enabled = value.isNotBlank()) { actionMenuState.open() }
+                    .padding(vertical = 6.dp)
+            ) {
+                if (value.isNotBlank()) {
+                    PasswordFieldActionMenuHost(
+                        state = actionMenuState,
+                        label = label,
+                        value = value,
+                        displayValue = value,
+                        context = context,
+                        onCreateSend = onCreateSend
+                    )
+                }
+                SelectionContainer {
+                    Text(
+                        text = value,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontFamily = if (monospace) FontFamily.Monospace else FontFamily.Default,
+                        overflow = TextOverflow.Visible
+                    )
+                }
             }
         }
     }
@@ -330,8 +361,12 @@ private fun SshPrivateKeyCard(
     value: String,
     revealed: Boolean,
     onToggleVisibility: () -> Unit,
-    onCopy: () -> Unit
+    onCopy: () -> Unit,
+    onCreateSend: ((title: String, text: String) -> Unit)? = null
 ) {
+    val context = LocalContext.current
+    val actionMenuState = rememberPasswordFieldActionMenuState()
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -377,20 +412,40 @@ private fun SshPrivateKeyCard(
             } else {
                 "•".repeat(24)
             }
-            SelectionContainer {
-                Text(
-                    text = displayValue,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontFamily = FontFamily.Monospace
-                )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(4.dp))
+                    .clickable(enabled = value.isNotBlank()) { actionMenuState.open() }
+                    .padding(vertical = 6.dp)
+            ) {
+                if (value.isNotBlank()) {
+                    PasswordFieldActionMenuHost(
+                        state = actionMenuState,
+                        label = stringResource(R.string.ssh_key_private_key),
+                        value = value,
+                        displayValue = displayValue,
+                        context = context,
+                        includeVisibilityToggle = true,
+                        isVisible = revealed,
+                        onToggleVisibility = onToggleVisibility,
+                        onCreateSend = onCreateSend
+                    )
+                }
+                SelectionContainer {
+                    Text(
+                        text = displayValue,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontFamily = FontFamily.Monospace
+                    )
+                }
             }
         }
     }
 }
 
 private fun copyTextToClipboardLocal(context: Context, label: String, text: String) {
-    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
+    ClipboardUtils.copyToClipboard(context, text, label)
     Toast.makeText(
         context,
         context.getString(R.string.copied_to_clipboard),

@@ -16,13 +16,15 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import takagi.ru.monica.data.model.TotpData
 import java.net.URLDecoder
+import java.util.Date
 import java.util.Locale
 
 /**
  * Repository for secure items (TOTP, Bank Cards, Documents)
  */
 class SecureItemRepository(
-    private val secureItemDao: SecureItemDao
+    private val secureItemDao: SecureItemDao,
+    private val mdbxRepository: MdbxRepository? = null
 ) {
     companion object {
         private const val TAG = "SecureItemRepository"
@@ -35,6 +37,14 @@ class SecureItemRepository(
         val accountName: String,
         val secret: String
     )
+
+    private fun SecureItem.mdbxReplicaPrefix(): String = when (itemType) {
+        ItemType.NOTE -> "note"
+        ItemType.TOTP -> "totp"
+        ItemType.BANK_CARD -> "card"
+        ItemType.DOCUMENT -> "document-ref"
+        ItemType.PASSWORD -> "password"
+    }
 
     
     fun getAllItems(): Flow<List<SecureItem>> {
@@ -61,6 +71,80 @@ class SecureItemRepository(
         return secureItemDao.getItemById(id)
     }
 
+    suspend fun ensureMdbxCopyForBinding(
+        source: SecureItem,
+        databaseId: Long,
+        title: String = source.title,
+        notes: String = source.notes,
+        itemData: String = source.itemData,
+        imagePaths: String = source.imagePaths,
+        isFavorite: Boolean = source.isFavorite,
+        categoryId: Long? = source.categoryId,
+        mdbxFolderId: String? = source.mdbxFolderId
+    ): SecureItem {
+        if (source.mdbxDatabaseId == databaseId) {
+            val updated = source.copy(
+                title = title,
+                notes = notes,
+                itemData = itemData,
+                imagePaths = imagePaths,
+                isFavorite = isFavorite,
+                categoryId = categoryId,
+                mdbxFolderId = mdbxFolderId,
+                updatedAt = Date()
+            )
+            updateItem(updated)
+            return secureItemDao.getItemById(source.id) ?: updated
+        }
+
+        val prefix = source.mdbxReplicaPrefix()
+        val replicaId = source.replicaGroupId
+            ?.takeIf { it.startsWith("$prefix:") }
+            ?: "$prefix:local:${source.id}"
+        val existingCopy = secureItemDao.getActiveItemsByTypeSync(source.itemType)
+            .firstOrNull { item ->
+                item.mdbxDatabaseId == databaseId &&
+                    item.replicaGroupId == replicaId &&
+                    !item.isDeleted
+            }
+
+        val now = Date()
+        val copy = (existingCopy ?: source).copy(
+            id = existingCopy?.id ?: 0L,
+            title = title,
+            notes = notes,
+            itemData = itemData,
+            imagePaths = imagePaths,
+            isFavorite = isFavorite,
+            categoryId = categoryId,
+            keepassDatabaseId = null,
+            keepassGroupPath = null,
+            keepassEntryUuid = null,
+            keepassGroupUuid = null,
+            mdbxDatabaseId = databaseId,
+            mdbxFolderId = mdbxFolderId,
+            bitwardenVaultId = null,
+            bitwardenCipherId = null,
+            bitwardenFolderId = null,
+            bitwardenRevisionDate = null,
+            bitwardenLocalModified = false,
+            syncStatus = "NONE",
+            replicaGroupId = replicaId,
+            isDeleted = false,
+            deletedAt = null,
+            createdAt = existingCopy?.createdAt ?: now,
+            updatedAt = now
+        )
+
+        val copyId = if (existingCopy != null) {
+            updateItem(copy)
+            existingCopy.id
+        } else {
+            insertItem(copy)
+        }
+        return secureItemDao.getItemById(copyId) ?: copy.copy(id = copyId)
+    }
+
     suspend fun normalizeLegacyDetachedKeePassItem(
         item: SecureItem,
         databaseExists: suspend (Long) -> Boolean = { false }
@@ -84,20 +168,40 @@ class SecureItemRepository(
     }
     
     suspend fun insertItem(item: SecureItem): Long {
-        return secureItemDao.insertItem(item)
+        val id = secureItemDao.insertItem(item)
+        try {
+            mdbxRepository?.upsertSecureItem(item.copy(id = id))
+        } catch (e: Exception) {
+            secureItemDao.deleteItemById(id)
+            throw e
+        }
+        return id
     }
     
     suspend fun updateItem(item: SecureItem) {
         val existingItem = if (item.id != 0L) secureItemDao.getItemById(item.id) else null
         val normalizedItem = BitwardenMutationStateHelper.normalizeSecureItemUpdate(existingItem, item)
+        if (
+            normalizedItem.mdbxDatabaseId != null
+        ) {
+            mdbxRepository?.upsertSecureItem(normalizedItem)
+        }
+        if (
+            existingItem?.mdbxDatabaseId != null &&
+            existingItem.mdbxDatabaseId != normalizedItem.mdbxDatabaseId
+        ) {
+            mdbxRepository?.deleteSecureItem(existingItem)
+        }
         secureItemDao.updateItem(normalizedItem)
     }
     
     suspend fun deleteItem(item: SecureItem) {
+        mdbxRepository?.deleteSecureItem(item)
         secureItemDao.deleteItem(item)
     }
     
     suspend fun deleteItemById(id: Long) {
+        secureItemDao.getItemById(id)?.let { mdbxRepository?.deleteSecureItem(it) }
         secureItemDao.deleteItemById(id)
     }
     
@@ -267,6 +371,7 @@ class SecureItemRepository(
             updatedAt = java.util.Date()
         )
         secureItemDao.updateItem(deletedItem)
+        mdbxRepository?.upsertSecureItem(deletedItem)
         return deletedItem
     }
     
@@ -280,6 +385,7 @@ class SecureItemRepository(
             updatedAt = java.util.Date()
         )
         secureItemDao.updateItem(restoredItem)
+        mdbxRepository?.upsertSecureItem(restoredItem)
         return restoredItem
     }
     

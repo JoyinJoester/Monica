@@ -967,7 +967,7 @@
     <string name="all_navigation_items">Все элементы навигации</string>
     <string name="category_all">Все</string>
     <string name="hidden">Скрыто</string>
-    <string name="settings_version_number">V1.0.286</string>
+    <string name="settings_version_number">V1.0.288</string>
     <string name="settings_support_author">Поддержать автора</string>
     <string name="settings_support_author_description">Спасибо за поддержку</string>
     <string name="settings_privacy_policy">Политика конфиденциальности</string>
@@ -1732,11 +1732,6 @@
     <string name="developer_bitwarden_forensics_clear_dir">Очистить папку вывода</string>
     <string name="developer_bitwarden_forensics_clear_dir_desc">Прекратить зеркалирование логов во внешнее хранилище</string>
     <string name="developer_bitwarden_forensics_dir_cleared">Папка вывода очищена</string>
-    <string name="developer_mndx_create_demo_onedrive">Создать демо MNDX в OneDrive</string>
-    <string name="developer_mndx_create_demo_onedrive_desc">Экспериментально: создать читаемый .mndx в OneDrive. Не зашифровано. Не используйте реальные данные.</string>
-    <string name="developer_mndx_create_demo_running">Создание демо MNDX в OneDrive...</string>
-    <string name="developer_mndx_create_demo_success">Создано %1$s с %2$d файлами</string>
-    <string name="developer_mndx_create_demo_failed">Ошибка создания MNDX: %1$s</string>
     <string name="developer_warning">Функции разработчика только для тестирования, не включайте в продакшене</string>
     <string name="developer_log_buffer_cleared">Буфер логов очищен</string>
     <string name="developer_clear_failed">Ошибка очистки: %s</string>
@@ -3354,6 +3349,8 @@
     <string name="autofill_v2_subdomain_match_desc">Считать поддомены того же сайта связанными целями.</string>
     <string name="autofill_v2_respect_off">Учитывать autofill=off</string>
     <string name="autofill_v2_respect_off_desc">Пропускать поля, где приложения/сайты явно отключают автозаполнение.</string>
+    <string name="autofill_inline_suggestions">Встроенные подсказки в IME</string>
+    <string name="autofill_inline_suggestions_desc">Показывать подсказки автозаполнения в панели кандидатов клавиатуры. При выключении используется только традиционное выпадающее меню.</string>
     <string name="autofill_v2_save_prompt">Предлагать сохранение</string>
     <string name="autofill_v2_save_prompt_desc">Предлагать сохранить новые учётные данные после входа/регистрации.</string>
     <string name="autofill_v2_blacklist">Чёрный список</string>

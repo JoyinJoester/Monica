@@ -51,7 +51,7 @@ enum class NetworkGateResult {
 data class SyncManagerConfig(
     val pageEnterThrottleMs: Long = 45_000L,
     val appResumeThrottleMs: Long = 60_000L,
-    val localMutationDebounceMs: Long = 2_000L,
+    val localMutationDebounceMs: Long = 700L,
     val retryBaseDelayMs: Long = 5_000L,
     val retryMaxDelayMs: Long = 15 * 60 * 1000L,
     val retryMaxAttempts: Int = 5

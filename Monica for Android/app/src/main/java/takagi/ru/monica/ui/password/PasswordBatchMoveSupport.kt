@@ -29,6 +29,7 @@ import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.LocalMdbxDatabase
 import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.model.TIMELINE_FIELD_BATCH_COPY_PAYLOAD
@@ -38,6 +39,7 @@ import takagi.ru.monica.data.model.TimelineBatchMovePayload
 import takagi.ru.monica.data.model.TimelinePasswordLocationState
 import takagi.ru.monica.data.model.TimelinePasswordRecreatedEntry
 import takagi.ru.monica.ui.password.PasswordAggregateListItemUi
+import takagi.ru.monica.ui.password.PasswordBatchTransferGlobalProgressState
 import takagi.ru.monica.ui.password.PasswordBatchTransferProgressTracker
 import takagi.ru.monica.ui.components.UNIFIED_MOVE_ARCHIVE_SENTINEL_CATEGORY_ID
 import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
@@ -72,6 +74,14 @@ internal data class PasswordBatchTransferProgressUiState(
     val progressText: String
         get() = "$processed / $total"
 }
+
+internal fun PasswordBatchTransferGlobalProgressState.toDialogUiState(): PasswordBatchTransferProgressUiState =
+    PasswordBatchTransferProgressUiState(
+        action = action,
+        targetLabel = targetLabel,
+        processed = processed,
+        total = total
+    )
 
 private fun formatBatchResultToast(
     context: Context,
@@ -127,6 +137,8 @@ internal fun toLocationState(entry: PasswordEntry): TimelinePasswordLocationStat
         categoryId = entry.categoryId,
         keepassDatabaseId = entry.keepassDatabaseId,
         keepassGroupPath = entry.keepassGroupPath,
+        mdbxDatabaseId = entry.mdbxDatabaseId,
+        mdbxFolderId = entry.mdbxFolderId,
         bitwardenVaultId = entry.bitwardenVaultId,
         bitwardenCipherId = entry.bitwardenCipherId,
         bitwardenFolderId = entry.bitwardenFolderId,
@@ -243,6 +255,38 @@ internal fun toMovedLocationState(
             categoryId = null,
             keepassDatabaseId = target.databaseId,
             keepassGroupPath = target.groupPath,
+            bitwardenVaultId = null,
+            bitwardenCipherId = null,
+            bitwardenFolderId = null,
+            bitwardenRevisionDate = null,
+            bitwardenLocalModified = false,
+            isArchived = false,
+            archivedAtMillis = null
+        )
+
+        is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> TimelinePasswordLocationState(
+            id = entry.id,
+            categoryId = null,
+            keepassDatabaseId = null,
+            keepassGroupPath = null,
+            mdbxDatabaseId = target.databaseId,
+            mdbxFolderId = null,
+            bitwardenVaultId = null,
+            bitwardenCipherId = null,
+            bitwardenFolderId = null,
+            bitwardenRevisionDate = null,
+            bitwardenLocalModified = false,
+            isArchived = false,
+            archivedAtMillis = null
+        )
+
+        is UnifiedMoveCategoryTarget.MdbxFolderTarget -> TimelinePasswordLocationState(
+            id = entry.id,
+            categoryId = null,
+            keepassDatabaseId = null,
+            keepassGroupPath = null,
+            mdbxDatabaseId = target.databaseId,
+            mdbxFolderId = target.folderId,
             bitwardenVaultId = null,
             bitwardenCipherId = null,
             bitwardenFolderId = null,
@@ -403,6 +447,50 @@ internal fun buildCopiedEntryForTarget(
             isDeleted = false,
             deletedAt = null
         )
+
+        is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> entry.copy(
+            id = 0,
+            createdAt = now,
+            updatedAt = now,
+            categoryId = null,
+            keepassDatabaseId = null,
+            keepassGroupPath = null,
+            keepassEntryUuid = null,
+            keepassGroupUuid = null,
+            mdbxDatabaseId = target.databaseId,
+            mdbxFolderId = null,
+            bitwardenVaultId = null,
+            bitwardenCipherId = null,
+            bitwardenFolderId = null,
+            bitwardenRevisionDate = null,
+            bitwardenLocalModified = false,
+            isArchived = false,
+            archivedAt = null,
+            isDeleted = false,
+            deletedAt = null
+        )
+
+        is UnifiedMoveCategoryTarget.MdbxFolderTarget -> entry.copy(
+            id = 0,
+            createdAt = now,
+            updatedAt = now,
+            categoryId = null,
+            keepassDatabaseId = null,
+            keepassGroupPath = null,
+            keepassEntryUuid = null,
+            keepassGroupUuid = null,
+            mdbxDatabaseId = target.databaseId,
+            mdbxFolderId = target.folderId,
+            bitwardenVaultId = null,
+            bitwardenCipherId = null,
+            bitwardenFolderId = null,
+            bitwardenRevisionDate = null,
+            bitwardenLocalModified = false,
+            isArchived = false,
+            archivedAt = null,
+            isDeleted = false,
+            deletedAt = null
+        )
     }
 }
 
@@ -410,7 +498,8 @@ internal fun buildMoveTargetLabel(
     context: Context,
     target: UnifiedMoveCategoryTarget,
     categories: List<Category>,
-    keepassDatabases: List<LocalKeePassDatabase>
+    keepassDatabases: List<LocalKeePassDatabase>,
+    mdbxDatabases: List<LocalMdbxDatabase> = emptyList()
 ): String {
     return when (target) {
         UnifiedMoveCategoryTarget.Uncategorized -> context.getString(R.string.category_none)
@@ -431,6 +520,14 @@ internal fun buildMoveTargetLabel(
         }
 
         is UnifiedMoveCategoryTarget.KeePassGroupTarget -> decodeKeePassPathForDisplay(target.groupPath)
+
+        is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> {
+            mdbxDatabases.find { it.id == target.databaseId }?.name ?: "MDBX"
+        }
+
+        is UnifiedMoveCategoryTarget.MdbxFolderTarget -> {
+            mdbxDatabases.find { it.id == target.databaseId }?.name ?: "MDBX"
+        }
     }
 }
 
@@ -449,6 +546,7 @@ internal suspend fun executePasswordBatchCopy(
     targetRouting: PasswordBatchMoveTargetRouting,
     copyPasswordToMonicaLocal: suspend (PasswordEntry, Long?) -> Long?,
     addCopiedEntry: suspend (PasswordEntry) -> Long?,
+    addMdbxCopiedEntriesBatch: suspend (List<PasswordEntry>) -> List<Long>,
     buildCopiedEntryForTarget: (PasswordEntry, UnifiedMoveCategoryTarget) -> PasswordEntry,
     onProgress: ((Int, Int) -> Unit)? = null
 ): PasswordBatchCopyResult {
@@ -473,6 +571,18 @@ internal suspend fun executePasswordBatchCopy(
             processed += 1
             onProgress?.invoke(processed, total)
         }
+    } else if (target is UnifiedMoveCategoryTarget.MdbxDatabaseTarget || target is UnifiedMoveCategoryTarget.MdbxFolderTarget) {
+        val copiedEntries = selectedEntries.map { entry -> buildCopiedEntryForTarget(entry, target) }
+        val createdIds = addMdbxCopiedEntriesBatch(copiedEntries)
+        createdIds.forEachIndexed { index, createdId ->
+            if (createdId > 0) {
+                copiedIds += createdId
+                selectedEntries.getOrNull(index)?.let { source -> idPairs += source.id to createdId }
+            }
+        }
+        failedCount += (selectedEntries.size - copiedIds.size).coerceAtLeast(0)
+        processed = total
+        onProgress?.invoke(processed, total)
     } else {
         selectedEntries.forEach { entry ->
             val copiedEntry = buildCopiedEntryForTarget(entry, target)
@@ -623,7 +733,7 @@ private fun PasswordBatchAggregateSelection.totalItemCount(
 }
 
 @Composable
-private fun PasswordBatchTransferProgressDialog(
+internal fun PasswordBatchTransferProgressDialog(
     state: PasswordBatchTransferProgressUiState,
     onMoveToBackground: () -> Unit
 ) {
@@ -673,6 +783,7 @@ internal fun PasswordBatchMoveSheet(
     visible: Boolean,
     categories: List<Category>,
     keepassDatabases: List<LocalKeePassDatabase>,
+    mdbxDatabases: List<takagi.ru.monica.data.LocalMdbxDatabase> = emptyList(),
     bitwardenVaults: List<takagi.ru.monica.data.bitwarden.BitwardenVault>,
     database: takagi.ru.monica.data.PasswordDatabase,
     localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
@@ -708,7 +819,7 @@ internal fun PasswordBatchMoveSheet(
         mutableStateOf<PasswordBatchTransferProgressUiState?>(null)
     }
     var showProgressDialog by remember {
-        mutableStateOf(true)
+        mutableStateOf(false)
     }
 
     // 附件感知移动确认弹窗状态
@@ -721,9 +832,12 @@ internal fun PasswordBatchMoveSheet(
         onDismiss = onDismiss,
         categories = categories,
         keepassDatabases = keepassDatabases,
+        mdbxDatabases = mdbxDatabases,
         bitwardenVaults = bitwardenVaults,
         getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
         getKeePassGroups = localKeePassViewModel::getGroups,
+        getMdbxFolders = viewModel::getMdbxFolders,
+        refreshMdbxFolders = viewModel::refreshMdbxFolders,
         showBitwardenFolderTargets = false,
         allowCopy = true,
         allowMove = selectedEntries.none { it.isKeePassEntry() } && !aggregateSelection.hasKeePassOwned,
@@ -786,13 +900,15 @@ internal fun PasswordBatchMoveSheet(
                 )
             }
 
-            showProgressDialog = true
+            showProgressDialog = false
             onProgressUpdate(if (totalCount > 1) 1 else 0, totalCount)
             onDismiss()
+            onSelectionCleared()
 
             viewModel.viewModelScope.launch {
                 var successCount = 0
                 var failedCount = 0
+                var completedCleanly = false
                 // Attachment_Aware_Move_Dialog preflight（Requirement 8）：
                 // 目标是 Bitwarden Vault/Folder + 该 vault 是免费账户 + 选中集合里有带附件条目
                 // → 弹 dialog 让用户知情；用户确认后按原逻辑执行（附件本身不会被搬到 Bitwarden）
@@ -855,6 +971,7 @@ internal fun PasswordBatchMoveSheet(
                                 }
                                 successCount = selectedEntries.size
                                 onProgressUpdate(selectedEntries.size, selectedEntries.size)
+                                completedCleanly = true
                             } catch (e: Exception) {
                                 android.util.Log.e(
                                     "PasswordBatchMove",
@@ -870,7 +987,15 @@ internal fun PasswordBatchMoveSheet(
                             } finally {
                                 transferProgress = null
                                 showProgressDialog = false
-                                PasswordBatchTransferProgressTracker.clear()
+                                if (completedCleanly && successCount > 0 && failedCount == 0) {
+                                    PasswordBatchTransferProgressTracker.complete(
+                                        action = effectiveAction,
+                                        targetLabel = targetLabel,
+                                        successCount = successCount
+                                    )
+                                } else {
+                                    PasswordBatchTransferProgressTracker.clear()
+                                }
                                 PasswordBatchTransferNotificationHelper.showCompleted(
                                     context = context,
                                     notificationId = notificationId,
@@ -982,6 +1107,9 @@ internal fun PasswordBatchMoveSheet(
                                         },
                                         addCopiedEntry = { entry ->
                                             viewModel.addPasswordEntryWithResultAwait(entry)
+                                        },
+                                        addMdbxCopiedEntriesBatch = { entries ->
+                                            viewModel.createMdbxPasswordEntriesBatchAlreadyEncrypted(entries)
                                         },
                                         buildCopiedEntryForTarget = ::buildCopiedEntryForTarget,
                                         onProgress = onProgressUpdate
@@ -1145,6 +1273,22 @@ internal fun PasswordBatchMoveSheet(
                                         target.groupPath
                                     )
                                 }
+
+                                target is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> {
+                                    viewModel.unarchivePasswordsAwait(selectedIds)
+                                    viewModel.movePasswordsToMdbxDatabaseAwait(selectedIds, target.databaseId)
+                                    onProgressUpdate(selectedEntries.size, selectedEntries.size)
+                                }
+
+                                target is UnifiedMoveCategoryTarget.MdbxFolderTarget -> {
+                                    viewModel.unarchivePasswordsAwait(selectedIds)
+                                    viewModel.movePasswordsToMdbxDatabaseAwait(
+                                        selectedIds,
+                                        target.databaseId,
+                                        target.folderId
+                                    )
+                                    onProgressUpdate(selectedEntries.size, selectedEntries.size)
+                                }
                             }
 
                             logPasswordBatchMoveTimeline(
@@ -1176,6 +1320,7 @@ internal fun PasswordBatchMoveSheet(
                         ),
                         Toast.LENGTH_SHORT
                     ).show()
+                    completedCleanly = true
                     onSelectionCleared()
                 } catch (e: Exception) {
                     val normalizedTotal = lastKnownTotal.coerceAtLeast(totalCount)
@@ -1204,7 +1349,15 @@ internal fun PasswordBatchMoveSheet(
                 } finally {
                     transferProgress = null
                     showProgressDialog = false
-                    PasswordBatchTransferProgressTracker.clear()
+                    if (completedCleanly && successCount > 0 && failedCount == 0) {
+                        PasswordBatchTransferProgressTracker.complete(
+                            action = effectiveAction,
+                            targetLabel = targetLabel,
+                            successCount = successCount
+                        )
+                    } else {
+                        PasswordBatchTransferProgressTracker.clear()
+                    }
                 }
             }
             return@UnifiedMoveToCategoryBottomSheet

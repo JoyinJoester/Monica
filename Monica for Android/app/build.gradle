@@ -13,7 +13,7 @@ android {
 
     def previewVersionSuffix = project.findProperty('previewVersionSuffix')?.toString()?.trim()
     def appVersionCode = 10
-    def baseVersionName = previewVersionSuffix ? "1.0.286-${previewVersionSuffix}" : "1.0.286"
+    def baseVersionName = previewVersionSuffix ? "1.0.288-${previewVersionSuffix}" : "1.0.288"
     def workspaceRootDir = rootDir?.parentFile ?: rootDir
     def buildBakRootDir = new File(workspaceRootDir, 'Build bak')
 
@@ -213,10 +213,12 @@ android {
                         from rootDir
                         into snapshotDir
                         exclude '.gradle/**',
+                                '.gradle-user-home/**',
                                 '.kotlin/**',
                                 '.idea/**',
                                 'build/**',
                                 'app/build/**',
+                                '**/*.lock',
                                 '**/*.iml',
                                 'local.properties',
                                 '**/*.apk',
@@ -407,6 +409,9 @@ dependencies {
     
     // Scrypt for Aegis decryption
     implementation libs.scrypt
+
+    // Password strength analysis, same engine used by Keyguard
+    implementation 'com.nulab-inc:zxcvbn:1.9.0'
     
     // ==== Bitwarden Integration ====
     // Retrofit for API calls
@@ -419,11 +424,17 @@ dependencies {
     implementation 'com.squareup.okhttp3:okhttp-dnsoverhttps:4.12.0'
 
     // Microsoft identity platform / OneDrive auth
-    implementation 'com.microsoft.identity.client:msal:8.+'
+    implementation 'com.microsoft.identity.client:msal:8.3.2'
     implementation 'com.squareup.moshi:moshi-adapters:1.15.1'
     
     // BouncyCastle for Argon2 (Bitwarden KDF support)
     implementation 'org.bouncycastle:bcprov-jdk18on:1.78.1'
+    // Native Argon2 backend for Bitwarden Argon2id KDF. This keeps high-memory
+    // KDF work off the Android JVM heap.
+    implementation('com.lambdapioneer.argon2kt:argon2kt:1.6.0') {
+        exclude group: 'androidx.appcompat', module: 'appcompat'
+        exclude group: 'androidx.core', module: 'core-ktx'
+    }
 
     // Brand icon loading now uses remote PNG assets from Stratum Auth app
     

@@ -12,12 +12,14 @@ import takagi.ru.monica.data.PasswordHistoryDao
 import takagi.ru.monica.data.PasswordHistoryEntry
 import takagi.ru.monica.data.SecureItemDao
 import takagi.ru.monica.bitwarden.BitwardenMutationStateHelper
+import takagi.ru.monica.repository.MdbxStoredFolderEntry
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.bitwarden.BitwardenFolderDao
 import takagi.ru.monica.data.bitwarden.BitwardenSyncRawEntryRecord
 import takagi.ru.monica.data.bitwarden.BitwardenSyncRawEntryRecordDao
 import java.util.Date
 import java.util.Locale
+import java.util.UUID
 
 /**
  * Repository for password entries
@@ -30,7 +32,8 @@ class PasswordRepository(
     private val passkeyDao: PasskeyDao? = null,
     private val passwordArchiveSyncMetaDao: PasswordArchiveSyncMetaDao? = null,
     private val passwordHistoryDao: PasswordHistoryDao? = null,
-    private val bitwardenSyncRawEntryRecordDao: BitwardenSyncRawEntryRecordDao? = null
+    private val bitwardenSyncRawEntryRecordDao: BitwardenSyncRawEntryRecordDao? = null,
+    private val mdbxRepository: MdbxRepository? = null
 ) {
     
     fun getAllPasswordEntries(): Flow<List<PasswordEntry>> {
@@ -83,6 +86,18 @@ class PasswordRepository(
         return categoryDao?.insert(category) ?: -1
     }
 
+    suspend fun createMdbxFolder(
+        databaseId: Long,
+        name: String,
+        parentFolderId: String? = "root"
+    ): MdbxStoredFolderEntry? {
+        return mdbxRepository?.createFolder(databaseId, name, parentFolderId)
+    }
+
+    suspend fun listMdbxFolders(databaseId: Long): List<MdbxStoredFolderEntry> {
+        return mdbxRepository?.listFolders(databaseId).orEmpty()
+    }
+
     suspend fun updateCategory(category: Category) {
         categoryDao?.update(category)
     }
@@ -131,6 +146,40 @@ class PasswordRepository(
         passwordEntryDao.updateKeePassDatabaseForPasswords(ids, databaseId)
     }
 
+    suspend fun updateMdbxDatabaseForPasswords(ids: List<Long>, databaseId: Long?, folderId: String? = null) {
+        if (ids.isEmpty()) return
+        val existingEntries = passwordEntryDao.getPasswordsByIds(ids)
+        if (databaseId != null) {
+            val entriesForMdbx = existingEntries.map { entry ->
+                entry.copy(
+                    mdbxDatabaseId = databaseId,
+                    mdbxFolderId = folderId,
+                    replicaGroupId = entry.mdbxPasswordObjectId(),
+                    keepassDatabaseId = null,
+                    keepassGroupPath = null,
+                    keepassEntryUuid = null,
+                    keepassGroupUuid = null,
+                    bitwardenVaultId = null,
+                    bitwardenFolderId = null,
+                    bitwardenCipherId = null,
+                    bitwardenRevisionDate = null,
+                    bitwardenLocalModified = false,
+                    updatedAt = Date()
+                )
+            }
+            mdbxRepository?.upsertPasswords(entriesForMdbx)
+            mdbxRepository?.deletePasswords(
+                existingEntries.filter { it.mdbxDatabaseId != null && it.mdbxDatabaseId != databaseId }
+            )
+            passwordEntryDao.updatePasswordEntries(entriesForMdbx)
+            return
+        }
+        mdbxRepository?.deletePasswords(
+            existingEntries.filter { it.mdbxDatabaseId != null }
+        )
+        passwordEntryDao.updateMdbxDatabaseForPasswords(ids, databaseId, folderId)
+    }
+
     suspend fun updateKeePassGroupForPasswords(ids: List<Long>, databaseId: Long, groupPath: String) {
         passwordEntryDao.updateKeePassGroupForPasswords(ids, databaseId, groupPath)
     }
@@ -161,13 +210,106 @@ class PasswordRepository(
     
     suspend fun insertPasswordEntry(entry: PasswordEntry): Long {
         val normalizedEntry = BitwardenMutationStateHelper.normalizePasswordInsert(entry)
-        return passwordEntryDao.insertPasswordEntry(normalizedEntry)
+        val id = passwordEntryDao.insertPasswordEntry(normalizedEntry)
+        try {
+            val persistedEntry = normalizedEntry.copy(
+                id = id,
+                replicaGroupId = if (normalizedEntry.mdbxDatabaseId != null) {
+                    normalizedEntry.copy(id = id).mdbxPasswordObjectId()
+                } else {
+                    normalizedEntry.replicaGroupId
+                }
+            )
+            if (persistedEntry.replicaGroupId != normalizedEntry.replicaGroupId) {
+                passwordEntryDao.updatePasswordEntry(persistedEntry)
+            }
+            mdbxRepository?.upsertPassword(persistedEntry)
+        } catch (e: Exception) {
+            passwordEntryDao.deletePasswordEntryById(id)
+            throw e
+        }
+        return id
+    }
+
+    suspend fun insertPasswordEntries(entries: List<PasswordEntry>): List<Long> {
+        if (entries.isEmpty()) return emptyList()
+        val normalizedEntries = entries.map(BitwardenMutationStateHelper::normalizePasswordInsert)
+        val ids = passwordEntryDao.insertPasswordEntries(normalizedEntries)
+        val persistedEntries = normalizedEntries.mapIndexed { index, entry ->
+            val id = ids[index]
+            entry.copy(
+                id = id,
+                replicaGroupId = if (entry.mdbxDatabaseId != null) {
+                    entry.copy(id = id).mdbxPasswordObjectId()
+                } else {
+                    entry.replicaGroupId
+                }
+            )
+        }
+        return try {
+            val entriesNeedingReplicaUpdate = persistedEntries.filterIndexed { index, persistedEntry ->
+                persistedEntry.replicaGroupId != normalizedEntries[index].replicaGroupId
+            }
+            if (entriesNeedingReplicaUpdate.isNotEmpty()) {
+                passwordEntryDao.updatePasswordEntries(entriesNeedingReplicaUpdate)
+            }
+            mdbxRepository?.upsertPasswords(persistedEntries.filter { it.mdbxDatabaseId != null })
+            ids
+        } catch (e: Exception) {
+            ids.forEach { id -> passwordEntryDao.deletePasswordEntryById(id) }
+            throw e
+        }
     }
     
     suspend fun updatePasswordEntry(entry: PasswordEntry) {
         val existingEntry = if (entry.id != 0L) passwordEntryDao.getPasswordEntryById(entry.id) else null
-        val normalizedEntry = BitwardenMutationStateHelper.normalizePasswordUpdate(existingEntry, entry)
+        val normalizedEntry = BitwardenMutationStateHelper.normalizePasswordUpdate(existingEntry, entry).let { candidate ->
+            if (candidate.mdbxDatabaseId != null) {
+                candidate.copy(replicaGroupId = candidate.mdbxPasswordObjectId())
+            } else {
+                candidate
+            }
+        }
+        if (
+            normalizedEntry.mdbxDatabaseId != null
+        ) {
+            mdbxRepository?.upsertPassword(normalizedEntry)
+        }
+        if (
+            existingEntry?.mdbxDatabaseId != null &&
+            existingEntry.mdbxDatabaseId != normalizedEntry.mdbxDatabaseId
+        ) {
+            mdbxRepository?.deletePassword(existingEntry)
+        }
         passwordEntryDao.updatePasswordEntry(normalizedEntry)
+    }
+
+    suspend fun updatePasswordEntries(entries: List<PasswordEntry>) {
+        if (entries.isEmpty()) return
+        val existingEntriesById = passwordEntryDao
+            .getPasswordsByIds(entries.map { it.id })
+            .associateBy { it.id }
+        val normalizedEntries = entries.map { entry ->
+            val existingEntry = existingEntriesById[entry.id]
+            BitwardenMutationStateHelper.normalizePasswordUpdate(existingEntry, entry).let { candidate ->
+                if (candidate.mdbxDatabaseId != null) {
+                    candidate.copy(replicaGroupId = candidate.mdbxPasswordObjectId())
+                } else {
+                    candidate
+                }
+            }
+        }
+        mdbxRepository?.upsertPasswords(normalizedEntries.filter { it.mdbxDatabaseId != null })
+        mdbxRepository?.deletePasswords(
+            normalizedEntries.mapNotNull { normalizedEntry ->
+                val existingEntry = existingEntriesById[normalizedEntry.id]
+                existingEntry?.takeIf {
+                    it.mdbxDatabaseId != null &&
+                        it.mdbxDatabaseId != normalizedEntry.mdbxDatabaseId
+                }
+            }
+        )
+        passwordEntryDao.updatePasswordEntries(normalizedEntries)
     }
 
     suspend fun updatePasswordUpdatedAt(id: Long, updatedAt: java.util.Date) {
@@ -175,12 +317,25 @@ class PasswordRepository(
     }
     
     suspend fun deletePasswordEntry(entry: PasswordEntry) {
+        mdbxRepository?.deletePassword(entry)
         passwordEntryDao.deletePasswordEntry(entry)
+    }
+
+    suspend fun deletePasswordEntries(entries: List<PasswordEntry>) {
+        if (entries.isEmpty()) return
+        mdbxRepository?.deletePasswords(entries.filter { it.mdbxDatabaseId != null })
+        passwordEntryDao.deletePasswordEntries(entries)
     }
     
     suspend fun deletePasswordEntryById(id: Long) {
+        passwordEntryDao.getPasswordEntryById(id)?.let { mdbxRepository?.deletePassword(it) }
         passwordEntryDao.deletePasswordEntryById(id)
     }
+
+    private fun PasswordEntry.mdbxPasswordObjectId(): String =
+        replicaGroupId
+            ?.takeIf { it.startsWith("password:") && it.length > "password:".length }
+            ?: "password:${UUID.randomUUID()}"
 
     suspend fun archivePasswordById(id: Long) {
         passwordEntryDao.archiveById(id)
@@ -210,6 +365,11 @@ class PasswordRepository(
 
     suspend fun deleteArchiveSyncMeta(entryId: Long) {
         passwordArchiveSyncMetaDao?.deleteByEntryId(entryId)
+    }
+
+    suspend fun deleteArchiveSyncMeta(entryIds: List<Long>) {
+        if (entryIds.isEmpty()) return
+        passwordArchiveSyncMetaDao?.deleteByEntryIds(entryIds)
     }
 
     fun getPasswordHistoryByEntryId(entryId: Long): Flow<List<PasswordHistoryEntry>> {

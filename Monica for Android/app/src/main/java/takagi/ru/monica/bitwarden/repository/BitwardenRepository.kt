@@ -1,6 +1,9 @@
 package takagi.ru.monica.bitwarden.repository
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.net.Uri
 import android.util.Base64
 import android.util.Log
 import androidx.room.withTransaction
@@ -11,7 +14,26 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.asRequestBody
+import java.io.File
+import java.io.InputStream
+import java.io.IOException
+import java.io.RandomAccessFile
+import java.net.HttpURLConnection
+import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
+import javax.crypto.Cipher
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
+import javax.crypto.spec.IvParameterSpec
+import takagi.ru.monica.attachments.facade.AttachmentUriMetadata
+import takagi.ru.monica.attachments.facade.AttachmentSizeValidator
+import takagi.ru.monica.bitwarden.BitwardenVaultPremiumStore
 import takagi.ru.monica.bitwarden.api.BitwardenApiFactory
 import takagi.ru.monica.bitwarden.api.BitwardenApiManager
 import takagi.ru.monica.bitwarden.api.BitwardenTlsConfig
@@ -21,6 +43,7 @@ import takagi.ru.monica.bitwarden.BitwardenRestoreQueueOutcome
 import takagi.ru.monica.bitwarden.BitwardenVaultIdentity
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
 import takagi.ru.monica.bitwarden.crypto.BitwardenCrypto.SymmetricCryptoKey
+import takagi.ru.monica.bitwarden.crypto.BitwardenKdfMemoryException
 import takagi.ru.monica.bitwarden.mapper.BitwardenSendMapper
 import takagi.ru.monica.bitwarden.service.BitwardenAuthService
 import takagi.ru.monica.bitwarden.service.BitwardenDiagLogger
@@ -29,6 +52,7 @@ import takagi.ru.monica.bitwarden.service.BitwardenHistoricalTotpRepairService
 import takagi.ru.monica.bitwarden.service.BitwardenSyncService
 import takagi.ru.monica.bitwarden.service.LoginResult
 import takagi.ru.monica.bitwarden.service.SyncResult as ServiceSyncResult
+import takagi.ru.monica.bitwarden.sync.BitwardenMutationSyncBridge
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.PasswordEntry
 import takagi.ru.monica.data.bitwarden.*
@@ -57,6 +81,8 @@ class BitwardenRepository(private val context: Context) {
         private const val ARGON2_DEFAULT_MEMORY_MB = 64
         private const val ARGON2_DEFAULT_PARALLELISM = 4
         private const val CACHE_KEEP_SENTINEL_CIPHER_ID = "__MONICA_CACHE_KEEP_SENTINEL__"
+        private const val FILE_UPLOAD_TYPE_DIRECT = 0
+        private const val SEND_UPLOAD_REQUEST_HEADROOM_BYTES = 16L * 1024L
         private val vaultSyncMutexes = ConcurrentHashMap<Long, Mutex>()
         
         @Volatile
@@ -101,6 +127,9 @@ class BitwardenRepository(private val context: Context) {
 
                 rawError.contains("captcha", ignoreCase = true) ->
                     "需要 Captcha 验证，请稍后重试或使用官方客户端登录"
+
+                rawError.contains("Bitwarden Argon2id KDF memory is too high", ignoreCase = true) ->
+                    "当前 Bitwarden 账户的 Argon2id KDF 内存参数过高，Monica 当前 Android JVM 加密实现无法安全处理。\n\n请临时降低 Bitwarden Web 中的 KDF 内存后重试，或等待后续 native Bitwarden/Argon2 支持。"
                 
                 // 账户锁定
                 rawError.contains("locked", ignoreCase = true) ||
@@ -121,6 +150,12 @@ class BitwardenRepository(private val context: Context) {
                 // 其他 400 错误
                 rawError.contains("400") && rawError.contains("invalid_grant") ->
                     "认证失败：可能是服务器区域或自建地址不匹配、SSO 账户限制、或验证流程未完成，请重试"
+
+                // 高内存 Argon2id KDF 在当前设备/ABI/native 库不可用时的明确提示
+                rawError.contains("Bitwarden Argon2id KDF requires", ignoreCase = true) ||
+                rawError.contains("ARGON2_MEMORY_ALLOCATION_ERROR", ignoreCase = true) ||
+                rawError.contains("ARGON2JNI_MALLOC_FAILED", ignoreCase = true) ->
+                    "登录失败：当前设备无法完成该 Bitwarden Argon2id KDF 参数。请降低服务端 KDF 内存参数后重试，或使用支持该参数的官方客户端。"
                 
                 // 默认返回原始错误（截断过长内容）
                 else -> {
@@ -218,6 +253,45 @@ class BitwardenRepository(private val context: Context) {
             macKey = key.macKey.copyOf()
         )
     }
+
+    /**
+     * 为附件子系统构建 [takagi.ru.monica.attachments.facade.AttachmentFacade.BitwardenContext]。
+     *
+     * 调用方（UI/ViewModel）通过此方法获取上下文，无需直接接触缓存的 token 或 API 工厂。
+     * 返回 null 表示 vault 未解锁或 cipherId 缺失。
+     *
+     * @param vault BitwardenVault 实体（调用方通常已通过 Flow 持有）
+     * @param cipherId Bitwarden cipherId（来自 [takagi.ru.monica.data.PasswordEntry.bitwardenCipherId]）
+     */
+    fun getAttachmentBitwardenContext(
+        vault: BitwardenVault,
+        cipherId: String?
+    ): takagi.ru.monica.attachments.facade.AttachmentFacade.BitwardenContext? {
+        if (cipherId.isNullOrBlank()) return null
+        val accessToken = accessTokenCache[vault.id] ?: return null
+        val wrappingKey = symmetricKeyCache[vault.id] ?: return null
+        val vaultApi = apiManager.getVaultApi(vault)
+        val httpClient = apiManager.getOkHttpClient(vault)
+        val isOnline = isNetworkAvailable()
+        return takagi.ru.monica.attachments.facade.AttachmentFacade.BitwardenContext(
+            vaultApi = vaultApi,
+            httpClient = httpClient,
+            accessToken = accessToken,
+            cipherId = cipherId,
+            wrappingKey = SymmetricCryptoKey(
+                encKey = wrappingKey.encKey.copyOf(),
+                macKey = wrappingKey.macKey.copyOf()
+            ),
+            isOnline = isOnline
+        )
+    }
+
+    private fun isNetworkAvailable(): Boolean {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        val network = cm?.activeNetwork ?: return false
+        val caps = cm.getNetworkCapabilities(network) ?: return false
+        return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
     
     /**
      * 登录 Bitwarden
@@ -269,6 +343,9 @@ class BitwardenRepository(private val context: Context) {
                     RepositoryLoginResult.Error(parseErrorMessage(error.message))
                 }
             )
+        } catch (e: BitwardenKdfMemoryException) {
+            Log.e(TAG, "登录 KDF 内存不足", e)
+            RepositoryLoginResult.Error(parseErrorMessage(e.message))
         } catch (e: Exception) {
             Log.e(TAG, "登录异常", e)
             RepositoryLoginResult.Error(parseErrorMessage(e.message))
@@ -329,6 +406,9 @@ class BitwardenRepository(private val context: Context) {
                     RepositoryLoginResult.Error(parseErrorMessage(error.message))
                 }
             )
+        } catch (e: BitwardenKdfMemoryException) {
+            Log.e(TAG, "两步验证 KDF 内存不足", e)
+            RepositoryLoginResult.Error(parseErrorMessage(e.message))
         } catch (e: Exception) {
             Log.e(TAG, "两步验证异常", e)
             RepositoryLoginResult.Error(parseErrorMessage(e.message))
@@ -533,6 +613,9 @@ class BitwardenRepository(private val context: Context) {
             } finally {
                 masterKey.fill(0)
             }
+        } catch (e: BitwardenKdfMemoryException) {
+            Log.e(TAG, "解锁 KDF 内存不足", e)
+            UnlockResult.Error("当前 Bitwarden 账户的 Argon2id KDF 内存参数过高，Monica 当前 Android JVM 加密实现无法安全处理。请临时降低 Bitwarden Web 中的 KDF 内存后重试，或等待后续 native Bitwarden/Argon2 支持。")
         } catch (e: Exception) {
             Log.e(TAG, "解锁异常", e)
             UnlockResult.Error(e.message ?: "解锁失败")
@@ -1121,6 +1204,15 @@ class BitwardenRepository(private val context: Context) {
         }
     }
 
+    fun requestLocalMutationSync(vaultId: Long) {
+        BitwardenMutationSyncBridge.requestLocalMutationSync(
+            context = context,
+            vaultId = vaultId,
+            requiresWifi = isSyncOnWifiOnly,
+            autoSyncEnabled = isAutoSyncEnabled
+        )
+    }
+
     suspend fun queueCipherDelete(
         vaultId: Long,
         cipherId: String,
@@ -1134,6 +1226,7 @@ class BitwardenRepository(private val context: Context) {
             // 已有待删除操作时直接复用，保证幂等。
             val existingDelete = pendingOpDao.findActiveDeleteByCipher(vaultId, cipherId)
             if (existingDelete != null) {
+                requestLocalMutationSync(vaultId)
                 return@withContext Result.success(Unit)
             }
 
@@ -1156,6 +1249,7 @@ class BitwardenRepository(private val context: Context) {
                 )
             )
 
+            requestLocalMutationSync(vault.id)
             Result.success(Unit)
         } catch (e: Exception) {
             Log.e(TAG, "加入 Bitwarden 删除队列失败", e)
@@ -1175,12 +1269,14 @@ class BitwardenRepository(private val context: Context) {
 
             val existingRestore = pendingOpDao.findActiveRestoreByCipher(vaultId, cipherId)
             if (existingRestore != null) {
+                requestLocalMutationSync(vaultId)
                 return@withContext Result.success(BitwardenRestoreQueueOutcome.REMOTE_RESTORE_ALREADY_QUEUED)
             }
 
             val existingDelete = pendingOpDao.findActiveDeleteByCipher(vaultId, cipherId)
             if (existingDelete != null) {
                 pendingOpDao.cancelActiveDeleteByCipher(vaultId, cipherId)
+                requestLocalMutationSync(vaultId)
                 return@withContext Result.success(BitwardenRestoreQueueOutcome.CANCELED_PENDING_DELETE)
             }
 
@@ -1201,6 +1297,7 @@ class BitwardenRepository(private val context: Context) {
                 )
             )
 
+            requestLocalMutationSync(vault.id)
             Result.success(BitwardenRestoreQueueOutcome.ENQUEUED_REMOTE_RESTORE)
         } catch (e: Exception) {
             Log.e(TAG, "加入 Bitwarden 恢复队列失败", e)
@@ -1298,6 +1395,14 @@ class BitwardenRepository(private val context: Context) {
         sendDao.getSendsByVault(vaultId)
     }
 
+    /**
+     * 跨多个 Vault 拉取 Send 列表。Send 标签页用来一次展示当前所有已解锁账号下的 Send。
+     */
+    suspend fun getSendsForVaults(vaultIds: List<Long>): List<BitwardenSend> =
+        withContext(Dispatchers.IO) {
+            if (vaultIds.isEmpty()) emptyList() else sendDao.getSendsByVaults(vaultIds)
+        }
+
     suspend fun refreshSends(vaultId: Long): SendSyncResult = withContext(Dispatchers.IO) {
         when (val result = sync(vaultId)) {
             is SyncResult.Success -> {
@@ -1392,13 +1497,21 @@ class BitwardenRepository(private val context: Context) {
             val existing = sendDao.getBySendId(vault.id, mapped.bitwardenSendId)
             val now = System.currentTimeMillis()
             val entity = if (existing == null) {
-                mapped.copy(createdAt = now, updatedAt = now, lastSyncedAt = now)
+                // 本地刚创建，服务器侧的 sync 列表可能还没反映出来。标记 dirty 让 sync
+                // 不要把这条新 Send 当作"服务器已删除"误删。下次 sync 收到该 send 时清零。
+                mapped.copy(
+                    createdAt = now,
+                    updatedAt = now,
+                    lastSyncedAt = now,
+                    isDirty = true
+                )
             } else {
                 mapped.copy(
                     id = existing.id,
                     createdAt = existing.createdAt,
                     updatedAt = now,
-                    lastSyncedAt = now
+                    lastSyncedAt = now,
+                    isDirty = true
                 )
             }
             sendDao.upsert(entity)
@@ -1407,6 +1520,315 @@ class BitwardenRepository(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "创建 Send 失败", e)
             SendMutationResult.Error(e.message ?: "创建 Send 失败")
+        }
+    }
+
+    suspend fun createFileSend(
+        vaultId: Long,
+        title: String,
+        fileUri: Uri,
+        fileName: String,
+        notes: String?,
+        password: String?,
+        maxAccessCount: Int?,
+        hideEmail: Boolean,
+        deletionMillis: Long,
+        expirationMillis: Long?
+    ): SendMutationResult = withContext(Dispatchers.IO) {
+        var encryptedTmp: File? = null
+        var sendKeyToClear: SymmetricCryptoKey? = null
+        try {
+            if (title.isBlank()) return@withContext SendMutationResult.Error("标题不能为空")
+            if (fileName.isBlank()) return@withContext SendMutationResult.Error("文件名不能为空")
+
+            val vault = vaultDao.getVaultById(vaultId)
+                ?: return@withContext SendMutationResult.Error("Vault 不存在")
+
+            if (!isFileSendAllowed(vault)) {
+                return@withContext SendMutationResult.Error("官方 Bitwarden 服务器的文件 Send 需要会员账号")
+            }
+
+            if (!isVaultUnlocked(vaultId)) {
+                return@withContext SendMutationResult.Error("Vault 未解锁")
+            }
+
+            val symmetricKey = symmetricKeyCache[vaultId]
+                ?: return@withContext SendMutationResult.Error("密钥不可用")
+            var accessToken = accessTokenCache[vaultId]
+                ?: return@withContext SendMutationResult.Error("令牌不可用")
+
+            val expiresAt = vault.accessTokenExpiresAt ?: 0
+            if (expiresAt <= System.currentTimeMillis() + 60000) {
+                val refreshed = refreshToken(vault)
+                if (refreshed != null) {
+                    accessToken = refreshed
+                    accessTokenCache[vaultId] = refreshed
+                } else {
+                    return@withContext SendMutationResult.Error("Token 刷新失败，请重新登录")
+                }
+            }
+
+            val metadata = AttachmentUriMetadata.resolve(context, fileUri, fileName)
+            if (metadata.sizeBytes > AttachmentSizeValidator.HARD_LIMIT_BYTES) {
+                return@withContext SendMutationResult.Error("文件过大，已超出当前允许的上传体积")
+            }
+            encryptedTmp = File.createTempFile("bw_send_", ".bin", context.cacheDir)
+            val keyMaterial = BitwardenCrypto.generateSendKeyMaterial()
+            val sendKey = BitwardenCrypto.deriveSendKey(keyMaterial)
+            sendKeyToClear = sendKey
+            try {
+                context.contentResolver.openInputStream(fileUri)?.use { input ->
+                    encryptSendFileData(input, encryptedTmp, sendKey)
+                } ?: return@withContext SendMutationResult.Error("无法读取所选文件")
+
+                val encryptedFileLength = encryptedTmp.length()
+                val maxRequestFileBytes = AttachmentSizeValidator.HARD_LIMIT_BYTES - SEND_UPLOAD_REQUEST_HEADROOM_BYTES
+                if (encryptedFileLength > maxRequestFileBytes) {
+                    return@withContext SendMutationResult.Error(
+                        "文件 Send 上传体积超限：原始文件 ${formatBytes(metadata.sizeBytes)}，" +
+                            "加密后 ${formatBytes(encryptedFileLength)}。已超出服务器允许的上传体积，" +
+                            "自部署服务的限制可能低于官方默认值，请改用更小的文件。"
+                    )
+                }
+
+                val payload = BitwardenSendMapper.buildCreateFileSendPayload(
+                    vaultKey = symmetricKey,
+                    keyMaterial = keyMaterial,
+                    title = title,
+                    fileName = metadata.fileName,
+                    encryptedFileLength = encryptedFileLength,
+                    notes = notes,
+                    password = password,
+                    maxAccessCount = maxAccessCount,
+                    hideEmail = hideEmail,
+                    deletionMillis = deletionMillis,
+                    expirationMillis = expirationMillis
+                )
+                payload.sendKey.clear()
+                sendKeyToClear = null
+
+                val vaultApi = apiManager.getVaultApi(vault)
+                val createResponse = vaultApi.createFileSend(
+                    authorization = "Bearer $accessToken",
+                    send = payload.request
+                )
+                if (!createResponse.isSuccessful) {
+                    return@withContext SendMutationResult.Error(
+                        "创建文件 Send 失败: ${createResponse.code()} ${createResponse.message()}"
+                    )
+                }
+
+                val uploadData = createResponse.body()
+                    ?: return@withContext SendMutationResult.Error("服务器未返回文件上传数据")
+                val sendResponse = uploadData.sendResponse
+                    ?: return@withContext SendMutationResult.Error("服务器未返回 Send 数据")
+                val fileId = sendResponse.file?.id
+                    ?: return@withContext SendMutationResult.Error("服务器未返回文件 ID")
+
+                try {
+                    uploadSendFile(
+                        vault = vault,
+                        accessToken = accessToken,
+                        sendId = sendResponse.id,
+                        fileId = fileId,
+                        encryptedFileName = payload.encryptedFileName,
+                        encryptedFile = encryptedTmp,
+                        fileUploadType = uploadData.fileUploadType,
+                        uploadUrl = uploadData.url
+                    )
+                } catch (e: Exception) {
+                    when (val rollbackResult = deleteSend(vault.id, sendResponse.id)) {
+                        is SendMutationResult.Deleted -> Unit
+                        is SendMutationResult.Error -> {
+                            Log.w(TAG, "文件 Send 上传失败后回滚删除失败: ${rollbackResult.message}")
+                            sendDao.deleteBySendId(vault.id, sendResponse.id)
+                        }
+                        else -> {
+                            sendDao.deleteBySendId(vault.id, sendResponse.id)
+                        }
+                    }
+                    throw e
+                }
+
+                val mapped = BitwardenSendMapper.mapApiToEntity(
+                    vaultId = vault.id,
+                    serverUrl = vault.serverUrl,
+                    api = sendResponse,
+                    vaultKey = symmetricKey
+                ) ?: return@withContext SendMutationResult.Error("Send 解密失败")
+
+                val existing = sendDao.getBySendId(vault.id, mapped.bitwardenSendId)
+                val now = System.currentTimeMillis()
+                val entity = if (existing == null) {
+                    // 同 createTextSend：本地刚创建，标记 dirty 防止下一次 sync 误删。
+                    mapped.copy(
+                        createdAt = now,
+                        updatedAt = now,
+                        lastSyncedAt = now,
+                        isDirty = true
+                    )
+                } else {
+                    mapped.copy(
+                        id = existing.id,
+                        createdAt = existing.createdAt,
+                        updatedAt = now,
+                        lastSyncedAt = now,
+                        isDirty = true
+                    )
+                }
+                sendDao.upsert(entity)
+
+                SendMutationResult.Success(entity)
+            } finally {
+                keyMaterial.fill(0)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "创建文件 Send 失败", e)
+            SendMutationResult.Error(e.message ?: "创建文件 Send 失败")
+        } finally {
+            sendKeyToClear?.clear()
+            encryptedTmp?.delete()
+        }
+    }
+
+    private fun isFileSendAllowed(vault: BitwardenVault): Boolean {
+        // 与官方 Bitwarden 客户端一致：文件 Send 需要 Premium 账户。
+        // Premium 状态来自 sync 响应的 profile.premium || profile.premiumFromOrganization。
+        // Vaultwarden 默认对所有用户返回 premium=true，所以自建服务器天然允许。
+        return BitwardenVaultPremiumStore.isPremium(context, vault.id)
+    }
+
+    private fun resolveSendUploadUrl(vault: BitwardenVault, uploadUrl: String?): String {
+        val trimmed = uploadUrl?.trim().takeIf { !it.isNullOrBlank() }
+            ?: throw IOException("服务器未返回上传地址")
+        trimmed.toHttpUrlOrNull()?.let { return trimmed }
+
+        val apiBase = vault.apiUrl
+            .takeIf { it.isNotBlank() }
+            ?: BitwardenApiFactory.inferServerUrls(vault.serverUrl).api
+        val resolved = apiBase.toHttpUrlOrNull()?.resolve(trimmed)
+        return resolved?.toString()
+            ?: throw IOException("服务器返回了无效的上传地址: $trimmed")
+    }
+
+    private fun encryptSendFileData(
+        source: InputStream,
+        target: File,
+        sendKey: SymmetricCryptoKey
+    ) {
+        val macOffset = 1L + 16L
+        val iv = ByteArray(16).also { SecureRandom().nextBytes(it) }
+        val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding").apply {
+            init(
+                Cipher.ENCRYPT_MODE,
+                SecretKeySpec(sendKey.encKey, "AES"),
+                IvParameterSpec(iv)
+            )
+        }
+        val mac = Mac.getInstance("HmacSHA256").apply {
+            init(SecretKeySpec(sendKey.macKey, "HmacSHA256"))
+            update(iv)
+        }
+
+        target.outputStream().buffered().use { output ->
+            output.write(byteArrayOf(BitwardenCrypto.CIPHER_TYPE_AES_CBC_HMAC.toByte()))
+            output.write(iv)
+            output.write(ByteArray(32))
+
+            val buffer = ByteArray(16 * 1024)
+            while (true) {
+                val read = source.read(buffer)
+                if (read <= 0) break
+                val encryptedChunk = cipher.update(buffer, 0, read)
+                if (encryptedChunk != null && encryptedChunk.isNotEmpty()) {
+                    output.write(encryptedChunk)
+                    mac.update(encryptedChunk)
+                }
+            }
+
+            val finalChunk = cipher.doFinal()
+            if (finalChunk.isNotEmpty()) {
+                output.write(finalChunk)
+                mac.update(finalChunk)
+            }
+            output.flush()
+        }
+
+        RandomAccessFile(target, "rw").use { file ->
+            file.seek(macOffset)
+            file.write(mac.doFinal())
+        }
+    }
+
+    private fun formatBytes(sizeBytes: Long): String {
+        if (sizeBytes < 0) return "unknown"
+        if (sizeBytes < 1024) return "$sizeBytes B"
+        val units = arrayOf("KB", "MB", "GB")
+        var value = sizeBytes.toDouble()
+        var unitIndex = -1
+        while (value >= 1024 && unitIndex < units.lastIndex) {
+            value /= 1024.0
+            unitIndex += 1
+        }
+        return String.format(java.util.Locale.US, "%.2f %s", value, units[unitIndex])
+    }
+
+    private suspend fun uploadSendFile(
+        vault: BitwardenVault,
+        accessToken: String,
+        sendId: String,
+        fileId: String,
+        encryptedFileName: String,
+        encryptedFile: File,
+        fileUploadType: Int,
+        uploadUrl: String?
+    ) = withContext(Dispatchers.IO) {
+        if (fileUploadType == FILE_UPLOAD_TYPE_DIRECT) {
+            val dataBody = encryptedFile.asRequestBody("application/octet-stream".toMediaTypeOrNull())
+            val dataPart = MultipartBody.Part.createFormData("data", encryptedFileName, dataBody)
+            val response = apiManager.getVaultApi(vault).uploadSendFileDirect(
+                authorization = "Bearer $accessToken",
+                sendId = sendId,
+                fileId = fileId,
+                data = dataPart
+            )
+            if (!response.isSuccessful) {
+                val message = if (response.code() == HttpURLConnection.HTTP_ENTITY_TOO_LARGE) {
+                    "文件上传失败: 413 Payload Too Large（加密后上传大小 ${formatBytes(encryptedFile.length())}，" +
+                        "已超出服务器允许的上传体积）"
+                } else {
+                    "文件上传失败: ${response.code()} ${response.message()}"
+                }
+                throw IOException(message)
+            }
+        } else {
+            val url = resolveSendUploadUrl(vault, uploadUrl)
+            val tlsConfig = BitwardenTlsConfig(
+                certificateAlias = vault.tlsCertificateAlias,
+                caCertificatePem = vault.tlsCaCertificatePem,
+                mtlsEnabled = vault.tlsMtlsEnabled,
+                clientCertPkcs12Base64 = vault.tlsClientCertPkcs12Base64,
+                clientCertPassword = vault.tlsEncryptedClientCertPassword
+            )
+            val httpClient: OkHttpClient = BitwardenApiFactory.createOkHttpClient(
+                refererUrl = vault.serverUrl,
+                tlsConfig = tlsConfig
+            )
+            val request = Request.Builder()
+                .url(url)
+                .put(encryptedFile.asRequestBody("application/octet-stream".toMediaTypeOrNull()))
+                .header("x-ms-blob-type", "BlockBlob")
+                .build()
+            httpClient.newCall(request).execute().use { response ->
+                if (response.code != HttpURLConnection.HTTP_CREATED && !response.isSuccessful) {
+                    val message = if (response.code == HttpURLConnection.HTTP_ENTITY_TOO_LARGE) {
+                        "文件上传失败: 413 Payload Too Large"
+                    } else {
+                        "文件上传失败: ${response.code}"
+                    }
+                    throw IOException(message)
+                }
+            }
         }
     }
 

@@ -102,6 +102,8 @@ private data class PasswordBackupEntry(
     val customIconType: String = "NONE",
     val customIconValue: String? = null,
     val customIconUpdatedAt: Long = 0L,
+    // WIFI 条目扩展元数据（JSON 序列化的 WifiData），仅 loginType=WIFI 时有值
+    val wifiMetadata: String = "",
     // 
     val customFields: List<CustomFieldBackupEntry> = emptyList()
 )
@@ -291,6 +293,8 @@ private data class MonicaConfigBackupEntry(
     val autoBackupEnabled: Boolean = false,
     val blockedFieldSignatures: List<AutofillBlockedFieldBackupEntry> = emptyList(),
     val saveBlockedTargets: List<String> = emptyList(),
+    val autofillBlacklistEnabled: Boolean? = null,
+    val autofillBlacklistPackages: List<String>? = null,
     val bitwardenVaults: List<BitwardenVaultBackupEntry> = emptyList(),
 )
 
@@ -324,6 +328,12 @@ private data class AutofillSaveBlockedTargetsBackupEntry(
 )
 
 @Serializable
+private data class AutofillBlacklistBackupEntry(
+    val enabled: Boolean = true,
+    val packages: List<String> = emptyList(),
+)
+
+@Serializable
 private data class PageAdjustmentPasswordFieldVisibilityBackupEntry(
     val securityVerification: Boolean = true,
     val categoryAndNotes: Boolean = true,
@@ -349,6 +359,7 @@ private data class PageAdjustmentSettingsBackupEntry(
     val passwordPageVisibleContentTypes: List<String> = emptyList(),
     val categorySelectionUiMode: String = "DEFAULT",
     val colorSettingsVersion: Int = 0,
+    val oledPureBlackEnabled: Boolean = false,
     val colorScheme: String = "DEFAULT",
     val customPrimaryColor: Long = 0xFF6650A4L,
     val customSecondaryColor: Long = 0xFF625B71L,
@@ -366,6 +377,7 @@ private data class PageAdjustmentSettingsBackupEntry(
     val bottomNavVisibilitySend: Boolean = false,
     val bottomNavVisibilityPasskey: Boolean = true,
     val useDraggableBottomNav: Boolean = false,
+    val autoHideBottomNavWhenSingleTab: Boolean = false,
     val passwordListQuickAccessEnabled: Boolean = true,
     val passwordListTopModulesOrder: List<String> = emptyList(),
     val passwordCardDisplayMode: String = "SHOW_ALL",
@@ -381,6 +393,9 @@ private data class PageAdjustmentSettingsBackupEntry(
     val validatorSmoothProgress: Boolean = true,
     val validatorVibrationEnabled: Boolean = true,
     val copyNextCodeWhenExpiring: Boolean = false,
+    val securityAnalysisAutoEnabled: Boolean = false,
+    val passwordDetailSecurityAnalysisEnabled: Boolean = true,
+    val autofillAuthRequired: Boolean = true,
     val iconCardsEnabled: Boolean = true,
     val appLauncherIcon: String = "MODERN",
     val appLauncherLabel: String = "MONICA_PASS",
@@ -614,7 +629,8 @@ class WebDavHelper(
             ssoRefEntryId = backup.ssoRefEntryId,
             customIconType = backup.customIconType,
             customIconValue = normalizedIconValue,
-            customIconUpdatedAt = backup.customIconUpdatedAt
+            customIconUpdatedAt = backup.customIconUpdatedAt,
+            wifiMetadata = backup.wifiMetadata
         )
     }
 
@@ -1179,6 +1195,8 @@ class WebDavHelper(
                                 customIconType = password.customIconType,
                                 customIconValue = normalizeBackupIconValue(password.customIconType, password.customIconValue),
                                 customIconUpdatedAt = password.customIconUpdatedAt,
+                                // ✅ WIFI 扩展元数据
+                                wifiMetadata = password.wifiMetadata,
                                 // ✅ 自定义字段
                                 customFields = fields
                             )
@@ -1696,6 +1714,11 @@ class WebDavHelper(
                             val saveBlockedTargets = autofillPreferences.saveBlockedTargetRecords.first()
                                 .map { it.key }
                                 .distinct()
+                            val autofillBlacklistEnabled = autofillPreferences.isBlacklistEnabled.first()
+                            val autofillBlacklistPackages = autofillPreferences.blacklistPackages.first()
+                                .mapNotNull { it.trim().takeIf { packageName -> packageName.isNotBlank() } }
+                                .distinct()
+                                .sorted()
                             val bitwardenVaults = PasswordDatabase.getDatabase(context)
                                 .bitwardenVaultDao()
                                 .getAllVaults()
@@ -1761,6 +1784,10 @@ class WebDavHelper(
                             val autofillSaveBlockedTargetsBackup = AutofillSaveBlockedTargetsBackupEntry(
                                 blockedTargets = saveBlockedTargets,
                             )
+                            val autofillBlacklistBackup = AutofillBlacklistBackupEntry(
+                                enabled = autofillBlacklistEnabled,
+                                packages = autofillBlacklistPackages,
+                            )
                             val bitwardenVaultsBackup = BitwardenVaultsBackupEntry(
                                 vaults = bitwardenVaultBackups,
                             )
@@ -1787,6 +1814,8 @@ class WebDavHelper(
                                     pageAdjustmentSettingsSnapshot.categorySelectionUiMode,
                                 colorSettingsVersion =
                                     pageAdjustmentSettingsSnapshot.colorSettingsVersion,
+                                oledPureBlackEnabled =
+                                    pageAdjustmentSettingsSnapshot.oledPureBlackEnabled,
                                 colorScheme = pageAdjustmentSettingsSnapshot.colorScheme,
                                 customPrimaryColor =
                                     pageAdjustmentSettingsSnapshot.customPrimaryColor,
@@ -1819,6 +1848,8 @@ class WebDavHelper(
                                     pageAdjustmentSettingsSnapshot.bottomNavVisibilityPasskey,
                                 useDraggableBottomNav =
                                     pageAdjustmentSettingsSnapshot.useDraggableBottomNav,
+                                autoHideBottomNavWhenSingleTab =
+                                    pageAdjustmentSettingsSnapshot.autoHideBottomNavWhenSingleTab,
                                 passwordListQuickAccessEnabled = pageAdjustmentSettingsSnapshot.passwordListQuickAccessEnabled,
                                 passwordListTopModulesOrder = pageAdjustmentSettingsSnapshot.passwordListTopModulesOrder,
                                 passwordCardDisplayMode = pageAdjustmentSettingsSnapshot.passwordCardDisplayMode,
@@ -1842,6 +1873,12 @@ class WebDavHelper(
                                     pageAdjustmentSettingsSnapshot.validatorVibrationEnabled,
                                 copyNextCodeWhenExpiring =
                                     pageAdjustmentSettingsSnapshot.copyNextCodeWhenExpiring,
+                                securityAnalysisAutoEnabled =
+                                    pageAdjustmentSettingsSnapshot.securityAnalysisAutoEnabled,
+                                passwordDetailSecurityAnalysisEnabled =
+                                    pageAdjustmentSettingsSnapshot.passwordDetailSecurityAnalysisEnabled,
+                                autofillAuthRequired =
+                                    pageAdjustmentSettingsSnapshot.autofillAuthRequired,
                                 iconCardsEnabled = pageAdjustmentSettingsSnapshot.iconCardsEnabled,
                                 appLauncherIcon = pageAdjustmentSettingsSnapshot.appLauncherIcon,
                                 appLauncherLabel = pageAdjustmentSettingsSnapshot.appLauncherLabel,
@@ -1914,6 +1951,21 @@ class WebDavHelper(
                             )
                             autofillSaveBlockedTargetsFile.delete()
 
+                            val autofillBlacklistFile = File(monicaConfigDir, "autofill_blacklist.json")
+                            autofillBlacklistFile.writeText(
+                                json.encodeToString(
+                                    AutofillBlacklistBackupEntry.serializer(),
+                                    autofillBlacklistBackup,
+                                ),
+                                Charsets.UTF_8
+                            )
+                            addFileToZip(
+                                zipOut,
+                                autofillBlacklistFile,
+                                "monica_config/${autofillBlacklistFile.name}"
+                            )
+                            autofillBlacklistFile.delete()
+
                             if (bitwardenVaultBackups.isNotEmpty()) {
                                 val bitwardenVaultsFile = File(monicaConfigDir, "bitwarden_vaults.json")
                                 bitwardenVaultsFile.writeText(
@@ -1947,7 +1999,7 @@ class WebDavHelper(
                             pageAdjustmentSettingsFile.delete()
                             android.util.Log.d(
                                 "WebDavHelper",
-                                "Backup Monica config files (server: $serverUrl, blockedFields=${blockedFieldSignatures.size}, saveBlockedTargets=${saveBlockedTargets.size}, bitwardenVaults=${bitwardenVaultBackups.size}, pageAdjustmentSettings=true)"
+                                "Backup Monica config files (server: $serverUrl, blockedFields=${blockedFieldSignatures.size}, saveBlockedTargets=${saveBlockedTargets.size}, blacklistPackages=${autofillBlacklistPackages.size}, bitwardenVaults=${bitwardenVaultBackups.size}, pageAdjustmentSettings=true)"
                             )
                         } catch (e: Exception) {
                             android.util.Log.w("WebDavHelper", "Failed to backup Monica config: ${e.message}")
@@ -3000,6 +3052,27 @@ class WebDavHelper(
                                         warnings.add("不保存名单恢复失败: ${e.message}")
                                     }
                                 }
+                                normalizedEntryName == "monica_config/autofill_blacklist.json" -> {
+                                    try {
+                                        val autofillBlacklistJson = tempFile.readText(Charsets.UTF_8)
+                                        val json = Json { ignoreUnknownKeys = true }
+                                        val autofillBlacklistBackup =
+                                            json.decodeFromString<AutofillBlacklistBackupEntry>(
+                                                autofillBlacklistJson
+                                            )
+                                        val normalizedPackages = autofillBlacklistBackup.packages
+                                            .mapNotNull { it.trim().takeIf { packageName -> packageName.isNotBlank() } }
+                                            .toSet()
+                                        AutofillPreferences(context).apply {
+                                            setBlacklistEnabled(autofillBlacklistBackup.enabled)
+                                            setBlacklistPackages(normalizedPackages)
+                                        }
+                                        warnings.add("✓ 自动填充黑名单已恢复: ${normalizedPackages.size}个应用")
+                                    } catch (e: Exception) {
+                                        android.util.Log.w("WebDavHelper", "Failed to restore autofill blacklist: ${e.message}")
+                                        warnings.add("自动填充黑名单恢复失败: ${e.message}")
+                                    }
+                                }
                                 normalizedEntryName == "monica_config/bitwarden_vaults.json" ||
                                     entryName.equals("bitwarden_vaults.json", ignoreCase = true) -> {
                                     try {
@@ -3056,6 +3129,8 @@ class WebDavHelper(
                                                     pageAdjustmentBackup.categorySelectionUiMode,
                                                 colorSettingsVersion =
                                                     pageAdjustmentBackup.colorSettingsVersion,
+                                                oledPureBlackEnabled =
+                                                    pageAdjustmentBackup.oledPureBlackEnabled,
                                                 colorScheme =
                                                     pageAdjustmentBackup.colorScheme,
                                                 customPrimaryColor =
@@ -3090,6 +3165,8 @@ class WebDavHelper(
                                                     pageAdjustmentBackup.bottomNavVisibilityPasskey,
                                                 useDraggableBottomNav =
                                                     pageAdjustmentBackup.useDraggableBottomNav,
+                                                autoHideBottomNavWhenSingleTab =
+                                                    pageAdjustmentBackup.autoHideBottomNavWhenSingleTab,
                                                 passwordListQuickAccessEnabled =
                                                     pageAdjustmentBackup.passwordListQuickAccessEnabled,
                                                 passwordListTopModulesOrder =
@@ -3116,13 +3193,19 @@ class WebDavHelper(
                                                     pageAdjustmentBackup.validatorSmoothProgress,
                                                 validatorVibrationEnabled =
                                                     pageAdjustmentBackup.validatorVibrationEnabled,
-                                            copyNextCodeWhenExpiring =
-                                                pageAdjustmentBackup.copyNextCodeWhenExpiring,
-                                            iconCardsEnabled = pageAdjustmentBackup.iconCardsEnabled,
-                                            appLauncherIcon = pageAdjustmentBackup.appLauncherIcon,
-                                            appLauncherLabel = pageAdjustmentBackup.appLauncherLabel,
-                                            passwordPageIconEnabled =
-                                                pageAdjustmentBackup.passwordPageIconEnabled,
+                                                copyNextCodeWhenExpiring =
+                                                    pageAdjustmentBackup.copyNextCodeWhenExpiring,
+                                                securityAnalysisAutoEnabled =
+                                                    pageAdjustmentBackup.securityAnalysisAutoEnabled,
+                                                passwordDetailSecurityAnalysisEnabled =
+                                                    pageAdjustmentBackup.passwordDetailSecurityAnalysisEnabled,
+                                                autofillAuthRequired =
+                                                    pageAdjustmentBackup.autofillAuthRequired,
+                                                iconCardsEnabled = pageAdjustmentBackup.iconCardsEnabled,
+                                                appLauncherIcon = pageAdjustmentBackup.appLauncherIcon,
+                                                appLauncherLabel = pageAdjustmentBackup.appLauncherLabel,
+                                                passwordPageIconEnabled =
+                                                    pageAdjustmentBackup.passwordPageIconEnabled,
                                                 authenticatorPageIconEnabled =
                                                     pageAdjustmentBackup.authenticatorPageIconEnabled,
                                                 passkeyPageIconEnabled =
@@ -3190,6 +3273,25 @@ class WebDavHelper(
                                                 monicaConfigBackup.saveBlockedTargets,
                                             )
                                             warnings.add("✓ 不保存名单已恢复: ${monicaConfigBackup.saveBlockedTargets.size}项")
+                                        }
+
+                                        if (monicaConfigBackup.autofillBlacklistEnabled != null ||
+                                            monicaConfigBackup.autofillBlacklistPackages != null
+                                        ) {
+                                            val normalizedPackages = monicaConfigBackup.autofillBlacklistPackages
+                                                ?.mapNotNull { it.trim().takeIf { packageName -> packageName.isNotBlank() } }
+                                                ?.toSet()
+                                            AutofillPreferences(context).apply {
+                                                monicaConfigBackup.autofillBlacklistEnabled?.let {
+                                                    setBlacklistEnabled(it)
+                                                }
+                                                normalizedPackages?.let {
+                                                    setBlacklistPackages(it)
+                                                }
+                                            }
+                                            if (normalizedPackages != null) {
+                                                warnings.add("✓ 自动填充黑名单已恢复: ${normalizedPackages.size}个应用")
+                                            }
                                         }
 
                                         val restoredBitwardenVaultCount = restoreBitwardenVaultBackups(

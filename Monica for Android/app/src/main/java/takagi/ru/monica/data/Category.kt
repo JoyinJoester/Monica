@@ -17,7 +17,19 @@ data class Category(
     
     @ColumnInfo(name = "bitwarden_folder_id", defaultValue = "NULL")
     val bitwardenFolderId: String? = null,        // 关联的 Bitwarden Folder UUID
-    
+
+    @ColumnInfo(name = "mdbx_database_id", defaultValue = "NULL")
+    val mdbxDatabaseId: Long? = null,             // 关联的 MDBX Database
+
     @ColumnInfo(name = "sync_item_types", defaultValue = "NULL")
     val syncItemTypes: String? = null             // 同步的数据类型，JSON 数组如 ["PASSWORD","TOTP","CARD"]
 )
+
+fun Category.isBitwardenLinkedCategory(): Boolean =
+    bitwardenVaultId != null || !bitwardenFolderId.isNullOrBlank()
+
+fun Category.isMdbxLinkedCategory(): Boolean =
+    mdbxDatabaseId != null
+
+fun Category.isMonicaLocalCategory(): Boolean =
+    !isMdbxLinkedCategory()

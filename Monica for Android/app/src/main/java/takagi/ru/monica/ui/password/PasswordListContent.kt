@@ -112,6 +112,9 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.fragment.app.FragmentActivity
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
@@ -130,7 +133,10 @@ import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.BottomNavContentTab
 import takagi.ru.monica.data.CategorySelectionUiMode
 import takagi.ru.monica.data.ItemType
+import takagi.ru.monica.data.KeePassSyncPhase
+import takagi.ru.monica.data.KeePassSyncStatus
 import takagi.ru.monica.data.PasskeyEntry
+import takagi.ru.monica.data.PasswordListQuickFilterItem
 import takagi.ru.monica.data.PasswordListTopModule
 import takagi.ru.monica.data.PasswordPageContentType
 import takagi.ru.monica.data.PasswordEntry
@@ -138,6 +144,7 @@ import takagi.ru.monica.data.OperationLogItemType
 import takagi.ru.monica.data.SecureItem
 import takagi.ru.monica.data.isKeePassOwned
 import takagi.ru.monica.data.isLocalOnlyItem
+import takagi.ru.monica.data.isRemoteSource
 import takagi.ru.monica.data.model.PasskeyBindingCodec
 import takagi.ru.monica.data.model.TotpData
 import takagi.ru.monica.data.model.TimelinePasswordLocationState
@@ -203,6 +210,8 @@ import takagi.ru.monica.ui.password.PasswordListAggregateConfig
 import takagi.ru.monica.ui.password.PasswordPageListItemUi
 import takagi.ru.monica.ui.password.PasswordListSingleCardItem
 import takagi.ru.monica.ui.password.PasswordSupplementaryListItemUi
+import takagi.ru.monica.ui.password.PasswordBatchDeleteProgressTracker
+import takagi.ru.monica.ui.password.PasswordBatchTransferProgressTracker
 import takagi.ru.monica.ui.password.appendAggregateContentQuickFilterItems
 import takagi.ru.monica.ui.password.buildPasswordAggregateManualStackGroups
 import takagi.ru.monica.ui.password.buildPasswordAggregateItems
@@ -313,8 +322,10 @@ fun PasswordListContent(
     settingsViewModel: SettingsViewModel,
     securityManager: SecurityManager,
     keepassDatabases: List<takagi.ru.monica.data.LocalKeePassDatabase>,
+    mdbxDatabases: List<takagi.ru.monica.data.LocalMdbxDatabase>,
     bitwardenVaults: List<takagi.ru.monica.data.bitwarden.BitwardenVault>,
     localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
+    mdbxViewModel: takagi.ru.monica.viewmodel.MdbxViewModel? = null,
     groupMode: String = "none",
     stackCardMode: StackCardMode,
     onRenameCategory: (Category) -> Unit,
@@ -351,6 +362,9 @@ fun PasswordListContent(
     val currentFilter by viewModel.categoryFilter.collectAsState()
     // settings
     val appSettings by settingsViewModel.settings.collectAsState()
+    val mdbxDatabasesLoaded by remember(mdbxViewModel) {
+        mdbxViewModel?.allDatabasesLoaded ?: kotlinx.coroutines.flow.flowOf(true)
+    }.collectAsState(initial = mdbxViewModel == null)
     val aggregateUiState = rememberPasswordAggregateUiState(
         aggregateConfig = aggregateConfig,
         searchQuery = searchQuery,
@@ -359,6 +373,14 @@ fun PasswordListContent(
     )
     val fastScrollRequestKey by viewModel.fastScrollRequestKey.collectAsState()
     val fastScrollProgress by viewModel.fastScrollProgress.collectAsState()
+    val quickStatusTransferState by PasswordBatchTransferProgressTracker.progress.collectAsState()
+    val quickStatusDeleteState by PasswordBatchDeleteProgressTracker.progress.collectAsState()
+    var showQuickStatusTransferDialog by remember { mutableStateOf(false) }
+    var showQuickStatusDeleteDialog by remember { mutableStateOf(false) }
+    var showQuickStatusKeePassSyncDialog by remember { mutableStateOf(false) }
+    var backgroundedTransferOperationId by remember { mutableStateOf<Long?>(null) }
+    var backgroundedDeleteOperationId by remember { mutableStateOf<Long?>(null) }
+    var backgroundedKeePassSyncKey by remember { mutableStateOf<String?>(null) }
 
     // "仅本地" 的核心目标是给用户看待上传清单，不应该出现堆叠容器。
     // 因此这里强制扁平展示，仅在该筛选下生效，不影响其他页面。
@@ -386,6 +408,68 @@ fun PasswordListContent(
         is CategoryFilter.KeePassDatabaseUncategorized -> filter.databaseId
         else -> null
     }
+    val selectedMdbxDatabaseId = when (val filter = currentFilter) {
+        is CategoryFilter.MdbxDatabase -> filter.databaseId
+        is CategoryFilter.MdbxFolderFilter -> filter.databaseId
+        else -> null
+    }
+    val selectedMdbxDatabase = remember(selectedMdbxDatabaseId, mdbxDatabases) {
+        selectedMdbxDatabaseId?.let { databaseId ->
+            mdbxDatabases.find { it.id == databaseId }
+        }
+    }
+    val mdbxOperationState by (
+        mdbxViewModel?.operationState
+            ?: kotlinx.coroutines.flow.flowOf(takagi.ru.monica.viewmodel.MdbxViewModel.OperationState.Idle)
+        ).collectAsState(initial = takagi.ru.monica.viewmodel.MdbxViewModel.OperationState.Idle)
+    val mdbxPendingSyncCounts by remember(mdbxViewModel) {
+        mdbxViewModel?.pendingSyncCounts ?: kotlinx.coroutines.flow.flowOf(emptyMap<Long, Int>())
+    }.collectAsState(initial = emptyMap())
+    val mdbxPathSyncState = remember(
+        selectedMdbxDatabase,
+        mdbxOperationState,
+        mdbxPendingSyncCounts,
+        mdbxViewModel
+    ) {
+        val database = selectedMdbxDatabase
+        val viewModel = mdbxViewModel
+        if (database != null && viewModel != null) {
+            MdbxPathSyncState(
+                pendingCount = mdbxPendingSyncCounts[database.id]
+                    ?: database.mdbxPathPendingSyncCount(),
+                isSyncing = mdbxOperationState is takagi.ru.monica.viewmodel.MdbxViewModel.OperationState.Loading,
+                onSync = {
+                    if (database.mdbxPathShouldFlushPendingUpload()) {
+                        viewModel.flushPendingVaultUpload(database.id)
+                    } else {
+                        viewModel.syncVault(database.id)
+                    }
+                }
+            )
+        } else {
+            null
+        }
+    }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, mdbxViewModel) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                mdbxViewModel?.pruneMissingLocalVaults()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    LaunchedEffect(selectedMdbxDatabaseId, mdbxDatabasesLoaded, mdbxDatabases.map { it.id }) {
+        val selectedId = selectedMdbxDatabaseId ?: return@LaunchedEffect
+        if (!mdbxDatabasesLoaded) return@LaunchedEffect
+        if (mdbxDatabases.none { it.id == selectedId }) {
+            viewModel.setCategoryFilter(CategoryFilter.All)
+        } else {
+            viewModel.refreshMdbxFolders(selectedId)
+            mdbxViewModel?.autoSyncVisibleVault(selectedId)
+        }
+    }
     val keepassGroupsForSelectedDbFlow = remember(selectedKeePassDatabaseId, localKeePassViewModel) {
         selectedKeePassDatabaseId?.let { databaseId ->
             localKeePassViewModel.getGroups(databaseId)
@@ -393,6 +477,26 @@ fun PasswordListContent(
     }
     val keepassGroupsForSelectedDb by keepassGroupsForSelectedDbFlow.collectAsState(initial = emptyList())
     val isKeePassDatabaseView = selectedKeePassDatabaseId != null
+    val selectedKeePassDatabase = remember(selectedKeePassDatabaseId, keepassDatabases) {
+        selectedKeePassDatabaseId?.let { databaseId ->
+            keepassDatabases.find { it.id == databaseId }
+        }
+    }
+    LaunchedEffect(
+        selectedKeePassDatabase?.id,
+        selectedKeePassDatabase?.lastSyncStatus
+    ) {
+        val database = selectedKeePassDatabase ?: return@LaunchedEffect
+        if (database.isRemoteSource()) {
+            localKeePassViewModel.autoSyncVisibleRemoteDatabase(database.id)
+        }
+    }
+    val selectedKeePassSyncStateFlow = remember(selectedKeePassDatabaseId, localKeePassViewModel) {
+        selectedKeePassDatabaseId?.let { databaseId ->
+            localKeePassViewModel.getRemoteSyncState(databaseId)
+        } ?: kotlinx.coroutines.flow.flowOf(null)
+    }
+    val selectedKeePassRemoteSyncState by selectedKeePassSyncStateFlow.collectAsState(initial = null)
     val bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel()
     val bitwardenSyncStatusByVault by bitwardenViewModel.syncStatusByVault.collectAsState()
     val selectedBitwardenFoldersFlow = remember(selectedBitwardenVaultId, viewModel) {
@@ -400,9 +504,69 @@ fun PasswordListContent(
             ?: kotlinx.coroutines.flow.flowOf(emptyList())
     }
     val selectedBitwardenFolders by selectedBitwardenFoldersFlow.collectAsState(initial = emptyList())
+    val selectedMdbxFoldersFlow = remember(selectedMdbxDatabaseId, viewModel) {
+        selectedMdbxDatabaseId?.let(viewModel::getMdbxFolders)
+            ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    }
+    val selectedMdbxFolders by selectedMdbxFoldersFlow.collectAsState(initial = emptyList())
     val isTopBarSyncing = selectedBitwardenVaultId?.let { vaultId ->
         bitwardenSyncStatusByVault[vaultId].isUserVisibleSyncInProgress()
     } == true
+    val quickStatusBitwardenSyncState = remember(
+        selectedBitwardenVaultId,
+        bitwardenSyncStatusByVault,
+        bitwardenVaults
+    ) {
+        val vaultId = selectedBitwardenVaultId ?: return@remember null
+        val status = bitwardenSyncStatusByVault[vaultId] ?: return@remember null
+        if (!status.isUserVisibleSyncInProgress()) return@remember null
+        val vaultName = bitwardenVaults
+            .firstOrNull { it.id == vaultId }
+            ?.displayName
+            ?.takeIf { it.isNotBlank() }
+            ?: bitwardenVaults.firstOrNull { it.id == vaultId }?.email
+            ?: "Bitwarden"
+        QuickStatusBitwardenSyncState(
+            vaultName = vaultName,
+            isRunning = status.isRunning
+        )
+    }
+    val quickStatusKeePassSyncState = remember(
+        selectedKeePassDatabase,
+        selectedKeePassRemoteSyncState,
+        localKeePassViewModel
+    ) {
+        val database = selectedKeePassDatabase
+        if (database == null || !database.isRemoteSource()) {
+            null
+        } else {
+            val phase = selectedKeePassRemoteSyncState?.syncPhase
+            val shouldShow = database.lastSyncStatus in setOf(
+                KeePassSyncStatus.PENDING_UPLOAD,
+                KeePassSyncStatus.SYNCING,
+                KeePassSyncStatus.REMOTE_CHANGED,
+                KeePassSyncStatus.CONFLICT,
+                KeePassSyncStatus.FAILED
+            ) || phase in setOf(
+                KeePassSyncPhase.COMPARING,
+                KeePassSyncPhase.DOWNLOADING,
+                KeePassSyncPhase.UPLOADING
+            )
+            if (!shouldShow) {
+                null
+            } else {
+                QuickStatusKeePassSyncState(
+                    databaseId = database.id,
+                    databaseName = database.name,
+                    status = database.lastSyncStatus,
+                    phase = phase,
+                    onSync = {
+                        localKeePassViewModel.syncRemoteDatabase(database.id)
+                    }
+                )
+            }
+        }
+    }
     val isArchiveView = currentFilter is CategoryFilter.Archived
     val effectiveGroupMode = if (isLocalOnlyView) "none" else groupMode
     val effectiveStackCardMode = if (isLocalOnlyView) {
@@ -413,6 +577,46 @@ fun PasswordListContent(
     val quickFoldersEnabledForCurrentFilter = false
     val quickFolderPathBannerEnabledForCurrentFilter =
         appSettings.passwordListQuickFolderPathBannerEnabled && !isAllView
+    val quickStatusBannerEnabled = quickFolderPathBannerEnabledForCurrentFilter
+    LaunchedEffect(quickStatusTransferState?.operationId, quickStatusBannerEnabled) {
+        val state = quickStatusTransferState
+        if (state == null) {
+            showQuickStatusTransferDialog = false
+            backgroundedTransferOperationId = null
+            return@LaunchedEffect
+        }
+        if (!quickStatusBannerEnabled && state.operationId != backgroundedTransferOperationId) {
+            showQuickStatusTransferDialog = true
+        }
+    }
+    LaunchedEffect(quickStatusDeleteState?.operationId, quickStatusBannerEnabled) {
+        val state = quickStatusDeleteState
+        if (state == null) {
+            showQuickStatusDeleteDialog = false
+            backgroundedDeleteOperationId = null
+            return@LaunchedEffect
+        }
+        if (!quickStatusBannerEnabled && state.operationId != backgroundedDeleteOperationId) {
+            showQuickStatusDeleteDialog = true
+        }
+    }
+    LaunchedEffect(
+        quickStatusKeePassSyncState?.databaseId,
+        quickStatusKeePassSyncState?.status,
+        quickStatusKeePassSyncState?.phase,
+        quickStatusBannerEnabled
+    ) {
+        val state = quickStatusKeePassSyncState
+        if (state == null) {
+            showQuickStatusKeePassSyncDialog = false
+            backgroundedKeePassSyncKey = null
+            return@LaunchedEffect
+        }
+        val stateKey = "${state.databaseId}:${state.status}:${state.phase}"
+        if (!quickStatusBannerEnabled && stateKey != backgroundedKeePassSyncKey) {
+            showQuickStatusKeePassSyncDialog = true
+        }
+    }
     
     // 选择模式状态
     var isSelectionMode by remember { mutableStateOf(false) }
@@ -554,12 +758,11 @@ fun PasswordListContent(
     var noStackEntryIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var lastCustomFieldEntryIds by remember { mutableStateOf<List<Long>>(emptyList()) }
     val configuredQuickFilterItems = remember(
-        appSettings.passwordListQuickFilterItems,
         appSettings.passwordPageAggregateEnabled,
         aggregateUiState.visibleContentTypes
     ) {
         appendAggregateContentQuickFilterItems(
-            configuredItems = appSettings.passwordListQuickFilterItems,
+            configuredItems = PasswordListQuickFilterItem.DEFAULT_ORDER,
             visibleTypes = aggregateUiState.visibleContentTypes,
             aggregateEnabled = appSettings.passwordPageAggregateEnabled
         )
@@ -741,6 +944,7 @@ fun PasswordListContent(
         keepassGroupsForSelectedDb,
         bitwardenVaults,
         selectedBitwardenFolders,
+        selectedMdbxFolders,
         categories,
         initialValue = emptyList()
     ) {
@@ -762,6 +966,7 @@ fun PasswordListContent(
             keepassGroupsForSelectedDb = keepassGroupsForSelectedDb,
             bitwardenVaults = bitwardenVaults,
             selectedBitwardenFolders = selectedBitwardenFolders,
+            selectedMdbxFolders = selectedMdbxFolders,
             categories = categories
         )
     }
@@ -778,6 +983,7 @@ fun PasswordListContent(
         keepassGroupsForSelectedDb,
         bitwardenVaults,
         selectedBitwardenFolders,
+        selectedMdbxFolders,
         categories,
         initialValue = emptyList()
     ) {
@@ -795,6 +1001,7 @@ fun PasswordListContent(
             keepassGroupsForSelectedDb = keepassGroupsForSelectedDb,
             bitwardenVaults = bitwardenVaults,
             selectedBitwardenFolders = selectedBitwardenFolders,
+            selectedMdbxFolders = selectedMdbxFolders,
             categories = categories
         )
     }
@@ -805,8 +1012,10 @@ fun PasswordListContent(
         quickFolderNodeByPath,
         quickFolderRootFilter,
         keepassDatabases,
+        mdbxDatabases,
         bitwardenVaults,
         selectedBitwardenFolders,
+        selectedMdbxFolders,
         categories,
         initialValue = emptyList()
     ) {
@@ -818,6 +1027,8 @@ fun PasswordListContent(
             quickFolderNodeByPath = quickFolderNodeByPath,
             quickFolderRootFilter = quickFolderRootFilter,
             keepassDatabases = keepassDatabases,
+            mdbxDatabases = mdbxDatabases,
+            selectedMdbxFolders = selectedMdbxFolders,
             bitwardenVaults = bitwardenVaults,
             selectedBitwardenFolders = selectedBitwardenFolders,
             categories = categories
@@ -1327,7 +1538,13 @@ fun PasswordListContent(
     ) {
         effectiveCategoryQuickFilterShortcuts.isNotEmpty()
     }
-    val showPinnedQuickFolderPathBanner = effectiveQuickFolderBreadcrumbs.isNotEmpty()
+    val hasQuickStatusProgress =
+        quickStatusTransferState != null ||
+            quickStatusDeleteState != null ||
+            quickStatusBitwardenSyncState != null
+    val showPinnedQuickFolderPathBanner =
+        quickStatusBannerEnabled &&
+            (effectiveQuickFolderBreadcrumbs.isNotEmpty() || hasQuickStatusProgress)
     val hasScrollableHeaderContent = remember(
         hasVisibleQuickFilters,
         hasVisibleCategoryQuickFilters,
@@ -1470,6 +1687,7 @@ fun PasswordListContent(
         visible = showMoveToCategoryDialog,
         categories = categories,
         keepassDatabases = keepassDatabases,
+        mdbxDatabases = mdbxDatabases,
         bitwardenVaults = bitwardenVaults,
         database = database,
         localKeePassViewModel = localKeePassViewModel,
@@ -1497,11 +1715,15 @@ fun PasswordListContent(
         categories = categories,
         keepassDatabases = keepassDatabases,
         bitwardenVaults = bitwardenVaults,
+        mdbxDatabases = mdbxDatabases,
         viewModel = viewModel,
         localKeePassViewModel = localKeePassViewModel,
         bitwardenViewModel = bitwardenViewModel,
+        mdbxViewModel = mdbxViewModel,
         selectedBitwardenVaultId = selectedBitwardenVaultId,
         selectedKeePassDatabaseId = selectedKeePassDatabaseId,
+        selectedMdbxDatabaseId = selectedMdbxDatabaseId,
+        selectedMdbxFolders = selectedMdbxFolders,
         isTopBarSyncing = isTopBarSyncing,
         isArchiveView = isArchiveView,
         isKeePassDatabaseView = isKeePassDatabaseView,
@@ -1576,6 +1798,23 @@ fun PasswordListContent(
         density = density,
         showPinnedQuickFolderPathBanner = showPinnedQuickFolderPathBanner,
         quickFolderBreadcrumbs = effectiveQuickFolderBreadcrumbs,
+        mdbxPathSyncState = mdbxPathSyncState,
+        quickStatusTransferState = quickStatusTransferState,
+        onQuickStatusTransferClick = {
+            if (quickStatusTransferState != null) {
+                backgroundedTransferOperationId = null
+                showQuickStatusTransferDialog = true
+            }
+        },
+        quickStatusDeleteState = quickStatusDeleteState,
+        onQuickStatusDeleteClick = {
+            if (quickStatusDeleteState != null) {
+                backgroundedDeleteOperationId = null
+                showQuickStatusDeleteDialog = true
+            }
+        },
+        quickStatusBitwardenSyncState = quickStatusBitwardenSyncState,
+        quickStatusKeePassSyncState = quickStatusKeePassSyncState,
         currentFilter = currentFilter,
         onNavigateFilter = viewModel::setCategoryFilter,
         shouldGateInitialPasswordFirstFrame = shouldGateInitialPasswordFirstFrame,
@@ -1667,6 +1906,80 @@ fun PasswordListContent(
             )
         }
     )
+
+    val quickStatusTransferDialogState = if (showQuickStatusTransferDialog) {
+        quickStatusTransferState?.toDialogUiState()
+    } else {
+        null
+    }
+    quickStatusTransferDialogState?.let { state ->
+            PasswordBatchTransferProgressDialog(
+                state = state,
+                onMoveToBackground = {
+                    backgroundedTransferOperationId = quickStatusTransferState?.operationId
+                    showQuickStatusTransferDialog = false
+                }
+            )
+    }
+
+    val quickStatusDeleteDialogState = if (showQuickStatusDeleteDialog) {
+        quickStatusDeleteState?.toDialogUiState()
+    } else {
+        null
+    }
+    quickStatusDeleteDialogState?.let { state ->
+        PasswordBatchDeleteProgressDialog(
+            state = state,
+            onMoveToBackground = {
+                backgroundedDeleteOperationId = quickStatusDeleteState?.operationId
+                showQuickStatusDeleteDialog = false
+            }
+        )
+    }
+
+    if (showQuickStatusKeePassSyncDialog) {
+        quickStatusKeePassSyncState?.let { state ->
+            AlertDialog(
+                onDismissRequest = {},
+                title = {
+                    Text(text = state.databaseName.ifBlank { "KeePass" })
+                },
+                text = {
+                    Column {
+                        Text(text = keepassQuickSyncStatusLabel(state))
+                        if (state.isRunning) {
+                            Spacer(modifier = Modifier.height(12.dp))
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            backgroundedKeePassSyncKey = "${state.databaseId}:${state.status}:${state.phase}"
+                            showQuickStatusKeePassSyncDialog = false
+                        }
+                    ) {
+                        Text(text = stringResource(R.string.password_batch_transfer_continue_in_background))
+                    }
+                },
+                dismissButton = if (!state.isRunning) {
+                    {
+                        TextButton(
+                            onClick = {
+                                state.onSync()
+                                showQuickStatusKeePassSyncDialog = false
+                            }
+                        ) {
+                            Text(text = "立即同步")
+                        }
+                    }
+                } else {
+                    null
+                }
+            )
+        }
+    }
     
     PasswordListDialogs(
         showManualStackConfirmDialog = showManualStackConfirmDialog,
@@ -1700,13 +2013,16 @@ fun PasswordListContent(
             passwordEntries.any { it.id == id && it.keepassDatabaseId != null }
         } || selectedSupplementaryItems.any { it.entry.keepassDatabaseId != null },
         onDeleteSelection = { onProgress ->
-            val selectedPasswordEntries = passwordEntries.filter { it.id in selectedPasswords }
-            val totalToProcess = selectedPasswordEntries.size + selectedSupplementaryItems.size
+            val selectedPasswordIdsSnapshot = selectedPasswords.toSet()
+            val selectedSupplementaryItemsSnapshot = selectedSupplementaryItems.toList()
+            val selectedItemKeysSnapshot = selectedItemKeys.toList()
+            val selectedPasswordEntries = passwordEntries.filter { it.id in selectedPasswordIdsSnapshot }
+            val totalToProcess = selectedPasswordEntries.size + selectedSupplementaryItemsSnapshot.size
             var processedCount = 0
             onProgress(processedCount, totalToProcess.coerceAtLeast(1))
-            if (selectedItemKeys.isNotEmpty()) {
+            if (selectedItemKeysSnapshot.isNotEmpty()) {
                 coroutineScope.launch {
-                    aggregateStackRepository.clearManualStack(selectedItemKeys.toList())
+                    aggregateStackRepository.clearManualStack(selectedItemKeysSnapshot)
                 }
             }
             val deletedPasswordCount = viewModel.deletePasswordEntriesBatch(selectedPasswordEntries) { processed, _ ->
@@ -1714,7 +2030,7 @@ fun PasswordListContent(
                 onProgress(processedCount, totalToProcess.coerceAtLeast(1))
             }
 
-            selectedSupplementaryItems.forEach { item ->
+            selectedSupplementaryItemsSnapshot.forEach { item ->
                 when (item.type) {
                     PasswordPageContentType.AUTHENTICATOR -> {
                         aggregateUiState.totpItems
@@ -1750,7 +2066,12 @@ fun PasswordListContent(
                 onProgress(processedCount, totalToProcess.coerceAtLeast(1))
             }
 
-            deletedPasswordCount + selectedSupplementaryItems.size
+            deletedPasswordCount + selectedSupplementaryItemsSnapshot.size
+        },
+        onBatchDeleteStarted = {
+            isSelectionMode = false
+            selectedItemKeys = emptySet()
+            swipeSelectionAnchorKey = null
         },
         onSelectionCleared = {
             isSelectionMode = false

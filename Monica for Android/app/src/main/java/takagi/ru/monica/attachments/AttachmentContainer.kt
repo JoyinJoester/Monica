@@ -12,6 +12,7 @@ import takagi.ru.monica.attachments.storage.AttachmentKeyVault
 import takagi.ru.monica.attachments.storage.AttachmentPreviewCache
 import takagi.ru.monica.attachments.storage.AttachmentStorage
 import takagi.ru.monica.data.PasswordDatabase
+import takagi.ru.monica.repository.MdbxVaultStore
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.KeePassKdbxService
 
@@ -45,6 +46,7 @@ object AttachmentContainer {
     @Volatile private var advisorCache: AttachmentBatchMoveAdvisor? = null
     @Volatile private var reconcilerCache: BitwardenAttachmentReconciler? = null
     @Volatile private var facadeCache: AttachmentFacade? = null
+    @Volatile private var mdbxVaultStoreCache: MdbxVaultStore? = null
 
     @Volatile private var keepassServiceOverride: KeePassKdbxService? = null
 
@@ -64,6 +66,8 @@ object AttachmentContainer {
                 storage = storage(app),
                 keyVault = keyVault(app),
                 previewCache = previewCache(app),
+                passwordEntryDao = PasswordDatabase.getDatabase(app).passwordEntryDao(),
+                mdbxVaultStore = mdbxVaultStore(app),
                 fileProviderAuthority = "${app.packageName}.fileprovider"
             )
             facadeCache = facade
@@ -167,6 +171,21 @@ object AttachmentContainer {
                     storage = storage(app),
                     keyVault = keyVault(app)
                 ).also { keepassExecutorCache = it }
+            }
+        }
+
+    private fun mdbxVaultStore(app: Context): MdbxVaultStore =
+        mdbxVaultStoreCache ?: synchronized(this) {
+            mdbxVaultStoreCache ?: run {
+                val db = PasswordDatabase.getDatabase(app)
+                MdbxVaultStore(
+                    context = app,
+                    databaseDao = db.localMdbxDatabaseDao(),
+                    securityManager = SecurityManager(app),
+                    remoteSourceDao = db.mdbxRemoteSourceDao(),
+                    passwordEntryDao = db.passwordEntryDao(),
+                    secureItemDao = db.secureItemDao()
+                ).also { mdbxVaultStoreCache = it }
             }
         }
 

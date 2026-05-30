@@ -154,6 +154,12 @@ Monica is an open-source labor of love. If this app helps you secure your digita
 
 ---
 
+## Contributors
+
+![Contributors](../.github/assets/contributor-flag.svg)
+
+---
+
 ## ⚖️ License
 
 Copyright © 2025 JoyinJoester.

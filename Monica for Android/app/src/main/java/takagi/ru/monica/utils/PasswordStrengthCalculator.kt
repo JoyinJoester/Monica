@@ -65,13 +65,15 @@ object PasswordStrengthCalculator {
             else -> 20
         }
         
-        // 4. 惩罚项: 重复字符
+        // 4. 惩罚项: 重复字符 (最多扣20分)
         val consecutiveRepeats = countConsecutiveRepeats(password)
-        score -= consecutiveRepeats * 5
+        val repeatPenalty = (consecutiveRepeats * 5 * 10 / password.length).coerceAtMost(20)
+        score -= repeatPenalty
         
-        // 5. 惩罚项: 连续字符 (如 abc, 123)
+        // 5. 惩罚项: 连续字符 (如 abc, 123) (最多扣20分)
         val consecutiveSequences = countConsecutiveSequences(password)
-        score -= consecutiveSequences * 5
+        val sequencePenalty = (consecutiveSequences * 5 * 10 / password.length).coerceAtMost(20)
+        score -= sequencePenalty
         
         // 6. 奖励项: 混合复杂性
         if (password.length >= 12 && diversityCount >= 3) {

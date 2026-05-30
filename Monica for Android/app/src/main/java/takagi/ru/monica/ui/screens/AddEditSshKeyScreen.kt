@@ -1,7 +1,5 @@
 package takagi.ru.monica.ui.screens
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.layout.Arrangement
@@ -89,6 +87,7 @@ import takagi.ru.monica.ui.components.OutlinedTextField
 import takagi.ru.monica.ui.components.SshKeyGenerationProgressIndicator
 import takagi.ru.monica.ui.components.buildMultiStorageTarget
 import takagi.ru.monica.ui.icons.MonicaIcons
+import takagi.ru.monica.utils.ClipboardUtils
 import takagi.ru.monica.utils.SshKeyGenerator
 import takagi.ru.monica.viewmodel.CategoryFilter
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
@@ -766,8 +765,7 @@ private fun SshKeyRsaSizeField(
 }
 
 private fun copyTextToClipboard(context: Context, label: String, text: String) {
-    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    clipboard.setPrimaryClip(ClipData.newPlainText(label, text))
+    ClipboardUtils.copyToClipboard(context, text, label)
     Toast.makeText(
         context,
         context.getString(R.string.copied_to_clipboard),

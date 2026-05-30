@@ -17,6 +17,7 @@ import takagi.ru.monica.data.PasswordListTopModule
 import takagi.ru.monica.data.PasswordPageContentType
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
 import takagi.ru.monica.data.model.StorageTarget
+import takagi.ru.monica.repository.MdbxStoredFolderEntry
 import takagi.ru.monica.ui.components.rememberUnifiedCategoryFilterChipMenuWidth
 import takagi.ru.monica.utils.KeePassGroupInfo
 import takagi.ru.monica.viewmodel.CategoryFilter
@@ -25,6 +26,7 @@ import takagi.ru.monica.viewmodel.CategoryFilter
 internal fun PasswordListCategoryChipMenu(
     currentFilter: CategoryFilter,
     keepassDatabases: List<takagi.ru.monica.data.LocalKeePassDatabase>,
+    mdbxDatabases: List<takagi.ru.monica.data.LocalMdbxDatabase>,
     bitwardenVaults: List<takagi.ru.monica.data.bitwarden.BitwardenVault>,
     configuredQuickFilterItems: List<takagi.ru.monica.data.PasswordListQuickFilterItem>,
     quickFilterFavorite: Boolean,
@@ -64,6 +66,7 @@ internal fun PasswordListCategoryChipMenu(
     onMoveCategory: ((Category, Long?) -> Unit)? = null,
     onMoveCategoryToStorageTarget: ((Category, StorageTarget) -> Unit)? = null,
     getBitwardenFolders: (Long) -> Flow<List<BitwardenFolder>> = { flowOf(emptyList()) },
+    getMdbxFolders: (Long) -> Flow<List<MdbxStoredFolderEntry>> = { flowOf(emptyList()) },
     getKeePassGroups: (Long) -> Flow<List<KeePassGroupInfo>> = { flowOf(emptyList()) },
     onRenameCategory: ((Category) -> Unit)? = null,
     onDeleteCategory: ((Category) -> Unit)? = null
@@ -105,6 +108,7 @@ internal fun PasswordListCategoryChipMenu(
             params = PasswordDatabaseFiltersSectionParams(
                 currentFilter = currentFilter,
                 keepassDatabases = keepassDatabases,
+                mdbxDatabases = mdbxDatabases,
                 bitwardenVaults = bitwardenVaults,
                 onSelectFilter = onSelectFilter
             )

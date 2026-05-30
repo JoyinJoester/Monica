@@ -586,7 +586,7 @@
     <string name="settings_import_data_description">Khôi phục từ file sao lưu</string>
     <string name="settings_version_info">Thông tin phiên bản</string>
     <string name="version_info_full_version_label">Phiên bản đầy đủ</string>
-    <string name="settings_version_number">V1.0.286</string>
+    <string name="settings_version_number">V1.0.288</string>
     <string name="settings_support_author">Ủng hộ tác giả</string>
     <string name="settings_support_author_description">Cảm ơn sự ủng hộ của bạn</string>
     <string name="settings_privacy_policy">Chính sách bảo mật</string>
@@ -2588,11 +2588,6 @@
     <string name="autofill_save_blocked_targets_clear_all">Xóa danh sách không bao giờ lưu</string>
     <string name="preview_features_title">Tính năng xem trước</string>
     <string name="preview_features_description">Dùng thử các tính năng thử nghiệm</string>
-    <string name="developer_mndx_create_demo_onedrive">Tạo Vault demo MNDX trong OneDrive</string>
-    <string name="developer_mndx_create_demo_onedrive_desc">Thử nghiệm: tạo bản demo .mndx đọc được trong OneDrive. Không mã hóa. Không dùng dữ liệu thật.</string>
-    <string name="developer_mndx_create_demo_running">Tạo kho demo MNDX trong OneDrive...</string>
-    <string name="developer_mndx_create_demo_success">Đã tạo %1$s bằng các tệp %2$d</string>
-    <string name="developer_mndx_create_demo_failed">Tạo bản demo MNDX không thành công: %1$s</string>
     <string name="developer_filter_all">Tất cả</string>
     <string name="developer_filter_errors">Lỗi</string>
     <string name="developer_filter_warnings">Cảnh báo</string>
@@ -3385,6 +3380,8 @@ Làm mới hoặc đồng bộ hóa cơ sở dữ liệu KeePass này, sau đó 
     <string name="autofill_v2_subdomain_match_desc">Hãy coi các tên miền phụ của cùng một trang web là mục tiêu đăng nhập có liên quan.</string>
     <string name="autofill_v2_respect_off">Tôn trọng các trường tự động điền</string>
     <string name="autofill_v2_respect_off_desc">Bỏ qua các trường nơi ứng dụng/trang web tắt tính năng tự động điền một cách rõ ràng.</string>
+    <string name="autofill_inline_suggestions">Gợi ý nội tuyến trong IME</string>
+    <string name="autofill_inline_suggestions_desc">Hiển thị gợi ý tự động điền trong thanh ứng viên của bàn phím. Khi tắt, chỉ sử dụng menu thả xuống truyền thống.</string>
     <string name="autofill_v2_save_prompt">Bật lời nhắc lưu</string>
     <string name="autofill_v2_save_prompt_desc">Đề nghị lưu thông tin đăng nhập mới sau khi đăng nhập/đăng ký.</string>
     <string name="autofill_v2_blacklist">Bật danh sách đen</string>

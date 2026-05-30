@@ -23,6 +23,7 @@ import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -41,6 +42,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
 import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.LocalMdbxDatabase
 import takagi.ru.monica.data.writeOperationAvailability
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.ui.components.MonicaExpressiveFilterChip
@@ -49,6 +51,7 @@ import takagi.ru.monica.viewmodel.CategoryFilter
 internal data class PasswordDatabaseFiltersSectionParams(
     val currentFilter: CategoryFilter,
     val keepassDatabases: List<LocalKeePassDatabase>,
+    val mdbxDatabases: List<LocalMdbxDatabase>,
     val bitwardenVaults: List<BitwardenVault>,
     val onSelectFilter: (CategoryFilter) -> Unit
 )
@@ -127,6 +130,14 @@ internal fun PasswordDatabaseFiltersSection(
                         }
                     )
                 }
+                params.mdbxDatabases.forEach { database ->
+                    MonicaExpressiveFilterChip(
+                        selected = params.currentFilter.isMdbxDatabaseFilter(database.id),
+                        onClick = { params.onSelectFilter(CategoryFilter.MdbxDatabase(database.id)) },
+                        label = database.name,
+                        leadingIcon = Icons.Default.Science
+                    )
+                }
                 params.bitwardenVaults.forEach { vault ->
                     MonicaExpressiveFilterChip(
                         selected = params.currentFilter.isBitwardenVaultFilter(vault.id),
@@ -172,6 +183,14 @@ internal fun PasswordDatabaseFiltersSection(
                         } else {
                             null
                         }
+                    )
+                }
+                params.mdbxDatabases.forEach { database ->
+                    MonicaExpressiveFilterChip(
+                        selected = params.currentFilter.isMdbxDatabaseFilter(database.id),
+                        onClick = { params.onSelectFilter(CategoryFilter.MdbxDatabase(database.id)) },
+                        label = database.name,
+                        leadingIcon = Icons.Default.Science
                     )
                 }
                 params.bitwardenVaults.forEach { vault ->

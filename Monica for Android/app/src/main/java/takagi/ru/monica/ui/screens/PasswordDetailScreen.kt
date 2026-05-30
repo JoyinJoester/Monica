@@ -44,7 +44,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
 import androidx.fragment.app.FragmentActivity
 import takagi.ru.monica.utils.BiometricHelper
+import takagi.ru.monica.utils.ClipboardUtils
 import takagi.ru.monica.utils.PasskeySupportCatalog
+import takagi.ru.monica.utils.PasswordWebsiteCodec
 import takagi.ru.monica.utils.PasswordStrengthAnalyzer
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
 
@@ -87,10 +89,13 @@ import kotlinx.coroutines.withContext
 import takagi.ru.monica.ui.components.InfoField
 import takagi.ru.monica.ui.components.InfoFieldWithCopy
 import takagi.ru.monica.ui.components.PasswordField
+import takagi.ru.monica.ui.components.PasswordFieldActionMenuHost
+import takagi.ru.monica.ui.components.rememberPasswordFieldActionMenuState
 import takagi.ru.monica.data.CustomField
 import takagi.ru.monica.data.LoginType
 import takagi.ru.monica.data.SsoProvider
 import takagi.ru.monica.data.bitwarden.BitwardenFolder
+import takagi.ru.monica.attachments.facade.AttachmentFacade
 import takagi.ru.monica.ui.icons.UnmatchedIconFallback
 import takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon
 import takagi.ru.monica.ui.icons.rememberSimpleIconBitmap
@@ -143,9 +148,11 @@ private fun resolvePasswordDetailGroupPasswords(
             when {
                 it.isLocalOnlyEntry() -> 0
                 it.isKeePassEntry() -> 1
-                else -> 2
+                it.isMdbxEntry() -> 2
+                else -> 3
             }
         }.thenBy { it.keepassDatabaseId ?: Long.MAX_VALUE }
+            .thenBy { it.mdbxDatabaseId ?: Long.MAX_VALUE }
             .thenBy { it.bitwardenVaultId ?: Long.MAX_VALUE }
             .thenBy { it.id }
     )
@@ -184,6 +191,7 @@ fun PasswordDetailScreen(
     onNavigateBack: () -> Unit,
     onOpenBoundNote: (Long) -> Unit = {},
     onOpenPassword: (Long) -> Unit = {},
+    onCreateSend: ((title: String, text: String) -> Unit)? = null,
     onEditPassword: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -194,6 +202,7 @@ fun PasswordDetailScreen(
     val database = remember { PasswordDatabase.getDatabase(context.applicationContext) }
     val categories by viewModel.categories.collectAsState(initial = emptyList())
     val keepassDatabases by database.localKeePassDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
+    val mdbxDatabases by database.localMdbxDatabaseDao().getAllDatabases().collectAsState(initial = emptyList())
     val bitwardenVaults by database.bitwardenVaultDao().getAllVaultsFlow().collectAsState(initial = emptyList())
     var isLeavingDetail by remember { mutableStateOf(false) }
     fun requestNavigateBack() {
@@ -611,6 +620,7 @@ fun PasswordDetailScreen(
                 entry,
                 categories,
                 keepassDatabases,
+                mdbxDatabases,
                 bitwardenVaults,
                 bitwardenFoldersByVault,
                 settings,
@@ -622,10 +632,12 @@ fun PasswordDetailScreen(
                         entry = candidate,
                         categories = categories,
                         keepassDatabases = keepassDatabases,
+                        mdbxDatabases = mdbxDatabases,
                         bitwardenVaults = bitwardenVaults,
                         bitwardenFoldersByVault = bitwardenFoldersByVault,
                         localSourceLabel = context.getString(R.string.database_source_local),
                         keepassSourceLabel = context.getString(R.string.database_source_keepass),
+                        mdbxSourceLabel = "MDBX",
                         bitwardenSourceLabel = context.getString(R.string.filter_bitwarden),
                         passwordOwnerConflictShortLabel = context.getString(R.string.password_owner_conflict_short),
                         passwordOwnerConflictDatabaseLabel = context.getString(R.string.password_owner_conflict_database),
@@ -638,10 +650,12 @@ fun PasswordDetailScreen(
                         entry = entry,
                         categories = categories,
                         keepassDatabases = keepassDatabases,
+                        mdbxDatabases = mdbxDatabases,
                         bitwardenVaults = bitwardenVaults,
                         bitwardenFoldersByVault = bitwardenFoldersByVault,
                         localSourceLabel = context.getString(R.string.database_source_local),
                         keepassSourceLabel = context.getString(R.string.database_source_keepass),
+                        mdbxSourceLabel = "MDBX",
                         bitwardenSourceLabel = context.getString(R.string.filter_bitwarden),
                         passwordOwnerConflictShortLabel = context.getString(R.string.password_owner_conflict_short),
                         passwordOwnerConflictDatabaseLabel = context.getString(R.string.password_owner_conflict_database),
@@ -735,7 +749,8 @@ fun PasswordDetailScreen(
                             entry = entry,
                             context = context,
                             separateUsernameAccountEnabled = settings.separateUsernameAccountEnabled,
-                            separatedUsername = separatedUsername
+                            separatedUsername = separatedUsername,
+                            onCreateSend = onCreateSend
                         )
                     }
                 }
@@ -779,7 +794,8 @@ fun PasswordDetailScreen(
                                 itemToDelete = targetEntry
                                 showDeleteDialog = true
                             },
-                            context = context
+                            context = context,
+                            onCreateSend = onCreateSend
                         )
                     }
                 }
@@ -812,14 +828,34 @@ fun PasswordDetailScreen(
                         CustomFieldsCard(
                             fields = displayCustomFields,
                             visibilityState = customFieldVisibility,
-                            context = context
+                            context = context,
+                            onCreateSend = onCreateSend
                         )
                     }
                 }
 
                 item("attachments") {
+                    // 构造附件下载/预览所需上下文
+                    val bwVault = entry.bitwardenVaultId?.let { vaultId ->
+                        bitwardenVaults.firstOrNull { it.id == vaultId }
+                    }
+                    val bwContext = if (bwVault != null) {
+                        remember(bwVault, entry.bitwardenCipherId) {
+                            viewModel.getAttachmentBitwardenContext(bwVault, entry.bitwardenCipherId)
+                        }
+                    } else null
+                    val kpContext = if (entry.keepassDatabaseId != null && !entry.keepassEntryUuid.isNullOrBlank()) {
+                        remember(entry.keepassDatabaseId, entry.keepassEntryUuid) {
+                            AttachmentFacade.KeePassContext(
+                                databaseId = entry.keepassDatabaseId,
+                                entryUuid = entry.keepassEntryUuid!!
+                            )
+                        }
+                    } else null
                     takagi.ru.monica.attachments.ui.AttachmentsDetailSection(
-                        passwordId = entry.id
+                        passwordId = entry.id,
+                        bitwardenContext = bwContext,
+                        keepassContext = kpContext
                     )
                 }
 
@@ -893,7 +929,7 @@ fun PasswordDetailScreen(
                             expanded = personalInfoExpanded,
                             onToggle = { personalInfoExpanded = !personalInfoExpanded }
                         ) {
-                            PersonalInfoContent(entry = entry, context = context)
+                            PersonalInfoContent(entry = entry, context = context, onCreateSend = onCreateSend)
                         }
                     }
                 }
@@ -923,7 +959,8 @@ fun PasswordDetailScreen(
                                 entry = entry,
                                 cvvVisible = cvvVisible,
                                 onToggleCvvVisibility = { cvvVisible = !cvvVisible },
-                                context = context
+                                context = context,
+                                onCreateSend = onCreateSend
                             )
                         }
                     }
@@ -1361,13 +1398,12 @@ private fun HistoryPasswordValue(
                     }
                     IconButton(
                         onClick = {
-                            val clipboard =
-                                context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            val clip = ClipData.newPlainText(
-                                context.getString(R.string.password),
-                                value
+                            ClipboardUtils.copyToClipboard(
+                                context = context,
+                                text = value,
+                                label = context.getString(R.string.password),
+                                sensitive = true
                             )
-                            clipboard.setPrimaryClip(clip)
                             Toast.makeText(
                                 context,
                                 context.getString(R.string.password_copied),
@@ -2053,7 +2089,8 @@ private fun BasicInfoCard(
     entry: PasswordEntry,
     context: Context,
     separateUsernameAccountEnabled: Boolean,
-    separatedUsername: String
+    separatedUsername: String,
+    onCreateSend: ((title: String, text: String) -> Unit)?
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -2071,14 +2108,16 @@ private fun BasicInfoCard(
                     InfoFieldWithCopy(
                         label = stringResource(R.string.field_account),
                         value = entry.username,
-                        context = context
+                        context = context,
+                        onCreateSend = onCreateSend
                     )
                 }
                 if (separatedUsername.isNotEmpty()) {
                     InfoFieldWithCopy(
                         label = stringResource(R.string.autofill_username),
                         value = separatedUsername,
-                        context = context
+                        context = context,
+                        onCreateSend = onCreateSend
                     )
                 }
             } else {
@@ -2086,7 +2125,8 @@ private fun BasicInfoCard(
                     InfoFieldWithCopy(
                         label = stringResource(R.string.username),
                         value = entry.username,
-                        context = context
+                        context = context,
+                        onCreateSend = onCreateSend
                     )
                 }
             }
@@ -2470,7 +2510,8 @@ private fun PasskeyFormatBadge(
 @Composable
 private fun PersonalInfoContent(
     entry: PasswordEntry,
-    context: Context
+    context: Context,
+    onCreateSend: ((title: String, text: String) -> Unit)?
 ) {
     Column(
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -2481,14 +2522,16 @@ private fun PersonalInfoContent(
                 InfoFieldWithCopy(
                     label = "${stringResource(R.string.email)}${index + 1}",
                     value = email,
-                    context = context
+                    context = context,
+                    onCreateSend = onCreateSend
                 )
             }
         } else if (emails.isNotEmpty()) {
             InfoFieldWithCopy(
                 label = stringResource(R.string.email),
                 value = emails[0],
-                context = context
+                context = context,
+                onCreateSend = onCreateSend
             )
         }
         
@@ -2498,14 +2541,16 @@ private fun PersonalInfoContent(
                 InfoFieldWithCopy(
                     label = "${stringResource(R.string.phone)}${index + 1}",
                     value = FieldValidation.formatPhone(phone),
-                    context = context
+                    context = context,
+                    onCreateSend = onCreateSend
                 )
             }
         } else if (phones.isNotEmpty()) {
             InfoFieldWithCopy(
                 label = stringResource(R.string.phone),
                 value = FieldValidation.formatPhone(phones[0]),
-                context = context
+                context = context,
+                onCreateSend = onCreateSend
             )
         }
     }
@@ -2586,7 +2631,8 @@ private fun PaymentInfoContent(
     entry: PasswordEntry,
     cvvVisible: Boolean,
     onToggleCvvVisibility: () -> Unit,
-    context: Context
+    context: Context,
+    onCreateSend: ((title: String, text: String) -> Unit)?
 ) {
     Column(
         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -2596,7 +2642,8 @@ private fun PaymentInfoContent(
                 label = stringResource(R.string.credit_card_number),
                 value = FieldValidation.maskCreditCard(entry.creditCardNumber),
                 copyValue = entry.creditCardNumber,
-                context = context
+                context = context,
+                onCreateSend = onCreateSend
             )
         }
         
@@ -2628,7 +2675,8 @@ private fun PaymentInfoContent(
                             value = entry.creditCardCVV,
                             visible = cvvVisible,
                             onToggleVisibility = onToggleCvvVisibility,
-                            context = context
+                            context = context,
+                            onCreateSend = onCreateSend
                         )
                     }
                 }
@@ -2808,7 +2856,8 @@ private fun BoundNoteCard(
 private fun CustomFieldsCard(
     fields: List<CustomField>,
     visibilityState: MutableMap<Long, Boolean>,
-    context: Context
+    context: Context,
+    onCreateSend: ((title: String, text: String) -> Unit)?
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -2854,13 +2903,15 @@ private fun CustomFieldsCard(
                         onToggleVisibility = {
                             visibilityState[field.id] = !isVisible
                         },
-                        context = context
+                        context = context,
+                        onCreateSend = onCreateSend
                     )
                 } else {
                     InfoFieldWithCopy(
                         label = label,
                         value = field.value,
-                        context = context
+                        context = context,
+                        onCreateSend = onCreateSend
                     )
                 }
             }
@@ -2965,43 +3016,24 @@ private fun openWebsiteInBrowser(context: Context, website: String) {
     }
 }
 
-private fun splitWebsiteCandidates(input: String): List<String> {
-    return input
-        .split(',', '，')
-        .asSequence()
-        .map { it.trim() }
-        .filter { it.isNotEmpty() }
-        .toList()
-}
-
-private fun normalizeSingleWebsiteUrl(value: String): String {
-    return if (value.startsWith("http://", ignoreCase = true) ||
-        value.startsWith("https://", ignoreCase = true)
-    ) {
-        value
-    } else {
-        "https://$value"
-    }
-}
-
 internal fun normalizeWebsiteUrls(input: String): List<String> {
-    return splitWebsiteCandidates(input)
-        .map(::normalizeSingleWebsiteUrl)
-        .distinct()
+    return PasswordWebsiteCodec.normalizeForDisplay(input)
 }
 
 internal fun normalizeWebsiteUrl(input: String): String? {
-    return normalizeWebsiteUrls(input).firstOrNull()
+    return PasswordWebsiteCodec.normalizeSingleOrNull(input)
 }
 
 private fun buildPasswordStorageInfo(
     entry: PasswordEntry,
     categories: List<takagi.ru.monica.data.Category>,
     keepassDatabases: List<takagi.ru.monica.data.LocalKeePassDatabase>,
+    mdbxDatabases: List<takagi.ru.monica.data.LocalMdbxDatabase>,
     bitwardenVaults: List<takagi.ru.monica.data.bitwarden.BitwardenVault>,
     bitwardenFoldersByVault: Map<Long, List<BitwardenFolder>>,
     localSourceLabel: String,
     keepassSourceLabel: String,
+    mdbxSourceLabel: String,
     bitwardenSourceLabel: String,
     passwordOwnerConflictShortLabel: String,
     passwordOwnerConflictDatabaseLabel: String,
@@ -3012,10 +3044,12 @@ private fun buildPasswordStorageInfo(
         entry.hasOwnershipConflict() -> "conflict:${entry.id}"
         entry.bitwardenVaultId != null -> "bw:${entry.bitwardenVaultId}"
         entry.keepassDatabaseId != null -> "kp:${entry.keepassDatabaseId}"
+        entry.mdbxDatabaseId != null -> "mdbx:${entry.mdbxDatabaseId}"
         else -> "local"
     }
     val categoryPath = categories.firstOrNull { it.id == entry.categoryId }?.name
     val keepassDatabaseName = keepassDatabases.firstOrNull { it.id == entry.keepassDatabaseId }?.name
+    val mdbxDatabaseName = mdbxDatabases.firstOrNull { it.id == entry.mdbxDatabaseId }?.name
     val bitwardenVaultName = bitwardenVaults
         .firstOrNull { it.id == entry.bitwardenVaultId }
         ?.let { vault -> vault.displayName?.takeIf { it.isNotBlank() } ?: vault.email }
@@ -3030,12 +3064,14 @@ private fun buildPasswordStorageInfo(
         entry.hasOwnershipConflict() -> passwordOwnerConflictShortLabel
         entry.isBitwardenEntry() -> bitwardenSourceLabel
         entry.isKeePassEntry() -> keepassSourceLabel
+        entry.isMdbxEntry() -> mdbxSourceLabel
         else -> localSourceLabel
     }
     val databaseName = when {
         entry.hasOwnershipConflict() -> passwordOwnerConflictDatabaseLabel
         entry.isBitwardenEntry() -> bitwardenVaultName ?: bitwardenSourceLabel
         entry.isKeePassEntry() -> keepassDatabaseName ?: keepassSourceLabel
+        entry.isMdbxEntry() -> mdbxDatabaseName ?: mdbxSourceLabel
         else -> localSourceLabel
     }
     val folderPath = when {
@@ -3046,6 +3082,9 @@ private fun buildPasswordStorageInfo(
         entry.isKeePassEntry() -> entry.keepassGroupPath
             ?.takeIf { it.isNotBlank() }
             ?.let(::decodeKeePassPathForDisplay)
+            ?: rootLabel
+        entry.isMdbxEntry() -> categoryPath
+            ?.takeIf { it.isNotBlank() }
             ?: rootLabel
         else -> categoryPath
             ?.takeIf { it.isNotBlank() }
@@ -3099,7 +3138,8 @@ private fun PasswordListCard(
     isResyncingUnreadable: Boolean,
     showSecurityAnalysis: Boolean,
     onDelete: (PasswordEntry) -> Unit,
-    context: Context
+    context: Context,
+    onCreateSend: ((title: String, text: String) -> Unit)?
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -3131,7 +3171,8 @@ private fun PasswordListCard(
                     showIndex = passwords.size > 1,
                     onDelete = { onDelete(entry) },
                     context = context,
-                    canDelete = passwords.size > 1 
+                    canDelete = passwords.size > 1,
+                    onCreateSend = onCreateSend
                 )
                 if (index < passwords.size - 1) {
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
@@ -3153,9 +3194,11 @@ private fun PasswordItemRow(
     showIndex: Boolean,
     onDelete: () -> Unit,
     context: Context,
-    canDelete: Boolean
+    canDelete: Boolean,
+    onCreateSend: ((title: String, text: String) -> Unit)?
 ) {
     var visible by remember { mutableStateOf(false) }
+    val actionMenuState = rememberPasswordFieldActionMenuState()
     val isUnavailable = unavailableSource != null
     val recoverableBitwardenSource = (unavailableSource as? PasswordSource.Bitwarden)
         ?.takeIf { it.vaultId != null && !it.cipherId.isNullOrBlank() }
@@ -3220,9 +3263,12 @@ private fun PasswordItemRow(
                         ).show()
                         return@IconButton
                     }
-                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    val clip = ClipData.newPlainText("password", displayPassword)
-                    clipboard.setPrimaryClip(clip)
+                    ClipboardUtils.copyToClipboard(
+                        context = context,
+                        text = displayPassword,
+                        label = context.getString(R.string.password),
+                        sensitive = true
+                    )
                     Toast.makeText(context, context.getString(R.string.password_copied), Toast.LENGTH_SHORT).show()
                 }) {
                     Icon(MonicaIcons.Action.copy, contentDescription = null, modifier = Modifier.size(20.dp))
@@ -3241,7 +3287,26 @@ private fun PasswordItemRow(
             }
         }
         
-        Text(
+        Box {
+            if (hasPasswordValue && !isUnavailable) {
+                PasswordFieldActionMenuHost(
+                    state = actionMenuState,
+                    label = if (showIndex) stringResource(R.string.password) + " $index" else stringResource(R.string.password),
+                    value = displayPassword,
+                    displayValue = if (visible) displayPassword else "•".repeat(8),
+                    context = context,
+                    includeVisibilityToggle = true,
+                    isVisible = visible,
+                    onToggleVisibility = { visible = !visible },
+                    onCreateSend = onCreateSend
+                )
+            }
+            Text(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(4.dp))
+                .clickable(enabled = hasPasswordValue && !isUnavailable) { actionMenuState.open() }
+                .padding(vertical = 6.dp),
             text = when {
                 isUnavailable -> unavailableMessage
                 !hasPasswordValue -> stringResource(R.string.permission_status_unavailable)
@@ -3252,7 +3317,8 @@ private fun PasswordItemRow(
                 fontFamily = if (visible && hasPasswordValue) androidx.compose.ui.text.font.FontFamily.Monospace else androidx.compose.ui.text.font.FontFamily.Default
             ),
             color = MaterialTheme.colorScheme.onSurface
-        )
+            )
+        }
 
         if (showSecurityAnalysis && hasPasswordValue && !isUnavailable) {
             Surface(

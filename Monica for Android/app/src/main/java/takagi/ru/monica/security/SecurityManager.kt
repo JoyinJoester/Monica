@@ -870,18 +870,60 @@ class SecurityManager(private val context: Context) {
             saltHex?.chunked(2)?.map { it.toInt(16).toByte() }?.toByteArray() ?: generateRandom(32)
         }
         val pwKey = deriveAesKeyFromPassword(password, salt)
+        var shouldRewritePasswordBlob = !hasPasswordBlob || forceUpdate
         val actualMdk = if (hasPasswordBlob && !forceUpdate) {
             val blob = sharedPreferences.getString(MDK_PASSWORD_BLOB_KEY, null)
-            if (blob != null) {
+            val decrypted = if (blob != null) {
                 aesGcmDecrypt(pwKey, blob)
             } else {
-                mdk ?: getOrCreateMdkBytes()
+                ByteArray(0)
+            }
+            if (decrypted.isNotEmpty()) {
+                decrypted
+            } else {
+                android.util.Log.w(
+                    logTag,
+                    "ensureMdkInitializedWithPassword: password-wrapped MDK is empty; attempting recovery"
+                )
+                SecurityDiagLogger.append(
+                    "W/$logTag ensureMdkInitializedWithPassword: password-wrapped MDK is empty; attempting recovery"
+                )
+                val recovered = mdk ?: getOrCreateMdkBytes()
+                shouldRewritePasswordBlob = true
+                if (recovered.isNotEmpty()) {
+                    recovered
+                } else {
+                    android.util.Log.w(
+                        logTag,
+                        "ensureMdkInitializedWithPassword: MDK recovery unavailable; generating fresh MDK"
+                    )
+                    SecurityDiagLogger.append(
+                        "W/$logTag ensureMdkInitializedWithPassword: MDK recovery unavailable; generating fresh MDK"
+                    )
+                    clearKeystoreWrappedMdk("MDK recovery unavailable after empty password blob")
+                    generateRandom(32)
+                }
             }
         } else {
-            mdk ?: getOrCreateMdkBytes()
+            val candidate = mdk ?: getOrCreateMdkBytes()
+            if (candidate.isNotEmpty()) {
+                candidate
+            } else if (forceUpdate) {
+                android.util.Log.w(
+                    logTag,
+                    "ensureMdkInitializedWithPassword: existing MDK unavailable during forceUpdate; generating fresh MDK"
+                )
+                SecurityDiagLogger.append(
+                    "W/$logTag ensureMdkInitializedWithPassword: existing MDK unavailable during forceUpdate; generating fresh MDK"
+                )
+                clearKeystoreWrappedMdk("existing MDK unavailable during forceUpdate")
+                generateRandom(32)
+            } else {
+                candidate
+            }
         }
         processCachedMdk = actualMdk
-        if (!hasPasswordBlob || forceUpdate) {
+        if (shouldRewritePasswordBlob) {
             val blob = aesGcmEncrypt(pwKey, actualMdk)
             sharedPreferences.edit()
                 .putString(MDK_PASSWORD_BLOB_KEY, blob)
@@ -921,6 +963,9 @@ class SecurityManager(private val context: Context) {
             if (cached.isNotEmpty()) {
                 return cached.copyOf()
             }
+            processCachedMdk = null
+            android.util.Log.w(logTag, "getOrCreateMdkBytes: ignoring empty runtime MDK cache")
+            SecurityDiagLogger.append("W/$logTag getOrCreateMdkBytes: ignoring empty runtime MDK cache")
         }
         val passwordBlob = sharedPreferences.getString(MDK_PASSWORD_BLOB_KEY, null)
         val keystoreBlob = sharedPreferences.getString(MDK_KEYSTORE_BLOB_KEY, null)
@@ -951,7 +996,14 @@ class SecurityManager(private val context: Context) {
     }
 
     private fun getMdkForCrypto(): ByteArray? {
-        processCachedMdk?.let { return it }
+        processCachedMdk?.let { cached ->
+            if (cached.isNotEmpty()) {
+                return cached
+            }
+            processCachedMdk = null
+            android.util.Log.w(logTag, "getMdkForCrypto: ignoring empty runtime MDK cache")
+            SecurityDiagLogger.append("W/$logTag getMdkForCrypto: ignoring empty runtime MDK cache")
+        }
         val now = System.currentTimeMillis()
         if (now < mdkAuthUnavailableUntilMillis) {
             return null

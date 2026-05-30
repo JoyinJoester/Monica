@@ -16,10 +16,12 @@ import takagi.ru.monica.autofill_ng.AutofillCipherCallbackActivity
 import takagi.ru.monica.autofill_ng.AutofillPickerActivityV2
 import takagi.ru.monica.autofill_ng.PasswordSuggestionActivity
 import takagi.ru.monica.autofill_ng.builder.AutofillDatasetBuilder
+import takagi.ru.monica.autofill_ng.core.AutofillLogger
 import takagi.ru.monica.autofill_ng.model.AutofillRequest
 import takagi.ru.monica.autofill_ng.model.AutofillView
 import takagi.ru.monica.autofill_ng.model.FilledData
 import takagi.ru.monica.autofill_ng.model.FilledPartition
+import takagi.ru.monica.utils.DeviceUtils
 import takagi.ru.monica.utils.PasswordGenerator
 import kotlin.random.Random
 
@@ -40,22 +42,43 @@ class FillResponseBuilderNg(
         val fillableAutofillIds = filledData.fillableAutofillIds
         if (fillableAutofillIds.isEmpty()) {
             android.util.Log.w(TAG, "build skipped: no fillableAutofillIds")
+            AutofillLogger.w("FILLING", "Build skipped: no fillableAutofillIds")
             return null
         }
 
         val responseBuilder = FillResponse.Builder()
+        val huaweiApi29AuthDatasetCompat = requireAuthentication && shouldUseHuaweiApi29AuthDatasetCompat()
         var cipherDatasetCount = 0
+        var failedCipherDatasetCount = 0
+        var callbackWrappedCipherDatasetCount = 0
         filledData.filledPartitions.forEachIndexed { index, partition ->
             if (partition.filledItems.isEmpty()) return@forEachIndexed
-            responseBuilder.addDataset(
-                buildCipherDataset(
-                    request = request,
-                    partition = partition,
-                    index = index,
-                    requireAuthentication = requireAuthentication,
+            runCatching {
+                responseBuilder.addDataset(
+                    buildCipherDataset(
+                        request = request,
+                        partition = partition,
+                        index = index,
+                        requireAuthentication = requireAuthentication,
+                        forceAuthDatasetWrapper = huaweiApi29AuthDatasetCompat,
+                    )
                 )
-            )
-            cipherDatasetCount++
+                cipherDatasetCount++
+                if (requireAuthentication || huaweiApi29AuthDatasetCompat) {
+                    callbackWrappedCipherDatasetCount++
+                }
+            }.onFailure { error ->
+                failedCipherDatasetCount++
+                android.util.Log.w(TAG, "Failed to build cipher dataset index=$index", error)
+                AutofillLogger.w(
+                    "FILLING",
+                    "Failed to build cipher dataset",
+                    metadata = mapOf(
+                        "index" to index,
+                        "error" to (error.message ?: error::class.java.simpleName)
+                    )
+                )
+            }
         }
 
         val strongPasswordDataset = if (passwordSuggestionEnabled) {
@@ -89,9 +112,29 @@ class FillResponseBuilderNg(
         android.util.Log.i(
             TAG,
             "build result: cipherDatasets=$cipherDatasetCount, " +
+                "failedCipherDatasets=$failedCipherDatasetCount, " +
                 "strongPasswordDataset=${if (strongPasswordDataset != null) 1 else 0}, " +
                 "vaultDataset=1, fillableIds=${fillableAutofillIds.size}, " +
-                "suggestedIds=${filledData.filledPartitions.count { it.autofillCipher.cipherId != null }}"
+                "suggestedIds=${filledData.filledPartitions.count { it.autofillCipher.cipherId != null }}, " +
+                "authRequired=$requireAuthentication, sdk=${Build.VERSION.SDK_INT}, " +
+                "huaweiApi29AuthDatasetCompat=$huaweiApi29AuthDatasetCompat, " +
+                "callbackWrappedCipherDatasets=$callbackWrappedCipherDatasetCount"
+        )
+        AutofillLogger.i(
+            "FILLING",
+            "FillResponse build result",
+            metadata = mapOf(
+                "cipherDatasets" to cipherDatasetCount,
+                "failedCipherDatasets" to failedCipherDatasetCount,
+                "strongPasswordDataset" to (strongPasswordDataset != null),
+                "vaultDataset" to true,
+                "fillableIds" to fillableAutofillIds.size,
+                "suggestedIds" to filledData.filledPartitions.count { it.autofillCipher.cipherId != null },
+                "authRequired" to requireAuthentication,
+                "sdk" to Build.VERSION.SDK_INT,
+                "huaweiApi29AuthDatasetCompat" to huaweiApi29AuthDatasetCompat,
+                "callbackWrappedCipherDatasets" to callbackWrappedCipherDatasetCount,
+            )
         )
         return responseBuilder.build()
     }
@@ -101,6 +144,7 @@ class FillResponseBuilderNg(
         partition: FilledPartition,
         index: Int,
         requireAuthentication: Boolean,
+        forceAuthDatasetWrapper: Boolean,
     ): android.service.autofill.Dataset {
         val menuPresentation = AutofillDatasetBuilder.RemoteViewsFactory.createPasswordEntry(
             context = context,
@@ -111,7 +155,7 @@ class FillResponseBuilderNg(
         val hasInlinePresentation = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
             partition.inlinePresentationSpec != null
         val callbackTargets = buildLoginCallbackTargets(request.partition.views)
-        val authPendingIntent = if (hasInlinePresentation || requireAuthentication) {
+        val authPendingIntent = if (hasInlinePresentation || requireAuthentication || forceAuthDatasetWrapper) {
             createCipherAuthPendingIntent(
                 request = request,
                 partition = partition,
@@ -122,10 +166,12 @@ class FillResponseBuilderNg(
             null
         }
 
+        val useAuthDatasetWrapper = authPendingIntent != null &&
+            (requireAuthentication || forceAuthDatasetWrapper)
         val fields = linkedMapOf<AutofillId, AutofillDatasetBuilder.FieldData?>()
         partition.filledItems.forEach { filledItem ->
             fields[filledItem.autofillId] = AutofillDatasetBuilder.FieldData(
-                value = if (requireAuthentication && authPendingIntent != null) {
+                value = if (useAuthDatasetWrapper) {
                     AutofillValue.forText(MANUAL_PLACEHOLDER_VALUE)
                 } else {
                     filledItem.value
@@ -159,11 +205,16 @@ class FillResponseBuilderNg(
             }
         }
 
-        if (requireAuthentication && authPendingIntent != null) {
+        if (useAuthDatasetWrapper) {
             datasetBuilder.setAuthentication(authPendingIntent.intentSender)
         }
 
         return datasetBuilder.build()
+    }
+
+    private fun shouldUseHuaweiApi29AuthDatasetCompat(): Boolean {
+        return Build.VERSION.SDK_INT == Build.VERSION_CODES.Q &&
+            DeviceUtils.getManufacturer() == DeviceUtils.Manufacturer.HUAWEI
     }
 
     private fun buildStrongPasswordSuggestionDataset(

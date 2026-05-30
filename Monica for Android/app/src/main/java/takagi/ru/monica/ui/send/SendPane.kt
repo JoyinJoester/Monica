@@ -8,8 +8,11 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import android.net.Uri
 import androidx.compose.ui.unit.Dp
 import takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel
 import takagi.ru.monica.data.bitwarden.BitwardenSend
@@ -29,6 +32,7 @@ internal fun SendPane(
     onSendClick: (BitwardenSend) -> Unit,
     onInlineSendEditorBack: () -> Unit,
     onCreateSend: (
+        vaultId: Long,
         title: String,
         text: String,
         notes: String?,
@@ -38,10 +42,26 @@ internal fun SendPane(
         hiddenText: Boolean,
         expireInDays: Int
     ) -> Unit,
+    onCreateFileSend: (
+        vaultId: Long,
+        title: String,
+        fileUri: Uri,
+        fileName: String,
+        notes: String?,
+        password: String?,
+        maxAccessCount: Int?,
+        hideEmail: Boolean,
+        expireInDays: Int
+    ) -> Unit,
     onBitwardenEvent: ((BitwardenViewModel.BitwardenEvent) -> Boolean)? = null,
     showStandaloneSettingsEntry: Boolean = false,
     onOpenStandaloneSettings: () -> Unit = {}
 ) {
+    val vaults by bitwardenViewModel.vaults.collectAsState()
+    val activeVault by bitwardenViewModel.activeVault.collectAsState()
+    val unlockStateByVault by bitwardenViewModel.unlockStateByVault.collectAsState()
+    val sendCreateSuccessVersion by bitwardenViewModel.sendCreateSuccessVersion.collectAsState()
+
     if (isCompactWidth) {
         SendScreen(
             bitwardenViewModel = bitwardenViewModel,
@@ -73,8 +93,13 @@ internal fun SendPane(
                 if (isAddingSendInline) {
                     AddEditSendScreen(
                         sendState = sendState,
+                        sendCreateSuccessVersion = sendCreateSuccessVersion,
+                        vaults = vaults,
+                        activeVault = activeVault,
+                        unlockStateByVault = unlockStateByVault,
                         onNavigateBack = onInlineSendEditorBack,
                         onCreate = onCreateSend,
+                        onCreateFile = onCreateFileSend,
                         modifier = Modifier.fillMaxSize()
                     )
                 } else if (selectedSend == null) {
@@ -89,9 +114,15 @@ internal fun SendPane(
                         )
                     }
                 } else {
+                    val labelVault = vaults.firstOrNull { it.id == selectedSend.vaultId }
+                        ?: activeVault?.takeIf { it.id == selectedSend.vaultId }
+                    val vaultLabel = labelVault?.let {
+                        it.displayName?.takeIf { name -> name.isNotBlank() } ?: it.email
+                    }.orEmpty()
                     SendDetailPane(
                         send = selectedSend,
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier.fillMaxSize(),
+                        vaultLabel = vaultLabel
                     )
                 }
             }

@@ -20,6 +20,7 @@ import takagi.ru.monica.data.model.SshKeyData
 import takagi.ru.monica.data.model.SshKeyDataCodec
 import takagi.ru.monica.data.bitwarden.*
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.utils.PasswordWebsiteCodec
 import takagi.ru.monica.utils.FieldChange
 import takagi.ru.monica.utils.OperationLogger
 import takagi.ru.monica.util.TotpDataResolver
@@ -85,6 +86,10 @@ class BitwardenSyncService(
         val website: String = "",
         val appPackageName: String = ""
     )
+
+    private fun normalizeWebsiteKey(rawWebsite: String): String {
+        return PasswordWebsiteCodec.normalizeForKey(normalizeBitwardenWebsite(rawWebsite))
+    }
     
     /**
      * 执行全量同步
@@ -226,7 +231,7 @@ class BitwardenSyncService(
             BitwardenVaultPremiumStore.setPremium(
                 context = context,
                 vaultId = vault.id,
-                premium = syncResponse.profile.premium
+                premium = syncResponse.profile.hasPremium
             )
             
             android.util.Log.i(TAG, "Full sync completed: $result")
@@ -246,6 +251,9 @@ class BitwardenSyncService(
         response: SyncResponse,
         symmetricKey: SymmetricCryptoKey
     ): SyncResult {
+        // Send 防回收的双重保护基线：本次 sync 启动时刻。
+        // 任何 created_at >= 这个值的 send，都会被 deleteNotInProtectingDirty 视作"本次 sync 之后才出现"。
+        val syncStartedAtMs = System.currentTimeMillis()
         val forensicsSession = BitwardenSyncForensicsLogger.startSession(
             context = context,
             vaultId = vault.id,
@@ -383,10 +391,11 @@ class BitwardenSyncService(
             }
             response.sends?.let { sends ->
                 val serverSendIds = sends.map { it.id }
+                // 双重保护：保留 is_dirty=1 行（写后读不一致）+ 本次 sync 之后落地的行（兜底）
                 if (serverSendIds.isEmpty()) {
-                    sendDao.deleteByVault(vault.id)
+                    sendDao.deleteByVaultProtectingDirty(vault.id, syncStartedAtMs)
                 } else {
-                    sendDao.deleteNotIn(vault.id, serverSendIds)
+                    sendDao.deleteNotInProtectingDirty(vault.id, serverSendIds, syncStartedAtMs)
                 }
             }
 
@@ -431,14 +440,18 @@ class BitwardenSyncService(
             mapped.copy(
                 createdAt = now,
                 updatedAt = now,
-                lastSyncedAt = now
+                lastSyncedAt = now,
+                // 服务器返回了这条 Send，说明已对账完成
+                isDirty = false
             )
         } else {
             mapped.copy(
                 id = existing.id,
                 createdAt = existing.createdAt,
                 updatedAt = now,
-                lastSyncedAt = now
+                lastSyncedAt = now,
+                // 一旦服务器确认这条 send，本地 dirty 标记失效
+                isDirty = false
             )
         }
         sendDao.upsert(entity)
@@ -1753,15 +1766,18 @@ class BitwardenSyncService(
     ): List<CipherUriApiData>? {
         val crypto = takagi.ru.monica.bitwarden.crypto.BitwardenCrypto
         val uris = mutableListOf<CipherUriApiData>()
-        if (entry.website.isNotBlank()) {
-            val normalizedWebsite = normalizeBitwardenWebsite(entry.website)
-            uris.add(
-                CipherUriApiData(
-                    uri = crypto.encryptString(normalizedWebsite, symmetricKey),
-                    match = null
+        PasswordWebsiteCodec.parse(entry.website)
+            .filter { it.isNotBlank() }
+            .map(::normalizeBitwardenWebsite)
+            .distinct()
+            .forEach { normalizedWebsite ->
+                uris.add(
+                    CipherUriApiData(
+                        uri = crypto.encryptString(normalizedWebsite, symmetricKey),
+                        match = null
+                    )
                 )
-            )
-        }
+            }
         if (entry.appPackageName.isNotBlank()) {
             val pkg = entry.appPackageName.removePrefix("androidapp://")
             uris.add(
@@ -1860,10 +1876,15 @@ class BitwardenSyncService(
         val remoteNotes = decryptString(cipher.notes, symmetricKey).orEmpty()
         val remoteTotp = decryptString(login.totp, symmetricKey).orEmpty()
         val remoteUris = parseLoginUris(login.uris, symmetricKey)
-        val remoteWebsite = remoteUris.website.trim()
         val remoteAppPackage = remoteUris.appPackageName.trim()
-        val localWebsite = normalizeBitwardenWebsite(entry.website).trim()
-        val remoteNormalizedWebsite = normalizeBitwardenWebsite(remoteWebsite).trim()
+        val localWebsites = PasswordWebsiteCodec.parse(entry.website)
+            .filter { it.isNotBlank() }
+            .map(::normalizeWebsiteKey)
+            .distinct()
+        val remoteWebsites = PasswordWebsiteCodec.parse(remoteUris.website)
+            .filter { it.isNotBlank() }
+            .map(::normalizeWebsiteKey)
+            .distinct()
         val localPassword = resolvePlainPasswordForBitwardenUpload(entry.password, entry.id)
 
         return entry.title == remoteTitle &&
@@ -1874,7 +1895,7 @@ class BitwardenSyncService(
             entry.isFavorite == cipher.favorite &&
             entry.bitwardenFolderId == cipher.folderId &&
             entry.appPackageName.trim() == remoteAppPackage &&
-            localWebsite == remoteNormalizedWebsite
+            localWebsites == remoteWebsites
     }
 
     private fun appendPasswordUploadFailureLog(
@@ -1900,7 +1921,13 @@ class BitwardenSyncService(
             append(", hasFolder=")
             append(!entry.bitwardenFolderId.isNullOrBlank())
             append(", website=")
-            append(normalizeBitwardenWebsite(entry.website).take(120))
+            append(
+                PasswordWebsiteCodec.parse(entry.website)
+                    .filter { it.isNotBlank() }
+                    .map(::normalizeBitwardenWebsite)
+                    .joinToString(", ")
+                    .take(120)
+            )
             responseCode?.let {
                 append(", code=")
                 append(it)
@@ -2011,7 +2038,7 @@ class BitwardenSyncService(
     ): ParsedLoginUris {
         if (uris.isNullOrEmpty()) return ParsedLoginUris()
 
-        var website = ""
+        val websites = linkedSetOf<String>()
         var appPackageName = ""
         uris.forEach { uriData ->
             val uri = decryptString(uriData.uri, symmetricKey) ?: return@forEach
@@ -2021,10 +2048,13 @@ class BitwardenSyncService(
                         appPackageName = uri.removePrefix("androidapp://")
                     }
                 }
-                website.isBlank() -> website = uri
+                else -> websites += normalizeBitwardenWebsite(uri)
             }
         }
-        return ParsedLoginUris(website = website, appPackageName = appPackageName)
+        return ParsedLoginUris(
+            website = PasswordWebsiteCodec.encode(websites.toList()),
+            appPackageName = appPackageName
+        )
     }
 
     private fun parsePasswordCustomFieldMap(

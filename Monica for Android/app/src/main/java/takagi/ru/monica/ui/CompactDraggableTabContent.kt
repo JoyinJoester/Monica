@@ -29,6 +29,7 @@ import takagi.ru.monica.viewmodel.PasskeyViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.SettingsViewModel
 import takagi.ru.monica.viewmodel.TimelineViewModel
+import takagi.ru.monica.viewmodel.MdbxViewModel
 
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
@@ -41,8 +42,10 @@ internal fun CompactDraggableTabContent(
     settingsViewModel: SettingsViewModel,
     securityManager: SecurityManager,
     keepassDatabases: List<takagi.ru.monica.data.LocalKeePassDatabase>,
+    mdbxDatabases: List<takagi.ru.monica.data.LocalMdbxDatabase> = emptyList(),
     bitwardenVaults: List<takagi.ru.monica.data.bitwarden.BitwardenVault>,
     localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
+    mdbxViewModel: MdbxViewModel? = null,
     passwordGroupMode: String,
     stackCardMode: takagi.ru.monica.ui.password.StackCardMode,
     onPasswordOpen: (Long) -> Unit,
@@ -187,8 +190,10 @@ internal fun CompactDraggableTabContent(
                     noteViewModel = noteViewModel,
                     passkeyViewModel = passkeyViewModel,
                     keepassDatabases = keepassDatabases,
+                    mdbxDatabases = mdbxDatabases,
                     bitwardenVaults = bitwardenVaults,
                     localKeePassViewModel = localKeePassViewModel,
+                    mdbxViewModel = mdbxViewModel,
                     settingsViewModel = settingsViewModel,
                     state = vaultV2PaneState,
                     onOpenPassword = onPasswordOpen,
@@ -216,8 +221,10 @@ internal fun CompactDraggableTabContent(
                     settingsViewModel = settingsViewModel,
                     securityManager = securityManager,
                     keepassDatabases = keepassDatabases,
+                    mdbxDatabases = mdbxDatabases,
                     bitwardenVaults = bitwardenVaults,
                     localKeePassViewModel = localKeePassViewModel,
+                    mdbxViewModel = mdbxViewModel,
                     timelineViewModel = timelineViewModel,
                     groupMode = passwordGroupMode,
                     stackCardMode = stackCardMode,
@@ -336,6 +343,8 @@ internal fun CompactDraggableTabContent(
             }
             BottomNavItem.Settings -> {
                 SettingsTabContent(
+                    isCompactWidth = true,
+                    wideListPaneWidth = 0.dp,
                     viewModel = settingsViewModel,
                     onResetPassword = onNavigateToChangePassword,
                     onSecurityQuestions = onNavigateToSecurityQuestion,

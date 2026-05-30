@@ -24,6 +24,8 @@
 
 [![Afdian](https://img.shields.io/badge/Afdian-JoyinJoester-ea4aaa?style=flat-square)](https://afdian.com/a/JoyinJoester)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-joyinjoester-29ABE0?style=flat-square&logo=kofi&logoColor=white)](https://ko-fi.com/joyinjoester)
+<br>
+<a href="https://trendshift.io/repositories/27059" target="_blank"><img src="https://trendshift.io/api/badge/repositories/27059" alt="JoyinJoester%2FMonica | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 </div>
 
@@ -54,6 +56,11 @@ Website: https://joyinjoester.github.io/Monica/
 - Dual ecosystem integration: Android includes Bitwarden API/sync capability and KeePass (`.kdbx`) read/write support.
 - Optional sync/backup through your own WebDAV infrastructure.
 - Built-in TOTP management in the same app.
+
+### MDBX local database format
+MDBX is Monica's local-first encrypted vault format in progress. It is not just a password table; it is designed around nested folders, attachments, commit history, conflict detection, tombstone-based deletion, snapshot recovery, and Tiga security modes.
+
+If you want to integrate MDBX in another client, start with the [MDBX workspace README](mdbx/README.md) and the [MDBX client integration guide](mdbx/CLIENT_INTEGRATION_GUIDE.md). The full format specification lives in [mdbx-doc](mdbx-doc/README.md).
 
 ### Quick install
 
@@ -125,6 +132,7 @@ Your support mainly funds:
 - `takagi/ru/monica/autofill`: Autofill services and flows.
 - `takagi/ru/monica/passkey`: Android 14+ credential provider implementation.
 - `takagi/ru/monica/workers`: background tasks such as automatic WebDAV backup.
+- `mdbx`: Rust workspace and client integration documents for Monica's MDBX local database format.
 
 ### Mature components currently used (verifiable in repo)
 - Android UI: Jetpack Compose, Material 3, Navigation Compose.
@@ -160,6 +168,12 @@ Monica's design, compatibility work, and several feature directions have been in
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=JoyinJoester/Monica&type=Date)](https://star-history.com/#JoyinJoester/Monica&Date)
+
+---
+
+## Contributors
+
+![Contributors](.github/assets/contributor-flag.svg)
 
 ---
 

@@ -43,6 +43,8 @@ data class RememberedStorageTarget(
     val categoryId: Long? = null,
     val keepassDatabaseId: Long? = null,
     val keepassGroupPath: String? = null,
+    val mdbxDatabaseId: Long? = null,
+    val mdbxFolderId: String? = null,
     val bitwardenVaultId: Long? = null,
     val bitwardenFolderId: String? = null
 )
@@ -112,6 +114,9 @@ data class PageAdjustmentSettingsSnapshot(
     val validatorSmoothProgress: Boolean = true,
     val validatorVibrationEnabled: Boolean = true,
     val copyNextCodeWhenExpiring: Boolean = false,
+    val securityAnalysisAutoEnabled: Boolean = false,
+    val passwordDetailSecurityAnalysisEnabled: Boolean = true,
+    val autofillAuthRequired: Boolean = true,
     val iconCardsEnabled: Boolean = true,
     val appLauncherIcon: String = takagi.ru.monica.data.AppLauncherIcon.MODERN.name,
     val appLauncherLabel: String = takagi.ru.monica.data.AppLauncherLabel.MONICA_PASS.name,
@@ -153,6 +158,7 @@ class SettingsManager(private val context: Context) {
         private val QUICK_SETUP_COMPLETED_KEY = booleanPreferencesKey("quick_setup_completed")
         private val AUTO_LOCK_MINUTES_KEY = intPreferencesKey("auto_lock_minutes")
         private val SCREENSHOT_PROTECTION_KEY = booleanPreferencesKey("screenshot_protection_enabled")
+        private val CLIPBOARD_AUTO_CLEAR_SECONDS_KEY = intPreferencesKey("clipboard_auto_clear_seconds")
         private val SHOW_PASSWORDS_TAB_KEY = booleanPreferencesKey("show_passwords_tab")
         private val SHOW_VAULT_V2_TAB_KEY = booleanPreferencesKey("show_vault_v2_tab")
         private val SHOW_AUTHENTICATOR_TAB_KEY = booleanPreferencesKey("show_authenticator_tab")
@@ -168,6 +174,8 @@ class SettingsManager(private val context: Context) {
         private val AUTO_HIDE_BOTTOM_NAV_WHEN_SINGLE_TAB_KEY =
             booleanPreferencesKey("auto_hide_bottom_nav_when_single_tab")
         private val DISABLE_PASSWORD_VERIFICATION_KEY = booleanPreferencesKey("disable_password_verification")
+        private val PASSKEY_HYPEROS_BIOMETRIC_BYPASS_ENABLED_KEY =
+            booleanPreferencesKey("passkey_hyperos_biometric_bypass_enabled")
         private val BITWARDEN_SYNC_FORENSICS_ENABLED_KEY =
             booleanPreferencesKey("bitwarden_sync_forensics_enabled")
         private val BITWARDEN_SYNC_FORENSICS_DIRECTORY_URI_KEY =
@@ -292,6 +300,8 @@ class SettingsManager(private val context: Context) {
     private fun storageCategoryKey(scope: String) = longPreferencesKey("last_storage_${scope}_category_id")
     private fun storageKeePassKey(scope: String) = longPreferencesKey("last_storage_${scope}_keepass_database_id")
     private fun storageKeePassGroupPathKey(scope: String) = stringPreferencesKey("last_storage_${scope}_keepass_group_path")
+    private fun storageMdbxKey(scope: String) = longPreferencesKey("last_storage_${scope}_mdbx_database_id")
+    private fun storageMdbxFolderKey(scope: String) = stringPreferencesKey("last_storage_${scope}_mdbx_folder_id")
     private fun storageBitwardenVaultKey(scope: String) = longPreferencesKey("last_storage_${scope}_bitwarden_vault_id")
     private fun storageBitwardenFolderKey(scope: String) = stringPreferencesKey("last_storage_${scope}_bitwarden_folder_id")
 
@@ -504,6 +514,7 @@ class SettingsManager(private val context: Context) {
             quickSetupCompleted = preferences[QUICK_SETUP_COMPLETED_KEY] ?: false,
             autoLockMinutes = preferences[AUTO_LOCK_MINUTES_KEY] ?: 5,
             screenshotProtectionEnabled = preferences[SCREENSHOT_PROTECTION_KEY] ?: true,
+            clipboardAutoClearSeconds = preferences[CLIPBOARD_AUTO_CLEAR_SECONDS_KEY] ?: 0,
             dynamicColorEnabled = preferences[DYNAMIC_COLOR_ENABLED_KEY] ?: true,
             bottomNavVisibility = BottomNavVisibility(
                 vaultV2 = preferences[SHOW_VAULT_V2_TAB_KEY] ?: false,
@@ -520,6 +531,8 @@ class SettingsManager(private val context: Context) {
             autoHideBottomNavWhenSingleTab =
                 preferences[AUTO_HIDE_BOTTOM_NAV_WHEN_SINGLE_TAB_KEY] ?: false,
             disablePasswordVerification = preferences[DISABLE_PASSWORD_VERIFICATION_KEY] ?: false,
+            passkeyHyperOsBiometricBypassEnabled =
+                preferences[PASSKEY_HYPEROS_BIOMETRIC_BYPASS_ENABLED_KEY] ?: false,
             bitwardenSyncForensicsEnabled =
                 preferences[BITWARDEN_SYNC_FORENSICS_ENABLED_KEY] ?: false,
             bitwardenSyncForensicsDirectoryUri =
@@ -736,6 +749,12 @@ class SettingsManager(private val context: Context) {
         }
     }
 
+    suspend fun updateClipboardAutoClearSeconds(seconds: Int) {
+        dataStore.edit { preferences ->
+            preferences[CLIPBOARD_AUTO_CLEAR_SECONDS_KEY] = seconds.coerceAtLeast(0)
+        }
+    }
+
     suspend fun updateDynamicColorEnabled(enabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[DYNAMIC_COLOR_ENABLED_KEY] = enabled
@@ -796,6 +815,12 @@ class SettingsManager(private val context: Context) {
     suspend fun updateDisablePasswordVerification(disabled: Boolean) {
         dataStore.edit { preferences ->
             preferences[DISABLE_PASSWORD_VERIFICATION_KEY] = disabled
+        }
+    }
+
+    suspend fun updatePasskeyHyperOsBiometricBypassEnabled(enabled: Boolean) {
+        dataStore.edit { preferences ->
+            preferences[PASSKEY_HYPEROS_BIOMETRIC_BYPASS_ENABLED_KEY] = enabled
         }
     }
 
@@ -1279,6 +1304,9 @@ class SettingsManager(private val context: Context) {
             validatorSmoothProgress = settings.validatorSmoothProgress,
             validatorVibrationEnabled = settings.validatorVibrationEnabled,
             copyNextCodeWhenExpiring = settings.copyNextCodeWhenExpiring,
+            securityAnalysisAutoEnabled = settings.securityAnalysisAutoEnabled,
+            passwordDetailSecurityAnalysisEnabled = settings.passwordDetailSecurityAnalysisEnabled,
+            autofillAuthRequired = settings.autofillAuthRequired,
             iconCardsEnabled = settings.iconCardsEnabled,
             appLauncherIcon = settings.appLauncherIcon.name,
             appLauncherLabel = settings.appLauncherLabel.name,
@@ -1449,6 +1477,10 @@ class SettingsManager(private val context: Context) {
             preferences[VALIDATOR_SMOOTH_PROGRESS_KEY] = snapshot.validatorSmoothProgress
             preferences[VALIDATOR_VIBRATION_ENABLED_KEY] = snapshot.validatorVibrationEnabled
             preferences[COPY_NEXT_CODE_WHEN_EXPIRING_KEY] = snapshot.copyNextCodeWhenExpiring
+            preferences[SECURITY_ANALYSIS_AUTO_ENABLED_KEY] = snapshot.securityAnalysisAutoEnabled
+            preferences[PASSWORD_DETAIL_SECURITY_ANALYSIS_ENABLED_KEY] =
+                snapshot.passwordDetailSecurityAnalysisEnabled
+            preferences[AUTOFILL_AUTH_REQUIRED_KEY] = snapshot.autofillAuthRequired
             preferences[ICON_CARDS_ENABLED_KEY] = snapshot.iconCardsEnabled
             val parsedAppLauncherIcon = runCatching {
                 AppLauncherIcon.valueOf(snapshot.appLauncherIcon.trim())
@@ -1623,6 +1655,8 @@ class SettingsManager(private val context: Context) {
             categoryId = preferences[storageCategoryKey(scope)],
             keepassDatabaseId = preferences[storageKeePassKey(scope)],
             keepassGroupPath = preferences[storageKeePassGroupPathKey(scope)],
+            mdbxDatabaseId = preferences[storageMdbxKey(scope)],
+            mdbxFolderId = preferences[storageMdbxFolderKey(scope)],
             bitwardenVaultId = preferences[storageBitwardenVaultKey(scope)],
             bitwardenFolderId = preferences[storageBitwardenFolderKey(scope)]
         )
@@ -1633,12 +1667,16 @@ class SettingsManager(private val context: Context) {
             val categoryKey = storageCategoryKey(scope)
             val keepassKey = storageKeePassKey(scope)
             val keepassGroupPathKey = storageKeePassGroupPathKey(scope)
+            val mdbxKey = storageMdbxKey(scope)
+            val mdbxFolderKey = storageMdbxFolderKey(scope)
             val bitwardenVaultKey = storageBitwardenVaultKey(scope)
             val bitwardenFolderKey = storageBitwardenFolderKey(scope)
 
             if (target.categoryId != null) preferences[categoryKey] = target.categoryId else preferences.remove(categoryKey)
             if (target.keepassDatabaseId != null) preferences[keepassKey] = target.keepassDatabaseId else preferences.remove(keepassKey)
             if (target.keepassGroupPath.isNullOrBlank()) preferences.remove(keepassGroupPathKey) else preferences[keepassGroupPathKey] = target.keepassGroupPath
+            if (target.mdbxDatabaseId != null) preferences[mdbxKey] = target.mdbxDatabaseId else preferences.remove(mdbxKey)
+            if (target.mdbxFolderId.isNullOrBlank()) preferences.remove(mdbxFolderKey) else preferences[mdbxFolderKey] = target.mdbxFolderId
             if (target.bitwardenVaultId != null) preferences[bitwardenVaultKey] = target.bitwardenVaultId else preferences.remove(bitwardenVaultKey)
             if (target.bitwardenFolderId.isNullOrBlank()) preferences.remove(bitwardenFolderKey) else preferences[bitwardenFolderKey] = target.bitwardenFolderId
         }
@@ -1708,4 +1746,3 @@ class SettingsManager(private val context: Context) {
     }
 
 }
-

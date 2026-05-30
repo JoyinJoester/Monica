@@ -1,4 +1,4 @@
-﻿package takagi.ru.monica.ui
+package takagi.ru.monica.ui
 
 import android.app.Activity
 import android.content.Context
@@ -23,12 +23,10 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
@@ -83,7 +81,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -235,6 +232,8 @@ fun UnifiedWalletAddScreen(
     initialCategoryId: Long? = null,
     initialKeePassDatabaseId: Long? = null,
     initialKeePassGroupPath: String? = null,
+    initialMdbxDatabaseId: Long? = null,
+    initialMdbxFolderId: String? = null,
     initialBitwardenVaultId: Long? = null,
     initialBitwardenFolderId: String? = null,
     modifier: Modifier = Modifier
@@ -347,6 +346,8 @@ fun UnifiedWalletAddScreen(
                         initialCategoryId = initialCategoryId,
                         initialKeePassDatabaseId = initialKeePassDatabaseId,
                         initialKeePassGroupPath = initialKeePassGroupPath,
+                        initialMdbxDatabaseId = initialMdbxDatabaseId,
+                        initialMdbxFolderId = initialMdbxFolderId,
                         initialBitwardenVaultId = initialBitwardenVaultId,
                         initialBitwardenFolderId = initialBitwardenFolderId,
                         showTopBar = false,
@@ -367,6 +368,8 @@ fun UnifiedWalletAddScreen(
                         initialCategoryId = initialCategoryId,
                         initialKeePassDatabaseId = initialKeePassDatabaseId,
                         initialKeePassGroupPath = initialKeePassGroupPath,
+                        initialMdbxDatabaseId = initialMdbxDatabaseId,
+                        initialMdbxFolderId = initialMdbxFolderId,
                         initialBitwardenVaultId = initialBitwardenVaultId,
                         initialBitwardenFolderId = initialBitwardenFolderId,
                         showTopBar = false,
@@ -683,20 +686,24 @@ fun SimpleMainScreen(
     bitwardenViewModel: takagi.ru.monica.bitwarden.viewmodel.BitwardenViewModel = viewModel(),
     passkeyViewModel: PasskeyViewModel,  // Passkey ViewModel
     localKeePassViewModel: takagi.ru.monica.viewmodel.LocalKeePassViewModel,
+    mdbxViewModel: takagi.ru.monica.viewmodel.MdbxViewModel,
     securityManager: SecurityManager,
     onNavigateToAddPassword: (Long?) -> Unit,
     onNavigateToAddWifi: (Long?) -> Unit = {},
     onNavigateToAddSshKey: (Long?) -> Unit = {},
     onNavigateToAddTotp: (Long?) -> Unit,
     onNavigateToQuickTotpScan: () -> Unit,
+    pendingPasswordAuthenticatorQrResult: String? = null,
+    onConsumePendingPasswordAuthenticatorQrResult: () -> Unit = {},
+    onScanPasswordAuthenticatorQrCode: () -> Unit = {},
     onNavigateToFidoQrScan: () -> Unit,
     onNavigateToAddBankCard: (Long?) -> Unit,
     onNavigateToAddDocument: (Long?) -> Unit,
     onNavigateToWalletAdd: (CardWalletTab) -> Unit,
-    onPreparePasswordAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit = { _, _, _, _, _ -> },
-    onPrepareTotpAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit = { _, _, _, _, _ -> },
-    onPrepareNoteAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit = { _, _, _, _, _ -> },
-    onPrepareWalletAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit = { _, _, _, _, _ -> },
+    onPreparePasswordAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit = { _, _, _, _, _, _, _ -> },
+    onPrepareTotpAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit = { _, _, _, _, _, _, _ -> },
+    onPrepareNoteAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit = { _, _, _, _, _, _, _ -> },
+    onPrepareWalletAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit = { _, _, _, _, _, _, _ -> },
     onNavigateToAddNote: (Long?) -> Unit,
     onNavigateToNoteDetail: (Long) -> Unit = {},
     onNavigateToPasswordDetail: (Long) -> Unit = {},
@@ -720,6 +727,7 @@ fun SimpleMainScreen(
     onNavigateToPageCustomization: () -> Unit = {},
     onNavigateToStandaloneSettings: () -> Unit = {},
     onNavigateToBitwardenLogin: () -> Unit = {},
+    onNavigateToAddSend: () -> Unit = {},
     onClearAllData: (Boolean, Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit,
     initialTab: Int = 0
 ) {
@@ -1193,7 +1201,22 @@ fun SimpleMainScreen(
         }
     }
     val keepassDatabases by localKeePassViewModel.allDatabases.collectAsState()
+    val mdbxDatabases by mdbxViewModel.allDatabases.collectAsState()
     val bitwardenVaults by bitwardenViewModel.vaults.collectAsState()
+    val selectedMdbxDatabaseId = remember(currentFilter) {
+        when (val filter = currentFilter) {
+            is CategoryFilter.MdbxDatabase -> filter.databaseId
+            is CategoryFilter.MdbxFolderFilter -> filter.databaseId
+            else -> null
+        }
+    }
+    LaunchedEffect(selectedMdbxDatabaseId, mdbxDatabases.map { it.id }) {
+        selectedMdbxDatabaseId?.let { databaseId ->
+            if (mdbxDatabases.any { it.id == databaseId }) {
+                mdbxViewModel.activateMdbxDatabase(databaseId)
+            }
+        }
+    }
     // 可拖拽导航栏模式开关 (将来可从设置中读取)
     val useDraggableNav = appSettings.useDraggableBottomNav
     
@@ -1228,6 +1251,8 @@ fun SimpleMainScreen(
                     resolvedDefaults?.categoryId,
                     resolvedDefaults?.keepassDatabaseId,
                     resolvedDefaults?.keepassGroupPath,
+                    resolvedDefaults?.mdbxDatabaseId,
+                    resolvedDefaults?.mdbxFolderId,
                     resolvedDefaults?.bitwardenVaultId,
                     resolvedDefaults?.bitwardenFolderId
                 )
@@ -1298,7 +1323,13 @@ fun SimpleMainScreen(
             when (cardWalletSubTab) {
                 CardWalletTab.BANK_CARDS -> handleBankCardAddOpen()
                 CardWalletTab.DOCUMENTS -> handleDocumentAddOpen()
-                CardWalletTab.ALL -> Unit
+                CardWalletTab.ALL -> {
+                    if (isCompactWidth) {
+                        onNavigateToWalletAdd(walletUnifiedAddType)
+                    } else {
+                        openInlineBankCardAdd()
+                    }
+                }
             }
         }
         val handleNoteOpen: (Long?) -> Unit = { noteId ->
@@ -1435,7 +1466,9 @@ fun SimpleMainScreen(
             }
         }
         val handleSendAddOpen: () -> Unit = {
-            if (!isCompactWidth) {
+            if (isCompactWidth) {
+                onNavigateToAddSend()
+            } else {
                 openInlineSendAdd()
             }
         }
@@ -1693,10 +1726,11 @@ fun SimpleMainScreen(
     // Decides draggable nav vs classic scaffold and dispatches per-tab content.
     @Composable
     fun RenderMainSurface() {
+    Box(modifier = Modifier.fillMaxSize()) {
     // 根据设置选择导航模式
     Box(
         modifier = Modifier
-            .fillMaxSize()
+            .matchParentSize()
             .nestedScroll(nestedScrollConnection)
     ) {
         if (useDraggableNav && isCompactWidth && !shouldHideBottomNavigation) {
@@ -1730,8 +1764,10 @@ fun SimpleMainScreen(
                     settingsViewModel = settingsViewModel,
                     securityManager = securityManager,
                     keepassDatabases = keepassDatabases,
+						mdbxDatabases = mdbxDatabases,
                     bitwardenVaults = bitwardenVaults,
                     localKeePassViewModel = localKeePassViewModel,
+                    mdbxViewModel = mdbxViewModel,
                     passwordGroupMode = passwordGroupMode,
                     stackCardMode = stackCardMode,
                     onPasswordOpen = handlePasswordDetailOpen,
@@ -1926,7 +1962,13 @@ fun SimpleMainScreen(
         },
         floatingActionButton = {} // FAB 移至外层 Overlay
     ) { paddingValues ->
-        val scaffoldBody: @Composable BoxScope.() -> Unit = {
+
+        if (isCompactWidth) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues)
+            ) {
             when (currentTab) {
                 BottomNavItem.VaultV2 -> {
                     VaultV2Pane(
@@ -1937,8 +1979,10 @@ fun SimpleMainScreen(
                         noteViewModel = noteViewModel,
                         passkeyViewModel = passkeyViewModel,
                     keepassDatabases = keepassDatabases,
+                    mdbxDatabases = mdbxDatabases,
                     bitwardenVaults = bitwardenVaults,
                     localKeePassViewModel = localKeePassViewModel,
+                    mdbxViewModel = mdbxViewModel,
                     settingsViewModel = settingsViewModel,
                     state = vaultV2PaneState,
                     onOpenPassword = handlePasswordDetailOpen,
@@ -1948,16 +1992,13 @@ fun SimpleMainScreen(
                     onOpenNote = { handleNoteOpen(it) },
                     onOpenPasskey = onNavigateToPasskeyDetail,
                     onOpenHistory = {
-                        selectedTabKey = BottomNavItem.Passwords.key
                         openHistoryPage()
                     },
                     onOpenTrashPage = {
-                        selectedTabKey = BottomNavItem.Passwords.key
                         openTrashPage()
                     },
                     onOpenArchivePage = {
                         closeHistoryPage()
-                        selectedTabKey = BottomNavItem.Passwords.key
                         passwordViewModel.setCategoryFilter(CategoryFilter.Archived)
                     },
                     onOpenCommonAccountTemplates = onNavigateToCommonAccountTemplates,
@@ -1965,6 +2006,8 @@ fun SimpleMainScreen(
                     onOpenStandaloneSettings = onNavigateToStandaloneSettings,
                     showStandaloneSettingsEntry = shouldHideBottomNavigation,
                     appSettings = appSettings,
+                    securityManager = securityManager,
+                    biometricEnabled = appSettings.biometricEnabled,
                     modifier = Modifier.fillMaxSize(),
                 )
                 }
@@ -1976,8 +2019,10 @@ fun SimpleMainScreen(
                         settingsViewModel = settingsViewModel,
                         securityManager = securityManager,
                         keepassDatabases = keepassDatabases,
+						mdbxDatabases = mdbxDatabases,
                         bitwardenVaults = bitwardenVaults,
                         localKeePassViewModel = localKeePassViewModel,
+                        mdbxViewModel = mdbxViewModel,
                         timelineViewModel = timelineViewModel,
                         groupMode = passwordGroupMode,
                         stackCardMode = stackCardMode,
@@ -2026,6 +2071,10 @@ fun SimpleMainScreen(
                         onInlinePasswordEditorBack = handleInlinePasswordEditorBack,
                         onNavigateToAddWifi = onNavigateToAddWifi,
                         onNavigateToAddSshKey = onNavigateToAddSshKey,
+                        pendingPasswordAuthenticatorQrResult = pendingPasswordAuthenticatorQrResult,
+                        onConsumePendingPasswordAuthenticatorQrResult =
+                            onConsumePendingPasswordAuthenticatorQrResult,
+                        onScanPasswordAuthenticatorQrCode = onScanPasswordAuthenticatorQrCode,
                         totpViewModel = totpViewModel,
                         bankCardViewModel = bankCardViewModel,
                         noteViewModel = noteViewModel,
@@ -2090,6 +2139,8 @@ fun SimpleMainScreen(
                         initialCategoryId = pendingInlineWalletAddStorageDefaults?.categoryId,
                         initialKeePassDatabaseId = pendingInlineWalletAddStorageDefaults?.keepassDatabaseId,
                         initialKeePassGroupPath = pendingInlineWalletAddStorageDefaults?.keepassGroupPath,
+                        initialMdbxDatabaseId = pendingInlineWalletAddStorageDefaults?.mdbxDatabaseId,
+                        initialMdbxFolderId = pendingInlineWalletAddStorageDefaults?.mdbxFolderId,
                         initialBitwardenVaultId = pendingInlineWalletAddStorageDefaults?.bitwardenVaultId,
                         initialBitwardenFolderId = pendingInlineWalletAddStorageDefaults?.bitwardenFolderId,
                         showStandaloneSettingsEntry = shouldHideBottomNavigation,
@@ -2128,6 +2179,7 @@ fun SimpleMainScreen(
                         initialCategoryId = pendingInlineNoteAddStorageDefaults?.categoryId,
                         initialKeePassDatabaseId = pendingInlineNoteAddStorageDefaults?.keepassDatabaseId,
                         initialKeePassGroupPath = pendingInlineNoteAddStorageDefaults?.keepassGroupPath,
+                        initialMdbxDatabaseId = pendingInlineNoteAddStorageDefaults?.mdbxDatabaseId,
                         initialBitwardenVaultId = pendingInlineNoteAddStorageDefaults?.bitwardenVaultId,
                         initialBitwardenFolderId = pendingInlineNoteAddStorageDefaults?.bitwardenFolderId,
                         showStandaloneSettingsEntry = shouldHideBottomNavigation,
@@ -2163,8 +2215,9 @@ fun SimpleMainScreen(
                         isAddingSendInline = isAddingSendInline,
                         onSendClick = handleSendOpen,
                         onInlineSendEditorBack = handleInlineSendEditorBack,
-                        onCreateSend = { title, text, notes, password, maxAccessCount, hideEmail, hiddenText, expireInDays ->
+                        onCreateSend = { vaultId, title, text, notes, password, maxAccessCount, hideEmail, hiddenText, expireInDays ->
                             bitwardenViewModel.createTextSend(
+                                vaultId = vaultId,
                                 title = title,
                                 text = text,
                                 notes = notes,
@@ -2174,7 +2227,19 @@ fun SimpleMainScreen(
                                 hiddenText = hiddenText,
                                 expireInDays = expireInDays
                             )
-                            handleInlineSendEditorBack()
+                        },
+                        onCreateFileSend = { vaultId, title, fileUri, fileName, notes, password, maxAccessCount, hideEmail, expireInDays ->
+                            bitwardenViewModel.createFileSend(
+                                vaultId = vaultId,
+                                title = title,
+                                fileUri = fileUri,
+                                fileName = fileName,
+                                notes = notes,
+                                password = password,
+                                maxAccessCount = maxAccessCount,
+                                hideEmail = hideEmail,
+                                expireInDays = expireInDays
+                            )
                         },
                         onBitwardenEvent = handleSendBitwardenEvent,
                         showStandaloneSettingsEntry = shouldHideBottomNavigation,
@@ -2198,6 +2263,8 @@ fun SimpleMainScreen(
                         onNavigateToMonicaPlus = onNavigateToMonicaPlus,
                         onNavigateToExtensions = onNavigateToExtensions,
                         onNavigateToPageCustomization = onNavigateToPageCustomization,
+                        isCompactWidth = isCompactWidth,
+                        wideListPaneWidth = wideListPaneWidth,
                         onClearAllData = onClearAllData
                     )
                 }
@@ -2237,15 +2304,7 @@ fun SimpleMainScreen(
                 onMoveToCategoryDocuments = onMoveToCategoryDocuments,
                 onDeleteSelectedDocuments = onDeleteSelectedDocuments
             )
-        }
-
-        if (isCompactWidth) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues),
-                content = scaffoldBody
-            )
+            }
         } else {
             val railTopInset = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
             val railBottomInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
@@ -2294,65 +2353,409 @@ fun SimpleMainScreen(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxHeight(),
-                    content = scaffoldBody
+                        .fillMaxHeight()
+                ) {
+                when (currentTab) {
+                    BottomNavItem.VaultV2 -> {
+                        VaultV2Pane(
+                            passwordViewModel = passwordViewModel,
+                            totpViewModel = totpViewModel,
+                            bankCardViewModel = bankCardViewModel,
+                            documentViewModel = documentViewModel,
+                            noteViewModel = noteViewModel,
+                            passkeyViewModel = passkeyViewModel,
+                        keepassDatabases = keepassDatabases,
+                        mdbxDatabases = mdbxDatabases,
+                        bitwardenVaults = bitwardenVaults,
+                        localKeePassViewModel = localKeePassViewModel,
+                        mdbxViewModel = mdbxViewModel,
+                        settingsViewModel = settingsViewModel,
+                        state = vaultV2PaneState,
+                        onOpenPassword = handlePasswordDetailOpen,
+                        onOpenTotp = handleTotpOpen,
+                            onOpenBankCard = handleBankCardOpen,
+                        onOpenDocument = handleDocumentOpen,
+                        onOpenNote = { handleNoteOpen(it) },
+                        onOpenPasskey = onNavigateToPasskeyDetail,
+                        onOpenHistory = {
+                            openHistoryPage()
+                        },
+                        onOpenTrashPage = {
+                            openTrashPage()
+                        },
+                        onOpenArchivePage = {
+                            closeHistoryPage()
+                            passwordViewModel.setCategoryFilter(CategoryFilter.Archived)
+                        },
+                        onOpenCommonAccountTemplates = onNavigateToCommonAccountTemplates,
+                        onScanFidoQr = onNavigateToFidoQrScan,
+                        onOpenStandaloneSettings = onNavigateToStandaloneSettings,
+                        showStandaloneSettingsEntry = shouldHideBottomNavigation,
+                        appSettings = appSettings,
+                        securityManager = securityManager,
+                        biometricEnabled = appSettings.biometricEnabled,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                    }
+                    BottomNavItem.Passwords -> {
+                        PasswordTabPane(
+                            isCompactWidth = isCompactWidth,
+                            wideListPaneWidth = wideListPaneWidth,
+                            passwordViewModel = passwordViewModel,
+                            settingsViewModel = settingsViewModel,
+                            securityManager = securityManager,
+                            keepassDatabases = keepassDatabases,
+							mdbxDatabases = mdbxDatabases,
+                            bitwardenVaults = bitwardenVaults,
+                            localKeePassViewModel = localKeePassViewModel,
+                            mdbxViewModel = mdbxViewModel,
+                            timelineViewModel = timelineViewModel,
+                            groupMode = passwordGroupMode,
+                            stackCardMode = stackCardMode,
+                            visibleContentTypes = passwordPageVisibleContentTypes,
+                            selectedContentTypes = passwordPageSelectedContentTypes,
+                            onToggleContentType = { type ->
+                                passwordPageSelectedContentTypes = togglePasswordPageContentType(
+                                    currentTypes = passwordPageSelectedContentTypes,
+                                    toggledType = type,
+                                    visibleTypes = passwordPageVisibleContentTypes
+                                )
+                            },
+                            onPasswordOpen = handlePasswordDetailOpen,
+                            onNavigateToAddTotp = onNavigateToAddTotp,
+                            onNavigateToBankCardDetail = onNavigateToBankCardDetail,
+                            onNavigateToDocumentDetail = onNavigateToDocumentDetail,
+                            onNavigateToAddNote = handleNoteOpen,
+                            onNavigateToNoteDetail = onNavigateToNoteDetail,
+                            onNavigateToPasskeyDetail = onNavigateToPasskeyDetail,
+                            onOpenHistoryPage = openHistoryPage,
+                            onOpenTrashPage = openTrashPage,
+                            onOpenCommonAccountTemplatesPage = onNavigateToCommonAccountTemplates,
+                            onScanFidoQr = onNavigateToFidoQrScan,
+                            onCloseHistoryPage = closeHistoryPage,
+                            passwordHistoryPageMode = passwordHistoryPageMode,
+                            passwordHistoryInitialTrashScopeKey = passwordHistoryInitialTrashScopeKey,
+                            onTimelineLogSelected = handleTimelineLogOpen,
+                            onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onFavorite, onMoveToCategory, onStack, onDelete ->
+                                isPasswordSelectionMode = isSelectionMode
+                                selectedPasswordCount = count
+                                onExitPasswordSelection = onExit
+                                onSelectAllPasswords = onSelectAll
+                                onFavoriteSelectedPasswords = onFavorite
+                                onMoveToCategoryPasswords = onMoveToCategory
+                                onManualStackPasswords = onStack
+                                onDeleteSelectedPasswords = onDelete
+                            },
+                            onBackToTopVisibilityChange = { visible ->
+                                passwordListShowBackToTop = visible
+                            },
+                            scrollToTopRequestKey = passwordScrollToTopRequestKey,
+                            isAddingPasswordInline = isAddingPasswordInline,
+                            inlinePasswordEditorId = inlinePasswordEditorId,
+                            selectedPasswordId = selectedPasswordId,
+                            passwordNewItemDefaults = pendingInlinePasswordAddStorageDefaults ?: passwordNewItemDefaults,
+                            onInlinePasswordEditorBack = handleInlinePasswordEditorBack,
+                            onNavigateToAddWifi = onNavigateToAddWifi,
+                            onNavigateToAddSshKey = onNavigateToAddSshKey,
+                            pendingPasswordAuthenticatorQrResult = pendingPasswordAuthenticatorQrResult,
+                            onConsumePendingPasswordAuthenticatorQrResult =
+                                onConsumePendingPasswordAuthenticatorQrResult,
+                            onScanPasswordAuthenticatorQrCode = onScanPasswordAuthenticatorQrCode,
+                            totpViewModel = totpViewModel,
+                            bankCardViewModel = bankCardViewModel,
+                            noteViewModel = noteViewModel,
+                            documentViewModel = documentViewModel,
+                            passkeyViewModel = passkeyViewModel,
+                            biometricEnabled = appSettings.biometricEnabled,
+                            iconCardsEnabled = appSettings.iconCardsEnabled && appSettings.passwordPageIconEnabled,
+                            unmatchedIconHandlingStrategy = appSettings.unmatchedIconHandlingStrategy,
+                            onClearSelectedPassword = clearSelectedPasswordPaneItem,
+                            onEditPassword = handlePasswordEditOpen
+                            ,
+                            showStandaloneSettingsEntry = shouldHideBottomNavigation,
+                            onOpenStandaloneSettings = onNavigateToStandaloneSettings
+                        )
+                    }
+                    BottomNavItem.Authenticator -> {
+                        AuthenticatorTabPane(
+                            isCompactWidth = isCompactWidth,
+                            wideListPaneWidth = wideListPaneWidth,
+                            totpViewModel = totpViewModel,
+                            passwordViewModel = passwordViewModel,
+                            localKeePassViewModel = localKeePassViewModel,
+                            onTotpOpen = handleTotpOpen,
+                            onNavigateToQuickTotpScan = onNavigateToQuickTotpScan,
+                            onSelectionModeChange = { isSelectionMode, count, onExit, onSelectAll, onMoveToCategory, onDelete ->
+                                isTotpSelectionMode = isSelectionMode
+                                selectedTotpCount = count
+                                onExitTotpSelection = onExit
+                                onSelectAllTotp = onSelectAll
+                                onMoveToCategoryTotp = onMoveToCategory
+                                onDeleteSelectedTotp = onDelete
+                            },
+                            isAddingTotpInline = isAddingTotpInline,
+                            selectedTotpId = selectedTotpId,
+                            totpNewItemDefaults = pendingInlineTotpAddStorageDefaults ?: totpNewItemDefaults,
+                            onInlineTotpEditorBack = handleInlineTotpEditorBack,
+                            showStandaloneSettingsEntry = shouldHideBottomNavigation,
+                            onOpenStandaloneSettings = onNavigateToStandaloneSettings
+                        )
+                    }
+                    BottomNavItem.CardWallet -> {
+                        CardWalletPane(
+                            isCompactWidth = isCompactWidth,
+                            wideListPaneWidth = wideListPaneWidth,
+                            saveableStateHolder = cardWalletSaveableStateHolder,
+                            bankCardViewModel = bankCardViewModel,
+                            documentViewModel = documentViewModel,
+                            passwordViewModel = passwordViewModel,
+                            contentState = cardWalletContentState,
+                            isAddingBankCardInline = isAddingBankCardInline,
+                            inlineBankCardEditorId = inlineBankCardEditorId,
+                            onInlineBankCardEditorBack = handleInlineBankCardEditorBack,
+                            isAddingDocumentInline = isAddingDocumentInline,
+                            inlineDocumentEditorId = inlineDocumentEditorId,
+                            onInlineDocumentEditorBack = handleInlineDocumentEditorBack,
+                            selectedBankCardId = selectedBankCardId,
+                            onClearSelectedBankCard = clearSelectedBankCardPaneItem,
+                            onEditBankCard = handleBankCardEditOpen,
+                            selectedDocumentId = selectedDocumentId,
+                            onClearSelectedDocument = clearSelectedDocumentPaneItem,
+                            onEditDocument = handleDocumentEditOpen,
+                            initialCategoryId = pendingInlineWalletAddStorageDefaults?.categoryId,
+                            initialKeePassDatabaseId = pendingInlineWalletAddStorageDefaults?.keepassDatabaseId,
+                            initialKeePassGroupPath = pendingInlineWalletAddStorageDefaults?.keepassGroupPath,
+                            initialMdbxDatabaseId = pendingInlineWalletAddStorageDefaults?.mdbxDatabaseId,
+                            initialMdbxFolderId = pendingInlineWalletAddStorageDefaults?.mdbxFolderId,
+                            initialBitwardenVaultId = pendingInlineWalletAddStorageDefaults?.bitwardenVaultId,
+                            initialBitwardenFolderId = pendingInlineWalletAddStorageDefaults?.bitwardenFolderId,
+                            showStandaloneSettingsEntry = shouldHideBottomNavigation,
+                            onOpenStandaloneSettings = onNavigateToStandaloneSettings
+                        )
+                    }
+                    BottomNavItem.Generator -> {
+                        GeneratorPane(
+                            isCompactWidth = isCompactWidth,
+                            wideListPaneWidth = wideListPaneWidth,
+                            generatorViewModel = generatorViewModel,
+                            passwordViewModel = passwordViewModel,
+                            externalRefreshRequestKey = generatorRefreshRequestKey,
+                            onRefreshRequestConsumed = { generatorRefreshRequestKey = 0 },
+                            selectedGenerator = selectedGeneratorType,
+                            generatedValue = currentGeneratorResult,
+                            showStandaloneSettingsEntry = shouldHideBottomNavigation,
+                            onOpenStandaloneSettings = onNavigateToStandaloneSettings
+                        )
+                    }
+                    BottomNavItem.Notes -> {
+                        NotePane(
+                            isCompactWidth = isCompactWidth,
+                            wideListPaneWidth = wideListPaneWidth,
+                            noteViewModel = noteViewModel,
+                            settingsViewModel = settingsViewModel,
+                            securityManager = securityManager,
+                            passwordViewModel = passwordViewModel,
+                            onNavigateToAddNote = handleNoteOpen,
+                            onSelectionModeChange = { isSelectionMode ->
+                                isNoteSelectionMode = isSelectionMode
+                            },
+                            isAddingNoteInline = isAddingNoteInline,
+                            inlineNoteEditorId = inlineNoteEditorId,
+                            onInlineNoteEditorBack = handleInlineNoteEditorBack,
+                            initialCategoryId = pendingInlineNoteAddStorageDefaults?.categoryId,
+                            initialKeePassDatabaseId = pendingInlineNoteAddStorageDefaults?.keepassDatabaseId,
+                            initialKeePassGroupPath = pendingInlineNoteAddStorageDefaults?.keepassGroupPath,
+                            initialMdbxDatabaseId = pendingInlineNoteAddStorageDefaults?.mdbxDatabaseId,
+                            initialBitwardenVaultId = pendingInlineNoteAddStorageDefaults?.bitwardenVaultId,
+                            initialBitwardenFolderId = pendingInlineNoteAddStorageDefaults?.bitwardenFolderId,
+                            showStandaloneSettingsEntry = shouldHideBottomNavigation,
+                            onOpenStandaloneSettings = onNavigateToStandaloneSettings
+                        )
+                    }
+                    BottomNavItem.Passkey -> {
+                        PasskeyPane(
+                            isCompactWidth = isCompactWidth,
+                            wideListPaneWidth = wideListPaneWidth,
+                            passkeyViewModel = passkeyViewModel,
+                            passwordViewModel = passwordViewModel,
+                            onNavigateToPasswordDetail = onNavigateToPasswordDetail,
+                            onPasskeyOpen = handlePasskeyOpen,
+                            selectedPasskey = selectedPasskey,
+                            passkeyTotalCount = passkeyTotalCount,
+                            passkeyBoundCount = passkeyBoundCount,
+                            resolvePasswordTitle = { passwordId -> passwordById[passwordId]?.title },
+                            onOpenPasswordDetail = handlePasswordDetailOpen,
+                            onUnbindPasskey = handlePasskeyUnbind,
+                            onDeletePasskey = { passkey -> pendingPasskeyDelete = passkey },
+                            showStandaloneSettingsEntry = shouldHideBottomNavigation,
+                            onOpenStandaloneSettings = onNavigateToStandaloneSettings
+                        )
+                    }
+                    BottomNavItem.Send -> {
+                        SendPane(
+                            isCompactWidth = isCompactWidth,
+                            wideListPaneWidth = wideListPaneWidth,
+                            bitwardenViewModel = bitwardenViewModel,
+                            sendState = sendState,
+                            selectedSend = selectedSend,
+                            isAddingSendInline = isAddingSendInline,
+                            onSendClick = handleSendOpen,
+                            onInlineSendEditorBack = handleInlineSendEditorBack,
+                            onCreateSend = { vaultId, title, text, notes, password, maxAccessCount, hideEmail, hiddenText, expireInDays ->
+                                bitwardenViewModel.createTextSend(
+                                    vaultId = vaultId,
+                                    title = title,
+                                    text = text,
+                                    notes = notes,
+                                    password = password,
+                                    maxAccessCount = maxAccessCount,
+                                    hideEmail = hideEmail,
+                                    hiddenText = hiddenText,
+                                    expireInDays = expireInDays
+                                )
+                            },
+                            onCreateFileSend = { vaultId, title, fileUri, fileName, notes, password, maxAccessCount, hideEmail, expireInDays ->
+                                bitwardenViewModel.createFileSend(
+                                    vaultId = vaultId,
+                                    title = title,
+                                    fileUri = fileUri,
+                                    fileName = fileName,
+                                    notes = notes,
+                                    password = password,
+                                    maxAccessCount = maxAccessCount,
+                                    hideEmail = hideEmail,
+                                    expireInDays = expireInDays
+                                )
+                            },
+                            onBitwardenEvent = handleSendBitwardenEvent,
+                            showStandaloneSettingsEntry = shouldHideBottomNavigation,
+                            onOpenStandaloneSettings = onNavigateToStandaloneSettings
+                        )
+                    }
+                    BottomNavItem.Settings -> {
+                        SettingsTabContent(
+                            viewModel = settingsViewModel,
+                            onResetPassword = onNavigateToChangePassword,
+                            onSecurityQuestions = onNavigateToSecurityQuestion,
+                            onNavigateToMasterPasswordLocking = onNavigateToMasterPasswordLocking,
+                            onNavigateToSyncBackup = onNavigateToSyncBackup,
+                            onNavigateToAutofill = onNavigateToAutofill,
+                            onNavigateToPasskeySettings = onNavigateToPasskeySettings,
+                            onNavigateToBottomNavSettings = onNavigateToBottomNavSettings,
+                            onNavigateToColorScheme = onNavigateToColorScheme,
+                            onSecurityAnalysis = onSecurityAnalysis,
+                            onNavigateToDeveloperSettings = onNavigateToDeveloperSettings,
+                            onNavigateToPermissionManagement = onNavigateToPermissionManagement,
+                            onNavigateToMonicaPlus = onNavigateToMonicaPlus,
+                            onNavigateToExtensions = onNavigateToExtensions,
+                            onNavigateToPageCustomization = onNavigateToPageCustomization,
+                            isCompactWidth = isCompactWidth,
+                            wideListPaneWidth = wideListPaneWidth,
+                            onClearAllData = onClearAllData
+                        )
+                    }
+                }
+
+                MainScreenSelectionBars(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(start = 16.dp, bottom = 20.dp),
+                    currentTab = currentTab,
+                    cardWalletSubTab = cardWalletSubTab,
+                    isPasswordSelectionMode = isPasswordSelectionMode,
+                    selectedPasswordCount = selectedPasswordCount,
+                    onExitPasswordSelection = onExitPasswordSelection,
+                    onSelectAllPasswords = onSelectAllPasswords,
+                    onFavoriteSelectedPasswords = onFavoriteSelectedPasswords,
+                    onMoveToCategoryPasswords = onMoveToCategoryPasswords,
+                    onManualStackPasswords = onManualStackPasswords,
+                    onDeleteSelectedPasswords = onDeleteSelectedPasswords,
+                    isTotpSelectionMode = isTotpSelectionMode,
+                    selectedTotpCount = selectedTotpCount,
+                    onExitTotpSelection = onExitTotpSelection,
+                    onSelectAllTotp = onSelectAllTotp,
+                    onMoveToCategoryTotp = onMoveToCategoryTotp,
+                    onDeleteSelectedTotp = onDeleteSelectedTotp,
+                    isBankCardSelectionMode = isBankCardSelectionMode,
+                    selectedBankCardCount = selectedBankCardCount,
+                    onExitBankCardSelection = onExitBankCardSelection,
+                    onSelectAllBankCards = onSelectAllBankCards,
+                    onFavoriteBankCards = onFavoriteBankCards,
+                    onMoveToCategoryBankCards = onMoveToCategoryBankCards,
+                    onDeleteSelectedBankCards = onDeleteSelectedBankCards,
+                    isDocumentSelectionMode = isDocumentSelectionMode,
+                    selectedDocumentCount = selectedDocumentCount,
+                    onExitDocumentSelection = onExitDocumentSelection,
+                    onSelectAllDocuments = onSelectAllDocuments,
+                    onMoveToCategoryDocuments = onMoveToCategoryDocuments,
+                    onDeleteSelectedDocuments = onDeleteSelectedDocuments
                 )
+                }
             }
         }
     }
     }
+    }
 
-    val prepareTotpAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit = { categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
+    val prepareTotpAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit = { categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, mdbxFolderId, bitwardenVaultId, bitwardenFolderId ->
         if (isCompactWidth) {
             pendingInlineTotpAddStorageDefaults = null
-            onPrepareTotpAddStorageDefaults(categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId)
+            onPrepareTotpAddStorageDefaults(categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, mdbxFolderId, bitwardenVaultId, bitwardenFolderId)
         } else {
             pendingInlineTotpAddStorageDefaults = NewItemStorageDefaults(
                 categoryId = categoryId,
                 keepassDatabaseId = keepassDatabaseId,
                 keepassGroupPath = keepassGroupPath,
+                mdbxDatabaseId = mdbxDatabaseId,
+                mdbxFolderId = mdbxFolderId,
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenFolderId = bitwardenFolderId
             ).takeIf { it.hasAnyValue() }
         }
     }
-    val preparePasswordAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit = { categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
+    val preparePasswordAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit = { categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, mdbxFolderId, bitwardenVaultId, bitwardenFolderId ->
         if (isCompactWidth) {
             pendingInlinePasswordAddStorageDefaults = null
-            onPreparePasswordAddStorageDefaults(categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId)
+            onPreparePasswordAddStorageDefaults(categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, mdbxFolderId, bitwardenVaultId, bitwardenFolderId)
         } else {
             pendingInlinePasswordAddStorageDefaults = NewItemStorageDefaults(
                 categoryId = categoryId,
                 keepassDatabaseId = keepassDatabaseId,
                 keepassGroupPath = keepassGroupPath,
+                mdbxDatabaseId = mdbxDatabaseId,
+                mdbxFolderId = mdbxFolderId,
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenFolderId = bitwardenFolderId
             ).takeIf { it.hasAnyValue() }
         }
     }
-    val prepareNoteAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit = { categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
+    val prepareNoteAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit = { categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, mdbxFolderId, bitwardenVaultId, bitwardenFolderId ->
         if (isCompactWidth) {
             pendingInlineNoteAddStorageDefaults = null
-            onPrepareNoteAddStorageDefaults(categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId)
+            onPrepareNoteAddStorageDefaults(categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, mdbxFolderId, bitwardenVaultId, bitwardenFolderId)
         } else {
             pendingInlineNoteAddStorageDefaults = NewItemStorageDefaults(
                 categoryId = categoryId,
                 keepassDatabaseId = keepassDatabaseId,
                 keepassGroupPath = keepassGroupPath,
+                mdbxDatabaseId = mdbxDatabaseId,
+                mdbxFolderId = mdbxFolderId,
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenFolderId = bitwardenFolderId
             ).takeIf { it.hasAnyValue() }
         }
     }
-    val prepareWalletAddStorageDefaults: (Long?, Long?, String?, Long?, String?) -> Unit = { categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId ->
+    val prepareWalletAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit = { categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, mdbxFolderId, bitwardenVaultId, bitwardenFolderId ->
         if (isCompactWidth) {
             pendingInlineWalletAddStorageDefaults = null
-            onPrepareWalletAddStorageDefaults(categoryId, keepassDatabaseId, keepassGroupPath, bitwardenVaultId, bitwardenFolderId)
+            onPrepareWalletAddStorageDefaults(categoryId, keepassDatabaseId, keepassGroupPath, mdbxDatabaseId, mdbxFolderId, bitwardenVaultId, bitwardenFolderId)
         } else {
             pendingInlineWalletAddStorageDefaults = NewItemStorageDefaults(
                 categoryId = categoryId,
                 keepassDatabaseId = keepassDatabaseId,
                 keepassGroupPath = keepassGroupPath,
+                mdbxDatabaseId = mdbxDatabaseId,
+                mdbxFolderId = mdbxFolderId,
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenFolderId = bitwardenFolderId
             ).takeIf { it.hasAnyValue() }
@@ -2443,6 +2846,10 @@ fun SimpleMainScreen(
         localKeePassViewModel = localKeePassViewModel,
         totpNewItemDefaults = totpNewItemDefaults,
         onNavigateToQuickTotpScan = onNavigateToQuickTotpScan,
+        pendingPasswordAuthenticatorQrResult = pendingPasswordAuthenticatorQrResult,
+        onConsumePendingPasswordAuthenticatorQrResult =
+            onConsumePendingPasswordAuthenticatorQrResult,
+        onScanPasswordAuthenticatorQrCode = onScanPasswordAuthenticatorQrCode,
         walletUnifiedAddType = walletUnifiedAddType,
         onWalletUnifiedAddTypeChange = { walletUnifiedAddType = it },
         documentViewModel = documentViewModel,
@@ -2610,4 +3017,3 @@ private fun MainScreenTabResetEffects(
         }
     }
 }
-

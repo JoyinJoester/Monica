@@ -95,7 +95,20 @@ data class BitwardenSend(
     val createdAt: Long = System.currentTimeMillis(),
 
     @ColumnInfo(name = "updated_at")
-    val updatedAt: Long = System.currentTimeMillis()
+    val updatedAt: Long = System.currentTimeMillis(),
+
+    /**
+     * 本地新建/修改尚未与服务器对账时为 true。
+     *
+     * 在 Bitwarden Vaultwarden / 官方 sync API 写后读不一致的场景下，本地刚创建的 Send 可能
+     * 在下一次 fullSync 的服务器返回中尚未出现。该标志用于告知 Sync 路径在 deleteNotIn 时
+     * 跳过 dirty 行，避免本地新建的 Send 被立即清掉。
+     *
+     * 默认 false（已对账状态）。createTextSend / createFileSend 写入时置 true，syncSend
+     * 在服务器侧确认收到后清零。
+     */
+    @ColumnInfo(name = "is_dirty", defaultValue = "0")
+    val isDirty: Boolean = false
 ) {
     companion object {
         const val TYPE_TEXT = 0

@@ -24,6 +24,8 @@
 
 [![爱发电](https://img.shields.io/badge/爱发电-JoyinJoester-ea4aaa?style=flat-square)](https://afdian.com/a/JoyinJoester)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-joyinjoester-29ABE0?style=flat-square&logo=kofi&logoColor=white)](https://ko-fi.com/joyinjoester)
+<br>
+<a href="https://trendshift.io/repositories/27059" target="_blank"><img src="https://trendshift.io/api/badge/repositories/27059" alt="JoyinJoester%2FMonica | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 </div>
 
@@ -63,6 +65,12 @@ Monica 的开发者只是一个会犯懒的大笨蛋铲屎官喵。
 - **双生态聚合**：Android 端包含 Bitwarden API/同步能力，也包含 KeePass（`.kdbx`）读写能力喵。
 - **可选同步与备份**：可以通过自己的 WebDAV 基础设施在设备之间搬运数据喵。
 - **内置 TOTP**：密码和二次验证码可以在同一个应用里管理喵。
+
+### MDBX 本地数据库格式喵
+
+MDBX 是 Monica 正在搭的新本地优先加密 vault 格式喵。它不是一张简单的密码表喵，而是把嵌套文件夹、附件、提交历史、冲突检测、tombstone 删除链路、快照恢复和 Tiga 安全模式都放进同一个窝里的数据库格式喵。
+
+如果你想让其他客户端也能读写 MDBX，先看 [MDBX workspace 说明](mdbx/README.zh-CN.md) 和 [MDBX 客户端接入指南](mdbx/CLIENT_INTEGRATION_GUIDE.zh-CN.md) 喵。完整格式规范在 [mdbx-doc](mdbx-doc/README.zh-CN.md) 喵。
 
 ### 怎么把 Monica 带回家喵
 
@@ -143,6 +151,7 @@ Android 小猫这样做喵：
 - `takagi/ru/monica/autofill`：自动填充服务与流程喵。
 - `takagi/ru/monica/passkey`：Android 14+ Credential Provider 相关实现喵。
 - `takagi/ru/monica/workers`：后台任务，比如自动 WebDAV 备份喵。
+- `mdbx`：Monica MDBX 本地数据库格式的 Rust workspace 和客户端接入文档喵。
 
 ### 当前使用的成熟组件喵
 

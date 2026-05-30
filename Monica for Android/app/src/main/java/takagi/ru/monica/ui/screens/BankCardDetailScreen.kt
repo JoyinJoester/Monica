@@ -167,8 +167,7 @@ fun BankCardDetailScreen(
                 // Visual Card Representation
                 BankCardCard(
                     item = item,
-                    onClick = { /* No-op in detail view */ },
-                    onDelete = { showDeleteDialog = true }
+                    onClick = { /* No-op in detail view */ }
                 )
                 
                 cardData?.let { data ->

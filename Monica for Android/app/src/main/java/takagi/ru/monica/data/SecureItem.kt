@@ -16,6 +16,8 @@ import java.util.Date
         Index(value = ["isDeleted"]),
         Index(value = ["replica_group_id"], name = "index_secure_items_replica_group_id"),
         Index(value = ["keepass_entry_uuid"], name = "index_secure_items_keepass_entry_uuid"),
+        Index(value = ["mdbx_database_id"], name = "index_secure_items_mdbx_database_id"),
+        Index(value = ["mdbx_database_id", "mdbx_folder_id"], name = "index_secure_items_mdbx_database_folder"),
         Index(
             value = ["bitwarden_vault_id", "bitwarden_cipher_id"],
             unique = true,
@@ -55,7 +57,13 @@ data class SecureItem(
     val keepassEntryUuid: String? = null,
     @ColumnInfo(name = "keepass_group_uuid", defaultValue = "NULL")
     val keepassGroupUuid: String? = null,
-    
+
+    // MDBX project-centric 数据库归属
+    @ColumnInfo(name = "mdbx_database_id", defaultValue = "NULL")
+    val mdbxDatabaseId: Long? = null,
+    @ColumnInfo(name = "mdbx_folder_id", defaultValue = "NULL")
+    val mdbxFolderId: String? = null,
+
     // 回收站功能 - 软删除字段
     @ColumnInfo(defaultValue = "0")
     val isDeleted: Boolean = false,     // 是否已删除（在回收站中）

@@ -1,7 +1,5 @@
 package takagi.ru.monica.ui.components
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.clickable
@@ -22,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import takagi.ru.monica.data.PasswordEntry
+import takagi.ru.monica.utils.ClipboardUtils
 import takagi.ru.monica.utils.FieldValidation
 import takagi.ru.monica.ui.icons.MonicaIcons
 import takagi.ru.monica.R
@@ -468,9 +467,7 @@ private fun InfoItemWithCopy(
             )
             IconButton(
                 onClick = {
-                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    val clip = ClipData.newPlainText(label, copyValue)
-                    clipboard.setPrimaryClip(clip)
+                    ClipboardUtils.copyToClipboard(context, copyValue, label)
                     Toast.makeText(context, context.getString(R.string.copied, label), Toast.LENGTH_SHORT).show()
                 }
             ) {
@@ -539,9 +536,7 @@ private fun PasswordItem(
                             Toast.makeText(context, context.getString(R.string.permission_status_unavailable), Toast.LENGTH_SHORT).show()
                             return@IconButton
                         }
-                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                        val clip = ClipData.newPlainText(label, value)
-                        clipboard.setPrimaryClip(clip)
+                        ClipboardUtils.copyToClipboard(context, value, label)
                         Toast.makeText(context, context.getString(R.string.copied, label), Toast.LENGTH_SHORT).show()
                     }
                 ) {

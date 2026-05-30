@@ -24,6 +24,8 @@
 
 [![Afdian](https://img.shields.io/badge/Afdian-JoyinJoester-ea4aaa?style=flat-square)](https://afdian.com/a/JoyinJoester)
 [![Ko-fi](https://img.shields.io/badge/Ko--fi-joyinjoester-29ABE0?style=flat-square&logo=kofi&logoColor=white)](https://ko-fi.com/joyinjoester)
+<br>
+<a href="https://trendshift.io/repositories/27059" target="_blank"><img src="https://trendshift.io/api/badge/repositories/27059" alt="JoyinJoester%2FMonica | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
 
 </div>
 
@@ -54,6 +56,11 @@ Trang web: https://joyinjoester.github.io/Monica/
 - Tich hop hai he sinh thai: Android co kha nang Bitwarden API/sync va doc-ghi KeePass (`.kdbx`).
 - Dong bo/backup tuy chon qua ha tang WebDAV cua chinh ban.
 - Quan ly TOTP tich hop trong cung mot ung dung.
+
+### Dinh dang co so du lieu local MDBX
+MDBX la dinh dang vault ma hoa, uu tien local dang duoc Monica phat trien. No khong chi la mot bang mat khau; MDBX duoc thiet ke xoay quanh thu muc long nhau, tep dinh kem, lich su commit, phat hien xung dot, chuoi xoa tombstone, khoi phuc snapshot va cac che do bao mat Tiga.
+
+Neu ban muon tich hop MDBX vao client khac, hay bat dau voi [MDBX workspace README](mdbx/README.md) va [MDBX client integration guide](mdbx/CLIENT_INTEGRATION_GUIDE.md). Dac ta dinh dang day du nam trong [mdbx-doc](mdbx-doc/README.md).
 
 ### Cai dat nhanh
 
@@ -125,6 +132,7 @@ Nguon ung ho duoc uu tien cho:
 - `takagi/ru/monica/autofill`: dich vu va luong autofill.
 - `takagi/ru/monica/passkey`: Credential Provider cho Android 14+.
 - `takagi/ru/monica/workers`: task nen nhu auto backup WebDAV.
+- `mdbx`: Rust workspace va tai lieu tich hop client cho dinh dang co so du lieu local Monica MDBX.
 
 ### Thanh phan da duoc su dung (co the doi chieu trong repo)
 - Android UI: Jetpack Compose, Material 3, Navigation Compose.
@@ -160,6 +168,12 @@ Thiet ke, kha nang tuong thich va mot so dinh huong tinh nang cua Monica da nhan
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=JoyinJoester/Monica&type=Date)](https://star-history.com/#JoyinJoester/Monica&Date)
+
+---
+
+## Dong Gop Vien
+
+![Dong Gop Vien](.github/assets/contributor-flag.svg)
 
 ---
 

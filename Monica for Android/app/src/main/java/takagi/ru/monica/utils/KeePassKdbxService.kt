@@ -23,7 +23,10 @@ import app.keemobile.kotpass.models.EntryValue
 import app.keemobile.kotpass.models.Group
 import app.keemobile.kotpass.models.Meta
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -54,6 +57,7 @@ import takagi.ru.monica.keepass.KeePassPasskeySyncCodec
 import takagi.ru.monica.notes.domain.NoteContentCodec
 import takagi.ru.monica.passkey.PasskeyCredentialIdCodec
 import takagi.ru.monica.security.SecurityManager
+import takagi.ru.monica.workers.KeePassRemoteUploadWorker
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -63,6 +67,7 @@ import java.io.IOException
 import java.net.URI
 import java.net.URLDecoder
 import java.util.Date
+import java.util.LinkedHashMap
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.Executors
@@ -82,7 +87,21 @@ data class KeePassEntryData(
     /** 取值 `PASSWORD` / `SSO` / `WIFI`；用于还原 [PasswordEntry.loginType]。 */
     val loginType: String = "PASSWORD",
     /** [takagi.ru.monica.data.model.WifiData] 的 JSON，仅在 WIFI 条目上有值。 */
-    val wifiMetadata: String = ""
+    val wifiMetadata: String = "",
+    val customFields: List<KeePassCustomFieldData> = emptyList()
+)
+
+data class KeePassCustomFieldData(
+    val title: String,
+    val value: String,
+    val isProtected: Boolean,
+    val sortOrder: Int = 0
+)
+
+internal data class KeePassRawStringField(
+    val key: String,
+    val value: String,
+    val isProtected: Boolean
 )
 
 data class KeePassGroupInfo(
@@ -97,6 +116,12 @@ data class KeePassSecureItemData(
     val item: SecureItem,
     val sourceMonicaId: Long?,
     val isInRecycleBin: Boolean
+)
+
+data class KeePassWorkspaceSnapshot(
+    val passwords: List<KeePassEntryData>,
+    val secureItems: List<KeePassSecureItemData>,
+    val groups: List<KeePassGroupInfo>
 )
 
 data class KeePassDatabaseDiagnostics(
@@ -170,6 +195,60 @@ private data class KeePassPasswordEntryAnalysis(
     val fieldNames: List<String>
 )
 
+internal fun extractKeePassCustomFieldsForPasswordEntry(
+    fields: List<KeePassRawStringField>
+): List<KeePassCustomFieldData> {
+    return fields
+        .asSequence()
+        .filter { field ->
+            val normalizedKey = field.key.trim()
+            normalizedKey.isNotBlank() &&
+                field.value.isNotBlank() &&
+                !isReservedKeePassPasswordFieldName(normalizedKey)
+        }
+        .mapIndexed { index, field ->
+            KeePassCustomFieldData(
+                title = field.key.trim(),
+                value = field.value,
+                isProtected = field.isProtected,
+                sortOrder = index
+            )
+        }
+        .toList()
+}
+
+private fun isReservedKeePassPasswordFieldName(key: String): Boolean {
+    val normalized = key.trim()
+    if (normalized.isBlank()) return true
+    if (normalized.startsWith("_etm_")) return true
+
+    val reservedFields = setOf(
+        "Title", "Name",
+        "UserName", "Username", "User", "Login",
+        "Password", "Pass", "pass", "pwd", "PWD", "密码", "口令",
+        "URL", "Url", "Website", "URI",
+        "Notes", "Note", "Comment",
+        "otp", "TOTP Seed", "TOTP Settings",
+        "MonicaLocalId", "MonicaSecureItemId", "MonicaItemType", "MonicaItemData",
+        "MonicaImagePaths", "MonicaIsFavorite",
+        "MonicaPasskeyCredentialId", "MonicaPasskeyData", "MonicaPasskeyMode",
+        "MonicaSshAlgorithm", "MonicaSshKeySize", "MonicaSshPublicKey",
+        "MonicaSshPrivateKey", "MonicaSshFingerprint", "MonicaSshComment",
+        "MonicaSshFormat",
+        "SSID", "MonicaWifiData", "MonicaLoginType",
+        KeePassDxPasskeyCodec.FIELD_PASSKEY,
+        KeePassDxPasskeyCodec.FIELD_USERNAME,
+        KeePassDxPasskeyCodec.FIELD_PRIVATE_KEY,
+        KeePassDxPasskeyCodec.FIELD_CREDENTIAL_ID,
+        KeePassDxPasskeyCodec.FIELD_USER_HANDLE,
+        KeePassDxPasskeyCodec.FIELD_RELYING_PARTY,
+        KeePassDxPasskeyCodec.FIELD_FLAG_BE,
+        KeePassDxPasskeyCodec.FIELD_FLAG_BS
+    )
+    val reservedLower = reservedFields.mapTo(mutableSetOf()) { it.lowercase(Locale.ROOT) }
+    return normalized.lowercase(Locale.ROOT) in reservedLower
+}
+
 class KeePassKdbxService(
     private val context: Context,
     private val dao: LocalKeePassDatabaseDao,
@@ -179,6 +258,8 @@ class KeePassKdbxService(
         private const val TAG = "KeePassKdbxService"
         // Keep unknown-source cache short, but keep known internal files effectively "always warm".
         private const val UNKNOWN_SOURCE_CACHE_TTL_MS = 60_000L
+        // Keep only the active database plus a tiny LRU warm set. Monica users may register many KDBX files.
+        private const val MAX_WARM_CACHED_DATABASES = 2
         // Disable post-write full decode verification for normal writes to reduce save latency.
         // The database is still encoded by the library and written atomically/with rollback paths.
         private const val ENABLE_POST_WRITE_DECODE_VERIFICATION = false
@@ -218,12 +299,17 @@ class KeePassKdbxService(
             Thread(runnable, "KeePassDecodeThread").apply { isDaemon = true }
         }
         private val decodeDispatcher = decodeExecutor.asCoroutineDispatcher()
+        private val remoteUploadExecutor = Executors.newSingleThreadExecutor { runnable ->
+            Thread(runnable, "KeePassRemoteUploadThread").apply { isDaemon = true }
+        }
+        private val remoteUploadScope = CoroutineScope(SupervisorJob() + remoteUploadExecutor.asCoroutineDispatcher())
         // 写入采用“读-改-写”原子化；不同数据库可独立排队，跨库操作按 ID 顺序加锁。
         private val databaseMutationMutexes = mutableMapOf<Long, Mutex>()
         // 同一数据库首次打开时只允许一个入口执行解码，避免验证/读取并发触发重复开库。
         private val databaseLoadMutexes = mutableMapOf<Long, Mutex>()
         // 按数据库 ID 维护进程级已解锁会话；不同调用入口共享同一次 KDBX 解码结果。
-        private val loadedDatabaseCache = mutableMapOf<Long, CachedLoadedDatabase>()
+        private val loadedDatabaseCache = LinkedHashMap<Long, CachedLoadedDatabase>(4, 0.75f, true)
+        private var activeDatabaseId: Long? = null
         // 跨实例缓存失效信号：某实例更新数据库绑定后，其他实例的本地缓存应立即失效。
         private val externallyInvalidatedDatabaseIds = mutableSetOf<Long>()
 
@@ -262,8 +348,45 @@ class KeePassKdbxService(
         fun invalidateProcessCache(databaseId: Long) {
             synchronized(loadedDatabaseCache) {
                 loadedDatabaseCache.remove(databaseId)
+                if (activeDatabaseId == databaseId) {
+                    activeDatabaseId = null
+                }
             }
             externallyInvalidatedDatabaseIds += databaseId
+        }
+
+        fun markDatabaseActive(databaseId: Long) {
+            synchronized(loadedDatabaseCache) {
+                activeDatabaseId = databaseId
+                trimLoadedDatabaseCacheLocked()
+            }
+        }
+
+        fun clearActiveDatabase(databaseId: Long? = null) {
+            synchronized(loadedDatabaseCache) {
+                if (databaseId == null || activeDatabaseId == databaseId) {
+                    activeDatabaseId = null
+                }
+                trimLoadedDatabaseCacheLocked()
+            }
+        }
+
+        fun trimInactiveCaches() {
+            synchronized(loadedDatabaseCache) {
+                trimLoadedDatabaseCacheLocked()
+            }
+        }
+
+        private fun trimLoadedDatabaseCacheLocked() {
+            val activeId = activeDatabaseId
+            var warmCount = loadedDatabaseCache.keys.count { it != activeId }
+            val iterator = loadedDatabaseCache.entries.iterator()
+            while (warmCount > MAX_WARM_CACHED_DATABASES && iterator.hasNext()) {
+                val entry = iterator.next()
+                if (entry.key == activeId) continue
+                iterator.remove()
+                warmCount--
+            }
         }
 
         @Synchronized
@@ -668,50 +791,57 @@ class KeePassKdbxService(
             val (database, _, keePassDatabase) = loadDatabase(databaseId)
             val (entries, hasRecycleBinMeta) = collectEntryContexts(keePassDatabase)
             val resolutionContext = KeePassFieldReferenceResolver.buildContext(entries.map { it.entry })
-            val skipCounts = mutableMapOf<KeePassPasswordSkipReason, Int>()
-            var passkeyFieldCount = 0
-            var importedWithPasskeyFields = 0
-            val skippedSamples = mutableListOf<String>()
-            val data = entries.mapNotNull { context ->
-                val analysis = analyzePasswordEntry(
+            val data = buildPasswordEntryData(
+                databaseId = database.id,
+                databaseName = database.name,
+                entries = entries,
+                hasRecycleBinMeta = hasRecycleBinMeta,
+                resolutionContext = resolutionContext
+            )
+            dao.updateEntryCount(database.id, data.size)
+            Result.success(data)
+        } catch (e: Exception) {
+            Result.failure(normalizeError(e))
+        }
+    }
+
+    suspend fun loadWorkspace(
+        databaseId: Long,
+        includeRecycleBinGroups: Boolean = false,
+        allowedSecureItemTypes: Set<ItemType>? = null
+    ): Result<KeePassWorkspaceSnapshot> = withContext(Dispatchers.IO) {
+        try {
+            val (database, _, keePassDatabase) = loadDatabase(databaseId)
+            val (entries, hasRecycleBinMeta) = collectEntryContexts(keePassDatabase)
+            val resolutionContext = KeePassFieldReferenceResolver.buildContext(entries.map { it.entry })
+            val passwords = buildPasswordEntryData(
+                databaseId = database.id,
+                databaseName = database.name,
+                entries = entries,
+                hasRecycleBinMeta = hasRecycleBinMeta,
+                resolutionContext = resolutionContext
+            )
+            val secureItems = entries.mapNotNull { context ->
+                entryToSecureItemData(
                     entry = context.entry,
+                    databaseId = databaseId,
                     groupPath = context.groupPath,
                     groupUuid = context.groupUuid,
                     isInRecycleBinByMeta = context.isInRecycleBinByMeta,
                     hasRecycleBinMeta = hasRecycleBinMeta,
+                    allowedTypes = allowedSecureItemTypes,
                     resolutionContext = resolutionContext
                 )
-                if (analysis.hasPasskeyFields) {
-                    passkeyFieldCount++
-                }
-                if (analysis.data != null && analysis.hasPasskeyFields) {
-                    importedWithPasskeyFields++
-                }
-                analysis.skipReason?.let { reason ->
-                    skipCounts[reason] = (skipCounts[reason] ?: 0) + 1
-                    if (skippedSamples.size < 8) {
-                        skippedSamples += buildPasswordEntrySkipSample(context, analysis, reason)
-                    }
-                }
-                analysis.data
             }
-            Log.i(
-                TAG,
-                "KeePass password sync summary: databaseId=${database.id}, name=${database.name}, " +
-                    "total=${entries.size}, imported=${data.size}, passkeyFieldEntries=$passkeyFieldCount, " +
-                    "importedWithPasskeyFields=$importedWithPasskeyFields, " +
-                    "skippedSecureItem=${skipCounts[KeePassPasswordSkipReason.MONICA_SECURE_ITEM] ?: 0}, " +
-                    "skippedPurePasskey=${skipCounts[KeePassPasswordSkipReason.PURE_PASSKEY] ?: 0}, " +
-                    "skippedTemplate=${skipCounts[KeePassPasswordSkipReason.TEMPLATE] ?: 0}, " +
-                    "skippedEmpty=${skipCounts[KeePassPasswordSkipReason.EMPTY] ?: 0}"
+            val groups = buildGroupInfoList(keePassDatabase, includeRecycleBinGroups)
+            dao.updateEntryCount(database.id, passwords.size)
+            Result.success(
+                KeePassWorkspaceSnapshot(
+                    passwords = passwords,
+                    secureItems = secureItems,
+                    groups = groups
+                )
             )
-            if (data.isEmpty() || skipCounts.isNotEmpty()) {
-                skippedSamples.forEach { sample ->
-                    Log.i(TAG, "KeePass password sync sample: databaseId=${database.id}, $sample")
-                }
-            }
-            dao.updateEntryCount(database.id, data.size)
-            Result.success(data)
         } catch (e: Exception) {
             Result.failure(normalizeError(e))
         }
@@ -723,20 +853,7 @@ class KeePassKdbxService(
     ): Result<List<KeePassGroupInfo>> = withContext(Dispatchers.IO) {
         try {
             val (_, _, keePassDatabase) = loadDatabase(databaseId)
-            val recycleBinUuid = resolveRecycleBinUuid(keePassDatabase.content.meta)
-            val groups = mutableListOf<KeePassGroupInfo>()
-            keePassDatabase.content.group.groups.forEach { group ->
-                collectGroups(
-                    group = group,
-                    parentPathKey = "",
-                    depth = 0,
-                    result = groups,
-                    recycleBinUuid = recycleBinUuid,
-                    includeRecycleBin = includeRecycleBin,
-                    parentInRecycleBin = false
-                )
-            }
-            Result.success(groups.sortedBy { it.displayPath })
+            Result.success(buildGroupInfoList(keePassDatabase, includeRecycleBin))
         } catch (e: Exception) {
             Result.failure(normalizeError(e))
         }
@@ -2162,6 +2279,15 @@ class KeePassKdbxService(
         val monicaLoginType = getFieldValue(entry, FIELD_MONICA_LOGIN_TYPE, resolutionContext)
         val monicaWifiJson = getFieldValue(entry, FIELD_MONICA_WIFI_DATA, resolutionContext)
         val ssidField = getFieldValue(entry, FIELD_WIFI_SSID, resolutionContext)
+        val customFields = extractKeePassCustomFieldsForPasswordEntry(
+            entry.fields.map { (key, value) ->
+                KeePassRawStringField(
+                    key = key,
+                    value = getFieldValue(entry, key, resolutionContext),
+                    isProtected = value is EntryValue.Encrypted
+                )
+            }
+        )
         val (resolvedLoginType, resolvedWifiJson) = when {
             monicaLoginType.equals("WIFI", ignoreCase = true) && monicaWifiJson.isNotBlank() ->
                 "WIFI" to monicaWifiJson
@@ -2191,7 +2317,8 @@ class KeePassKdbxService(
             groupUuid = groupUuid?.toString(),
             isInRecycleBin = inRecycleBin,
             loginType = resolvedLoginType,
-            wifiMetadata = resolvedWifiJson
+            wifiMetadata = resolvedWifiJson,
+            customFields = customFields
         )
         return result(
             data = data,
@@ -2219,6 +2346,58 @@ class KeePassKdbxService(
             "hasPasskey=${analysis.hasPasskeyFields}, hasTitle=${analysis.hasTitle}, " +
             "hasUser=${analysis.hasUsername}, hasPassword=${analysis.hasPassword}, " +
             "hasUrl=${analysis.hasUrl}, hasNotes=${analysis.hasNotes}, fields=$fields$moreFields"
+    }
+
+    private fun buildPasswordEntryData(
+        databaseId: Long,
+        databaseName: String,
+        entries: List<EntryTraversalContext>,
+        hasRecycleBinMeta: Boolean,
+        resolutionContext: KeePassEntryResolutionContext
+    ): List<KeePassEntryData> {
+        val skipCounts = mutableMapOf<KeePassPasswordSkipReason, Int>()
+        var passkeyFieldCount = 0
+        var importedWithPasskeyFields = 0
+        val skippedSamples = mutableListOf<String>()
+        val data = entries.mapNotNull { context ->
+            val analysis = analyzePasswordEntry(
+                entry = context.entry,
+                groupPath = context.groupPath,
+                groupUuid = context.groupUuid,
+                isInRecycleBinByMeta = context.isInRecycleBinByMeta,
+                hasRecycleBinMeta = hasRecycleBinMeta,
+                resolutionContext = resolutionContext
+            )
+            if (analysis.hasPasskeyFields) {
+                passkeyFieldCount++
+            }
+            if (analysis.data != null && analysis.hasPasskeyFields) {
+                importedWithPasskeyFields++
+            }
+            analysis.skipReason?.let { reason ->
+                skipCounts[reason] = (skipCounts[reason] ?: 0) + 1
+                if (skippedSamples.size < 8) {
+                    skippedSamples += buildPasswordEntrySkipSample(context, analysis, reason)
+                }
+            }
+            analysis.data
+        }
+        Log.i(
+            TAG,
+            "KeePass password sync summary: databaseId=$databaseId, name=$databaseName, " +
+                "total=${entries.size}, imported=${data.size}, passkeyFieldEntries=$passkeyFieldCount, " +
+                "importedWithPasskeyFields=$importedWithPasskeyFields, " +
+                "skippedSecureItem=${skipCounts[KeePassPasswordSkipReason.MONICA_SECURE_ITEM] ?: 0}, " +
+                "skippedPurePasskey=${skipCounts[KeePassPasswordSkipReason.PURE_PASSKEY] ?: 0}, " +
+                "skippedTemplate=${skipCounts[KeePassPasswordSkipReason.TEMPLATE] ?: 0}, " +
+                "skippedEmpty=${skipCounts[KeePassPasswordSkipReason.EMPTY] ?: 0}"
+        )
+        if (data.isEmpty() || skipCounts.isNotEmpty()) {
+            skippedSamples.forEach { sample ->
+                Log.i(TAG, "KeePass password sync sample: databaseId=$databaseId, $sample")
+            }
+        }
+        return data
     }
 
     private fun entryToSecureItemData(
@@ -2905,6 +3084,26 @@ class KeePassKdbxService(
         }
     }
 
+    private fun buildGroupInfoList(
+        keePassDatabase: KeePassDatabase,
+        includeRecycleBin: Boolean
+    ): List<KeePassGroupInfo> {
+        val recycleBinUuid = resolveRecycleBinUuid(keePassDatabase.content.meta)
+        val groups = mutableListOf<KeePassGroupInfo>()
+        keePassDatabase.content.group.groups.forEach { group ->
+            collectGroups(
+                group = group,
+                parentPathKey = "",
+                depth = 0,
+                result = groups,
+                recycleBinUuid = recycleBinUuid,
+                includeRecycleBin = includeRecycleBin,
+                parentInRecycleBin = false
+            )
+        }
+        return groups.sortedBy { it.displayPath }
+    }
+
     private fun findGroupPathByUuid(
         group: Group,
         currentPathKey: String?,
@@ -3169,7 +3368,7 @@ class KeePassKdbxService(
     ): T {
         return withDatabaseMutationLocks(listOf(databaseId)) {
             try {
-                if (forceSyncWrite) {
+                if (forceSyncWrite && shouldForceReloadForWrite(databaseId)) {
                     invalidateLoadedDatabaseCache(databaseId)
                 }
                 val loaded = getCachedLoadedDatabase(databaseId) ?: loadDatabase(databaseId)
@@ -3188,6 +3387,11 @@ class KeePassKdbxService(
                 throw e
             }
         }
+    }
+
+    private fun shouldForceReloadForWrite(databaseId: Long): Boolean {
+        val cached = synchronized(loadedDatabaseCache) { loadedDatabaseCache[databaseId] } ?: return false
+        return cached.loaded.sourceSignature == null
     }
 
     private suspend fun loadDatabase(databaseId: Long): LoadedDatabase {
@@ -3422,15 +3626,8 @@ class KeePassKdbxService(
         var resolvedSourceLastModified = sourceLastModified
         var resolvedDatabase = keePassDatabase
         if (database.isRemoteSource()) {
-            val syncResult = syncRemoteWorkingCopy(
-                database = database,
-                credentials = credentials,
-                localDatabase = keePassDatabase,
-                bytes = bytes
-            )
-            resolvedSourceEtag = syncResult?.writeResult?.etag ?: resolvedSourceEtag
-            resolvedSourceLastModified = syncResult?.writeResult?.lastModified?.toString() ?: resolvedSourceLastModified
-            resolvedDatabase = syncResult?.finalDatabase ?: resolvedDatabase
+            markRemoteWritePending(database, bytes)
+            enqueueRemoteWorkingCopyUpload(database.id, bytes)
         }
         val updatedSignature = currentSourceSignature(database)
         cacheLoadedDatabase(
@@ -3591,6 +3788,186 @@ class KeePassKdbxService(
         }
     }
 
+    private suspend fun markRemoteWritePending(
+        database: LocalKeePassDatabase,
+        bytes: ByteArray
+    ) {
+        if (!database.isRemoteSource() || database.sourceId == null) {
+            return
+        }
+        val remoteDb = PasswordDatabase.getDatabase(context)
+        val syncService = RemoteKeePassSyncService(
+            databaseDao = dao,
+            remoteSourceDao = remoteDb.keepassRemoteSourceDao(),
+            syncStateDao = remoteDb.keepassRemoteSyncStateDao()
+        )
+        syncService.markLocalChanges(
+            databaseId = database.id,
+            workingHash = GoogleDriveKeePassSupport.sha256Hex(bytes)
+        )
+    }
+
+    private fun enqueueRemoteWorkingCopyUpload(
+        databaseId: Long,
+        expectedBytes: ByteArray
+    ) {
+        val expectedHash = GoogleDriveKeePassSupport.sha256Hex(expectedBytes)
+        KeePassRemoteUploadWorker.enqueue(context, databaseId)
+        remoteUploadScope.launch {
+            runCatching {
+                uploadRemoteWorkingCopyIfCurrent(databaseId, expectedHash)
+            }.onFailure { error ->
+                Log.w(TAG, "Background remote working copy upload failed for db=$databaseId", error)
+            }
+        }
+    }
+
+    suspend fun flushPendingRemoteUpload(databaseId: Long): Boolean = withContext(Dispatchers.IO) {
+        val database = dao.getDatabaseById(databaseId)
+        if (database == null || !database.isRemoteSource() || database.sourceId == null) {
+            return@withContext false
+        }
+        val workingBytes = readRemoteWorkingCopyBytes(database) ?: return@withContext false
+        uploadRemoteWorkingCopyIfCurrent(
+            databaseId = databaseId,
+            expectedHash = GoogleDriveKeePassSupport.sha256Hex(workingBytes)
+        )
+        true
+    }
+
+    private suspend fun uploadRemoteWorkingCopyIfCurrent(
+        databaseId: Long,
+        expectedHash: String
+    ) {
+        val remoteDb = PasswordDatabase.getDatabase(context)
+        val remoteSourceDao = remoteDb.keepassRemoteSourceDao()
+        val syncStateDao = remoteDb.keepassRemoteSyncStateDao()
+        val syncService = RemoteKeePassSyncService(
+            databaseDao = dao,
+            remoteSourceDao = remoteSourceDao,
+            syncStateDao = syncStateDao
+        )
+        val database = dao.getDatabaseById(databaseId)
+        if (database == null || !database.isRemoteSource() || database.sourceId == null) {
+            return
+        }
+        val workingBytes = readRemoteWorkingCopyBytes(database) ?: return
+        val workingHash = GoogleDriveKeePassSupport.sha256Hex(workingBytes)
+        val syncState = syncStateDao.getState(databaseId)
+        if (syncState?.hasLocalChanges == false && syncState.workingHash == workingHash) {
+            return
+        }
+        if (syncState?.workingHash != null && syncState.workingHash != expectedHash && syncState.workingHash != workingHash) {
+            return
+        }
+
+        try {
+            syncService.markUploadInProgress(databaseId, workingHash)
+            val remoteSource = remoteSourceDao.getSourceById(database.sourceId)
+                ?: throw IllegalStateException("远端来源不存在")
+            val fileSource = createRemoteFileSource(database, remoteSource)
+            val expectedRemoteVersion = when (database.sourceType) {
+                KeePassDatabaseSourceType.REMOTE_ONEDRIVE,
+                KeePassDatabaseSourceType.REMOTE_GOOGLE_DRIVE,
+                KeePassDatabaseSourceType.REMOTE_WEBDAV -> {
+                    syncStateDao.getState(databaseId)?.let { state ->
+                        state.remoteEtag ?: state.remoteVersionToken
+                    }
+                }
+                else -> null
+            }
+            val writeResult = fileSource.write(workingBytes, expectedVersion = expectedRemoteVersion)
+            updateOneDriveRemoteSourceBindingIfNeeded(
+                database = database,
+                writeResult = writeResult
+            )
+            database.cacheCopyPath?.let { cachePath ->
+                writeInternalRelative(cachePath, workingBytes)
+            }
+
+            val latestBytes = readRemoteWorkingCopyBytes(database)
+            val latestHash = latestBytes?.let { GoogleDriveKeePassSupport.sha256Hex(it) }
+            if (latestHash == null || latestHash == workingHash) {
+                syncService.markSynchronized(
+                    databaseId = database.id,
+                    versionToken = writeResult.versionToken,
+                    etag = writeResult.etag,
+                    baseHash = workingHash,
+                    workingHash = workingHash
+                )
+            } else {
+                syncService.markUploadedButLocalChanged(
+                    databaseId = database.id,
+                    versionToken = writeResult.versionToken,
+                    etag = writeResult.etag,
+                    baseHash = workingHash,
+                    workingHash = latestHash
+                )
+                enqueueRemoteWorkingCopyUpload(database.id, latestBytes)
+            }
+        } catch (error: Exception) {
+            val latestHash = readRemoteWorkingCopyBytes(database)
+                ?.let { GoogleDriveKeePassSupport.sha256Hex(it) }
+                ?: workingHash
+            if (isRemoteVersionConflict(error)) {
+                syncService.markConflict(
+                    databaseId = database.id,
+                    workingHash = latestHash,
+                    failureMessage = error.message ?: "远端文件已变化，请先同步"
+                )
+            } else {
+                syncService.markLocalChanges(database.id, latestHash)
+                syncService.markSyncFailure(
+                    databaseId = database.id,
+                    failureCode = "REMOTE_BACKGROUND_UPLOAD_FAILED",
+                    failureMessage = error.message ?: "远端后台同步失败"
+                )
+            }
+            throw error
+        }
+    }
+
+    private suspend fun createRemoteFileSource(
+        database: LocalKeePassDatabase,
+        remoteSource: takagi.ru.monica.data.KeepassRemoteSource
+    ): KeePassFileSource = when (database.sourceType) {
+        KeePassDatabaseSourceType.REMOTE_WEBDAV -> WebDavKeePassSupport.createFileSource(remoteSource, securityManager)
+        KeePassDatabaseSourceType.REMOTE_ONEDRIVE -> OneDriveKeePassSupport.createFileSource(context, remoteSource)
+        KeePassDatabaseSourceType.REMOTE_GOOGLE_DRIVE -> GoogleDriveKeePassSupport.createFileSource(context, remoteSource)
+        else -> throw IllegalStateException("不支持的远端来源类型: ${database.sourceType}")
+    }
+
+    private suspend fun updateOneDriveRemoteSourceBindingIfNeeded(
+        database: LocalKeePassDatabase,
+        writeResult: FileSourceWriteResult
+    ) {
+        if (database.sourceType != KeePassDatabaseSourceType.REMOTE_ONEDRIVE || database.sourceId == null) {
+            return
+        }
+        if (writeResult.remoteId.isNullOrBlank() && writeResult.driveId.isNullOrBlank()) {
+            return
+        }
+        val remoteDb = PasswordDatabase.getDatabase(context)
+        val remoteSourceDao = remoteDb.keepassRemoteSourceDao()
+        val remoteSource = remoteSourceDao.getSourceById(database.sourceId) ?: return
+        if (!remoteSource.itemId.isNullOrBlank() && !remoteSource.driveId.isNullOrBlank()) {
+            return
+        }
+        remoteSourceDao.updateSource(
+            remoteSource.copy(
+                itemId = writeResult.remoteId ?: remoteSource.itemId,
+                driveId = writeResult.driveId ?: remoteSource.driveId,
+                updatedAt = System.currentTimeMillis()
+            )
+        )
+    }
+
+    private fun readRemoteWorkingCopyBytes(database: LocalKeePassDatabase): ByteArray? {
+        val workingCopyPath = database.workingCopyPath?.takeIf { it.isNotBlank() } ?: return null
+        val file = File(context.filesDir, workingCopyPath)
+        return if (file.exists()) file.readBytes() else null
+    }
+
     private suspend fun getCachedLoadedDatabase(databaseId: Long): LoadedDatabase? {
         if (consumeProcessCacheInvalidation(databaseId)) {
             invalidateLoadedDatabaseCache(databaseId)
@@ -3649,6 +4026,7 @@ class KeePassKdbxService(
                 loaded = loaded,
                 cachedAtMs = System.currentTimeMillis()
             )
+            trimLoadedDatabaseCacheLocked()
         }
     }
 

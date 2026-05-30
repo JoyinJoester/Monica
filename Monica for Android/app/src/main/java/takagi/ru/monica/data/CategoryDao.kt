@@ -27,6 +27,9 @@ interface CategoryDao {
      */
     @Query("SELECT * FROM categories WHERE bitwarden_vault_id = :vaultId ORDER BY sortOrder ASC")
     fun getCategoriesByVault(vaultId: Long): Flow<List<Category>>
+
+    @Query("SELECT * FROM categories WHERE mdbx_database_id = :databaseId ORDER BY sortOrder ASC")
+    fun getCategoriesByMdbxDatabase(databaseId: Long): Flow<List<Category>>
     
     /**
      * 获取关联了特定 Bitwarden Folder 的分类
@@ -45,12 +48,18 @@ interface CategoryDao {
      */
     @Query("UPDATE categories SET bitwarden_vault_id = :vaultId, bitwarden_folder_id = :folderId, sync_item_types = :syncTypes WHERE id = :categoryId")
     suspend fun linkToBitwarden(categoryId: Long, vaultId: Long, folderId: String, syncTypes: String?)
+
+    @Query("UPDATE categories SET mdbx_database_id = :databaseId WHERE id = :categoryId")
+    suspend fun linkToMdbx(categoryId: Long, databaseId: Long)
     
     /**
      * 解除 Bitwarden 关联
      */
     @Query("UPDATE categories SET bitwarden_vault_id = NULL, bitwarden_folder_id = NULL, sync_item_types = NULL WHERE id = :categoryId")
     suspend fun unlinkFromBitwarden(categoryId: Long)
+
+    @Query("UPDATE categories SET mdbx_database_id = NULL WHERE id = :categoryId")
+    suspend fun unlinkFromMdbx(categoryId: Long)
     
     /**
      * 解除关联到特定文件夹的所有分类

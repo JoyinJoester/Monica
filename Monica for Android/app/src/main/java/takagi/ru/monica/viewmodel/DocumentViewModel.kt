@@ -50,6 +50,10 @@ class DocumentViewModel(
 
     private val bitwardenRepository = context?.let { BitwardenRepository.getInstance(it.applicationContext) }
 
+    private fun requestBitwardenMutationSync(vaultId: Long?) {
+        vaultId?.let { bitwardenRepository?.requestLocalMutationSync(it) }
+    }
+
     private val keepassBridge = if (context != null && localKeePassDatabaseDao != null && securityManager != null) {
         KeePassCompatibilityBridge(
             KeePassWorkspaceRepository(
@@ -158,6 +162,8 @@ class DocumentViewModel(
         categoryId: Long? = null,
         keepassDatabaseId: Long? = null,
         keepassGroupPath: String? = null,
+        mdbxDatabaseId: Long? = null,
+        mdbxFolderId: String? = null,
         bitwardenVaultId: Long? = null,
         bitwardenFolderId: String? = null,
         replicaGroupId: String? = null
@@ -180,6 +186,8 @@ class DocumentViewModel(
                 keepassGroupPath = keepassIdentity.groupPath,
                 keepassEntryUuid = keepassIdentity.entryUuid,
                 keepassGroupUuid = keepassIdentity.groupUuid,
+                mdbxDatabaseId = mdbxDatabaseId,
+                mdbxFolderId = if (mdbxDatabaseId != null) mdbxFolderId else null,
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenFolderId = bitwardenFolderId,
                 syncStatus = if (bitwardenVaultId != null) "PENDING" else "NONE",
@@ -193,6 +201,7 @@ class DocumentViewModel(
                 insertItem = repository::insertItem,
                 rollbackItem = repository::deleteItemById
             ) ?: return@launch
+            requestBitwardenMutationSync(bitwardenVaultId)
             
             // 记录创建操作
             OperationLogger.logCreate(
@@ -214,6 +223,8 @@ class DocumentViewModel(
         categoryId: Long? = null,
         keepassDatabaseId: Long? = null,
         keepassGroupPath: String? = null,
+        mdbxDatabaseId: Long? = null,
+        mdbxFolderId: String? = null,
         bitwardenVaultId: Long? = null,
         bitwardenFolderId: String? = null,
         replicaGroupId: String? = null
@@ -255,6 +266,8 @@ class DocumentViewModel(
                     keepassGroupPath = keepassIdentity.groupPath,
                     keepassEntryUuid = keepassIdentity.entryUuid,
                     keepassGroupUuid = keepassIdentity.groupUuid,
+                    mdbxDatabaseId = mdbxDatabaseId,
+                    mdbxFolderId = if (mdbxDatabaseId != null) mdbxFolderId else null,
                     bitwardenVaultId = bitwardenVaultId,
                     bitwardenFolderId = bitwardenFolderId,
                     replicaGroupId = replicaGroupId ?: existingItem.replicaGroupId,
@@ -285,6 +298,7 @@ class DocumentViewModel(
                     syncStatus = transition.syncStatus
                 )
                 repository.updateItem(finalUpdatedItem)
+                requestBitwardenMutationSync(bitwardenVaultId)
                 keepassSecureItemUpdateExecutor.syncUpdatedItem(
                     existingItem = existingItem,
                     updatedItem = finalUpdatedItem
@@ -307,12 +321,16 @@ class DocumentViewModel(
         keepassDatabaseId: Long?,
         keepassGroupPath: String?,
         bitwardenVaultId: Long?,
-        bitwardenFolderId: String?
+        bitwardenFolderId: String?,
+        mdbxDatabaseId: Long? = null,
+        mdbxFolderId: String? = null
     ): Boolean {
         val existingItem = repository.getItemById(id) ?: return false
+        val targetMdbxFolderId = if (mdbxDatabaseId != null) mdbxFolderId else null
         val target = when {
             bitwardenVaultId != null -> StorageTarget.Bitwarden(bitwardenVaultId, bitwardenFolderId)
             keepassDatabaseId != null -> StorageTarget.KeePass(keepassDatabaseId, keepassGroupPath)
+            mdbxDatabaseId != null -> StorageTarget.Mdbx(mdbxDatabaseId, targetMdbxFolderId)
             else -> StorageTarget.MonicaLocal(categoryId)
         }
         if (hasReplicaTargetConflict(
@@ -337,6 +355,8 @@ class DocumentViewModel(
             keepassGroupUuid = keepassIdentity.groupUuid,
             bitwardenVaultId = bitwardenVaultId,
             bitwardenFolderId = bitwardenFolderId,
+            mdbxDatabaseId = mdbxDatabaseId,
+            mdbxFolderId = targetMdbxFolderId,
             updatedAt = Date()
         )
         val transition = SecureItemBitwardenTransitionResolver.resolve(
@@ -363,6 +383,7 @@ class DocumentViewModel(
             syncStatus = transition.syncStatus
         )
         repository.updateItem(finalUpdatedItem)
+        requestBitwardenMutationSync(bitwardenVaultId)
         keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = existingItem, updatedItem = finalUpdatedItem)
         return true
     }
@@ -452,6 +473,32 @@ class DocumentViewModel(
                         )
                     }
                 }
+                is StorageTarget.Mdbx -> {
+                    if (existingItem == null) {
+                        addDocument(
+                            title = title,
+                            documentData = documentData,
+                            notes = notes,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            mdbxDatabaseId = currentTarget.databaseId,
+                            mdbxFolderId = currentTarget.folderId,
+                            replicaGroupId = replicaGroupId
+                        )
+                    } else {
+                        updateDocument(
+                            id = existingItem.id,
+                            title = title,
+                            documentData = documentData,
+                            notes = notes,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            mdbxDatabaseId = currentTarget.databaseId,
+                            mdbxFolderId = currentTarget.folderId,
+                            replicaGroupId = replicaGroupId
+                        )
+                    }
+                }
                 is StorageTarget.Bitwarden -> {
                     if (existingItem == null) {
                         addDocument(
@@ -521,6 +568,26 @@ class DocumentViewModel(
                             imagePaths = imagePaths,
                             keepassDatabaseId = target.databaseId,
                             keepassGroupPath = target.groupPath,
+                            replicaGroupId = replicaGroupId
+                        )
+                        is StorageTarget.Mdbx -> if (existingReplica == null) addDocument(
+                            title = title,
+                            documentData = documentData,
+                            notes = notes,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            mdbxDatabaseId = target.databaseId,
+                            mdbxFolderId = target.folderId,
+                            replicaGroupId = replicaGroupId
+                        ) else updateDocument(
+                            id = existingReplica.id,
+                            title = title,
+                            documentData = documentData,
+                            notes = notes,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            mdbxDatabaseId = target.databaseId,
+                            mdbxFolderId = target.folderId,
                             replicaGroupId = replicaGroupId
                         )
                         is StorageTarget.Bitwarden -> if (existingReplica == null) addDocument(
@@ -607,6 +674,7 @@ class DocumentViewModel(
                 }
             }
             is SecureItemOwnership.MonicaLocal -> Result.success(Unit)
+            is SecureItemOwnership.Mdbx -> Result.success(Unit)
             is SecureItemOwnership.Conflict -> Result.failure(IllegalStateException("证件来源冲突，无法移动到 Monica 本地"))
         }
 

@@ -40,7 +40,8 @@ data class NoteDraftStorageTarget(
     val keepassDatabaseId: Long? = null,
     val keepassGroupPath: String? = null,
     val bitwardenVaultId: Long? = null,
-    val bitwardenFolderId: String? = null
+    val bitwardenFolderId: String? = null,
+    val mdbxDatabaseId: Long? = null
 )
 
 class NoteViewModel(
@@ -72,6 +73,10 @@ class NoteViewModel(
     private val imageManager = context?.let { ImageManager(it.applicationContext) }
 
     private val bitwardenRepository = context?.let { BitwardenRepository.getInstance(it.applicationContext) }
+
+    private fun requestBitwardenMutationSync(vaultId: Long?) {
+        vaultId?.let { bitwardenRepository?.requestLocalMutationSync(it) }
+    }
 
     private data class KeePassMutationIdentity(
         val groupPath: String?,
@@ -213,6 +218,8 @@ class NoteViewModel(
         imagePaths: String = "",
         keepassDatabaseId: Long? = null,
         keepassGroupPath: String? = null,
+        mdbxDatabaseId: Long? = null,
+        mdbxFolderId: String? = null,
         bitwardenVaultId: Long? = null,
         bitwardenFolderId: String? = null,
         replicaGroupId: String? = null
@@ -243,6 +250,8 @@ class NoteViewModel(
                 keepassGroupPath = keepassIdentity.groupPath,
                 keepassEntryUuid = keepassIdentity.entryUuid,
                 keepassGroupUuid = keepassIdentity.groupUuid,
+                mdbxDatabaseId = mdbxDatabaseId,
+                mdbxFolderId = if (mdbxDatabaseId != null) mdbxFolderId else null,
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenFolderId = bitwardenFolderId,
                 syncStatus = if (bitwardenVaultId != null) "PENDING" else "NONE",
@@ -255,6 +264,7 @@ class NoteViewModel(
                 insertItem = repository::insertItem,
                 rollbackItem = repository::deleteItemById
             ) ?: return@launch
+            requestBitwardenMutationSync(bitwardenVaultId)
             
             // 记录创建操作
             OperationLogger.logCreate(
@@ -278,6 +288,8 @@ class NoteViewModel(
         imagePaths: String = "",
         keepassDatabaseId: Long? = null,
         keepassGroupPath: String? = null,
+        mdbxDatabaseId: Long? = null,
+        mdbxFolderId: String? = null,
         bitwardenVaultId: Long? = null,
         bitwardenFolderId: String? = null,
         replicaGroupId: String? = null
@@ -322,6 +334,8 @@ class NoteViewModel(
                 keepassGroupPath = keepassIdentity.groupPath,
                 keepassEntryUuid = keepassIdentity.entryUuid,
                 keepassGroupUuid = keepassIdentity.groupUuid,
+                mdbxDatabaseId = mdbxDatabaseId,
+                mdbxFolderId = if (mdbxDatabaseId != null) mdbxFolderId else null,
                 bitwardenVaultId = bitwardenVaultId,
                 bitwardenCipherId = transition.cipherId,
                 bitwardenFolderId = bitwardenFolderId,
@@ -333,6 +347,7 @@ class NoteViewModel(
                 updatedAt = Date()
             )
             repository.updateItem(item)
+            requestBitwardenMutationSync(bitwardenVaultId)
             val removedImageIds = existingItem
                 ?.let { extractImageRefs(it) - extractImageRefs(item) }
                 .orEmpty()
@@ -453,6 +468,35 @@ class NoteViewModel(
                         )
                     }
                 }
+                is StorageTarget.Mdbx -> {
+                    if (existingItem == null) {
+                        addNote(
+                            content = content,
+                            title = title,
+                            tags = tags,
+                            isMarkdown = isMarkdown,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            mdbxDatabaseId = currentTarget.databaseId,
+                            mdbxFolderId = currentTarget.folderId,
+                            replicaGroupId = replicaGroupId
+                        )
+                    } else {
+                        updateNote(
+                            id = existingItem.id,
+                            content = content,
+                            title = title,
+                            tags = tags,
+                            isMarkdown = isMarkdown,
+                            isFavorite = isFavorite,
+                            createdAt = createdAt,
+                            imagePaths = imagePaths,
+                            mdbxDatabaseId = currentTarget.databaseId,
+                            mdbxFolderId = currentTarget.folderId,
+                            replicaGroupId = replicaGroupId
+                        )
+                    }
+                }
                 is StorageTarget.Bitwarden -> {
                     if (existingItem == null) {
                         addNote(
@@ -533,6 +577,29 @@ class NoteViewModel(
                             keepassGroupPath = target.groupPath,
                             replicaGroupId = replicaGroupId
                         )
+                        is StorageTarget.Mdbx -> if (existingReplica == null) addNote(
+                            content = content,
+                            title = title,
+                            tags = tags,
+                            isMarkdown = isMarkdown,
+                            isFavorite = isFavorite,
+                            imagePaths = imagePaths,
+                            mdbxDatabaseId = target.databaseId,
+                            mdbxFolderId = target.folderId,
+                            replicaGroupId = replicaGroupId
+                        ) else updateNote(
+                            id = existingReplica.id,
+                            content = content,
+                            title = title,
+                            tags = tags,
+                            isMarkdown = isMarkdown,
+                            isFavorite = isFavorite,
+                            createdAt = createdAt,
+                            imagePaths = imagePaths,
+                            mdbxDatabaseId = target.databaseId,
+                            mdbxFolderId = target.folderId,
+                            replicaGroupId = replicaGroupId
+                        )
                         is StorageTarget.Bitwarden -> if (existingReplica == null) addNote(
                             content = content,
                             title = title,
@@ -577,12 +644,16 @@ class NoteViewModel(
         keepassDatabaseId: Long? = item.keepassDatabaseId,
         keepassGroupPath: String? = item.keepassGroupPath,
         bitwardenVaultId: Long? = item.bitwardenVaultId,
-        bitwardenFolderId: String? = item.bitwardenFolderId
+        bitwardenFolderId: String? = item.bitwardenFolderId,
+        mdbxDatabaseId: Long? = item.mdbxDatabaseId,
+        mdbxFolderId: String? = item.mdbxFolderId
     ): Boolean {
         if (item.itemType != ItemType.NOTE) return false
+        val targetMdbxFolderId = if (mdbxDatabaseId != null) mdbxFolderId else null
         val target = when {
             bitwardenVaultId != null -> StorageTarget.Bitwarden(bitwardenVaultId, bitwardenFolderId)
             keepassDatabaseId != null -> StorageTarget.KeePass(keepassDatabaseId, keepassGroupPath)
+            mdbxDatabaseId != null -> StorageTarget.Mdbx(mdbxDatabaseId, targetMdbxFolderId)
             else -> StorageTarget.MonicaLocal(categoryId)
         }
         if (hasReplicaTargetConflict(
@@ -623,10 +694,13 @@ class NoteViewModel(
             bitwardenCipherId = transition.cipherId,
             bitwardenRevisionDate = transition.revisionDate,
             bitwardenLocalModified = transition.localModified,
+            mdbxDatabaseId = mdbxDatabaseId,
+            mdbxFolderId = targetMdbxFolderId,
             syncStatus = transition.syncStatus,
             updatedAt = Date()
         )
         repository.updateItem(updated)
+        requestBitwardenMutationSync(bitwardenVaultId)
         keepassSecureItemUpdateExecutor.syncUpdatedItem(existingItem = item, updatedItem = updated)
         return true
     }
@@ -680,6 +754,7 @@ class NoteViewModel(
                 }
             }
             is SecureItemOwnership.MonicaLocal -> Result.success(Unit)
+            is SecureItemOwnership.Mdbx -> Result.success(Unit)
             is SecureItemOwnership.Conflict -> Result.failure(IllegalStateException("笔记来源冲突，无法移动到 Monica 本地"))
         }
 

@@ -3,14 +3,13 @@ package takagi.ru.monica.autofill_ng.utils
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import takagi.ru.monica.R
+import takagi.ru.monica.utils.ClipboardUtils
 
 /**
  * Helper for "Smart Copy" feature.
@@ -39,16 +38,12 @@ object SmartCopyNotificationHelper {
         secondValue: String,
         secondLabel: String
     ): Boolean {
-        // 1. Copy first value to clipboard
-        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = ClipData.newPlainText(firstLabel, firstValue)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            // Mark as sensitive to hide from clipboard preview
-            clip.description.extras = android.os.PersistableBundle().apply {
-                putBoolean("android.content.extra.IS_SENSITIVE", true)
-            }
-        }
-        clipboard.setPrimaryClip(clip)
+        ClipboardUtils.copyToClipboard(
+            context = context,
+            text = firstValue,
+            label = firstLabel,
+            sensitive = true
+        )
 
         // 2. Show notification to copy second value
         return showCopyNotification(context, secondValue, secondLabel)

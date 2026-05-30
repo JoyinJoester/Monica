@@ -554,7 +554,7 @@ private fun ManualInputDialog(
  * - 性能优化：限制最大数量，防止内存溢出
  * - 内存优化：仅加载可见的应用图标
  */
-private suspend fun loadInstalledApps(context: Context): List<AppInfo> = withContext(Dispatchers.IO) {
+ suspend fun loadInstalledApps(context: Context): List<AppInfo> = withContext(Dispatchers.IO) {
     val packageManager = context.packageManager
     val appList = mutableListOf<AppInfo>()
     val maxApps = 1000 // 去重后的上限
@@ -637,7 +637,7 @@ private suspend fun loadInstalledApps(context: Context): List<AppInfo> = withCon
  * 
  * 隐藏不必要的底层系统组件，保留用户可能需要的应用
  */
-private fun isSystemComponentToHide(packageName: String): Boolean {
+ fun isSystemComponentToHide(packageName: String): Boolean {
     val hidePatterns = listOf(
         // 1. 系统核心组件
         "android",                              // Android系统

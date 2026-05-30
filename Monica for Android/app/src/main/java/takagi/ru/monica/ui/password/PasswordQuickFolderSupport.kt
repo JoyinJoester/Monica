@@ -3,6 +3,8 @@ package takagi.ru.monica.ui
 import android.content.Context
 import takagi.ru.monica.R
 import takagi.ru.monica.data.Category
+import takagi.ru.monica.data.isMonicaLocalCategory
+import takagi.ru.monica.repository.MdbxStoredFolderEntry
 import takagi.ru.monica.utils.KeePassGroupInfo
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
 import takagi.ru.monica.viewmodel.CategoryFilter
@@ -30,6 +32,11 @@ internal data class PasswordQuickFolderBreadcrumb(
     val isCurrent: Boolean
 )
 
+internal data class MdbxFolderPathSegment(
+    val folderId: String,
+    val name: String
+)
+
 internal fun normalizePasswordQuickFolderPath(path: String): String {
     return path
         .split("/")
@@ -42,9 +49,10 @@ internal fun buildLocalQuickFolderPasswordCountByCategoryId(
     entries: List<takagi.ru.monica.data.PasswordEntry>,
     categories: List<Category>
 ): Map<Long, Int> {
-    if (entries.isEmpty() || categories.isEmpty()) return emptyMap()
+    val localCategories = categories.filter(Category::isMonicaLocalCategory)
+    if (entries.isEmpty() || localCategories.isEmpty()) return emptyMap()
 
-    val categoryPathById = categories
+    val categoryPathById = localCategories
         .asSequence()
         .mapNotNull { category ->
             val normalizedPath = normalizePasswordQuickFolderPath(category.name)
@@ -71,7 +79,7 @@ internal fun buildLocalQuickFolderPasswordCountByCategoryId(
         }
     if (aggregatedCountByPath.isEmpty()) return emptyMap()
 
-    return buildPasswordQuickFolderNodes(categories)
+    return buildPasswordQuickFolderNodes(localCategories)
         .associate { node ->
             node.category.id to (aggregatedCountByPath[node.path] ?: 0)
         }
@@ -85,6 +93,7 @@ internal fun passwordQuickFolderParentPath(path: String): String? {
 
 internal fun buildPasswordQuickFolderNodes(categories: List<Category>): List<PasswordQuickFolderNode> {
     return categories
+        .filter(Category::isMonicaLocalCategory)
         .sortedWith(compareBy<Category>({ it.sortOrder }, { it.id }))
         .mapNotNull { category ->
             val normalizedPath = normalizePasswordQuickFolderPath(category.name)
@@ -120,6 +129,7 @@ internal fun buildQuickFolderShortcuts(
     keepassGroupsForSelectedDb: List<KeePassGroupInfo>,
     bitwardenVaults: List<takagi.ru.monica.data.bitwarden.BitwardenVault>,
     selectedBitwardenFolders: List<takagi.ru.monica.data.bitwarden.BitwardenFolder>,
+    selectedMdbxFolders: List<MdbxStoredFolderEntry>,
     categories: List<Category>
 ): List<PasswordQuickFolderShortcut> {
     if (!quickFoldersEnabledForCurrentFilter || !currentFilter.supportsQuickFolders()) {
@@ -264,6 +274,32 @@ internal fun buildQuickFolderShortcuts(
             }
         }
 
+        is CategoryFilter.MdbxDatabase,
+        is CategoryFilter.MdbxFolderFilter -> {
+            val databaseId = when (filter) {
+                is CategoryFilter.MdbxDatabase -> filter.databaseId
+                is CategoryFilter.MdbxFolderFilter -> filter.databaseId
+                else -> error("Unsupported MDBX quick-folder filter: $filter")
+            }
+            val currentFolderId = (filter as? CategoryFilter.MdbxFolderFilter)?.folderId
+            if (currentFolderId != null) {
+                shortcuts += buildMdbxBackQuickFolderShortcut(
+                    context = context,
+                    keyPrefix = "back_mdbx",
+                    databaseId = databaseId,
+                    currentFolderId = currentFolderId,
+                    folders = selectedMdbxFolders
+                )
+            }
+            shortcuts += buildMdbxFolderQuickFolderShortcuts(
+                databaseId = databaseId,
+                currentParentFolderId = currentFolderId,
+                folders = selectedMdbxFolders,
+                allPasswords = quickFolderSourceEntries,
+                isSearchActive = isSearchActive
+            )
+        }
+
         else -> Unit
     }
 
@@ -299,6 +335,7 @@ internal fun buildCategoryMenuFolderShortcuts(
     keepassGroupsForSelectedDb: List<KeePassGroupInfo>,
     bitwardenVaults: List<takagi.ru.monica.data.bitwarden.BitwardenVault>,
     selectedBitwardenFolders: List<takagi.ru.monica.data.bitwarden.BitwardenFolder>,
+    selectedMdbxFolders: List<MdbxStoredFolderEntry>,
     categories: List<Category>
 ): List<PasswordQuickFolderShortcut> {
     if (!currentFilter.supportsQuickFolders()) return emptyList()
@@ -454,6 +491,32 @@ internal fun buildCategoryMenuFolderShortcuts(
             }
         }
 
+        is CategoryFilter.MdbxDatabase,
+        is CategoryFilter.MdbxFolderFilter -> {
+            val databaseId = when (filter) {
+                is CategoryFilter.MdbxDatabase -> filter.databaseId
+                is CategoryFilter.MdbxFolderFilter -> filter.databaseId
+                else -> error("Unsupported MDBX category-menu filter: $filter")
+            }
+            val currentFolderId = (filter as? CategoryFilter.MdbxFolderFilter)?.folderId
+            if (currentFolderId != null) {
+                shortcuts += buildMdbxBackQuickFolderShortcut(
+                    context = context,
+                    keyPrefix = "menu_back_mdbx",
+                    databaseId = databaseId,
+                    currentFolderId = currentFolderId,
+                    folders = selectedMdbxFolders
+                )
+            }
+            shortcuts += buildMdbxFolderQuickFolderShortcuts(
+                databaseId = databaseId,
+                currentParentFolderId = currentFolderId,
+                folders = selectedMdbxFolders,
+                allPasswords = menuSourceEntries,
+                isSearchActive = isSearchActive
+            )
+        }
+
         else -> Unit
     }
 
@@ -468,6 +531,8 @@ internal fun buildQuickFolderBreadcrumbs(
     quickFolderNodeByPath: Map<String, PasswordQuickFolderNode>,
     quickFolderRootFilter: CategoryFilter,
     keepassDatabases: List<takagi.ru.monica.data.LocalKeePassDatabase>,
+    mdbxDatabases: List<takagi.ru.monica.data.LocalMdbxDatabase>,
+    selectedMdbxFolders: List<MdbxStoredFolderEntry>,
     bitwardenVaults: List<takagi.ru.monica.data.bitwarden.BitwardenVault>,
     selectedBitwardenFolders: List<takagi.ru.monica.data.bitwarden.BitwardenFolder>,
     categories: List<Category>
@@ -504,6 +569,21 @@ internal fun buildQuickFolderBreadcrumbs(
                 key = "root_bitwarden_${filter.vaultId}",
                 title = vaultName,
                 targetFilter = CategoryFilter.BitwardenVault(filter.vaultId),
+                isCurrent = false
+            )
+        }
+
+        is CategoryFilter.MdbxDatabase -> {
+            val databaseName = mdbxDatabases.find { it.id == filter.databaseId }?.name ?: "MDBX"
+            crumbs += PasswordQuickFolderBreadcrumb("root_mdbx_${filter.databaseId}", databaseName, filter, true)
+        }
+
+        is CategoryFilter.MdbxFolderFilter -> {
+            val databaseName = mdbxDatabases.find { it.id == filter.databaseId }?.name ?: "MDBX"
+            crumbs += PasswordQuickFolderBreadcrumb(
+                key = "root_mdbx_${filter.databaseId}",
+                title = databaseName,
+                targetFilter = CategoryFilter.MdbxDatabase(filter.databaseId),
                 isCurrent = false
             )
         }
@@ -569,6 +649,18 @@ internal fun buildQuickFolderBreadcrumbs(
                 targetFilter = filter,
                 isCurrent = true
             )
+        }
+
+        is CategoryFilter.MdbxFolderFilter -> {
+            val segments = buildMdbxFolderPathSegments(filter.folderId, selectedMdbxFolders)
+            segments.forEachIndexed { index, segment ->
+                crumbs += PasswordQuickFolderBreadcrumb(
+                    key = "mdbx_folder_${filter.databaseId}_${segment.folderId}",
+                    title = segment.name,
+                    targetFilter = CategoryFilter.MdbxFolderFilter(filter.databaseId, segment.folderId),
+                    isCurrent = index == segments.lastIndex
+                )
+            }
         }
 
         else -> Unit
@@ -745,6 +837,126 @@ internal fun countKeePassSubtreePasswords(
     return counts
 }
 
+internal fun buildMdbxFolderQuickFolderShortcuts(
+    databaseId: Long,
+    currentParentFolderId: String? = null,
+    folders: List<MdbxStoredFolderEntry>,
+    allPasswords: List<takagi.ru.monica.data.PasswordEntry>,
+    isSearchActive: Boolean
+): List<PasswordQuickFolderShortcut> {
+    val folderCountById = folders.associate { folder ->
+        folder.folderId to countMdbxFolderPasswords(databaseId, folder.folderId, allPasswords)
+    }
+    return folders
+        .asSequence()
+        .filter { it.folderId.isNotBlank() }
+        .filter { folder -> folder.isDirectMdbxChildOf(currentParentFolderId) }
+        .filter { folder -> !isSearchActive || (folderCountById[folder.folderId] ?: 0) > 0 }
+        .sortedWith(compareBy<MdbxStoredFolderEntry>({ it.name }, { it.folderId }))
+        .map { folder ->
+            PasswordQuickFolderShortcut(
+                key = "mdbx_${databaseId}_${folder.folderId}",
+                title = folder.name.ifBlank { "Folder ${folder.folderId.take(8)}" },
+                subtitle = "MDBX 文件夹",
+                isBack = false,
+                targetFilter = CategoryFilter.MdbxFolderFilter(databaseId, folder.folderId),
+                passwordCount = folderCountById[folder.folderId] ?: 0
+            )
+        }
+        .toList()
+}
+
+private fun buildMdbxBackQuickFolderShortcut(
+    context: Context,
+    keyPrefix: String,
+    databaseId: Long,
+    currentFolderId: String,
+    folders: List<MdbxStoredFolderEntry>
+): PasswordQuickFolderShortcut {
+    val parentFolderId = folders
+        .firstOrNull { it.folderId == currentFolderId }
+        ?.parentFolderId
+        .normalizedMdbxParentId()
+    val backTarget = parentFolderId?.let { CategoryFilter.MdbxFolderFilter(databaseId, it) }
+        ?: CategoryFilter.MdbxDatabase(databaseId)
+
+    return PasswordQuickFolderShortcut(
+        key = "${keyPrefix}_${databaseId}_$currentFolderId",
+        title = context.getString(R.string.password_list_quick_folder_back),
+        subtitle = context.getString(R.string.password_list_quick_folder_back_subtitle),
+        isBack = true,
+        targetFilter = backTarget,
+        passwordCount = null
+    )
+}
+
+internal fun MdbxStoredFolderEntry.isDirectMdbxChildOf(parentFolderId: String?): Boolean {
+    return parentFolderId.normalizedMdbxParentId() == parentFolderIdForComparison()
+}
+
+internal fun String?.normalizedMdbxParentId(): String? {
+    val value = this?.trim()?.takeIf { it.isNotBlank() } ?: return null
+    return if (value.equals("root", ignoreCase = true)) null else value
+}
+
+internal fun buildMdbxFolderPathSegments(
+    folderId: String,
+    folders: List<MdbxStoredFolderEntry>
+): List<MdbxFolderPathSegment> {
+    val folderById = folders
+        .filter { it.folderId.isNotBlank() }
+        .associateBy { it.folderId }
+    val segments = mutableListOf<MdbxFolderPathSegment>()
+    var currentId: String? = folderId.trim().takeIf { it.isNotBlank() }
+    var guard = 0
+    while (currentId != null && guard++ < 32) {
+        val folder = folderById[currentId]
+        segments += MdbxFolderPathSegment(
+            folderId = currentId,
+            name = folder?.name?.takeIf { it.isNotBlank() } ?: "Folder ${currentId.take(8)}"
+        )
+        currentId = folder?.parentFolderId.normalizedMdbxParentId()
+    }
+    return segments.asReversed()
+}
+
+internal fun buildMdbxFolderPathLabel(
+    folderId: String,
+    folders: List<MdbxStoredFolderEntry>
+): String {
+    return buildMdbxFolderPathSegments(folderId, folders)
+        .joinToString("/") { it.name }
+        .ifBlank { "Folder ${folderId.take(8)}" }
+}
+
+private fun MdbxStoredFolderEntry.parentFolderIdForComparison(): String? {
+    return parentFolderId.normalizedMdbxParentId()
+}
+
+internal fun countMdbxFolderPasswords(
+    databaseId: Long,
+    folderId: String,
+    allPasswords: List<takagi.ru.monica.data.PasswordEntry>
+): Int {
+    val normalizedFolderId = folderId.trim()
+    return allPasswords.count { entry ->
+        if (entry.mdbxDatabaseId != databaseId) {
+            false
+        } else {
+            val explicitFolderId = entry.mdbxFolderId?.trim().orEmpty()
+            when {
+                normalizedFolderId.equals("root", ignoreCase = true) ->
+                    explicitFolderId.isBlank() && entry.categoryId == null
+                explicitFolderId.isNotBlank() -> explicitFolderId == normalizedFolderId
+                normalizedFolderId.startsWith("category:") -> {
+                    entry.categoryId == normalizedFolderId.removePrefix("category:").toLongOrNull()
+                }
+                else -> false
+            }
+        }
+    }
+}
+
 internal fun CategoryFilter.supportsQuickFolders(): Boolean = when (this) {
     is CategoryFilter.All,
     is CategoryFilter.Local,
@@ -756,7 +968,9 @@ internal fun CategoryFilter.supportsQuickFolders(): Boolean = when (this) {
     is CategoryFilter.KeePassDatabase,
     is CategoryFilter.KeePassGroupFilter,
     is CategoryFilter.BitwardenVault,
-    is CategoryFilter.BitwardenFolderFilter -> true
+    is CategoryFilter.BitwardenFolderFilter,
+    is CategoryFilter.MdbxDatabase,
+    is CategoryFilter.MdbxFolderFilter -> true
     else -> false
 }
 
@@ -764,6 +978,8 @@ internal fun CategoryFilter.supportsQuickFolderBreadcrumbs(): Boolean = when (th
     is CategoryFilter.KeePassDatabase,
     is CategoryFilter.KeePassGroupFilter,
     is CategoryFilter.BitwardenVault,
-    is CategoryFilter.BitwardenFolderFilter -> true
+    is CategoryFilter.BitwardenFolderFilter,
+    is CategoryFilter.MdbxDatabase,
+    is CategoryFilter.MdbxFolderFilter -> true
     else -> supportsQuickFolders()
 }

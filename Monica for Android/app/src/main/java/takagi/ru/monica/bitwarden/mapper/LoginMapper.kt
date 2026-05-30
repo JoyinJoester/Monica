@@ -6,6 +6,7 @@ import takagi.ru.monica.data.model.LOGIN_TYPE_SSH_KEY
 import takagi.ru.monica.data.model.SshKeyData
 import takagi.ru.monica.data.model.SshKeyDataCodec
 import takagi.ru.monica.util.TotpDataResolver
+import takagi.ru.monica.utils.PasswordWebsiteCodec
 import java.util.Date
 
 /**
@@ -110,7 +111,7 @@ class LoginMapper : BitwardenMapper<PasswordEntry> {
         return PasswordEntry(
             id = 0,
             title = cipher.name ?: "",
-            website = extractMainUri(login?.uris),
+            website = extractWebsiteList(login?.uris),
             username = login?.username ?: "",
             password = login?.password ?: "",
             notes = cipher.notes ?: "",
@@ -160,7 +161,7 @@ class LoginMapper : BitwardenMapper<PasswordEntry> {
         val remoteTotp = (login?.totp ?: "").takeIf { it.isNotBlank() }?.let {
             TotpDataResolver.fromAuthenticatorKey(
                 rawKey = it,
-                fallbackIssuer = extractMainUri(login?.uris),
+                fallbackIssuer = extractWebsiteList(login?.uris),
                 fallbackAccountName = login?.username ?: ""
             )
         }
@@ -229,15 +230,13 @@ class LoginMapper : BitwardenMapper<PasswordEntry> {
         val uris = mutableListOf<CipherUriApiData>()
         
         // 网站 URL
-        if (item.website.isNotBlank()) {
-            val website = if (item.website.startsWith("http://") || 
-                              item.website.startsWith("https://")) {
-                item.website
-            } else {
-                "https://${item.website}"
+        PasswordWebsiteCodec.parse(item.website)
+            .filter { it.isNotBlank() }
+            .map(PasswordWebsiteCodec::normalizeSingle)
+            .distinct()
+            .forEach { website ->
+                uris.add(CipherUriApiData(uri = website))
             }
-            uris.add(CipherUriApiData(uri = website))
-        }
         
         // 应用包名 (Android 特有)
         if (item.appPackageName.isNotBlank()) {
@@ -329,42 +328,48 @@ class LoginMapper : BitwardenMapper<PasswordEntry> {
     /**
      * 从 URI 列表提取主域名
      */
-    private fun extractMainUri(uris: List<CipherUriApiData>?): String {
+    private fun extractWebsiteList(uris: List<CipherUriApiData>?): String {
         if (uris.isNullOrEmpty()) return ""
-        
-        // 优先选择 https:// 开头的 URI
-        return uris.firstOrNull { 
-            it.uri?.startsWith("https://") == true 
-        }?.uri
-            ?: uris.firstOrNull { 
-                it.uri?.startsWith("http://") == true 
-            }?.uri
-            ?: uris.firstOrNull { 
-                !it.uri.isNullOrBlank() && !it.uri.startsWith("androidapp://") 
-            }?.uri
-            ?: ""
+
+        return uris.asSequence()
+            .mapNotNull { it.uri?.trim() }
+            .filter { it.isNotBlank() && !it.startsWith("androidapp://", ignoreCase = true) }
+            .map(PasswordWebsiteCodec::normalizeSingle)
+            .distinct()
+            .toList()
+            .let(PasswordWebsiteCodec::encode)
     }
     
     /**
      * 检查 URI 是否匹配
      */
     private fun matchUris(item: PasswordEntry, remoteUris: List<CipherUriApiData>?): Boolean {
-        val localWebsite = item.website.lowercase().removePrefix("https://").removePrefix("http://")
+        val localWebsites = PasswordWebsiteCodec.parse(item.website)
+            .filter { it.isNotBlank() }
+            .map(::normalizeWebsiteKey)
+            .filter { it.isNotBlank() }
+            .distinct()
         val localPackage = item.appPackageName
         
         if (remoteUris.isNullOrEmpty()) {
-            return localWebsite.isBlank() && localPackage.isBlank()
+            return localWebsites.isEmpty() && localPackage.isBlank()
         }
         
         val remoteWebsites = remoteUris.filter { !it.uri.isNullOrBlank() && !it.uri.startsWith("androidapp://") }
-            .map { it.uri!!.lowercase().removePrefix("https://").removePrefix("http://") }
+            .map { normalizeWebsiteKey(it.uri!!) }
+            .filter { it.isNotBlank() }
+            .distinct()
         val remotePackages = remoteUris.filter { it.uri?.startsWith("androidapp://") == true }
             .map { it.uri!!.removePrefix("androidapp://") }
         
-        val websiteMatch = localWebsite.isBlank() || remoteWebsites.any { it.contains(localWebsite) || localWebsite.contains(it) }
+        val websiteMatch = localWebsites == remoteWebsites
         val packageMatch = localPackage.isBlank() || remotePackages.contains(localPackage)
         
         return websiteMatch && packageMatch
+    }
+
+    private fun normalizeWebsiteKey(value: String): String {
+        return PasswordWebsiteCodec.normalizeForKey(PasswordWebsiteCodec.normalizeSingle(value))
     }
     
     private fun parseRevisionDate(dateStr: String?): Long {

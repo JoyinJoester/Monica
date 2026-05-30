@@ -90,6 +90,7 @@ class NoteEditorViewModelTest {
             initialCategoryId = 1L,
             initialKeePassDatabaseId = null,
             initialKeePassGroupPath = null,
+            initialMdbxDatabaseId = null,
             initialBitwardenVaultId = null,
             initialBitwardenFolderId = null,
             draftStorageTarget = NoteDraftStorageTarget(

@@ -105,6 +105,12 @@ class SettingsViewModel(
         }
     }
 
+    fun updateClipboardAutoClearSeconds(seconds: Int) {
+        viewModelScope.launch {
+            settingsManager.updateClipboardAutoClearSeconds(seconds)
+        }
+    }
+
     fun updateDynamicColorEnabled(enabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updateDynamicColorEnabled(enabled)
@@ -162,6 +168,12 @@ class SettingsViewModel(
     fun updateDisablePasswordVerification(disabled: Boolean) {
         viewModelScope.launch {
             settingsManager.updateDisablePasswordVerification(disabled)
+        }
+    }
+
+    fun updatePasskeyHyperOsBiometricBypassEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsManager.updatePasskeyHyperOsBiometricBypassEnabled(enabled)
         }
     }
 

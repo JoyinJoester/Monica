@@ -6,6 +6,8 @@ import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 
@@ -22,6 +24,9 @@ import androidx.compose.animation.slideOutHorizontally
 
 private const val DURATION_FORWARD = 300
 private const val DURATION_BACK = 280
+private const val EASY_NOTES_FADE_DURATION = 300
+private const val EASY_NOTES_SCALE_DURATION = 400
+private const val EASY_NOTES_INITIAL_SCALE = 0.9f
 
 private val navEasing = CubicBezierEasing(0.6f, 0.0f, 0.4f, 1.0f)
 
@@ -56,3 +61,19 @@ fun parallaxEnterFromLeft(): EnterTransition =
         animationSpec = tweenBack(),
         initialOffsetX = { fullWidth -> -fullWidth / 12 },
     ) + fadeIn(animationSpec = tweenBack())
+
+/** EasyNotes 风格页面进入：从 0.9 缩放到 1，同时淡入。 */
+fun easyNotesScreenEnter(): EnterTransition =
+    fadeIn(animationSpec = tween(EASY_NOTES_FADE_DURATION)) +
+        scaleIn(
+            initialScale = EASY_NOTES_INITIAL_SCALE,
+            animationSpec = tween(EASY_NOTES_SCALE_DURATION)
+        )
+
+/** EasyNotes 风格页面退出：从 1 缩到 0.9，同时淡出。 */
+fun easyNotesScreenExit(): ExitTransition =
+    fadeOut(animationSpec = tween(EASY_NOTES_FADE_DURATION)) +
+        scaleOut(
+            targetScale = EASY_NOTES_INITIAL_SCALE,
+            animationSpec = tween(EASY_NOTES_SCALE_DURATION)
+        )

@@ -142,26 +142,30 @@ class MonicaAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        event ?: return
-        if (event.eventType !in trackedEventTypes) return
+        runCatching {
+            event ?: return
+            if (event.eventType !in trackedEventTypes) return
 
-        val packageName = event.packageName?.toString().orEmpty()
-        val browserSpec = browserSpecsByPackage[packageName] ?: return
+            val packageName = event.packageName?.toString().orEmpty()
+            val browserSpec = browserSpecsByPackage[packageName] ?: return
 
-        val now = System.currentTimeMillis()
-        if (packageName == lastPackageName && now - lastScanTime < SCAN_THROTTLE_MS) return
-        lastScanTime = now
+            val now = System.currentTimeMillis()
+            if (packageName == lastPackageName && now - lastScanTime < SCAN_THROTTLE_MS) return
+            lastScanTime = now
 
-        val root = rootInActiveWindow ?: event.source ?: return
-        val url = findBrowserUrl(root, browserSpec) ?: return
+            val root = rootInActiveWindow ?: event.source ?: return
+            val url = findBrowserUrl(root, browserSpec) ?: return
 
-        if (packageName == lastPackageName && url == lastUrl) return
+            if (packageName == lastPackageName && url == lastUrl) return
 
-        lastPackageName = packageName
-        lastUrl = url
-        BrowserAutofillContextStore.update(packageName, url)
-        ValidatorContextManager.updateContext(packageName, url)
-        Log.d(TAG, "Updated browser context: pkg=$packageName, url=$url")
+            lastPackageName = packageName
+            lastUrl = url
+            BrowserAutofillContextStore.update(packageName, url)
+            ValidatorContextManager.updateContext(packageName, url)
+            Log.d(TAG, "Updated browser context: pkg=$packageName, url=$url")
+        }.onFailure { e ->
+            Log.w(TAG, "onAccessibilityEvent failed", e)
+        }
     }
 
     override fun onInterrupt() {
@@ -180,8 +184,8 @@ class MonicaAccessibilityService : AccessibilityService() {
         username: String,
         password: String,
         preferPasswordField: Boolean,
-    ): Boolean {
-        val root = rootInActiveWindow ?: return false
+    ): Boolean = runCatching {
+        val root = rootInActiveWindow ?: return@runCatching false
         val activePackageName = root.packageName?.toString().orEmpty()
         if (
             !targetPackageName.isNullOrBlank() &&
@@ -189,7 +193,7 @@ class MonicaAccessibilityService : AccessibilityService() {
             !activePackageName.equals(targetPackageName, ignoreCase = true)
         ) {
             Log.d(TAG, "Skip accessibility fill: active package mismatch ($activePackageName != $targetPackageName)")
-            return false
+            return@runCatching false
         }
 
         val focusedNode = root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
@@ -197,7 +201,7 @@ class MonicaAccessibilityService : AccessibilityService() {
         val candidates = collectFillCandidates(root, focusedNode)
         if (candidates.isEmpty()) {
             Log.d(TAG, "Skip accessibility fill: no editable candidates")
-            return false
+            return@runCatching false
         }
 
         val focusedCandidate = candidates.firstOrNull { it.isFocused }
@@ -234,19 +238,21 @@ class MonicaAccessibilityService : AccessibilityService() {
 
         if (!usernameFilled && !passwordFilled) {
             Log.d(TAG, "Accessibility fill failed: no fields accepted text")
-            return false
+            return@runCatching false
         }
 
         Log.d(
             TAG,
             "Accessibility fill success: usernameFilled=$usernameFilled, passwordFilled=$passwordFilled, preferPassword=$preferPasswordField"
         )
-        return if (preferPasswordField) {
+        if (preferPasswordField) {
             passwordFilled || (password.isBlank() && usernameFilled)
         } else {
             usernameFilled || (username.isBlank() && passwordFilled)
         }
-    }
+    }.onFailure { e ->
+        Log.w(TAG, "fillCredentialsInActiveWindow failed", e)
+    }.getOrDefault(false)
 
     private fun findBrowserUrl(root: AccessibilityNodeInfo, browserSpec: BrowserSpec): String? {
         val queue = ArrayDeque<Pair<AccessibilityNodeInfo, Int>>()
@@ -257,16 +263,18 @@ class MonicaAccessibilityService : AccessibilityService() {
             val (node, depth) = queue.removeFirst()
             visited += 1
 
-            val viewId = node.viewIdResourceName.orEmpty()
-            if (browserSpec.urlFieldIds.any { viewId.endsWith(it) }) {
-                extractNodeText(node)?.let { return it }
-            }
+            runCatching {
+                val viewId = node.viewIdResourceName.orEmpty()
+                if (browserSpec.urlFieldIds.any { viewId.endsWith(it) }) {
+                    extractNodeText(node)?.let { return it }
+                }
 
-            if (depth >= MAX_SCAN_DEPTH) continue
-
-            for (index in 0 until node.childCount) {
-                node.getChild(index)?.let { child ->
-                    queue.add(child to (depth + 1))
+                if (depth < MAX_SCAN_DEPTH) {
+                    for (index in 0 until node.childCount) {
+                        node.getChild(index)?.let { child ->
+                            queue.add(child to (depth + 1))
+                        }
+                    }
                 }
             }
         }
@@ -300,48 +308,56 @@ class MonicaAccessibilityService : AccessibilityService() {
             val node = queue.removeFirst()
             visited += 1
 
-            if (node.isVisibleToUser && node.isEnabled && supportsSetText(node)) {
-                candidates += classifyFillCandidate(node)
-            }
+            runCatching {
+                if (node.isVisibleToUser && node.isEnabled && supportsSetText(node)) {
+                    candidates += classifyFillCandidate(node)
+                }
 
-            for (index in 0 until node.childCount) {
-                node.getChild(index)?.let(queue::addLast)
+                for (index in 0 until node.childCount) {
+                    node.getChild(index)?.let(queue::addLast)
+                }
             }
         }
 
         if (
             focusedNode != null &&
-            supportsSetText(focusedNode) &&
+            runCatching { supportsSetText(focusedNode) }.getOrDefault(false) &&
             candidates.none { it.node == focusedNode }
         ) {
-            candidates += classifyFillCandidate(focusedNode)
+            runCatching { candidates += classifyFillCandidate(focusedNode) }
         }
 
-        return candidates.distinctBy { candidate ->
-            val bounds = Rect().also(candidate.node::getBoundsInScreen)
-            listOf(
-                candidate.node.viewIdResourceName.orEmpty(),
-                bounds.left.toString(),
-                bounds.top.toString(),
-                bounds.right.toString(),
-                bounds.bottom.toString()
-            ).joinToString("|")
-        }
+        return runCatching {
+            candidates.distinctBy { candidate ->
+                val bounds = Rect().also(candidate.node::getBoundsInScreen)
+                listOf(
+                    candidate.node.viewIdResourceName.orEmpty(),
+                    bounds.left.toString(),
+                    bounds.top.toString(),
+                    bounds.right.toString(),
+                    bounds.bottom.toString()
+                ).joinToString("|")
+            }
+        }.getOrDefault(candidates)
     }
 
     private fun supportsSetText(node: AccessibilityNodeInfo): Boolean {
         if (node.isEditable) return true
-        return node.actionList.any { action -> action.id == AccessibilityNodeInfo.ACTION_SET_TEXT }
+        return runCatching {
+            node.actionList.orEmpty().any { action -> action.id == AccessibilityNodeInfo.ACTION_SET_TEXT }
+        }.getOrDefault(false)
     }
 
     private fun classifyFillCandidate(node: AccessibilityNodeInfo): FillCandidate {
-        val bounds = Rect().also(node::getBoundsInScreen)
+        val bounds = Rect().also { runCatching { node.getBoundsInScreen(it) } }
         val signals = buildList {
             add(node.viewIdResourceName.orEmpty())
             add(node.hintText?.toString().orEmpty())
             add(node.contentDescription?.toString().orEmpty())
             add(node.text?.toString().orEmpty())
-            add(node.tooltipText?.toString().orEmpty())
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                add(node.tooltipText?.toString().orEmpty())
+            }
         }.joinToString(" ").lowercase()
 
         var passwordScore = 0

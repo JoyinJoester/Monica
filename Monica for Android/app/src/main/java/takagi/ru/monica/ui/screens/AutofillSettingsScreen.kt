@@ -11,6 +11,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -44,6 +46,8 @@ import takagi.ru.monica.autofill_ng.DomainMatchStrategy
 import takagi.ru.monica.autofill_ng.core.AutofillServiceChecker
 import takagi.ru.monica.autofill_ng.core.AutofillDiagnostics
 import takagi.ru.monica.ui.components.AutofillStatusCard
+import takagi.ru.monica.ui.components.AppInfo
+import takagi.ru.monica.ui.components.loadInstalledApps
 import takagi.ru.monica.utils.SettingsManager
 import java.io.File
 
@@ -892,19 +896,28 @@ fun BlacklistManagementDialog(
     onPackageToggle: (String, Boolean) -> Unit
 ) {
     val context = LocalContext.current
-    
-    // 预定义的常见应用
-    val commonApps = listOf(
-        "com.tencent.mm" to context.getString(R.string.autofill_blacklist_app_wechat),
-        "com.eg.android.AlipayGphone" to context.getString(R.string.autofill_blacklist_app_alipay),
-        "com.unionpay" to context.getString(R.string.autofill_blacklist_app_unionpay),
-        "com.tencent.mobileqq" to context.getString(R.string.autofill_blacklist_app_qq),
-        "com.taobao.taobao" to context.getString(R.string.autofill_blacklist_app_taobao),
-        "com.jingdong.app.mall" to context.getString(R.string.autofill_blacklist_app_jd),
-        "com.tencent.wework" to context.getString(R.string.autofill_blacklist_app_wework),
-        "com.sina.weibo" to context.getString(R.string.autofill_blacklist_app_weibo)
-    )
-    
+    val coroutineScope = rememberCoroutineScope()
+
+    var searchQuery by remember { mutableStateOf("") }
+    var installedApps by remember { mutableStateOf<List<AppInfo>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        installedApps = loadInstalledApps(context)
+        isLoading = false
+    }
+
+    val filteredApps = remember(installedApps, searchQuery) {
+        if (searchQuery.isBlank()) installedApps
+        else {
+            val query = searchQuery.trim().lowercase(java.util.Locale.getDefault())
+            installedApps.filter { app ->
+                app.appName.lowercase(java.util.Locale.getDefault()).contains(query) ||
+                app.packageName.lowercase(java.util.Locale.getDefault()).contains(query)
+            }
+        }
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = {
@@ -925,8 +938,7 @@ fun BlacklistManagementDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 400.dp)
-                    .verticalScroll(rememberScrollState()),
+                    .heightIn(max = 480.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
@@ -935,78 +947,120 @@ fun BlacklistManagementDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
-                
-                commonApps.forEach { (packageName, appName) ->
-                    val isInBlacklist = blacklistPackages.contains(packageName)
-                    
-                    Surface(
+
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text(context.getString(R.string.search_apps)) },
+                    leadingIcon = {
+                        Icon(Icons.Filled.Search, contentDescription = null)
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotBlank()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Filled.Clear, contentDescription = null)
+                            }
+                        }
+                    },
+                    singleLine = true,
+                )
+
+                if (isLoading) {
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { 
-                                onPackageToggle(packageName, !isInBlacklist)
-                            },
-                        color = if (isInBlacklist)
-                            MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
-                        else
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                            .height(200.dp),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                                modifier = Modifier.weight(1f)
+                        CircularProgressIndicator()
+                    }
+                } else if (filteredApps.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = if (searchQuery.isBlank()) {
+                                context.getString(R.string.autofill_blacklist_no_apps)
+                            } else {
+                                context.getString(R.string.autofill_blacklist_no_match, searchQuery)
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        items(filteredApps) { app ->
+                            val isInBlacklist = blacklistPackages.contains(app.packageName)
+
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .clickable {
+                                        onPackageToggle(app.packageName, !isInBlacklist)
+                                    },
+                                color = if (isInBlacklist)
+                                    MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+                                else
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
                             ) {
-                                // 尝试显示应用图标
-                                val appIcon = remember(packageName) {
-                                    try {
-                                        context.packageManager.getApplicationIcon(packageName)
-                                    } catch (e: Exception) {
-                                        null
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        if (app.icon != null) {
+                                            Image(
+                                                painter = rememberDrawablePainter(drawable = app.icon),
+                                                contentDescription = null,
+                                                modifier = Modifier.size(32.dp)
+                                            )
+                                        } else {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Apps,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(32.dp),
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+
+                                        Column {
+                                            Text(
+                                                text = app.appName,
+                                                style = MaterialTheme.typography.bodyLarge,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                            Text(
+                                                text = app.packageName,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                     }
-                                }
-                                
-                                if (appIcon != null) {
-                                    Image(
-                                        painter = rememberDrawablePainter(drawable = appIcon),
-                                        contentDescription = null,
-                                        modifier = Modifier.size(32.dp)
-                                    )
-                                } else {
-                                    Icon(
-                                        imageVector = Icons.Outlined.Apps,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(32.dp),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                                
-                                Column {
-                                    Text(
-                                        text = appName,
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        fontWeight = FontWeight.Medium
-                                    )
-                                    Text(
-                                        text = packageName,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+
+                                    Switch(
+                                        checked = isInBlacklist,
+                                        onCheckedChange = { checked ->
+                                            onPackageToggle(app.packageName, checked)
+                                        }
                                     )
                                 }
                             }
-                            
-                            Switch(
-                                checked = isInBlacklist,
-                                onCheckedChange = { checked ->
-                                    onPackageToggle(packageName, checked)
-                                }
-                            )
                         }
                     }
                 }

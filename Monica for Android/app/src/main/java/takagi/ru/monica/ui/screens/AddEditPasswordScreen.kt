@@ -2,8 +2,6 @@ package takagi.ru.monica.ui.screens
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.animation.core.Spring
@@ -111,6 +109,7 @@ import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_SIMPLE
 import takagi.ru.monica.ui.icons.PASSWORD_ICON_TYPE_UPLOADED
 import takagi.ru.monica.ui.icons.PasswordCustomIconStore
 import takagi.ru.monica.ui.icons.SimpleIconCatalog
+import takagi.ru.monica.ui.icons.SimpleIconOption
 import takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon
 import takagi.ru.monica.ui.icons.rememberSimpleIconBitmap
 import takagi.ru.monica.ui.icons.rememberUploadedPasswordIcon
@@ -119,7 +118,9 @@ import takagi.ru.monica.ui.password.UsernameSuggestionState
 import takagi.ru.monica.ui.password.buildUsernameSuggestionState
 import takagi.ru.monica.util.TotpDataResolver
 import takagi.ru.monica.utils.PasswordGenerator
+import takagi.ru.monica.utils.PasswordWebsiteCodec
 import takagi.ru.monica.utils.PasswordStrengthAnalyzer
+import takagi.ru.monica.utils.ClipboardUtils
 import takagi.ru.monica.utils.decodeKeePassPathForDisplay
 import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.CategoryFilter
@@ -128,6 +129,7 @@ import takagi.ru.monica.viewmodel.PasswordViewModel
 import takagi.ru.monica.viewmodel.TotpViewModel
 
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
+import takagi.ru.monica.viewmodel.MdbxViewModel
 import takagi.ru.monica.data.LocalKeePassDatabase
 import takagi.ru.monica.data.KeePassOperationBlockReason
 import takagi.ru.monica.data.bitwarden.BitwardenVault
@@ -179,12 +181,16 @@ fun AddEditPasswordScreen(
     bankCardViewModel: BankCardViewModel? = null,
     noteViewModel: NoteViewModel? = null,
     localKeePassViewModel: LocalKeePassViewModel? = null,
+    localMdbxViewModel: MdbxViewModel? = null,
+    mdbxDatabasesFallback: List<takagi.ru.monica.data.LocalMdbxDatabase> = emptyList(),
     passwordId: Long?,
     initialDraft: AddEditPasswordInitialDraft? = null,
     forceShowAppBinding: Boolean = false,
     initialCategoryId: Long? = null,
     initialKeePassDatabaseId: Long? = null,
     initialKeePassGroupPath: String? = null,
+    initialMdbxDatabaseId: Long? = null,
+    initialMdbxFolderId: String? = null,
     initialBitwardenVaultId: Long? = null,
     initialBitwardenFolderId: String? = null,
     pendingQrResult: String? = null,
@@ -310,7 +316,14 @@ fun AddEditPasswordScreen(
     var keepassDatabaseId by rememberSaveable { mutableStateOf<Long?>(null) }
     var keepassGroupPath by rememberSaveable { mutableStateOf<String?>(null) }
     val keepassDatabases by (localKeePassViewModel?.allDatabases ?: kotlinx.coroutines.flow.flowOf(emptyList())).collectAsState(initial = emptyList())
-    
+
+    // MDBX 数据库选择
+    var mdbxDatabaseId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var mdbxFolderId by rememberSaveable { mutableStateOf<String?>(null) }
+    val mdbxDatabases by (localMdbxViewModel?.allDatabases
+        ?: database.localMdbxDatabaseDao().getAllDatabases()
+    ).collectAsState(initial = mdbxDatabasesFallback)
+
     // Bitwarden Vault 选择
     var bitwardenVaultId by rememberSaveable { mutableStateOf<Long?>(null) }
     var bitwardenFolderId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -319,6 +332,8 @@ fun AddEditPasswordScreen(
     val hasExplicitInitialStorage = initialCategoryId != null ||
         initialKeePassDatabaseId != null ||
         initialKeePassGroupPath != null ||
+        initialMdbxDatabaseId != null ||
+        initialMdbxFolderId != null ||
         initialBitwardenVaultId != null ||
         initialBitwardenFolderId != null
     val selectedStorageTargets = remember { mutableStateListOf<StorageTarget>() }
@@ -537,6 +552,8 @@ fun AddEditPasswordScreen(
                 categoryId = primaryTarget.categoryId
                 keepassDatabaseId = null
                 keepassGroupPath = null
+                mdbxDatabaseId = null
+                mdbxFolderId = null
                 bitwardenVaultId = null
                 bitwardenFolderId = null
             }
@@ -544,6 +561,8 @@ fun AddEditPasswordScreen(
                 categoryId = null
                 keepassDatabaseId = primaryTarget.databaseId
                 keepassGroupPath = primaryTarget.groupPath
+                mdbxDatabaseId = null
+                mdbxFolderId = null
                 bitwardenVaultId = null
                 bitwardenFolderId = null
             }
@@ -551,13 +570,26 @@ fun AddEditPasswordScreen(
                 categoryId = null
                 keepassDatabaseId = null
                 keepassGroupPath = null
+                mdbxDatabaseId = null
+                mdbxFolderId = null
                 bitwardenVaultId = primaryTarget.vaultId
                 bitwardenFolderId = primaryTarget.folderId
+            }
+            is StorageTarget.Mdbx -> {
+                categoryId = null
+                keepassDatabaseId = null
+                keepassGroupPath = null
+                mdbxDatabaseId = primaryTarget.databaseId
+                mdbxFolderId = primaryTarget.folderId
+                bitwardenVaultId = null
+                bitwardenFolderId = null
             }
             null -> {
                 categoryId = null
                 keepassDatabaseId = null
                 keepassGroupPath = null
+                mdbxDatabaseId = null
+                mdbxFolderId = null
                 bitwardenVaultId = null
                 bitwardenFolderId = null
             }
@@ -1065,6 +1097,8 @@ fun AddEditPasswordScreen(
                     categoryId = entry.categoryId
                     keepassDatabaseId = entry.keepassDatabaseId
                     keepassGroupPath = entry.keepassGroupPath
+                    mdbxDatabaseId = entry.mdbxDatabaseId
+                    mdbxFolderId = entry.mdbxFolderId
                     bitwardenVaultId = entry.bitwardenVaultId
                     bitwardenFolderId = entry.bitwardenFolderId
                     currentReplicaGroupId = entry.replicaGroupId
@@ -1328,6 +1362,8 @@ fun AddEditPasswordScreen(
                 boundNoteId = boundNoteId,
                 keepassDatabaseId = keepassDatabaseId,
                 keepassGroupPath = keepassGroupPath,
+                mdbxDatabaseId = mdbxDatabaseId,
+                mdbxFolderId = mdbxFolderId,
                 bitwardenVaultId = bitwardenVaultId,  // ✅ 保存到 Bitwarden Vault
                 bitwardenFolderId = bitwardenFolderId,
                 authenticatorKey = currentAuthKey,  // ✅ 保存验证器密钥
@@ -1508,6 +1544,8 @@ fun AddEditPasswordScreen(
         initialCategoryId,
         initialKeePassDatabaseId,
         initialKeePassGroupPath,
+        initialMdbxDatabaseId,
+        initialMdbxFolderId,
         initialBitwardenVaultId,
         initialBitwardenFolderId
     ) {
@@ -1521,6 +1559,8 @@ fun AddEditPasswordScreen(
                         categoryId = initialCategoryId,
                         keepassDatabaseId = initialKeePassDatabaseId,
                         keepassGroupPath = initialKeePassGroupPath,
+                        mdbxDatabaseId = initialMdbxDatabaseId,
+                        mdbxFolderId = initialMdbxFolderId,
                         bitwardenVaultId = initialBitwardenVaultId,
                         bitwardenFolderId = initialBitwardenFolderId
                     )
@@ -1534,6 +1574,8 @@ fun AddEditPasswordScreen(
             is CategoryFilter.KeePassGroupFilter -> StorageTarget.KeePass(filter.databaseId, filter.groupPath)
             is CategoryFilter.KeePassDatabaseStarred -> StorageTarget.KeePass(filter.databaseId, null)
             is CategoryFilter.KeePassDatabaseUncategorized -> StorageTarget.KeePass(filter.databaseId, null)
+            is CategoryFilter.MdbxDatabase -> StorageTarget.Mdbx(filter.databaseId)
+            is CategoryFilter.MdbxFolderFilter -> StorageTarget.Mdbx(filter.databaseId, filter.folderId)
             is CategoryFilter.BitwardenVault -> StorageTarget.Bitwarden(filter.vaultId, null)
             is CategoryFilter.BitwardenFolderFilter -> StorageTarget.Bitwarden(filter.vaultId, filter.folderId)
             is CategoryFilter.BitwardenVaultStarred -> StorageTarget.Bitwarden(filter.vaultId, null)
@@ -1634,8 +1676,10 @@ fun AddEditPasswordScreen(
                     existingTargetKeys = existingReplicaTargetKeys,
                     categories = categories,
                     keepassDatabases = keepassDatabases,
+                    mdbxDatabases = mdbxDatabases,
                     bitwardenVaults = bitwardenVaults,
                     bitwardenFolderDao = database.bitwardenFolderDao(),
+                    getMdbxFolders = viewModel::getMdbxFolders,
                     isEditing = isEditing,
                     onAddTargetClick = { showStorageTargetSheet = true },
                     onRemoveTarget = ::removeSelectedStorageTarget
@@ -1985,9 +2029,12 @@ fun AddEditPasswordScreen(
                                         // 复制按钮
                                         if (username.isNotEmpty()) {
                                             IconButton(onClick = {
-                                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                                val clip = ClipData.newPlainText("username", username)
-                                                clipboard.setPrimaryClip(clip)
+                                                ClipboardUtils.copyToClipboard(
+                                                    context = context,
+                                                    text = username,
+                                                    label = context.getString(R.string.username),
+                                                    sensitive = true
+                                                )
                                                 Toast.makeText(context, context.getString(R.string.username_copied), Toast.LENGTH_SHORT).show()
                                             }) {
                                                 Icon(Icons.Default.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(20.dp))
@@ -2277,6 +2324,16 @@ fun AddEditPasswordScreen(
                                 label = { Text(stringResource(R.string.authenticator_key_optional)) },
                                 placeholder = { Text(stringResource(R.string.authenticator_key_hint)) },
                                 leadingIcon = { Icon(Icons.Default.VpnKey, null) },
+                                trailingIcon = {
+                                    if (onScanAuthenticatorQrCode != null) {
+                                        IconButton(onClick = onScanAuthenticatorQrCode) {
+                                            Icon(
+                                                imageVector = Icons.Default.QrCodeScanner,
+                                                contentDescription = stringResource(R.string.scan_qr_code)
+                                            )
+                                        }
+                                    }
+                                },
                                 modifier = Modifier.fillMaxWidth(),
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
@@ -2336,23 +2393,6 @@ fun AddEditPasswordScreen(
                                             }
                                         )
                                     }
-                                }
-                            }
-
-                            if (onScanAuthenticatorQrCode != null) {
-                                FilledTonalButton(
-                                    onClick = onScanAuthenticatorQrCode,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(top = 10.dp),
-                                    shape = RoundedCornerShape(12.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.QrCodeScanner,
-                                        contentDescription = null
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(stringResource(R.string.scan_qr_code))
                                 }
                             }
 
@@ -2904,263 +2944,46 @@ fun AddEditPasswordScreen(
         )
     }
 
-    if (showCustomIconDialog) {
-        CustomIconActionDialog(
-            showClearAction = customIconType != PASSWORD_ICON_TYPE_NONE,
-            onPickFromLibrary = {
-                customIconSearchQuery = ""
-                showCustomIconDialog = false
-                showSimpleIconPicker = true
-            },
-            onUploadImage = {
-                showCustomIconDialog = false
-                imagePickerLauncher.launch("image/*")
-            },
-            onClearIcon = {
-                val currentUploaded = if (customIconType == PASSWORD_ICON_TYPE_UPLOADED) {
-                    normalizedIconFileName(customIconValue)
-                } else {
-                    null
-                }
-                if (!currentUploaded.isNullOrBlank() && !isOriginalUploadedIconFile(currentUploaded)) {
-                    PasswordCustomIconStore.deleteIconFile(context, currentUploaded)
-                }
-                customIconType = PASSWORD_ICON_TYPE_NONE
-                customIconValue = null
-                customIconUpdatedAt = System.currentTimeMillis()
-                showCustomIconDialog = false
-            },
-            onDismissRequest = { showCustomIconDialog = false }
-        )
-    }
-
-    if (showSimpleIconPicker) {
-        var iconVisibleCount by rememberSaveable { mutableStateOf(ICON_PICKER_PAGE_SIZE) }
-        val iconOptions = remember(context, customIconSearchQuery) {
-            SimpleIconCatalog.search(context, customIconSearchQuery)
+    PasswordCustomIconPickers(
+        showCustomIconDialog = showCustomIconDialog,
+        showSimpleIconPicker = showSimpleIconPicker,
+        customIconSearchQuery = customIconSearchQuery,
+        customIconType = customIconType,
+        customIconValue = customIconValue,
+        iconCardsEnabled = settings.iconCardsEnabled,
+        isOriginalUploadedIconFile = ::isOriginalUploadedIconFile,
+        normalizedIconFileName = ::normalizedIconFileName,
+        onCustomIconDialogChange = { showCustomIconDialog = it },
+        onSimpleIconPickerChange = { showSimpleIconPicker = it },
+        onCustomIconSearchQueryChange = { customIconSearchQuery = it },
+        onUploadImage = { imagePickerLauncher.launch("image/*") },
+        onIconCleared = {
+            customIconType = PASSWORD_ICON_TYPE_NONE
+            customIconValue = null
+            customIconUpdatedAt = System.currentTimeMillis()
+        },
+        onSimpleIconSelected = { option ->
+            customIconType = PASSWORD_ICON_TYPE_SIMPLE
+            customIconValue = option.slug
+            customIconUpdatedAt = System.currentTimeMillis()
         }
-        LaunchedEffect(customIconSearchQuery, showSimpleIconPicker) {
-            if (showSimpleIconPicker) {
-                iconVisibleCount = ICON_PICKER_PAGE_SIZE
-            }
-        }
-        val visibleOptions = remember(iconOptions, iconVisibleCount) {
-            iconOptions.take(iconVisibleCount.coerceAtMost(iconOptions.size))
-        }
-        SimpleIconPickerBottomSheet(
-            searchQuery = customIconSearchQuery,
-            onSearchQueryChange = {
-                customIconSearchQuery = it
-                iconVisibleCount = ICON_PICKER_PAGE_SIZE
-            },
-            iconOptions = iconOptions,
-            visibleOptions = visibleOptions,
-            hasMore = visibleOptions.size < iconOptions.size,
-            remainingCount = iconOptions.size - visibleOptions.size,
-            iconCardsEnabled = settings.iconCardsEnabled,
-            selectedSlug = if (customIconType == PASSWORD_ICON_TYPE_SIMPLE) customIconValue else null,
-            onSelectOption = { option ->
-                val currentUploaded = if (customIconType == PASSWORD_ICON_TYPE_UPLOADED) {
-                    normalizedIconFileName(customIconValue)
-                } else {
-                    null
-                }
-                if (!currentUploaded.isNullOrBlank() && !isOriginalUploadedIconFile(currentUploaded)) {
-                    PasswordCustomIconStore.deleteIconFile(context, currentUploaded)
-                }
-                customIconType = PASSWORD_ICON_TYPE_SIMPLE
-                customIconValue = option.slug
-                customIconUpdatedAt = System.currentTimeMillis()
-                showSimpleIconPicker = false
-            },
-            onLoadMore = {
-                iconVisibleCount = (iconVisibleCount + ICON_PICKER_PAGE_SIZE)
-                    .coerceAtMost(iconOptions.size)
-            },
-            onDismissRequest = { showSimpleIconPicker = false }
-        )
-    }
+    )
 
     if (showCommonAccountSelector) {
-        val selectorOptions = buildCommonAccountOptions(commonAccountSelectorField)
-        val allFilterLabel = stringResource(R.string.filter_all)
-        val selectorFieldLabel = when (commonAccountSelectorField) {
-            "username" -> stringResource(R.string.field_account)
-            "email" -> stringResource(R.string.field_email)
-            "phone" -> stringResource(R.string.field_phone)
-            "password" -> stringResource(R.string.password)
-            else -> ""
-        }
-        val availableTypeFilters = remember(selectorOptions, allFilterLabel) {
-            buildList {
-                add(allFilterLabel)
-                addAll(selectorOptions.map { it.type }.distinct())
-            }
-        }
-        var selectedTypeFilter by remember(commonAccountSelectorField) {
-            mutableStateOf(allFilterLabel)
-        }
-        val filteredSelectorOptions = remember(selectorOptions, selectedTypeFilter, allFilterLabel) {
-            if (selectedTypeFilter == allFilterLabel) {
-                selectorOptions
-            } else {
-                selectorOptions.filter { it.type == selectedTypeFilter }
-            }
-        }
-        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-        fun dismissCommonAccountSelector(afterDismiss: (() -> Unit)? = null) {
-            coroutineScope.launch {
-                if (sheetState.isVisible) {
-                    sheetState.hide()
-                }
+        CommonAccountSelectorSheet(
+            selectorField = commonAccountSelectorField,
+            selectorOptions = buildCommonAccountOptions(commonAccountSelectorField),
+            commonAccountTypeEmail = commonAccountTypeEmail,
+            commonAccountTypePassword = commonAccountTypePassword,
+            commonAccountTypePhone = commonAccountTypePhone,
+            onDismiss = {
                 showCommonAccountSelector = false
                 commonAccountSelectorTargetIndex = -1
-                afterDismiss?.invoke()
+            },
+            onApply = { content ->
+                applyCommonAccountSelection(commonAccountSelectorField, content)
             }
-        }
-
-        ModalBottomSheet(
-            onDismissRequest = { dismissCommonAccountSelector() },
-            sheetState = sheetState,
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-            dragHandle = { BottomSheetDefaults.DragHandle() }
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = stringResource(R.string.fill_common_account),
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = selectorFieldLabel,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    TextButton(
-                        onClick = { dismissCommonAccountSelector() }
-                    ) {
-                        Text(stringResource(R.string.close))
-                    }
-                }
-
-                if (selectorOptions.isEmpty()) {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerHigh
-                    ) {
-                        Text(
-                            text = stringResource(R.string.no_results),
-                            modifier = Modifier.padding(16.dp),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                } else {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        availableTypeFilters.forEach { typeFilter ->
-                            FilterChip(
-                                selected = selectedTypeFilter == typeFilter,
-                                onClick = { selectedTypeFilter = typeFilter },
-                                label = { Text(typeFilter) }
-                            )
-                            Spacer(modifier = Modifier.width(2.dp))
-                        }
-                    }
-
-                    LazyColumn(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .heightIn(max = 420.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        items(filteredSelectorOptions, key = { it.id }) { option ->
-                            val typeIcon = when (option.type) {
-                                commonAccountTypeEmail -> MonicaIcons.General.email
-                                commonAccountTypePassword -> Icons.Default.Lock
-                                commonAccountTypePhone -> MonicaIcons.General.phone
-                                else -> Icons.Default.Person
-                            }
-
-                            Surface(
-                                onClick = {
-                                    dismissCommonAccountSelector {
-                                        applyCommonAccountSelection(commonAccountSelectorField, option.content)
-                                    }
-                                },
-                                shape = RoundedCornerShape(18.dp),
-                                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                tonalElevation = 1.dp
-                            ) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 14.dp, vertical = 12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            Surface(
-                                                shape = RoundedCornerShape(10.dp),
-                                                color = MaterialTheme.colorScheme.secondaryContainer
-                                            ) {
-                                                Icon(
-                                                    imageVector = typeIcon,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.padding(6.dp).size(16.dp),
-                                                    tint = MaterialTheme.colorScheme.onSecondaryContainer
-                                                )
-                                            }
-                                            Text(
-                                                text = option.type,
-                                                style = MaterialTheme.typography.titleSmall,
-                                                fontWeight = FontWeight.Medium
-                                            )
-                                        }
-                                        SuggestionChip(
-                                            onClick = { },
-                                            enabled = false,
-                                            label = { Text(option.type) }
-                                        )
-                                    }
-                                    Text(
-                                        text = option.content,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        )
     }
 
     MultiStorageTargetPickerBottomSheet(
@@ -3169,10 +2992,12 @@ fun AddEditPasswordScreen(
         lockedTargetKeys = existingReplicaTargetKeys,
         categories = categories,
         keepassDatabases = keepassDatabases,
+        mdbxDatabases = mdbxDatabases,
         bitwardenVaults = bitwardenVaults,
         getBitwardenFolders = { vaultId -> database.bitwardenFolderDao().getFoldersByVaultFlow(vaultId) },
         getKeePassGroups = localKeePassViewModel?.let { keepassVm -> keepassVm::getGroups }
             ?: { flowOf(emptyList<takagi.ru.monica.utils.KeePassGroupInfo>()) },
+        getMdbxFolders = viewModel::getMdbxFolders,
         onDismiss = { showStorageTargetSheet = false },
         onSelectedTargetsChange = ::setSelectedStorageTargets
     )
@@ -3206,6 +3031,306 @@ private fun InlineGeneratedPasswordSuggestionCard(
         containerColor = MaterialTheme.colorScheme.secondaryContainer,
         contentColor = MaterialTheme.colorScheme.onSecondaryContainer
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PasswordCustomIconPickers(
+    showCustomIconDialog: Boolean,
+    showSimpleIconPicker: Boolean,
+    customIconSearchQuery: String,
+    customIconType: String,
+    customIconValue: String?,
+    iconCardsEnabled: Boolean,
+    isOriginalUploadedIconFile: (String?) -> Boolean,
+    normalizedIconFileName: (String?) -> String?,
+    onCustomIconDialogChange: (Boolean) -> Unit,
+    onSimpleIconPickerChange: (Boolean) -> Unit,
+    onCustomIconSearchQueryChange: (String) -> Unit,
+    onUploadImage: () -> Unit,
+    onIconCleared: () -> Unit,
+    onSimpleIconSelected: (SimpleIconOption) -> Unit
+) {
+    val context = LocalContext.current
+    if (showCustomIconDialog) {
+        CustomIconActionDialog(
+            showClearAction = customIconType != PASSWORD_ICON_TYPE_NONE,
+            onPickFromLibrary = {
+                onCustomIconSearchQueryChange("")
+                onCustomIconDialogChange(false)
+                onSimpleIconPickerChange(true)
+            },
+            onUploadImage = {
+                onCustomIconDialogChange(false)
+                onUploadImage()
+            },
+            onClearIcon = {
+                val currentUploaded = if (customIconType == PASSWORD_ICON_TYPE_UPLOADED) {
+                    normalizedIconFileName(customIconValue)
+                } else {
+                    null
+                }
+                if (!currentUploaded.isNullOrBlank() && !isOriginalUploadedIconFile(currentUploaded)) {
+                    PasswordCustomIconStore.deleteIconFile(context, currentUploaded)
+                }
+                onIconCleared()
+                onCustomIconDialogChange(false)
+            },
+            onDismissRequest = { onCustomIconDialogChange(false) }
+        )
+    }
+
+    if (showSimpleIconPicker) {
+        var iconVisibleCount by rememberSaveable { mutableStateOf(ICON_PICKER_PAGE_SIZE) }
+        val iconOptions = remember(context, customIconSearchQuery) {
+            SimpleIconCatalog.search(context, customIconSearchQuery)
+        }
+        LaunchedEffect(customIconSearchQuery, showSimpleIconPicker) {
+            if (showSimpleIconPicker) {
+                iconVisibleCount = ICON_PICKER_PAGE_SIZE
+            }
+        }
+        val visibleOptions = remember(iconOptions, iconVisibleCount) {
+            iconOptions.take(iconVisibleCount.coerceAtMost(iconOptions.size))
+        }
+        SimpleIconPickerBottomSheet(
+            searchQuery = customIconSearchQuery,
+            onSearchQueryChange = {
+                onCustomIconSearchQueryChange(it)
+                iconVisibleCount = ICON_PICKER_PAGE_SIZE
+            },
+            iconOptions = iconOptions,
+            visibleOptions = visibleOptions,
+            hasMore = visibleOptions.size < iconOptions.size,
+            remainingCount = iconOptions.size - visibleOptions.size,
+            iconCardsEnabled = iconCardsEnabled,
+            selectedSlug = if (customIconType == PASSWORD_ICON_TYPE_SIMPLE) customIconValue else null,
+            onSelectOption = { option ->
+                val currentUploaded = if (customIconType == PASSWORD_ICON_TYPE_UPLOADED) {
+                    normalizedIconFileName(customIconValue)
+                } else {
+                    null
+                }
+                if (!currentUploaded.isNullOrBlank() && !isOriginalUploadedIconFile(currentUploaded)) {
+                    PasswordCustomIconStore.deleteIconFile(context, currentUploaded)
+                }
+                onSimpleIconSelected(option)
+                onSimpleIconPickerChange(false)
+            },
+            onLoadMore = {
+                iconVisibleCount = (iconVisibleCount + ICON_PICKER_PAGE_SIZE)
+                    .coerceAtMost(iconOptions.size)
+            },
+            onDismissRequest = { onSimpleIconPickerChange(false) }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CommonAccountSelectorSheet(
+    selectorField: String,
+    selectorOptions: List<CommonAccountFillOption>,
+    commonAccountTypeEmail: String,
+    commonAccountTypePassword: String,
+    commonAccountTypePhone: String,
+    onDismiss: () -> Unit,
+    onApply: (String) -> Unit
+) {
+    val coroutineScope = rememberCoroutineScope()
+    val allFilterLabel = stringResource(R.string.filter_all)
+    val selectorFieldLabel = when (selectorField) {
+        "username" -> stringResource(R.string.field_account)
+        "email" -> stringResource(R.string.field_email)
+        "phone" -> stringResource(R.string.field_phone)
+        "password" -> stringResource(R.string.password)
+        else -> ""
+    }
+    val availableTypeFilters = remember(selectorOptions, allFilterLabel) {
+        buildList {
+            add(allFilterLabel)
+            addAll(selectorOptions.map { it.type }.distinct())
+        }
+    }
+    var selectedTypeFilter by remember(selectorField) {
+        mutableStateOf(allFilterLabel)
+    }
+    val filteredSelectorOptions = remember(selectorOptions, selectedTypeFilter, allFilterLabel) {
+        if (selectedTypeFilter == allFilterLabel) {
+            selectorOptions
+        } else {
+            selectorOptions.filter { it.type == selectedTypeFilter }
+        }
+    }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    fun dismiss(afterDismiss: (() -> Unit)? = null) {
+        coroutineScope.launch {
+            if (sheetState.isVisible) {
+                sheetState.hide()
+            }
+            onDismiss()
+            afterDismiss?.invoke()
+        }
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = { dismiss() },
+        sheetState = sheetState,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        dragHandle = { BottomSheetDefaults.DragHandle() }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = stringResource(R.string.fill_common_account),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = selectorFieldLabel,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                TextButton(onClick = { dismiss() }) {
+                    Text(stringResource(R.string.close))
+                }
+            }
+
+            if (selectorOptions.isEmpty()) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh
+                ) {
+                    Text(
+                        text = stringResource(R.string.no_results),
+                        modifier = Modifier.padding(16.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    availableTypeFilters.forEach { typeFilter ->
+                        FilterChip(
+                            selected = selectedTypeFilter == typeFilter,
+                            onClick = { selectedTypeFilter = typeFilter },
+                            label = { Text(typeFilter) }
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                    }
+                }
+
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 420.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    items(filteredSelectorOptions, key = { it.id }) { option ->
+                        CommonAccountSelectorOptionRow(
+                            option = option,
+                            commonAccountTypeEmail = commonAccountTypeEmail,
+                            commonAccountTypePassword = commonAccountTypePassword,
+                            commonAccountTypePhone = commonAccountTypePhone,
+                            onClick = {
+                                dismiss {
+                                    onApply(option.content)
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CommonAccountSelectorOptionRow(
+    option: CommonAccountFillOption,
+    commonAccountTypeEmail: String,
+    commonAccountTypePassword: String,
+    commonAccountTypePhone: String,
+    onClick: () -> Unit
+) {
+    val typeIcon = when (option.type) {
+        commonAccountTypeEmail -> MonicaIcons.General.email
+        commonAccountTypePassword -> Icons.Default.Lock
+        commonAccountTypePhone -> MonicaIcons.General.phone
+        else -> Icons.Default.Person
+    }
+
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 1.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Icon(
+                            imageVector = typeIcon,
+                            contentDescription = null,
+                            modifier = Modifier.padding(6.dp).size(16.dp),
+                            tint = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    }
+                    Text(
+                        text = option.type,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+                SuggestionChip(
+                    onClick = { },
+                    enabled = false,
+                    label = { Text(option.type) }
+                )
+            }
+            Text(
+                text = option.content,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
 }
 
 @Composable
@@ -3995,29 +4120,14 @@ private fun buildPasswordSiblingGroupKey(entry: PasswordEntry): String {
 }
 
 private fun parsePasswordWebsiteUrls(rawValue: String): List<String> {
-    val urls = rawValue
-        .split(',')
-        .map { it.trim() }
-        .filter { it.isNotBlank() }
-    return urls.ifEmpty { listOf("") }
+    return PasswordWebsiteCodec.parse(rawValue)
 }
 
 private fun encodePasswordWebsiteUrls(urls: List<String>): String {
-    return urls
-        .map { it.trim() }
-        .filter { it.isNotBlank() }
-        .distinctBy { it.lowercase(Locale.ROOT) }
-        .joinToString(", ")
+    return PasswordWebsiteCodec.encode(urls)
 }
 
 private fun normalizeWebsiteForSiblingGroupKey(value: String): String {
-    val raw = value.trim()
-    if (raw.isEmpty()) return ""
-    return raw
-        .lowercase(Locale.ROOT)
-        .removePrefix("http://")
-        .removePrefix("https://")
-        .removePrefix("www.")
-        .trimEnd('/')
+    return PasswordWebsiteCodec.normalizeForKey(value)
 }
 

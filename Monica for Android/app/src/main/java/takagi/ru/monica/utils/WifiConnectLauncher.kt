@@ -1,7 +1,5 @@
 package takagi.ru.monica.utils
 
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.provider.Settings
@@ -61,9 +59,12 @@ object WifiConnectLauncher {
     }
 
     private fun copyPassword(context: Context, password: String): Boolean {
-        val cm = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
-            ?: return false
-        cm.setPrimaryClip(ClipData.newPlainText("WIFI password", password))
+        ClipboardUtils.copyToClipboard(
+            context = context,
+            text = password,
+            label = "WIFI password",
+            sensitive = true
+        )
         return true
     }
 }

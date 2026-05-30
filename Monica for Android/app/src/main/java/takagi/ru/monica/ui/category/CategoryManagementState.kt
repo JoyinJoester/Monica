@@ -17,6 +17,7 @@ import takagi.ru.monica.R
 import takagi.ru.monica.bitwarden.repository.BitwardenRepository
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.LocalMdbxDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.model.StorageTarget
 import takagi.ru.monica.repository.KeePassCompatibilityBridge
@@ -111,6 +112,7 @@ fun CategoryManagementCreateDialog(
     currentFilter: UnifiedCategoryFilterSelection,
     categories: List<Category>,
     keepassDatabases: List<LocalKeePassDatabase>,
+    mdbxDatabases: List<LocalMdbxDatabase> = emptyList(),
     bitwardenVaults: List<BitwardenVault>,
     getKeePassGroups: ((Long) -> Flow<List<KeePassGroupInfo>>)?,
     passwordViewModel: PasswordViewModel,
@@ -124,15 +126,18 @@ fun CategoryManagementCreateDialog(
     val initialLocalParentPath = (currentFilter as? UnifiedCategoryFilterSelection.Custom)?.let { filter ->
         categories.firstOrNull { it.id == filter.categoryId }?.name
     }
-    val (initialDialogTarget, initialDialogKeePassDbId, initialDialogBitwardenVaultId) = resolveInitialDialogTarget(currentFilter)
+    val (initialDialogTarget, initialDialogKeePassDbId, initialDialogMdbxDbId, initialDialogBitwardenVaultId) = resolveInitialDialogTarget(currentFilter)
+    val initialMdbxParentFolderId = (currentFilter as? UnifiedCategoryFilterSelection.MdbxFolderFilter)?.folderId
 
     CreateCategoryDialog(
         visible = true,
         onDismiss = { state.dismissCreateCategoryDialog() },
         categories = categories,
         keepassDatabases = keepassDatabases,
+        mdbxDatabases = mdbxDatabases,
         bitwardenVaults = bitwardenVaults,
         getKeePassGroups = getKeePassGroups,
+        getMdbxFolders = passwordViewModel::getMdbxFolders,
         onCreateCategoryWithName = { name -> passwordViewModel.addCategory(name) },
         onCreateBitwardenFolder = { vaultId, name ->
             scope.launch {
@@ -162,9 +167,24 @@ fun CategoryManagementCreateDialog(
         } else {
             { _, _, _ -> }
         },
+        onCreateMdbxProject = { databaseId, parentFolderId, name ->
+            scope.launch {
+                passwordViewModel.createMdbxFolder(databaseId, name, parentFolderId ?: "root") { result ->
+                    result.exceptionOrNull()?.let { error ->
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.save_failed_with_error, error.message ?: ""),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            }
+        },
         initialLocalParentPath = initialLocalParentPath,
         initialTarget = initialDialogTarget,
         initialKeePassDbId = initialDialogKeePassDbId,
+        initialMdbxDbId = initialDialogMdbxDbId,
+        initialMdbxParentFolderId = initialMdbxParentFolderId,
         initialBitwardenVaultId = initialDialogBitwardenVaultId
     )
 }
@@ -221,21 +241,37 @@ private fun executeCategoryMoveToTarget(
                 Toast.LENGTH_SHORT
             ).show()
         }
+        is StorageTarget.Mdbx -> {
+            Toast.makeText(
+                context,
+                context.getString(R.string.save_failed_with_error, "当前暂不支持将分类移动到 MDBX 数据库"),
+                Toast.LENGTH_SHORT
+            ).show()
+        }
     }
 }
 
 private fun resolveInitialDialogTarget(
     filter: UnifiedCategoryFilterSelection
-): Triple<CreateDialogTarget?, Long?, Long?> {
+): Quadruple<CreateDialogTarget?, Long?, Long?, Long?> {
     return when (filter) {
-        is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> Triple(CreateDialogTarget.KeePass, filter.databaseId, null)
-        is UnifiedCategoryFilterSelection.KeePassGroupFilter -> Triple(CreateDialogTarget.KeePass, filter.databaseId, null)
-        is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> Triple(CreateDialogTarget.KeePass, filter.databaseId, null)
-        is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> Triple(CreateDialogTarget.KeePass, filter.databaseId, null)
-        is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> Triple(CreateDialogTarget.Bitwarden, null, filter.vaultId)
-        is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> Triple(CreateDialogTarget.Bitwarden, null, filter.vaultId)
-        is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> Triple(CreateDialogTarget.Bitwarden, null, filter.vaultId)
-        is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> Triple(CreateDialogTarget.Bitwarden, null, filter.vaultId)
-        else -> Triple(null, null, null)
+        is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> Quadruple(CreateDialogTarget.KeePass, filter.databaseId, null, null)
+        is UnifiedCategoryFilterSelection.KeePassGroupFilter -> Quadruple(CreateDialogTarget.KeePass, filter.databaseId, null, null)
+        is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> Quadruple(CreateDialogTarget.KeePass, filter.databaseId, null, null)
+        is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> Quadruple(CreateDialogTarget.KeePass, filter.databaseId, null, null)
+        is UnifiedCategoryFilterSelection.MdbxDatabaseFilter -> Quadruple(CreateDialogTarget.Mdbx, null, filter.databaseId, null)
+        is UnifiedCategoryFilterSelection.MdbxFolderFilter -> Quadruple(CreateDialogTarget.Mdbx, null, filter.databaseId, null)
+        is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> Quadruple(CreateDialogTarget.Bitwarden, null, null, filter.vaultId)
+        is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> Quadruple(CreateDialogTarget.Bitwarden, null, null, filter.vaultId)
+        is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> Quadruple(CreateDialogTarget.Bitwarden, null, null, filter.vaultId)
+        is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> Quadruple(CreateDialogTarget.Bitwarden, null, null, filter.vaultId)
+        else -> Quadruple(null, null, null, null)
     }
 }
+
+private data class Quadruple<A, B, C, D>(
+    val first: A,
+    val second: B,
+    val third: C,
+    val fourth: D
+)

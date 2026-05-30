@@ -16,10 +16,12 @@ import takagi.ru.monica.bitwarden.sync.SyncQueueManagerHolder
 import takagi.ru.monica.data.AppLauncherIcon
 import takagi.ru.monica.data.AppLauncherLabel
 import takagi.ru.monica.data.PasswordDatabase
+import takagi.ru.monica.mdbx.MdbxDiagLogger
 import takagi.ru.monica.security.AppUpdateSecurityGuard
 import takagi.ru.monica.utils.AppLauncherIconManager
 import takagi.ru.monica.utils.SettingsManager
 import takagi.ru.monica.webdav.WebDavBackoffState
+import takagi.ru.monica.workers.KeePassRemoteUploadWorker
 
 /**
  * Monica 应用程序入口
@@ -46,9 +48,11 @@ class MonicaApplication : Application() {
         )
         
         initKoin()
+        MdbxDiagLogger.initialize(this)
         syncLauncherEntryPointsWithSettings()
         initBitwardenSyncInfrastructure()
         WebDavBackoffState.attachPersistence(this)
+        scheduleKeePassRemoteUploadRecovery()
         scheduleAttachmentHousekeeping()
     }
     
@@ -80,6 +84,14 @@ class MonicaApplication : Application() {
             SyncQueueManagerHolder.instance = queueManager
         }.onFailure { error ->
             Log.w(TAG, "Failed to init Bitwarden sync infrastructure", error)
+        }
+    }
+
+    private fun scheduleKeePassRemoteUploadRecovery() {
+        runCatching {
+            KeePassRemoteUploadWorker.enqueueIfPending(this)
+        }.onFailure { error ->
+            Log.w(TAG, "Failed to schedule KeePass remote upload recovery", error)
         }
     }
 

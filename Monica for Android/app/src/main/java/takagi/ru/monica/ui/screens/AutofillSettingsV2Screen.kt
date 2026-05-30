@@ -4,20 +4,28 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.outlined.AccountTree
 import androidx.compose.material.icons.outlined.AddCircleOutline
 import androidx.compose.material.icons.outlined.Apps
@@ -36,6 +44,7 @@ import androidx.compose.material.icons.outlined.Smartphone
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
@@ -64,10 +73,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.launch
@@ -78,6 +89,8 @@ import takagi.ru.monica.autofill_ng.core.AutofillServiceChecker
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.bitwarden.BitwardenVault
 import takagi.ru.monica.data.AppSettings
+import takagi.ru.monica.ui.components.AppInfo
+import takagi.ru.monica.ui.components.loadInstalledApps
 import takagi.ru.monica.utils.SettingsManager
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -116,6 +129,7 @@ fun AutofillSettingsV2Screen(
     val otpNotificationDurationSeconds by preferences.otpNotificationDuration.collectAsState(initial = 30)
     val autoCopyOtpEnabled by preferences.isAutoCopyOtpEnabled.collectAsState(initial = false)
     val respectOffEnabled by preferences.isV2RespectAutofillOffEnabled.collectAsState(initial = true)
+    val inlineSuggestionsEnabled by preferences.isInlineSuggestionsEnabled.collectAsState(initial = true)
     val blacklistEnabled by preferences.isBlacklistEnabled.collectAsState(initial = true)
     val blacklistPackages by preferences.blacklistPackages.collectAsState(initial = emptySet())
     val saveBlockedTargetRecords by preferences.saveBlockedTargetRecords.collectAsState(initial = emptyList())
@@ -548,6 +562,16 @@ fun AutofillSettingsV2Screen(
                 )
                 HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
                 SwitchSettingItem(
+                    icon = Icons.Outlined.Input,
+                    title = stringResource(R.string.autofill_inline_suggestions),
+                    subtitle = stringResource(R.string.autofill_inline_suggestions_desc),
+                    checked = inlineSuggestionsEnabled,
+                    onCheckedChange = { enabled ->
+                        scope.launch { preferences.setInlineSuggestionsEnabled(enabled) }
+                    },
+                )
+                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+                SwitchSettingItem(
                     icon = Icons.Outlined.AddCircleOutline,
                     title = stringResource(R.string.autofill_save_enable),
                     subtitle = stringResource(R.string.autofill_save_enable_desc),
@@ -861,18 +885,28 @@ private fun V2BlacklistManagementDialog(
     onDismiss: () -> Unit,
     onPackageToggle: (String, Boolean) -> Unit,
 ) {
-    val appRows = listOf(
-        "com.tencent.mm" to stringResource(R.string.autofill_blacklist_app_wechat),
-        "com.eg.android.AlipayGphone" to stringResource(R.string.autofill_blacklist_app_alipay),
-        "com.unionpay" to stringResource(R.string.autofill_blacklist_app_unionpay),
-        "com.tencent.mobileqq" to stringResource(R.string.autofill_blacklist_app_qq),
-        "com.taobao.taobao" to stringResource(R.string.autofill_blacklist_app_taobao),
-        "com.jingdong.app.mall" to stringResource(R.string.autofill_blacklist_app_jd),
-        "com.tencent.wework" to stringResource(R.string.autofill_blacklist_app_wework),
-        "com.sina.weibo" to stringResource(R.string.autofill_blacklist_app_weibo),
-    )
-    val knownPackages = appRows.map { it.first }.toSet()
-    val extraPackages = blacklistPackages.filterNot { knownPackages.contains(it) }.sorted()
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    var searchQuery by remember { mutableStateOf("") }
+    var installedApps by remember { mutableStateOf<List<AppInfo>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        installedApps = loadInstalledApps(context)
+        isLoading = false
+    }
+
+    val filteredApps = remember(installedApps, searchQuery) {
+        if (searchQuery.isBlank()) installedApps
+        else {
+            val query = searchQuery.trim().lowercase(java.util.Locale.getDefault())
+            installedApps.filter { app ->
+                app.appName.lowercase(java.util.Locale.getDefault()).contains(query) ||
+                app.packageName.lowercase(java.util.Locale.getDefault()).contains(query)
+            }
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -881,8 +915,7 @@ private fun V2BlacklistManagementDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 420.dp)
-                    .verticalScroll(rememberScrollState()),
+                    .heightIn(max = 480.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 Text(
@@ -890,67 +923,115 @@ private fun V2BlacklistManagementDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                appRows.forEach { (packageName, appName) ->
-                    val checked = blacklistPackages.contains(packageName)
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onPackageToggle(packageName, !checked) },
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                        ),
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(text = appName, style = MaterialTheme.typography.bodyLarge)
-                                Text(
-                                    text = packageName,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text(stringResource(R.string.search_apps)) },
+                    leadingIcon = {
+                        Icon(Icons.Filled.Search, contentDescription = null)
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotBlank()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Filled.Clear, contentDescription = null)
                             }
-                            Switch(
-                                checked = checked,
-                                onCheckedChange = { enabled -> onPackageToggle(packageName, enabled) },
-                            )
                         }
-                    }
-                }
-                extraPackages.forEach { packageName ->
-                    val checked = blacklistPackages.contains(packageName)
-                    Card(
+                    },
+                    singleLine = true,
+                )
+
+                if (isLoading) {
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable { onPackageToggle(packageName, !checked) },
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-                        ),
+                            .height(200.dp),
+                        contentAlignment = Alignment.Center,
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(text = packageName, style = MaterialTheme.typography.bodyLarge)
-                                Text(
-                                    text = packageName,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
+                        CircularProgressIndicator()
+                    }
+                } else if (filteredApps.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(200.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = if (searchQuery.isBlank()) {
+                                stringResource(R.string.autofill_blacklist_no_apps)
+                            } else {
+                                stringResource(R.string.autofill_blacklist_no_match, searchQuery)
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        items(filteredApps) { app ->
+                            val checked = blacklistPackages.contains(app.packageName)
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onPackageToggle(app.packageName, !checked) },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (checked)
+                                        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f)
+                                    else
+                                        MaterialTheme.colorScheme.surfaceContainerLow,
+                                ),
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    if (app.icon != null) {
+                                        val bitmap = remember(app.icon) {
+                                            app.icon!!.toBitmap(48, 48)
+                                        }
+                                        Image(
+                                            bitmap = bitmap.asImageBitmap(),
+                                            contentDescription = null,
+                                            modifier = Modifier.size(36.dp),
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Outlined.Apps,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(36.dp),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.width(12.dp))
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = app.appName,
+                                            style = MaterialTheme.typography.bodyLarge,
+                                        )
+                                        Text(
+                                            text = app.packageName,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                    }
+                                    Switch(
+                                        checked = checked,
+                                        onCheckedChange = { enabled ->
+                                            onPackageToggle(app.packageName, enabled)
+                                        },
+                                    )
+                                }
                             }
-                            Switch(
-                                checked = checked,
-                                onCheckedChange = { enabled -> onPackageToggle(packageName, enabled) },
-                            )
                         }
                     }
                 }

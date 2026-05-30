@@ -159,6 +159,17 @@ internal fun KeepassRefreshTopActionsMenuItem(
 }
 
 @Composable
+internal fun MdbxSyncTopActionsMenuItem(
+    onClick: () -> Unit,
+) {
+    DropdownMenuItem(
+        text = { Text("同步 MDBX 数据库") },
+        leadingIcon = { Icon(Icons.Default.Sync, contentDescription = null) },
+        onClick = onClick
+    )
+}
+
+@Composable
 internal fun BitwardenSyncTopActionsMenuItem(
     isSyncing: Boolean,
     enabled: Boolean,

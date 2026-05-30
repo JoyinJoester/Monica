@@ -44,7 +44,7 @@ fun MonicaExpressiveFilterChip(
     if (animated) {
         val resolvedInteractionSource = interactionSource ?: remember { MutableInteractionSource() }
         val isPressed by resolvedInteractionSource.collectIsPressedAsState()
-        val targetCornerRadius = if (selected) 12.dp else 20.dp
+        val targetCornerRadius = if (selected || isPressed) 12.dp else 20.dp
         val targetContainerColor = when {
             selected -> colorScheme.secondaryContainer
             else -> colorScheme.surfaceContainerLow

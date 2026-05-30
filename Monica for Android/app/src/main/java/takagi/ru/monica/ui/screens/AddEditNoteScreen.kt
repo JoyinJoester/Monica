@@ -57,6 +57,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -70,10 +71,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.launch
 import takagi.ru.monica.R
@@ -82,6 +86,7 @@ import takagi.ru.monica.data.NoteCodeBlockCollapseMode
 import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.model.StorageTarget
 import takagi.ru.monica.data.model.toStorageTarget
+import takagi.ru.monica.notes.domain.NoteDraftStore
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.ui.components.ImageImportConfirmDialog
 import takagi.ru.monica.ui.components.ImageDialog
@@ -112,6 +117,7 @@ fun AddEditNoteScreen(
     initialCategoryId: Long? = null,
     initialKeePassDatabaseId: Long? = null,
     initialKeePassGroupPath: String? = null,
+    initialMdbxDatabaseId: Long? = null,
     initialBitwardenVaultId: Long? = null,
     initialBitwardenFolderId: String? = null,
     viewModel: NoteViewModel = viewModel(),
@@ -120,6 +126,7 @@ fun AddEditNoteScreen(
     )
 ) {
     val context = LocalContext.current
+    val draftStore = remember { NoteDraftStore.init(context) }
     val biometricHelper = remember { BiometricHelper(context) }
     val securityManager = remember { SecurityManager(context) }
     val database = remember { PasswordDatabase.getDatabase(context) }
@@ -386,13 +393,26 @@ fun AddEditNoteScreen(
         if (!isEditing) {
             hasInitializedReplicaTargets = false
             editorViewModel.resetForNewNote()
+            editorViewModel.restoreDraft(noteId)
             return@LaunchedEffect
         }
         val note = viewModel.getNoteById(noteId)
         note?.let {
             editorViewModel.loadForEdit(it)
+            editorViewModel.restoreDraft(noteId)
             hasInitializedReplicaTargets = false
         }
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_PAUSE) {
+                editorViewModel.saveDraftImmediate(noteId)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     LaunchedEffect(isEditing, allNotes, editorState.currentNote?.id, hasInitializedReplicaTargets) {
@@ -424,6 +444,7 @@ fun AddEditNoteScreen(
         initialCategoryId,
         initialKeePassDatabaseId,
         initialKeePassGroupPath,
+        initialMdbxDatabaseId,
         initialBitwardenVaultId,
         initialBitwardenFolderId,
         draftStorageTarget,
@@ -435,6 +456,7 @@ fun AddEditNoteScreen(
             initialCategoryId = initialCategoryId,
             initialKeePassDatabaseId = initialKeePassDatabaseId,
             initialKeePassGroupPath = initialKeePassGroupPath,
+            initialMdbxDatabaseId = initialMdbxDatabaseId,
             initialBitwardenVaultId = initialBitwardenVaultId,
             initialBitwardenFolderId = initialBitwardenFolderId,
             draftStorageTarget = draftStorageTarget,
@@ -493,6 +515,7 @@ fun AddEditNoteScreen(
                     categoryId = currentState.selectedCategoryId,
                     keepassDatabaseId = currentState.keepassDatabaseId,
                     keepassGroupPath = currentState.keepassGroupPath,
+                    mdbxDatabaseId = currentState.mdbxDatabaseId,
                     bitwardenVaultId = currentState.bitwardenVaultId,
                     bitwardenFolderId = currentState.bitwardenFolderId
                 )
@@ -533,12 +556,14 @@ fun AddEditNoteScreen(
                     categoryId = (primaryTarget as? StorageTarget.MonicaLocal)?.categoryId,
                     keepassDatabaseId = (primaryTarget as? StorageTarget.KeePass)?.databaseId,
                     keepassGroupPath = (primaryTarget as? StorageTarget.KeePass)?.groupPath,
+                    mdbxDatabaseId = (primaryTarget as? StorageTarget.Mdbx)?.databaseId,
                     bitwardenVaultId = (primaryTarget as? StorageTarget.Bitwarden)?.vaultId,
                     bitwardenFolderId = (primaryTarget as? StorageTarget.Bitwarden)?.folderId
                 )
             )
         }
         editorViewModel.stopSaving()
+        editorViewModel.clearDraft(noteId)
         if (shouldNavigateBack) {
             onNavigateBack()
         }

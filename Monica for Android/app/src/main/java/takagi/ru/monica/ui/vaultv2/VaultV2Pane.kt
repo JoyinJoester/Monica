@@ -95,6 +95,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
@@ -108,6 +109,7 @@ import takagi.ru.monica.data.AppSettings
 import takagi.ru.monica.data.CategorySelectionUiMode
 import takagi.ru.monica.data.Category
 import takagi.ru.monica.data.LocalKeePassDatabase
+import takagi.ru.monica.data.LocalMdbxDatabase
 import takagi.ru.monica.data.PasswordListQuickFilterItem
 import takagi.ru.monica.data.PasswordListTopModule
 import takagi.ru.monica.data.PasswordPageContentType
@@ -126,6 +128,7 @@ import takagi.ru.monica.data.model.OtpType
 import takagi.ru.monica.data.model.PasskeyBindingCodec
 import takagi.ru.monica.data.UnmatchedIconHandlingStrategy
 import takagi.ru.monica.notes.domain.NoteContentCodec
+import takagi.ru.monica.repository.MdbxStoredFolderEntry
 import takagi.ru.monica.ui.PasswordListCategoryChipMenu
 import takagi.ru.monica.ui.buildCategoryMenuQuickFilterBindings
 import takagi.ru.monica.ui.components.UnifiedCategoryFilterBottomSheet
@@ -149,12 +152,21 @@ import takagi.ru.monica.ui.PasswordListInitialLoadingIndicator
 import takagi.ru.monica.ui.buildPasswordQuickFolderNodes
 import takagi.ru.monica.ui.buildCategoryMenuFolderShortcuts
 import takagi.ru.monica.ui.buildLocalQuickFolderPasswordCountByCategoryId
+import takagi.ru.monica.ui.buildMdbxFolderPathLabel
 import takagi.ru.monica.ui.buildQuickFolderBreadcrumbs
+import takagi.ru.monica.ui.MdbxPathSyncActions
+import takagi.ru.monica.ui.MdbxPathSyncState
+import takagi.ru.monica.ui.mdbxPathPendingSyncCount
+import takagi.ru.monica.ui.mdbxPathShouldFlushPendingUpload
 import takagi.ru.monica.ui.PasswordQuickFilterChipCallbacks
 import takagi.ru.monica.ui.PasswordQuickFilterChipState
 import takagi.ru.monica.ui.supportsQuickFolders
 import takagi.ru.monica.ui.components.ExpressiveTopBar
+import takagi.ru.monica.ui.components.QuickStatusBar
 import takagi.ru.monica.ui.common.selection.SelectionActionBar
+import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
+import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
+import takagi.ru.monica.ui.components.UnifiedMoveAction
 import takagi.ru.monica.ui.password.PasswordAuthenticatorDisplayState
 import takagi.ru.monica.ui.password.BitwardenClearCacheTopActionsMenuItem
 import takagi.ru.monica.ui.password.BitwardenLockTopActionsMenuItem
@@ -162,6 +174,7 @@ import takagi.ru.monica.ui.password.BitwardenReunlockTopActionsMenuItem
 import takagi.ru.monica.ui.password.BitwardenSyncTopActionsMenuItem
 import takagi.ru.monica.ui.password.CommonPasswordTopActionsMenuItems
 import takagi.ru.monica.ui.password.KeepassRefreshTopActionsMenuItem
+import takagi.ru.monica.ui.password.MdbxSyncTopActionsMenuItem
 import takagi.ru.monica.ui.password.PasswordTopActionsDropdownMenu
 import takagi.ru.monica.ui.password.StackCardMode
 import takagi.ru.monica.ui.password.appendAggregateContentQuickFilterItems
@@ -173,6 +186,7 @@ import takagi.ru.monica.viewmodel.BankCardViewModel
 import takagi.ru.monica.viewmodel.CategoryFilter
 import takagi.ru.monica.viewmodel.DocumentViewModel
 import takagi.ru.monica.viewmodel.LocalKeePassViewModel
+import takagi.ru.monica.viewmodel.MdbxViewModel
 import takagi.ru.monica.viewmodel.NoteViewModel
 import takagi.ru.monica.viewmodel.PasskeyViewModel
 import takagi.ru.monica.viewmodel.PasswordViewModel
@@ -333,6 +347,19 @@ private fun VaultV2PaneState.toUnifiedCategoryFilterSelection(): UnifiedCategory
 			storageFilterPrimaryId?.let(UnifiedCategoryFilterSelection::BitwardenVaultUncategorizedFilter)
 				?: UnifiedCategoryFilterSelection.Local
 		}
+		VAULT_V2_STORAGE_FILTER_MDBX_DATABASE -> {
+			storageFilterPrimaryId?.let(UnifiedCategoryFilterSelection::MdbxDatabaseFilter)
+				?: UnifiedCategoryFilterSelection.Local
+		}
+		VAULT_V2_STORAGE_FILTER_MDBX_FOLDER -> {
+			val databaseId = storageFilterPrimaryId
+			val folderId = storageFilterSecondaryKey
+			if (databaseId != null && !folderId.isNullOrBlank()) {
+				UnifiedCategoryFilterSelection.MdbxFolderFilter(databaseId, folderId)
+			} else {
+				UnifiedCategoryFilterSelection.Local
+			}
+		}
 		else -> UnifiedCategoryFilterSelection.Local
 	}
 }
@@ -407,6 +434,19 @@ private fun VaultV2PaneState.updateStorageFilter(selection: UnifiedCategoryFilte
 				primaryId = selection.vaultId,
 			)
 		}
+		is UnifiedCategoryFilterSelection.MdbxDatabaseFilter -> {
+			updateStorageFilter(
+				type = VAULT_V2_STORAGE_FILTER_MDBX_DATABASE,
+				primaryId = selection.databaseId,
+			)
+		}
+		is UnifiedCategoryFilterSelection.MdbxFolderFilter -> {
+			updateStorageFilter(
+				type = VAULT_V2_STORAGE_FILTER_MDBX_FOLDER,
+				primaryId = selection.databaseId,
+				secondaryKey = selection.folderId,
+			)
+		}
 	}
 }
 
@@ -438,6 +478,10 @@ private fun UnifiedCategoryFilterSelection.toCategoryFilterOrNull(): CategoryFil
 		}
 		is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> {
 			CategoryFilter.BitwardenVaultUncategorized(vaultId)
+		}
+		is UnifiedCategoryFilterSelection.MdbxDatabaseFilter -> CategoryFilter.MdbxDatabase(databaseId)
+		is UnifiedCategoryFilterSelection.MdbxFolderFilter -> {
+			CategoryFilter.MdbxFolderFilter(databaseId, folderId)
 		}
 	}
 }
@@ -472,6 +516,8 @@ private fun CategoryFilter.toUnifiedCategoryFilterSelectionOrNull(): UnifiedCate
 		is CategoryFilter.BitwardenVaultUncategorized -> {
 			UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter(vaultId)
 		}
+		is CategoryFilter.MdbxDatabase -> UnifiedCategoryFilterSelection.MdbxDatabaseFilter(databaseId)
+		is CategoryFilter.MdbxFolderFilter -> UnifiedCategoryFilterSelection.MdbxFolderFilter(databaseId, folderId)
 		is CategoryFilter.Archived -> null
 	}
 }
@@ -572,6 +618,24 @@ private fun SavedCategoryFilterState.toVaultV2SavedStorageFilter(): VaultV2Saved
 				VaultV2SavedStorageFilter(VAULT_V2_STORAGE_FILTER_ALL)
 			}
 		}
+		VAULT_V2_STORAGE_FILTER_MDBX_DATABASE -> {
+			primaryId?.let {
+				VaultV2SavedStorageFilter(type = VAULT_V2_STORAGE_FILTER_MDBX_DATABASE, primaryId = it)
+			} ?: VaultV2SavedStorageFilter(VAULT_V2_STORAGE_FILTER_ALL)
+		}
+		VAULT_V2_STORAGE_FILTER_MDBX_FOLDER -> {
+			val databaseId = primaryId
+			val folderId = text
+			if (databaseId != null && !folderId.isNullOrBlank()) {
+				VaultV2SavedStorageFilter(
+					type = VAULT_V2_STORAGE_FILTER_MDBX_FOLDER,
+					primaryId = databaseId,
+					secondaryKey = folderId,
+				)
+			} else {
+				VaultV2SavedStorageFilter(VAULT_V2_STORAGE_FILTER_ALL)
+			}
+		}
 		else -> VaultV2SavedStorageFilter(VAULT_V2_STORAGE_FILTER_ALL)
 	}
 }
@@ -592,10 +656,27 @@ private fun VaultV2PaneState.toSavedCategoryFilterState(): SavedCategoryFilterSt
 		VAULT_V2_STORAGE_FILTER_KEEPASS_DATABASE_UNCATEGORIZED,
 		VAULT_V2_STORAGE_FILTER_BITWARDEN_VAULT,
 		VAULT_V2_STORAGE_FILTER_BITWARDEN_VAULT_STARRED,
-		VAULT_V2_STORAGE_FILTER_BITWARDEN_VAULT_UNCATEGORIZED -> {
+		VAULT_V2_STORAGE_FILTER_BITWARDEN_VAULT_UNCATEGORIZED,
+		VAULT_V2_STORAGE_FILTER_MDBX_DATABASE -> {
 			if (storageFilterPrimaryId != null) {
 				SavedCategoryFilterState(
 					type = storageFilterType,
+					primaryId = storageFilterPrimaryId,
+				)
+			} else {
+				SavedCategoryFilterState(type = VAULT_V2_STORAGE_FILTER_ALL)
+			}
+		}
+		VAULT_V2_STORAGE_FILTER_MDBX_FOLDER -> {
+			if (storageFilterPrimaryId != null && !storageFilterSecondaryKey.isNullOrBlank()) {
+				SavedCategoryFilterState(
+					type = VAULT_V2_STORAGE_FILTER_MDBX_FOLDER,
+					primaryId = storageFilterPrimaryId,
+					text = storageFilterSecondaryKey,
+				)
+			} else if (storageFilterPrimaryId != null) {
+				SavedCategoryFilterState(
+					type = VAULT_V2_STORAGE_FILTER_MDBX_DATABASE,
 					primaryId = storageFilterPrimaryId,
 				)
 			} else {
@@ -680,8 +761,10 @@ private fun rememberVaultV2StorageFilterLabel(
 	selected: UnifiedCategoryFilterSelection,
 	categories: List<Category>,
 	keepassDatabases: List<LocalKeePassDatabase>,
+	mdbxDatabases: List<LocalMdbxDatabase>,
 	bitwardenVaults: List<BitwardenVault>,
 	bitwardenFolders: List<BitwardenFolder>,
+	mdbxFolders: List<MdbxStoredFolderEntry>,
 ): String {
 	val monica = stringResource(R.string.filter_monica)
 	val bitwarden = stringResource(R.string.filter_bitwarden)
@@ -730,6 +813,14 @@ private fun rememberVaultV2StorageFilterLabel(
 		is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> {
 			"${bitwardenVaults.find { it.id == selected.vaultId }?.displayLabel() ?: bitwarden} · $uncategorized"
 		}
+		is UnifiedCategoryFilterSelection.MdbxDatabaseFilter -> {
+			mdbxDatabases.find { it.id == selected.databaseId }?.name ?: "MDBX"
+		}
+		is UnifiedCategoryFilterSelection.MdbxFolderFilter -> {
+			val databaseLabel = mdbxDatabases.find { it.id == selected.databaseId }?.name ?: "MDBX"
+			val folderLabel = buildMdbxFolderPathLabel(selected.folderId, mdbxFolders)
+			if (folderLabel.isNullOrBlank()) databaseLabel else "$databaseLabel · $folderLabel"
+		}
 	}
 }
 
@@ -745,7 +836,7 @@ private fun VaultV2Item.matchesStorageFilter(selection: UnifiedCategoryFilterSel
 		UnifiedCategoryFilterSelection.Uncategorized -> categoryId() == null
 		UnifiedCategoryFilterSelection.LocalStarred -> isLocalOnly() && isFavorite
 		UnifiedCategoryFilterSelection.LocalUncategorized -> isLocalOnly() && categoryId() == null
-		is UnifiedCategoryFilterSelection.Custom -> categoryId() == selection.categoryId
+		is UnifiedCategoryFilterSelection.Custom -> isLocalOnly() && categoryId() == selection.categoryId
 		is UnifiedCategoryFilterSelection.KeePassDatabaseFilter -> {
 			keepassDatabaseId() == selection.databaseId
 		}
@@ -769,6 +860,12 @@ private fun VaultV2Item.matchesStorageFilter(selection: UnifiedCategoryFilterSel
 		}
 		is UnifiedCategoryFilterSelection.BitwardenVaultUncategorizedFilter -> {
 			bitwardenVaultId() == selection.vaultId && bitwardenFolderId().isNullOrBlank()
+		}
+		is UnifiedCategoryFilterSelection.MdbxDatabaseFilter -> {
+			mdbxDatabaseId() == selection.databaseId
+		}
+		is UnifiedCategoryFilterSelection.MdbxFolderFilter -> {
+			mdbxDatabaseId() == selection.databaseId
 		}
 	}
 }
@@ -836,6 +933,17 @@ private fun VaultV2Item.bitwardenFolderId(): String? {
 		VaultV2ItemType.BANK_CARD,
 		VaultV2ItemType.DOCUMENT -> secureItem?.bitwardenFolderId
 		VaultV2ItemType.PASSKEY -> passkeyEntry?.bitwardenFolderId
+	}
+}
+
+private fun VaultV2Item.mdbxDatabaseId(): Long? {
+	return when (type) {
+		VaultV2ItemType.PASSWORD -> passwordEntry?.mdbxDatabaseId
+		VaultV2ItemType.AUTHENTICATOR -> totpItem?.mdbxDatabaseId
+		VaultV2ItemType.NOTE,
+		VaultV2ItemType.BANK_CARD,
+		VaultV2ItemType.DOCUMENT -> secureItem?.mdbxDatabaseId
+		VaultV2ItemType.PASSKEY -> null
 	}
 }
 
@@ -984,8 +1092,10 @@ fun VaultV2Pane(
 	noteViewModel: NoteViewModel,
 	passkeyViewModel: PasskeyViewModel,
 	keepassDatabases: List<LocalKeePassDatabase>,
+	mdbxDatabases: List<LocalMdbxDatabase>,
 	bitwardenVaults: List<BitwardenVault>,
 	localKeePassViewModel: LocalKeePassViewModel,
+	mdbxViewModel: MdbxViewModel? = null,
 	settingsViewModel: SettingsViewModel,
 	state: VaultV2PaneState,
 	onOpenPassword: (Long) -> Unit,
@@ -1003,8 +1113,40 @@ fun VaultV2Pane(
 	showStandaloneSettingsEntry: Boolean = false,
 	showOnlyLocalData: Boolean = false,
 	appSettings: AppSettings = AppSettings(),
+	securityManager: takagi.ru.monica.security.SecurityManager? = null,
+	biometricEnabled: Boolean = false,
 	modifier: Modifier = Modifier,
 ) {
+	// 内嵌历史/回收站页面状态（不切换底部 tab）
+	// 0 = 无, 1 = 时间线, 2 = 回收站
+	var vaultHistoryPageMode by rememberSaveable { mutableStateOf(0) }
+	val timelineViewModel: takagi.ru.monica.viewmodel.TimelineViewModel = viewModel()
+
+	// 历史/回收站页面优先渲染，覆盖整个 VaultV2Pane
+	if (vaultHistoryPageMode != 0) {
+		takagi.ru.monica.ui.screens.TimelineScreen(
+			viewModel = timelineViewModel,
+			onLogSelected = {},
+			splitPaneMode = false,
+			initialTab = if (vaultHistoryPageMode == 2) {
+				takagi.ru.monica.ui.screens.HistoryTab.TRASH
+			} else {
+				takagi.ru.monica.ui.screens.HistoryTab.TIMELINE
+			},
+			initialTrashScopeKey = null,
+			enableTabSwitch = false,
+			showBackButton = true,
+			onNavigateBack = { vaultHistoryPageMode = 0 }
+		)
+		return
+	}
+
+	// 覆盖外部传入的导航回调，改为在 VaultV2 内部处理
+	val handleOpenHistory: () -> Unit = { vaultHistoryPageMode = 1 }
+	val handleOpenTrashPage: () -> Unit = { vaultHistoryPageMode = 2 }
+	// 归档页面沿用外部回调（密码页面有完整的归档视图）
+	val handleOpenArchivePage: () -> Unit = onOpenArchivePage
+
 	var searchQuery by rememberSaveable { mutableStateOf("") }
 	var isSearchExpanded by rememberSaveable { mutableStateOf(false) }
 	var isStorageFilterSheetVisible by rememberSaveable { mutableStateOf(false) }
@@ -1088,18 +1230,19 @@ fun VaultV2Pane(
 			secondaryKey = restoredFilter.secondaryKey,
 		)
 	}
-	LaunchedEffect(
-		state.hasInitializedStorageFilter,
-		state.storageFilterType,
-		state.storageFilterPrimaryId,
-		state.storageFilterSecondaryKey,
-	) {
+	LaunchedEffect(state.hasInitializedStorageFilter) {
 		if (!state.hasInitializedStorageFilter) return@LaunchedEffect
-		val savedState = state.toSavedCategoryFilterState()
-		settingsViewModel.updateCategoryFilterState(
-			scope = VAULT_V2_CATEGORY_FILTER_SCOPE,
-			state = savedState,
-		)
+		snapshotFlow {
+			state.storageFilterType to state.storageFilterPrimaryId
+		}.distinctUntilChanged()
+		 .drop(1) // skip the initial value (matches what Block A just restored)
+		 .collect {
+			val savedState = state.toSavedCategoryFilterState()
+			settingsViewModel.updateCategoryFilterState(
+				scope = VAULT_V2_CATEGORY_FILTER_SCOPE,
+				state = savedState,
+			)
+		}
 	}
 	val storageSelection = remember(
 		state.storageFilterType,
@@ -1154,6 +1297,59 @@ fun VaultV2Pane(
 			else -> null
 		}
 	}
+	val selectedMdbxDatabaseId = remember(storageSelection) {
+		when (storageSelection) {
+			is UnifiedCategoryFilterSelection.MdbxDatabaseFilter -> storageSelection.databaseId
+			is UnifiedCategoryFilterSelection.MdbxFolderFilter -> storageSelection.databaseId
+			else -> null
+		}
+	}
+	val selectedMdbxDatabase = remember(selectedMdbxDatabaseId, mdbxDatabases) {
+		selectedMdbxDatabaseId?.let { databaseId ->
+			mdbxDatabases.find { it.id == databaseId }
+		}
+	}
+	val mdbxOperationState by (
+		mdbxViewModel?.operationState
+			?: flowOf(MdbxViewModel.OperationState.Idle)
+	).collectAsState(initial = MdbxViewModel.OperationState.Idle)
+	val mdbxPendingSyncCounts by remember(mdbxViewModel) {
+		mdbxViewModel?.pendingSyncCounts ?: flowOf(emptyMap<Long, Int>())
+	}.collectAsState(initial = emptyMap())
+	val mdbxQuickStatusSyncState = remember(
+		selectedMdbxDatabase,
+		mdbxOperationState,
+		mdbxPendingSyncCounts,
+		mdbxViewModel
+	) {
+		val database = selectedMdbxDatabase
+		val viewModel = mdbxViewModel
+		if (database != null && viewModel != null) {
+			MdbxPathSyncState(
+				pendingCount = mdbxPendingSyncCounts[database.id]
+					?: database.mdbxPathPendingSyncCount(),
+				isSyncing = mdbxOperationState is MdbxViewModel.OperationState.Loading,
+				onSync = {
+					if (database.mdbxPathShouldFlushPendingUpload()) {
+						viewModel.flushPendingVaultUpload(database.id)
+					} else {
+						viewModel.syncVault(database.id)
+					}
+				}
+			)
+		} else {
+			null
+		}
+	}
+	LaunchedEffect(selectedMdbxDatabaseId, mdbxDatabases.map { it.id }) {
+		selectedMdbxDatabaseId?.let { databaseId ->
+			if (mdbxDatabases.any { it.id == databaseId }) {
+				mdbxViewModel?.activateMdbxDatabase(databaseId)
+				passwordViewModel.refreshMdbxFolders(databaseId)
+				mdbxViewModel?.autoSyncVisibleVault(databaseId)
+			}
+		}
+	}
 	val isTopBarSyncing = selectedBitwardenVaultId?.let { vaultId ->
 		bitwardenSyncStatusByVault[vaultId].isUserVisibleSyncInProgress()
 	} == true
@@ -1168,6 +1364,10 @@ fun VaultV2Pane(
 		selectedBitwardenVaultId?.let(passwordViewModel::getBitwardenFolders) ?: flowOf(emptyList())
 	}
 	val selectedBitwardenFolders by selectedBitwardenFoldersFlow.collectAsState(initial = emptyList())
+	val selectedMdbxFoldersFlow = remember(passwordViewModel, selectedMdbxDatabaseId) {
+		selectedMdbxDatabaseId?.let(passwordViewModel::getMdbxFolders) ?: flowOf(emptyList())
+	}
+	val selectedMdbxFolders by selectedMdbxFoldersFlow.collectAsState(initial = emptyList())
 	val quickFolderNodes = remember(categories) { buildPasswordQuickFolderNodes(categories) }
 	val quickFolderNodeByPath = remember(quickFolderNodes) { quickFolderNodes.associateBy { it.path } }
 	val breadcrumbCategoryFilter = remember(storageSelection) {
@@ -1195,6 +1395,7 @@ fun VaultV2Pane(
 		keepassDatabases,
 		bitwardenVaults,
 		selectedBitwardenFolders,
+		selectedMdbxFolders,
 		categories,
 		initialValue = emptyList<PasswordQuickFolderBreadcrumb>()
 	) {
@@ -1207,6 +1408,8 @@ fun VaultV2Pane(
 			quickFolderNodeByPath = quickFolderNodeByPath,
 			quickFolderRootFilter = breadcrumbRootFilter,
 			keepassDatabases = keepassDatabases,
+			mdbxDatabases = mdbxDatabases,
+			selectedMdbxFolders = selectedMdbxFolders,
 			bitwardenVaults = bitwardenVaults,
 			selectedBitwardenFolders = selectedBitwardenFolders,
 			categories = categories,
@@ -1216,8 +1419,10 @@ fun VaultV2Pane(
 		selected = storageSelection,
 		categories = categories,
 		keepassDatabases = keepassDatabases,
+		mdbxDatabases = mdbxDatabases,
 		bitwardenVaults = bitwardenVaults,
 		bitwardenFolders = selectedBitwardenFolders,
+		mdbxFolders = selectedMdbxFolders,
 	)
 
 	val visiblePasswordEntries = remember(passwordEntries, showOnlyLocalData) {
@@ -1366,6 +1571,7 @@ fun VaultV2Pane(
 		selectedKeePassGroups,
 		bitwardenVaults,
 		selectedBitwardenFolders,
+		selectedMdbxFolders,
 		categories,
 		initialValue = emptyList()
 	) {
@@ -1383,6 +1589,7 @@ fun VaultV2Pane(
 			keepassGroupsForSelectedDb = selectedKeePassGroups,
 			bitwardenVaults = bitwardenVaults,
 			selectedBitwardenFolders = selectedBitwardenFolders,
+			selectedMdbxFolders = selectedMdbxFolders,
 			categories = categories
 		)
 	}
@@ -1613,9 +1820,6 @@ fun VaultV2Pane(
 		if (isAutoScrollingToTop) {
 			pendingAllItems = allItemsRaw
 		} else {
-			if (allItems.isNotEmpty()) {
-				delay(80)
-			}
 			allItems = allItemsRaw
 		}
 	}
@@ -1739,9 +1943,11 @@ fun VaultV2Pane(
 	val showVaultLoadingIndicator = sectionedItems.isEmpty() && !showVaultEmptyState
 
 	val selectedCount by remember { derivedStateOf { selectedKeys.size } }
-	val selectedItems = remember(selectedKeys, allItems) {
-		val keySet = selectedKeys.toSet()
-		allItems.filter { it.key in keySet }
+	val selectedItems by remember(allItems) {
+		derivedStateOf {
+			val keySet = selectedKeys.toSet()
+			allItems.filter { it.key in keySet }
+		}
 	}
 	val currentSectionIndicatorLabel by remember(listState, sectionLayouts) {
 		derivedStateOf {
@@ -1895,6 +2101,7 @@ fun VaultV2Pane(
 								PasswordListCategoryChipMenu(
 									currentFilter = categoryMenuFilter,
 									keepassDatabases = keepassDatabases,
+									mdbxDatabases = mdbxDatabases,
 									bitwardenVaults = bitwardenVaults,
 									configuredQuickFilterItems = configuredQuickFilterItems,
 									quickFilterFavorite = quickFilterFavorite,
@@ -1997,6 +2204,13 @@ fun VaultV2Pane(
 													Toast.LENGTH_SHORT
 												).show()
 											}
+											is StorageTarget.Mdbx -> {
+												Toast.makeText(
+													context,
+													context.getString(R.string.save_failed_with_error, "当前暂不支持将分类移动到 MDBX 数据库"),
+													Toast.LENGTH_SHORT
+												).show()
+											}
 										}
 									},
 									onRenameCategory = passwordViewModel::updateCategory,
@@ -2036,6 +2250,18 @@ fun VaultV2Pane(
 									onClick = {
 										isTopActionsMenuExpanded = false
 										passwordViewModel.refreshKeePassFromSourceForCurrentContext()
+									}
+								)
+							}
+							if (selectedMdbxDatabaseId != null && mdbxViewModel != null) {
+								MdbxSyncTopActionsMenuItem(
+									onClick = {
+										isTopActionsMenuExpanded = false
+										if (selectedMdbxDatabase?.mdbxPathShouldFlushPendingUpload() == true) {
+											mdbxViewModel.flushPendingVaultUpload(selectedMdbxDatabaseId)
+										} else {
+											mdbxViewModel.syncVault(selectedMdbxDatabaseId)
+										}
 									}
 								)
 							}
@@ -2110,9 +2336,9 @@ fun VaultV2Pane(
 								onShowDisplayOptions = {},
 								onOpenCommonAccountTemplates = onOpenCommonAccountTemplates,
 								onScanFidoQr = onScanFidoQr,
-								onOpenHistory = onOpenHistory,
-								onOpenTrash = onOpenTrashPage,
-								onOpenArchive = onOpenArchivePage,
+								onOpenHistory = handleOpenHistory,
+								onOpenTrash = handleOpenTrashPage,
+								onOpenArchive = handleOpenArchivePage,
 								showDisplayOptionsEntry = false,
 								showSettingsEntry = showStandaloneSettingsEntry,
 								onOpenSettings = onOpenStandaloneSettings,
@@ -2122,11 +2348,12 @@ fun VaultV2Pane(
 				}
 			)
 
-			VaultV2NavigationBanner(
+			VaultV2QuickStatusBar(
 				pathLabel = storageFilterLabel,
 				currentSectionLabel = currentSectionIndicatorLabel,
 				breadcrumbs = pathBreadcrumbs,
 				currentFilter = breadcrumbCategoryFilter,
+				mdbxSyncState = mdbxQuickStatusSyncState,
 				onNavigate = { filter ->
 					filter.toUnifiedCategoryFilterSelectionOrNull()?.let { selection ->
 						selectedKeys.clear()
@@ -2215,9 +2442,24 @@ fun VaultV2Pane(
 				},
 				categories = categories,
 				keepassDatabases = keepassDatabases,
+				mdbxDatabases = mdbxDatabases,
 				bitwardenVaults = bitwardenVaults,
 				getBitwardenFolders = passwordViewModel::getBitwardenFolders,
+				getMdbxFolders = passwordViewModel::getMdbxFolders,
 				getKeePassGroups = localKeePassViewModel::getGroups,
+				onCreateMdbxProject = { databaseId, parentFolderId, name ->
+					scope.launch {
+						passwordViewModel.createMdbxFolder(databaseId, name, parentFolderId ?: "root") { result ->
+							result.exceptionOrNull()?.let { error ->
+								Toast.makeText(
+									context,
+									context.getString(R.string.save_failed_with_error, error.message ?: ""),
+									Toast.LENGTH_SHORT
+								).show()
+							}
+						}
+					}
+				},
 				quickFilterContent = {
 					VaultV2QuickFilterFlow(
 						configuredQuickFilterItems = configuredQuickFilterItems,
@@ -2395,6 +2637,9 @@ fun VaultV2Pane(
 		}
 
 		if (selectedCount > 0) {
+			var showVaultMoveSheet by remember { mutableStateOf(false) }
+			var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+
 			SelectionActionBar(
 				modifier = Modifier
 					.align(Alignment.BottomStart)
@@ -2405,94 +2650,284 @@ fun VaultV2Pane(
 					selectedKeys.clear()
 					selectedKeys.addAll(filteredItems.map { it.key })
 				},
+				onMoveToCategory = { showVaultMoveSheet = true },
 				onFavorite = {
-					selectedItems.forEach { item ->
-						when (item.type) {
-							VaultV2ItemType.PASSWORD -> {
-								item.passwordEntry?.let { entry ->
-									passwordViewModel.toggleFavorite(entry.id, !entry.isFavorite)
+					// 全部异步执行，避免主线程卡顿
+					scope.launch {
+						selectedItems.forEach { item ->
+							when (item.type) {
+								VaultV2ItemType.PASSWORD -> {
+									item.passwordEntry?.let { entry ->
+										passwordViewModel.toggleFavorite(entry.id, !entry.isFavorite)
+									}
 								}
-							}
 
-							VaultV2ItemType.AUTHENTICATOR -> {
-								val id = item.totpItem?.id ?: return@forEach
-								if (id > 0) {
-									totpViewModel.toggleFavorite(id, !item.isFavorite)
+								VaultV2ItemType.AUTHENTICATOR -> {
+									// 注意：不能用 return@forEach，改用 if 判断
+									val id = item.totpItem?.id
+									if (id != null && id > 0) {
+										totpViewModel.toggleFavorite(id, !item.isFavorite)
+									}
 								}
-							}
 
-							VaultV2ItemType.NOTE -> {
-								item.secureItem?.let { note ->
-									val decoded = NoteContentCodec.decodeFromItem(note)
-									noteViewModel.updateNote(
-										id = note.id,
-										content = decoded.content,
-										title = note.title,
-										tags = decoded.tags,
-										isMarkdown = decoded.isMarkdown,
-										isFavorite = !note.isFavorite,
-										createdAt = note.createdAt,
-										categoryId = note.categoryId,
-										imagePaths = note.imagePaths,
-										keepassDatabaseId = note.keepassDatabaseId,
-										keepassGroupPath = note.keepassGroupPath,
-										bitwardenVaultId = note.bitwardenVaultId,
-										bitwardenFolderId = note.bitwardenFolderId,
-									)
+								VaultV2ItemType.NOTE -> {
+									item.secureItem?.let { note ->
+										val decoded = NoteContentCodec.decodeFromItem(note)
+										noteViewModel.updateNote(
+											id = note.id,
+											content = decoded.content,
+											title = note.title,
+											tags = decoded.tags,
+											isMarkdown = decoded.isMarkdown,
+											isFavorite = !note.isFavorite,
+											createdAt = note.createdAt,
+											categoryId = note.categoryId,
+											imagePaths = note.imagePaths,
+											keepassDatabaseId = note.keepassDatabaseId,
+											keepassGroupPath = note.keepassGroupPath,
+											bitwardenVaultId = note.bitwardenVaultId,
+											bitwardenFolderId = note.bitwardenFolderId,
+										)
+									}
 								}
-							}
 
-							VaultV2ItemType.PASSKEY -> Unit
+								VaultV2ItemType.PASSKEY -> Unit
 
-							VaultV2ItemType.BANK_CARD -> {
-								item.secureItem?.id?.let(bankCardViewModel::toggleFavorite)
-							}
+								VaultV2ItemType.BANK_CARD -> {
+									item.secureItem?.id?.let(bankCardViewModel::toggleFavorite)
+								}
 
-							VaultV2ItemType.DOCUMENT -> {
-								item.secureItem?.id?.let(documentViewModel::toggleFavorite)
+								VaultV2ItemType.DOCUMENT -> {
+									item.secureItem?.id?.let(documentViewModel::toggleFavorite)
+								}
 							}
 						}
+						// 必须在协程内、所有操作完成后再清空，否则 selectedItems 会提前变空
+						selectedKeys.clear()
 					}
-					selectedKeys.clear()
 				},
 				onDelete = {
+					// 先弹确认对话框，不直接删除
+					showDeleteConfirmDialog = true
+				},
+			)
+
+			// 删除二次确认对话框（带指纹/密码验证）
+			if (showDeleteConfirmDialog) {
+				val doDelete = {
 					selectedItems.forEach { item ->
 						when (item.type) {
 							VaultV2ItemType.PASSWORD -> {
 								item.passwordEntry?.let(passwordViewModel::deletePasswordEntry)
 							}
-
 							VaultV2ItemType.AUTHENTICATOR -> {
 								item.totpItem?.let { totp ->
-									if (totp.id > 0) {
-										totpViewModel.deleteTotpItem(totp)
-									}
+									if (totp.id > 0) totpViewModel.deleteTotpItem(totp)
 								}
 							}
-
 							VaultV2ItemType.NOTE -> {
 								item.secureItem?.let(noteViewModel::deleteNote)
 							}
-
 							VaultV2ItemType.PASSKEY -> {
 								item.passkeyEntry?.let { passkey ->
-									scope.launch {
-										passkeyViewModel.deletePasskey(passkey)
-									}
+									scope.launch { passkeyViewModel.deletePasskey(passkey) }
 								}
 							}
-
 							VaultV2ItemType.BANK_CARD -> {
 								item.secureItem?.id?.let(bankCardViewModel::deleteCard)
 							}
-
 							VaultV2ItemType.DOCUMENT -> {
 								item.secureItem?.id?.let(documentViewModel::deleteDocument)
 							}
 						}
 					}
 					selectedKeys.clear()
-				},
+				}
+				takagi.ru.monica.ui.common.dialog.DeleteConfirmDialog(
+					itemTitle = stringResource(R.string.selected_items, selectedCount),
+					itemType = stringResource(R.string.vault_batch_delete_item_type),
+					biometricEnabled = biometricEnabled,
+					onDismiss = { showDeleteConfirmDialog = false },
+					onConfirmWithPassword = { password ->
+						val sm = securityManager
+						if (sm != null && sm.unlockVaultWithPassword(password)) {
+							showDeleteConfirmDialog = false
+							doDelete()
+						}
+					},
+					onConfirmWithBiometric = {
+						showDeleteConfirmDialog = false
+						doDelete()
+					}
+				)
+			}
+
+			// 移动/复制到其他文件夹/数据库
+			UnifiedMoveToCategoryBottomSheet(
+				visible = showVaultMoveSheet,
+				onDismiss = { showVaultMoveSheet = false },
+				categories = categories,
+				keepassDatabases = keepassDatabases,
+				mdbxDatabases = mdbxDatabases,
+				bitwardenVaults = bitwardenVaults,
+				getBitwardenFolders = passwordViewModel::getBitwardenFolders,
+				getKeePassGroups = localKeePassViewModel::getGroups,
+				getMdbxFolders = passwordViewModel::getMdbxFolders,
+				allowCopy = false,
+				allowMove = true,
+				allowArchiveTarget = false,
+				onTargetSelected = { target, _ ->
+					showVaultMoveSheet = false
+					val passwordIds = selectedItems
+						.filter { it.type == VaultV2ItemType.PASSWORD }
+						.mapNotNull { it.passwordEntry?.id }
+					val totpIds = selectedItems
+						.filter { it.type == VaultV2ItemType.AUTHENTICATOR }
+						.mapNotNull { it.totpItem?.id?.takeIf { id -> id > 0 } }
+					val noteItems = selectedItems
+						.filter { it.type == VaultV2ItemType.NOTE }
+						.mapNotNull { it.secureItem }
+					val bankCardIds = selectedItems
+						.filter { it.type == VaultV2ItemType.BANK_CARD }
+						.mapNotNull { it.secureItem?.id }
+					val documentIds = selectedItems
+						.filter { it.type == VaultV2ItemType.DOCUMENT }
+						.mapNotNull { it.secureItem?.id }
+
+					when (target) {
+						is UnifiedMoveCategoryTarget.Uncategorized -> {
+							if (passwordIds.isNotEmpty()) passwordViewModel.movePasswordsToCategory(passwordIds, null)
+							if (totpIds.isNotEmpty()) totpViewModel.moveToCategory(totpIds, null)
+							scope.launch {
+								noteItems.forEach { note ->
+									noteViewModel.moveNoteToStorage(note, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null)
+								}
+								bankCardIds.forEach { id ->
+									bankCardViewModel.moveCardToStorage(id, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null)
+								}
+								documentIds.forEach { id ->
+									documentViewModel.moveDocumentToStorage(id, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null)
+								}
+							}
+						}
+						is UnifiedMoveCategoryTarget.MonicaCategory -> {
+							val catId = target.categoryId
+							if (passwordIds.isNotEmpty()) passwordViewModel.movePasswordsToCategory(passwordIds, catId)
+							if (totpIds.isNotEmpty()) totpViewModel.moveToCategory(totpIds, catId)
+							scope.launch {
+								noteItems.forEach { note ->
+									noteViewModel.moveNoteToStorage(note, categoryId = catId, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null)
+								}
+								bankCardIds.forEach { id ->
+									bankCardViewModel.moveCardToStorage(id, categoryId = catId, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null)
+								}
+								documentIds.forEach { id ->
+									documentViewModel.moveDocumentToStorage(id, categoryId = catId, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null)
+								}
+							}
+						}
+						is UnifiedMoveCategoryTarget.KeePassDatabaseTarget -> {
+							val dbId = target.databaseId
+							if (passwordIds.isNotEmpty()) passwordViewModel.movePasswordsToKeePassDatabase(passwordIds, dbId)
+							if (totpIds.isNotEmpty()) totpViewModel.moveToKeePassDatabase(totpIds, dbId)
+							scope.launch {
+								noteItems.forEach { note ->
+									noteViewModel.moveNoteToStorage(note, categoryId = null, keepassDatabaseId = dbId, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null)
+								}
+								bankCardIds.forEach { id ->
+									bankCardViewModel.moveCardToStorage(id, categoryId = null, keepassDatabaseId = dbId, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null)
+								}
+								documentIds.forEach { id ->
+									documentViewModel.moveDocumentToStorage(id, categoryId = null, keepassDatabaseId = dbId, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null)
+								}
+							}
+						}
+						is UnifiedMoveCategoryTarget.KeePassGroupTarget -> {
+							val dbId = target.databaseId
+							val groupPath = target.groupPath
+							if (passwordIds.isNotEmpty()) passwordViewModel.movePasswordsToKeePassGroup(passwordIds, dbId, groupPath)
+							if (totpIds.isNotEmpty()) totpViewModel.moveToKeePassGroup(totpIds, dbId, groupPath)
+							scope.launch {
+								noteItems.forEach { note ->
+									noteViewModel.moveNoteToStorage(note, categoryId = null, keepassDatabaseId = dbId, keepassGroupPath = groupPath, bitwardenVaultId = null, bitwardenFolderId = null)
+								}
+								bankCardIds.forEach { id ->
+									bankCardViewModel.moveCardToStorage(id, categoryId = null, keepassDatabaseId = dbId, keepassGroupPath = groupPath, bitwardenVaultId = null, bitwardenFolderId = null)
+								}
+								documentIds.forEach { id ->
+									documentViewModel.moveDocumentToStorage(id, categoryId = null, keepassDatabaseId = dbId, keepassGroupPath = groupPath, bitwardenVaultId = null, bitwardenFolderId = null)
+								}
+							}
+						}
+						is UnifiedMoveCategoryTarget.BitwardenVaultTarget -> {
+							val vaultId = target.vaultId
+							if (passwordIds.isNotEmpty()) passwordViewModel.movePasswordsToBitwardenFolder(passwordIds, vaultId, "")
+							if (totpIds.isNotEmpty()) totpViewModel.moveToBitwardenFolder(totpIds, vaultId, "")
+							scope.launch {
+								noteItems.forEach { note ->
+									noteViewModel.moveNoteToStorage(note, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = vaultId, bitwardenFolderId = null)
+								}
+								bankCardIds.forEach { id ->
+									bankCardViewModel.moveCardToStorage(id, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = vaultId, bitwardenFolderId = null)
+								}
+								documentIds.forEach { id ->
+									documentViewModel.moveDocumentToStorage(id, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = vaultId, bitwardenFolderId = null)
+								}
+							}
+						}
+						is UnifiedMoveCategoryTarget.BitwardenFolderTarget -> {
+							val vaultId = target.vaultId
+							val folderId = target.folderId
+							if (passwordIds.isNotEmpty()) passwordViewModel.movePasswordsToBitwardenFolder(passwordIds, vaultId, folderId)
+							if (totpIds.isNotEmpty()) totpViewModel.moveToBitwardenFolder(totpIds, vaultId, folderId)
+							scope.launch {
+								noteItems.forEach { note ->
+									noteViewModel.moveNoteToStorage(note, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = vaultId, bitwardenFolderId = folderId)
+								}
+								bankCardIds.forEach { id ->
+									bankCardViewModel.moveCardToStorage(id, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = vaultId, bitwardenFolderId = folderId)
+								}
+								documentIds.forEach { id ->
+									documentViewModel.moveDocumentToStorage(id, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = vaultId, bitwardenFolderId = folderId)
+								}
+							}
+						}
+						is UnifiedMoveCategoryTarget.MdbxDatabaseTarget -> {
+							val dbId = target.databaseId
+							if (passwordIds.isNotEmpty()) passwordViewModel.movePasswordsToMdbxDatabase(passwordIds, dbId)
+							if (totpIds.isNotEmpty()) totpViewModel.moveToMdbxDatabase(totpIds, dbId)
+							scope.launch {
+								noteItems.forEach { note ->
+									noteViewModel.moveNoteToStorage(note, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null, mdbxDatabaseId = dbId)
+								}
+								bankCardIds.forEach { id ->
+									bankCardViewModel.moveCardToStorage(id, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null, mdbxDatabaseId = dbId)
+								}
+								documentIds.forEach { id ->
+									documentViewModel.moveDocumentToStorage(id, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null, mdbxDatabaseId = dbId)
+								}
+							}
+						}
+						is UnifiedMoveCategoryTarget.MdbxFolderTarget -> {
+							val dbId = target.databaseId
+							val folderId = target.folderId
+							if (passwordIds.isNotEmpty()) passwordViewModel.movePasswordsToMdbxDatabase(passwordIds, dbId, folderId)
+							if (totpIds.isNotEmpty()) totpViewModel.moveToMdbxDatabase(totpIds, dbId, folderId)
+							scope.launch {
+								noteItems.forEach { note ->
+									noteViewModel.moveNoteToStorage(note, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null, mdbxDatabaseId = dbId, mdbxFolderId = folderId)
+								}
+								bankCardIds.forEach { id ->
+									bankCardViewModel.moveCardToStorage(id, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null, mdbxDatabaseId = dbId, mdbxFolderId = folderId)
+								}
+								documentIds.forEach { id ->
+									documentViewModel.moveDocumentToStorage(id, categoryId = null, keepassDatabaseId = null, keepassGroupPath = null, bitwardenVaultId = null, bitwardenFolderId = null, mdbxDatabaseId = dbId, mdbxFolderId = folderId)
+								}
+							}
+						}
+					}
+					selectedKeys.clear()
+				}
 			)
 		}
 
@@ -2508,6 +2943,8 @@ fun VaultV2Pane(
 			is UnifiedCategoryFilterSelection.KeePassGroupFilter -> Triple(CreateDialogTarget.KeePass, filter.databaseId, null)
 			is UnifiedCategoryFilterSelection.KeePassDatabaseStarredFilter -> Triple(CreateDialogTarget.KeePass, filter.databaseId, null)
 			is UnifiedCategoryFilterSelection.KeePassDatabaseUncategorizedFilter -> Triple(CreateDialogTarget.KeePass, filter.databaseId, null)
+			is UnifiedCategoryFilterSelection.MdbxDatabaseFilter -> Triple(CreateDialogTarget.Mdbx, filter.databaseId, null)
+			is UnifiedCategoryFilterSelection.MdbxFolderFilter -> Triple(CreateDialogTarget.Mdbx, filter.databaseId, null)
 			is UnifiedCategoryFilterSelection.BitwardenVaultFilter -> Triple(CreateDialogTarget.Bitwarden, null, filter.vaultId)
 			is UnifiedCategoryFilterSelection.BitwardenFolderFilter -> Triple(CreateDialogTarget.Bitwarden, null, filter.vaultId)
 			is UnifiedCategoryFilterSelection.BitwardenVaultStarredFilter -> Triple(CreateDialogTarget.Bitwarden, null, filter.vaultId)
@@ -2519,8 +2956,10 @@ fun VaultV2Pane(
 			onDismiss = { showCreateCategoryDialog = false },
 			categories = categories,
 			keepassDatabases = keepassDatabases,
+			mdbxDatabases = mdbxDatabases,
 			bitwardenVaults = bitwardenVaults,
 			getKeePassGroups = localKeePassViewModel::getGroups,
+			getMdbxFolders = passwordViewModel::getMdbxFolders,
 			onCreateCategoryWithName = { name -> passwordViewModel.addCategory(name) },
 			onCreateBitwardenFolder = { vaultId, name ->
 				scope.launch {
@@ -2549,9 +2988,24 @@ fun VaultV2Pane(
 					}
 				}
 			},
+			initialMdbxParentFolderId = (storageSelection as? UnifiedCategoryFilterSelection.MdbxFolderFilter)?.folderId,
+			onCreateMdbxProject = { databaseId, parentFolderId, name ->
+				scope.launch {
+					passwordViewModel.createMdbxFolder(databaseId, name, parentFolderId ?: "root") { result ->
+						result.exceptionOrNull()?.let { error ->
+							Toast.makeText(
+								context,
+								context.getString(R.string.save_failed_with_error, error.message ?: ""),
+								Toast.LENGTH_SHORT
+							).show()
+						}
+					}
+				}
+			},
 			initialLocalParentPath = initialLocalParentPath,
 			initialTarget = initialDialogTarget,
 			initialKeePassDbId = initialDialogKeePassDbId,
+			initialMdbxDbId = selectedMdbxDatabaseId,
 			initialBitwardenVaultId = initialDialogBitwardenVaultId
 		)
 	}
@@ -2693,113 +3147,155 @@ private fun VaultV2List(
 }
 
 @Composable
-private fun VaultV2NavigationBanner(
+private fun VaultV2QuickStatusBar(
 	pathLabel: String,
 	currentSectionLabel: String,
 	breadcrumbs: List<PasswordQuickFolderBreadcrumb>,
 	currentFilter: CategoryFilter?,
+	mdbxSyncState: MdbxPathSyncState?,
 	onNavigate: (CategoryFilter) -> Unit,
 	onOpenStorageFilter: () -> Unit,
 ) {
-	Row(
-		modifier = Modifier
-			.fillMaxWidth()
-			.padding(horizontal = 12.dp, vertical = 4.dp),
-		horizontalArrangement = Arrangement.spacedBy(10.dp),
-		verticalAlignment = Alignment.CenterVertically,
-	) {
-		Surface(
-			shape = CircleShape,
-			color = MaterialTheme.colorScheme.secondaryContainer,
-			contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-			tonalElevation = 2.dp,
-			shadowElevation = 0.dp,
-			modifier = Modifier.size(32.dp)
-		) {
-			Box(contentAlignment = Alignment.Center) {
-				Text(
-					text = currentSectionLabel.ifBlank { "#" },
-					style = MaterialTheme.typography.labelLarge,
-					fontWeight = FontWeight.SemiBold,
-				)
+	QuickStatusBar(
+		indicator = {
+			VaultV2QuickStatusIndicator(currentSectionLabel = currentSectionLabel)
+		},
+		breadcrumb = {
+			VaultV2BreadcrumbPath(
+				pathLabel = pathLabel,
+				breadcrumbs = breadcrumbs,
+				currentFilter = currentFilter,
+				onNavigate = onNavigate,
+				onOpenStorageFilter = onOpenStorageFilter,
+				modifier = Modifier.weight(1f)
+			)
+		},
+		actions = {
+			mdbxSyncState?.let { state ->
+				MdbxPathSyncActions(state = state)
 			}
 		}
+	)
+}
 
-		Box(
-			modifier = Modifier
-				.weight(1f)
-				.clip(RoundedCornerShape(14.dp))
-				.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
-				.then(
-					if (breadcrumbs.isEmpty()) {
-						Modifier.clickable(onClick = onOpenStorageFilter)
-					} else {
-						Modifier
-					}
-				)
-		) {
-			Row(
-				modifier = Modifier
-					.fillMaxWidth()
-					.horizontalScroll(rememberScrollState())
-					.padding(horizontal = 8.dp, vertical = 6.dp),
-				verticalAlignment = Alignment.CenterVertically,
-			) {
-				if (breadcrumbs.isNotEmpty() && currentFilter != null) {
-					breadcrumbs.forEachIndexed { index, crumb ->
-						Box(
-							modifier = Modifier
-								.clip(RoundedCornerShape(10.dp))
-								.background(
-									if (crumb.isCurrent) {
-										MaterialTheme.colorScheme.primaryContainer
-									} else {
-										MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.68f)
-									}
-								)
-								.clickable(enabled = !crumb.isCurrent) {
-									if (currentFilter != crumb.targetFilter) {
-										onNavigate(crumb.targetFilter)
-									}
-								}
-								.padding(horizontal = 10.dp, vertical = 4.dp)
-						) {
-							Text(
-								text = crumb.title,
-								style = MaterialTheme.typography.labelMedium,
-								color = if (crumb.isCurrent) {
-									MaterialTheme.colorScheme.onPrimaryContainer
-								} else {
-									MaterialTheme.colorScheme.onSecondaryContainer
-								},
-							)
-						}
+@Composable
+private fun VaultV2QuickStatusIndicator(
+	currentSectionLabel: String
+) {
+	Surface(
+		shape = CircleShape,
+		color = MaterialTheme.colorScheme.secondaryContainer,
+		contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+		tonalElevation = 2.dp,
+		shadowElevation = 0.dp,
+		modifier = Modifier.size(32.dp)
+	) {
+		Box(contentAlignment = Alignment.Center) {
+			Text(
+				text = currentSectionLabel.ifBlank { "#" },
+				style = MaterialTheme.typography.labelLarge,
+				fontWeight = FontWeight.SemiBold,
+			)
+		}
+	}
+}
 
-						if (index != breadcrumbs.lastIndex) {
-							Text(
-								text = ">",
-								style = MaterialTheme.typography.labelMedium,
-								color = MaterialTheme.colorScheme.onSurfaceVariant,
-								modifier = Modifier.padding(horizontal = 6.dp)
-							)
-						}
-					}
+@Composable
+private fun VaultV2BreadcrumbPath(
+	pathLabel: String,
+	breadcrumbs: List<PasswordQuickFolderBreadcrumb>,
+	currentFilter: CategoryFilter?,
+	onNavigate: (CategoryFilter) -> Unit,
+	onOpenStorageFilter: () -> Unit,
+	modifier: Modifier = Modifier
+) {
+	Box(
+		modifier = modifier
+			.height(36.dp)
+			.clip(RoundedCornerShape(14.dp))
+			.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+			.then(
+				if (breadcrumbs.isEmpty()) {
+					Modifier.clickable(onClick = onOpenStorageFilter)
 				} else {
-					Box(
-						modifier = Modifier
-							.clip(RoundedCornerShape(10.dp))
-							.background(MaterialTheme.colorScheme.primaryContainer)
-							.padding(horizontal = 10.dp, vertical = 4.dp)
-					) {
+					Modifier
+				}
+			)
+	) {
+		Row(
+			modifier = Modifier
+				.fillMaxSize()
+				.horizontalScroll(rememberScrollState())
+				.padding(horizontal = 8.dp, vertical = 6.dp),
+			verticalAlignment = Alignment.CenterVertically,
+		) {
+			if (breadcrumbs.isNotEmpty() && currentFilter != null) {
+				breadcrumbs.forEachIndexed { index, crumb ->
+					VaultV2BreadcrumbChip(
+						crumb = crumb,
+						currentFilter = currentFilter,
+						onNavigate = onNavigate
+					)
+
+					if (index != breadcrumbs.lastIndex) {
 						Text(
-							text = pathLabel,
+							text = ">",
 							style = MaterialTheme.typography.labelMedium,
-							color = MaterialTheme.colorScheme.onPrimaryContainer,
+							color = MaterialTheme.colorScheme.onSurfaceVariant,
+							modifier = Modifier.padding(horizontal = 6.dp)
 						)
 					}
 				}
+			} else {
+				Box(
+					modifier = Modifier
+						.clip(RoundedCornerShape(10.dp))
+						.background(MaterialTheme.colorScheme.primaryContainer)
+						.padding(horizontal = 10.dp, vertical = 4.dp)
+				) {
+					Text(
+						text = pathLabel,
+						style = MaterialTheme.typography.labelMedium,
+						color = MaterialTheme.colorScheme.onPrimaryContainer,
+					)
+				}
 			}
 		}
+	}
+}
+
+@Composable
+private fun VaultV2BreadcrumbChip(
+	crumb: PasswordQuickFolderBreadcrumb,
+	currentFilter: CategoryFilter,
+	onNavigate: (CategoryFilter) -> Unit
+) {
+	Box(
+		modifier = Modifier
+			.clip(RoundedCornerShape(10.dp))
+			.background(
+				if (crumb.isCurrent) {
+					MaterialTheme.colorScheme.primaryContainer
+				} else {
+					MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.68f)
+				}
+			)
+			.clickable(enabled = !crumb.isCurrent) {
+				if (currentFilter != crumb.targetFilter) {
+					onNavigate(crumb.targetFilter)
+				}
+			}
+			.padding(horizontal = 10.dp, vertical = 4.dp)
+	) {
+		Text(
+			text = crumb.title,
+			style = MaterialTheme.typography.labelMedium,
+			color = if (crumb.isCurrent) {
+				MaterialTheme.colorScheme.onPrimaryContainer
+			} else {
+				MaterialTheme.colorScheme.onSecondaryContainer
+			},
+		)
 	}
 }
 

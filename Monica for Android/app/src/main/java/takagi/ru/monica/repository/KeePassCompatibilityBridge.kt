@@ -32,7 +32,13 @@ class KeePassCompatibilityBridge(
         forceSyncWrite = forceSyncWrite
     )
 
-    suspend fun loadLegacyWorkspace(databaseId: Long) = workspaceRepository.loadWorkspace(databaseId)
+    suspend fun loadLegacyWorkspace(
+        databaseId: Long,
+        allowedSecureItemTypes: Set<ItemType>? = null
+    ) = workspaceRepository.loadWorkspace(
+        databaseId = databaseId,
+        allowedSecureItemTypes = allowedSecureItemTypes
+    )
 
     suspend fun readLegacyPasswordEntries(databaseId: Long) = workspaceRepository.readPasswordEntries(databaseId)
 
