@@ -171,6 +171,12 @@ Android:
 
 ---
 
+## Участники
+
+![Участники](.github/assets/contributor-flag.svg)
+
+---
+
 ## Лицензия
 
 Copyright (c) 2025 JoyinJoester

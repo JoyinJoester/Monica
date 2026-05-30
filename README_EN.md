@@ -171,6 +171,12 @@ Monica's design, compatibility work, and several feature directions have been in
 
 ---
 
+## Contributors
+
+![Contributors](.github/assets/contributor-flag.svg)
+
+---
+
 ## License
 
 Copyright (c) 2025 JoyinJoester
