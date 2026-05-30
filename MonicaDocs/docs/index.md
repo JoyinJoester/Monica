@@ -14,11 +14,11 @@ hero:
       text: 下载 Android 版
       link: https://github.com/JoyinJoester/Monica/releases
     - theme: alt
-      text: 浏览器扩展
-      link: https://github.com/JoyinJoester/Monica/tree/main/Monica%20for%20Browser
+      text: Windows 版
+      link: https://github.com/JoyinJoester/Monica-for-Windows
     - theme: alt
       text: 项目文档
-      link: /guide/getting-started
+      link: /reference/catalogue
 
 features:
   - title: 密码管理

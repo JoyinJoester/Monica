@@ -18,7 +18,7 @@ hero:
       link: https://github.com/JoyinJoester/Monica/tree/main/Monica%20for%20Browser
     - theme: alt
       text: Tài liệu dự án
-      link: /vi/guide/getting-started
+      link: /vi/reference/catalogue
 
 features:
   - title: Quản lý mật khẩu

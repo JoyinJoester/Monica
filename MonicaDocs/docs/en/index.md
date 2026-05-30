@@ -18,7 +18,7 @@ hero:
       link: https://github.com/JoyinJoester/Monica/tree/main/Monica%20for%20Browser
     - theme: alt
       text: Documentation
-      link: /en/guide/getting-started
+      link: /en/reference/catalogue
 
 features:
   - title: Password Manager
