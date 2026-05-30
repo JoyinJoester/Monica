@@ -23,12 +23,10 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
@@ -83,7 +81,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -730,6 +727,7 @@ fun SimpleMainScreen(
     onNavigateToPageCustomization: () -> Unit = {},
     onNavigateToStandaloneSettings: () -> Unit = {},
     onNavigateToBitwardenLogin: () -> Unit = {},
+    onNavigateToAddSend: () -> Unit = {},
     onClearAllData: (Boolean, Boolean, Boolean, Boolean, Boolean, Boolean) -> Unit,
     initialTab: Int = 0
 ) {
@@ -1067,11 +1065,6 @@ fun SimpleMainScreen(
 
     // 监听 FAB 展开状态，展开时禁用隐藏逻辑
     var isFabExpanded by remember { mutableStateOf(false) }
-    val mainSurfaceFabTransitionScale by animateFloatAsState(
-        targetValue = if (isFabExpanded) 0.9f else 1f,
-        animationSpec = tween(400),
-        label = "main_surface_fab_transition_scale"
-    )
     var isFastScrollStripVisible by rememberSaveable(currentTab) { mutableStateOf(false) }
     // 使用 rememberUpdatedState 确保 currentTab 始终是最新的
     val currentTabState = rememberUpdatedState(currentTab)
@@ -1330,7 +1323,13 @@ fun SimpleMainScreen(
             when (cardWalletSubTab) {
                 CardWalletTab.BANK_CARDS -> handleBankCardAddOpen()
                 CardWalletTab.DOCUMENTS -> handleDocumentAddOpen()
-                CardWalletTab.ALL -> Unit
+                CardWalletTab.ALL -> {
+                    if (isCompactWidth) {
+                        onNavigateToWalletAdd(walletUnifiedAddType)
+                    } else {
+                        openInlineBankCardAdd()
+                    }
+                }
             }
         }
         val handleNoteOpen: (Long?) -> Unit = { noteId ->
@@ -1467,7 +1466,9 @@ fun SimpleMainScreen(
             }
         }
         val handleSendAddOpen: () -> Unit = {
-            if (!isCompactWidth) {
+            if (isCompactWidth) {
+                onNavigateToAddSend()
+            } else {
                 openInlineSendAdd()
             }
         }
@@ -1725,14 +1726,11 @@ fun SimpleMainScreen(
     // Decides draggable nav vs classic scaffold and dispatches per-tab content.
     @Composable
     fun RenderMainSurface() {
+    Box(modifier = Modifier.fillMaxSize()) {
     // 根据设置选择导航模式
     Box(
         modifier = Modifier
-            .fillMaxSize()
-            .graphicsLayer {
-                scaleX = mainSurfaceFabTransitionScale
-                scaleY = mainSurfaceFabTransitionScale
-            }
+            .matchParentSize()
             .nestedScroll(nestedScrollConnection)
     ) {
         if (useDraggableNav && isCompactWidth && !shouldHideBottomNavigation) {
@@ -2265,6 +2263,8 @@ fun SimpleMainScreen(
                         onNavigateToMonicaPlus = onNavigateToMonicaPlus,
                         onNavigateToExtensions = onNavigateToExtensions,
                         onNavigateToPageCustomization = onNavigateToPageCustomization,
+                        isCompactWidth = isCompactWidth,
+                        wideListPaneWidth = wideListPaneWidth,
                         onClearAllData = onClearAllData
                     )
                 }
@@ -2649,6 +2649,8 @@ fun SimpleMainScreen(
                             onNavigateToMonicaPlus = onNavigateToMonicaPlus,
                             onNavigateToExtensions = onNavigateToExtensions,
                             onNavigateToPageCustomization = onNavigateToPageCustomization,
+                            isCompactWidth = isCompactWidth,
+                            wideListPaneWidth = wideListPaneWidth,
                             onClearAllData = onClearAllData
                         )
                     }
@@ -2691,6 +2693,7 @@ fun SimpleMainScreen(
                 }
             }
         }
+    }
     }
     }
 
@@ -3014,4 +3017,3 @@ private fun MainScreenTabResetEffects(
         }
     }
 }
-

@@ -1820,9 +1820,6 @@ fun VaultV2Pane(
 		if (isAutoScrollingToTop) {
 			pendingAllItems = allItemsRaw
 		} else {
-			if (allItems.isNotEmpty()) {
-				delay(80)
-			}
 			allItems = allItemsRaw
 		}
 	}

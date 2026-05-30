@@ -343,6 +343,8 @@ internal fun CompactDraggableTabContent(
             }
             BottomNavItem.Settings -> {
                 SettingsTabContent(
+                    isCompactWidth = true,
+                    wideListPaneWidth = 0.dp,
                     viewModel = settingsViewModel,
                     onResetPassword = onNavigateToChangePassword,
                     onSecurityQuestions = onNavigateToSecurityQuestion,

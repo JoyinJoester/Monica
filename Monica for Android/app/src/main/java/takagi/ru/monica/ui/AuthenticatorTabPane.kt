@@ -100,15 +100,21 @@ internal fun AuthenticatorTabPane(
                         passwordViewModel = passwordViewModel,
                         totpViewModel = totpViewModel,
                         localKeePassViewModel = localKeePassViewModel,
-                        onSave = { title, notes, totpData, targets ->
+                        onSave = { title, notes, totpData, targets, onComplete ->
                             totpViewModel.saveTotpAcrossTargets(
                                 id = null,
                                 title = title,
                                 notes = notes,
                                 totpData = totpData,
-                                targets = targets
+                                targets = targets,
+                                onComplete = { saved ->
+                                    if (saved) {
+                                        totpViewModel.revealSavedTotpTargets(targets)
+                                        onInlineTotpEditorBack()
+                                    }
+                                    onComplete(saved)
+                                }
                             )
-                            onInlineTotpEditorBack()
                         },
                         onNavigateBack = onInlineTotpEditorBack,
                         onScanQrCode = onNavigateToQuickTotpScan,
@@ -152,13 +158,19 @@ internal fun AuthenticatorTabPane(
                         passwordViewModel = passwordViewModel,
                         totpViewModel = totpViewModel,
                         localKeePassViewModel = localKeePassViewModel,
-                        onSave = { title, notes, totpData, targets ->
+                        onSave = { title, notes, totpData, targets, onComplete ->
                             totpViewModel.saveTotpAcrossTargets(
                                 id = selectedTotpItem.id,
                                 title = title,
                                 notes = notes,
                                 totpData = totpData,
-                                targets = targets
+                                targets = targets,
+                                onComplete = { saved ->
+                                    if (saved) {
+                                        totpViewModel.revealSavedTotpTargets(targets)
+                                    }
+                                    onComplete(saved)
+                                }
                             )
                         },
                         onNavigateBack = onInlineTotpEditorBack,

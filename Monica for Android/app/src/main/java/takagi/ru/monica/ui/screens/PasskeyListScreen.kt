@@ -111,6 +111,7 @@ import takagi.ru.monica.ui.icons.UnmatchedIconFallback
 import takagi.ru.monica.ui.icons.rememberAutoMatchedSimpleIcon
 import takagi.ru.monica.ui.icons.shouldShowFallbackSlot
 import takagi.ru.monica.bitwarden.sync.SyncStatus
+import takagi.ru.monica.passkey.PasskeyCredentialIdCodec
 import takagi.ru.monica.passkey.PasskeyPrivateKeySupport
 import takagi.ru.monica.passkey.managementKey
 import takagi.ru.monica.passkey.managementRecordIdOrNull
@@ -188,6 +189,8 @@ fun PasskeyListScreen(
         val rawList = passwords.flatMap { password ->
             val bindings = PasskeyBindingCodec.decodeList(password.passkeyBindings)
             bindings.map { binding ->
+                val createdAt = password.createdAt.time
+                val lastUsedAt = maxOf(createdAt, password.updatedAt.time)
                 PasskeyEntry(
                     credentialId = binding.credentialId.ifBlank { "ref_${password.id}_${binding.rpId}" },
                     rpId = binding.rpId,
@@ -198,8 +201,8 @@ fun PasskeyListScreen(
                     publicKeyAlgorithm = PasskeyEntry.ALGORITHM_ES256,
                     publicKey = "",
                     privateKeyAlias = "",
-                    createdAt = System.currentTimeMillis(),
-                    lastUsedAt = System.currentTimeMillis(),
+                    createdAt = createdAt,
+                    lastUsedAt = lastUsedAt,
                     useCount = 0,
                     iconUrl = null,
                     isDiscoverable = false,
@@ -233,8 +236,10 @@ fun PasskeyListScreen(
 
     val combinedPasskeys = remember(passkeys, bindingPasskeys) {
         if (bindingPasskeys.isEmpty()) return@remember passkeys
-        val existingCredentialIds = passkeys.mapTo(mutableSetOf()) { it.credentialId }
-        passkeys + bindingPasskeys.filter { binding -> binding.credentialId !in existingCredentialIds }
+        val existingKeys = passkeys.mapTo(mutableSetOf()) { it.passkeyReferenceDedupKey() }
+        passkeys + bindingPasskeys.filter { binding ->
+            binding.passkeyReferenceDedupKey() !in existingKeys
+        }
     }
     var passkeyMigratableById by remember { mutableStateOf<Map<String, Boolean>>(emptyMap()) }
     LaunchedEffect(combinedPasskeys) {
@@ -2459,5 +2464,19 @@ private fun isPasskeyMigratableToBitwarden(passkey: PasskeyEntry): Boolean {
     if (passkey.passkeyMode != PasskeyEntry.MODE_BW_COMPAT) return false
     if (passkey.syncStatus == "REFERENCE") return false
     return PasskeyPrivateKeySupport.hasBitwardenCompatiblePrivateKey(passkey.privateKeyAlias)
+}
+
+private fun PasskeyEntry.passkeyReferenceDedupKey(): String {
+    val normalizedCredentialId = PasskeyCredentialIdCodec.normalize(credentialId)
+        ?: credentialId.trim()
+    return buildString {
+        append(normalizedCredentialId)
+        append('|')
+        append(rpId.trim().lowercase())
+        append('|')
+        append(userName.trim().lowercase())
+        append('|')
+        append(userDisplayName.trim().lowercase())
+    }
 }
 

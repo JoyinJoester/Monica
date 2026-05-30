@@ -113,7 +113,13 @@ fun AddEditTotpScreen(
     passwordViewModel: PasswordViewModel? = null,
     totpViewModel: TotpViewModel? = null,
     localKeePassViewModel: LocalKeePassViewModel? = null,
-    onSave: (title: String, notes: String, totpData: TotpData, targets: List<StorageTarget>) -> Unit,
+    onSave: (
+        title: String,
+        notes: String,
+        totpData: TotpData,
+        targets: List<StorageTarget>,
+        onComplete: (Boolean) -> Unit
+    ) -> Unit,
     onNavigateBack: () -> Unit,
     onScanQrCode: () -> Unit,
     modifier: Modifier = Modifier
@@ -594,20 +600,27 @@ fun AddEditTotpScreen(
         if (!originalUploaded.isNullOrBlank() && originalUploaded != currentUploaded) {
             PasswordCustomIconStore.deleteIconFile(context, originalUploaded)
         }
-        hasSavedSuccessfully = true
-        onSave(title, notes, totpData, effectiveTargets)
-        coroutineScope.launch {
-            settingsManager.updateRememberedStorageTarget(
-                scope = SettingsManager.StorageTargetScope.TOTP,
-                target = RememberedStorageTarget(
-                    categoryId = (primaryTarget as? StorageTarget.MonicaLocal)?.categoryId,
-                    keepassDatabaseId = (primaryTarget as? StorageTarget.KeePass)?.databaseId,
-                    keepassGroupPath = (primaryTarget as? StorageTarget.KeePass)?.groupPath,
-                    mdbxDatabaseId = (primaryTarget as? StorageTarget.Mdbx)?.databaseId,
-                    bitwardenVaultId = (primaryTarget as? StorageTarget.Bitwarden)?.vaultId,
-                    bitwardenFolderId = (primaryTarget as? StorageTarget.Bitwarden)?.folderId
+        onSave(title, notes, totpData, effectiveTargets) { saved ->
+            if (!saved) {
+                isSaving = false
+                Toast.makeText(context, context.getString(R.string.save_failed), Toast.LENGTH_SHORT).show()
+                return@onSave
+            }
+            isSaving = false
+            hasSavedSuccessfully = true
+            coroutineScope.launch {
+                settingsManager.updateRememberedStorageTarget(
+                    scope = SettingsManager.StorageTargetScope.TOTP,
+                    target = RememberedStorageTarget(
+                        categoryId = (primaryTarget as? StorageTarget.MonicaLocal)?.categoryId,
+                        keepassDatabaseId = (primaryTarget as? StorageTarget.KeePass)?.databaseId,
+                        keepassGroupPath = (primaryTarget as? StorageTarget.KeePass)?.groupPath,
+                        mdbxDatabaseId = (primaryTarget as? StorageTarget.Mdbx)?.databaseId,
+                        bitwardenVaultId = (primaryTarget as? StorageTarget.Bitwarden)?.vaultId,
+                        bitwardenFolderId = (primaryTarget as? StorageTarget.Bitwarden)?.folderId
+                    )
                 )
-            )
+            }
         }
     }
     
