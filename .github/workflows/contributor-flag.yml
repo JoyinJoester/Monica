@@ -14,6 +14,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Create output directory
+        run: mkdir -p .github/assets
+
       - uses: JoyinJoester/North-Korea-Flag@main
         with:
           blue: '#8ab4f8'
