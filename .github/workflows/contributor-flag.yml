@@ -12,7 +12,7 @@ jobs:
   update-svg:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Create output directory
         run: mkdir -p .github/assets
@@ -21,7 +21,7 @@ jobs:
         with:
           blue: '#a7f3d0'
           red: '#8ab4f8'
+          white: '#1c1b1f'
           icon-url: 'https://raw.githubusercontent.com/JoyinJoester/Monica/main/image/newiconweb.png'
-          icon-scale: '1.0'
           count: '3'
           output: '.github/assets/contributor-flag.svg'
