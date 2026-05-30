@@ -19,8 +19,8 @@ jobs:
 
       - uses: JoyinJoester/North-Korea-Flag@main
         with:
-          blue: '#8ab4f8'
-          red: '#a7f3d0'
+          blue: '#a7f3d0'
+          red: '#8ab4f8'
           icon-url: 'https://raw.githubusercontent.com/JoyinJoester/Monica/main/image/newicon.png'
           count: '3'
           output: '.github/assets/contributor-flag.svg'
