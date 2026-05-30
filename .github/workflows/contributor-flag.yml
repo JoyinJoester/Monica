@@ -2,6 +2,11 @@ name: Update Contributor Flag
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '.github/assets/**'
+      - '*.svg'
   schedule:
     - cron: '17 3 * * 1'
 
