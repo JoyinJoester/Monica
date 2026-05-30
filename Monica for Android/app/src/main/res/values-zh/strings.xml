@@ -607,21 +607,6 @@
     <string name="kdbx_import_password_title">输入 KDBX 密码</string>
     <string name="kdbx_import_password_hint">请输入用于解密此 KDBX 文件的密码</string>
     <string name="import_data_btn">导入</string>
-    <string name="export_option_all">导出全部数据</string>
-    <string name="export_option_all_desc">以CSV格式导出所有密码、TOTP、银行卡和证件</string>
-    <string name="export_option_passwords">仅导出密码</string>
-    <string name="export_option_passwords_desc">以CSV格式仅导出密码条目</string>
-    <string name="export_option_totp">仅导出TOTP</string>
-    <string name="export_option_totp_desc">以CSV或Aegis兼容格式导出TOTP验证器</string>
-    <string name="export_option_cards_docs">导出银行卡和证件</string>
-    <string name="export_option_cards_docs_desc">以CSV格式合并导出银行卡和证件</string>
-    <string name="export_option_notes">仅导出笔记</string>
-    <string name="export_option_notes_desc">以CSV格式导出所有笔记</string>
-    <string name="export_totp_format">选择TOTP导出格式</string>
-    <string name="export_enable_encryption">启用加密</string>
-    <string name="export_encryption_hint">使用密码保护您的TOTP数据（Aegis兼容）</string>
-    <string name="export_encryption_password">输入加密密码</string>
-    <string name="export_encryption_password_hint">导入文件时需要此密码</string>
     
     <string name="import_data_warning_title">警告</string>
     <string name="import_data_warning_message">导入数据可能会覆盖现有数据。请在导入前确保备份当前数据。</string>
@@ -2976,7 +2961,7 @@
     <string name="import_type_keepass_format_desc">导入 KeePass 兼容的 .kdbx 数据库文件</string>
     <string name="import_type_keepass_format_file_hint">选择 .kdbx 文件</string>
     <string name="import_type_csv_data_title">CSV 数据</string>
-    <string name="import_type_csv_data_desc">导入 Monica / KeePass / Bitwarden / 密码键盘软件 的 CSV 文件</string>
+    <string name="import_type_csv_data_desc">导入 Monica / KeePass / Bitwarden / Proton Pass / 密码键盘软件 的 CSV 文件</string>
     <string name="import_type_csv_data_file_hint">选择 .csv 文件</string>
     <string name="import_type_aegis_title">Aegis 验证器</string>
     <string name="import_type_aegis_desc">导入 Aegis Authenticator 的 JSON 备份</string>
@@ -3015,6 +3000,9 @@
     <string name="import_type_csv_bitwarden_title">Bitwarden CSV</string>
     <string name="import_type_csv_bitwarden_desc">导入 Bitwarden 导出的 CSV 文件</string>
     <string name="import_type_csv_bitwarden_file_hint">选择 Bitwarden .csv 文件</string>
+    <string name="import_type_csv_proton_pass_title">Proton Pass CSV</string>
+    <string name="import_type_csv_proton_pass_desc">导入 Proton Pass 导出的 CSV 文件</string>
+    <string name="import_type_csv_proton_pass_file_hint">选择 Proton Pass .csv 文件</string>
     <string name="import_type_csv_chrome_title">Chrome CSV</string>
     <string name="import_type_csv_chrome_desc">导入 Google Chrome 导出的 CSV 文件</string>
     <string name="import_type_csv_chrome_file_hint">选择 Chrome .csv 文件</string>

@@ -19,6 +19,7 @@ import takagi.ru.monica.data.PasswordDatabase
 import takagi.ru.monica.data.isRemoteSource
 import takagi.ru.monica.security.SecurityManager
 import takagi.ru.monica.utils.KeePassKdbxService
+import takagi.ru.monica.utils.isOneDriveAuthTemporarilyUnavailable
 import java.util.concurrent.TimeUnit
 
 class KeePassRemoteUploadWorker(
@@ -51,6 +52,8 @@ class KeePassRemoteUploadWorker(
             if (isRemoteConflict(error)) {
                 enqueueIfPending(applicationContext)
                 Result.success()
+            } else if (error.isOneDriveAuthTemporarilyUnavailable()) {
+                Result.retry()
             } else if (runAttemptCount < MAX_RETRY_COUNT) {
                 Result.retry()
             } else {

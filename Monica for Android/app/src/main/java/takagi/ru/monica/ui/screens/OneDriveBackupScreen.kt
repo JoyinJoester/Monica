@@ -98,6 +98,7 @@ import takagi.ru.monica.utils.OneDriveKeePassFileSource
 import takagi.ru.monica.utils.RestoreResult
 import takagi.ru.monica.utils.WebDavHelper
 import takagi.ru.monica.utils.FileSourceEntry
+import takagi.ru.monica.utils.toOneDriveUserMessage
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -170,7 +171,7 @@ fun OneDriveBackupScreen(
         loadingBackups = true
         backupHelper.listBackups().fold(
             onSuccess = { backupList = it },
-            onFailure = { browserError = it.message ?: context.getString(R.string.keepass_onedrive_load_files_failed) }
+            onFailure = { browserError = it.toOneDriveUserMessage(context.getString(R.string.keepass_onedrive_load_files_failed)) }
         )
         loadingBackups = false
     }
@@ -186,7 +187,7 @@ fun OneDriveBackupScreen(
             currentPath = targetPath
             connectionState = OneDriveBackupConnectionState.Connected
         }.onFailure { error ->
-            browserError = error.message ?: context.getString(R.string.keepass_onedrive_load_files_failed)
+            browserError = error.toOneDriveUserMessage(context.getString(R.string.keepass_onedrive_load_files_failed))
             connectionState = OneDriveBackupConnectionState.Failed
         }
         loadingEntries = false
@@ -255,7 +256,7 @@ fun OneDriveBackupScreen(
                     else -> {
                         Toast.makeText(
                             context,
-                            context.getString(R.string.webdav_restore_failed, error.message ?: context.getString(R.string.import_data_unknown_error)),
+                            context.getString(R.string.webdav_restore_failed, error.toOneDriveUserMessage(context.getString(R.string.import_data_unknown_error))),
                             Toast.LENGTH_LONG
                         ).show()
                     }
@@ -273,9 +274,16 @@ fun OneDriveBackupScreen(
         encryptionPassword = encryptionConfig.password
         loadCounts()
 
-        session = backupHelper.getConfiguredSession() ?: authManager.getCachedSession()
+        session = runCatching { backupHelper.getConfiguredSession() }
+            .onFailure { error ->
+                browserError = error.toOneDriveUserMessage(context.getString(R.string.keepass_onedrive_load_files_failed))
+                connectionState = OneDriveBackupConnectionState.Failed
+            }
+            .getOrNull() ?: authManager.getCachedSession()
         if (session != null) {
-            connectionState = OneDriveBackupConnectionState.Connected
+            if (connectionState != OneDriveBackupConnectionState.Failed) {
+                connectionState = OneDriveBackupConnectionState.Connected
+            }
             val initialPath = savedConfig?.folderPath.orEmpty()
             loadDirectory(initialPath)
         }
@@ -344,6 +352,8 @@ fun OneDriveBackupScreen(
                                     return@Button
                                 }
                                 connectionState = OneDriveBackupConnectionState.Connecting
+                                browserError = null
+                                loadingEntries = false
                                 coroutineScope.launch {
                                     runCatching { authManager.signIn(activity) }
                                         .onSuccess { result ->
@@ -353,7 +363,7 @@ fun OneDriveBackupScreen(
                                         }
                                         .onFailure { error ->
                                             connectionState = OneDriveBackupConnectionState.Failed
-                                            browserError = error.message ?: context.getString(R.string.keepass_onedrive_sign_in_failed)
+                                            browserError = error.toOneDriveUserMessage(context.getString(R.string.keepass_onedrive_sign_in_failed))
                                         }
                                 }
                             }
@@ -663,7 +673,7 @@ fun OneDriveBackupScreen(
                                         onFailure = { error ->
                                             Toast.makeText(
                                                 context,
-                                                context.getString(R.string.webdav_backup_failed, error.message ?: context.getString(R.string.webdav_create_backup_failed)),
+                                                context.getString(R.string.webdav_backup_failed, error.toOneDriveUserMessage(context.getString(R.string.webdav_create_backup_failed))),
                                                 Toast.LENGTH_LONG
                                             ).show()
                                         }
@@ -673,7 +683,7 @@ fun OneDriveBackupScreen(
                                 onFailure = { error ->
                                     Toast.makeText(
                                         context,
-                                        context.getString(R.string.webdav_backup_failed, error.message ?: context.getString(R.string.webdav_create_backup_failed)),
+                                        context.getString(R.string.webdav_backup_failed, error.toOneDriveUserMessage(context.getString(R.string.webdav_create_backup_failed))),
                                         Toast.LENGTH_LONG
                                     ).show()
                                 }
@@ -786,7 +796,7 @@ fun OneDriveBackupScreen(
                             }.onSuccess {
                                 loadDirectory(currentPath)
                             }.onFailure { error ->
-                                Toast.makeText(context, error.message ?: context.getString(R.string.webdav_operation_failed, ""), Toast.LENGTH_LONG).show()
+                                Toast.makeText(context, error.toOneDriveUserMessage(context.getString(R.string.webdav_operation_failed, "")), Toast.LENGTH_LONG).show()
                             }
                             creatingFolder = false
                         }
@@ -820,7 +830,7 @@ fun OneDriveBackupScreen(
                                     refreshBackups()
                                 },
                                 onFailure = { error ->
-                                    Toast.makeText(context, context.getString(R.string.delete_failed, error.message ?: ""), Toast.LENGTH_LONG).show()
+                                    Toast.makeText(context, context.getString(R.string.delete_failed, error.toOneDriveUserMessage("")), Toast.LENGTH_LONG).show()
                                 }
                             )
                         }
@@ -1064,7 +1074,7 @@ private fun OneDriveBackupListItem(
                                 onFailure = { error ->
                                     Toast.makeText(
                                         context,
-                                        context.getString(R.string.webdav_operation_failed, error.message ?: ""),
+                                        context.getString(R.string.webdav_operation_failed, error.toOneDriveUserMessage("")),
                                         Toast.LENGTH_LONG
                                     ).show()
                                 }
