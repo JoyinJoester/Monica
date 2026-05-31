@@ -3,6 +3,7 @@ package takagi.ru.monica.ui.screens
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import android.util.Log
 import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -98,6 +99,7 @@ import takagi.ru.monica.utils.OneDriveKeePassFileSource
 import takagi.ru.monica.utils.RestoreResult
 import takagi.ru.monica.utils.WebDavHelper
 import takagi.ru.monica.utils.FileSourceEntry
+import takagi.ru.monica.utils.isOneDriveAuthTemporarilyUnavailable
 import takagi.ru.monica.utils.toOneDriveUserMessage
 import java.io.File
 import java.text.SimpleDateFormat
@@ -114,6 +116,8 @@ private enum class OneDriveRestoreMode {
     MergeLocal,
     ReplaceLocal,
 }
+
+private const val ONEDRIVE_BACKUP_LOG_TAG = "OneDriveBackupScreen"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -136,6 +140,7 @@ fun OneDriveBackupScreen(
     var browserEntries by remember { mutableStateOf<List<FileSourceEntry>>(emptyList()) }
     var backupList by remember { mutableStateOf<List<BackupFile>>(emptyList()) }
     var browserError by remember { mutableStateOf<String?>(null) }
+    var signingIn by remember { mutableStateOf(false) }
     var loadingEntries by remember { mutableStateOf(false) }
     var loadingBackups by remember { mutableStateOf(false) }
     var creatingBackup by remember { mutableStateOf(false) }
@@ -162,22 +167,55 @@ fun OneDriveBackupScreen(
     var trashCount by remember { mutableStateOf(0) }
     var localKeePassCount by remember { mutableStateOf(0) }
     var passkeyCount by remember { mutableStateOf(0) }
+    val oneDriveReady = session != null && connectionState == OneDriveBackupConnectionState.Connected
+    fun currentSessionBackupConfig(): OneDriveBackupConfig? {
+        val activeSession = session ?: return null
+        return savedConfig?.takeIf { config -> config.accountId == activeSession.accountId }
+    }
+
+    val savedConfigForCurrentSession = currentSessionBackupConfig()
+    val backupReady = oneDriveReady && savedConfigForCurrentSession != null
 
     suspend fun refreshBackups() {
-        if (!backupHelper.isConfigured()) {
+        if (currentSessionBackupConfig() == null) {
+            Log.i(
+                ONEDRIVE_BACKUP_LOG_TAG,
+                "Skip refreshBackups: no config for current session, state=$connectionState, " +
+                    "session=${session.debugRef()}, savedConfig=${savedConfig.debugRef()}"
+            )
             backupList = emptyList()
             return
         }
+        Log.d(
+            ONEDRIVE_BACKUP_LOG_TAG,
+            "Refreshing OneDrive backups, state=$connectionState, session=${session.debugRef()}"
+        )
         loadingBackups = true
         backupHelper.listBackups().fold(
-            onSuccess = { backupList = it },
-            onFailure = { browserError = it.toOneDriveUserMessage(context.getString(R.string.keepass_onedrive_load_files_failed)) }
+            onSuccess = {
+                backupList = it
+                Log.d(ONEDRIVE_BACKUP_LOG_TAG, "OneDrive backup list loaded, count=${it.size}")
+            },
+            onFailure = {
+                backupList = emptyList()
+                browserError = it.toOneDriveUserMessage(context.getString(R.string.keepass_onedrive_load_files_failed))
+                connectionState = OneDriveBackupConnectionState.Failed
+                Log.w(
+                    ONEDRIVE_BACKUP_LOG_TAG,
+                    "OneDrive backup list failed, temporaryAuth=${it.isOneDriveAuthTemporarilyUnavailable()}",
+                    it
+                )
+            }
         )
         loadingBackups = false
     }
 
     suspend fun loadDirectory(targetPath: String) {
         val activeSession = session ?: return
+        Log.d(
+            ONEDRIVE_BACKUP_LOG_TAG,
+            "Loading OneDrive directory, targetIsRoot=${targetPath.isBlank()}, session=${activeSession.debugRef()}"
+        )
         loadingEntries = true
         browserError = null
         runCatching {
@@ -186,9 +224,19 @@ fun OneDriveBackupScreen(
             browserEntries = entries.filter { it.isDirectory }
             currentPath = targetPath
             connectionState = OneDriveBackupConnectionState.Connected
+            Log.d(
+                ONEDRIVE_BACKUP_LOG_TAG,
+                "OneDrive directory loaded, folders=${browserEntries.size}, targetIsRoot=${targetPath.isBlank()}"
+            )
         }.onFailure { error ->
+            browserEntries = emptyList()
             browserError = error.toOneDriveUserMessage(context.getString(R.string.keepass_onedrive_load_files_failed))
             connectionState = OneDriveBackupConnectionState.Failed
+            Log.w(
+                ONEDRIVE_BACKUP_LOG_TAG,
+                "OneDrive directory load failed, temporaryAuth=${error.isOneDriveAuthTemporarilyUnavailable()}",
+                error
+            )
         }
         loadingEntries = false
     }
@@ -209,6 +257,10 @@ fun OneDriveBackupScreen(
         val activeSession = session ?: return
         backupHelper.saveConfig(activeSession, currentPath)
         savedConfig = backupHelper.getConfig()
+        Log.i(
+            ONEDRIVE_BACKUP_LOG_TAG,
+            "Saved OneDrive backup directory, pathIsRoot=${currentPath.isBlank()}, session=${activeSession.debugRef()}"
+        )
         coroutineScope.launch {
             refreshBackups()
         }
@@ -274,20 +326,49 @@ fun OneDriveBackupScreen(
         encryptionPassword = encryptionConfig.password
         loadCounts()
 
-        session = runCatching { backupHelper.getConfiguredSession() }
-            .onFailure { error ->
-                browserError = error.toOneDriveUserMessage(context.getString(R.string.keepass_onedrive_load_files_failed))
-                connectionState = OneDriveBackupConnectionState.Failed
-            }
-            .getOrNull() ?: authManager.getCachedSession()
+        Log.d(
+            ONEDRIVE_BACKUP_LOG_TAG,
+            "Initializing OneDrive backup screen, savedConfig=${savedConfig.debugRef()}"
+        )
+        val configuredSessionResult = runCatching { backupHelper.getConfiguredSession() }
+        val configuredSession = configuredSessionResult.getOrNull()
+        val cachedSession = runCatching { authManager.getCachedSession() }.getOrNull()
+
+        session = configuredSession ?: cachedSession
+        if (configuredSessionResult.isFailure) {
+            val error = configuredSessionResult.exceptionOrNull()
+            Log.w(
+                ONEDRIVE_BACKUP_LOG_TAG,
+                "Configured OneDrive session refresh failed, " +
+                    "temporaryAuth=${error?.isOneDriveAuthTemporarilyUnavailable() == true}, " +
+                    "cachedSession=${cachedSession.debugRef()}",
+                error
+            )
+            browserError = configuredSessionResult.exceptionOrNull()
+                ?.toOneDriveUserMessage(context.getString(R.string.keepass_onedrive_load_files_failed))
+            browserEntries = emptyList()
+            backupList = emptyList()
+            loadingEntries = false
+            loadingBackups = false
+            connectionState = OneDriveBackupConnectionState.Failed
+            return@LaunchedEffect
+        }
+
+        Log.d(
+            ONEDRIVE_BACKUP_LOG_TAG,
+            "Initial OneDrive session resolved, configured=${configuredSession.debugRef()}, " +
+                "cached=${cachedSession.debugRef()}, active=${session.debugRef()}, " +
+                "configMatches=${currentSessionBackupConfig() != null}"
+        )
         if (session != null) {
-            if (connectionState != OneDriveBackupConnectionState.Failed) {
-                connectionState = OneDriveBackupConnectionState.Connected
-            }
-            val initialPath = savedConfig?.folderPath.orEmpty()
+            connectionState = OneDriveBackupConnectionState.Connected
+            val initialPath = currentSessionBackupConfig()?.folderPath.orEmpty()
             loadDirectory(initialPath)
         }
-        if (savedConfig != null) {
+        if (session != null &&
+            connectionState == OneDriveBackupConnectionState.Connected &&
+            currentSessionBackupConfig() != null
+        ) {
             refreshBackups()
         }
     }
@@ -346,29 +427,59 @@ fun OneDriveBackupScreen(
                         }
                         Button(
                             onClick = {
+                                Log.i(
+                                    ONEDRIVE_BACKUP_LOG_TAG,
+                                    "OneDrive sign-in/switch clicked, state=$connectionState, signingIn=$signingIn, " +
+                                        "loadingEntries=$loadingEntries, loadingBackups=$loadingBackups, " +
+                                        "session=${session.debugRef()}, savedConfig=${savedConfig.debugRef()}"
+                                )
                                 if (activity == null) {
+                                    Log.w(ONEDRIVE_BACKUP_LOG_TAG, "OneDrive sign-in blocked: Activity missing")
                                     browserError = context.getString(R.string.keepass_onedrive_activity_missing)
                                     connectionState = OneDriveBackupConnectionState.Failed
                                     return@Button
                                 }
                                 connectionState = OneDriveBackupConnectionState.Connecting
                                 browserError = null
+                                signingIn = true
                                 loadingEntries = false
+                                loadingBackups = false
                                 coroutineScope.launch {
-                                    runCatching { authManager.signIn(activity) }
+                                    val signInResult = runCatching { authManager.signIn(activity) }
+                                    signingIn = false
+                                    signInResult
                                         .onSuccess { result ->
                                             session = result
                                             savedConfig = backupHelper.getConfig()
-                                            loadDirectory(savedConfig?.folderPath.orEmpty())
+                                            connectionState = OneDriveBackupConnectionState.Connected
+                                            backupList = emptyList()
+                                            Log.i(
+                                                ONEDRIVE_BACKUP_LOG_TAG,
+                                                "OneDrive interactive sign-in succeeded, session=${result.debugRef()}, " +
+                                                    "configMatches=${savedConfig?.accountId == result.accountId}"
+                                            )
+                                            val configuredPath = savedConfig
+                                                ?.takeIf { it.accountId == result.accountId }
+                                                ?.folderPath
+                                                .orEmpty()
+                                            loadDirectory(configuredPath)
                                         }
                                         .onFailure { error ->
+                                            browserEntries = emptyList()
+                                            backupList = emptyList()
                                             connectionState = OneDriveBackupConnectionState.Failed
                                             browserError = error.toOneDriveUserMessage(context.getString(R.string.keepass_onedrive_sign_in_failed))
+                                            Log.w(
+                                                ONEDRIVE_BACKUP_LOG_TAG,
+                                                "OneDrive interactive sign-in failed, temporaryAuth=${error.isOneDriveAuthTemporarilyUnavailable()}",
+                                                error
+                                            )
                                         }
                                 }
-                            }
+                            },
+                            enabled = !signingIn
                         ) {
-                            if (connectionState == OneDriveBackupConnectionState.Connecting) {
+                            if (signingIn) {
                                 CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
                                 Spacer(modifier = Modifier.width(8.dp))
                             }
@@ -408,7 +519,7 @@ fun OneDriveBackupScreen(
                 }
             }
 
-            if (session != null) {
+            if (oneDriveReady) {
                 Card {
                     Column(
                         modifier = Modifier.padding(16.dp),
@@ -637,7 +748,12 @@ fun OneDriveBackupScreen(
 
             Button(
                 onClick = {
-                    if (!backupHelper.isConfigured()) {
+                    if (currentSessionBackupConfig() == null) {
+                        Log.w(
+                            ONEDRIVE_BACKUP_LOG_TAG,
+                            "Create backup blocked: no config for current session, " +
+                                "state=$connectionState, session=${session.debugRef()}, savedConfig=${savedConfig.debugRef()}"
+                        )
                         Toast.makeText(context, context.getString(R.string.onedrive_backup_directory_required), Toast.LENGTH_SHORT).show()
                         return@Button
                     }
@@ -694,7 +810,7 @@ fun OneDriveBackupScreen(
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                enabled = !creatingBackup
+                enabled = backupReady && !creatingBackup
             ) {
                 if (creatingBackup) {
                     CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -723,7 +839,7 @@ fun OneDriveBackupScreen(
                         )
                         IconButton(
                             onClick = { coroutineScope.launch { refreshBackups() } },
-                            enabled = !loadingBackups
+                            enabled = backupReady && !loadingBackups
                         ) {
                             Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.refresh))
                         }
@@ -738,7 +854,7 @@ fun OneDriveBackupScreen(
                         ) {
                             CircularProgressIndicator()
                         }
-                    } else if (!backupHelper.isConfigured()) {
+                    } else if (savedConfigForCurrentSession == null) {
                         Text(
                             text = stringResource(R.string.onedrive_backup_directory_required),
                             style = MaterialTheme.typography.bodySmall,
@@ -1120,4 +1236,14 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
     is ContextWrapper -> baseContext.findActivity()
     else -> null
+}
+
+private fun OneDriveAccountSession?.debugRef(): String {
+    val accountId = this?.accountId?.takeIf { it.isNotBlank() } ?: return "none"
+    return "account#${accountId.hashCode().toString(16)}"
+}
+
+private fun OneDriveBackupConfig?.debugRef(): String {
+    val accountId = this?.accountId?.takeIf { it.isNotBlank() } ?: return "none"
+    return "config#${accountId.hashCode().toString(16)}"
 }

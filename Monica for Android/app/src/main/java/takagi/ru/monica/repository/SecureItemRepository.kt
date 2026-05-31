@@ -46,6 +46,13 @@ class SecureItemRepository(
         ItemType.PASSWORD -> "password"
     }
 
+    private fun SecureItem.mdbxObjectId(id: Long = this.id): String? {
+        val stableId = id.takeIf { it > 0 } ?: this.id.takeIf { it > 0 } ?: return replicaGroupId
+        return replicaGroupId
+            ?.takeIf { it.startsWith("${mdbxReplicaPrefix()}:") }
+            ?: "${mdbxReplicaPrefix()}:$stableId"
+    }
+
     
     fun getAllItems(): Flow<List<SecureItem>> {
         return secureItemDao.getAllItems()
@@ -170,7 +177,14 @@ class SecureItemRepository(
     suspend fun insertItem(item: SecureItem): Long {
         val id = secureItemDao.insertItem(item)
         try {
-            mdbxRepository?.upsertSecureItem(item.copy(id = id))
+            val persistedItem = item.copy(
+                id = id,
+                replicaGroupId = if (item.mdbxDatabaseId != null) item.mdbxObjectId(id) else item.replicaGroupId
+            )
+            if (persistedItem.replicaGroupId != item.replicaGroupId) {
+                secureItemDao.updateItem(persistedItem)
+            }
+            mdbxRepository?.upsertSecureItem(persistedItem)
         } catch (e: Exception) {
             secureItemDao.deleteItemById(id)
             throw e

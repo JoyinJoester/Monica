@@ -49,6 +49,8 @@ import takagi.ru.monica.data.model.applyToPasswordEntry
 import takagi.ru.monica.data.model.toStorageTarget
 import takagi.ru.monica.ui.model.SecretValueState
 import takagi.ru.monica.ui.model.plainValueOrEmpty
+import takagi.ru.monica.util.TotpDataResolver
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -3044,6 +3046,159 @@ class PasswordViewModel(
             } ?: candidates.firstOrNull()
             preferred?.second
         }
+    }
+
+    suspend fun copyBoundTotpsForPasswordCopies(idPairs: List<Pair<Long, Long>>): Int {
+        val secureRepository = secureItemRepository ?: return 0
+        if (idPairs.isEmpty()) return 0
+
+        val sourceIds = idPairs.map { it.first }.distinct()
+        val newIds = idPairs.map { it.second }.distinct()
+        val sourcePasswords = repository.getPasswordsByIds(sourceIds).associateBy { it.id }
+        val newPasswords = repository.getPasswordsByIds(newIds).associateBy { it.id }
+        val storedTotps = secureRepository.getItemsByType(ItemType.TOTP)
+            .first()
+            .mapNotNull { item ->
+                val data = runCatching { Json.decodeFromString<TotpData>(item.itemData) }.getOrNull()
+                    ?: return@mapNotNull null
+                item to data
+            }
+
+        var copiedCount = 0
+        val copiedNewPasswordIds = mutableSetOf<Long>()
+        idPairs.forEach { (sourceId, newId) ->
+            val sourcePassword = sourcePasswords[sourceId] ?: return@forEach
+            val newPassword = newPasswords[newId] ?: return@forEach
+            if (newPassword.mdbxDatabaseId == null || !copiedNewPasswordIds.add(newId)) {
+                return@forEach
+            }
+
+            val sourceTotp = resolveBoundTotpCopySource(
+                sourcePassword = sourcePassword,
+                storedTotps = storedTotps
+            ) ?: return@forEach
+
+            runCatching {
+                val now = Date()
+                val normalizedData = TotpDataResolver.normalizeTotpData(sourceTotp.data).copy(
+                    boundPasswordId = newPassword.id,
+                    categoryId = null,
+                    keepassDatabaseId = null
+                )
+                if (normalizedData.secret.isBlank()) return@runCatching
+
+                val copiedItem = sourceTotp.item?.copy(
+                    id = 0,
+                    title = sourceTotp.title,
+                    notes = sourceTotp.notes,
+                    itemData = Json.encodeToString(normalizedData),
+                    categoryId = null,
+                    keepassDatabaseId = null,
+                    keepassGroupPath = null,
+                    keepassEntryUuid = null,
+                    keepassGroupUuid = null,
+                    mdbxDatabaseId = newPassword.mdbxDatabaseId,
+                    mdbxFolderId = newPassword.mdbxFolderId,
+                    bitwardenVaultId = null,
+                    bitwardenCipherId = null,
+                    bitwardenFolderId = null,
+                    bitwardenRevisionDate = null,
+                    bitwardenLocalModified = false,
+                    syncStatus = "NONE",
+                    replicaGroupId = null,
+                    isDeleted = false,
+                    deletedAt = null,
+                    createdAt = now,
+                    updatedAt = now
+                ) ?: SecureItem(
+                    itemType = ItemType.TOTP,
+                    title = sourceTotp.title,
+                    notes = sourceTotp.notes,
+                    itemData = Json.encodeToString(normalizedData),
+                    isFavorite = false,
+                    categoryId = null,
+                    mdbxDatabaseId = newPassword.mdbxDatabaseId,
+                    mdbxFolderId = newPassword.mdbxFolderId,
+                    createdAt = now,
+                    updatedAt = now
+                )
+
+                secureRepository.insertItem(copiedItem)
+                val authenticatorPayload = TotpDataResolver.toBitwardenPayload(sourceTotp.title, normalizedData)
+                if (authenticatorPayload.isNotBlank() && newPassword.authenticatorKey != authenticatorPayload) {
+                    repository.updateAuthenticatorKey(newPassword.id, authenticatorPayload)
+                }
+                copiedCount += 1
+            }.onFailure { error ->
+                Log.w(
+                    "PasswordViewModel",
+                    "Failed to copy bound TOTP for password copy $sourceId -> $newId: ${error.message}"
+                )
+            }
+        }
+        return copiedCount
+    }
+
+    private data class BoundTotpCopySource(
+        val item: SecureItem?,
+        val data: TotpData,
+        val title: String,
+        val notes: String
+    )
+
+    private fun resolveBoundTotpCopySource(
+        sourcePassword: PasswordEntry,
+        storedTotps: List<Pair<SecureItem, TotpData>>
+    ): BoundTotpCopySource? {
+        val passwordTotpData = TotpDataResolver.fromAuthenticatorKey(
+            rawKey = sourcePassword.authenticatorKey,
+            fallbackIssuer = sourcePassword.website.takeIf { it.isNotBlank() } ?: sourcePassword.title,
+            fallbackAccountName = sourcePassword.username.takeIf { it.isNotBlank() } ?: sourcePassword.title
+        )?.copy(
+            boundPasswordId = sourcePassword.id,
+            categoryId = sourcePassword.categoryId
+        )
+        val passwordTotpKey = passwordTotpData?.let(::buildTotpCopyIdentityKey)
+
+        val candidates = storedTotps.filter { (_, data) -> data.boundPasswordId == sourcePassword.id }
+        val preferredStored = candidates.firstOrNull { (item, data) ->
+            item.mdbxDatabaseId == sourcePassword.mdbxDatabaseId &&
+                item.bitwardenVaultId == sourcePassword.bitwardenVaultId &&
+                (passwordTotpKey == null || buildTotpCopyIdentityKey(data) == passwordTotpKey)
+        } ?: candidates.firstOrNull { (_, data) ->
+            passwordTotpKey != null && buildTotpCopyIdentityKey(data) == passwordTotpKey
+        } ?: candidates.firstOrNull()
+
+        if (preferredStored != null) {
+            val (item, data) = preferredStored
+            return BoundTotpCopySource(
+                item = item,
+                data = data,
+                title = item.title,
+                notes = item.notes
+            )
+        }
+
+        return passwordTotpData?.let { data ->
+            BoundTotpCopySource(
+                item = null,
+                data = data,
+                title = sourcePassword.title,
+                notes = "来自密码: ${sourcePassword.title}"
+            )
+        }
+    }
+
+    private fun buildTotpCopyIdentityKey(data: TotpData): String {
+        val normalized = TotpDataResolver.normalizeTotpData(data)
+        return listOf(
+            normalized.otpType.name,
+            normalized.secret,
+            normalized.algorithm.uppercase(Locale.ROOT),
+            normalized.digits.toString(),
+            normalized.period.toString(),
+            normalized.counter.toString()
+        ).joinToString("|")
     }
     
     /**

@@ -430,6 +430,35 @@ class MultiPasswordSaveRegressionGuardTest {
     }
 
     @Test
+    fun mdbxSecureItemsKeepStableReplicaIdsAcrossRefresh() {
+        val secureItemRepositorySource = projectFile(
+            "app/src/main/java/takagi/ru/monica/repository/SecureItemRepository.kt"
+        ).readText()
+        val mdbxViewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/MdbxViewModel.kt"
+        ).readText()
+
+        val insertBody = secureItemRepositorySource.substringAfter("suspend fun insertItem(item: SecureItem): Long")
+            .substringBefore("suspend fun updateItem(item: SecureItem)")
+        assertTrue(
+            "New MDBX secure items must persist their object id back to replicaGroupId; otherwise a refresh imports the same TOTP again.",
+            insertBody.contains("replicaGroupId = if (item.mdbxDatabaseId != null) item.mdbxObjectId(id) else item.replicaGroupId") &&
+                insertBody.contains("secureItemDao.updateItem(persistedItem)") &&
+                insertBody.contains("mdbxRepository?.upsertSecureItem(persistedItem)")
+        )
+
+        val importBody = mdbxViewModelSource.substringAfter("private suspend fun importEntriesFromVault(databaseId: Long)")
+            .substringBefore("private suspend fun clearImportedEntries(databaseId: Long)")
+        assertTrue(
+            "MDBX refresh must also match legacy secure-item rows by prefix:id, so users who already created TOTP before this fix do not get duplicates.",
+            importBody.contains(".mapNotNull { item -> item.mdbxPrimaryImportEntryId()?.let { entryId -> entryId to item } }") &&
+                mdbxViewModelSource.contains("private fun SecureItem.mdbxLegacyEntryId(): String?") &&
+                mdbxViewModelSource.contains("ItemType.TOTP -> \"totp\"") &&
+                mdbxViewModelSource.contains("private fun SecureItem.mdbxPrimaryImportEntryId(): String?")
+        )
+    }
+
+    @Test
     fun mdbxGitHistoryHasObjectVersionsDiffAndRevert() {
         val storeSource = projectFile(
             "app/src/main/java/takagi/ru/monica/repository/MdbxVaultStore.kt"
@@ -2025,6 +2054,45 @@ class MultiPasswordSaveRegressionGuardTest {
             mixedMoveSupportSource.contains("target is UnifiedMoveCategoryTarget.MdbxDatabaseTarget || target is UnifiedMoveCategoryTarget.MdbxFolderTarget") &&
                 mixedMoveSupportSource.contains("val createdIds = viewModel.createMdbxPasswordEntriesBatchAlreadyEncrypted(copiedEntries)") &&
                 mixedMoveSupportSource.contains("reportProgress(selectedEntries.size)")
+        )
+    }
+
+    @Test
+    fun mdbxPasswordCopyAlsoCopiesBoundTotp() {
+        val viewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/PasswordViewModel.kt"
+        ).readText()
+        val moveSupportSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordBatchMoveSupport.kt"
+        ).readText()
+        val mixedMoveSupportSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordBatchMoveMixedSupport.kt"
+        ).readText()
+        val mdbxStoreSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/repository/MdbxVaultStore.kt"
+        ).readText()
+
+        assertTrue(
+            "Password copies into MDBX must remap any bound TOTP to the newly-created password id, otherwise Bitwarden logins with TOTP lose the authenticator after copy.",
+            viewModelSource.contains("suspend fun copyBoundTotpsForPasswordCopies(idPairs: List<Pair<Long, Long>>): Int") &&
+                viewModelSource.contains("boundPasswordId = newPassword.id") &&
+                viewModelSource.contains("mdbxDatabaseId = newPassword.mdbxDatabaseId") &&
+                viewModelSource.contains("bitwardenVaultId = null") &&
+                viewModelSource.contains("TotpDataResolver.fromAuthenticatorKey(")
+        )
+        assertTrue(
+            "The normal password-page copy flow must invoke bound-TOTP copy for MDBX targets using the source->new idPairs returned by the batch insert.",
+            moveSupportSource.contains("viewModel.copyBoundTotpsForPasswordCopies(copyResult.idPairs)") &&
+                moveSupportSource.contains("target is UnifiedMoveCategoryTarget.MdbxDatabaseTarget")
+        )
+        assertTrue(
+            "Mixed aggregate copy uses a separate MDBX password batch path, so it must build the same source->new idPairs and copy bound TOTP there too.",
+            mixedMoveSupportSource.contains("val idPairs = createdIds.mapIndexedNotNull") &&
+                mixedMoveSupportSource.contains("viewModel.copyBoundTotpsForPasswordCopies(idPairs)")
+        )
+        assertTrue(
+            "MDBX password payload should retain authenticator_key so refresh/import does not strip the copied login's own TOTP field.",
+            mdbxStoreSource.contains(".put(\"authenticator_key\", entry.authenticatorKey)")
         )
     }
 

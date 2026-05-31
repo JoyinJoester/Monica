@@ -1634,6 +1634,7 @@ class MdbxVaultStore(
             .put("bound_note_room_id", entry.boundNoteId)
             .put("bound_note_entry_id", resolveBoundNoteEntryId(entry))
             .put("login_type", entry.loginType)
+            .put("authenticator_key", entry.authenticatorKey)
             .put("passkey_bindings", entry.passkeyBindings)
             .put("custom_fields", passwordCustomFieldsPayload(entry.id))
             .put("bitwarden_mode", entry.bitwardenVaultId != null)

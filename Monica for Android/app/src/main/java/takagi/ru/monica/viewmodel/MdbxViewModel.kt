@@ -1877,7 +1877,7 @@ class MdbxViewModel(
             .toMap()
         val existingSecureItemsByEntryId = secureItemDao.getByMdbxDatabaseIdSync(databaseId)
             .dedupeMdbxSecureItemRowsByEntryId()
-            .mapNotNull { item -> item.replicaGroupId?.let { it to item } }
+            .mapNotNull { item -> item.mdbxPrimaryImportEntryId()?.let { entryId -> entryId to item } }
             .toMap()
         val existingPasskeysByEntryId = passkeyDao.getByMdbxDatabaseId(databaseId)
             .mapNotNull { passkey ->
@@ -1981,7 +1981,7 @@ class MdbxViewModel(
     private suspend fun List<SecureItem>.dedupeMdbxSecureItemRowsByEntryId(): List<SecureItem> {
         if (isEmpty()) return this
         val keepIds = mutableSetOf<Long>()
-        groupBy { it.replicaGroupId?.takeIf(String::isNotBlank) }.forEach { (entryId, rows) ->
+        groupBy { it.mdbxPrimaryImportEntryId() }.forEach { (entryId, rows) ->
             if (entryId == null) {
                 keepIds += rows.map { it.id }
                 return@forEach
@@ -1993,6 +1993,20 @@ class MdbxViewModel(
             }
         }
         return filter { it.id in keepIds }
+    }
+
+    private fun SecureItem.mdbxPrimaryImportEntryId(): String? =
+        replicaGroupId?.takeIf(String::isNotBlank) ?: mdbxLegacyEntryId()
+
+    private fun SecureItem.mdbxLegacyEntryId(): String? {
+        val prefix = when (itemType) {
+            ItemType.NOTE -> "note"
+            ItemType.TOTP -> "totp"
+            ItemType.BANK_CARD -> "card"
+            ItemType.DOCUMENT -> "document-ref"
+            ItemType.PASSWORD -> "password"
+        }
+        return id.takeIf { it > 0 }?.let { "$prefix:$it" }
     }
 
     private fun LocalMdbxDatabase.hasAccessibleLocalSource(): Boolean {

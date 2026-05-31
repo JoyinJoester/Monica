@@ -1116,6 +1116,13 @@ internal fun PasswordBatchMoveSheet(
                                     )
                                     successCount = copyResult.successCount
                                     failedCount = copyResult.failedCount
+                                    if (
+                                        copyResult.idPairs.isNotEmpty() &&
+                                        (target is UnifiedMoveCategoryTarget.MdbxDatabaseTarget ||
+                                            target is UnifiedMoveCategoryTarget.MdbxFolderTarget)
+                                    ) {
+                                        viewModel.copyBoundTotpsForPasswordCopies(copyResult.idPairs)
+                                    }
                                 }
                             }
                         } else {

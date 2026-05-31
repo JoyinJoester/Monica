@@ -214,9 +214,19 @@ internal suspend fun executeMixedPasswordBatchMove(
             }
             val createdIds = viewModel.createMdbxPasswordEntriesBatchAlreadyEncrypted(copiedEntries)
             val copiedCount = createdIds.count { it > 0 }
+            val idPairs = createdIds.mapIndexedNotNull { index, createdId ->
+                if (createdId > 0) {
+                    selectedEntries.getOrNull(index)?.id?.let { sourceId -> sourceId to createdId }
+                } else {
+                    null
+                }
+            }
             copiedPasswordIds += createdIds.filter { it > 0 }
             successCount += copiedCount
             failedCount += (selectedEntries.size - copiedCount).coerceAtLeast(0)
+            if (idPairs.isNotEmpty()) {
+                viewModel.copyBoundTotpsForPasswordCopies(idPairs)
+            }
             reportProgress(selectedEntries.size)
         } else {
             selectedEntries.forEach { entry ->
