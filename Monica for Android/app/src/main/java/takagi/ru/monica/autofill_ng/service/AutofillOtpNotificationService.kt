@@ -20,6 +20,7 @@ import android.text.style.RelativeSizeSpan
 import android.text.style.StyleSpan
 import android.util.Log
 import android.widget.Toast
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -49,15 +50,14 @@ class AutofillOtpNotificationService : Service() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var updateJob: Job? = null
+    private val sessionCounter = AtomicLong(0L)
 
     @Volatile
     private var latestCode: String = ""
 
     @Volatile
-    private var label: String = ""
+    private var activeSessionId: Long = 0L
 
-    private var totpData: TotpData? = null
-    private var deadlineElapsedMs: Long = 0L
     private var isForeground = false
 
     override fun onCreate() {
@@ -74,7 +74,7 @@ class AutofillOtpNotificationService : Service() {
             ACTION_DISMISS -> stopSelfCompletely()
             else -> {
                 // 没有可处理的指令且尚未启动 —— 直接停止，避免触发 startForeground 超时
-                if (totpData == null) stopSelfCompletely()
+                if (activeSessionId == 0L) stopSelfCompletely()
             }
         }
         return START_NOT_STICKY
@@ -103,37 +103,59 @@ class AutofillOtpNotificationService : Service() {
             return
         }
 
-        totpData = data
-        label = labelArg
-        deadlineElapsedMs = SystemClock.elapsedRealtime() + duration * 1000L
+        val sessionId = sessionCounter.incrementAndGet()
+        activeSessionId = sessionId
+        val session = AutofillOtpNotificationSession(
+            data = data,
+            startedElapsedMs = SystemClock.elapsedRealtime(),
+            durationSeconds = duration
+        )
+        Log.d(
+            TAG,
+            "start session=$sessionId duration=${duration}s labelLen=${labelArg.length} otpType=${data.otpType} period=${data.period}"
+        )
 
         // 先发一个初始版本以进入前台状态
-        val initialCode = runCatching { TotpGenerator.generateOtp(data) }.getOrDefault("")
-        latestCode = initialCode
-        val initialRemaining = computeDisplayRemaining(data, SystemClock.elapsedRealtime())
-        enterForegroundOrUpdate(buildNotification(label, initialCode, initialRemaining))
+        val initialSnapshot = session.snapshot(
+            nowElapsedMs = SystemClock.elapsedRealtime(),
+            nowWallSeconds = System.currentTimeMillis() / 1000L
+        )
+        latestCode = initialSnapshot.code
+        enterForegroundOrUpdate(
+            buildNotification(labelArg, initialSnapshot.code, initialSnapshot.remainingSeconds)
+        )
 
         updateJob?.cancel()
         updateJob = scope.launch {
             // 第一轮通知已发，跳过首次 1 秒等待以避免双发
             delay(1000)
             while (isActive) {
+                if (activeSessionId != sessionId) {
+                    Log.d(TAG, "session=$sessionId became stale; activeSession=$activeSessionId")
+                    return@launch
+                }
                 val now = SystemClock.elapsedRealtime()
-                if (now >= deadlineElapsedMs) break
-                val current = totpData ?: break
+                val snapshot = session.snapshot(
+                    nowElapsedMs = now,
+                    nowWallSeconds = System.currentTimeMillis() / 1000L
+                )
+                if (snapshot.expired) break
 
-                val fresh = runCatching { TotpGenerator.generateOtp(current) }
-                    .getOrDefault(latestCode)
-                latestCode = fresh
-                val remaining = computeDisplayRemaining(current, now)
-                val notification = buildNotification(label, fresh, remaining)
-                withContext(Dispatchers.Main.immediate) {
-                    getSystemService(NotificationManager::class.java)
-                        ?.notify(NOTIFICATION_ID, notification)
+                latestCode = snapshot.code
+                runCatching {
+                    val notification = buildNotification(labelArg, snapshot.code, snapshot.remainingSeconds)
+                    withContext(Dispatchers.Main.immediate) {
+                        if (activeSessionId == sessionId) {
+                            getSystemService(NotificationManager::class.java)
+                                ?.notify(NOTIFICATION_ID, notification)
+                        }
+                    }
+                }.onFailure {
+                    Log.w(TAG, "session=$sessionId failed to publish OTP notification tick", it)
                 }
                 delay(1000)
             }
-            stopSelfCompletely()
+            stopSelfCompletely(sessionId)
         }
     }
 
@@ -150,15 +172,6 @@ class AutofillOtpNotificationService : Service() {
     }
 
     // ----- notification helpers -----
-
-    private fun computeDisplayRemaining(data: TotpData, nowElapsedMs: Long): Int {
-        val otpRemaining = runCatching { TotpGenerator.getRemainingSeconds(data.period) }
-            .getOrDefault(data.period)
-        val dismissRemaining = ((deadlineElapsedMs - nowElapsedMs) / 1000L)
-            .toInt()
-            .coerceAtLeast(0)
-        return minOf(otpRemaining, dismissRemaining)
-    }
 
     private fun buildNotification(label: String, code: String, remainingSeconds: Int): Notification {
         val formattedCode = formatCodeForDisplay(code)
@@ -264,7 +277,13 @@ class AutofillOtpNotificationService : Service() {
         }
     }
 
-    private fun stopSelfCompletely() {
+    private fun stopSelfCompletely(sessionId: Long? = null) {
+        if (sessionId != null && sessionId != activeSessionId) {
+            Log.d(TAG, "ignore stale stop session=$sessionId activeSession=$activeSessionId")
+            return
+        }
+        Log.d(TAG, "stop session=${sessionId ?: activeSessionId}")
+        activeSessionId = 0L
         updateJob?.cancel()
         getSystemService(NotificationManager::class.java)?.cancel(NOTIFICATION_ID)
         if (isForeground) {

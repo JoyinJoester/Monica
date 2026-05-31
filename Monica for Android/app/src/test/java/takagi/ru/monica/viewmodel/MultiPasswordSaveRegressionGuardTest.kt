@@ -1875,7 +1875,8 @@ class MultiPasswordSaveRegressionGuardTest {
                 passwordRepositorySource.contains("private fun PasswordEntry.mdbxPasswordObjectId(): String") &&
                 mdbxViewModelSource.contains(".dedupeMdbxPasswordRowsByEntryId()") &&
                 mdbxViewModelSource.contains("private suspend fun List<PasswordEntry>.dedupeMdbxPasswordRowsByEntryId()") &&
-                mdbxViewModelSource.contains("passwordEntryDao.deletePasswordEntryById(duplicate.id)")
+                mdbxViewModelSource.contains("softDeleteMdbxPasswordRows(") &&
+                mdbxViewModelSource.contains("reason = \"duplicate_mdbx_entry_id\"")
         )
     }
 
@@ -2097,6 +2098,117 @@ class MultiPasswordSaveRegressionGuardTest {
     }
 
     @Test
+    fun mdbxPasswordCopiesToMonicaLocalDoNotKeepMdbxIdentity() {
+        val viewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/PasswordViewModel.kt"
+        ).readText()
+        val moveSupportSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/password/PasswordBatchMoveSupport.kt"
+        ).readText()
+        val localCopyBody = viewModelSource
+            .substringAfter("private fun buildMonicaLocalCopy(")
+            .substringBefore("fun addSecureItem")
+        val batchLocalCopyBody = moveSupportSource
+            .substringAfter("internal fun buildCopiedEntryForTarget(")
+            .substringBefore("is UnifiedMoveCategoryTarget.BitwardenVaultTarget")
+
+        assertTrue(
+            "A single MDBX password copied into Monica local must clear MDBX ownership and replica identity, otherwise local filters/search treat it as MDBX or collapse it with the source replica.",
+            localCopyBody.contains("mdbxDatabaseId = null") &&
+                localCopyBody.contains("mdbxFolderId = null") &&
+                localCopyBody.contains("replicaGroupId = null")
+        )
+        assertTrue(
+            "Batch copies into Monica local targets have three branches (uncategorized, archive, category); each must clear MDBX ownership and replica identity.",
+            batchLocalCopyBody.countOccurrences("mdbxDatabaseId = null") >= 3 &&
+                batchLocalCopyBody.countOccurrences("mdbxFolderId = null") >= 3 &&
+                batchLocalCopyBody.countOccurrences("replicaGroupId = null") >= 3
+        )
+    }
+
+    @Test
+    fun editingPasswordReplicasPreservesExistingTargets() {
+        val viewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/PasswordViewModel.kt"
+        ).readText()
+        val pickerSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/components/MultiStorageTargetPickerBottomSheet.kt"
+        ).readText()
+        val saveAcrossTargetsBody = viewModelSource
+            .substringAfter("fun savePasswordsAcrossTargets(")
+            .substringBefore("private suspend fun canWriteKeePassTargets")
+
+        assertFalse(
+            "Editing a replica group must not delete existing targets just because they are absent from the edited selection; the UI contract says existing targets are preserved.",
+            saveAcrossTargetsBody.contains("deletePasswordEntriesBatch(staleReplicas)")
+        )
+        assertTrue(
+            "The storage target picker must treat existing targets as locked while editing, otherwise a missed click can remove a storage replica and look like data loss.",
+            pickerSource.contains("val singleModeAllowed = lockedTargetKeys.isEmpty()") &&
+                pickerSource.contains("if (!singleModeAllowed) return") &&
+                pickerSource.contains("it.stableKey in lockedTargetKeys") &&
+                pickerSource.contains("targetLocked = chip.target.stableKey in lockedTargetKeys") &&
+                pickerSource.contains("if (targetLocked)")
+        )
+    }
+
+    @Test
+    fun localPasswordDaoQueriesExcludeMdbxRows() {
+        val daoSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/data/PasswordEntryDao.kt"
+        ).readText()
+        val localDeleteBody = daoSource
+            .substringAfter("DELETE FROM password_entries\n        WHERE bitwarden_vault_id IS NULL")
+            .substringBefore("suspend fun deleteAllLocalPasswordEntries")
+        val localCountBody = daoSource
+            .substringAfter("suspend fun getLastBitwardenRevisionDate")
+            .substringBefore("suspend fun getAllKeePassEntries")
+
+        assertTrue(
+            "Local password cleanup must not delete MDBX rows; MDBX has its own ownership column and cleanup path.",
+            localDeleteBody.contains("AND mdbx_database_id IS NULL")
+        )
+        assertTrue(
+            "Local password counters/lists must exclude MDBX rows, otherwise MDBX-owned records can be treated as Monica local data.",
+            localCountBody.countOccurrences("mdbx_database_id IS NULL") >= 3
+        )
+    }
+
+    @Test
+    fun mdbxPasswordRefreshUsesRecoverableSoftDeleteForLocalRows() {
+        val daoSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/data/PasswordEntryDao.kt"
+        ).readText()
+        val mdbxViewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/MdbxViewModel.kt"
+        ).readText()
+        val importBody = mdbxViewModelSource
+            .substringAfter("private suspend fun importEntriesFromVault(")
+            .substringBefore("private suspend fun clearImportedEntries")
+        val softDeleteBody = mdbxViewModelSource
+            .substringAfter("private suspend fun softDeleteMdbxPasswordRows(")
+            .substringBefore("private suspend fun List<PasswordEntry>.dedupeMdbxPasswordRowsByEntryId")
+
+        assertTrue(
+            "MDBX import reconciliation should only inspect active MDBX rows; soft-deleted rows must not be repeatedly deduped or reconciled.",
+            daoSource.contains("SELECT * FROM password_entries WHERE mdbx_database_id = :databaseId AND isDeleted = 0 AND isArchived = 0")
+        )
+        assertTrue(
+            "MDBX password refresh must soft-delete missing password rows instead of physically deleting them, so an ownership bug cannot become unrecoverable data loss.",
+            importBody.contains("reason = \"orphaned_remote_entry\"") &&
+                importBody.contains("softDeleteMdbxPasswordRows(") &&
+                !importBody.contains("passwordEntryDao.deletePasswordEntryById(it.id)")
+        )
+        assertTrue(
+            "MDBX duplicate-password cleanup must be recoverable and visible in diagnostics.",
+            softDeleteBody.contains("isDeleted = true") &&
+                softDeleteBody.contains("deletedAt = entry.deletedAt ?: now") &&
+                softDeleteBody.contains("passwordEntryDao.updatePasswordEntries(updates)") &&
+                softDeleteBody.contains("[MDBX][password-soft-delete]")
+        )
+    }
+
+    @Test
     fun mdbxSnapshotsAndBatchCreatesStayReadableAndCoalesced() {
         val managerSource = projectFile(
             "app/src/main/java/takagi/ru/monica/ui/screens/MdbxManagerScreen.kt"
@@ -2230,6 +2342,17 @@ class MultiPasswordSaveRegressionGuardTest {
             "Autofill blacklist must not be collapsed into the save-blocked-targets backup; these are different settings in the UI.",
             webDavSource.contains("AutofillSaveBlockedTargetsBackupEntry(\n    val blockedTargets: List<String> = emptyList(),\n    val packages")
         )
+    }
+
+    private fun String.countOccurrences(needle: String): Int {
+        if (needle.isEmpty()) return 0
+        var count = 0
+        var index = indexOf(needle)
+        while (index >= 0) {
+            count++
+            index = indexOf(needle, startIndex = index + needle.length)
+        }
+        return count
     }
 
     private fun projectFile(relativePath: String): File {

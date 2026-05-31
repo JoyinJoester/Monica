@@ -186,10 +186,12 @@ fun MultiStorageTargetPickerBottomSheet(
     }
     val primaryTarget = selectedTargets.firstOrNull() ?: StorageTarget.MonicaLocal(null)
     val primarySourceKey = primaryTarget.toSourceKey()
-    val singleModeAllowed = true
-    var selectionMode by remember(visible, selectedTargets) {
+    val singleModeAllowed = lockedTargetKeys.isEmpty()
+    var selectionMode by remember(visible, selectedTargets, singleModeAllowed) {
         mutableStateOf(
             if (forceMultiSelectionMode) {
+                StoragePickerSelectionMode.MULTI
+            } else if (!singleModeAllowed) {
                 StoragePickerSelectionMode.MULTI
             } else if (selectedTargets.size > 1) {
                 StoragePickerSelectionMode.MULTI
@@ -355,6 +357,7 @@ fun MultiStorageTargetPickerBottomSheet(
     }
 
     fun updateSingleSource(sourceKey: String) {
+        if (!singleModeAllowed) return
         singleSourceKey = sourceKey
         val source = sourceByKey(sourceKey)
         onSelectedTargetsChange(listOf(rootTargetForSource(source)))
@@ -364,6 +367,9 @@ fun MultiStorageTargetPickerBottomSheet(
         val source = sourceByKey(sourceKey)
         val rootTarget = rootTargetForSource(source)
         if (sourceKey in activeSourceKeys) {
+            if (selectedTargets.any { it.toSourceKey() == sourceKey && it.stableKey in lockedTargetKeys }) {
+                return
+            }
             activeSourceKeys.remove(sourceKey)
             onSelectedTargetsChange(
                 selectedTargets
@@ -514,6 +520,7 @@ fun MultiStorageTargetPickerBottomSheet(
                             chip = chip,
                             selectedTargets = selectedTargets,
                             selectedKeys = selectedKeys,
+                            targetLocked = chip.target.stableKey in lockedTargetKeys,
                             sourceHasLockedTarget = selectedTargets.any {
                                 it.toSourceKey() == chip.sourceKey &&
                                     it.stableKey in lockedTargetKeys
@@ -541,6 +548,7 @@ fun MultiStorageTargetPickerBottomSheet(
                                     chip = chip,
                                     selectedTargets = selectedTargets,
                                     selectedKeys = selectedKeys,
+                                    targetLocked = chip.target.stableKey in lockedTargetKeys,
                                     sourceHasLockedTarget = selectedTargets.any {
                                         it.toSourceKey() == chip.sourceKey &&
                                             it.stableKey in lockedTargetKeys
@@ -682,6 +690,7 @@ private fun FolderTargetChip(
     chip: StorageTargetChip,
     selectedTargets: List<StorageTarget>,
     selectedKeys: Set<String>,
+    targetLocked: Boolean,
     sourceHasLockedTarget: Boolean,
     singleMode: Boolean,
     singleModeAllowed: Boolean,
@@ -703,7 +712,13 @@ private fun FolderTargetChip(
                 onTargetClicked?.invoke(chip.target)
             } else {
                 val updatedTargets = if (selected) {
-                    selectedTargets.withoutStorageTarget(chip.target)
+                    if (targetLocked) {
+                        selectedTargets
+                    } else {
+                        selectedTargets.withoutStorageTarget(chip.target)
+                    }
+                } else if (sourceHasLockedTarget) {
+                    selectedTargets
                 } else {
                     selectedTargets.withStorageTargetSelected(chip.target)
                 }

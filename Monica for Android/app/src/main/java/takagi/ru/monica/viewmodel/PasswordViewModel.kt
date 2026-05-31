@@ -2118,11 +2118,14 @@ class PasswordViewModel(
             keepassGroupPath = null,
             keepassEntryUuid = null,
             keepassGroupUuid = null,
+            mdbxDatabaseId = null,
+            mdbxFolderId = null,
             bitwardenVaultId = null,
             bitwardenCipherId = null,
             bitwardenFolderId = null,
             bitwardenRevisionDate = null,
             bitwardenLocalModified = false,
+            replicaGroupId = null,
             isArchived = false,
             archivedAt = null,
             isDeleted = false,
@@ -3544,7 +3547,12 @@ class PasswordViewModel(
                 val staleReplicas = activeReplicas.filter {
                     it.toStorageTarget().stableKey !in selectedTargetKeys
                 }
-                deletePasswordEntriesBatch(staleReplicas)
+                if (staleReplicas.isNotEmpty()) {
+                    Log.w(
+                        "PasswordViewModel",
+                        "Preserving ${staleReplicas.size} existing password replicas not present in the edited target selection: ids=${staleReplicas.map { it.id }}"
+                    )
+                }
 
                 initialId
             }

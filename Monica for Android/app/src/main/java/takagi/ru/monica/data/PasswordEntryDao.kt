@@ -292,6 +292,7 @@ interface PasswordEntryDao {
         DELETE FROM password_entries
         WHERE bitwarden_vault_id IS NULL
           AND keepassDatabaseId IS NULL
+          AND mdbx_database_id IS NULL
         """
     )
     suspend fun deleteAllLocalPasswordEntries()
@@ -299,7 +300,7 @@ interface PasswordEntryDao {
     @Query("DELETE FROM password_entries WHERE mdbx_database_id = :databaseId")
     suspend fun deleteAllByMdbxDatabaseId(databaseId: Long)
 
-    @Query("SELECT * FROM password_entries WHERE mdbx_database_id = :databaseId")
+    @Query("SELECT * FROM password_entries WHERE mdbx_database_id = :databaseId AND isDeleted = 0 AND isArchived = 0")
     suspend fun getByMdbxDatabaseIdSync(databaseId: Long): List<PasswordEntry>
     
     /**
@@ -610,6 +611,7 @@ interface PasswordEntryDao {
                 SELECT * FROM password_entries
                 WHERE bitwarden_vault_id IS NULL
                     AND keepassDatabaseId IS NULL
+                    AND mdbx_database_id IS NULL
                     AND isDeleted = 0
                     AND LOWER(title) = :title
                     AND LOWER(username) = :username
@@ -623,6 +625,7 @@ interface PasswordEntryDao {
                 SELECT * FROM password_entries
                 WHERE bitwarden_vault_id IS NULL
                     AND keepassDatabaseId IS NULL
+                    AND mdbx_database_id IS NULL
                     AND isDeleted = 0
                     AND isArchived = 0
                     AND LOWER(title) = :title
@@ -780,14 +783,14 @@ interface PasswordEntryDao {
      * 获取纯本地条目数量（非 Bitwarden、非 KeePass）
      * 用于 V2 多源密码库统计
      */
-    @Query("SELECT COUNT(*) FROM password_entries WHERE bitwarden_vault_id IS NULL AND keepassDatabaseId IS NULL AND isDeleted = 0 AND isArchived = 0")
+    @Query("SELECT COUNT(*) FROM password_entries WHERE bitwarden_vault_id IS NULL AND keepassDatabaseId IS NULL AND mdbx_database_id IS NULL AND isDeleted = 0 AND isArchived = 0")
     suspend fun getLocalEntriesCount(): Int
 
     /**
      * 获取本地已删除条目数量（非 Bitwarden、非 KeePass）
      * 用于回收站统计
      */
-    @Query("SELECT COUNT(*) FROM password_entries WHERE bitwarden_vault_id IS NULL AND keepassDatabaseId IS NULL AND isDeleted = 1")
+    @Query("SELECT COUNT(*) FROM password_entries WHERE bitwarden_vault_id IS NULL AND keepassDatabaseId IS NULL AND mdbx_database_id IS NULL AND isDeleted = 1")
     suspend fun getLocalDeletedEntriesCount(): Int
 
     /**
@@ -808,7 +811,7 @@ interface PasswordEntryDao {
      * 获取所有纯本地条目（非 Bitwarden、非 KeePass）
      * 用于 V2 多源密码库显示
      */
-    @Query("SELECT * FROM password_entries WHERE bitwarden_vault_id IS NULL AND keepassDatabaseId IS NULL AND isDeleted = 0 AND isArchived = 0 ORDER BY isFavorite DESC, updatedAt DESC")
+    @Query("SELECT * FROM password_entries WHERE bitwarden_vault_id IS NULL AND keepassDatabaseId IS NULL AND mdbx_database_id IS NULL AND isDeleted = 0 AND isArchived = 0 ORDER BY isFavorite DESC, updatedAt DESC")
     suspend fun getAllLocalEntries(): List<PasswordEntry>
     
     /**

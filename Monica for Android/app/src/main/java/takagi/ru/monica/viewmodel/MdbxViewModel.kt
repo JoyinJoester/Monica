@@ -1937,7 +1937,12 @@ class MdbxViewModel(
             existingPasswordsByEntryId
                 .filterKeys { it !in activePasswordEntryIds }
                 .values
-                .forEach { passwordEntryDao.deletePasswordEntryById(it.id) }
+                .let { orphanedRows ->
+                    softDeleteMdbxPasswordRows(
+                        rows = orphanedRows,
+                        reason = "orphaned_remote_entry"
+                    )
+                }
             existingSecureItemsByEntryId
                 .filterKeys { it !in activeSecureItemEntryIds }
                 .values
@@ -1961,6 +1966,30 @@ class MdbxViewModel(
         passkeyDao.deleteAllByMdbxDatabaseId(databaseId)
     }
 
+    private suspend fun softDeleteMdbxPasswordRows(
+        rows: Collection<PasswordEntry>,
+        reason: String
+    ) {
+        if (rows.isEmpty()) return
+        val now = Date()
+        val updates = rows
+            .filterNot { it.isDeleted }
+            .map { entry ->
+                entry.copy(
+                    isDeleted = true,
+                    deletedAt = entry.deletedAt ?: now,
+                    isArchived = false,
+                    archivedAt = null,
+                    updatedAt = now
+                )
+            }
+        if (updates.isEmpty()) return
+        passwordEntryDao.updatePasswordEntries(updates)
+        MdbxDiagLogger.append(
+            "[MDBX][password-soft-delete] reason=$reason count=${updates.size} ids=${updates.map { it.id }}"
+        )
+    }
+
     private suspend fun List<PasswordEntry>.dedupeMdbxPasswordRowsByEntryId(): List<PasswordEntry> {
         if (isEmpty()) return this
         val keepIds = mutableSetOf<Long>()
@@ -1971,9 +2000,10 @@ class MdbxViewModel(
             }
             val keeper = rows.maxByOrNull { it.updatedAt.time } ?: return@forEach
             keepIds += keeper.id
-            rows.filterNot { it.id == keeper.id }.forEach { duplicate ->
-                passwordEntryDao.deletePasswordEntryById(duplicate.id)
-            }
+            softDeleteMdbxPasswordRows(
+                rows = rows.filterNot { it.id == keeper.id },
+                reason = "duplicate_mdbx_entry_id"
+            )
         }
         return filter { it.id in keepIds }
     }
