@@ -1426,46 +1426,24 @@ fun AddEditPasswordScreen(
                             accountName = currentUsername
                         )
 
-                        // 检查是否已有相同密钥的验证器
-                        val existingTotp = totpViewModel.findTotpBySecret(resolvedAuthTotp.secret)
-                        val existingTotpData = existingTotp?.let {
-                            runCatching { Json.decodeFromString<TotpData>(it.itemData) }.getOrNull()
-                        }
-                        val totpIdToSave = existingTotp?.id ?: existingTotpId // 优先选择相同密钥的，其次是原本绑定的
-                        val baseTotpData = existingTotpData ?: resolvedAuthTotp
-                        val totpData = baseTotpData.copy(
+                        val totpData = resolvedAuthTotp.copy(
                             secret = resolvedAuthTotp.secret,
-                            issuer = baseTotpData.issuer.ifBlank {
-                                resolvedAuthTotp.issuer.ifBlank { currentTitle }
-                            },
-                            accountName = baseTotpData.accountName.ifBlank {
-                                resolvedAuthTotp.accountName.ifBlank { currentUsername }
-                            },
+                            issuer = resolvedAuthTotp.issuer.ifBlank { currentTitle },
+                            accountName = resolvedAuthTotp.accountName.ifBlank { currentUsername },
                             otpType = resolvedAuthTotp.otpType,
                             digits = resolvedAuthTotp.digits,
                             period = resolvedAuthTotp.period,
                             algorithm = resolvedAuthTotp.algorithm,
                             counter = resolvedAuthTotp.counter,
-                            pin = if (baseTotpData.pin.isNotBlank()) baseTotpData.pin else resolvedAuthTotp.pin,
-                            link = if (baseTotpData.link.isNotBlank()) baseTotpData.link else resolvedAuthTotp.link,
-                            associatedApp = if (baseTotpData.associatedApp.isNotBlank()) {
-                                baseTotpData.associatedApp
-                            } else {
-                                resolvedAuthTotp.associatedApp
-                            },
                             boundPasswordId = firstPasswordId,
-                            customIconType = baseTotpData.customIconType,
-                            customIconValue = baseTotpData.customIconValue,
-                            customIconUpdatedAt = baseTotpData.customIconUpdatedAt
                         )
 
-                        totpViewModel.saveTotpItem(
-                            id = totpIdToSave,
-                            title = existingTotp?.title ?: currentTitle,
-                            notes = existingTotp?.notes ?: "",
+                        totpViewModel.savePasswordBoundTotp(
+                            passwordId = firstPasswordId,
+                            title = currentTitle,
+                            notes = "",
                             totpData = totpData,
-                            isFavorite = existingTotp?.isFavorite ?: false,
-                            keepassDatabaseId = keepassDatabaseId
+                            preferredTotpId = existingTotpId
                         )
                     } else if (currentAuthKey.isEmpty() && originalAuthenticatorKey.isNotEmpty() && totpViewModel != null) {
                         // 密码页清空密钥：只取消验证器绑定，不删除验证器

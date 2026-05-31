@@ -2098,6 +2098,66 @@ class MultiPasswordSaveRegressionGuardTest {
     }
 
     @Test
+    fun editingPasswordWithAuthenticatorReusesBoundTotpAndDoesNotClearPasswordWhenDeletingDuplicates() {
+        val addPasswordSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/ui/screens/AddEditPasswordScreen.kt"
+        ).readText()
+        val totpViewModelSource = projectFile(
+            "app/src/main/java/takagi/ru/monica/viewmodel/TotpViewModel.kt"
+        ).readText()
+        val saveTotpSection = addPasswordSource
+            .substringAfter("// Save TOTP if authenticatorKey is provided")
+            .substringBefore("} else if (currentAuthKey.isEmpty()")
+        val savePasswordBoundTotpBody = totpViewModelSource
+            .substringAfter("fun savePasswordBoundTotp(")
+            .substringBefore("/**\r\n     * 根据ID获取TOTP项目")
+            .ifBlank {
+                totpViewModelSource
+                    .substringAfter("fun savePasswordBoundTotp(")
+                    .substringBefore("/**\n     * 根据ID获取TOTP项目")
+            }
+        val deleteTotpBody = totpViewModelSource
+            .substringAfter("fun deleteTotpItem(")
+            .substringBefore("// Virtual TOTP items are derived from password.authenticatorKey")
+
+        assertTrue(
+            "Editing a password with an authenticator must go through the bound-TOTP save path, which searches persisted rows by password id before updating.",
+            saveTotpSection.contains("totpViewModel.savePasswordBoundTotp(") &&
+                saveTotpSection.contains("passwordId = firstPasswordId") &&
+                savePasswordBoundTotpBody.contains("repository.getItemsByType(ItemType.TOTP).first()") &&
+                savePasswordBoundTotpBody.contains("data.boundPasswordId == passwordId")
+        )
+        assertFalse(
+            "Password editing must not use findTotpBySecret here; that method reads the filtered authenticator UI state and can miss the existing bound item, creating duplicates.",
+            saveTotpSection.contains("findTotpBySecret(")
+        )
+        assertTrue(
+            "The password editor must not create a persisted TOTP when no real bound TOTP exists; the password authenticatorKey already provides the virtual authenticator.",
+            savePasswordBoundTotpBody.contains("No persisted bound TOTP for passwordId=") &&
+                savePasswordBoundTotpBody.contains("return@launch")
+        )
+        assertTrue(
+            "The bound-TOTP save path should soft-delete extra persisted bindings for the same password.",
+            savePasswordBoundTotpBody.contains("removeOtherBoundTotpsForPassword(") &&
+                totpViewModelSource.contains("private suspend fun removeOtherBoundTotpsForPassword(") &&
+                totpViewModelSource.contains("Soft-deleting extra bound TOTP")
+        )
+        assertTrue(
+            "The authenticator list should collapse already-existing duplicate bound rows so users do not keep seeing one card per bad edit.",
+            totpViewModelSource.contains("collapseDuplicateBoundStoredTotps(storedTotps)") &&
+                totpViewModelSource.contains("private fun collapseDuplicateBoundStoredTotps(") &&
+                totpViewModelSource.contains("val key = \"\$boundPasswordId|")
+        )
+        assertTrue(
+            "Deleting one duplicated bound authenticator must not clear password.authenticatorKey while another equivalent bound item still exists.",
+            deleteTotpBody.contains("hasEquivalentBoundItem") &&
+                deleteTotpBody.contains("candidate.id == item.id") &&
+                deleteTotpBody.contains("candidateData.boundPasswordId == boundId") &&
+                deleteTotpBody.contains("&& !hasEquivalentBoundItem")
+        )
+    }
+
+    @Test
     fun mdbxPasswordCopiesToMonicaLocalDoNotKeepMdbxIdentity() {
         val viewModelSource = projectFile(
             "app/src/main/java/takagi/ru/monica/viewmodel/PasswordViewModel.kt"

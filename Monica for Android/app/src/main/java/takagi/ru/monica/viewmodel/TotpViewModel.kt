@@ -181,6 +181,7 @@ class TotpViewModel(
         storedTotps: List<SecureItem>,
         allPasswords: List<PasswordEntry>
     ): List<SecureItem> {
+        val displayStoredTotps = collapseDuplicateBoundStoredTotps(storedTotps)
         val existingKeys = storedTotps.mapNotNull { item ->
             runCatching { Json.decodeFromString<TotpData>(item.itemData) }
                 .getOrNull()
@@ -215,7 +216,18 @@ class TotpViewModel(
             )
         }
 
-        return storedTotps + virtualTotps
+        return displayStoredTotps + virtualTotps
+    }
+
+    private fun collapseDuplicateBoundStoredTotps(storedTotps: List<SecureItem>): List<SecureItem> {
+        val seenBoundKeys = mutableSetOf<String>()
+        return storedTotps.filter { item ->
+            val data = runCatching { Json.decodeFromString<TotpData>(item.itemData) }.getOrNull()
+                ?: return@filter true
+            val boundPasswordId = data.boundPasswordId ?: return@filter true
+            val key = "$boundPasswordId|${buildTotpIdentityKey(data)}"
+            seenBoundKeys.add(key)
+        }
     }
 
     private val allTotpItemsSource: Flow<List<SecureItem>> = combine(
@@ -699,6 +711,82 @@ class TotpViewModel(
     }
 
     /**
+     * Save the authenticator owned by a password row.
+     *
+     * This must use persisted TOTP rows, not [totpItems], because [totpItems] is filtered by the
+     * current authenticator tab UI and also contains virtual password-derived entries.
+     */
+    fun savePasswordBoundTotp(
+        passwordId: Long,
+        title: String,
+        notes: String = "",
+        totpData: TotpData,
+        isFavorite: Boolean = false,
+        preferredTotpId: Long? = null
+    ) {
+        viewModelScope.launch {
+            try {
+                val normalizedInput = TotpDataResolver.normalizeTotpData(totpData).copy(
+                    boundPasswordId = passwordId
+                )
+                val identityKey = buildTotpIdentityKey(normalizedInput)
+                val existingStoredTotps = repository.getItemsByType(ItemType.TOTP).first()
+                val activeBoundItems = existingStoredTotps.mapNotNull { item ->
+                    if (item.isDeleted) return@mapNotNull null
+                    val data = runCatching { Json.decodeFromString<TotpData>(item.itemData) }.getOrNull()
+                        ?: return@mapNotNull null
+                    if (data.boundPasswordId == passwordId) {
+                        item to data
+                    } else {
+                        null
+                    }
+                }
+                val preferredItem = activeBoundItems
+                    .firstOrNull { (item, _) -> preferredTotpId != null && item.id == preferredTotpId }
+                    ?: activeBoundItems.firstOrNull { (_, data) -> buildTotpIdentityKey(data) == identityKey }
+                    ?: activeBoundItems.firstOrNull()
+                if (preferredItem == null) {
+                    Log.d(
+                        "TotpViewModel",
+                        "No persisted bound TOTP for passwordId=$passwordId; password authenticatorKey will provide the virtual authenticator"
+                    )
+                    return@launch
+                }
+                val boundPassword = passwordRepository.getPasswordEntryById(passwordId)
+                val resolvedCategoryId = boundPassword?.categoryId ?: normalizedInput.categoryId
+                val resolvedKeepassDatabaseId = boundPassword?.keepassDatabaseId ?: normalizedInput.keepassDatabaseId
+                val resolvedData = normalizedInput.copy(
+                    categoryId = resolvedCategoryId,
+                    keepassDatabaseId = resolvedKeepassDatabaseId
+                )
+
+                saveTotpItemInternal(
+                    id = preferredItem?.first?.id,
+                    title = preferredItem?.first?.title ?: title,
+                    notes = preferredItem?.first?.notes ?: notes,
+                    totpData = resolvedData,
+                    isFavorite = preferredItem?.first?.isFavorite ?: isFavorite,
+                    categoryId = resolvedCategoryId,
+                    keepassDatabaseId = resolvedKeepassDatabaseId,
+                    keepassGroupPath = boundPassword?.keepassGroupPath,
+                    mdbxDatabaseId = boundPassword?.mdbxDatabaseId,
+                    mdbxFolderId = boundPassword?.mdbxFolderId,
+                    bitwardenVaultId = null,
+                    bitwardenFolderId = null,
+                    followBoundPasswordStorage = true
+                )
+
+                removeOtherBoundTotpsForPassword(
+                    keepItemId = preferredItem?.first?.id,
+                    passwordId = passwordId
+                )
+            } catch (e: Exception) {
+                Log.e("TotpViewModel", "savePasswordBoundTotp failed for passwordId=$passwordId", e)
+            }
+        }
+    }
+
+    /**
      * 根据ID获取TOTP项目
      */
     suspend fun getTotpItemById(id: Long): SecureItem? {
@@ -1170,6 +1258,38 @@ class TotpViewModel(
             }
         }
     }
+
+    private suspend fun removeOtherBoundTotpsForPassword(
+        keepItemId: Long?,
+        passwordId: Long
+    ) {
+        if (keepItemId == null) return
+        val items = repository.getItemsByType(ItemType.TOTP).first()
+        val matchingItems = items.mapNotNull { item ->
+            if (item.id == keepItemId || item.isDeleted) return@mapNotNull null
+            val data = runCatching { Json.decodeFromString<TotpData>(item.itemData) }.getOrNull()
+                ?: return@mapNotNull null
+            if (data.boundPasswordId == passwordId) {
+                item
+            } else {
+                null
+            }
+        }
+
+        matchingItems.forEach { duplicate ->
+            Log.w(
+                "TotpViewModel",
+                "Soft-deleting extra bound TOTP id=${duplicate.id} for passwordId=$passwordId"
+            )
+            repository.updateItem(
+                duplicate.copy(
+                    isDeleted = true,
+                    deletedAt = Date(),
+                    updatedAt = Date()
+                )
+            )
+        }
+    }
     
     /**
      * 删除TOTP项目
@@ -1189,7 +1309,17 @@ class TotpViewModel(
                 val password = passwordRepository.getPasswordEntryById(boundId) ?: return@launch
                 val passwordKey = buildTotpIdentityKeyFromRawKey(password.authenticatorKey)
                 val itemKey = buildTotpIdentityKey(totpData)
-                if (passwordKey != null && passwordKey == itemKey) {
+                val hasEquivalentBoundItem = repository.getItemsByType(ItemType.TOTP)
+                    .first()
+                    .any { candidate ->
+                        if (candidate.id == item.id || candidate.isDeleted) return@any false
+                        val candidateData = runCatching {
+                            Json.decodeFromString<TotpData>(candidate.itemData)
+                        }.getOrNull() ?: return@any false
+                        candidateData.boundPasswordId == boundId &&
+                            buildTotpIdentityKey(candidateData) == itemKey
+                    }
+                if (passwordKey != null && passwordKey == itemKey && !hasEquivalentBoundItem) {
                     if (password.bitwardenVaultId != null && password.bitwardenCipherId != null) {
                         // For Bitwarden-linked passwords, mark as locally modified so sync can clear remote login.totp.
                         passwordRepository.updatePasswordEntry(
