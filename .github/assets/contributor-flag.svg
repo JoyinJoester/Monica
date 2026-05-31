@@ -24,7 +24,7 @@
         font-size="13" font-weight="600" fill="#FFFFFF">JoyinJoester</text>
   <text x="365" y="263" text-anchor="middle"
         font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif"
-        font-size="10" fill="#FFFFFF" opacity="0.8">381 commits</text>
+        font-size="10" fill="#FFFFFF" opacity="0.8">382 commits</text>
   </a>
   <!-- aiguozhi123456 -->
   <a href="https://github.com/aiguozhi123456" target="_blank">
@@ -56,6 +56,6 @@
         font-size="13" font-weight="600" fill="#FFFFFF">Mrmiaomrzh</text>
   <text x="585" y="263" text-anchor="middle"
         font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif"
-        font-size="10" fill="#FFFFFF" opacity="0.8">13 commits</text>
+        font-size="10" fill="#FFFFFF" opacity="0.8">21 commits</text>
   </a>
 </svg>
