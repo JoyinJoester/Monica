@@ -10,6 +10,8 @@ public static class StringConverters
     public static IValueConverter IsCards { get; } = new SectionConverter("Cards");
     public static IValueConverter IsNotes { get; } = new SectionConverter("Notes");
     public static IValueConverter IsGenerator { get; } = new SectionConverter("Generator");
+    public static IValueConverter IsSettings { get; } = new SectionConverter("Settings");
+    public static IValueConverter IsSync { get; } = new SectionConverter("Sync");
     public static IValueConverter IsSettingsOrSync { get; } = new SectionSetConverter(new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "Settings", "Sync" });
 
     private sealed class SectionConverter(string section) : IValueConverter

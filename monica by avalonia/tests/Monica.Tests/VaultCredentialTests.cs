@@ -3,6 +3,7 @@ using Monica.Core.Services;
 using Monica.Data;
 using Monica.Data.Repositories;
 using Monica.App.ViewModels;
+using Monica.App.Services;
 using Monica.Platform.Services;
 
 namespace Monica.Tests;
@@ -39,7 +40,7 @@ public sealed class VaultCredentialTests
         await viewModel.UnlockCommand.ExecuteAsync(null);
 
         Assert.False(viewModel.IsUnlocked);
-        Assert.Contains("does not match", viewModel.StatusMessage);
+        Assert.Equal(viewModel.L.Get("ConfirmationMismatch"), viewModel.StatusMessage);
     }
 
     [Fact]
@@ -61,7 +62,7 @@ public sealed class VaultCredentialTests
         await second.UnlockCommand.ExecuteAsync(null);
 
         Assert.False(second.IsUnlocked);
-        Assert.Equal("Wrong master password.", second.StatusMessage);
+        Assert.Equal(second.L.Get("WrongMasterPassword"), second.StatusMessage);
 
         second.MasterPassword = "correct password";
         await second.UnlockCommand.ExecuteAsync(null);
@@ -83,12 +84,21 @@ public sealed class VaultCredentialTests
             new ImportExportService(),
             new PlatformCapabilityService(),
             new NoopClipboardService(),
-            new MdbxVaultService());
+            new MdbxVaultService(),
+            new AppSettingsService(GetTempSettingsPath()),
+            new LocalizationService());
     }
 
     private static string GetTempDatabasePath()
     {
         var path = Path.Combine(Path.GetTempPath(), "monica-tests", $"{Guid.NewGuid():N}.db");
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        return path;
+    }
+
+    private static string GetTempSettingsPath()
+    {
+        var path = Path.Combine(Path.GetTempPath(), "monica-tests", $"{Guid.NewGuid():N}.settings.json");
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         return path;
     }

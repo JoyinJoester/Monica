@@ -1,0 +1,94 @@
+name: Monica by Avalonia Build
+
+on:
+  push:
+    paths:
+      - "monica by avalonia/**"
+      - ".github/workflows/avalonia-*.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: "10.0.x"
+  PROJECT_DIR: "monica by avalonia"
+  APP_PROJECT: "src/Monica.App/Monica.App.csproj"
+
+jobs:
+  native-aot:
+    name: Native AOT ${{ matrix.rid }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            os: windows-latest
+          - rid: osx-x64
+            os: macos-15-intel
+          - rid: osx-arm64
+            os: macos-15
+          - rid: linux-x64
+            os: ubuntu-24.04
+          - rid: linux-arm64
+            os: ubuntu-24.04-arm
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: "monica by avalonia"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Compute build version
+        id: version
+        shell: pwsh
+        run: |
+          $shortSha = "${{ github.sha }}".Substring(0, 12)
+          "short_sha=$shortSha" >> $env:GITHUB_OUTPUT
+          "version=0.0.0-sha$shortSha" >> $env:GITHUB_OUTPUT
+          "informational_version=${{ github.sha }}" >> $env:GITHUB_OUTPUT
+
+      - name: Restore
+        run: dotnet restore Monica.slnx
+
+      - name: Publish Native AOT
+        run: >
+          dotnet publish ${{ env.APP_PROJECT }}
+          -c Release
+          -r ${{ matrix.rid }}
+          /p:PublishAot=true
+          /p:SelfContained=true
+          /p:Version=${{ steps.version.outputs.version }}
+          /p:PackageVersion=${{ steps.version.outputs.version }}
+          /p:InformationalVersion=${{ steps.version.outputs.informational_version }}
+          /p:AssemblyVersion=0.0.0.0
+          /p:FileVersion=0.0.0.0
+          -o artifacts/${{ matrix.rid }}
+
+      - name: Checksums (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem artifacts/${{ matrix.rid }} -Recurse -File |
+            Get-FileHash -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash)  $($_.Path.Replace((Resolve-Path artifacts/${{ matrix.rid }}).Path + [IO.Path]::DirectorySeparatorChar, ''))" } |
+            Set-Content artifacts/${{ matrix.rid }}/SHA256SUMS.txt
+
+      - name: Checksums (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cd artifacts/${{ matrix.rid }}
+          find . -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 shasum -a 256 > SHA256SUMS.txt
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Monica-Avalonia-${{ matrix.rid }}-${{ steps.version.outputs.short_sha }}
+          path: ${{ env.PROJECT_DIR }}/artifacts/${{ matrix.rid }}
+          if-no-files-found: error

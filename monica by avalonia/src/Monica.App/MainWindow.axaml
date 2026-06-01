@@ -37,8 +37,8 @@
                     <ic:FluentIcon Icon="LockClosed" FontSize="48" HorizontalAlignment="Center" />
                     <TextBlock Text="{Binding LoginTitle}" FontSize="28" FontWeight="SemiBold" HorizontalAlignment="Center" />
                     <TextBlock Text="{Binding LoginDescription}" TextWrapping="Wrap" TextAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                    <TextBox PasswordChar="*" PlaceholderText="Master password" Text="{Binding MasterPassword}" />
-                    <TextBox IsVisible="{Binding !IsVaultInitialized}" PasswordChar="*" PlaceholderText="Confirm master password" Text="{Binding ConfirmMasterPassword}" />
+                    <TextBox PasswordChar="*" PlaceholderText="{Binding L.MasterPasswordWatermark}" Text="{Binding MasterPassword}" />
+                    <TextBox IsVisible="{Binding !IsVaultInitialized}" PasswordChar="*" PlaceholderText="{Binding L.ConfirmMasterPasswordWatermark}" Text="{Binding ConfirmMasterPassword}" />
                     <Button Command="{Binding UnlockCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <ic:FluentIcon Icon="Key" FontSize="20" />
@@ -56,34 +56,34 @@
                                  OpenPaneLength="236"
                                  SelectionChanged="NavigationView_OnSelectionChanged">
                 <fa:FANavigationView.MenuItems>
-                    <fa:FANavigationViewItem Content="Passwords" Tag="Passwords">
+                    <fa:FANavigationViewItem Content="{Binding L.Passwords}" Tag="Passwords">
                         <fa:FANavigationViewItem.IconSource>
                             <fa:FASymbolIconSource Symbol="Permissions" />
                         </fa:FANavigationViewItem.IconSource>
                     </fa:FANavigationViewItem>
-                    <fa:FANavigationViewItem Content="Secure Notes" Tag="Notes">
+                    <fa:FANavigationViewItem Content="{Binding L.SecureNotes}" Tag="Notes">
                         <fa:FANavigationViewItem.IconSource>
                             <fa:FASymbolIconSource Symbol="ProtectedDocument" />
                         </fa:FANavigationViewItem.IconSource>
                     </fa:FANavigationViewItem>
-                    <fa:FANavigationViewItem Content="TOTP" Tag="Totp">
+                    <fa:FANavigationViewItem Content="{Binding L.Totp}" Tag="Totp">
                         <fa:FANavigationViewItem.IconSource>
                             <fa:FASymbolIconSource Symbol="Clock" />
                         </fa:FANavigationViewItem.IconSource>
                     </fa:FANavigationViewItem>
-                    <fa:FANavigationViewItem Content="Cards" Tag="Cards">
+                    <fa:FANavigationViewItem Content="{Binding L.Cards}" Tag="Cards">
                         <fa:FANavigationViewItem.IconSource>
                             <fa:FASymbolIconSource Symbol="ContactInfo" />
                         </fa:FANavigationViewItem.IconSource>
                     </fa:FANavigationViewItem>
-                    <fa:FANavigationViewItem Content="Generator" Tag="Generator">
+                    <fa:FANavigationViewItem Content="{Binding L.Generator}" Tag="Generator">
                         <fa:FANavigationViewItem.IconSource>
                             <fa:FASymbolIconSource Symbol="Edit" />
                         </fa:FANavigationViewItem.IconSource>
                     </fa:FANavigationViewItem>
                     <fa:FANavigationViewItemSeparator />
-                    <fa:FANavigationViewItemHeader Content="Folders" />
-                    <fa:FANavigationViewItem Content="Personal" Tag="Passwords">
+                    <fa:FANavigationViewItemHeader Content="{Binding L.Folders}" />
+                    <fa:FANavigationViewItem Content="{Binding L.Personal}" Tag="Passwords">
                         <fa:FANavigationViewItem.IconSource>
                             <fa:FASymbolIconSource Symbol="Folder" />
                         </fa:FANavigationViewItem.IconSource>
@@ -91,12 +91,12 @@
                 </fa:FANavigationView.MenuItems>
 
                 <fa:FANavigationView.FooterMenuItems>
-                    <fa:FANavigationViewItem Content="Sync and Backup" Tag="Sync">
+                    <fa:FANavigationViewItem Content="{Binding L.SyncAndBackup}" Tag="Sync">
                         <fa:FANavigationViewItem.IconSource>
                             <fa:FASymbolIconSource Symbol="Sync" />
                         </fa:FANavigationViewItem.IconSource>
                     </fa:FANavigationViewItem>
-                    <fa:FANavigationViewItem Content="Settings" Tag="Settings">
+                    <fa:FANavigationViewItem Content="{Binding L.Settings}" Tag="Settings">
                         <fa:FANavigationViewItem.IconSource>
                             <fa:FASymbolIconSource Symbol="Setting" />
                         </fa:FANavigationViewItem.IconSource>
@@ -106,14 +106,14 @@
                 <Grid Margin="22" RowDefinitions="Auto,*">
                     <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,18">
                         <StackPanel>
-                            <TextBlock Text="{Binding SelectedSection}" FontSize="28" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding SelectedSectionTitle}" FontSize="28" FontWeight="SemiBold" />
                             <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                         </StackPanel>
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <Button Command="{Binding LoadCommand}" ToolTip.Tip="Refresh">
+                            <Button Command="{Binding LoadCommand}" ToolTip.Tip="{Binding L.Refresh}">
                             <ic:FluentIcon Icon="ArrowClockwise" FontSize="20" />
                             </Button>
-                            <Button Command="{Binding ExportDataCommand}" ToolTip.Tip="Export">
+                            <Button Command="{Binding ExportDataCommand}" ToolTip.Tip="{Binding L.Export}">
                             <ic:FluentIcon Icon="ArrowDownload" FontSize="20" />
                             </Button>
                         </StackPanel>
@@ -123,14 +123,14 @@
                         <Grid IsVisible="{Binding SelectedSection, Converter={x:Static local:StringConverters.IsPasswords}}" RowDefinitions="Auto,*">
                             <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,16">
                                 <StackPanel>
-                                    <TextBlock Text="Password Manager" FontSize="20" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding L.PasswordManager}" FontSize="20" FontWeight="SemiBold" />
                                     <TextBlock Text="{Binding PasswordCountText}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                                 </StackPanel>
-                                <TextBox Grid.Column="1" Margin="24,0" PlaceholderText="Search..." Text="{Binding SearchText}" VerticalAlignment="Center" />
+                                <TextBox Grid.Column="1" Margin="24,0" PlaceholderText="{Binding L.Search}" Text="{Binding SearchText}" VerticalAlignment="Center" />
                                 <Button Grid.Column="2" Command="{Binding AddPasswordCommand}" VerticalAlignment="Center">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <ic:FluentIcon Icon="Add" FontSize="20" />
-                                        <TextBlock Text="Add Password" />
+                                        <TextBlock Text="{Binding L.AddPassword}" />
                                     </StackPanel>
                                 </Button>
                             </Grid>
@@ -152,13 +152,13 @@
                                                     <TextBlock Text="{Binding Website}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" />
                                                 </StackPanel>
                                                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                                                    <Button Command="{Binding #Root.DataContext.CopyPasswordCommand}" CommandParameter="{Binding}" ToolTip.Tip="Copy password">
+                                                    <Button Command="{Binding #Root.DataContext.CopyPasswordCommand}" CommandParameter="{Binding}" ToolTip.Tip="{Binding #Root.DataContext.L.CopyPassword}">
                                                         <ic:FluentIcon Icon="Copy" FontSize="18" />
                                                     </Button>
-                                                    <Button Command="{Binding #Root.DataContext.ToggleFavoriteCommand}" CommandParameter="{Binding}" ToolTip.Tip="Favorite">
+                                                    <Button Command="{Binding #Root.DataContext.ToggleFavoriteCommand}" CommandParameter="{Binding}" ToolTip.Tip="{Binding #Root.DataContext.L.Favorite}">
                                                         <ic:FluentIcon Icon="Star" FontSize="18" />
                                                     </Button>
-                                                    <Button Command="{Binding #Root.DataContext.DeletePasswordCommand}" CommandParameter="{Binding}" ToolTip.Tip="Move to recycle bin">
+                                                    <Button Command="{Binding #Root.DataContext.DeletePasswordCommand}" CommandParameter="{Binding}" ToolTip.Tip="{Binding #Root.DataContext.L.MoveToRecycleBin}">
                                                         <ic:FluentIcon Icon="Delete" FontSize="18" />
                                                     </Button>
                                                 </StackPanel>
@@ -172,13 +172,13 @@
                         <Grid IsVisible="{Binding SelectedSection, Converter={x:Static local:StringConverters.IsTotp}}" RowDefinitions="Auto,*">
                             <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,16">
                                 <StackPanel>
-                                    <TextBlock Text="Two-Step Verification" FontSize="20" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding L.TwoStepVerification}" FontSize="20" FontWeight="SemiBold" />
                                     <TextBlock Text="{Binding TotpCountText}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                                 </StackPanel>
                                 <Button Grid.Column="1" Command="{Binding AddTotpCommand}">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <ic:FluentIcon Icon="Add" FontSize="20" />
-                                        <TextBlock Text="Add Authenticator" />
+                                        <TextBlock Text="{Binding L.AddAuthenticator}" />
                                     </StackPanel>
                                 </Button>
                             </Grid>
@@ -193,7 +193,7 @@
                                                     <TextBlock Text="{Binding Notes}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                                                 </StackPanel>
                                                 <TextBlock Grid.Column="2" Text="{Binding TotpCode}" FontSize="28" FontFamily="Consolas" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,12,0" />
-                                                <Button Grid.Column="3" Command="{Binding #Root.DataContext.CopyTotpCommand}" CommandParameter="{Binding}" ToolTip.Tip="Copy code">
+                                                <Button Grid.Column="3" Command="{Binding #Root.DataContext.CopyTotpCommand}" CommandParameter="{Binding}" ToolTip.Tip="{Binding #Root.DataContext.L.CopyCode}">
                                                     <ic:FluentIcon Icon="Copy" FontSize="18" />
                                                 </Button>
                                             </Grid>
@@ -206,13 +206,13 @@
                         <Grid IsVisible="{Binding SelectedSection, Converter={x:Static local:StringConverters.IsCards}}" RowDefinitions="Auto,*">
                             <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,16">
                                 <StackPanel>
-                                    <TextBlock Text="Wallet" FontSize="20" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding L.Wallet}" FontSize="20" FontWeight="SemiBold" />
                                     <TextBlock Text="{Binding WalletCountText}" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                                 </StackPanel>
                                 <Button Grid.Column="1" Command="{Binding AddWalletItemCommand}">
                                     <StackPanel Orientation="Horizontal" Spacing="8">
                                         <ic:FluentIcon Icon="Add" FontSize="20" />
-                                        <TextBlock Text="Add Item" />
+                                        <TextBlock Text="{Binding L.AddItem}" />
                                     </StackPanel>
                                 </Button>
                             </Grid>
@@ -236,19 +236,110 @@
                             </ItemsControl>
                         </Grid>
 
-                        <ScrollViewer IsVisible="{Binding SelectedSection, Converter={x:Static local:StringConverters.IsSettingsOrSync}}">
-                            <StackPanel Spacing="14">
-                                <fa:FAInfoBar IsOpen="True" Severity="Informational" Title="Desktop equivalents" Message="Android Autofill, IME, Accessibility and Credential Provider features are represented through quick search, clipboard, tray/browser extension boundaries, or platform-limited status." />
-                                <Button Command="{Binding CreateMdbxVaultCommand}" HorizontalAlignment="Left">
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <ic:FluentIcon Icon="Database" FontSize="20" />
-                                        <TextBlock Text="Create MDBX Metadata" />
+                        <ScrollViewer IsVisible="{Binding SelectedSection, Converter={x:Static local:StringConverters.IsSettings}}">
+                            <StackPanel Spacing="18" MaxWidth="820">
+                                <TextBlock Text="{Binding L.SettingsSubtitle}" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+
+                                <Border Padding="16" CornerRadius="8" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1">
+                                    <StackPanel Spacing="14">
+                                        <TextBlock Text="{Binding L.General}" FontSize="18" FontWeight="SemiBold" />
+                                        <Grid ColumnDefinitions="220,*" RowDefinitions="Auto,Auto,Auto" RowSpacing="12">
+                                            <TextBlock Text="{Binding L.Language}" VerticalAlignment="Center" />
+                                            <ComboBox Grid.Column="1" ItemsSource="{Binding LanguageOptions}" SelectedValue="{Binding SettingsLanguage}" SelectedValueBinding="{Binding Value}" HorizontalAlignment="Stretch">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:SettingsChoice">
+                                                        <TextBlock Text="{Binding Label}" />
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+
+                                            <TextBlock Grid.Row="1" Text="{Binding L.Theme}" VerticalAlignment="Center" />
+                                            <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding ThemeOptions}" SelectedValue="{Binding SettingsTheme}" SelectedValueBinding="{Binding Value}" HorizontalAlignment="Stretch">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:SettingsChoice">
+                                                        <TextBlock Text="{Binding Label}" />
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+
+                                            <TextBlock Grid.Row="2" Text="{Binding L.StartupView}" VerticalAlignment="Center" />
+                                            <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding StartupSectionOptions}" SelectedValue="{Binding StartupSection}" SelectedValueBinding="{Binding Value}" HorizontalAlignment="Stretch">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:SettingsChoice">
+                                                        <TextBlock Text="{Binding Label}" />
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                        </Grid>
                                     </StackPanel>
-                                </Button>
-                                <TextBlock Text="Feature parity map" FontSize="20" FontWeight="SemiBold" Margin="0,8,0,0" />
+                                </Border>
+
+                                <Border Padding="16" CornerRadius="8" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1">
+                                    <StackPanel Spacing="14">
+                                        <TextBlock Text="{Binding L.Security}" FontSize="18" FontWeight="SemiBold" />
+                                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="12">
+                                            <StackPanel>
+                                                <TextBlock Text="{Binding L.AutoLock}" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding L.AutoLockDescription}" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                            </StackPanel>
+                                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding AutoLockEnabled}" />
+
+                                            <TextBlock Grid.Row="1" Text="{Binding L.AutoLockAfter}" VerticalAlignment="Center" />
+                                            <ComboBox Grid.Row="1" Grid.Column="1" Width="180" ItemsSource="{Binding AutoLockMinuteOptions}" SelectedValue="{Binding AutoLockMinutes}" SelectedValueBinding="{Binding Value}">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:SettingsChoice">
+                                                        <TextBlock Text="{Binding Label}" />
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+
+                                            <StackPanel Grid.Row="2">
+                                                <TextBlock Text="{Binding L.ClearClipboard}" FontWeight="SemiBold" />
+                                                <TextBlock Text="{Binding L.ClearClipboardDescription}" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                            </StackPanel>
+                                            <ToggleSwitch Grid.Row="2" Grid.Column="1" IsChecked="{Binding ClearClipboardEnabled}" />
+
+                                            <TextBlock Grid.Row="3" Text="{Binding L.ClearClipboardAfter}" VerticalAlignment="Center" />
+                                            <ComboBox Grid.Row="3" Grid.Column="1" Width="180" ItemsSource="{Binding ClipboardSecondOptions}" SelectedValue="{Binding ClipboardClearSeconds}" SelectedValueBinding="{Binding Value}">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:SettingsChoice">
+                                                        <TextBlock Text="{Binding Label}" />
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                        </Grid>
+                                        <CheckBox Content="{Binding L.RequirePasswordBeforeExport}" IsChecked="{Binding RequirePasswordBeforeExport}" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Padding="16" CornerRadius="8" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1">
+                                    <StackPanel Spacing="14">
+                                        <TextBlock Text="{Binding L.Desktop}" FontSize="18" FontWeight="SemiBold" />
+                                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto" RowSpacing="12">
+                                            <TextBlock Text="{Binding L.MinimizeToTray}" VerticalAlignment="Center" />
+                                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding MinimizeToTray}" />
+
+                                            <TextBlock Grid.Row="1" Text="{Binding L.QuickSearch}" VerticalAlignment="Center" />
+                                            <ToggleSwitch Grid.Row="1" Grid.Column="1" IsChecked="{Binding QuickSearchEnabled}" />
+
+                                            <TextBlock Grid.Row="2" Text="{Binding L.QuickSearchHotkey}" VerticalAlignment="Center" />
+                                            <TextBox Grid.Row="2" Grid.Column="1" Width="220" Text="{Binding QuickSearchHotkey}" />
+
+                                            <TextBlock Grid.Row="3" Text="{Binding L.BrowserIntegration}" VerticalAlignment="Center" />
+                                            <ToggleSwitch Grid.Row="3" Grid.Column="1" IsChecked="{Binding BrowserIntegrationEnabled}" />
+
+                                            <TextBlock Grid.Row="4" Text="{Binding L.BrowserIntegrationPort}" VerticalAlignment="Center" />
+                                            <NumericUpDown Grid.Row="4" Grid.Column="1" Width="180" Minimum="1024" Maximum="65535" Increment="1" Value="{Binding BrowserIntegrationPort}" />
+                                        </Grid>
+                                        <CheckBox Content="{Binding L.CompactPasswordList}" IsChecked="{Binding CompactPasswordList}" />
+                                    </StackPanel>
+                                </Border>
+
+                                <fa:FAInfoBar IsOpen="True" Severity="Informational" Title="{Binding L.DesktopEquivalents}" Message="{Binding L.DesktopEquivalentsMessage}" />
+                                <TextBlock Text="{Binding L.FeatureParityMap}" FontSize="18" FontWeight="SemiBold" />
                                 <ItemsControl ItemsSource="{Binding Capabilities}">
                                     <ItemsControl.ItemTemplate>
-                                        <DataTemplate x:DataType="models:PlatformCapability">
+                                        <DataTemplate x:DataType="vm:LocalizedPlatformCapability">
                                             <Border Margin="0,0,0,8" Padding="14" CornerRadius="8" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1">
                                                 <Grid ColumnDefinitions="*,Auto">
                                                     <StackPanel>
@@ -261,35 +352,95 @@
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
-                                <TextBlock Text="Export Preview" FontWeight="SemiBold" />
+                            </StackPanel>
+                        </ScrollViewer>
+
+                        <ScrollViewer IsVisible="{Binding SelectedSection, Converter={x:Static local:StringConverters.IsSync}}">
+                            <StackPanel Spacing="18" MaxWidth="820">
+                                <TextBlock Text="{Binding L.SyncSubtitle}" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+
+                                <Border Padding="16" CornerRadius="8" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1">
+                                    <StackPanel Spacing="14">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Text="{Binding L.WebDav}" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding WebDavEnabled}" />
+                                        </Grid>
+                                        <StackPanel Spacing="6">
+                                            <TextBlock Text="{Binding L.WebDavServerUrl}" />
+                                            <TextBox Text="{Binding WebDavServerUrl}" PlaceholderText="https://dav.example.com" />
+                                        </StackPanel>
+                                        <StackPanel Spacing="6">
+                                            <TextBlock Text="{Binding L.WebDavUsername}" />
+                                            <TextBox Text="{Binding WebDavUsername}" />
+                                        </StackPanel>
+                                        <StackPanel Spacing="6">
+                                            <TextBlock Text="{Binding L.WebDavRemotePath}" />
+                                            <TextBox Text="{Binding WebDavRemotePath}" />
+                                        </StackPanel>
+                                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="12">
+                                            <TextBlock Text="{Binding L.SyncOnStartup}" VerticalAlignment="Center" />
+                                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding WebDavSyncOnStartup}" />
+
+                                            <TextBlock Grid.Row="1" Text="{Binding L.SyncAfterChanges}" VerticalAlignment="Center" />
+                                            <ToggleSwitch Grid.Row="1" Grid.Column="1" IsChecked="{Binding WebDavSyncAfterChanges}" />
+
+                                            <TextBlock Grid.Row="2" Text="{Binding L.ConflictStrategy}" VerticalAlignment="Center" />
+                                            <ComboBox Grid.Row="2" Grid.Column="1" Width="220" ItemsSource="{Binding ConflictStrategyOptions}" SelectedValue="{Binding SyncConflictStrategy}" SelectedValueBinding="{Binding Value}">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate x:DataType="vm:SettingsChoice">
+                                                        <TextBlock Text="{Binding Label}" />
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Padding="16" CornerRadius="8" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1">
+                                    <StackPanel Spacing="14">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Text="{Binding L.OneDrive}" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                            <ToggleSwitch Grid.Column="1" IsChecked="{Binding OneDriveEnabled}" />
+                                        </Grid>
+                                        <CheckBox Content="{Binding L.MdbxLocalCache}" IsChecked="{Binding MdbxLocalCacheEnabled}" />
+                                        <Button Command="{Binding CreateMdbxVaultCommand}" HorizontalAlignment="Left">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <ic:FluentIcon Icon="Database" FontSize="20" />
+                                                <TextBlock Text="{Binding L.CreateMdbxMetadata}" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                </Border>
+
+                                <TextBlock Text="{Binding L.ExportPreview}" FontWeight="SemiBold" />
                                 <TextBox Text="{Binding ExportPreview}" AcceptsReturn="True" MinHeight="160" TextWrapping="Wrap" />
                             </StackPanel>
                         </ScrollViewer>
 
                         <StackPanel IsVisible="{Binding SelectedSection, Converter={x:Static local:StringConverters.IsGenerator}}" Spacing="16">
-                            <TextBlock Text="Password Generator" FontSize="20" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding L.PasswordGenerator}" FontSize="20" FontWeight="SemiBold" />
                             <Button Command="{Binding GeneratePasswordCommand}" HorizontalAlignment="Left">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <ic:FluentIcon Icon="Sparkle" FontSize="20" />
-                                    <TextBlock Text="Generate" />
+                                    <TextBlock Text="{Binding L.Generate}" />
                                 </StackPanel>
                             </Button>
                             <TextBox Text="{Binding GeneratedPassword}" FontFamily="Consolas" FontSize="18" />
                             <Button Command="{Binding AddPasswordCommand}" HorizontalAlignment="Left">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <ic:FluentIcon Icon="Key" FontSize="20" />
-                                    <TextBlock Text="Save as Login" />
+                                    <TextBlock Text="{Binding L.SaveAsLogin}" />
                                 </StackPanel>
                             </Button>
                         </StackPanel>
 
                         <StackPanel IsVisible="{Binding SelectedSection, Converter={x:Static local:StringConverters.IsNotes}}" Spacing="16">
-                            <TextBlock Text="Secure Notes" FontSize="20" FontWeight="SemiBold" />
-                            <TextBlock Text="Notes are stored as secure_items with NOTE item type and share the same encryption, folder, KeePass, Bitwarden and MDBX ownership model." TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            <TextBlock Text="{Binding L.SecureNotes}" FontSize="20" FontWeight="SemiBold" />
+                            <TextBlock Text="{Binding L.SecureNotesDescription}" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                             <Button Command="{Binding AddWalletItemCommand}" HorizontalAlignment="Left">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <ic:FluentIcon Icon="Note" FontSize="20" />
-                                    <TextBlock Text="Create Secure Item" />
+                                    <TextBlock Text="{Binding L.CreateSecureItem}" />
                                 </StackPanel>
                             </Button>
                         </StackPanel>

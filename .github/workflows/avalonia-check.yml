@@ -1,0 +1,45 @@
+name: Monica by Avalonia Check
+
+on:
+  push:
+    paths:
+      - "monica by avalonia/**"
+      - ".github/workflows/avalonia-*.yml"
+  pull_request:
+    paths:
+      - "monica by avalonia/**"
+      - ".github/workflows/avalonia-*.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_VERSION: "10.0.x"
+
+jobs:
+  check:
+    name: Check
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: "monica by avalonia"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore Monica.slnx
+
+      - name: Format check
+        run: dotnet format Monica.slnx --verify-no-changes --no-restore --exclude-diagnostics DAP018
+
+      - name: Build
+        run: dotnet build Monica.slnx -c Release --no-restore
+
+      - name: Test
+        run: dotnet test Monica.slnx -c Release --no-build --logger trx

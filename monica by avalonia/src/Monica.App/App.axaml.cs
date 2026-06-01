@@ -55,6 +55,8 @@ public partial class App : Application
         services.AddSingleton<IKeePassVaultService, KeePassVaultService>();
         services.AddSingleton<IMdbxVaultService, MdbxVaultService>();
         services.AddSingleton<IClipboardService>(_ => new AvaloniaClipboardService(() => mainWindow));
+        services.AddSingleton<IAppSettingsService, AppSettingsService>();
+        services.AddSingleton<ILocalizationService, LocalizationService>();
         services.AddSingleton<MainWindowViewModel>();
         return services.BuildServiceProvider();
     }
