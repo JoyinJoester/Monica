@@ -1,6 +1,7 @@
 package takagi.ru.monica.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,6 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import takagi.ru.monica.R
 
@@ -42,10 +44,13 @@ internal fun PasswordCategoryActionButtons(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
+        val hasBothActions = params.canCreateCategory && params.canManageExistingCategories
+        val buttonContentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
         if (params.canCreateCategory) {
             OutlinedButton(
                 onClick = params.onCreateCategory,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(if (hasBothActions) 1.16f else 1f),
+                contentPadding = buttonContentPadding
             ) {
                 Icon(
                     imageVector = Icons.Default.CreateNewFolder,
@@ -53,13 +58,18 @@ internal fun PasswordCategoryActionButtons(
                     modifier = Modifier.size(18.dp)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
-                Text(stringResource(R.string.add_category))
+                Text(
+                    text = stringResource(R.string.add_category),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
         if (params.canManageExistingCategories) {
             OutlinedButton(
                 onClick = params.onToggleEditMode,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(if (hasBothActions) 0.84f else 1f),
+                contentPadding = buttonContentPadding
             ) {
                 Icon(
                     imageVector = Icons.Default.Edit,
@@ -68,11 +78,13 @@ internal fun PasswordCategoryActionButtons(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    if (params.categoryEditMode) {
+                    text = if (params.categoryEditMode) {
                         stringResource(R.string.cancel)
                     } else {
                         stringResource(R.string.edit_category)
-                    }
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }

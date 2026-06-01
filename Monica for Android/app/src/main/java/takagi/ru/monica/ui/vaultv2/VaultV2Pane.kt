@@ -167,6 +167,7 @@ import takagi.ru.monica.ui.common.selection.SelectionActionBar
 import takagi.ru.monica.ui.components.UnifiedMoveToCategoryBottomSheet
 import takagi.ru.monica.ui.components.UnifiedMoveCategoryTarget
 import takagi.ru.monica.ui.components.UnifiedMoveAction
+import takagi.ru.monica.ui.gestures.SwipeActions
 import takagi.ru.monica.ui.password.PasswordAuthenticatorDisplayState
 import takagi.ru.monica.ui.password.BitwardenClearCacheTopActionsMenuItem
 import takagi.ru.monica.ui.password.BitwardenLockTopActionsMenuItem
@@ -1166,6 +1167,7 @@ fun VaultV2Pane(
 	var quickFilterUnstacked by rememberSaveable { mutableStateOf(false) }
 	var selectedAggregateTypes by remember { mutableStateOf<Set<PasswordPageContentType>>(emptySet()) }
 	val selectedKeys = remember { mutableStateListOf<String>() }
+	var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 	val listState = rememberLazyListState(
 		initialFirstVisibleItemIndex = state.scrollIndex,
 		initialFirstVisibleItemScrollOffset = state.scrollOffset
@@ -2352,14 +2354,7 @@ fun VaultV2Pane(
 				pathLabel = storageFilterLabel,
 				currentSectionLabel = currentSectionIndicatorLabel,
 				breadcrumbs = pathBreadcrumbs,
-				currentFilter = breadcrumbCategoryFilter,
 				mdbxSyncState = mdbxQuickStatusSyncState,
-				onNavigate = { filter ->
-					filter.toUnifiedCategoryFilterSelectionOrNull()?.let { selection ->
-						selectedKeys.clear()
-						state.updateStorageFilter(selection)
-					}
-				},
 				onOpenStorageFilter = { isStorageFilterSheetVisible = true },
 			)
 
@@ -2404,6 +2399,11 @@ fun VaultV2Pane(
 				passwordById = passwordById,
 				appSettings = appSettings,
 				selectedKeys = selectedKeys,
+				onRequestDeleteItem = { item ->
+					selectedKeys.clear()
+					selectedKeys.add(item.key)
+					showDeleteConfirmDialog = true
+				},
 				modifier = Modifier
 					.weight(1f)
 					.fillMaxWidth()
@@ -2638,7 +2638,6 @@ fun VaultV2Pane(
 
 		if (selectedCount > 0) {
 			var showVaultMoveSheet by remember { mutableStateOf(false) }
-			var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
 			SelectionActionBar(
 				modifier = Modifier
@@ -3029,6 +3028,7 @@ private fun VaultV2List(
 	passwordById: Map<Long, PasswordEntry>,
 	appSettings: AppSettings,
 	selectedKeys: MutableList<String>,
+	onRequestDeleteItem: (VaultV2Item) -> Unit,
 	modifier: Modifier = Modifier,
 	onOpenItem: (VaultV2Item) -> Unit,
 ) {
@@ -3099,48 +3099,58 @@ private fun VaultV2List(
 
 		sections.forEach { (section, itemsInSection) ->
 			item(key = "header:$section") {
-				Surface(color = MaterialTheme.colorScheme.surface) {
-					Text(
-						text = section,
-						style = MaterialTheme.typography.titleSmall,
-						color = MaterialTheme.colorScheme.onSurfaceVariant,
-						modifier = Modifier
-							.fillMaxWidth()
-							.padding(horizontal = 12.dp, vertical = 4.dp),
-					)
-				}
+				Text(
+					text = section,
+					style = MaterialTheme.typography.titleSmall,
+					color = MaterialTheme.colorScheme.onSurfaceVariant,
+					modifier = Modifier
+						.fillMaxWidth()
+						.padding(horizontal = 12.dp, vertical = 4.dp),
+				)
 			}
 
 			items(itemsInSection, key = { item -> item.key }) { item ->
 				val selected = item.key in selectedKeys
-				VaultV2ItemCard(
-					item = item,
-					boundPassword = when (item.type) {
-						VaultV2ItemType.AUTHENTICATOR,
-						VaultV2ItemType.PASSKEY -> item.boundPasswordId?.let(passwordById::get)
-						else -> null
-					},
-					appSettings = appSettings,
-					selected = selected,
-					onClick = {
-						if (selectedKeys.isNotEmpty()) {
-							if (selected) {
-								selectedKeys.remove(item.key)
-							} else {
-								selectedKeys.add(item.key)
-							}
-						} else {
-							onOpenItem(item)
-						}
-					},
-					onLongClick = {
+				SwipeActions(
+					onSwipeLeft = { onRequestDeleteItem(item) },
+					onSwipeRight = {
 						if (selected) {
 							selectedKeys.remove(item.key)
 						} else {
 							selectedKeys.add(item.key)
 						}
-					}
-				)
+					},
+					isSwiped = false
+				) {
+					VaultV2ItemCard(
+						item = item,
+						boundPassword = when (item.type) {
+							VaultV2ItemType.AUTHENTICATOR,
+							VaultV2ItemType.PASSKEY -> item.boundPasswordId?.let(passwordById::get)
+							else -> null
+						},
+						appSettings = appSettings,
+						selected = selected,
+						onClick = {
+							if (selectedKeys.isNotEmpty()) {
+								if (selected) {
+									selectedKeys.remove(item.key)
+								} else {
+									selectedKeys.add(item.key)
+								}
+							} else {
+								onOpenItem(item)
+							}
+						},
+						onLongClick = {
+							if (selected) {
+								selectedKeys.remove(item.key)
+							} else {
+								selectedKeys.add(item.key)
+							}
+						}
+					)
+				}
 			}
 		}
 	}
@@ -3151,9 +3161,7 @@ private fun VaultV2QuickStatusBar(
 	pathLabel: String,
 	currentSectionLabel: String,
 	breadcrumbs: List<PasswordQuickFolderBreadcrumb>,
-	currentFilter: CategoryFilter?,
 	mdbxSyncState: MdbxPathSyncState?,
-	onNavigate: (CategoryFilter) -> Unit,
 	onOpenStorageFilter: () -> Unit,
 ) {
 	QuickStatusBar(
@@ -3164,8 +3172,6 @@ private fun VaultV2QuickStatusBar(
 			VaultV2BreadcrumbPath(
 				pathLabel = pathLabel,
 				breadcrumbs = breadcrumbs,
-				currentFilter = currentFilter,
-				onNavigate = onNavigate,
 				onOpenStorageFilter = onOpenStorageFilter,
 				modifier = Modifier.weight(1f)
 			)
@@ -3204,8 +3210,6 @@ private fun VaultV2QuickStatusIndicator(
 private fun VaultV2BreadcrumbPath(
 	pathLabel: String,
 	breadcrumbs: List<PasswordQuickFolderBreadcrumb>,
-	currentFilter: CategoryFilter?,
-	onNavigate: (CategoryFilter) -> Unit,
 	onOpenStorageFilter: () -> Unit,
 	modifier: Modifier = Modifier
 ) {
@@ -3214,13 +3218,7 @@ private fun VaultV2BreadcrumbPath(
 			.height(36.dp)
 			.clip(RoundedCornerShape(14.dp))
 			.background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
-			.then(
-				if (breadcrumbs.isEmpty()) {
-					Modifier.clickable(onClick = onOpenStorageFilter)
-				} else {
-					Modifier
-				}
-			)
+			.clickable(onClick = onOpenStorageFilter)
 	) {
 		Row(
 			modifier = Modifier
@@ -3229,12 +3227,10 @@ private fun VaultV2BreadcrumbPath(
 				.padding(horizontal = 8.dp, vertical = 6.dp),
 			verticalAlignment = Alignment.CenterVertically,
 		) {
-			if (breadcrumbs.isNotEmpty() && currentFilter != null) {
+			if (breadcrumbs.isNotEmpty()) {
 				breadcrumbs.forEachIndexed { index, crumb ->
 					VaultV2BreadcrumbChip(
-						crumb = crumb,
-						currentFilter = currentFilter,
-						onNavigate = onNavigate
+						crumb = crumb
 					)
 
 					if (index != breadcrumbs.lastIndex) {
@@ -3266,9 +3262,7 @@ private fun VaultV2BreadcrumbPath(
 
 @Composable
 private fun VaultV2BreadcrumbChip(
-	crumb: PasswordQuickFolderBreadcrumb,
-	currentFilter: CategoryFilter,
-	onNavigate: (CategoryFilter) -> Unit
+	crumb: PasswordQuickFolderBreadcrumb
 ) {
 	Box(
 		modifier = Modifier
@@ -3280,11 +3274,6 @@ private fun VaultV2BreadcrumbChip(
 					MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.68f)
 				}
 			)
-			.clickable(enabled = !crumb.isCurrent) {
-				if (currentFilter != crumb.targetFilter) {
-					onNavigate(crumb.targetFilter)
-				}
-			}
 			.padding(horizontal = 10.dp, vertical = 4.dp)
 	) {
 		Text(
@@ -3421,8 +3410,10 @@ private fun VaultV2ItemCard(
 		else -> null
 	}
 
+	val cardShape = RoundedCornerShape(14.dp)
+
 	Surface(
-		shape = RoundedCornerShape(14.dp),
+		shape = cardShape,
 		color = if (selected) {
 			MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.65f)
 		} else {
@@ -3430,6 +3421,7 @@ private fun VaultV2ItemCard(
 		},
 		modifier = Modifier
 			.fillMaxWidth()
+			.clip(cardShape)
 			.combinedClickable(onClick = onClick, onLongClick = onLongClick),
 	) {
 		Row(

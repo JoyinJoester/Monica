@@ -1041,6 +1041,11 @@ fun MonicaContent(
                         }
                     }
                 },
+                onNavigateToSearchedNote = { noteId, highlightQuery ->
+                    navController.navigate(Screen.NoteDetail.createRoute(noteId, highlightQuery)) {
+                        launchSingleTop = true
+                    }
+                },
                 onNavigateToPasswordDetail = { passwordId ->
                     navController.navigate(Screen.PasswordDetail.createRoute(passwordId)) {
                         launchSingleTop = true
@@ -1873,17 +1878,29 @@ fun MonicaContent(
 
         composable(
             route = Screen.NoteDetail.route,
+            arguments = listOf(
+                navArgument("highlight") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            ),
             enterTransition = { easyNotesScreenEnter() },
             exitTransition = { easyNotesScreenExit() },
             popEnterTransition = { easyNotesScreenEnter() },
             popExitTransition = { easyNotesScreenExit() }
         ) { backStackEntry ->
             val noteId = backStackEntry.arguments?.getString("noteId")?.toLongOrNull() ?: -1L
+            val highlightQuery = backStackEntry.arguments
+                ?.getString("highlight")
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
 
             if (noteId > 0) {
                 takagi.ru.monica.ui.screens.NoteDetailScreen(
                     viewModel = noteViewModel,
                     noteId = noteId,
+                    initialHighlightQuery = highlightQuery,
                     onNavigateBack = {
                         navController.popBackStack()
                     },

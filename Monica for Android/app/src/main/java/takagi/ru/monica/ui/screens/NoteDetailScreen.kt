@@ -33,8 +33,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -47,6 +50,7 @@ import takagi.ru.monica.ui.components.ImageDialog
 import takagi.ru.monica.ui.components.MarkdownPreviewText
 import takagi.ru.monica.util.ImageManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import takagi.ru.monica.viewmodel.NoteViewModel
 import java.text.DateFormat
@@ -56,6 +60,7 @@ import java.text.DateFormat
 fun NoteDetailScreen(
     viewModel: NoteViewModel,
     noteId: Long,
+    initialHighlightQuery: String? = null,
     onNavigateBack: () -> Unit,
     onEditNote: (Long) -> Unit,
     onCreateSend: (title: String, text: String) -> Unit,
@@ -67,6 +72,10 @@ fun NoteDetailScreen(
     val imageManager = remember { ImageManager(context) }
     val noteItem by viewModel.observeNoteById(noteId).collectAsState(initial = null)
     var showNoteImageDialog by remember { mutableStateOf<String?>(null) }
+    val highlightQuery = initialHighlightQuery?.trim().orEmpty()
+    var showSearchHighlight by remember(noteId, highlightQuery) {
+        mutableStateOf(highlightQuery.isNotBlank())
+    }
     val decodedNote = remember(noteItem) {
         noteItem?.let { NoteContentCodec.decodeFromItem(it) }
     }
@@ -129,6 +138,13 @@ fun NoteDetailScreen(
                 }
             }
         }
+    }
+
+    LaunchedEffect(noteId, highlightQuery) {
+        if (highlightQuery.isBlank()) return@LaunchedEffect
+        showSearchHighlight = true
+        delay(3000)
+        showSearchHighlight = false
     }
 
     Scaffold(
@@ -204,7 +220,11 @@ fun NoteDetailScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = displayTitle.ifBlank { untitledLabel },
+                text = buildSearchHighlightedText(
+                    input = displayTitle.ifBlank { untitledLabel },
+                    searchQuery = highlightQuery,
+                    showSearchHighlight = showSearchHighlight
+                ),
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 maxLines = 2,
@@ -222,6 +242,9 @@ fun NoteDetailScreen(
                     markdown = markdownSource,
                     imageBitmaps = imageBitmaps,
                     codeBlockCollapseMode = NoteCodeBlockCollapseMode.COMPACT,
+                    searchHighlightQuery = highlightQuery,
+                    showSearchHighlight = showSearchHighlight,
+                    autoBringSearchHighlightIntoView = highlightQuery.isNotBlank(),
                     onInlineImageClick = { imageId -> showNoteImageDialog = imageId },
                     onTaskItemToggle = { lineIndex, checked ->
                         val updatedContent = toggleTaskLine(
@@ -299,4 +322,27 @@ private fun toggleTaskLine(content: String, lineIndex: Int, checked: Boolean): S
     val marker = if (checked) "[x]" else "[ ]"
     lines[lineIndex] = prefix + marker + suffix
     return lines.joinToString("\n")
+}
+
+private fun buildSearchHighlightedText(
+    input: String,
+    searchQuery: String,
+    showSearchHighlight: Boolean
+): AnnotatedString {
+    val builder = AnnotatedString.Builder(input)
+    val query = searchQuery.trim()
+    if (showSearchHighlight && query.isNotBlank()) {
+        val start = input.indexOf(query, ignoreCase = true)
+        if (start >= 0) {
+            builder.addStyle(
+                style = SpanStyle(
+                    background = Color(0x66FFD54F),
+                    color = Color.Unspecified
+                ),
+                start = start,
+                end = start + query.length
+            )
+        }
+    }
+    return builder.toAnnotatedString()
 }

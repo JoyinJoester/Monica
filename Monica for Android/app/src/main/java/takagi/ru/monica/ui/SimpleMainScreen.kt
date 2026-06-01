@@ -705,6 +705,7 @@ fun SimpleMainScreen(
     onPrepareNoteAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit = { _, _, _, _, _, _, _ -> },
     onPrepareWalletAddStorageDefaults: (Long?, Long?, String?, Long?, String?, Long?, String?) -> Unit = { _, _, _, _, _, _, _ -> },
     onNavigateToAddNote: (Long?) -> Unit,
+    onNavigateToSearchedNote: (Long, String) -> Unit = { noteId, _ -> onNavigateToAddNote(noteId) },
     onNavigateToNoteDetail: (Long) -> Unit = {},
     onNavigateToPasswordDetail: (Long) -> Unit = {},
     onNavigateToPasskeyDetail: (Long) -> Unit,
@@ -1811,6 +1812,7 @@ fun SimpleMainScreen(
                     onGeneratorRefreshRequestConsumed = { generatorRefreshRequestKey = 0 },
                     noteViewModel = noteViewModel,
                     onNavigateToAddNote = handleNoteOpen,
+                    onNavigateToSearchedNote = onNavigateToSearchedNote,
                     onNavigateToNoteDetail = onNavigateToNoteDetail,
                     onNavigateToBankCardDetail = onNavigateToBankCardDetail,
                     onNavigateToDocumentDetail = onNavigateToDocumentDetail,
@@ -2170,6 +2172,7 @@ fun SimpleMainScreen(
                         securityManager = securityManager,
                         passwordViewModel = passwordViewModel,
                         onNavigateToAddNote = handleNoteOpen,
+                        onNavigateToSearchedNote = onNavigateToSearchedNote,
                         onSelectionModeChange = { isSelectionMode ->
                             isNoteSelectionMode = isSelectionMode
                         },
@@ -2556,6 +2559,7 @@ fun SimpleMainScreen(
                             securityManager = securityManager,
                             passwordViewModel = passwordViewModel,
                             onNavigateToAddNote = handleNoteOpen,
+                            onNavigateToSearchedNote = onNavigateToSearchedNote,
                             onSelectionModeChange = { isSelectionMode ->
                                 isNoteSelectionMode = isSelectionMode
                             },

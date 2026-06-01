@@ -14,6 +14,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -62,6 +63,7 @@ fun PasswordEntryCard(
     val animatedVisibilityScope = takagi.ru.monica.ui.LocalAnimatedVisibilityScope.current
     val reduceAnimations = takagi.ru.monica.ui.LocalReduceAnimations.current
     var sharedModifier: Modifier = Modifier
+    val cardShape = if (isSingleCard) RoundedCornerShape(16.dp) else RoundedCornerShape(12.dp)
     if (enableSharedBounds && !reduceAnimations && sharedTransitionScope != null && animatedVisibilityScope != null) {
         with(sharedTransitionScope) {
             sharedModifier = Modifier.sharedBounds(
@@ -90,12 +92,13 @@ fun PasswordEntryCard(
         } else {
             CardDefaults.cardElevation()
         },
-        shape = if (isSingleCard) RoundedCornerShape(16.dp) else RoundedCornerShape(12.dp)
+        shape = cardShape
     ) {
         Box {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .clip(cardShape)
                     .combinedClickable(onClick = onClick, onLongClick = onLongClick)
                     .padding(if (isSingleCard) 20.dp else 16.dp),
                 verticalAlignment = Alignment.CenterVertically

@@ -1162,7 +1162,7 @@ fun SettingsScreen(
             title = { Text(stringResource(R.string.version_info_dialog_title)) },
             text = {
                 Column {
-                    val githubUrl = "https://github.com/JoyinJoester/Monica"
+                    val githubUrl = "https://github.com/Monica-Pass/Monica-for-Android"
                     val websiteUrl = "https://joyinjoester.github.io/Monica/"
                     val iconSourceUrl = "https://github.com/stratumauth/app/tree/v1.4.0/icons"
                     val iconReleaseUrl = "https://github.com/stratumauth/app/releases/tag/v1.4.0"

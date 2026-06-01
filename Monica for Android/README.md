@@ -121,15 +121,15 @@ Built by developers, for developers (and everyone else).
 ## � Getting Started
 
 ### Installation
-1.  Download the latest `.apk` from the [**Releases**](https://github.com/JoyinJoester/Monica/releases) page.
+1.  Download the latest `.apk` from the [**Releases**](https://github.com/Monica-Pass/Monica-for-Android/releases) page.
 2.  Install on your Android device (Android 8 or higher required).
 3.  Launch and follow the setup wizard to create your Master Password.
 
 ### Build from Source
 ```bash
 # Clone the repository
-git clone https://github.com/JoyinJoester/Monica.git
-cd Monica
+git clone https://github.com/Monica-Pass/Monica-for-Android.git
+cd Monica-for-Android
 
 # Build the APK
 ./gradlew :app:assembleDebug

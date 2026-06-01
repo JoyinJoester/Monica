@@ -3,6 +3,7 @@ package takagi.ru.monica.ui.components
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -16,10 +17,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.ClickableText
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -41,8 +45,10 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import takagi.ru.monica.data.NoteCodeBlockCollapseMode
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MarkdownPreviewText(
     markdown: String,
@@ -55,6 +61,9 @@ fun MarkdownPreviewText(
     enableCodeHighlight: Boolean = true,
     renderImages: Boolean = true,
     maxElements: Int? = null,
+    searchHighlightQuery: String? = null,
+    showSearchHighlight: Boolean = false,
+    autoBringSearchHighlightIntoView: Boolean = false,
     modifier: Modifier = Modifier
 ) {
     if (enableCodeHighlight) {
@@ -71,20 +80,50 @@ fun MarkdownPreviewText(
         maxElements?.let { elements.take(it) } ?: elements
     }
     val expandedCodeBlocks = remember(markdown, maxElements) { mutableStateMapOf<Int, Boolean>() }
+    val normalizedHighlightQuery = searchHighlightQuery?.trim().orEmpty()
+    val highlightedElementIndex = remember(visibleElements, normalizedHighlightQuery) {
+        if (normalizedHighlightQuery.isBlank()) {
+            -1
+        } else {
+            visibleElements.indexOfFirst { element ->
+                element.searchableText().contains(normalizedHighlightQuery, ignoreCase = true)
+            }
+        }
+    }
+    val highlightBringIntoViewRequester = remember { BringIntoViewRequester() }
+
+    LaunchedEffect(markdown, normalizedHighlightQuery, highlightedElementIndex, autoBringSearchHighlightIntoView) {
+        if (autoBringSearchHighlightIntoView && highlightedElementIndex >= 0) {
+            delay(120)
+            highlightBringIntoViewRequester.bringIntoView()
+        }
+    }
 
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         visibleElements.forEachIndexed { index, element ->
+            val isHighlightedElement = index == highlightedElementIndex
+            val elementModifier = if (isHighlightedElement) {
+                Modifier.bringIntoViewRequester(highlightBringIntoViewRequester)
+            } else {
+                Modifier
+            }
+            val elementHighlightQuery = if (isHighlightedElement) normalizedHighlightQuery else ""
             when (element) {
                 is MarkdownElement.Heading -> {
                     Text(
-                        text = element.text,
+                        text = buildSearchHighlightedText(
+                            input = element.text,
+                            searchQuery = elementHighlightQuery,
+                            showSearchHighlight = showSearchHighlight
+                        ),
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontSize = (28 - (2 * element.level)).coerceAtLeast(16).sp,
                             fontWeight = FontWeight.SemiBold
-                        )
+                        ),
+                        modifier = elementModifier
                     )
                 }
 
@@ -92,7 +131,10 @@ fun MarkdownPreviewText(
                     val toggleTask: (() -> Unit)? = onTaskItemToggle?.let { callback ->
                         { callback(element.lineIndex, !element.checked) }
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier = elementModifier,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Checkbox(
                             checked = element.checked,
                             onCheckedChange = { checked ->
@@ -117,14 +159,19 @@ fun MarkdownPreviewText(
                                 onOpenExternalLink = { raw ->
                                     openLink(raw, linkCallback.value, context)
                                 },
-                                onNonLinkClick = nonLinkCallback.value
+                                onNonLinkClick = nonLinkCallback.value,
+                                searchHighlightQuery = elementHighlightQuery,
+                                showSearchHighlight = showSearchHighlight
                             )
                         }
                     }
                 }
 
                 is MarkdownElement.ListItem -> {
-                    Row(verticalAlignment = Alignment.Top) {
+                    Row(
+                        modifier = elementModifier,
+                        verticalAlignment = Alignment.Top
+                    ) {
                         Text(text = "• ")
                         MarkdownInlineText(
                             text = element.text,
@@ -132,13 +179,18 @@ fun MarkdownPreviewText(
                             onOpenExternalLink = { raw ->
                                 openLink(raw, linkCallback.value, context)
                             },
-                            onNonLinkClick = nonLinkCallback.value
+                            onNonLinkClick = nonLinkCallback.value,
+                            searchHighlightQuery = elementHighlightQuery,
+                            showSearchHighlight = showSearchHighlight
                         )
                     }
                 }
 
                 is MarkdownElement.Quote -> {
-                    Row(verticalAlignment = Alignment.Top) {
+                    Row(
+                        modifier = elementModifier,
+                        verticalAlignment = Alignment.Top
+                    ) {
                         Box(
                             modifier = Modifier
                                 .padding(top = 2.dp)
@@ -154,7 +206,9 @@ fun MarkdownPreviewText(
                             onOpenExternalLink = { raw ->
                                 openLink(raw, linkCallback.value, context)
                             },
-                            onNonLinkClick = nonLinkCallback.value
+                            onNonLinkClick = nonLinkCallback.value,
+                            searchHighlightQuery = elementHighlightQuery,
+                            showSearchHighlight = showSearchHighlight
                         )
                     }
                 }
@@ -173,6 +227,7 @@ fun MarkdownPreviewText(
 
                     Box(
                         modifier = Modifier
+                            .then(elementModifier)
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
                             .background(MaterialTheme.colorScheme.surfaceVariant)
@@ -212,7 +267,11 @@ fun MarkdownPreviewText(
                             }
 
                             Text(
-                                text = visibleCode,
+                                text = buildSearchHighlightedText(
+                                    input = visibleCode,
+                                    searchQuery = elementHighlightQuery,
+                                    showSearchHighlight = showSearchHighlight
+                                ),
                                 style = TextStyle(
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 14.sp,
@@ -248,6 +307,7 @@ fun MarkdownPreviewText(
                             bitmap = bitmap.asImageBitmap(),
                             contentDescription = null,
                             modifier = Modifier
+                                .then(elementModifier)
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(MaterialTheme.colorScheme.surfaceVariant)
@@ -259,6 +319,7 @@ fun MarkdownPreviewText(
                             text = element.source,
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier
+                                .then(elementModifier)
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(10.dp))
                                 .background(MaterialTheme.colorScheme.surfaceVariant)
@@ -271,6 +332,7 @@ fun MarkdownPreviewText(
                 is MarkdownElement.HorizontalRule -> {
                     Box(
                         modifier = Modifier
+                            .then(elementModifier)
                             .fillMaxWidth()
                             .height(1.dp)
                             .background(MaterialTheme.colorScheme.outlineVariant)
@@ -280,10 +342,13 @@ fun MarkdownPreviewText(
                 is MarkdownElement.NormalText -> {
                     MarkdownInlineText(
                         text = element.text,
+                        modifier = elementModifier,
                         onOpenExternalLink = { raw ->
                             openLink(raw, linkCallback.value, context)
                         },
-                        onNonLinkClick = nonLinkCallback.value
+                        onNonLinkClick = nonLinkCallback.value,
+                        searchHighlightQuery = elementHighlightQuery,
+                        showSearchHighlight = showSearchHighlight
                     )
                 }
             }
@@ -297,9 +362,13 @@ private fun MarkdownInlineText(
     modifier: Modifier = Modifier,
     completedTask: Boolean = false,
     onOpenExternalLink: (String) -> Unit,
-    onNonLinkClick: (() -> Unit)? = null
+    onNonLinkClick: (() -> Unit)? = null,
+    searchHighlightQuery: String = "",
+    showSearchHighlight: Boolean = false
 ) {
-    val annotated = remember(text, completedTask) { buildInlineAnnotatedText(text, completedTask) }
+    val annotated = remember(text, completedTask, searchHighlightQuery, showSearchHighlight) {
+        buildInlineAnnotatedText(text, completedTask, searchHighlightQuery, showSearchHighlight)
+    }
     ClickableText(
         text = annotated,
         style = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
@@ -314,7 +383,12 @@ private fun MarkdownInlineText(
     }
 }
 
-private fun buildInlineAnnotatedText(input: String, completedTask: Boolean = false): AnnotatedString {
+private fun buildInlineAnnotatedText(
+    input: String,
+    completedTask: Boolean = false,
+    searchHighlightQuery: String = "",
+    showSearchHighlight: Boolean = false
+): AnnotatedString {
     val baseStyle = SpanStyle(color = Color.Unspecified)
     val urlRegex = Regex("(https?://[\\w-]+(\\.[\\w-]+)+[\\w.,@?^=%&:/~+#-]*[\\w@?^=%&/~+#-])")
 
@@ -339,7 +413,48 @@ private fun buildInlineAnnotatedText(input: String, completedTask: Boolean = fal
             end = match.range.last + 1
         )
     }
+    addSearchHighlight(
+        builder = mutable,
+        text = builder.text,
+        searchQuery = searchHighlightQuery,
+        showSearchHighlight = showSearchHighlight
+    )
     return mutable.toAnnotatedString()
+}
+
+private fun buildSearchHighlightedText(
+    input: String,
+    searchQuery: String,
+    showSearchHighlight: Boolean
+): AnnotatedString {
+    val mutable = AnnotatedString.Builder(input)
+    addSearchHighlight(
+        builder = mutable,
+        text = input,
+        searchQuery = searchQuery,
+        showSearchHighlight = showSearchHighlight
+    )
+    return mutable.toAnnotatedString()
+}
+
+private fun addSearchHighlight(
+    builder: AnnotatedString.Builder,
+    text: String,
+    searchQuery: String,
+    showSearchHighlight: Boolean
+) {
+    val query = searchQuery.trim()
+    if (!showSearchHighlight || query.isBlank()) return
+    val start = text.indexOf(query, ignoreCase = true)
+    if (start < 0) return
+    builder.addStyle(
+        style = SpanStyle(
+            background = Color(0x66FFD54F),
+            color = Color.Unspecified
+        ),
+        start = start,
+        end = start + query.length
+    )
 }
 
 private fun AnnotatedString.Builder.appendStyledTextWithoutMarkers(
@@ -566,6 +681,19 @@ private sealed interface MarkdownElement {
     data class Image(val source: String) : MarkdownElement
     data object HorizontalRule : MarkdownElement
     data class NormalText(val text: String) : MarkdownElement
+}
+
+private fun MarkdownElement.searchableText(): String {
+    return when (this) {
+        is MarkdownElement.Heading -> text
+        is MarkdownElement.CheckboxItem -> text
+        is MarkdownElement.ListItem -> text
+        is MarkdownElement.Quote -> text
+        is MarkdownElement.CodeBlock -> code
+        is MarkdownElement.Image -> source
+        MarkdownElement.HorizontalRule -> ""
+        is MarkdownElement.NormalText -> text
+    }
 }
 
 private const val URL_TAG = "URL"

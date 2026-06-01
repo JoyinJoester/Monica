@@ -25,9 +25,14 @@ sealed class Screen(val route: String) {
             }
         }
     }
-    object NoteDetail : Screen("note_detail/{noteId}") {
-        fun createRoute(noteId: Long): String {
-            return "note_detail/$noteId"
+    object NoteDetail : Screen("note_detail/{noteId}?highlight={highlight}") {
+        fun createRoute(noteId: Long, highlight: String? = null): String {
+            val trimmedHighlight = highlight?.trim().orEmpty()
+            return if (trimmedHighlight.isBlank()) {
+                "note_detail/$noteId"
+            } else {
+                "note_detail/$noteId?highlight=${Uri.encode(trimmedHighlight)}"
+            }
         }
     }
     object AddEditSend : Screen("add_edit_send") {

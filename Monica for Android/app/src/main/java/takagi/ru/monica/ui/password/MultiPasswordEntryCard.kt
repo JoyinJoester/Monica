@@ -15,6 +15,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -53,14 +54,11 @@ fun MultiPasswordEntryCard(
 ) {
     val firstEntry = passwords.first()
     val firstEntryTitle = firstEntry.title.ifBlank { stringResource(R.string.untitled) }
+    val cardShape = RoundedCornerShape(if (isInExpandedGroup) 12.dp else 16.dp)
 
     Card(
         modifier = Modifier
-            .fillMaxWidth()
-            .combinedClickable(
-                onClick = { onCardClick?.invoke() },
-                onLongClick = onLongClick
-            ),
+            .fillMaxWidth(),
         colors = if (passwords.any { selectedPasswords.contains(it.id) }) {
             CardDefaults.cardColors(
                 containerColor = MaterialTheme.colorScheme.primaryContainer
@@ -73,11 +71,16 @@ fun MultiPasswordEntryCard(
         } else {
             CardDefaults.cardElevation(defaultElevation = 3.dp, pressedElevation = 6.dp)
         },
-        shape = RoundedCornerShape(if (isInExpandedGroup) 12.dp else 16.dp)
+        shape = cardShape
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .clip(cardShape)
+                .combinedClickable(
+                    onClick = { onCardClick?.invoke() },
+                    onLongClick = onLongClick
+                )
                 .padding(if (isInExpandedGroup) 16.dp else 20.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {

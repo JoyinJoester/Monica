@@ -127,6 +127,7 @@ fun NoteListScreen(
     viewModel: NoteViewModel,
     settingsViewModel: SettingsViewModel,
     onNavigateToAddNote: (Long?) -> Unit,
+    onNavigateToSearchedNote: (Long, String) -> Unit = { noteId, _ -> onNavigateToAddNote(noteId) },
     securityManager: SecurityManager,
     passwordViewModel: takagi.ru.monica.viewmodel.PasswordViewModel,
     onSelectionModeChange: (Boolean) -> Unit = {},
@@ -952,7 +953,12 @@ fun NoteListScreen(
                 } else {
                     if (!isNavigating) {
                         isNavigating = true
-                        onNavigateToAddNote(noteId)
+                        val activeSearchQuery = searchQuery.trim()
+                        if (activeSearchQuery.isNotBlank()) {
+                            onNavigateToSearchedNote(noteId, activeSearchQuery)
+                        } else {
+                            onNavigateToAddNote(noteId)
+                        }
                         scope.launch {
                             delay(600)
                             isNavigating = false
